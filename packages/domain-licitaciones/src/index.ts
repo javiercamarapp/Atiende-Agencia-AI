@@ -443,3 +443,39 @@ export { enqueueDeadlineReminderWhatsApp, enqueueTenderNotices, requestGoNoGoDec
 export type { DecisionRequestInput, DecisionRequestResult, NoticeInput } from "./whatsapp-service.ts";
 export { computeLiveGoNoGoMatch } from "./go-no-go-live.ts";
 export type { LiveGoNoGoMatchSnapshot } from "./go-no-go-live.ts";
+
+// L-08 -- KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
+export {
+  KYC_MAX_BATCH,
+  KYC_MAX_PARTIES,
+  KYC_ROLES,
+  KYC_SITUACIONES,
+  KycNotAvailableError,
+  KycRateLimitError,
+  KycValidationError,
+  armarConsultaResultado,
+  armarFichasResultado,
+  clasificarSituacion,
+  isKycRole,
+  isKycSituacion,
+  normalizeRfc,
+  parseNombreFicha,
+  parseRfc,
+  parseRfcBatch,
+  splitRfcText,
+} from "./kyc-69b.ts";
+export type {
+  Kyc69bSituacion,
+  KycConsultaFila,
+  KycConsultaResultado,
+  KycFicha,
+  KycFichaConSemaforo,
+  KycFichasResultado,
+  KycRfcTipo,
+  KycRole,
+  KycSemaforo,
+  KycSemaforoInfo,
+  RfcValido,
+} from "./kyc-69b.ts";
+export { InMemoryKyc69bRepository, PostgresKyc69bRepository } from "./kyc-69b-repository.ts";
+export type { Kyc69bRepository, KycConsultaBitacora, KycFichaInput, KycListaEstado, KycListaFixture, KycListaFixtureFila } from "./kyc-69b-repository.ts";

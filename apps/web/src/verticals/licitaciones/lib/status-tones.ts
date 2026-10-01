@@ -66,3 +66,6 @@ export const CAMPO_CONTRATO_TONES: Tabla = { sugerido: "warning" };
 
 /** Estado de una corrida de fuente de convocatorias: ok verde, cualquier otro rojo (via `fallback`). */
 export const CORRIDA_FUENTE_TONES: Tabla = { ok: "success" };
+
+/** Semaforo del KYC negativo 69-B del SAT (L-08): definitivo = rojo, presunto = ambar, sin riesgo vigente = verde, sin lista = neutro. */
+export const KYC_SEMAFORO_TONES: Tabla = { rojo: "danger", ambar: "warning", verde: "success", sin_datos: "neutral" };

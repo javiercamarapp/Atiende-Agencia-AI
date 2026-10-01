@@ -98,3 +98,7 @@ Migración `030_whatsapp_avisos_y_decisiones.sql` (espejo `20240101000236_...`) 
 - **Token de decisión**: 32 bytes aleatorios; la base guarda solo el SHA-256. Un solo uso, vigencia de 24 h (tope 7 días), ligado a usuario + organización + convocatoria + acción + teléfono. El consumo lo revalida todo en la base (`whatsapp_consume_action_token`) y se ejecuta en la MISMA transacción que `go_no_go_decision`, con la sesión del usuario del token.
 - **Cola**: `whatsapp_outbox` (patrón `hoteles.messaging_outbox`), solo funciones de sistema; al cerrar el mensaje se borran los botones (el token en claro solo vive mientras está pendiente).
 - **Fuera de alcance de esta pieza**: aprobar/rechazar PROPUESTAS por botón (la aprobación del expediente exige el hash de insumos sellado y step-up; no se decide por un botón sin una decisión de producto) y los avisos de convocatoria nueva / fallo (hay primitiva `enqueueTenderNotices`, sin disparador cableado). Los avisos de plazo sí están cableados al barrido de alertas.
+
+## L-08 — KYC negativo 69-B
+
+Migración `031_licitaciones_kyc_69b.sql` (espejo `20240101000245_...`) y módulos `kyc-69b.ts` (puro: RFC estricto, lote, semáforo, alerta) y `kyc-69b-repository.ts` (Postgres con SAVEPOINT + versión en memoria). Lee la edición vigente de la lista 69-B que ya ingiere despachos (`despachos.efos_*`) con una función definer de solo lectura; la bitácora de consultas es privada por organización. Verificación contra Postgres real: `scripts/verify-licitaciones-kyc-69b/`. No valida el dígito verificador del RFC (solo su forma).

@@ -29,6 +29,7 @@ import { licitacionesCompanyDataRoutes } from "./companyData.ts";
 import { licitacionesSalaGuerraRoutes } from "./salaGuerra.ts";
 import { licitacionesWhatsAppRoutes } from "./whatsapp.ts";
 import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
+import { licitacionesKyc69bRoutes } from "./kyc69b.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -77,6 +78,8 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesSalaGuerraRoutes(deps));
   // L-05 — WhatsApp: webhook firmado (opt-in/out + decision go/no-go por boton), configuracion del contacto y solicitud de decision.
   app.route("/", licitacionesWhatsAppRoutes(deps));
+  // L-08 — KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
+  app.route("/", licitacionesKyc69bRoutes(deps));
   // "Chatea con tus datos" (motor compartido + catalogo cerrado de licitaciones).
   app.route("/", licitacionesChatDatosRoutes(deps));
   return app;

@@ -134,6 +134,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       '"Chatea con tus datos" (apps/api, POST .../admin/chat-datos): cada pregunta puede costar una o varias llamadas a un LLM de pago y consultas a la base de un tenant. El tope mensual por organización del gateway es la defensa de gasto, pero un blip de Redis no debe dejar abierta una ráfaga por usuario antes de llegar a él: negar una pregunta aislada es preferible a gasto sin freno.',
   },
+  'licitaciones:kyc-69b': {
+    failMode: 'open',
+    reason:
+      'KYC negativo 69-B de licitaciones (POST .../kyc-69b/consultar, sesion autenticada con rol de escritura). El limite por usuario es una segunda linea contra rafagas: la defensa real contra el scraping vive en la base (lote maximo de 50 RFC y tope de 1000 RFC por organizacion cada 24 h dentro de licitaciones.kyc_consultar_69b), asi que un blip de Redis no debe negar una consulta legitima de un usuario ya autenticado; el backend en memoria de esta instancia sigue acotando la rafaga.',
+  },
   'conversation:inbound-webhook': {
     failMode: 'open',
     reason:

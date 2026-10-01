@@ -95,19 +95,19 @@ describe("LicitacionesShell — nav móvil", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 11 destinos de un owner, incluidos Staff, WhatsApp y Seguridad', async () => {
+  it('el botón "Más" abre los 12 destinos de un owner, incluidos KYC 69-B, Staff, WhatsApp y Seguridad', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(11);
+    expect(hrefs).toHaveLength(12);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad"]),
+      expect.arrayContaining(["/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad"]),
     );
   });
 
-  it("un rol sin gestión de staff no ve Staff (cosmético; el servidor es la barrera) y Más trae los otros 10", async () => {
+  it("un rol sin gestión de staff no ve Staff (cosmético; el servidor es la barrera) y Más trae los otros 11", async () => {
     installMatchMediaStub();
     installMemoryLocalStorage().setItem(
       "atiende.licitaciones.session",
@@ -127,7 +127,7 @@ describe("LicitacionesShell — nav móvil", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(10);
+    expect(hrefs).toHaveLength(11);
     expect(hrefs).not.toContain("/licitaciones/demo/staff");
   });
 
