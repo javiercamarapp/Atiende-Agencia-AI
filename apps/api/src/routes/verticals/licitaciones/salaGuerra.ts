@@ -26,7 +26,6 @@ import {
   JuntaQuestionDraftAgent,
   JuntaQuestionDuplicateError,
   JuntaQuestionRejectedError,
-  PostgresSalaGuerraRepository,
   SalaGuerraNotAvailableError,
   SalaGuerraValidationError,
   WRITE_ROLES,
@@ -107,7 +106,10 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   } as const;
   for (const path of Object.values(paths)) app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
-  const salaFor = (c: Ctx): SalaGuerraRepository => deps.licitacionesSalaGuerraRepo?.(c.get("db")) ?? new PostgresSalaGuerraRepository(c.get("db"));
+  const salaFor = (c: Ctx): SalaGuerraRepository => {
+    if (!deps.licitacionesSalaGuerraRepo) throw Errors.serviceUnavailable("La sala de guerra no esta configurada en este ambiente.");
+    return deps.licitacionesSalaGuerraRepo(c.get("db"));
+  };
 
   async function requireTender(c: Ctx) {
     const tender = await deps.licitacionesRepo(c.get("db")).findTender(c.get("organizationId"), c.req.param("tenderId")!);

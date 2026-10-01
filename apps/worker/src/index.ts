@@ -12,6 +12,9 @@ export { runDiscoverTendersForOrganization, runDiscoverTendersSweep, DEFAULT_DIS
 export type { DiscoverTendersSourceResult, DiscoverTendersSweepResult, RunDiscoverTendersOptions } from "./jobs/licitaciones/discover-tenders.ts";
 export { runDeadlineReminderSweep } from "./jobs/licitaciones/deadline-reminders.ts";
 export type { DeadlineReminderSweepResult, RunDeadlineRemindersOptions } from "./jobs/licitaciones/deadline-reminders.ts";
+// L-04 -- recordatorio de la fecha limite de envio de preguntas a la junta de aclaraciones.
+export { runJuntaQuestionReminderSweep } from "./jobs/licitaciones/junta-question-reminders.ts";
+export type { JuntaQuestionReminderSweepResult, RunJuntaQuestionRemindersOptions, WithSalaGuerraRepo } from "./jobs/licitaciones/junta-question-reminders.ts";
 
 // Fase 10 licitaciones — despacho proactivo real (correo) de recordatorios de
 // plazo/alertas de renovación/facturas vencidas (ver
