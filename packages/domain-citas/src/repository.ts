@@ -93,6 +93,17 @@ export type ConfirmResult =
   | { readonly outcome: "conflict_invalid_status"; readonly status: string }
   | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
 
+/** C-01 -- confirmación por el CLIENTE desde el botón del recordatorio (sesión de
+ * sistema, ver migrations/025). `not_found` cubre cita inexistente, de otra
+ * organización O de otro cliente (la función SQL no distingue, a propósito).
+ * `unavailable` = la base todavía no tiene la migración 025 (42883): el caller
+ * responde de forma honesta sin afirmar que confirmó. */
+export type CustomerConfirmResult =
+  | { readonly outcome: "confirmed" | "already_confirmed"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string }
+  | { readonly outcome: "unavailable" };
+
 export type CompleteResult =
   | { readonly outcome: "completed" | "already_completed"; readonly appointment: AppointmentRecord }
   | { readonly outcome: "not_found" }
@@ -530,6 +541,13 @@ export interface CitasRepository {
    * idempotente si ya estaba confirmed, conflicto si ya es un estado terminal
    * (completed/cancelled/no_show). */
   confirmAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<ConfirmResult>;
+  /** C-01 -- `pending -> confirmed` por el titular de la cita (teléfono ya
+   * normalizado, el del remitente autenticado por Meta) en sesión de SISTEMA.
+   * Idempotente; no confirma citas pasadas ni en otro estado. Ver
+   * migrations/025_citas_confirmacion_por_boton.sql. Con la base sin migrar devuelve
+   * `{ outcome: "unavailable" }` (SAVEPOINT + 42883), nunca lanza ni deja la
+   * transacción abortada. */
+  confirmAppointmentByCustomerAsSystem(organizationId: string, appointmentId: string, customerPhone: string): Promise<CustomerConfirmResult>;
   /** `pending|confirmed -> completed`, idempotente si ya estaba completed,
    * conflicto si ya es cancelled/no_show. */
   completeAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CompleteResult>;

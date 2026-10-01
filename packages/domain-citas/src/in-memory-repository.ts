@@ -51,6 +51,7 @@ import type {
   CitasRepository,
   CompleteResult,
   ConfirmResult,
+  CustomerConfirmResult,
   ConnectProviderCalComAccountInput,
   ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
@@ -826,6 +827,26 @@ export class InMemoryCitasRepository implements CitasRepository {
       if (appointment.status === "confirmed") return { outcome: "already_confirmed", appointment };
       if (appointment.status !== "pending") return { outcome: "conflict_invalid_status", status: appointment.status };
 
+      const updated: AppointmentRecord = { ...appointment, status: "confirmed" };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "confirmed", appointment: updated };
+    });
+  }
+
+  /** Simula una base sin la migración 025 (confirmación por botón): el método degrada
+   * a `unavailable` igual que el adaptador real. */
+  customerConfirmMigrationPending = false;
+
+  async confirmAppointmentByCustomerAsSystem(organizationId: string, appointmentId: string, customerPhone: string): Promise<CustomerConfirmResult> {
+    if (this.customerConfirmMigrationPending) return { outcome: "unavailable" };
+    return this.appointmentLock.run(`confirm:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      const customer = this.customers.get(appointment.customerId);
+      if (!customer || customer.organizationId !== organizationId || customer.phone !== customerPhone) return { outcome: "not_found" };
+      if (appointment.status === "confirmed") return { outcome: "already_confirmed", appointment };
+      if (appointment.status !== "pending") return { outcome: "conflict_invalid_status", status: appointment.status };
+      if (Date.parse(appointment.startsAt) <= Date.now()) return { outcome: "conflict_invalid_status", status: "pasada" };
       const updated: AppointmentRecord = { ...appointment, status: "confirmed" };
       this.appointments.set(appointmentId, updated);
       return { outcome: "confirmed", appointment: updated };
