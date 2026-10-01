@@ -153,7 +153,7 @@ describe("PATCH /v1/restaurantes/:propertyId/repartidor/orders/:orderId/status",
 
     const outbox = ctx.restaurantesRepo.getOutbox();
     expect(outbox.map((row) => row.eventType).sort()).toEqual(["order.status.en_camino", "order.status.entregado"]);
-    expect(outbox.every((row) => (row.payload as { to: string }).to === "9993334444")).toBe(true);
+    expect(outbox.every((row) => (row.payload as { to: string }).to === "+529993334444")).toBe(true);
   });
 
   it('reportar "problema" notifica al staff (bandeja interna), nunca al cliente por WhatsApp', async () => {

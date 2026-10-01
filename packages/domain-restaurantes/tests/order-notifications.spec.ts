@@ -59,7 +59,8 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     expect(outbox).toHaveLength(3);
     expect(outbox.every((row) => row.channel === "whatsapp")).toBe(true);
     expect(outbox.every((row) => (row.payload as { phone_number_id: string }).phone_number_id === "PHONE_NUMBER_ID_123")).toBe(true);
-    expect(outbox.every((row) => (row.payload as { to: string }).to === order.customerPhone)).toBe(true);
+    // Regresion e2e R-23: el telefono guardado son 10 digitos; a Meta se manda con codigo de pais (E.164).
+    expect(outbox.every((row) => (row.payload as { to: string }).to === `+52${order.customerPhone}`)).toBe(true);
     expect((outbox.find((row) => row.eventType === "order.status.en_camino")?.payload as { body: string }).body).toMatch(/va en camino/);
   });
 

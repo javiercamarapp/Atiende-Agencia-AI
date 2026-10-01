@@ -91,12 +91,14 @@ export class ResendSink {
  * rechaza: un test del banco e2e nunca debe salir a internet.
  */
 export function createSimulatorFetch(targets: { readonly resendBaseUrl?: string; readonly graphBaseUrl?: string }): typeof fetch {
+  // Se captura el fetch real AHORA: si el test lo instala como `globalThis.fetch`, no se llama a si mismo.
+  const realFetch = globalThis.fetch.bind(globalThis);
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
     const url = new URL(raw);
-    if (url.hostname === "api.resend.com" && targets.resendBaseUrl) return fetch(`${targets.resendBaseUrl}${url.pathname}${url.search}`, init);
-    if (url.hostname === "graph.facebook.com" && targets.graphBaseUrl) return fetch(`${targets.graphBaseUrl}${url.pathname}${url.search}`, init);
-    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return fetch(input, init);
+    if (url.hostname === "api.resend.com" && targets.resendBaseUrl) return realFetch(`${targets.resendBaseUrl}${url.pathname}${url.search}`, init);
+    if (url.hostname === "graph.facebook.com" && targets.graphBaseUrl) return realFetch(`${targets.graphBaseUrl}${url.pathname}${url.search}`, init);
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return realFetch(input, init);
     throw new Error(`createSimulatorFetch: salida bloqueada hacia ${url.hostname} (el banco e2e no sale a internet)`);
   }) as typeof fetch;
 }

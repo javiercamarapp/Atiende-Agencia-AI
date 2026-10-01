@@ -32,3 +32,18 @@ export function canonicalizeMexicanPhone(phone: string): string | null {
   if (digits.length === 13 && digits.startsWith("521")) return digits.slice(3);
   return null;
 }
+
+/**
+ * Destinatario E.164 para la Graph API de WhatsApp a partir del telefono GUARDADO del cliente.
+ * `restaurantes.customers`/`orders` guardan solo los 10 digitos nacionales (`normalizePhone`), pero la
+ * Cloud API de Meta exige codigo de pais: un "9991230001" pelon no es un destinatario valido y el aviso
+ * de estado del pedido nunca llegaba (el e2e R-23 lo detecto: el simulador lo rechaza). Un numero de 10
+ * digitos se asume mexicano (+52, el unico pais de la operacion, igual que `canonicalizeMexicanPhone`);
+ * uno que ya trae codigo de pais (11 a 15 digitos) se respeta; cualquier otra cosa devuelve `null`.
+ */
+export function toWhatsAppRecipient(storedPhone: string): string | null {
+  const digits = storedPhone.replace(/\D/g, "");
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
+  return null;
+}

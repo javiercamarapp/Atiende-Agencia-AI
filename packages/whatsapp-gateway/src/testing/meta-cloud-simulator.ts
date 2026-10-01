@@ -165,8 +165,8 @@ export class MetaCloudSimulator {
   buildInboundPayload(input: InboundMessageInput): Record<string, unknown> {
     const id = input.id ?? `wamid.SIMIN${++this.counter}`;
     const message = input.raw
-      ? { id, from: normalizeWaId(input.from), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), ...input.raw }
-      : { id, from: normalizeWaId(input.from), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), type: "text", text: { body: input.body } };
+      ? { id, from: input.from.replace(/\D/g, ""), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), ...input.raw }
+      : { id, from: input.from.replace(/\D/g, ""), timestamp: String(input.timestampSeconds ?? Math.floor(this.now() / 1000)), type: "text", text: { body: input.body } };
     return {
       object: "whatsapp_business_account",
       entry: [
@@ -178,7 +178,7 @@ export class MetaCloudSimulator {
               value: {
                 messaging_product: "whatsapp",
                 metadata: { display_phone_number: "5219990000000", phone_number_id: this.opts.phoneNumberId },
-                contacts: [{ profile: { name: "Cliente Simulado" }, wa_id: normalizeWaId(input.from) }],
+                contacts: [{ profile: { name: "Cliente Simulado" }, wa_id: input.from.replace(/\D/g, "") }],
                 messages: [message],
               },
             },
@@ -313,7 +313,10 @@ export class MetaCloudSimulator {
   }
 }
 
-/** Meta usa wa_id sin '+' ni separadores. */
+/** Meta usa wa_id sin '+' ni separadores. Para Mexico, "521XXXXXXXXXX" y "52XXXXXXXXXX" son el mismo contacto
+ *  (Meta normaliza ambos): se unifican al segundo para que la ventana de 24 h no dependa de la variante. */
 export function normalizeWaId(phone: string): string {
-  return phone.replace(/\D/g, "");
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 13 && digits.startsWith("521")) return `52${digits.slice(3)}`;
+  return digits;
 }

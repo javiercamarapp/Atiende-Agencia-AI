@@ -28,6 +28,7 @@
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { etiquetaHoraLocal } from "./horarios.ts";
+import { toWhatsAppRecipient } from "./phone.ts";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
@@ -102,6 +103,9 @@ export interface CustomerOrderNotificationResult {
 export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRepository, order: Order): Promise<CustomerOrderNotificationResult> {
   if (!CUSTOMER_NOTIFIED_STATUSES.has(order.status)) return { enqueued: false, reason: "status_not_notified" };
   if (!order.customerPhone) return { enqueued: false, reason: "no_customer_phone" };
+  // El telefono guardado son 10 digitos nacionales: Meta exige el numero con codigo de pais (ver phone.ts).
+  const recipient = toWhatsAppRecipient(order.customerPhone);
+  if (!recipient) return { enqueued: false, reason: "no_customer_phone" };
 
   const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(order.organizationId, order.propertyId);
   if (!phoneNumberId) return { enqueued: false, reason: "no_whatsapp_channel" };
@@ -110,7 +114,7 @@ export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRe
   if (!message) return { enqueued: false, reason: "status_not_notified" };
 
   await repo.enqueueMessagingOutbox(order.organizationId, "whatsapp", `order.status.${order.status}`, `order-status:${order.id}:${order.status}`, {
-    to: order.customerPhone,
+    to: recipient,
     phone_number_id: phoneNumberId,
     body: message,
   });
