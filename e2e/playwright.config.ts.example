@@ -1,0 +1,23 @@
+// ESQUELETO INACTIVO (ver docs/E2E-PLAYWRIGHT.md). Requiere `npm i -D @playwright/test`, que NO esta instalado.
+import { defineConfig, devices } from "@playwright/test";
+
+const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:4173"; // `vite preview` local; NUNCA Produccion
+
+export default defineConfig({
+  testDir: "./tests",
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  use: {
+    baseURL,
+    timezoneId: "America/Merida",
+    locale: "es-MX",
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+  },
+  projects: [
+    { name: "escritorio", use: { ...devices["Desktop Chrome"] } },
+    { name: "movil", use: { ...devices["Pixel 7"] } },
+  ],
+});

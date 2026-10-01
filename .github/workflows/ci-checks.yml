@@ -127,6 +127,11 @@ jobs:
       - name: Lint (ESLint, todo el árbol)
         run: npm run lint
 
+      # PL-12: `lint` solo falla con errores; este paso falla si las ADVERTENCIAS superan el baseline versionado
+      # (scripts/lint-ratchet/baseline.json). Segunda pasada de ESLint, solo lectura, sin red ni secretos.
+      - name: Trinquete de lint (advertencias <= baseline)
+        run: npm run lint:ratchet
+
       - name: Tests unitarios (vitest run, repositorios en memoria)
         run: npm run test:unit
 

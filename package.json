@@ -13,10 +13,12 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "lint:ratchet": "node --experimental-strip-types scripts/lint-ratchet/ratchet.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.config.ts",
+    "test:clock-guard": "vitest run --config vitest.clock-guard.config.ts",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "test:integration": "vitest run --config vitest.config.ts tests/integration --pool=forks --poolOptions.forks.singleFork",
     "db:migrate": "node packages/db/src/cli.ts migrate",
