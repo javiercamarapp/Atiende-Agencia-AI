@@ -16,6 +16,7 @@ import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { enqueueComandasForPromotedOrders } from "./programados-comanda.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
@@ -25,6 +26,8 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
     return withHeartbeat(deps, "/internal/restaurantes/promover-programados", async () => {
       const resultado = await deps.engine.withAppSession({ userId: null }, (db) => promoverProgramadosTodasLasOrganizaciones(deps.restaurantesRepo(db)));
+      // Ya confirmada la promocion: cada pedido que entra a cocina manda su comanda al POS (una transaccion por pedido).
+      await enqueueComandasForPromotedOrders(deps, resultado.promovidos);
       logEvent(c, "info", "restaurantes_programados_promovidos", { promovidos: resultado.promovidos.length, disponible: resultado.disponible });
       return c.json({
         ok: true,

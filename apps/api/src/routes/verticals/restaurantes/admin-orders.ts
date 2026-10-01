@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { enqueueComandasForPromotedOrders } from "./programados-comanda.ts";
 import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -187,6 +188,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       const r = await promoverProgramadosVencidos(repo, organizationId, { propertyIds });
       if (r.promovidos.length > 0) {
         logEvent(c, "info", "restaurantes_programados_promovidos", { organizationId, promovidos: r.promovidos.length });
+        // La comanda al POS solo puede salir en sesion de SISTEMA y DESPUES del commit de esta transaccion de staff.
+        const promovidos = r.promovidos;
+        c.get("postCommitTasks").push(() => enqueueComandasForPromotedOrders(deps, promovidos));
       }
       return r.promovidos;
     } catch (err) {
