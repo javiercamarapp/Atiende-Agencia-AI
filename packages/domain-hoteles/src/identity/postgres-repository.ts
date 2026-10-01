@@ -5,9 +5,10 @@
 // Con SAVEPOINT la sesion queda utilizable: las lecturas degradan a vacio honesto
 // (`available: false`), las escrituras a `IdentityUnavailableError` (503).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, isUndefinedColumnError, runWithSavepointFallback } from "@atiende/db";
 import {
   IdentityAccessDeniedError,
+  IdentityBlockedError,
   IdentityConflictError,
   IdentityDoubleControlError,
   IdentityInvalidInputError,
@@ -21,6 +22,7 @@ import type {
   IdentityListResult,
   IdentityPurgeRequestRecord,
   IdentityPurgeStatus,
+  IdentityRetentionSweepResult,
   IdentityStatus,
   IdentityVaultRecord,
   MigratoryRegistrationRecord,
@@ -30,9 +32,13 @@ import type {
 } from "./types.ts";
 
 // `payload_enc` JAMAS aparece en una lista de columnas de SELECT (sin GRANT de columna).
-const VAULT_COLUMNS = `id, property_id, guest_id, reservation_id, document_type, nationality, document_last4, key_version,
+// Columnas de la boveda de 031 (base SIN la migracion 032: no existen las de bloqueo -> 42703).
+const VAULT_COLUMNS_LEGACY = `id, property_id, guest_id, reservation_id, document_type, nationality, document_last4, key_version,
        status, retention_until::text as retention_until, verified_at::text as verified_at, verified_by, captured_by,
        created_at::text as created_at, purged_at::text as purged_at`;
+// Con 032 se agregan las columnas de bloqueo (metadatos; el sobre sigue sin GRANT).
+const VAULT_COLUMNS = `${VAULT_COLUMNS_LEGACY}, blocked_at::text as blocked_at, blocked_until::text as blocked_until,
+       block_window_days, block_reason, blocked_by`;
 const PURGE_COLUMNS = `id, property_id, vault_id, requested_by, reason, status, decided_by, decided_at::text as decided_at,
        decision_note, created_at::text as created_at`;
 const MIGRATORY_COLUMNS = `id, property_id, reservation_id, guest_id, vault_id, nationality, arrival_date::text as arrival_date,
@@ -43,6 +49,9 @@ interface VaultRow {
   id: string; property_id: string; guest_id: string; reservation_id: string | null; document_type: IdentityVaultRecord["documentType"];
   nationality: string | null; document_last4: string | null; key_version: number; status: IdentityStatus; retention_until: string;
   verified_at: string | null; verified_by: string | null; captured_by: string | null; created_at: string; purged_at: string | null;
+  // Ausentes en una base sin 032 (consulta con columnas legadas).
+  blocked_at?: string | null; blocked_until?: string | null; block_window_days?: number | null;
+  block_reason?: IdentityVaultRecord["blockReason"]; blocked_by?: string | null;
 }
 interface PurgeRow {
   id: string; property_id: string; vault_id: string; requested_by: string; reason: string; status: IdentityPurgeStatus;
@@ -63,6 +72,8 @@ const toVault = (r: VaultRow): IdentityVaultRecord => ({
   nationality: r.nationality, documentLast4: r.document_last4, keyVersion: Number(r.key_version), status: r.status,
   retentionUntil: r.retention_until, verifiedAt: r.verified_at, verifiedBy: r.verified_by, capturedBy: r.captured_by,
   createdAt: r.created_at, purgedAt: r.purged_at,
+  blockedAt: r.blocked_at ?? null, blockedUntil: r.blocked_until ?? null,
+  blockWindowDays: r.block_window_days == null ? null : Number(r.block_window_days), blockReason: r.block_reason ?? null, blockedBy: r.blocked_by ?? null,
 });
 const toPurge = (r: PurgeRow): IdentityPurgeRequestRecord => ({
   id: r.id, propertyId: r.property_id, vaultId: r.vault_id, requestedBy: r.requested_by, reason: r.reason, status: r.status,
@@ -92,12 +103,19 @@ export function mapIdentityPgError(err: unknown, operation: string): unknown {
   if (code === "42501") {
     if (message.startsWith("doble_control")) return new IdentityDoubleControlError();
     if (message.startsWith("identidad_purgada")) return new IdentityPurgedError();
+    if (message.startsWith("identidad_bloqueada")) return new IdentityBlockedError();
+    // Guardas de datos de 032: la purga solo pasa por bloqueo, con ventana vencida y sin retencion legal.
+    if (message.startsWith("purga_sin_bloqueo") || message.startsWith("bloqueo_vigente") || message.startsWith("retencion_legal")) {
+      return new IdentityConflictError(message.replace(/^[a-z_]+:\s*/, ""));
+    }
     if (message.startsWith("registro_migratorio")) return new IdentityConflictError("El registro migratorio ya fue reportado y no se puede modificar.");
     return new IdentityAccessDeniedError(operation);
   }
   if (code === "P0001") {
     if (message.startsWith("identidad_purgada")) return new IdentityPurgedError();
+    if (message.startsWith("identidad_bloqueada")) return new IdentityBlockedError();
     if (message.startsWith("solicitud_resuelta")) return new IdentityRequestResolvedError();
+    if (message.startsWith("acceso_no_vigente")) return new IdentityConflictError(message.replace(/^[a-z_]+:\s*/, ""));
   }
   if (code === "22023") return new IdentityInvalidInputError(message.replace(/^[a-z_]+:\s*/, ""));
   if (code === "23503") return new IdentityInvalidInputError(message.replace(/^[a-z_]+:\s*/, "") || "Referencia invalida (huesped, reserva o identidad de otra property).");
@@ -140,24 +158,39 @@ export class PostgresIdentityRepository implements IdentityRepository {
     });
   }
 
+  /** Lee filas de la boveda; en una base con 031 pero sin 032 (42703 por las columnas de bloqueo) repite con las columnas legadas. */
+  private vaultRows(sql: (columns: string) => string, params: unknown[]): Promise<VaultRow[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => (await this.db.query<VaultRow>(sql(VAULT_COLUMNS), params)).rows,
+      isRecoverable: isUndefinedColumnError,
+      fallback: async () => (await this.db.query<VaultRow>(sql(VAULT_COLUMNS_LEGACY), params)).rows,
+    });
+  }
+
   async captureIdentity(input: NewIdentityVaultInput): Promise<IdentityVaultRecord> {
-    return this.write("capture", undefined, async () => {
+    const params = [input.id, input.propertyId, input.guestId, input.reservationId, input.documentType, input.nationality, input.documentLast4, input.payloadEnc, input.keyVersion, input.retentionUntil];
+    const insert = async (columns: string): Promise<IdentityVaultRecord> => {
       const { rows } = await this.db.query<VaultRow>(
         `insert into hoteles.identity_vault (id, property_id, guest_id, reservation_id, document_type, nationality, document_last4, payload_enc, key_version, retention_until)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         returning ${VAULT_COLUMNS};`,
-        [input.id, input.propertyId, input.guestId, input.reservationId, input.documentType, input.nationality, input.documentLast4, input.payloadEnc, input.keyVersion, input.retentionUntil],
+         returning ${columns};`,
+        params,
       );
       return toVault(rows[0]!);
-    });
+    };
+    return this.write("capture", undefined, () =>
+      // Base con 031 pero sin 032: el RETURNING con columnas de bloqueo da 42703 -> se repite con las legadas.
+      runWithSavepointFallback({ session: this.db, primary: () => insert(VAULT_COLUMNS), isRecoverable: isUndefinedColumnError, fallback: () => insert(VAULT_COLUMNS_LEGACY) }),
+    );
   }
 
   async listIdentities(propertyId: string, filters: { guestId?: string; status?: IdentityStatus; limit: number }): Promise<IdentityListResult<IdentityVaultRecord>> {
     return this.read<IdentityListResult<IdentityVaultRecord>>(
       "list",
       async () => {
-        const { rows } = await this.db.query<VaultRow>(
-          `select ${VAULT_COLUMNS} from hoteles.identity_vault
+        const rows = await this.vaultRows(
+          (cols) => `select ${cols} from hoteles.identity_vault
            where property_id = $1 and ($2::uuid is null or guest_id = $2) and ($3::text is null or status = $3)
            order by created_at desc, id limit $4;`,
           [propertyId, filters.guestId ?? null, filters.status ?? null, filters.limit],
@@ -172,7 +205,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
     return this.read<IdentityVaultRecord | null>(
       "find",
       async () => {
-        const { rows } = await this.db.query<VaultRow>(`select ${VAULT_COLUMNS} from hoteles.identity_vault where property_id = $1 and id = $2;`, [propertyId, vaultId]);
+        const rows = await this.vaultRows((cols) => `select ${cols} from hoteles.identity_vault where property_id = $1 and id = $2;`, [propertyId, vaultId]);
         return rows[0] ? toVault(rows[0]) : null;
       },
       null,
@@ -251,10 +284,10 @@ export class PostgresIdentityRepository implements IdentityRepository {
     );
   }
 
-  async decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada"> {
+  async decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada" | "en_bloqueo"> {
     void actorUserId;
     return this.write("purge-decide", "decide_identity_purge", async () => {
-      const { rows } = await this.db.query<{ result: "ejecutada" | "rechazada" }>(`select hoteles.decide_identity_purge($1, $2, $3) as result;`, [requestId, approve, note]);
+      const { rows } = await this.db.query<{ result: "ejecutada" | "rechazada" | "en_bloqueo" }>(`select hoteles.decide_identity_purge($1, $2, $3) as result;`, [requestId, approve, note]);
       return rows[0]!.result;
     });
   }
@@ -263,6 +296,39 @@ export class PostgresIdentityRepository implements IdentityRepository {
     return this.write("purge-expired", "purge_expired_identities", async () => {
       const { rows } = await this.db.query<{ n: number }>(`select hoteles.purge_expired_identities($1, $2::date) as n;`, [propertyId, today]);
       return Number(rows[0]?.n ?? 0);
+    });
+  }
+
+  async sweepRetention(propertyId: string, today: string): Promise<IdentityRetentionSweepResult> {
+    try {
+      return await runWithSavepointFallback<IdentityRetentionSweepResult>({
+        session: this.db,
+        primary: async () => {
+          const { rows } = await this.db.query<{ out_blocked: number; out_purged: number }>(
+            `select out_blocked, out_purged from hoteles.sweep_identity_retention($1, $2::date);`,
+            [propertyId, today],
+          );
+          return { blocked: Number(rows[0]?.out_blocked ?? 0), purged: Number(rows[0]?.out_purged ?? 0), viaBloqueo: true };
+        },
+        isRecoverable: (e) => isMigrationPendingError(e, "sweep_identity_retention"),
+        // Base sin 032: camino anterior (purga directa de 031), sin bloqueo.
+        fallback: async () => ({ blocked: 0, purged: await this.purgeExpired(propertyId, today), viaBloqueo: false }),
+      });
+    } catch (err) {
+      throw mapIdentityPgError(err, "sweep");
+    }
+  }
+
+  async revealBlockedIdentity(accessRequestId: string, actorUserId: string): Promise<RevealedEnvelope> {
+    void actorUserId;
+    return this.write("reveal-blocked", "reveal_blocked_identity", async () => {
+      const { rows } = await this.db.query<{ out_payload_enc: string; out_key_version: number }>(
+        `select out_payload_enc, out_key_version from hoteles.reveal_blocked_identity($1);`,
+        [accessRequestId],
+      );
+      const row = rows[0];
+      if (!row) throw new IdentityAccessDeniedError("reveal-blocked");
+      return { envelope: row.out_payload_enc, keyVersion: Number(row.out_key_version) };
     });
   }
 
