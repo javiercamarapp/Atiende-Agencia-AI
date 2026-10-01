@@ -14,9 +14,9 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
-import type { PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -50,6 +50,7 @@ import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
+import type { DespachadorAlertas } from "./alertas/tipos.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -138,11 +139,19 @@ export interface AppDeps {
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
   readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
   readonly voiceProvider?: VoiceAgentProvider;
+  /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
+   * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
+  readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
+  readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
    *  tests lo sobreescriben con `InMemoryIdentityRepository`. */
   readonly hotelesIdentidadRepo?: (db: TenantDbSession) => IdentityRepository;
+  /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
+   *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
+   *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
+  readonly hotelesPrivacidadRepo?: (db: TenantDbSession) => PrivacyRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de
@@ -466,4 +475,7 @@ export interface AppDeps {
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;
+  /** Alertas salientes (correo/webhook/Sentry, piso por hora, datos redactados). Ausente = no se
+   *  envia nada; `salud/with-heartbeat.ts` y el resumen diario lo usan de forma best-effort. */
+  readonly alertas?: DespachadorAlertas;
 }

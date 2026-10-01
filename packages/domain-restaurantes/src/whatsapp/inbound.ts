@@ -10,6 +10,7 @@ import type { ConversationMessage, RestaurantesRepository } from "../repository.
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
+import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -50,12 +51,15 @@ export async function handleInboundWhatsAppMessage(
     readonly phoneNumberId: string;
     /** Sucursal resuelta desde el numero que recibio el mensaje (`resolveWhatsAppChannel`). */
     readonly propertyId?: string | null;
+    /** R-21: handoff a humano. Con una toma abierta para este telefono el agente NO responde (el mensaje se guarda
+     * para la persona que atiende); sin la migracion 028 el gate devuelve `null` y todo sigue como antes. */
+    readonly handoffGate?: HandoffAgentGate;
     /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
      * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
     readonly privacy?: PrivacidadRepository;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, privacy } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, handoffGate, privacy } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -91,8 +95,20 @@ export async function handleInboundWhatsAppMessage(
       // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
       // una respuesta legal ni depende de "acordarse" de registrar la solicitud). La identidad es
       // el telefono que escribe (Meta lo autentica), nunca texto del mensaje. `null` = no es ARCO
-      // (o la base no tiene la migracion 030): el turno sigue como antes.
+      // (o la base no tiene la migracion 030): el turno sigue como antes. Corre tambien con una toma
+      // de handoff abierta: es una obligacion legal y solo responde a frases explicitas de ARCO.
       const arco = privacy ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+
+      // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
+      // quedo guardado en el historial para quien atiende la conversacion.
+      if (handoffGate && !arco) {
+        const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
+        if (handoff) {
+          await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+          return { ok: true, retryable: false };
+        }
+      }
+
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
         : await turnHandler.handleInboundMessage({
@@ -117,6 +133,11 @@ export async function handleInboundWhatsAppMessage(
 
       const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+
+      // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
+      if (turn.escalacion && handoffGate) {
+        await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
+      }
 
       // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
       // solo se guardaba en el historial de la conversación y nunca llegaba de

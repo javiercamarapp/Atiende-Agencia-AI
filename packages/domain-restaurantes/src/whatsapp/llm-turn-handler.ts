@@ -314,11 +314,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
       let huboFalloDeHerramienta = false;
+      // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
+      let escalarMotivo: string | null = null;
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
       const safeReply = (reply: string) => enforceBistecPackNotice(reply, working);
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -336,13 +339,13 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
         }
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const reply = safeReply(completion.text || "¿Me puedes repetir tu pedido?");
-          return { reply, orderId, propertyId };
+          return done({ reply, orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -363,6 +366,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               propertyId = executed.propertyId;
             }
           }
+          if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
+            escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
+          }
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
@@ -371,9 +377,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       if (orderId) {
-        return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+        return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
       }
-      return { reply: "Se me complicó procesar tu pedido, un momento por favor.", orderId, propertyId };
+      return done({ reply: "Se me complicó procesar tu pedido, un momento por favor.", orderId, propertyId });
     },
   };
 }

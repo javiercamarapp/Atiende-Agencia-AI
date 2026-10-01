@@ -20,7 +20,13 @@ export interface WhatsAppTurnHandler {
     /** Sucursal dueña del número de WhatsApp que recibió el mensaje (modelo PM: un número
      * por sucursal). `null`/ausente = número por defecto de la organización. */
     readonly propertyId?: string | null;
-  }): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null }>;
+  }): Promise<{
+    readonly reply: string;
+    readonly orderId: string | null;
+    readonly propertyId: string | null;
+    /** R-21: el agente pidio un humano (`escalar_a_humano`); el webhook abre la toma de handoff. */
+    readonly escalacion?: { readonly motivo: string };
+  }>;
 }
 
 /**

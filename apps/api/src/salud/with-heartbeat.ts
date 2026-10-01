@@ -74,6 +74,26 @@ async function registrarLatidoBestEffort(deps: AppDeps, cronName: string, status
   }
 }
 
+/** Aviso saliente (correo/webhook/Sentry) de un cron que fallo. Best-effort: sin despachador
+ *  configurado no hace nada y NUNCA lanza ni altera la respuesta del cron. El piso por hora por
+ *  (tipo, destino) lo aplica el propio despachador, asi que un cron que falla cada minuto no
+ *  inunda el buzon. */
+async function notificarFalloCronBestEffort(deps: AppDeps, cronName: string, err: unknown): Promise<void> {
+  if (!deps.alertas) return;
+  try {
+    await deps.alertas.notificar({
+      tipo: `cron_error:${cronName}`,
+      severidad: "alta",
+      titulo: `Cron con error: ${cronName}`,
+      detalle: truncarError(err),
+      href: "/superadmin/salud/crons",
+      contexto: { cron: cronName },
+    });
+  } catch (alertErr) {
+    console.error(`withHeartbeat: no se pudo notificar el fallo de "${cronName}":`, alertErr instanceof Error ? alertErr.message : String(alertErr));
+  }
+}
+
 /**
  * `cronName` debe ser el path EXACTO tal como aparece en
  * `vercel.json::crons` (mismo criterio que
@@ -113,6 +133,7 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
       return response;
     } catch (err) {
       await registrarLatidoBestEffort(deps, cronName, "error", truncarError(err), startedAt, new Date());
+      await notificarFalloCronBestEffort(deps, cronName, err);
       // `CronPartialFailureError`: el handler YA construyó la Response real (200
       // + detalle de failures[]) -- se devuelve tal cual al caller HTTP, el
       // latido ya quedó registrado como "error" arriba (ver comentario de
