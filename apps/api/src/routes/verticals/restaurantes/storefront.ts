@@ -102,8 +102,15 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
   }
 
   async function limitOrThrow(repo: RestaurantesRepository, c: Context, scope: string, max: number, secondary = "") {
-    const limited = await consumeRateLimit(repo, scope, requestActor(c.req.raw, secondary), max, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    // Bucket solo por IP: el tope real anti-abuso. session_id lo elige el cliente, asi que rotarlo
+    // NO debe dar un bucket nuevo (mismo criterio que el checkout publico existente, public.ts).
+    const byIp = await consumeRateLimit(repo, scope, requestActor(c.req.raw, ""), max, 60);
+    if (!byIp.allowed) throw Errors.tooManyRequests();
+    // Bucket adicional por IP + sesion: solo suma un tope por sesion, nunca sustituye al de IP.
+    if (secondary) {
+      const bySession = await consumeRateLimit(repo, `${scope}-session`, requestActor(c.req.raw, secondary), max, 60);
+      if (!bySession.allowed) throw Errors.tooManyRequests();
+    }
   }
 
   function assertOrigin(c: Context) {
