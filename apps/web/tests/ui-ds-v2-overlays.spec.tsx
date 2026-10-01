@@ -105,6 +105,15 @@ describe("ConfirmDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("duplicada");
   });
 
+  it("pasar del campo a Cancelar no muestra el error (no agranda el dialogo bajo el clic); salir a otro lado si", () => {
+    rendered = renderComponent(<ConfirmDialog open onOpenChange={() => {}} titulo="Rechazar" campo={{ etiqueta: "Motivo", minLength: 5 }} onConfirm={() => {}} />);
+    const input = dialogo()!.querySelector<HTMLInputElement>("input")!;
+    act(() => input.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boton("Cancelar") })));
+    expect(input.getAttribute("aria-invalid")).not.toBe("true");
+    act(() => input.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null })));
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("campo multilinea usa textarea y Enter en el input envia el formulario", () => {
     const onConfirm = vi.fn();
     rendered = renderComponent(<ConfirmDialog open onOpenChange={() => {}} titulo="Nota" campo={{ etiqueta: "Nota", multilinea: true, requerido: false }} onConfirm={onConfirm} />);
