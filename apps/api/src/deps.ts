@@ -4,6 +4,9 @@ import type {
   CoreStaffRepository,
   ImpersonationRepository,
   LlmUsageRepository,
+  MfaRepository,
+  OrgAdminRepository,
+  PlatformSwitchRepository,
   ResumenDiarioRepository,
   SaludRepository,
   SuperadminAccionesRepository,
@@ -44,6 +47,7 @@ import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
+import type { PlatformSwitchGuard } from "./platform-switches.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -410,4 +414,20 @@ export interface AppDeps {
    * "no bloquea", ver su comentario de cabecera), solo pierde ese cruce
    * adicional de defensa en profundidad. */
   readonly saasBillingCustomerLookup?: CustomerLookup | null;
+  /** MFA TOTP del superadmin (packages/db/migrations/0025_...sql, ver
+   *  routes/superadmin-mfa.ts). Fabrica por sesion: las funciones que reciben el
+   *  resultado de la verificacion se llaman en `withAppSession({ userId: null })`
+   *  (SOLO sistema); reset/bitacora en la sesion del caller. OPCIONAL (`?:`, mismo
+   *  criterio que `whatsAppDispatcher`): ausente -> las rutas responden 503 honesto
+   *  y el step-up no se exige (salvo SUPERADMIN_MFA_REQUIRED, que entonces es
+   *  fail-closed). */
+  readonly mfaRepo?: (db: TenantDbSession) => MfaRepository;
+  /** Interruptores de plataforma (routes/superadmin-interruptores.ts). Fabrica por
+   *  sesion del caller para set/list; `getBlocked` (sistema) lo usa el guard. */
+  readonly platformSwitchRepo?: (db: TenantDbSession) => PlatformSwitchRepository;
+  /** Gestion de organizaciones con solicitar -> confirmar (routes/superadmin-organizaciones.ts). */
+  readonly orgAdminRepo?: (db: TenantDbSession) => OrgAdminRepository;
+  /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
+   *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
+  readonly platformSwitchGuard?: PlatformSwitchGuard;
 }

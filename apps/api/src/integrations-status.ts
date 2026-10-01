@@ -244,6 +244,10 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // confiable, ver docs/CREDENCIALES.md) -- nunca bloquea nada, solo cambia de
   // qué header se deriva el actor del rate-limit.
   "TRUSTED_PROXY_IP_HEADER",
+  // MFA del superadmin (ver docs/CREDENCIALES.md): ambas son opcionales y nunca
+  // bloquean el arranque.
+  "SUPERADMIN_MFA_REQUIRED",
+  "SUPERADMIN_MFA_ENCRYPTION_KEY",
   "RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS",
   "RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS",
   "RESEND_FROM_EMAIL",

@@ -93,6 +93,18 @@ export interface ApiEnv {
    * profundidad barata, un token de propietario nunca verifica bajo el secreto de
    * staff ni viceversa. */
   readonly rentasOwnerJwtSecret: string;
+  /** MFA obligatoria del superadmin: con `true`, las acciones sensibles exigen un
+   *  step-up verificado AUNQUE el superadmin no haya enrolado todavia (en ese caso
+   *  responden 403 `mfa_enrollment_required`) y fallan cerrado si la migracion de
+   *  MFA no esta aplicada. Sin ella (default), el step-up solo se exige a quien ya
+   *  tiene un factor activo -- ningun flujo actual se rompe antes de enrolar.
+   *  OPCIONAL: los fixtures de tests no necesitan declararla. */
+  readonly superadminMfaRequired?: boolean;
+  /** Material de llave para cifrar el secreto TOTP en reposo (>= 16 caracteres).
+   *  Sin ella se deriva de `jwtSecret` (HKDF con etiqueta propia) -- rotar
+   *  JWT_SECRET entonces invalida los factores enrolados (hay que re-enrolar), por
+   *  eso se recomienda una llave dedicada. OPCIONAL. */
+  readonly mfaEncryptionKey?: string;
   readonly rentasOwnerAccessTokenTtlSeconds: number;
   readonly rentasOwnerRefreshTokenTtlSeconds: number;
   /**
@@ -131,6 +143,8 @@ function requireEnv(name: string, fallback?: string): string {
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
+    superadminMfaRequired: ["1", "true"].includes((process.env.SUPERADMIN_MFA_REQUIRED ?? "").toLowerCase()),
+    mfaEncryptionKey: process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || undefined,
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
