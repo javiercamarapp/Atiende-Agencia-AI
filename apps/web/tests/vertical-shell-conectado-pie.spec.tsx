@@ -14,7 +14,7 @@ import { click, flushMicrotasks, renderComponent, type RenderedComponent } from 
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 vi.mock("../src/lib/useNotifications.ts", () => ({
-  useNotifications: () => ({ items: [], unreadCount: 0, loading: false, refetch: () => {}, onMarkRead: () => {}, onMarkAllRead: () => {} }),
+  useNotifications: () => ({ hayNoLeidas: false }),
 }));
 
 let rendered: RenderedComponent | undefined;
@@ -42,6 +42,7 @@ async function montar(chat: ChatDatosConexion | undefined, sidebarPie?: { label:
       <VerticalShellConectado
         apiBaseUrl="https://api.test"
         token="tok"
+        notificacionesHref="/x/notificaciones"
         chat={chat}
         vertical="prueba"
         sections={[{ title: "Panel", siempreAbierto: true, items: [{ to: "/x", label: "Resumen", icon: LayoutDashboard, end: true }] }]}
