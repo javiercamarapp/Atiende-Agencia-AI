@@ -135,8 +135,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       return;
     }
     try {
+      // Solo esta sucursal (branchId): sin él el API devuelve todo el alcance de la membresía.
       // Línea base: lo que ya está pendiente NO se imprime solo (evita vomitar el rezago).
-      const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50 });
+      const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
       actualizarPrefs({ ...marcarImpresos(prefsRef.current, page.orders.map((o) => o.id)), autoImprimir: true });
       setAvisoImpresion(null);
     } catch (err) {
@@ -157,7 +158,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       if (autoEnCurso.current) return;
       autoEnCurso.current = true;
       try {
-        const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50 });
+        const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
         if (cancelado) return;
         const nuevos = pedidosPorImprimir(page.orders, new Set(prefsRef.current.impresos));
         if (nuevos.length === 0) return;
