@@ -148,10 +148,11 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   const canalManual = calendarStore.findCanalPorCodigo("manual")!;
   rentasRepo.seedReglaComisionCanal({ propertyId: null, canalId: canalManual.id, config: { yaNetoDeComision: true, comisionBasisPoints: 0, fuente: "Reserva directa: sin comisión de canal" } });
   rentasCalendarSyncRepo.seedZonaHoraria(propertyId, "America/Cancun");
-  // Misma zona en el repositorio de pricing: sin esto `loadPricingContext` usaba el default de
-  // plataforma (America/Mexico_City) mientras el POST de tarifa-base fechaba "hoy" en Cancun
-  // (UTC-5): entre las 05:00 y las 06:00 UTC las dos zonas difieren en un dia y la tarifa recien
-  // creada (vigente "hoy" en Cancun) aun no era vigente para la cotizacion.
+  // Misma zona en AMBOS repos: la ruta de tarifa-base calcula su default de vigente_desde con la zona
+  // del sync repo y loadPricingContext filtra "vigente_desde <= hoy" con la del repo en memoria. Sin
+  // sembrar esta, el repo en memoria caia a America/Mexico_City (UTC-6) y Cancun (UTC-5) llevaba un
+  // dia de ventaja entre las 23:00 y las 23:59 hora CDMX: la tarifa nueva quedaba "futura" y la
+  // cotizacion devolvia la sembrada. En Postgres real ambos leen la misma property_config.zona_horaria.
   rentasRepo.seedZonaHorariaProperty(propertyId, "America/Cancun");
 
   const deps: AppDeps = {
