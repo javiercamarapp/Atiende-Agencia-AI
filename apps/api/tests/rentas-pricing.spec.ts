@@ -5,15 +5,6 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
 
-/** YYYY-MM-DD `dias` días a partir de hoy (UTC). La tarifa nueva nace "vigente hoy", así que la
- * cotización de la prueba debe caer en una fecha FUTURA: con un check-in fijo (antes
- * 2026-06-01) la prueba dejó de pasar el día que el calendario superó esa fecha. */
-function fechaEnDias(dias: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-}
-
 describe("POST /rentas/:propertyId/unidades/:unidadId/tarifa-base", () => {
   it("admin_gestora crea una tarifa base nueva y la cotización posterior la usa", async () => {
     const ctx = await buildRentasTestContext(buildApp);
@@ -25,7 +16,7 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/tarifa-base", () => {
     );
     expect(res.status).toBe(201);
 
-    const cot = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/cotizacion?checkIn=${fechaEnDias(30)}&checkOut=${fechaEnDias(31)}`, authedJson(ctx.staff.adminGestora.token));
+    const cot = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/cotizacion?checkIn=2026-06-01&checkOut=2026-06-02`, authedJson(ctx.staff.adminGestora.token));
     const body = (await cot.json()) as { totalCentavos: number };
     expect(body.totalCentavos).toBe(200000); // la tarifa nueva (vigente hoy) gana sobre la sembrada (vigente 2000-01-01)
   });
