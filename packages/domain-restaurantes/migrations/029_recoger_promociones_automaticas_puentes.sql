@@ -1,7 +1,7 @@
 -- PM PR-3 + PR-4 (Los Taquitos de PM): recoger como canal completo, promociones automaticas
 -- por dia y canal, combo de cortesia y puentes (horario por fecha). Una sola migracion con cuatro
 -- piezas que comparten el prefijo de supabase/migrations asignado para esta tarea (20240101000213,
--- interno 028):
+-- interno 029):
 --
 --   1. `restaurantes.orders`: columnas `canal`, `propina`, `hora_recogida`; estados nuevos
 --      `listo_para_recoger` y `no_recogido`; `create_order_idempotent` las persiste.

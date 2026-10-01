@@ -262,7 +262,7 @@ export interface Order {
    * puerto literal de `orders.incident_note` del origen. null salvo cuando el
    * pedido está (o estuvo) en "problema". */
   readonly incidentNote: string | null;
-  /** Migracion 028. Solo vienen cuando la fila las trae (creacion de pedido con la base migrada);
+  /** Migracion 029. Solo vienen cuando la fila las trae (creacion de pedido con la base migrada);
    * los listados no seleccionan estas columnas para no romper la base sin migrar -- usa
    * `repo.listOrderPickupInfo` para leerlas. */
   readonly canal?: CanalPedido | null;
@@ -270,7 +270,7 @@ export interface Order {
   readonly horaRecogida?: string | null;
 }
 
-/** Datos de recoger de un pedido (migracion 028): canal, propina y hora prometida de recogida. */
+/** Datos de recoger de un pedido (migracion 029): canal, propina y hora prometida de recogida. */
 export interface OrderPickupInfo {
   readonly orderId: string;
   readonly canal: CanalPedido | null;
@@ -371,7 +371,7 @@ export interface BranchProductState {
   readonly isAvailable: boolean;
 }
 
-/** `listo_para_recoger` y `no_recogido` (migracion 028) son los estados del canal recoger: el pedido
+/** `listo_para_recoger` y `no_recogido` (migracion 029) son los estados del canal recoger: el pedido
  * esta listo en mostrador y, si el cliente no llega, queda `no_recogido` y puede volver a cocina. */
 export type OrderStatus =
   | "pending"
@@ -473,7 +473,7 @@ export interface Promotion {
   /** Productos elegibles (ids de `restaurantes.products`, migracion 027) — null = todos los
    * renglones del pedido. */
   readonly productIds: readonly string[] | null;
-  /** Migracion 028 -- se aplica SOLA (sin codigo) cuando el pedido cumple dia/hora/canal/productos.
+  /** Migracion 029 -- se aplica SOLA (sin codigo) cuando el pedido cumple dia/hora/canal/productos.
    * Exige `channels` explicito (las promociones de PM valen solo para recoger, nunca a domicilio).
    * `false` contra la base sin migrar. */
   readonly autoApply: boolean;
@@ -663,7 +663,7 @@ export interface VoiceToolAuditInput {
   readonly detail: string | null;
 }
 
-/** Excepcion de horario por FECHA de una sucursal (migracion 028): "puentes". Dentro de
+/** Excepcion de horario por FECHA de una sucursal (migracion 029): "puentes". Dentro de
  * [fechaDesde, fechaHasta] (fechas locales de la sucursal, inclusive) rige `horario` en lugar del
  * horario semanal de `BranchPolicy`. */
 export interface BranchHoursException {

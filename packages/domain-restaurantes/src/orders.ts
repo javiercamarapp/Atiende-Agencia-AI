@@ -433,7 +433,7 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       paymentMethod: payload.paymentMethod ?? null,
       callTranscript: payload.callTranscript ?? null,
       callRecordingUrl: payload.callRecordingUrl ?? null,
-      // Migracion 028: columnas de canal/propina/hora de recogida (la base vieja las ignora).
+      // Migracion 029: columnas de canal/propina/hora de recogida (la base vieja las ignora).
       canal: payload.canal ? normalizarCanal(payload.canal) : null,
       propina: payload.propina !== undefined && payload.propina > 0 ? payload.propina : null,
       horaRecogida: payload.horaRecogida ?? null,

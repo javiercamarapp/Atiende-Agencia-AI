@@ -62,7 +62,7 @@ function requireType(value: unknown): PromotionType {
  * (mismo CHECK que migrations/010), un fijo no tiene techo aquí (lo acota el total
  * real del pedido en promotions.ts::computePromotionDiscount, nunca aquí). */
 function requireValue(value: unknown, type: PromotionType): number {
-  // 2x1 y cortesia: el valor no se usa; la tabla exige value = 1 (migraciones 027 y 028). Se acepta omitido o 1.
+  // 2x1 y cortesia: el valor no se usa; la tabla exige value = 1 (migraciones 027 y 029). Se acepta omitido o 1.
   if (type === "bogo" || type === "cortesia") {
     if (value !== undefined && value !== 1) throw Errors.validation(`value: ${type === "bogo" ? "un 2x1 (bogo)" : "un combo de cortesía"} no lleva valor; omítalo o envíe 1.`);
     return 1;
@@ -157,7 +157,7 @@ function optionalCourtesyQuantity(value: unknown): number | null | undefined {
 }
 
 /** Reglas cruzadas de la forma FINAL de una promocion (ya mezclado el parche con lo existente). Mismas
- * condiciones que los CHECK de la migracion 028, con un mensaje accionable en vez de un 500/23514. */
+ * condiciones que los CHECK de la migracion 029, con un mensaje accionable en vez de un 500/23514. */
 function assertPromotionShape(p: {
   readonly type: PromotionType;
   readonly autoApply: boolean;
@@ -182,14 +182,14 @@ function assertPromotionShape(p: {
   }
 }
 
-/** Base sin las migraciones 027/028: las escrituras de campos nuevos (2x1, canales, automaticas, cortesia) lanzan
+/** Base sin las migraciones 027/029: las escrituras de campos nuevos (2x1, canales, automaticas, cortesia) lanzan
  * `RestaurantesConfigUnavailableError` -> 503 honesto con el motivo, nunca un 500. */
 async function conCompatibilidad<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     if (err instanceof RestaurantesConfigUnavailableError) {
-      throw Errors.serviceUnavailable("Las promociones 2x1, por canal, automáticas y de cortesía todavía no están disponibles en esta base de datos (falta aplicar las migraciones 027 y 028).");
+      throw Errors.serviceUnavailable("Las promociones 2x1, por canal, automáticas y de cortesía todavía no están disponibles en esta base de datos (falta aplicar las migraciones 027 y 029).");
     }
     throw err;
   }

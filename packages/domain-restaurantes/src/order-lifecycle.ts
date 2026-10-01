@@ -17,7 +17,7 @@ export class OrderStatusTransitionError extends Error {}
 
 export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido"];
 
-/** Estados exclusivos del canal recoger (migracion 028). */
+/** Estados exclusivos del canal recoger (migracion 029). */
 export const PICKUP_ONLY_STATUSES: readonly OrderStatus[] = ["listo_para_recoger", "no_recogido"];
 
 export function isOrderStatus(value: string): value is OrderStatus {
@@ -123,7 +123,7 @@ export async function changeOrderStatus(
 /** Marca historica de canal en las notas (antes de la columna `orders.canal`). */
 const NOTA_CANAL_RECOGER = /Canal: recoger en sucursal\./;
 
-/** ¿Es un pedido para recoger? Usa la columna `canal` (migracion 028) y, si el pedido es anterior o la
+/** ¿Es un pedido para recoger? Usa la columna `canal` (migracion 029) y, si el pedido es anterior o la
  * base no esta migrada, la marca historica de las notas. `null` = no se puede saber. */
 export function esPedidoParaRecoger(order: Pick<Order, "notes">, info: Pick<OrderPickupInfo, "canal"> | null): boolean | null {
   if (info?.canal) return info.canal === "recoger";

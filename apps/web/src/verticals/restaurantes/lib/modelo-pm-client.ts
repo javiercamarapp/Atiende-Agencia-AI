@@ -69,7 +69,7 @@ export async function setNoDomicilio(fetchImpl: typeof fetch, apiBaseUrl: string
   await sendJson<{ id: string; noDomicilio: boolean }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/no-domicilio/${kind}/${id}`, token, "PUT", { noDomicilio });
 }
 
-// ---- puentes (migración 028): excepciones de horario por fecha ----
+// ---- puentes (migración 029): excepciones de horario por fecha ----
 
 export interface Puente {
   readonly id: string;

@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 028: recoger, promociones automaticas,
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 029: recoger, promociones automaticas,
 // cortesia y puentes). Mergear despliega el codigo y la base va atras: todo lo nuevo que el repositorio
 // lee/escribe corre DENTRO de la transaccion unica de un request. `AbortAwareFakeSession` reproduce el
 // estado abortado (25P02) de Postgres: cada caso verifica (1) el camino anterior / vacio honesto y (2) que
@@ -66,7 +66,7 @@ describe("promociones automaticas (promotions.auto_apply)", () => {
     expect(p).toMatchObject({ code: "LUNES2X1", autoApply: true, channels: ["recoger"], courtesyProductIds: ["a1", "a2"], courtesyQuantity: 2 });
   });
 
-  it("lectura por codigo con TRES escalones: sin 028 cae a 027; sin 027 cae a las columnas base (todo en la misma sesion)", async () => {
+  it("lectura por codigo con TRES escalones: sin 029 cae a 027; sin 027 cae a las columnas base (todo en la misma sesion)", async () => {
     const sin028 = new AbortAwareFakeSession([
       { match: /auto_apply/i, respond: () => sinColumna("auto_apply") },
       { match: /channels, product_ids/i, respond: () => [{ ...PROMO_BASE, channels: ["recoger"], product_ids: null }] },
@@ -136,7 +136,7 @@ describe("puentes (branch_hours_exception)", () => {
   });
 });
 
-describe("estados de recoger (orders.status check de la migracion 028)", () => {
+describe("estados de recoger (orders.status check de la migracion 029)", () => {
   const ORDER_ROW = {
     id: ORDER_ID, organization_id: ORG_ID, property_id: PROPERTY_ID, customer_id: null, customer_name: "Ana", customer_phone: "+5219990001111", customer_address: null, customer_email: null,
     branch: "Suc", total: "100", status: "listo_para_recoger", items: [], source: "whatsapp", notes: null, payment_method: "efectivo", call_transcript: null, call_recording_url: null,
