@@ -11,6 +11,28 @@ export {
 } from "./lib/tema-v2.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 
+// Ticket de cocina imprimible (restaurantes, PM PR-7).
+export {
+  construirTicketCocina,
+  escaparHtml,
+  folioTicket,
+  imprimirTicketsCocina,
+  limpiarTexto,
+  renderDocumentoTicketsCocina,
+  renderTicketCocinaHtml,
+  separarNotas,
+  TICKET_COCINA_CSS,
+  TICKET_COCINA_CSS_DOCUMENTO,
+  type OpcionesTicketCocina,
+  type TicketCanal,
+  type TicketCocina,
+  type TicketCocinaLinea,
+  type TicketPedidoFuente,
+  type TicketPedidoItem,
+} from "./lib/ticketCocina.js";
+export { pedidosPorImprimir, type PedidoParaCola } from "./lib/colaImpresionCocina.js";
+export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, type TicketCocinaVistaProps } from "./components/TicketCocinaDialog.js";
+
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { StatCard, TrendStatCard } from "./components/StatCard.js";
