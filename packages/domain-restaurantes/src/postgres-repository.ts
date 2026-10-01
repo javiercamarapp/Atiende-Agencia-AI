@@ -1395,7 +1395,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     // unica del request): migracion 031 (auto_apply/cortesia) -> 027 (canales/productos) -> columnas base.
     const rows = await runWithSavepointFallback<readonly PromotionRow[]>({
       session: this.db,
-      savepointName: "sp_restaurantes_promociones_028_lectura",
+      savepointName: "sp_restaurantes_promociones_031_lectura",
       primary: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS_V3), [...params])).rows,
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: () =>
@@ -1456,13 +1456,13 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       input.maxUses ?? null,
       input.isActive ?? true,
     ];
-    const usaMigracion028 = input.type === "cortesia" || input.autoApply !== undefined || input.courtesyProductIds !== undefined || input.courtesyQuantity !== undefined;
-    if (usaMigracion028) {
+    const usaMigracion031 = input.type === "cortesia" || input.autoApply !== undefined || input.courtesyProductIds !== undefined || input.courtesyQuantity !== undefined;
+    if (usaMigracion031) {
       // Escribe columnas de la migracion 031 (y las de la 027): contra una base SIN migrar falla con
       // 42703 y se traduce a "config no disponible" con SAVEPOINT, nunca a una promocion a medias.
       return runWithSavepointFallback<Promotion>({
         session: this.db,
-        savepointName: "sp_restaurantes_promociones_028_alta",
+        savepointName: "sp_restaurantes_promociones_031_alta",
         primary: async () => {
           const { rows } = await this.db.query<PromotionRow>(
             `insert into restaurantes.promotions
@@ -1563,11 +1563,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       patch.maxUses ?? null,
       patch.isActive ?? null,
     ];
-    const usaMigracion028 = patch.type === "cortesia" || patch.autoApply !== undefined || patch.courtesyProductIds !== undefined || patch.courtesyQuantity !== undefined;
-    if (usaMigracion028) {
+    const usaMigracion031 = patch.type === "cortesia" || patch.autoApply !== undefined || patch.courtesyProductIds !== undefined || patch.courtesyQuantity !== undefined;
+    if (usaMigracion031) {
       return runWithSavepointFallback<Promotion | null>({
         session: this.db,
-        savepointName: "sp_restaurantes_promociones_028_cambio",
+        savepointName: "sp_restaurantes_promociones_031_cambio",
         primary: async () => {
           const { rows } = await this.db.query<PromotionRow>(
             `update restaurantes.promotions
@@ -1637,7 +1637,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const update = (columns: string) => `update restaurantes.promotions ${setBase} where id = $1 and organization_id = $2 returning ${columns};`;
     return runWithSavepointFallback<Promotion | null>({
       session: this.db,
-      savepointName: "sp_restaurantes_promociones_028_cambio_lectura",
+      savepointName: "sp_restaurantes_promociones_031_cambio_lectura",
       primary: async () => {
         const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS_V3), params);
         return rows[0] ? mapPromotion(rows[0]) : null;
