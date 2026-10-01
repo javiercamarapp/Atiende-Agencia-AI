@@ -10,6 +10,32 @@ el detalle:** `postgres-real-gate.yml` dispara siempre; `ci-checks.yml` tiene
 `**/*.md`/`docs/**` fuera de `docs/DEPLOY.md` y
 `supabase/migrations/README.md`.
 
+## Workflows de plataforma agregados en PL-11
+
+Todos son seguros ante forks: ninguno usa `pull_request_target`, ninguno usa secretos,
+todos declaran `permissions: contents: read`, y ninguno despliega ni toca Vercel/Supabase.
+
+- `secret-scan.yml` — gitleaks sobre el historial COMPLETO en cada PR y push a `main`
+  (el repo es público). Binario de la release oficial con versión y sha256 fijados en
+  el propio workflow; configuración en `/.gitleaks.toml` (reglas por defecto + una
+  excepción estrecha, solo `generic-api-key`/`stripe-access-token` bajo `tests/`, para
+  17 falsos positivos medidos el 30-sep-2026 sobre 1345 commits). Para subir de versión:
+  cambiar `GITLEAKS_VERSION` y `GITLEAKS_SHA256` (sale de `gitleaks_<v>_checksums.txt`).
+- `coverage.yml` — `npm run test:coverage` (la suite completa con v8) y falla si baja
+  del umbral de `vitest.config.ts`; sube `coverage-summary.json`/`lcov.info` como
+  artefacto y deja el resumen en el job. Es aparte de `ci-checks.yml` a propósito (duplica
+  el costo de la suite). Informativo mientras no se marque como check requerido.
+- `smoke-post-deploy.yml` — tras un despliegue a Producción (`deployment_status` con
+  `state=success`) o a mano (`workflow_dispatch` con `base_url`), corre
+  `scripts/smoke-post-deploy/smoke.ts` contra esa URL: `/health`, cabeceras, login con
+  credenciales inexistentes (401), guarda de Origin (403), `/auth/me` sin token (401) y la
+  SPA. Local: `npm run smoke:post-deploy -- https://tu-dominio`. Hace checkout de la rama
+  por defecto, no de la rama del evento.
+
+Fuera de workflows: `/.github/CODEOWNERS` (rutas sensibles; solo obliga revisión si la
+protección de `main` exige "Code Owners") y `/.github/dependabot.yml` (npm y Actions, semanal,
+agrupado, tope de 3 y 2 PRs abiertos; ningún PR se fusiona solo).
+
 ## ci-checks.yml
 
 Agregado 19-sep-2026, para cerrar un hueco que `postgres-real-gate.yml` (ver
