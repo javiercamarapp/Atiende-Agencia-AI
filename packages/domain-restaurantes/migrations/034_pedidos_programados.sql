@@ -60,8 +60,10 @@ alter table restaurantes.orders
   add constraint orders_status_check
   check (status in ('pending', 'preparando', 'en_camino', 'entregado', 'cancelado', 'completado', 'problema', 'listo_para_recoger', 'no_recogido', 'programado'));
 
+alter table restaurantes.orders drop constraint if exists orders_programado_para_check;
 alter table restaurantes.orders
   add constraint orders_programado_para_check check (status <> 'programado' or programado_para is not null);
+alter table restaurantes.orders drop constraint if exists orders_promovido_at_check;
 alter table restaurantes.orders
   add constraint orders_promovido_at_check check (promovido_at is null or programado_para is not null);
 
