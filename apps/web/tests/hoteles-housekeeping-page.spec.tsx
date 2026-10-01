@@ -52,6 +52,7 @@ function stubFetch(tareasDisponibles: boolean) {
     if (method === "GET" && url.startsWith("https://api.test/hoteles/prop-1/housekeeping/tablero")) return json(tablero(tareasDisponibles));
     if (method === "GET" && url.startsWith("https://api.test/hoteles/prop-1/housekeeping/reporte")) return json(REPORTE(tareasDisponibles));
     if (method === "GET" && url === "https://api.test/hoteles/prop-1/housekeeping/camaristas") return json({ camaristas: [{ id: "u1", nombre: "Ana" }] });
+    if (method === "GET" && url.startsWith("https://api.test/hoteles/prop-1/housekeeping/turnos?")) return json({ turnos: [], cumplimiento: { valido: true, violaciones: [] } });
     if (method === "POST" && url.startsWith("https://api.test/hoteles/prop-1/housekeeping/")) return json({ id: "t1", estado: "en_progreso" });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
   });
@@ -96,6 +97,33 @@ describe("HousekeepingPage (hoteles)", () => {
     await esperar();
     expect(fetchMock.mock.calls.some((c) => c[0] === "https://api.test/hoteles/prop-1/housekeeping/tareas/t1/iniciar" && c[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls.length).toBeGreaterThan(antes + 1);
+  });
+
+  it("H-35: la pestana Turnos carga los turnos de la semana y frontdesk puede publicar; housekeeping solo consulta", async () => {
+    stubFetch(true);
+    rendered = renderComponent(<HousekeepingPage {...CTX} role="frontdesk" />);
+    await esperar();
+    const tab = [...rendered.container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === "Turnos")!;
+    await act(async () => {
+      tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      (tab as HTMLElement).focus();
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/housekeeping/turnos?desde=2026-03-09&hasta=2026-03-15"))).toBe(true);
+    expect(rendered.container.textContent).toContain("Turnos publicados");
+    expect(rendered.container.textContent).toContain("Publicar plantilla");
+    rendered.unmount();
+    stubFetch(true);
+    rendered = renderComponent(<HousekeepingPage {...CTX} role="housekeeping" />);
+    await esperar();
+    const tab2 = [...rendered.container.querySelectorAll('[role="tab"]')].find((t) => t.textContent === "Turnos")!;
+    await act(async () => {
+      tab2.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      (tab2 as HTMLElement).focus();
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    expect(rendered.container.textContent).toContain("Turnos publicados");
+    expect(rendered.container.textContent).not.toContain("Publicar plantilla");
   });
 
   it("base sin migrar: avisa honesto y no ofrece acciones de tareas ni inhabilitar", async () => {

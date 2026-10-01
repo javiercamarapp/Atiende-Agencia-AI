@@ -304,4 +304,18 @@ describe("ReservasPage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("Selecciona un tipo de habitación");
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
   });
+
+  it("H-35: el boton Cotizar abre el cotizador (consulta de precio, sin crear reserva) y 'Cerrar cotizador' lo oculta", async () => {
+    stubFetch({ reservas: [], tiposHabitacion: [{ id: "rt-1", nombre: "Doble", capacidadMaxima: 2 }] });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).not.toContain("Cotizador");
+    click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cotizar")!);
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("Cotizador");
+    expect(rendered.container.querySelector("#cot-tipo")).not.toBeNull();
+    click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar cotizador")!);
+    await esperarCarga();
+    expect(rendered.container.querySelector("#cot-tipo")).toBeNull();
+  });
 });

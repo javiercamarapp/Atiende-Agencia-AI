@@ -308,6 +308,16 @@ export class PostgresHousekeepingRepository implements HousekeepingRepository {
     });
   }
 
+  async markRoomOccupied(propertyId: string, roomId: string): Promise<HotelRoomStatus | null> {
+    return this.write("markRoomOccupied", async () => {
+      const { rows } = await this.db.query<{ status: HotelRoomStatus }>(
+        `update hoteles.room set status = 'ocupada' where id = $1 and property_id = $2 and status = 'disponible' returning status;`,
+        [roomId, propertyId],
+      );
+      return rows[0]?.status ?? null;
+    });
+  }
+
   async listOutOfService(propertyId: string, onlyActive: boolean): Promise<readonly OutOfServiceRecord[]> {
     return this.read<readonly OutOfServiceRecord[]>(
       "listOutOfService",

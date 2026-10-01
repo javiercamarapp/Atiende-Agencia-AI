@@ -42,6 +42,7 @@ import {
 } from "@atiende/ui";
 import {
   COUNTERFACTUAL_METHOD_LABELS,
+  REVENUE_TOOLS_ROLES,
   RATE_RECOMMENDATION_STATUS_LABELS,
   REVENUE_GATE_STATE_LABELS,
   approveRateRecommendation,
@@ -63,6 +64,7 @@ import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomTypeOption } from "../lib/reservas-client.ts";
 import { dineroMxConSigno } from "../lib/dinero.ts";
 import { RECOMENDACION_ESTADO_TONES } from "../lib/status-tones.ts";
+import { RevenueHerramientas } from "./RevenueHerramientas.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const DOW_LABELS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -101,7 +103,7 @@ const DEFAULT_EVALUATIONS_PLACEHOLDER = `[
   {"window":{"trainStart":"2026-01-08","trainEnd":"2026-01-17","testStart":"2026-01-18","testEnd":"2026-01-24"},"engineRevenue":11000,"baselineRevenue":9500}
 ]`;
 
-export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
+export function RevenuePage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
   const [gate, setGate] = useState<RevenueGate | null | undefined>(undefined);
   const [backtests, setBacktests] = useState<readonly RevenueBacktestRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -729,6 +731,8 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
           {captureError && <p className="text-sm text-destructive sm:col-span-2">{captureError}</p>}
         </CardContent>
       </Card>
+
+      {REVENUE_TOOLS_ROLES.has(role) && <RevenueHerramientas apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
 
       <ConfirmDialog
         open={pendingAutopilot}

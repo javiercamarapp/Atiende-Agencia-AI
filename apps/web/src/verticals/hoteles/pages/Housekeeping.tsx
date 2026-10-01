@@ -40,6 +40,7 @@ import {
 } from "../lib/limpieza-client.ts";
 import type { Camarista, ReporteDiario, Tablero, TableroHabitacion, TareaAccion } from "../lib/limpieza-client.ts";
 import { HABITACION_ESTADO_TONES } from "../lib/status-tones.ts";
+import { TurnosPanel } from "./TurnosPanel.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const ACCION_LABELS: Record<TareaAccion, string> = {
@@ -59,7 +60,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
   const [aviso, setAviso] = useState<string | null>(null);
   const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tablero" | "reporte">("tablero");
+  const [tab, setTab] = useState<"tablero" | "reporte" | "turnos">("tablero");
 
   const puedeOperar = HK_TASK_ROLES.has(role);
   const puedeInhabilitar = HK_OUT_OF_SERVICE_ROLES.has(role);
@@ -182,10 +183,11 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
       )}
 
       {tablero && (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "tablero" | "reporte")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "tablero" | "reporte" | "turnos")}>
           <TabsList>
             <TabsTrigger value="tablero">Tablero</TabsTrigger>
             <TabsTrigger value="reporte">Reporte diario</TabsTrigger>
+            <TabsTrigger value="turnos">Turnos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="tablero" className="flex flex-col gap-4 mt-4">
@@ -256,6 +258,10 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="turnos" className="mt-4">
+            <TurnosPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} hoy={tablero.fecha} camaristas={camaristas} />
           </TabsContent>
 
           <TabsContent value="reporte" className="flex flex-col gap-4 mt-4">
