@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { captureIdentidad, createMigratorio, decidePurga, fetchIdentidades, fetchMigratorios, fetchPurgas, reportMigratorio, requestPurga, revealIdentidad, verifyIdentidad } from "../src/verticals/hoteles/lib/identidad-client.ts";
+import { captureIdentidad, createMigratorio, decidePurga, planRetencionImagen, fetchIdentidades, fetchMigratorios, fetchPurgas, reportMigratorio, requestPurga, revealIdentidad, verifyIdentidad } from "../src/verticals/hoteles/lib/identidad-client.ts";
 
 const API = "http://api.local";
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
@@ -69,5 +69,23 @@ describe("identidad-client (hoteles)", () => {
   it("un error del servidor (doble control) propaga el mensaje real", async () => {
     const f = vi.fn(async () => new Response(JSON.stringify({ message: "Doble control: quien solicita la purga no puede aprobarla" }), { status: 403 })) as unknown as typeof fetch;
     await expect(decidePurga(f, API, "t", "p1", "s1", true)).rejects.toThrow(/Doble control/);
+  });
+});
+
+describe("planRetencionImagen (plazo que aplicara la captura)", () => {
+  it("default 30 dias despues del check-out de la reserva", () => {
+    expect(planRetencionImagen("", "2026-03-12")).toEqual({ valido: true, dias: 30, hasta: "2026-04-11" });
+  });
+  it("sin reserva: solo informa los dias (la fecha la fija el servidor)", () => {
+    expect(planRetencionImagen("", null)).toEqual({ valido: true, dias: 30, hasta: null });
+  });
+  it("acepta 0 y 365; rechaza -1, 366, decimales y texto con mensaje claro", () => {
+    expect(planRetencionImagen("0", "2026-03-12")).toEqual({ valido: true, dias: 0, hasta: "2026-03-12" });
+    expect(planRetencionImagen("365", "2026-03-12")).toEqual({ valido: true, dias: 365, hasta: "2027-03-12" });
+    for (const bad of ["-1", "366", "1.5", "abc"]) {
+      const r = planRetencionImagen(bad, "2026-03-12");
+      expect(r.valido).toBe(false);
+      expect(r.valido === false && r.mensaje).toMatch(/entre 0 y 365/);
+    }
   });
 });
