@@ -76,6 +76,17 @@ begin;
 select core.emit_notification('00000000-0000-0000-0000-00000000a001', null, 'hoteles.ticket.sla_vencido', 'operacion', 'info', 'T', null, '//example.com/x', null, null, 'k7', null, null) as should_fail;
 rollback;
 
+\echo '7b. un enlace con espacio o comillas se rechaza'
+begin;
+select core.emit_notification('00000000-0000-0000-0000-00000000a001', null, 'hoteles.ticket.sla_vencido', 'operacion', 'info', 'T', null, '/x y"onerror=1', null, null, 'k7b', null, null) as should_fail;
+rollback;
+
+\echo '7c. el marcador {orgSlug} del enlace se sustituye por el slug real de la organizacion'
+begin;
+select core.emit_notification('00000000-0000-0000-0000-00000000a001', null, 'hoteles.ticket.sla_vencido', 'operacion', 'info', 'T', null, '/hoteles/{orgSlug}/tickets', null, null, 'k7c', null, null);
+select count(*) filter (where enlace = '/hoteles/hotel-a-notif/tickets')::int as slug_resuelto_deberia_ser_1 from core.notification where dedupe_key = 'k7c' and staff_user_id = '00000000-0000-0000-0000-00000000c001';
+rollback;
+
 \echo '8. un tipo con formato invalido se rechaza'
 begin;
 select core.emit_notification('00000000-0000-0000-0000-00000000a001', null, 'Mal Tipo', 'operacion', 'info', 'T', null, '/hoteles/tickets', null, null, 'k8', null, null) as should_fail;

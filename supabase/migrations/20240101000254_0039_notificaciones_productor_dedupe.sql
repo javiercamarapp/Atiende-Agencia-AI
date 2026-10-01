@@ -26,8 +26,9 @@
 --     authenticated (0013); nadie escribe ni lee columnas directo, por eso NO hay GRANT a nivel
 --     columna que otorgar y nada se otorga a anon. Los CHECK viven en la base (no dependen de
 --     TypeScript): formato de tipo/categoria, severidad cerrada, enlace SOLO ruta interna relativa
---     (empieza con una sola '/', sin esquema ni '//' ni '\' ni espacios: no puede apuntar a otro
---     dominio), longitudes maximas de titulo/cuerpo/clave. Los dos de longitud de titulo/cuerpo son
+--     (empieza con '/' seguida de letra, digito o '_'; solo admite letras, digitos y / . ? & = # % : @ + ~ -;
+--     sin esquema, sin '//', sin barra invertida, espacios ni comillas: no puede apuntar a otro
+--     dominio; el marcador {orgSlug} se sustituye en la base por el slug real), longitudes maximas de titulo/cuerpo/clave. Los dos de longitud de titulo/cuerpo son
 --     NOT VALID: se aplican a toda fila nueva sin revalidar historicos.
 --   * organization_id con ON DELETE CASCADE: al borrar una organizacion se van sus notificaciones
 --     (derecho de supresion); sin FK cruzada de dominio.
@@ -65,7 +66,7 @@ alter table core.notification
   add constraint notification_severidad_chk check (severidad in ('info', 'atencion', 'critica')),
   add constraint notification_tipo_chk check (tipo is null or tipo ~ '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$'),
   add constraint notification_categoria_chk check (categoria is null or categoria ~ '^[a-z][a-z_]{1,39}$'),
-  add constraint notification_enlace_chk check (enlace is null or (enlace ~ '^/[^/\\[:space:]]' and length(enlace) <= 300)),
+  add constraint notification_enlace_chk check (enlace is null or (enlace ~ '^/[A-Za-z0-9_][A-Za-z0-9_/.?&=#%:@+~-]*$' and length(enlace) <= 300)),
   add constraint notification_dedupe_key_chk check (dedupe_key is null or length(dedupe_key) between 1 and 200),
   add constraint notification_titulo_len_chk check (length(titulo) <= 160) not valid,
   add constraint notification_cuerpo_len_chk check (cuerpo is null or length(cuerpo) <= 500) not valid;
@@ -101,6 +102,8 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_vertical text;
+  v_slug text;
+  v_enlace text := p_enlace;
   v_recipients uuid[];
   v_staff uuid;
   v_inserted integer;
@@ -126,7 +129,7 @@ begin
   if coalesce(p_severidad, 'info') not in ('info', 'atencion', 'critica') then
     raise exception 'emit_notification: severidad fuera de catalogo' using errcode = '22023';
   end if;
-  if p_enlace is not null and (p_enlace !~ '^/[^/\\[:space:]]' or length(p_enlace) > 300) then
+  if p_enlace is not null and (p_enlace !~ '^/[A-Za-z0-9_{][A-Za-z0-9_{}/.?&=#%:@+~-]*$' or length(p_enlace) > 300) then
     raise exception 'emit_notification: el enlace debe ser una ruta interna relativa' using errcode = '22023';
   end if;
   if v_expires <= interval '0' or v_expires > interval '365 days' then
@@ -140,7 +143,7 @@ begin
     end if;
     select coalesce(array_agg(sa.staff_user_id), '{}') into v_recipients from core.platform_superadmin sa;
   else
-    select o.vertical into v_vertical from core.organization o where o.id = p_organization_id;
+    select o.vertical, o.slug into v_vertical, v_slug from core.organization o where o.id = p_organization_id;
     if v_vertical is null then
       raise exception 'emit_notification: organizacion inexistente' using errcode = 'P0002';
     end if;
@@ -153,6 +156,9 @@ begin
        and not exists (select 1 from core.property p where p.id = p_property_id and p.organization_id = p_organization_id) then
       raise exception 'emit_notification: la propiedad no pertenece a la organizacion' using errcode = '22023';
     end if;
+    -- El marcador {orgSlug} del enlace se resuelve aqui con el slug real de la organizacion: el
+    -- productor no necesita conocerlo y el enlace nunca lleva un dato que no salga de la base.
+    v_enlace := replace(p_enlace, '{orgSlug}', v_slug);
     select coalesce(array_agg(m.user_id), '{}') into v_recipients
     from core.membership m
     where m.organization_id = p_organization_id
@@ -180,7 +186,7 @@ begin
       staff_user_id, organization_id, vertical, tipo, categoria, severidad, titulo, cuerpo, enlace,
       entidad_tipo, entidad_id, dedupe_key, expires_at
     ) values (
-      v_staff, p_organization_id, v_vertical, p_tipo, p_categoria, coalesce(p_severidad, 'info'), p_titulo, p_cuerpo, p_enlace,
+      v_staff, p_organization_id, v_vertical, p_tipo, p_categoria, coalesce(p_severidad, 'info'), p_titulo, p_cuerpo, v_enlace,
       p_entidad_tipo, p_entidad_id, p_dedupe_key, now() + v_expires
     )
     on conflict (staff_user_id, dedupe_key) where dedupe_key is not null do nothing;
