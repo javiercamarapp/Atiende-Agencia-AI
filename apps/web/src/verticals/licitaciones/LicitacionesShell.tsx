@@ -1,35 +1,44 @@
-// Shell del panel de licitaciones (Fase 7) — resuelve sesión + propertyId UNA vez
-// (mismo patrón de descubrimiento que CitasShell.tsx/restaurantes/Dashboard.tsx:
-// la sesión de login nunca trae un propertyId, solo se resuelve al entrar al
-// panel, vía GET /v1/licitaciones/:orgSlug/admin/branches) y le da a las páginas
-// del panel (Convocatorias/detalle) la misma nav lateral y el mismo `role` del
-// staff (para ocultar acciones que el servidor rechazaría igual, cosmético — el
-// enforcement real es SIEMPRE server-side, ver WRITE_ROLES/GO_NO_GO_ROLES).
+// Shell del panel de licitaciones — resuelve sesión + propertyId (empresa activa) UNA vez
+// y le da a todas las páginas la misma navegación y el mismo `role` del staff (cosmético,
+// para ocultar acciones que el servidor rechazaría igual: el enforcement real es SIEMPRE
+// server-side, ver WRITE_ROLES/GO_NO_GO_ROLES en domain-licitaciones/src/roles.ts).
 //
-// Fase "sistema de diseño real" — reemplaza el `<nav>` inline-styled y sus
-// `NAV_ITEMS` por el `Sidebar` real de @atiende/ui (mismo patrón "sidebar
-// bottom hundido gris" que ya consumen Convocatorias/etc. de otras
-// verticales), mapeando los mismos 4 ítems + Staff (gateado por rol, igual
-// que antes) a `SidebarSection[]`. Cero cambios de sesión/routing/lógica de
-// negocio: mismo fetch de branches, mismo manejo de error, mismo logout,
-// mismo listener de SESSION_EXPIRED_EVENT.
-import { useEffect, useState } from "react";
+// PR-9 del plan de diseño-ux (DS v2): igual que restaurantes (PR-5), hoteles (PR-6) y
+// despachos (PR-8), la sesión (lectura persistida, SESSION_EXPIRED_EVENT, sucursales, rol,
+// logout) vive en `useVerticalSession` y el chrome (Sidebar, MobileHeader + menú de cuenta,
+// BottomNav con "Más", cabecera de escritorio, <main> único con skip link) en `VerticalShell`
+// de @atiende/ui; este archivo solo aporta lo propio de licitaciones: el adaptador de
+// sesión, el mapa de navegación, el chat con datos y el contexto que reciben las páginas.
+//
+// §2.1 del diseño Fase 1 — licitaciones opera como property SINGLETON por organización (a
+// diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
+// ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
 import { BellRing, Building2, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldCheck, Target, Users } from "lucide-react";
-import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
-import type { SidebarSection } from "@atiende/ui";
-import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
-import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
-import { conexionChatDatosLicitaciones } from "./lib/chat-datos-client.ts";
-import { useNotifications } from "../../lib/useNotifications.ts";
+import { VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { useVerticalSession } from "../../lib/useVerticalSession.ts";
+import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
+import { useDocumentTitle } from "../../shell/use-document-title.ts";
+import { conexionChatDatosLicitaciones } from "./lib/chat-datos-client.ts";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
-import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
-import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
-import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
-import { ATIENDE_LOGO_DATA_URI, LICITACIONES_TAB_TITLE } from "./lib/brand.ts";
+
+/** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
+const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
+  vertical: "licitaciones",
+  readSession: readPersistedLicitacionesSession,
+  clearSession: clearLicitacionesSession,
+  logout,
+  fetchBranches,
+  // Property singleton: nada que leer ni persistir; siempre la primera.
+  readPropertyId: () => null,
+  persistPropertyId: () => {},
+  resolveActivePropertyId: (branches) => branches[0]?.propertyId ?? null,
+};
 
 export interface LicitacionesShellContext {
   readonly apiBaseUrl: string;
@@ -62,121 +71,13 @@ export interface LicitacionesShellProps {
 // admin-staff.ts), nunca la única barrera.
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
-  const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
-  const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Mismo hallazgo de auditoría que hoteles/restaurantes/citas: /auth/logout ya
-  // existe en el backend (compartido entre verticales), solo faltaba el botón.
-  const [loggingOut, setLoggingOut] = useState(false);
-  // Regla de hooks: este componente tiene early-returns condicionales más abajo
-  // (sesión sin resolver/ausente, error, branches cargando/vacío) -- el hook se
-  // llama aquí, ANTES de cualquiera de esos returns, con `session?.token ?? ""`
-  // (useNotifications ya tolera un token vacío, ver su comentario de cabecera).
-  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
-  useEffect(() => {
-    const s = readPersistedLicitacionesSession(window.localStorage);
-    setSession(s);
-    if (!s) onRequireLogin();
-  }, [onRequireLogin]);
-
-  // Hallazgo de auditoría ("título de pestaña fijo en 'Restaurantes'") — ver
-  // el comentario de `LICITACIONES_TAB_TITLE` en lib/brand.ts.
-  useEffect(() => {
-    document.title = LICITACIONES_TAB_TITLE;
-  }, []);
-
-  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
-  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
-  // redirección"): fetchJson/postJson de lib/admin-client.ts ya intentan un refresh
-  // automático ante un 401 (ver ../../lib/authed-fetch.ts); si ESE refresh también
-  // falla disparan SESSION_EXPIRED_EVENT en `window` — este Shell escucha y reusa el
-  // `onRequireLogin` que ya tenía. Filtra por `detail.vertical` para no reaccionar
-  // al session-expired de otra vertical abierta en otra pestaña.
-  useEffect(() => {
-    function handleSessionExpired(event: Event) {
-      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
-      if (detail?.vertical !== "licitaciones") return;
-      clearLicitacionesSession(window.localStorage);
-      setSession(null);
-      onRequireLogin();
-    }
-    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
-    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
-  }, [onRequireLogin]);
-
-  async function handleLogout() {
-    if (!session) return;
-    setLoggingOut(true);
-    try {
-      await logout(fetch, apiBaseUrl, session.refreshToken);
-    } finally {
-      clearLicitacionesSession(window.localStorage);
-      setSession(null);
-      onRequireLogin();
-    }
-  }
-
-  useEffect(() => {
-    if (!session) return;
-    let cancelado = false;
-    (async () => {
-      try {
-        const list = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
-        if (!cancelado) setBranches(list);
-      } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar la organización.");
-      }
-    })();
-    return () => {
-      cancelado = true;
-    };
-  }, [session, apiBaseUrl, orgSlug]);
-
-  if (session === undefined) return null; // resolviendo sesión persistida
-  if (!session) return null; // onRequireLogin ya disparó la redirección
-
-  if (error) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <div className="w-full max-w-md">
-          <EstadoError mensaje={error} />
-        </div>
-      </main>
-    );
-  }
-
-  if (!branches) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <p className="text-sm text-muted-foreground">Cargando…</p>
-      </main>
-    );
-  }
-
-  if (branches.length === 0) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <div className="w-full max-w-md">
-          <EstadoVacio mensaje="Esta organización todavía no tiene ninguna property configurada." />
-        </div>
-      </main>
-    );
-  }
-
-  // §2.1 del diseño Fase 1 — licitaciones opera como property singleton por
-  // organización (a diferencia de hoteles, multi-hotel bajo una sola cuenta): el
-  // panel usa la primera property, mismo criterio que CitasShell.tsx.
-  const propertyId = branches[0]!.propertyId;
-  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "viewer";
-  const puedeVerStaff = STAFF_NAV_ROLES.has(role);
-  // "Chatea con tus datos": conexion real con el backend de licitaciones (motor compartido, catalogo cerrado de
-  // solo lectura). El servidor decide el alcance (organizacion, rol) a partir del token; aqui solo va el texto.
-  const chatConexion = conexionChatDatosLicitaciones(fetch, apiBaseUrl, session.token, propertyId);
-
+// Mismos destinos/etiquetas/rutas exactos que antes (ningún link se agrega, quita ni renombra):
+// 5 en "Licitaciones" + 5-6 en "Organización" (Staff solo para owner/admin). "Más" de la barra
+// móvil lista TODOS (las mismas secciones del Sidebar), nada queda inalcanzable en móvil.
+function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarSection[] {
   const base = `/licitaciones/${orgSlug}`;
-  const sections: SidebarSection[] = [
+  return [
     {
       title: "Licitaciones",
       siempreAbierto: true,
@@ -200,6 +101,35 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       ],
     },
   ];
+}
+
+/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
+function buildMobileItems(orgSlug: string): BottomNavItem[] {
+  const base = `/licitaciones/${orgSlug}`;
+  return [
+    { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
+    { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
+    { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
+    { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
+  ];
+}
+
+export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
+  // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
+  useDocumentTitle("Licitaciones", orgSlug);
+  const s = useVerticalSession({ adapter: LICITACIONES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "viewer" });
+
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
+  if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando organización…" />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Esta organización todavía no tiene ninguna property configurada." />;
+
+  const { session, propertyId, role } = s;
+  const puedeVerStaff = STAFF_NAV_ROLES.has(role);
+  // "Chatea con tus datos": conexión real con el backend de licitaciones (motor compartido, catálogo cerrado de
+  // solo lectura). El servidor decide el alcance (organización, rol) a partir del token; aquí solo va el texto.
+  const chatConexion = conexionChatDatosLicitaciones(fetch, apiBaseUrl, session.token, propertyId);
 
   const contexto: LicitacionesShellContext = {
     apiBaseUrl,
@@ -212,54 +142,20 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   };
 
   return (
-    <div className="min-h-screen bg-muted/30 flex gap-3 p-3">
-      <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={handleLogout} />
-
-      <MobileHeader
-        title={
-          <span className="flex items-center gap-2 min-w-0">
-            <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={80} height={14} />
-            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Licitaciones · {orgSlug}</span>
-          </span>
-        }
-        action={<MobileHeaderActions notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} chat={chatConexion} />}
-      />
-
-      <div className="flex-1 min-w-0 flex flex-col gap-3 pt-16 pb-20 md:pt-0 md:pb-0">
-        <DashboardHeader
-          className="hidden md:flex"
-          variant="vertical"
-          icon={<FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-          title={`Licitaciones · ${orgSlug}`}
-          fecha={fechaCortaEsMx()}
-          notificationBell={
-            <NotificationBell
-              items={notif.items}
-              unreadCount={notif.unreadCount}
-              loading={notif.loading}
-              onOpenChange={(open) => {
-                if (open) notif.refetch();
-              }}
-              onMarkRead={notif.onMarkRead}
-              onMarkAllRead={notif.onMarkAllRead}
-            />
-          }
-          chatButton={<BotonChatDatos chat={chatConexion} />}
-        />
-
-        <main className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card p-4 sm:p-6">{children(contexto)}</main>
-      </div>
-
-      <BottomNav
-        items={[
-          { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
-          { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
-          { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
-          { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
-        ]}
-        // Con más destinos de los que caben en la barra, "Más" abre el mismo árbol del Sidebar (nada queda inalcanzable en móvil).
-        moreSections={sections}
-      />
-    </div>
+    <VerticalShellConectado
+      apiBaseUrl={apiBaseUrl}
+      token={session.token}
+      chat={chatConexion}
+      vertical="licitaciones"
+      sections={buildSidebarSections(orgSlug, puedeVerStaff)}
+      mobileItems={buildMobileItems(orgSlug)}
+      user={{ email: session.email, rol: role }}
+      onLogout={() => void s.logout()}
+      loggingOut={s.loggingOut}
+      header={{ icon: <FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      contentKey={propertyId}
+    >
+      {children(contexto)}
+    </VerticalShellConectado>
   );
 }

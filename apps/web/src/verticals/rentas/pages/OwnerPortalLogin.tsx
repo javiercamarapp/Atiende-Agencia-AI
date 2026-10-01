@@ -22,6 +22,9 @@ import { OwnerPortalError, ownerPortalLogin, persistOwnerPortalSession } from ".
 import type { OwnerPortalSession } from "../lib/owner-portal-client.ts";
 import "../../../pages/login.css";
 
+/** Retraso de la animación de entrada (`login-entra`). */
+const retraso = (animationDelay: string) => ({ animationDelay });
+
 export interface OwnerPortalLoginPageProps {
   readonly apiBaseUrl: string;
   readonly onLoggedIn: (session: OwnerPortalSession) => void;
@@ -57,24 +60,24 @@ export function OwnerPortalLoginPage({ apiBaseUrl, onLoggedIn }: OwnerPortalLogi
       {/* Columna izquierda: formulario real */}
       <div className="w-full md:w-[46%] flex flex-col justify-center px-6 sm:px-10 lg:px-16 py-12">
         <div className="mx-auto w-full max-w-sm flex flex-col gap-7">
-          <div className="login-entra" style={{ animationDelay: "0s" }}>
+          <div className="login-entra" style={retraso("0s")}>
             <AtiendeWordmark className="h-7 w-auto" />
           </div>
 
-          <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "0.05s" }}>
+          <div className="login-entra flex flex-col gap-2" style={retraso("0.05s")}>
             <span className="login-kicker">Acceso de propietario</span>
-            <h1 className="login-serif text-foreground text-[32px] sm:text-[38px]">Portal de propietario</h1>
-            <p className="text-[14px] text-muted-foreground leading-snug">Consulta tus unidades y tus statements de renta.</p>
+            <h1 className="login-serif text-foreground text-3xl sm:text-4xl">Portal de propietario</h1>
+            <p className="text-sm text-muted-foreground leading-snug">Consulta tus unidades y tus statements de renta.</p>
           </div>
 
           {activada && (
-            <p className="login-entra m-0 rounded-xl border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
+            <p className="login-entra m-0 rounded-xl border border-border bg-muted px-3 py-2 text-sm text-foreground">
               Cuenta activada. Ya puedes iniciar sesión con tu correo y la contraseña que acabas de fijar.
             </p>
           )}
 
-          <form onSubmit={handleSubmit} noValidate className="login-entra flex flex-col gap-3" style={{ animationDelay: "0.1s" }}>
-            <Label htmlFor="email" className="flex flex-col gap-1.5 text-[13px] text-foreground">
+          <form onSubmit={handleSubmit} noValidate className="login-entra flex flex-col gap-3" style={retraso("0.1s")}>
+            <Label htmlFor="email" className="flex flex-col gap-1.5 text-sm text-foreground">
               Correo
               <input
                 id="email"
@@ -86,7 +89,7 @@ export function OwnerPortalLoginPage({ apiBaseUrl, onLoggedIn }: OwnerPortalLogi
                 className="login-campo"
               />
             </Label>
-            <Label htmlFor="password" className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <Label htmlFor="password" className="flex flex-col gap-1.5 text-sm text-foreground">
               Contraseña
               <input
                 id="password"
@@ -100,7 +103,7 @@ export function OwnerPortalLoginPage({ apiBaseUrl, onLoggedIn }: OwnerPortalLogi
             </Label>
 
             {error && (
-              <p role="alert" className="text-[13px] text-destructive m-0">
+              <p role="alert" className="text-sm text-destructive m-0">
                 {error}
               </p>
             )}
@@ -110,7 +113,7 @@ export function OwnerPortalLoginPage({ apiBaseUrl, onLoggedIn }: OwnerPortalLogi
             </Button>
           </form>
 
-          <p className="login-entra text-[13px] text-muted-foreground m-0" style={{ animationDelay: "0.15s" }}>
+          <p className="login-entra text-sm text-muted-foreground m-0" style={retraso("0.15s")}>
             ¿Recibiste una invitación de tu administrador?{" "}
             <Link to="/rentas/portal-propietario/activar" className="text-foreground font-medium underline underline-offset-2">
               Activa tu cuenta aquí
@@ -124,8 +127,8 @@ export function OwnerPortalLoginPage({ apiBaseUrl, onLoggedIn }: OwnerPortalLogi
       <aside className="login-lamina hidden md:block md:w-[54%] relative m-3 rounded-[22px] overflow-hidden">
         <img src="/images/login-hero.png" alt="" className="login-foto-marca absolute inset-0 h-full w-full object-cover" />
         <div className="login-velo" />
-        <div className="absolute inset-x-0 bottom-0 p-10 lg:p-14 text-white">
-          <p className="login-kicker text-white/70 mb-3">Transparencia para el dueño</p>
+        <div className="absolute inset-x-0 bottom-0 p-10 lg:p-14 login-lamina-texto">
+          <p className="login-kicker mb-3">Transparencia para el dueño</p>
           <p className="login-serif text-2xl lg:text-3xl leading-snug max-w-md">
             Tus unidades, tus periodos y el neto de cada statement — la misma información que ve tu empresa gestora.
           </p>

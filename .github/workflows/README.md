@@ -73,12 +73,51 @@ abajo) documentaba explícitamente en su propio comentario de cabecera desde
 que existe: **ningún** workflow de este repo corría `npm run typecheck`,
 `npm run lint` ni `npm run test:unit` — ese tier corría solo a mano por quien
 hacía el cambio, así que un PR con "tests en verde" era solo la palabra local
-de quien lo construyó. Corre, en un solo job sin matriz sobre `ubuntu-latest`:
-`npm ci` → `npm run typecheck` → `npm run lint` → `npm run test:unit` →
-`npm run build --workspace apps/web`. Frugal a propósito: `concurrency` con
+de quien lo construyó. Corre en tres jobs sobre `ubuntu-latest` (sin matriz):
+
+| Job | Nombre del check | Pasos | `timeout-minutes` |
+|---|---|---|---|
+| `estatico` | `typecheck + lint + build de apps/web` | `npm ci` → typecheck → lint → trinquete de lint → build de `apps/web` | 15 |
+| `unit` | `test:unit` | `npm ci` → `npm run test:unit` | 25 |
+| `ci-checks` | `typecheck + lint + test:unit + build de apps/web` | agregador (`needs` de los dos anteriores, `if: always()`): falla si alguno no terminó en `success` | 5 |
+
+El job agregador conserva el nombre histórico del check, de modo que una
+protección de rama que lo exija (hoy `main` no tiene protección ni rulesets,
+verificado con `gh api .../branches/main/protection` y `.../rulesets`) sigue
+resolviendo sin cambiar nada. Usa `if: always()` porque un job dependiente
+"skipped" cuenta como exitoso para la protección de rama.
+
+Medición (corridas `success` de este workflow, duración por paso en segundos,
+tres corridas `success` recientes, antes de partir el job):
+
+| Paso | Segundos |
+|---|---|
+| `npm ci` | 4-8 |
+| typecheck | 62-100 |
+| lint | 16-27 |
+| trinquete de lint | 16-26 |
+| `test:unit` | 451-677 |
+| build de `apps/web` | 15-24 |
+
+Es decir, `test:unit` es ~80-85% del tiempo del job; typecheck+lint+build es
+~2-3 min. Con el job único, una corrida lenta rozaba el límite de 15 min
+(corridas completas de 10 a 15.4 min según la carga del runner, y una cancelada por
+`timeout-minutes` en el paso final de build, resuelta con `gh run rerun --failed`). Al partir: el tiempo de
+pared pasa a ser el de `unit` (~8-11 min) en vez de la suma, y el límite de
+`unit` sube a 25 min. El costo extra son ~15 s de `npm ci` + checkout por
+duplicado (Actions es gratis en repos públicos).
+
+Cachés evaluadas: el caché de npm (`cache: npm` de `actions/setup-node`) ya
+existía y `npm ci` solo toma 4-8 s, así que no hay más que ganar ahí. No se
+cachean `.tsbuildinfo`, el caché de vitest ni la salida del build de
+`apps/web`: el typecheck son ~1-1.5 min y el build ~20 s (ganancia marginal),
+y el costo dominante (`test:unit`) no se acelera con un caché de resultados
+sin riesgo de ocultar un test roto. Sin secretos en ningún caché.
+
+Frugal a propósito: `concurrency` con
 `cancel-in-progress` por rama (solo para `pull_request`; en `push` a `main`
 no cancela, para que dos merges seguidos no dejen el primer commit sin
-veredicto propio), `timeout-minutes: 15`, `permissions: contents: read`,
+veredicto propio), `permissions: contents: read`,
 cache de npm, `paths` con exclusiones para cambios solo de docs/markdown
 (con re-inclusiones explícitas de `docs/DEPLOY.md`,
 `supabase/migrations/README.md`, `apps/**` y `packages/**` para no burlar los
@@ -150,6 +189,10 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-superadmin-cfo/` (dashboard ejecutivo CFO: lectura con
      caller-binding, entradas de alerta y foto mensual de solo-sistema, formula
      de ingreso sin inventar precios; ver `docs/SUPERADMIN_CFO.md`).
+   - `scripts/verify-superadmin-contratos/` (contrato por cliente: versiones
+     inmutables, vigencias traslapadas rechazadas en la base, enmiendas, rol
+     `finanzas` de solo lectura y sin acceso directo; ver
+     `docs/SUPERADMIN_CONTRATOS.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada

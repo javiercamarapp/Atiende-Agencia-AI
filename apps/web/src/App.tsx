@@ -50,6 +50,7 @@ import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx"
 import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
+import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
@@ -65,6 +66,7 @@ import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
 import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
 import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
+import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -450,6 +452,15 @@ function SuperAdminPlanesRoute() {
   );
 }
 
+function SuperAdminContratosRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminContratosPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
   return (
@@ -521,6 +532,7 @@ const HotelesHousekeepingRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx
 const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <TicketsPage {...ctx} />);
 const HotelesAgentesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AgentesPage {...ctx} />);
 const HotelesAprobacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AprobacionesAgentesPage {...ctx} />);
+const HotelesGruposRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <GruposPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -916,6 +928,7 @@ export function App() {
         <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
+        <Route path="/superadmin/contratos" element={<SuperAdminContratosRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
         <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
@@ -931,6 +944,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/tickets" element={<HotelesTicketsRoute />} />
         <Route path="/hoteles/:orgSlug/agentes" element={<HotelesAgentesRoute />} />
         <Route path="/hoteles/:orgSlug/aprobaciones" element={<HotelesAprobacionesRoute />} />
+        <Route path="/hoteles/:orgSlug/grupos" element={<HotelesGruposRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

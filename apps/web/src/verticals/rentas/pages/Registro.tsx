@@ -21,7 +21,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, CardContent, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, Input, Label, NativeSelect } from "@atiende/ui";
 import { OnboardingError, registrarTenant, ZONAS_HORARIAS_FRECUENTES } from "../lib/onboarding-client.ts";
 import type { RegistroTenantResultado, RegistroUnidadInput } from "../lib/onboarding-client.ts";
 
@@ -29,13 +29,7 @@ export interface RegistroPageProps {
   readonly apiBaseUrl: string;
 }
 
-/** Mismos tokens que el <Input> de @atiende/ui, aplicados al <select> nativo: los
- * selectores de esta pantalla son dropdowns reales de opciones (zona horaria, tipo de
- * organización), no menús de acciones — se quedan nativos y solo se re-estilan. */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function nuevaUnidadVacia(): RegistroUnidadInput {
   return { nombre: "" };
@@ -100,15 +94,15 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
 
   if (resultado) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-6">
         <Card className="w-[min(480px,92vw)]">
-          <CardContent className="p-6 flex flex-col gap-3">
+          <CardContent className="p-5 flex flex-col gap-3">
             <h1 className="font-display text-xl font-semibold text-foreground m-0">Tu cuenta se creó</h1>
             <p className="m-0 text-sm text-foreground">
               Organización <strong>{organizacionNombre}</strong>, propiedad <strong>{propiedadNombre}</strong> y {resultado.unidadIds.length}{" "}
               {resultado.unidadIds.length === 1 ? "unidad" : "unidades"} quedaron registradas.
             </p>
-            <div className="rounded-lg border border-border bg-muted px-3 py-3 text-[13px] text-muted-foreground">
+            <div className="rounded-lg border border-border bg-muted px-3 py-3 text-sm text-muted-foreground">
               Este entorno todavía no envía un correo de verificación automático, así que <strong className="text-foreground">{adminCorreo}</strong> no puede iniciar sesión todavía
               (tu cuenta exige correo verificado antes del primer login). Contacta al equipo de Atiende con tu correo de registro para que activen tu
               acceso manualmente mientras esa pieza se conecta.
@@ -126,8 +120,8 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <form onSubmit={handleSubmit} noValidate className="w-[min(560px,94vw)] flex flex-col gap-4">
         <div>
-          <h1 className="font-display text-[22px] font-semibold text-foreground m-0 mb-1">Crea tu cuenta de rentas</h1>
-          <p className="m-0 text-[13px] text-muted-foreground">Organización, primera propiedad, y las unidades que quieres administrar — todo en un solo paso.</p>
+          <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Crea tu cuenta de rentas</h1>
+          <p className="m-0 text-sm text-muted-foreground">Organización, primera propiedad, y las unidades que quieres administrar — todo en un solo paso.</p>
         </div>
 
         <fieldset className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4">
@@ -138,15 +132,10 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
           </Label>
           <Label className={LABEL_CLASES} htmlFor="tipoOrganizacion">
             ¿Cómo describirías tu operación?
-            <select
-              id="tipoOrganizacion"
-              value={tipoOrganizacion}
-              onChange={(e) => setTipoOrganizacion(e.target.value as "anfitrion" | "empresa_gestora")}
-              className={SELECT_CLASES}
-            >
+            <NativeSelect id="tipoOrganizacion" value={tipoOrganizacion} onChange={(e) => setTipoOrganizacion(e.target.value as "anfitrion" | "empresa_gestora")}>
               <option value="anfitrion">Anfitrión — administro mis propias propiedades</option>
               <option value="empresa_gestora">Empresa gestora — administro propiedades de otros dueños</option>
-            </select>
+            </NativeSelect>
           </Label>
           {tipoOrganizacion === "empresa_gestora" && (
             <>
@@ -173,13 +162,13 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
           <div className="flex gap-2.5">
             <Label className={`${LABEL_CLASES} flex-1`} htmlFor="zonaHoraria">
               Zona horaria
-              <select id="zonaHoraria" value={zonaHoraria} onChange={(e) => setZonaHoraria(e.target.value)} className={SELECT_CLASES}>
+              <NativeSelect id="zonaHoraria" value={zonaHoraria} onChange={(e) => setZonaHoraria(e.target.value)}>
                 {ZONAS_HORARIAS_FRECUENTES.map((z) => (
                   <option key={z} value={z}>
                     {z}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={`${LABEL_CLASES} flex-1`} htmlFor="moneda">
               Moneda (ISO 4217)
@@ -241,7 +230,7 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
         </fieldset>
 
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {error}
           </p>
         )}

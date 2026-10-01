@@ -18,7 +18,8 @@
 //    todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
@@ -26,10 +27,7 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 const AUDITORIA_LECTURA_ROLES = new Set(["admin_gestora"]);
 const PAGE_SIZE = 25;
 
-const SELECT_CLASES =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-const DATE_INPUT_CLASES = SELECT_CLASES;
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function formatearFechaHora(iso: string): string {
   try {
@@ -46,6 +44,40 @@ function etiquetaAccion(action: string): string {
   const partes = action.split(".");
   return (partes.length > 1 ? partes.slice(1) : partes).join(" ").replace(/_/g, " ");
 }
+
+/** Columnas de la bitácora. La ruta solo trae el uuid del staff (`actorUserId`, ver auditoria-client.ts) -- sin resolver a
+ *  nombre/email todavía (hallazgo de revisión r5, gap conocido). Mostrar el uuid completo, con truncamiento visual + title,
+ *  es mejor que omitir por completo QUIÉN hizo la acción en una bitácora de auditoría. */
+const COLUMNAS: readonly DataTableColumna<AuditLogEntry>[] = [
+  { id: "cuando", encabezado: "Cuándo", celda: (item) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</span>, className: "whitespace-nowrap" },
+  {
+    id: "quien",
+    encabezado: "Quién",
+    celda: (item) => (
+      <span className="block max-w-[110px] truncate font-mono text-xs text-muted-foreground" title={item.actorUserId}>
+        {item.actorUserId}
+      </span>
+    ),
+  },
+  {
+    id: "accion",
+    encabezado: "Acción",
+    principal: true,
+    celda: (item) => (
+      <div className="flex flex-col gap-1">
+        <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
+          {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
+        </StatusBadge>
+        <span className="text-xs text-muted-foreground" title={item.action}>
+          {etiquetaAccion(item.action)}
+        </span>
+      </div>
+    ),
+  },
+  { id: "campo", encabezado: "Campo", celda: (item) => <span className="text-xs">{item.campo ?? "—"}</span> },
+  { id: "antes", encabezado: "Antes", celda: (item) => <span className="text-xs text-muted-foreground">{item.antes ?? "—"}</span> },
+  { id: "despues", encabezado: "Después", celda: (item) => <span className="text-xs">{item.despues ?? "—"}</span> },
+];
 
 export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
@@ -120,14 +152,14 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[900px]">
+    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Auditoría</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">Qué hizo cada miembro del staff: cambios de precio, reservas, payouts, estados de cuenta y canales.</p>
+        <p className="m-0 text-sm text-muted-foreground">Qué hizo cada miembro del staff: cambios de precio, reservas, payouts, estados de cuenta y canales.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo el rol <strong className="text-foreground">admin_gestora</strong> puede leer la bitácora de auditoría
           {org ? (
             <>
@@ -147,22 +179,22 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Tipo de acción
-                <select value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")} className={SELECT_CLASES}>
+                <NativeSelect value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
                   <option value="">Todos</option>
                   {AUDIT_LOG_ENTITY_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {AUDIT_LOG_ENTITY_TYPE_LABELS[t]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
                 Desde
-                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={DATE_INPUT_CLASES} />
+                <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
                 Hasta
-                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={DATE_INPUT_CLASES} />
+                <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
               </Label>
             </CardContent>
           </Card>
@@ -192,51 +224,13 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
           )}
 
           {!error && items !== null && disponible && items.length > 0 && (
-            <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cuándo</TableHead>
-                      <TableHead>Quién</TableHead>
-                      <TableHead>Acción</TableHead>
-                      <TableHead>Campo</TableHead>
-                      <TableHead>Antes</TableHead>
-                      <TableHead>Después</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</TableCell>
-                        {/* La ruta hoy solo trae el uuid del staff (`actorUserId`, ver
-                            auditoria-client.ts) -- sin resolver a nombre/email todavía
-                            (hallazgo de revisión r5, gap conocido). Mostrar el uuid
-                            completo, con truncamiento visual + title, es mejor que
-                            omitir por completo QUIÉN hizo la acción en una bitácora de
-                            auditoría. */}
-                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[110px] truncate" title={item.actorUserId}>
-                          {item.actorUserId}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="w-fit text-[10px]">
-                              {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground" title={item.action}>
-                              {etiquetaAccion(item.action)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">{item.campo ?? "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{item.antes ?? "—"}</TableCell>
-                        <TableCell className="text-xs">{item.despues ?? "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <DataTable
+              etiqueta="Bitácora de auditoría del staff"
+              columnas={COLUMNAS}
+              filas={items}
+              obtenerId={(item) => item.id}
+              paginacion={false}
+            />
           )}
 
           {!error && items !== null && disponible && items.length > 0 && (
@@ -253,6 +247,6 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

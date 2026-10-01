@@ -21,30 +21,12 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, FileUp, X } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@atiende/ui";
+import { ArrowLeft, FileUp, X } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { extractRequirements, fetchRequirementItems, fileToBase64, MAX_UPLOAD_FILE_BYTES } from "../lib/requirements-client.ts";
+import { REQUISITO_STATUS_TONES } from "../lib/status-tones.ts";
 import type { ExtractDocumentInput, RequirementItemRecord, SkippedDocument } from "../lib/requirements-client.ts";
 import { formatDate, formatObligatoriedad, formatRequirementKind, formatRequirementStatus } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -69,19 +51,11 @@ interface PendingFile {
   readonly tooLarge: boolean;
 }
 
-const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  pendiente: "secondary",
-  en_progreso: "outline",
-  cumplido: "default",
-  bloqueado: "destructive",
-  no_evaluable: "secondary",
-};
-
-function StatusBadge({ status }: { status: string }) {
+function RequirementStatusBadge({ status }: { status: string }) {
   return (
-    <Badge variant={STATUS_VARIANTS[status] ?? "secondary"} className="whitespace-nowrap">
+    <StatusBadge tone={statusTone(REQUISITO_STATUS_TONES, status)} className="whitespace-nowrap">
       {formatRequirementStatus(status)}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -189,14 +163,14 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
   const canUpload = WRITE_ROLES.has(role);
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title}
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Requisitos de las bases</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Requisitos de las bases</h1>
+        <p className="text-sm text-muted-foreground">
           Sube el PDF (o texto plano) de las bases de esta convocatoria para extraer sus requisitos automáticamente. Solo lectura del resto del expediente: la propuesta técnica/económica y el cierre no viven en esta pantalla todavía.
         </p>
       </div>
@@ -257,7 +231,7 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
               )}
 
               {extractError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {extractError}
                 </p>
               )}
@@ -274,12 +248,8 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
       )}
 
       {lastSkipped.length > 0 && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {lastSkipped.length} documento(s) no produjeron texto extraíble y se excluyeron de esta extracción:
-          </p>
-          <ul className="mt-1.5 list-disc pl-5 text-xs text-amber-700 dark:text-amber-400">
+        <Callout tone="warning" titulo={`${lastSkipped.length} documento(s) no produjeron texto extraíble y se excluyeron de esta extracción:`}>
+          <ul className="mt-1.5 list-disc pl-5 text-xs">
             {lastSkipped.map((s) => (
               <li key={s.documentId}>
                 "{s.documentLabel}" -- {s.status === "requires_ocr" ? "PDF escaneado sin capa de texto (no hay OCR de imagen disponible)" : "formato no soportado o archivo corrupto"}
@@ -287,7 +257,7 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
               </li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
 
       <Card>
@@ -297,53 +267,51 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
         <CardContent className="flex flex-col gap-3">
           {items && items.length === 0 && <EstadoVacio mensaje="Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases arriba." />}
           {items && items.length > 0 && (
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} className="inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline">
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline">
               Generar propuesta técnica y mapear requisitos →
             </Link>
           )}
           {items && items.length > 0 && (
-            <div className="rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Requisito</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Obligatoriedad</TableHead>
-                    <TableHead>Estatus</TableHead>
-                    <TableHead>Fecha límite</TableHead>
-                    <TableHead>Origen</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.id} className="align-top">
-                      <TableCell className="max-w-[320px] p-3">
-                        <p className="text-foreground">{item.text}</p>
-                        {item.requiredEvidence.length > 0 && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">Evidencia requerida: {item.requiredEvidence.join(", ")}</p>
-                        )}
-                      </TableCell>
-                      <TableCell className="p-3 text-muted-foreground">{formatRequirementKind(item.requirementKind)}</TableCell>
-                      <TableCell className="p-3 text-muted-foreground">{formatObligatoriedad(item.obligatoriedad)}</TableCell>
-                      <TableCell className="p-3">
-                        <StatusBadge status={item.status} />
-                      </TableCell>
-                      <TableCell className="p-3 text-muted-foreground">{item.deadline ? formatDate(item.deadline) : "—"}</TableCell>
-                      <TableCell className="p-3 text-[11px] text-muted-foreground">
-                        {item.page ? `pág. ${item.page}` : "—"}
-                        {item.clause ? ` · ${item.clause}` : ""}
-                        <br />
-                        {item.extractedBy === "llm" ? "LLM" : "reglas"}
-                        {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable
+              etiqueta="Requisitos extraídos"
+              obtenerId={(item) => item.id}
+              filas={items}
+              paginacion={false}
+              columnas={[
+                {
+                  id: "requisito",
+                  encabezado: "Requisito",
+                  principal: true,
+                  className: "max-w-80",
+                  celda: (item) => (
+                    <>
+                      <p className="font-normal text-foreground">{item.text}</p>
+                      {item.requiredEvidence.length > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">Evidencia requerida: {item.requiredEvidence.join(", ")}</p>}
+                    </>
+                  ),
+                },
+                { id: "tipo", encabezado: "Tipo", celda: (item) => <span className="text-muted-foreground">{formatRequirementKind(item.requirementKind)}</span> },
+                { id: "obligatoriedad", encabezado: "Obligatoriedad", celda: (item) => <span className="text-muted-foreground">{formatObligatoriedad(item.obligatoriedad)}</span> },
+                { id: "estatus", encabezado: "Estatus", celda: (item) => <RequirementStatusBadge status={item.status} /> },
+                { id: "fecha", encabezado: "Fecha límite", celda: (item) => <span className="text-muted-foreground">{item.deadline ? formatDate(item.deadline) : "—"}</span> },
+                {
+                  id: "origen",
+                  encabezado: "Origen",
+                  celda: (item) => (
+                    <span className="text-xs text-muted-foreground">
+                      {item.page ? `pág. ${item.page}` : "—"}
+                      {item.clause ? ` · ${item.clause}` : ""}
+                      <br />
+                      {item.extractedBy === "llm" ? "LLM" : "reglas"}
+                      {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
+                    </span>
+                  ),
+                },
+              ]}
+            />
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

@@ -41,6 +41,9 @@ async function settle() {
   });
 }
 
+const dialogo = () => document.body.querySelector('[role="alertdialog"]');
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
+
 function mount(ctx: LicitacionesShellContext) {
   rendered = renderComponent(<WhatsappPage {...ctx} />);
 }
@@ -110,9 +113,38 @@ describe("pantalla de WhatsApp de licitaciones", () => {
       click(buttonByText("Dejar de recibir avisos")!);
     });
     await settle();
+    // Salir es destructivo: primero pide confirmación y no llama al servidor.
+    expect(dialogo()).not.toBeNull();
+    expect(calls("POST", "/whatsapp/opt-out")).toHaveLength(0);
+    await act(async () => {
+      click(botonDialogo("Dejar de recibir avisos"));
+    });
+    await settle();
     expect(calls("POST", "/whatsapp/opt-out")).toHaveLength(1);
     expect(text()).toContain("Dado de baja");
     expect(buttonByText("Dejar de recibir avisos")).toBeUndefined();
+  });
+
+  it("Cancelar el diálogo de salida NUNCA llama a opt-out", async () => {
+    stubFetch({
+      "GET /whatsapp/settings": () => ({ body: SETTINGS({ contact: CONTACT("activo") }) }),
+      "GET /tenders": () => ({ body: TENDERS }),
+      "POST /whatsapp/opt-out": () => ({ body: { ok: true, changed: true } }),
+    });
+    mount(CTX);
+    await settle();
+    await act(async () => {
+      click(buttonByText("Dejar de recibir avisos")!);
+    });
+    await settle();
+    expect(dialogo()).not.toBeNull();
+    await act(async () => {
+      click(botonDialogo("Cancelar"));
+    });
+    await settle();
+    expect(dialogo()).toBeNull();
+    expect(calls("POST", "/whatsapp/opt-out")).toHaveLength(0);
+    expect(text()).toContain("Activo");
   });
 
   it("quien puede decidir pide la decision de una convocatoria y ve el resultado", async () => {

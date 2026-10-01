@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { KeyRound } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import {
   confirmarPagoReserva,
   ETIQUETA_EVENTO_ACCESO,
@@ -25,7 +25,6 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 // Espejo web de ACCESO_HUESPED_ROLES (packages/domain-rentas/src/roles.ts).
 const ACCESO_HUESPED_ROLES = new Set(["admin_gestora", "operador:acceso_total"]);
 const POLITICA_VACIA: PoliticaAcceso = { activo: false, horasAntesCheckin: 24, horaCheckin: "15:00", exigirPago: true, otaCuentaComoPagada: true };
-const INPUT_CLASES = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground";
 
 export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
@@ -110,7 +109,7 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
   const encabezado = (
     <header>
       <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Acceso al huésped</h1>
-      <p className="m-0 text-[13px] text-muted-foreground">
+      <p className="m-0 text-sm text-muted-foreground">
         Las instrucciones de acceso (código de cerradura, dirección exacta) se envían por correo solo cuando faltan las horas que definas para el check-in y únicamente si la reserva está confirmada y
         pagada según tu política. Cada envío queda en la bitácora, sin datos personales.
       </p>
@@ -119,18 +118,18 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
 
   if (!puede) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         {encabezado}
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso a esta sección. Roles con acceso: <strong className="text-foreground">admin_gestora</strong> y{" "}
           <strong className="text-foreground">operador:acceso_total</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[960px]">
+    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
       {encabezado}
       {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
       {aviso && <p className="m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground">{aviso}</p>}
@@ -156,28 +155,19 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
                   });
                 }}
               >
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <input type="checkbox" checked={politica.activo} onChange={(e) => setPolitica({ ...politica, activo: e.target.checked })} />
-                  Liberar instrucciones automáticamente (apagado = nunca se envía nada)
-                </label>
+                <Checkbox checked={politica.activo} onChange={(e) => setPolitica({ ...politica, activo: e.target.checked })} label="Liberar instrucciones automáticamente (apagado = nunca se envía nada)" />
                 <div className="flex flex-wrap gap-3">
-                  <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                  <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                     Horas antes del check-in (1 a 168)
                     <Input type="number" min={1} max={168} value={politica.horasAntesCheckin} onChange={(e) => setPolitica({ ...politica, horasAntesCheckin: Number(e.target.value) })} />
                   </Label>
-                  <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                  <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                     Hora local de check-in
                     <Input type="time" value={politica.horaCheckin} onChange={(e) => setPolitica({ ...politica, horaCheckin: e.target.value })} />
                   </Label>
                 </div>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <input type="checkbox" checked={politica.exigirPago} onChange={(e) => setPolitica({ ...politica, exigirPago: e.target.checked })} />
-                  Exigir pago confirmado
-                </label>
-                <label className="flex items-center gap-2 text-[13px] text-foreground">
-                  <input type="checkbox" checked={politica.otaCuentaComoPagada} onChange={(e) => setPolitica({ ...politica, otaCuentaComoPagada: e.target.checked })} />
-                  Las reservas de Airbnb, Vrbo y Booking cuentan como pagadas (la plataforma cobra al reservar)
-                </label>
+                <Checkbox checked={politica.exigirPago} onChange={(e) => setPolitica({ ...politica, exigirPago: e.target.checked })} label="Exigir pago confirmado" />
+                <Checkbox checked={politica.otaCuentaComoPagada} onChange={(e) => setPolitica({ ...politica, otaCuentaComoPagada: e.target.checked })} label="Las reservas de Airbnb, Vrbo y Booking cuentan como pagadas (la plataforma cobra al reservar)" />
                 <Button type="submit" size="sm" disabled={ocupado !== null} className="self-start">
                   {ocupado === "politica" ? "Guardando…" : "Guardar política"}
                 </Button>
@@ -204,15 +194,14 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
                   });
                 }}
               >
-                <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                   Unidad
-                  <select
+                  <NativeSelect
                     value={unidadId}
                     onChange={(e) => {
                       setUnidadId(e.target.value);
                       void cargarInstruccion(e.target.value);
                     }}
-                    className={INPUT_CLASES}
                   >
                     <option value="">Selecciona una unidad…</option>
                     {unidades.map((u) => (
@@ -220,19 +209,19 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
                         {u.nombre}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </Label>
-                <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                   Dirección exacta
                   <Input type="text" value={direccion} maxLength={500} onChange={(e) => setDireccion(e.target.value)} />
                 </Label>
-                <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                   Código de acceso (opcional)
                   <Input type="text" value={codigo} maxLength={100} autoComplete="off" onChange={(e) => setCodigo(e.target.value)} />
                 </Label>
-                <Label className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                <Label className="flex flex-col gap-1.5 text-sm text-foreground">
                   Indicaciones (opcional)
-                  <textarea value={indicaciones} maxLength={2000} rows={3} onChange={(e) => setIndicaciones(e.target.value)} className={`${INPUT_CLASES} h-auto`} />
+                  <Textarea value={indicaciones} maxLength={2000} rows={3} onChange={(e) => setIndicaciones(e.target.value)} />
                 </Label>
                 <Button type="submit" size="sm" disabled={ocupado !== null || !unidadId} className="self-start">
                   {ocupado === "instruccion" ? "Guardando…" : "Guardar instrucciones"}
@@ -271,7 +260,13 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
                         </TableCell>
                         <TableCell className="text-xs">{r.canal}</TableCell>
                         <TableCell>
-                          {r.liberada ? <Badge className="text-[10px]">Instrucciones enviadas</Badge> : r.pagoConfirmado ? <Badge variant="secondary" className="text-[10px]">Pago confirmado</Badge> : <Badge variant="outline" className="text-[10px]">Sin pago confirmado</Badge>}
+                          {r.liberada ? (
+                            <StatusBadge tone="success">Instrucciones enviadas</StatusBadge>
+                          ) : r.pagoConfirmado ? (
+                            <StatusBadge tone="info">Pago confirmado</StatusBadge>
+                          ) : (
+                            <StatusBadge tone="neutral">Sin pago confirmado</StatusBadge>
+                          )}
                         </TableCell>
                         <TableCell>
                           {!r.liberada && (
@@ -322,6 +317,6 @@ export function AccesoHuespedPage({ apiBaseUrl, token, propertyId, orgSlug, sess
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

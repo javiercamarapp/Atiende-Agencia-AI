@@ -72,6 +72,8 @@ async function mountSeguridad() {
 }
 
 const boton = (r: RenderedComponent, texto: string) => [...r.container.querySelectorAll("button")].find((b) => b.textContent?.includes(texto));
+const dialogo = () => document.body.querySelector('[role="alertdialog"]');
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
 
 describe("Seguridad de la cuenta: sesiones activas", () => {
   it("lista los dispositivos, marca el actual (sin boton de cerrar) y cierra uno ajeno", async () => {
@@ -95,6 +97,11 @@ describe("Seguridad de la cuenta: sesiones activas", () => {
     expect([...r.container.querySelectorAll("button")].filter((b) => b.textContent === "Cerrar sesión")).toHaveLength(1);
     click(boton(r, "Cerrar sesión")!);
     await settle();
+    // Cerrar la sesión de otro dispositivo es destructivo: primero pide confirmación y no llama al servidor.
+    expect(dialogo()).not.toBeNull();
+    expect(cerradas).toEqual([]);
+    click(botonDialogo("Cerrar sesión"));
+    await settle();
     expect(cerradas).toEqual([{ sessionId: "s-otra" }]);
     expect(r.container.textContent).toContain("Sesión cerrada.");
     expect(r.container.textContent).not.toContain("Safari en iOS");
@@ -116,7 +123,47 @@ describe("Seguridad de la cuenta: sesiones activas", () => {
     expect(r.container.textContent).toContain("todavía no está disponible en este ambiente, pero puedes cerrar tus otras sesiones");
     click(boton(r, "Cerrar mis otras sesiones")!);
     await settle();
+    expect(llamadas).toEqual([]);
+    click(botonDialogo("Cerrar mis otras sesiones"));
+    await settle();
     expect(llamadas).toEqual(["revoke"]);
+  });
+
+  it("Cancelar el diálogo (o cerrarlo) NUNCA cierra sesiones", async () => {
+    const cerradas: unknown[] = [];
+    const llamadas: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      api({
+        "/auth/sessions/cerrar": (init) => {
+          cerradas.push(JSON.parse(init!.body as string));
+          return res({ ok: true });
+        },
+        "/auth/sessions/cerrar-otras": () => {
+          llamadas.push("otras");
+          return res({ ok: true });
+        },
+        "/auth/revoke-sessions": () => {
+          llamadas.push("revoke");
+          return res({ ok: true });
+        },
+      }),
+    );
+    const r = await mountSeguridad();
+    click(boton(r, "Cerrar sesión")!);
+    await settle();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await settle();
+    expect(dialogo()).toBeNull();
+    click(boton(r, "Cerrar todas las demás")!);
+    await settle();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await settle();
+    expect(dialogo()).toBeNull();
+    expect(cerradas).toEqual([]);
+    expect(llamadas).toEqual([]);
   });
 });
 

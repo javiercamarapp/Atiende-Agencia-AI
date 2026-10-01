@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando } from "@atiende/ui";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, PageContainer } from "@atiende/ui";
 import { fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchSourceFreshness } from "../lib/sources-client.ts";
@@ -119,29 +119,29 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">{staffFullName ? `Hola, ${staffFullName}` : "Panel"}</h1>
-        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">{staffFullName ? `Hola, ${staffFullName}` : "Panel"}</h1>
+        <p className="mt-1 max-w-[720px] text-sm text-muted-foreground">
           Estado actual de tus licitaciones. Cada cifra viene de datos reales; si una lectura falla se indica como &quot;No disponible&quot; en lugar de mostrar cero.
         </p>
       </header>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tarjetas.map((t) => (
-          <Card key={t.titulo} className={t.alerta ? "border-amber-500/60" : undefined}>
+          <Card key={t.titulo} className={t.alerta ? "border-warning/60" : undefined}>
             <CardHeader className="pb-2">
               <CardDescription>{t.titulo}</CardDescription>
               <CardTitle className="text-2xl tabular-nums">{t.valor === null ? <span className="text-base font-medium text-muted-foreground">No disponible</span> : t.valor}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <p className="text-[12px] text-muted-foreground">{t.ayuda}</p>
-              <Link to={t.to} className="text-[13px] font-medium text-foreground underline">
+              <p className="text-xs text-muted-foreground">{t.ayuda}</p>
+              <Link to={t.to} className="text-sm font-medium text-foreground underline">
                 {t.enlace}
               </Link>
             </CardContent>
           </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

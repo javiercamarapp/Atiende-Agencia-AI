@@ -1,19 +1,18 @@
 // @vitest-environment jsdom
 //
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav de
-// LicitacionesShell.tsx -- mismo patrón que citas-shell-mobile-nav.spec.tsx:
-// el <Sidebar> compartido de @atiende/ui es `hidden md:flex`, y en viewport
-// móvil el usuario depende de <MobileHeader> + <BottomNav> (4 destinos
-// curados, ver el JSX de LicitacionesShell.tsx). A diferencia de otras
-// verticales, aquí el título del MobileHeader es un <img alt="atiende"> (no
-// <AtiendeWordmark>), así que el logo se verifica por el `alt`, no por
-// `textContent`.
+// LicitacionesShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
+// y en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>: la barra
+// trae 4 destinos de uso diario y "Más" abre TODOS los destinos del Sidebar (PR-9 del
+// plan de diseño-ux, shell único VerticalShell). Protege también que un único <main>
+// (antes el shell anidaba el suyo), el skip link, campana, chat y cerrar sesión sean
+// alcanzables en móvil.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { LicitacionesShell } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
 import type { BranchOption } from "../src/verticals/licitaciones/lib/admin-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
@@ -76,11 +75,9 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(aside!.className).toContain("hidden");
     expect(aside!.className).toContain("md:flex");
 
-    const headers = [...root.querySelectorAll("header")];
-    const mobileHeader = headers.find((h) => h.className.includes("md:hidden"));
+    const mobileHeader = [...root.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"));
     expect(mobileHeader).toBeDefined();
-    expect(mobileHeader!.querySelector('img[alt="atiende"]')).not.toBeNull();
-    expect(mobileHeader!.textContent).toContain("Licitaciones · demo");
+    expect(mobileHeader!.textContent).toContain("atiende");
 
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]');
     expect(bottomNav).not.toBeNull();
@@ -89,23 +86,70 @@ describe("LicitacionesShell — nav móvil", () => {
 
   it("el BottomNav trae exactamente los 4 destinos curados (el resto, bajo Más)", async () => {
     rendered = await renderShell();
-    const root = rendered.container;
-    const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
-    const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Panel", "Convocatorias", "Seguimiento", "Empresa"]);
+    const bottomNav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    expect([...bottomNav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/licitaciones/demo/panel",
+      "/licitaciones/demo/convocatorias",
+      "/licitaciones/demo/seguimiento",
+      "/licitaciones/demo/datos-empresa",
+    ]);
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:flex, directo en el <header>)", async () => {
+  it('el botón "Más" abre los 11 destinos de un owner, incluidos Staff, WhatsApp y Seguridad', async () => {
+    rendered = await renderShell();
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toHaveLength(11);
+    expect(hrefs).toEqual(
+      expect.arrayContaining(["/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad"]),
+    );
+  });
+
+  it("un rol sin gestión de staff no ve Staff (cosmético; el servidor es la barrera) y Más trae los otros 10", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem(
+      "atiende.licitaciones.session",
+      JSON.stringify({ ...SESSION, organizations: [{ id: "org-1", slug: "demo", nombre: "Demo", vertical: "licitaciones", rol: "viewer" }] }),
+    );
+    fetchBranchesMock.mockResolvedValue([{ propertyId: "prop-1", name: "Empresa Demo" }]);
+    rendered = renderComponent(
+      <MemoryRouter>
+        <LicitacionesShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {() => <div>child</div>}
+        </LicitacionesShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
+    expect(hrefs).toHaveLength(10);
+    expect(hrefs).not.toContain("/licitaciones/demo/staff");
+  });
+
+  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+    rendered = await renderShell();
+    const desktopHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.textContent?.includes("Licitaciones · demo") && !h.className.includes("md:hidden"));
+    expect(desktopHeader).toBeDefined();
+    expect(desktopHeader!.parentElement!.className).toContain("hidden");
+    expect(desktopHeader!.parentElement!.className).toContain("md:block");
+  });
+
+  it("expone skip link y un único <main> enfocable (sin <main> anidado)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
-    const headers = [...root.querySelectorAll("header")];
-    const desktopHeader = headers.find((h) => h.textContent?.includes("Licitaciones · demo") && h.className.includes("md:flex"));
-    expect(desktopHeader).toBeDefined();
-    expect(desktopHeader!.className).toContain("hidden");
-    expect(desktopHeader!.className).toContain("md:flex");
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    const mains = root.querySelectorAll("main");
+    expect(mains).toHaveLength(1);
+    expect(mains[0]!.id).toBe("contenido-principal");
+    expect(mains[0]!.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("cerrar sesión desde el menú de cuenta móvil dispara logout real y regresa a onRequireLogin", async () => {
+  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
     const onRequireLogin = vi.fn();
     installMatchMediaStub();
     installMemoryLocalStorage().setItem("atiende.licitaciones.session", JSON.stringify(SESSION));
@@ -120,13 +164,12 @@ describe("LicitacionesShell — nav móvil", () => {
     await act(async () => {
       await flushMicrotasks();
     });
+    const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
     const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
-    // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con
-    // el refreshToken de la sesión, no solo la navegación de vuelta al login.
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.test/auth/logout",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }),
-    );
+    // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con el refreshToken de la sesión.
+    expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/logout", expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }));
     expect(onRequireLogin).toHaveBeenCalled();
+    expect(window.localStorage.getItem("atiende.licitaciones.session")).toBeNull();
   });
 });

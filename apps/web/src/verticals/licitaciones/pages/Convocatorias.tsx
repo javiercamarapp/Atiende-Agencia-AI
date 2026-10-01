@@ -9,17 +9,17 @@
 // docs/BLOQUEOS.md y el README de apps/api/.../licitaciones).
 //
 // Fase "sistema de diseño real" (contenido) — la tabla inline-styled pasa a
-// `Table` de @atiende/ui, el pill de elegibilidad a `Badge`, el alta manual al
-// shell real `ModalFormularioLateral` (mismo estado `showForm`, misma llamada a
+// `DataTable` de @atiende/ui, el pill de elegibilidad a `StatusBadge`, el alta manual al
+// `FormDialog` (mismo estado `showForm`, misma llamada a
 // createOrUpdateTender) y el botón ad-hoc a `Button`. Cero cambios de lógica.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { Badge, Button, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
+import { Button, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import { createOrUpdateTender, fetchTenders } from "../lib/tenders-client.ts";
+import { ELEGIBILIDAD_TONES } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingList } from "../lib/matching-client.ts";
 import type { MatchResult } from "../lib/matching-client.ts";
@@ -28,21 +28,12 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-/** Mismo mapeo semántico que antes (verde/rojo/gris), ahora sobre las variantes
- * reales de `Badge` en vez de hex hardcodeados. */
-const ELIGIBILITY_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  cumple: "default",
-  no_cumple: "destructive",
-  no_evaluable: "secondary",
-};
-
 function ScoreBadge({ match }: { match: MatchResult | undefined }) {
   if (!match) return <span className="text-xs text-muted-foreground">Sin score</span>;
-  const variant = ELIGIBILITY_VARIANTS[match.eligibility.status] ?? "secondary";
   return (
     <span className="inline-flex items-center gap-2">
       <strong className="text-sm tabular-nums text-foreground">{match.score}</strong>
-      <Badge variant={variant}>{formatEligibility(match.eligibility.status)}</Badge>
+      <StatusBadge tone={statusTone(ELEGIBILIDAD_TONES, match.eligibility.status)}>{formatEligibility(match.eligibility.status)}</StatusBadge>
     </span>
   );
 }
@@ -131,12 +122,12 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
-          <h1 className="text-xl font-semibold text-foreground">Convocatorias</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">Alta manual mientras la ingesta automática siga bloqueada (ver README).</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">Convocatorias</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Alta manual mientras la ingesta automática siga bloqueada (ver README).</p>
         </div>
         {WRITE_ROLES.has(role) && (
           <Button type="button" size="sm" onClick={() => setShowForm(true)}>
@@ -146,7 +137,7 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
         )}
       </header>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={showForm}
         onOpenChange={setShowForm}
         titulo="Nueva convocatoria"
@@ -185,12 +176,12 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
             <Input id="nueva-presupuesto" type="number" min="0" value={form.budgetAmount} onChange={(e) => setForm({ ...form, budgetAmount: e.target.value })} />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -201,38 +192,32 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
       )}
 
       {sorted.length > 0 && (
-        <div className="rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Título</TableHead>
-                <TableHead>Entidad</TableHead>
-                <TableHead>Fecha límite</TableHead>
-                <TableHead>Estatus</TableHead>
-                <TableHead>Score</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="p-3">
-                    <Link to={`/licitaciones/${orgSlug}/convocatorias/${t.id}`} className="font-semibold text-foreground no-underline hover:underline">
-                      {t.title}
-                    </Link>
-                    {t.externalId && <div className="text-[11px] text-muted-foreground">{t.externalId}</div>}
-                  </TableCell>
-                  <TableCell className="p-3 text-muted-foreground">{t.contractingBody ?? "—"}</TableCell>
-                  <TableCell className="p-3 text-muted-foreground">{formatDeadline(t.submissionDeadline)}</TableCell>
-                  <TableCell className="p-3 text-muted-foreground">{formatTenderStatus(t.status)}</TableCell>
-                  <TableCell className="p-3">
-                    <ScoreBadge match={matchByTenderId.get(t.id)} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTable
+          etiqueta="Convocatorias"
+          obtenerId={(t) => t.id}
+          filas={sorted}
+          paginacion={{ tamano: 25 }}
+          columnas={[
+            {
+              id: "titulo",
+              encabezado: "Título",
+              principal: true,
+              celda: (t) => (
+                <>
+                  <Link to={`/licitaciones/${orgSlug}/convocatorias/${t.id}`} className="font-semibold text-foreground no-underline hover:underline">
+                    {t.title}
+                  </Link>
+                  {t.externalId && <div className="text-xs font-normal text-muted-foreground">{t.externalId}</div>}
+                </>
+              ),
+            },
+            { id: "entidad", encabezado: "Entidad", celda: (t) => <span className="text-muted-foreground">{t.contractingBody ?? "—"}</span> },
+            { id: "fecha", encabezado: "Fecha límite", celda: (t) => <span className="text-muted-foreground">{formatDeadline(t.submissionDeadline)}</span> },
+            { id: "estatus", encabezado: "Estatus", celda: (t) => <span className="text-muted-foreground">{formatTenderStatus(t.status)}</span> },
+            { id: "score", encabezado: "Score", celda: (t) => <ScoreBadge match={matchByTenderId.get(t.id)} /> },
+          ]}
+        />
       )}
-    </div>
+    </PageContainer>
   );
 }

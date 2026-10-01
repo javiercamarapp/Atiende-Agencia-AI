@@ -30,14 +30,13 @@
 //
 // Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
 // Label/EstadoCargando/EstadoError + clases de token en vez de los `style={{...}}`
-// hechos a mano. El formulario de "conectar feed" pasa a <ModalFormularioLateral>
+// hechos a mano. El formulario de "conectar feed" pasa a <FormDialog>
 // (el shell de modal ya existente del repo), conservando EXACTAMENTE su submit, su
 // validación local ("La URL del feed a importar es requerida.") y su recarga
 // (`onCambio`). CERO cambios de lógica ni de gates de rol.
 import { useEffect, useState } from "react";
 import { Copy, Link2, Plug, Unplug } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, ConfirmDialog, EstadoCargando, EstadoError, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
 import {
   CANALES_CON_MARKUP,
   conectarFeed,
@@ -47,6 +46,7 @@ import {
   fetchUnidades,
 } from "../lib/ical-sync-client.ts";
 import type { FeedIcalSync, UnidadOption } from "../lib/ical-sync-client.ts";
+import { feedCanalTone } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 // Espejo web de SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES
@@ -57,13 +57,8 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 const SYNC_CALENDARIO_LECTURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"]);
 const SYNC_CALENDARIO_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
-/** Mismos tokens que el <Input> de @atiende/ui aplicados al <select> nativo de
- * unidades: es un dropdown de datos reales con su estado `<option>Cargando…</option>`,
- * se queda nativo y solo se re-estila. */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
-const RUBRO_CLASES = "m-0 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
+const RUBRO_CLASES = "m-0 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "nunca";
@@ -99,31 +94,31 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Sincronización de calendario (iCal)</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso de lectura a la sincronización de calendario. Roles con acceso:{" "}
           <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
           <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">operador:solo_calendario</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   if (unidades && unidades.length === 0) {
     return (
-      <div className="flex flex-col gap-4">
+      <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Sincronización de calendario (iCal)</h1>
         <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[760px]">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Sincronización de calendario (iCal)</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Conecta el feed iCal de cada canal externo para importar su disponibilidad y evitar doble reserva, y copia la URL del feed de exportación de esta unidad para pegarla
           en el canal.
           {!puedeEscribir && (
@@ -139,20 +134,20 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
       <Label className={`${LABEL_CLASES} max-w-[320px]`}>
         Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+        <NativeSelect value={unidadId} onChange={(e) => setUnidadId(e.target.value)} disabled={!unidades}>
           {!unidades && <option>Cargando…</option>}
           {unidades?.map((u) => (
             <option key={u.id} value={u.id}>
               {u.nombre}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </Label>
 
       {error && <EstadoError mensaje={error} />}
 
       {unidadId && <CanalesSync apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} puedeEscribir={puedeEscribir} />}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -241,6 +236,7 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
   const [modalAbierto, setModalAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
+  const [confirmandoDesconectar, setConfirmandoDesconectar] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -289,17 +285,15 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
   return (
     <Card>
       <CardHeader className="p-4 pb-2 flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-[15px] font-semibold">{canalNombre}</CardTitle>
+        <CardTitle className="text-base font-semibold">{canalNombre}</CardTitle>
         {feed && (
-          <Badge variant={feed.enCuarentenaDesde ? "destructive" : feed.activo ? "default" : "outline"}>
-            {feed.enCuarentenaDesde ? "En cuarentena" : feed.activo ? "Conectado" : "Inactivo"}
-          </Badge>
+          <StatusBadge tone={feedCanalTone(feed)}>{feed.enCuarentenaDesde ? "En cuarentena" : feed.activo ? "Conectado" : "Inactivo"}</StatusBadge>
         )}
       </CardHeader>
 
       <CardContent className="p-4 pt-0 flex flex-col gap-3">
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {error}
           </p>
         )}
@@ -307,7 +301,7 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
         <div className="flex flex-col gap-1.5">
           <p className={RUBRO_CLASES}>Importar desde {canalNombre}</p>
           {feed ? (
-            <div className="flex flex-col gap-1.5 text-[13px]">
+            <div className="flex flex-col gap-1.5 text-sm">
               <p className="m-0 break-all text-foreground">{feed.urlImportacion}</p>
               <p className="m-0 text-xs text-muted-foreground">Última sincronización exitosa: {formatearFecha(feed.ultimaSincronizacionExitosaEn)}</p>
               {feed.intentosFallidosConsecutivos > 0 && (
@@ -318,7 +312,7 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
                 </p>
               )}
               {puedeEscribir && (
-                <Button type="button" variant="destructive" size="sm" onClick={handleDesconectar} disabled={desconectando} className="self-start">
+                <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmandoDesconectar(true)} disabled={desconectando} className="self-start">
                   <Unplug className="w-4 h-4" strokeWidth={1.75} />
                   {desconectando ? "Desconectando…" : "Desconectar"}
                 </Button>
@@ -347,9 +341,21 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
         </div>
       </CardContent>
 
+      {/* Desconectar deja de importar la disponibilidad del canal (riesgo de doble reserva): pide confirmación con el
+          nombre del canal; "Cancelar", Escape o clic fuera no desconectan nada. */}
+      <ConfirmDialog
+        open={confirmandoDesconectar}
+        onOpenChange={setConfirmandoDesconectar}
+        tono="danger"
+        titulo={`¿Desconectar ${canalNombre}?`}
+        descripcion={`Dejaremos de importar la disponibilidad de ${canalNombre} para esta unidad: el calendario ya no se actualizará con sus reservas y podría haber doble reserva hasta que vuelvas a conectarlo.`}
+        confirmar="Sí, desconectar"
+        onConfirm={() => handleDesconectar()}
+      />
+
       {/* Conectar feed: mismo submit exacto que el <form> inline previo, ahora en el
           shell de modal del repo. */}
-      <ModalFormularioLateral
+      <FormDialog
         open={modalAbierto}
         onOpenChange={(abierto) => {
           setModalAbierto(abierto);
@@ -378,12 +384,12 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
             La encuentras en la configuración de calendario de {canalNombre}, como "exportar calendario".
           </p>
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {error}
             </p>
           )}
         </div>
-      </ModalFormularioLateral>
+      </FormDialog>
     </Card>
   );
 }

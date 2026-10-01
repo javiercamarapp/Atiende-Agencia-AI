@@ -69,8 +69,8 @@ export function RestablecerContrasenaPage({ apiBaseUrl }: { readonly apiBaseUrl:
   if (!token) {
     return (
       <PaginaPublica titulo="Enlace incompleto">
-        <p className="text-[13px] text-muted-foreground">Este enlace no trae el código para restablecer tu contraseña. Abre el enlace completo del correo o pide uno nuevo desde Seguridad de tu cuenta.</p>
-        <Link to="/licitaciones/login" className="text-[13px] underline underline-offset-2">
+        <p className="text-sm text-muted-foreground">Este enlace no trae el código para restablecer tu contraseña. Abre el enlace completo del correo o pide uno nuevo desde Seguridad de tu cuenta.</p>
+        <Link to="/licitaciones/login" className="text-sm underline underline-offset-2">
           Ir a iniciar sesión
         </Link>
       </PaginaPublica>
@@ -80,10 +80,10 @@ export function RestablecerContrasenaPage({ apiBaseUrl }: { readonly apiBaseUrl:
   if (listo) {
     return (
       <PaginaPublica titulo="Contraseña actualizada">
-        <p role="status" className="text-[13px] text-foreground">
+        <p role="status" className="text-sm text-foreground">
           Listo. Por seguridad se cerraron todas tus sesiones: inicia sesión de nuevo (con Google o con un enlace por correo).
         </p>
-        <Link to="/licitaciones/login" className="text-[13px] underline underline-offset-2">
+        <Link to="/licitaciones/login" className="text-sm underline underline-offset-2">
           Ir a iniciar sesión
         </Link>
       </PaginaPublica>
@@ -133,12 +133,12 @@ export function VerificarCorreoPage({ apiBaseUrl }: { readonly apiBaseUrl: strin
     <PaginaPublica titulo="Verificación de correo">
       {estado === "cargando" && <EstadoCargando etiqueta="Verificando tu correo…" />}
       {estado === "ok" && (
-        <p role="status" className="text-[13px] text-foreground">
+        <p role="status" className="text-sm text-foreground">
           Tu correo quedó verificado.
         </p>
       )}
       {estado === "error" && <EstadoError mensaje={error ?? "No se pudo verificar el correo."} />}
-      <Link to="/licitaciones/login" className="text-[13px] underline underline-offset-2">
+      <Link to="/licitaciones/login" className="text-sm underline underline-offset-2">
         Ir a iniciar sesión
       </Link>
     </PaginaPublica>

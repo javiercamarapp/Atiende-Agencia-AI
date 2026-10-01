@@ -20,6 +20,9 @@ import { AtiendeWordmark, Button, Label } from "@atiende/ui";
 import { OwnerPortalError, ownerPortalActivar } from "../lib/owner-portal-client.ts";
 import "../../../pages/login.css";
 
+/** Retraso de la animación de entrada (`login-entra`). */
+const retraso = (animationDelay: string) => ({ animationDelay });
+
 export interface OwnerPortalActivarPageProps {
   readonly apiBaseUrl: string;
 }
@@ -52,20 +55,20 @@ export function OwnerPortalActivarPage({ apiBaseUrl }: OwnerPortalActivarPagePro
       {/* Columna izquierda: formulario real */}
       <div className="w-full md:w-[46%] flex flex-col justify-center px-6 sm:px-10 lg:px-16 py-12">
         <div className="mx-auto w-full max-w-sm flex flex-col gap-7">
-          <div className="login-entra" style={{ animationDelay: "0s" }}>
+          <div className="login-entra" style={retraso("0s")}>
             <AtiendeWordmark className="h-7 w-auto" />
           </div>
 
-          <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "0.05s" }}>
+          <div className="login-entra flex flex-col gap-2" style={retraso("0.05s")}>
             <span className="login-kicker">Invitación de propietario</span>
-            <h1 className="login-serif text-foreground text-[32px] sm:text-[38px]">Activa tu cuenta de propietario</h1>
-            <p className="text-[14px] text-muted-foreground leading-snug">
+            <h1 className="login-serif text-foreground text-3xl sm:text-4xl">Activa tu cuenta de propietario</h1>
+            <p className="text-sm text-muted-foreground leading-snug">
               Pega el token que te compartió tu administrador y fija tu contraseña para entrar al portal.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} noValidate className="login-entra flex flex-col gap-3" style={{ animationDelay: "0.1s" }}>
-            <Label htmlFor="token" className="flex flex-col gap-1.5 text-[13px] text-foreground">
+          <form onSubmit={handleSubmit} noValidate className="login-entra flex flex-col gap-3" style={retraso("0.1s")}>
+            <Label htmlFor="token" className="flex flex-col gap-1.5 text-sm text-foreground">
               Token de invitación
               <input
                 id="token"
@@ -74,10 +77,10 @@ export function OwnerPortalActivarPage({ apiBaseUrl }: OwnerPortalActivarPagePro
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 required
-                className="login-campo font-mono text-[13px]"
+                className="login-campo font-mono text-sm"
               />
             </Label>
-            <Label htmlFor="password" className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <Label htmlFor="password" className="flex flex-col gap-1.5 text-sm text-foreground">
               Contraseña (mínimo 8 caracteres)
               <input
                 id="password"
@@ -90,7 +93,7 @@ export function OwnerPortalActivarPage({ apiBaseUrl }: OwnerPortalActivarPagePro
                 className="login-campo"
               />
             </Label>
-            <Label htmlFor="confirmPassword" className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <Label htmlFor="confirmPassword" className="flex flex-col gap-1.5 text-sm text-foreground">
               Confirma tu contraseña
               <input
                 id="confirmPassword"
@@ -105,7 +108,7 @@ export function OwnerPortalActivarPage({ apiBaseUrl }: OwnerPortalActivarPagePro
             </Label>
 
             {error && (
-              <p role="alert" className="text-[13px] text-destructive m-0">
+              <p role="alert" className="text-sm text-destructive m-0">
                 {error}
               </p>
             )}
@@ -121,8 +124,8 @@ export function OwnerPortalActivarPage({ apiBaseUrl }: OwnerPortalActivarPagePro
       <aside className="login-lamina hidden md:block md:w-[54%] relative m-3 rounded-[22px] overflow-hidden">
         <img src="/images/login-hero.png" alt="" className="login-foto-marca absolute inset-0 h-full w-full object-cover" />
         <div className="login-velo" />
-        <div className="absolute inset-x-0 bottom-0 p-10 lg:p-14 text-white">
-          <p className="login-kicker text-white/70 mb-3">Un solo paso</p>
+        <div className="absolute inset-x-0 bottom-0 p-10 lg:p-14 login-lamina-texto">
+          <p className="login-kicker mb-3">Un solo paso</p>
           <p className="login-serif text-2xl lg:text-3xl leading-snug max-w-md">
             Fija tu contraseña una vez y consulta desde ahí cada statement de tus unidades.
           </p>

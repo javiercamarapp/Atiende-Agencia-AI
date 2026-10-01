@@ -16,15 +16,15 @@
 // el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 //
 // Fase "sistema de diseño real" (contenido) — secciones a `Card`, botones a
-// `Button`, el input de correo a `Input`, los `<select>` de rol siguen nativos
-// (restilados con tokens), el estatus de cada invitación a `Badge` y los
+// `Button`, el input de correo a `Input`, los selectores de rol a `NativeSelect`, el estatus de cada invitación a `StatusBadge` y los
 // estados vacío/cargando a `EstadoVacio`/`EstadoCargando`. Cero cambios de
 // lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Mail, UserPlus } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, useConfirm } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
+import { INVITACION_STAFF_TONES } from "../lib/status-tones.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import { fetchTenantConfig, updateTenantConfigTimezone } from "../lib/admin-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -50,19 +50,9 @@ function statusLabel(status: string): string {
   return status;
 }
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "accepted") return "default";
-  if (status === "revoked" || status === "expired") return "destructive";
-  return "secondary";
-}
-
-/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
- * solo se restila con los tokens reales. */
-const SELECT_NATIVO =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
 export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
@@ -173,7 +163,15 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
     }
   }
 
-  async function handleRevoke(inviteId: string) {
+  async function handleRevoke(inviteId: string, inviteEmail: string) {
+    // Revocar es destructivo (la invitación deja de servir): Cancelar / cerrar el diálogo NO ejecuta nada.
+    const ok = await confirmar({
+      titulo: `Revocar la invitación de ${inviteEmail}`,
+      descripcion: "El enlace y el token de esa invitación dejarán de funcionar. Para volver a invitar a esa persona tendrás que crear una invitación nueva.",
+      tono: "danger",
+      confirmar: "Revocar invitación",
+    });
+    if (!ok) return;
     setRevokingId(inviteId);
     setError(null);
     try {
@@ -188,13 +186,13 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
   }
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-5">
-      <h1 className="text-xl font-semibold text-foreground">Staff</h1>
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
+      <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <p className="rounded-xl border border-border bg-muted p-3 text-[13px] text-muted-foreground">
+        <p className="rounded-xl border border-border bg-muted p-3 text-sm text-muted-foreground">
           Invitar, revocar, o cambiar el rol de staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de esta empresa.
         </p>
       )}
@@ -248,13 +246,13 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="staff-rol">Rol</Label>
-                <select id="staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} className={SELECT_NATIVO}>
+                <NativeSelect id="staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} wrapperClassName="w-auto min-w-44">
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <Button type="submit" size="sm" disabled={creating}>
                 <UserPlus />
@@ -264,7 +262,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
 
             {lastCreated && (
               <div className="rounded-xl border border-border bg-muted p-3">
-                <p className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
                   Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
                 </p>
@@ -291,14 +289,14 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
                 {invites.map((inv) => (
                   <div key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-foreground">{inv.email}</p>
+                      <p className="text-sm font-semibold text-foreground">{inv.email}</p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <span>{ROLE_LABELS[inv.verticalRole]}</span>
-                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        <StatusBadge tone={statusTone(INVITACION_STAFF_TONES, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
                         <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
                       </p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => void handleRevoke(inv.id)} disabled={revokingId === inv.id}>
+                    <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => void handleRevoke(inv.id, inv.email)} disabled={revokingId === inv.id}>
                       {revokingId === inv.id ? "Revocando…" : "Revocar"}
                     </Button>
                   </div>
@@ -326,22 +324,22 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
                 {members.map((m) => (
                   <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-foreground">{m.fullName}</p>
+                      <p className="text-sm font-semibold text-foreground">{m.fullName}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
                     </div>
-                    <select
+                    <NativeSelect
                       value={m.verticalRole}
                       disabled={savingRoleId === m.id}
                       onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
                       aria-label={`Rol de ${m.fullName}`}
-                      className={SELECT_NATIVO}
+                      wrapperClassName="w-auto min-w-44"
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r}>
                           {ROLE_LABELS[r]}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                 ))}
               </div>
@@ -349,6 +347,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lici
           </CardContent>
         </Card>
       )}
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

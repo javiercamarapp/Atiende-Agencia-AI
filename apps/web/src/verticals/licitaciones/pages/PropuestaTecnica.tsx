@@ -36,7 +36,7 @@
 // es trabajo de otra pieza -- no se inventa aquí.
 //
 // Fase "sistema de diseño real" (contenido) — las secciones pasan a `Card`,
-// los inputs/selects a `Input`/`Label` (los `<select>` siguen nativos,
+// los inputs/selects a `Input`/`Label` (los `<NativeSelect>` siguen nativos,
 // restilados con tokens), todos los botones a `Button`, y los bloques de
 // resultado azul/ámbar hardcodeados a superficies de token. Cero cambios de
 // lógica ni de red.
@@ -44,7 +44,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Sparkles, Trash2 } from "lucide-react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
@@ -95,17 +95,12 @@ interface MappingFormState {
 
 const EMPTY_MAPPING_FORM: MappingFormState = { kind: "document", refKey: "", statementTemplate: "" };
 
-/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
- * solo se restila con los tokens reales, mismo anillo de foco que `Input`. */
-const SELECT_NATIVO =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-/** Panel de resultado informativo (antes azul #eff6ff hardcodeado). */
+/** Panel de resultado informativo. */
 const PANEL_INFO = "flex flex-col gap-2 rounded-xl border border-border bg-muted p-3";
-/** Panel de resultado bloqueado/advertencia (antes ámbar #fffbeb hardcodeado). */
-const PANEL_ALERTA = "flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3";
-const TEXTO_ALERTA = "text-amber-700 dark:text-amber-400";
-const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline";
+/** Panel de resultado bloqueado/advertencia (tokens de advertencia del DS v2). */
+const PANEL_ALERTA = "flex flex-col gap-2 rounded-xl border border-warning/30 bg-warning-tint p-3";
+const TEXTO_ALERTA = "font-medium text-foreground";
+const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline";
 
 export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
@@ -294,14 +289,14 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
   const priorEconomic = proposal?.generationReport?.economic;
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title} · requisitos
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Propuesta técnica</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Propuesta técnica</h1>
+        <p className="text-sm text-muted-foreground">
           Genera la propuesta técnica a partir de los requisitos ya extraídos y configura a qué dato de empresa se redacta cada tema (topicKey). La propuesta económica vive abajo en esta misma pantalla.
         </p>
         <div className="mt-2 flex flex-col gap-1">
@@ -315,7 +310,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
       </div>
 
       {technicalItems.length === 0 && (
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Todavía no hay requisitos técnicos/legales/administrativos/de anexo extraídos para esta convocatoria.{" "}
           <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className="font-semibold text-foreground hover:underline">
             Sube las bases primero
@@ -340,7 +335,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                     const choice = conditionChoices[item.id] ?? "sin_evaluar";
                     return (
                       <div key={item.id} className="rounded-xl border border-border p-2.5">
-                        <p className="mb-2 text-[13px] text-foreground">{item.text}</p>
+                        <p className="mb-2 text-sm text-foreground">{item.text}</p>
                         <div className="flex flex-wrap gap-4 text-xs">
                           {(["sin_evaluar", "aplica", "no_aplica"] as const).map((option) => (
                             <label key={option} className="flex cursor-pointer items-center gap-1.5 text-foreground">
@@ -388,14 +383,14 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
               )}
 
               {generateError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {generateError}
                 </p>
               )}
 
               {generateResult && (
                 <div className={PANEL_INFO}>
-                  <p className="text-[13px] font-semibold text-foreground">
+                  <p className="text-sm font-semibold text-foreground">
                     {generateResult.sections.length} sección(es) generada(s) · {generateResult.blockers} bloqueo(s) pendiente(s)
                   </p>
                   {generateResult.sections.length > 0 && (
@@ -434,7 +429,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {itemsByTopicKey.size === 0 && (
-                <p className="text-[13px] text-muted-foreground">Ningún requisito extraído trae un topicKey identificado todavía -- no hay nada que mapear.</p>
+                <p className="text-sm text-muted-foreground">Ningún requisito extraído trae un topicKey identificado todavía -- no hay nada que mapear.</p>
               )}
 
               {!canMap && itemsByTopicKey.size > 0 && (
@@ -449,7 +444,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                 return (
                   <div key={topicKey} className="flex flex-col gap-2 rounded-xl border border-border p-3">
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{topicKey}</p>
+                      <p className="text-sm font-semibold text-foreground">{topicKey}</p>
                       <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
                         {relatedItems.slice(0, 3).map((i) => (
                           <li key={i.id}>
@@ -461,7 +456,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                     </div>
 
                     {saved && (
-                      <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                      <p role="status" className="text-xs font-medium text-success">
                         Guardado: {MAPPING_KIND_OPTIONS.find((o) => o.value === saved.kind)?.label ?? saved.kind} · refKey "{saved.refKey}".
                       </p>
                     )}
@@ -471,18 +466,18 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                         <div className="flex flex-wrap gap-2">
                           <div className="flex flex-[1_1_160px] flex-col gap-1.5">
                             <Label htmlFor={`mapeo-kind-${topicKey}`}>Fuente del dato</Label>
-                            <select
+                            <NativeSelect
                               id={`mapeo-kind-${topicKey}`}
                               value={form.kind}
                               onChange={(e) => updateMappingForm(topicKey, { kind: e.target.value as RequirementFulfillmentMappingKind })}
-                              className={SELECT_NATIVO}
+                             
                             >
                               {MAPPING_KIND_OPTIONS.map((o) => (
                                 <option key={o.value} value={o.value}>
                                   {o.label}
                                 </option>
                               ))}
-                            </select>
+                            </NativeSelect>
                           </div>
                           <div className="flex flex-[1_1_200px] flex-col gap-1.5">
                             <Label htmlFor={`mapeo-refkey-${topicKey}`}>Identificador (refKey)</Label>
@@ -585,14 +580,14 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
           )}
 
           {economicError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {economicError}
             </p>
           )}
 
           {economicResult && economicResult.totals && (
             <div className={PANEL_INFO}>
-              <p className="text-[13px] font-semibold text-foreground">
+              <p className="text-sm font-semibold text-foreground">
                 Subtotal: ${economicResult.totals.subtotal} · IVA ({(economicResult.totals.ivaRate * 100).toFixed(0)}%): ${economicResult.totals.iva} · Total: ${economicResult.totals.total} {economicResult.totals.currency}
               </p>
               <p className="text-xs text-muted-foreground">{economicResult.totals.totalInWords}</p>
@@ -608,7 +603,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
 
           {economicResult && !economicResult.totals && (
             <div className={PANEL_ALERTA}>
-              <p className={`text-[13px] font-semibold ${TEXTO_ALERTA}`}>
+              <p className={`text-sm font-semibold ${TEXTO_ALERTA}`}>
                 Sin total: {economicResult.blockedLineItems.length} concepto(s) sin tarifa aprobada/vigente. Corrige el concepto o registra la tarifa y vuelve a generar.
               </p>
               <ul className={`list-disc pl-5 text-xs ${TEXTO_ALERTA}`}>
@@ -622,6 +617,6 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

@@ -34,6 +34,8 @@ export interface VerticalLoginProps {
   readonly placeholderCorreo?: string;
   readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean };
   readonly hero: VerticalLoginHero;
+  /** Reemplaza el pie por defecto ("Pídele a tu negocio que te dé de alta"); p. ej. rentas ofrece alta autoservicio. */
+  readonly pie?: ReactNode;
 }
 
 const RETRASO = (ms: number) => ({ animationDelay: `${ms}ms` });
@@ -42,7 +44,7 @@ export function esCorreoValido(correo: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim());
 }
 
-export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero }: VerticalLoginProps) {
+export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
   const conGoogle = metodos?.google ?? true;
   const conMagicLink = metodos?.magicLink ?? true;
   const [correo, setCorreo] = useState("");
@@ -193,7 +195,11 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                 ))}
 
               <p className="login-entra mt-5 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={RETRASO(320)}>
-                ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
+                {pie ?? (
+                  <>
+                    ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
+                  </>
+                )}
               </p>
 
               <p className="login-entra mt-6 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={RETRASO(340)}>

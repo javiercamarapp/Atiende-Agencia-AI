@@ -9,6 +9,7 @@ import type {
   CfoRepository,
   PylRepository,
   CfoZoneRepository,
+  ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
@@ -22,7 +23,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -173,6 +174,10 @@ export interface AppDeps {
    *  define y las rutas usan `PostgresAgentesRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo
    *  sobreescriben con el repo en memoria. */
   readonly hotelesAgentesRepo?: (db: TenantDbSession) => AgentesRepository;
+  /** H-06 -- grupos: cotizacion, bloqueo de cuartos con cutoff, pickup, rooming y anticipos registrados (migracion 036). OPCIONAL:
+   *  en produccion no se define y las rutas usan `PostgresGruposRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los
+   *  tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesGruposRepo?: (db: TenantDbSession) => GruposRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
@@ -534,6 +539,11 @@ export interface AppDeps {
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
    *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
   readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
+  /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
+   *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
+   *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,
+   *  nunca un 500. */
+  readonly contratosRepo?: (db: TenantDbSession) => ContratosRepository;
   /** Privacidad de plataforma y por organizacion (PL-13): solicitudes ARCO unificadas, retencion, bloqueo y registro
    *  de purgas y aviso versionado (packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql, ver
    *  routes/superadmin-privacidad.ts, routes/privacidad-org.ts y routes/internal/plataforma-retencion.ts). Fabrica por

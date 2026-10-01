@@ -9,14 +9,14 @@
 // solape ya no existe (el servidor lo verifica), si no, se ignora indicando el motivo. Las
 // horas se muestran en la zona horaria de la property.
 //
-// Hecha con componentes de @atiende/ui (Card/Badge/Button/Table/Estado*) y el cliente
+// Hecha con componentes de @atiende/ui (Card/StatusBadge/Button/Table/Estado*) y el cliente
 // lib/ical-monitor-client.ts. Gate de rol en el CLIENTE calcado de
 // SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES (el servidor re-valida
 // siempre). Contra una base sin la migración 024 las alertas se muestran como "no
 // disponibles aún" y resolver responde un error legible -- nunca una pantalla rota.
 import { Fragment, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCcw } from "lucide-react";
-import { Badge, Button, Card, Label, Textarea, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, Label, PageContainer, StatusBadge, statusTone, Textarea, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import {
   atenderAlertaSync,
   decidirConflicto,
@@ -29,7 +29,8 @@ import {
   fetchMonitorSync,
   validarMotivoDecision,
 } from "../lib/ical-monitor-client.ts";
-import type { ConflictoCalendario, EstadoSaludFeed, FiltroEstadoConflictos, HistorialConflicto, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
+import type { ConflictoCalendario, FiltroEstadoConflictos, HistorialConflicto, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
+import { ESTADO_CONFLICTO_TONES, SALUD_FEED_TONES, SEVERIDAD_ALERTA_TONES, TIPO_CONFLICTO_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 // Espejo web de SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES
@@ -37,16 +38,6 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 const SYNC_CALENDARIO_LECTURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"]);
 const SYNC_CALENDARIO_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
-const VARIANTE_SALUD: Record<EstadoSaludFeed, "default" | "secondary" | "destructive" | "outline"> = {
-  ok: "default",
-  desactualizado: "secondary",
-  en_backoff: "secondary",
-  en_cuarentena: "destructive",
-  sin_sincronizar: "outline",
-  inactivo: "outline",
-};
-
-const VARIANTE_SEVERIDAD: Record<SeveridadAlerta, "default" | "secondary" | "destructive" | "outline"> = { info: "outline", aviso: "secondary", critica: "destructive" };
 const ETIQUETA_SEVERIDAD: Record<SeveridadAlerta, string> = { info: "Info", aviso: "Aviso", critica: "Crítica" };
 
 const FILTROS: readonly { valor: FiltroEstadoConflictos; etiqueta: string }[] = [
@@ -56,7 +47,6 @@ const FILTROS: readonly { valor: FiltroEstadoConflictos; etiqueta: string }[] = 
   { valor: "todos", etiqueta: "Todos" },
 ];
 
-const VARIANTE_ESTADO_CONFLICTO: Record<ConflictoCalendario["estado"], "default" | "secondary" | "destructive" | "outline"> = { abierto: "destructive", resuelto: "default", ignorado: "outline" };
 
 /** Instante en la zona horaria de la PROPERTY (no la del navegador: un gestor en CDMX viendo una
  * property de Cancún debe ver la hora de Cancún). Una zona inválida cae a la del navegador. */
@@ -144,7 +134,7 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Monitor de sincronización</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Estado de cada feed iCal, alertas del sync y conflictos de calendario (dos canales sobre las mismas noches). Resolver un conflicto es una decisión tuya: el sistema nunca cancela una
           reserva solo.
         </p>
@@ -159,19 +149,19 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
 
   if (!puedeLeer) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         {encabezado}
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso al monitor de sincronización. Roles con acceso:{" "}
           <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
           <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">operador:solo_calendario</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[960px]">
+    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
       {encabezado}
 
       {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
@@ -219,20 +209,20 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                             <TableCell className="text-xs">{k.unidadNombre ?? k.unidadId}</TableCell>
                             <TableCell>
                               <div className="flex flex-wrap items-center gap-1">
-                                <Badge variant={k.tipo === "overbooking_confirmado" ? "destructive" : "secondary"} className="text-[10px]">
+                                <StatusBadge tone={statusTone(TIPO_CONFLICTO_TONES, k.tipo)}>
                                   {ETIQUETA_TIPO_CONFLICTO[k.tipo]}
-                                </Badge>
-                                <Badge variant={VARIANTE_ESTADO_CONFLICTO[k.estado]} className="text-[10px]">
+                                </StatusBadge>
+                                <StatusBadge tone={statusTone(ESTADO_CONFLICTO_TONES, k.estado)}>
                                   {ETIQUETA_ESTADO_CONFLICTO[k.estado]}
-                                </Badge>
+                                </StatusBadge>
                               </div>
-                              {k.motivoResolucion && <div className="mt-1 text-[11px] text-muted-foreground">Motivo: {k.motivoResolucion}</div>}
+                              {k.motivoResolucion && <div className="mt-1 text-xs text-muted-foreground">Motivo: {k.motivoResolucion}</div>}
                             </TableCell>
                             <TableCell className="text-xs">
                               <div>{describirOcupacion(k.ocupacionA)}</div>
                               <div className="text-muted-foreground">{describirOcupacion(k.ocupacionB)}</div>
                               {k.solape && (
-                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                <div className="mt-1 text-xs text-muted-foreground">
                                   Noches en conflicto: {k.solape.inicio} → {k.solape.fin} ({ETIQUETA_VIGENCIA_SOLAPE[k.solape.vigencia]})
                                 </div>
                               )}
@@ -354,9 +344,9 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                       <TableRow key={r.canal}>
                         <TableCell className="text-xs">{r.canal}</TableCell>
                         <TableCell>
-                          <Badge variant={VARIANTE_SALUD[r.peor]} className="text-[10px]">
+                          <StatusBadge tone={statusTone(SALUD_FEED_TONES, r.peor)}>
                             {ETIQUETA_SALUD_FEED[r.peor]}
-                          </Badge>
+                          </StatusBadge>
                         </TableCell>
                         <TableCell className="text-xs">{r.totalFeeds}</TableCell>
                         <TableCell className="text-xs">{r.unidadesConProblema}</TableCell>
@@ -393,9 +383,9 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                     {monitor.alertas.map((a) => (
                       <TableRow key={a.id}>
                         <TableCell>
-                          <Badge variant={VARIANTE_SEVERIDAD[a.severidad]} className="text-[10px]">
+                          <StatusBadge tone={statusTone(SEVERIDAD_ALERTA_TONES, a.severidad)}>
                             {ETIQUETA_SEVERIDAD[a.severidad]}
-                          </Badge>
+                          </StatusBadge>
                         </TableCell>
                         <TableCell className="text-xs">
                           {a.canal} · {a.unidadNombre ?? a.unidadId}
@@ -441,10 +431,10 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                           {f.canal} · {f.unidadNombre ?? f.unidadId}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={VARIANTE_SALUD[f.salud]} className="text-[10px]" title={f.motivoCuarentena ?? undefined}>
+                          <StatusBadge tone={statusTone(SALUD_FEED_TONES, f.salud)} title={f.motivoCuarentena ?? undefined}>
                             {ETIQUETA_SALUD_FEED[f.salud]}
-                          </Badge>
-                          {f.intentosFallidosConsecutivos > 0 && <span className="ml-2 text-[11px] text-muted-foreground">{f.intentosFallidosConsecutivos} fallo(s) seguidos</span>}
+                          </StatusBadge>
+                          {f.intentosFallidosConsecutivos > 0 && <span className="ml-2 text-xs text-muted-foreground">{f.intentosFallidosConsecutivos} fallo(s) seguidos</span>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(f.ultimaSincronizacionExitosaEn, monitor.zonaHoraria)}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.proximoIntentoEn ? formatearFechaHora(f.proximoIntentoEn, monitor.zonaHoraria) : "—"}</TableCell>
@@ -457,6 +447,6 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

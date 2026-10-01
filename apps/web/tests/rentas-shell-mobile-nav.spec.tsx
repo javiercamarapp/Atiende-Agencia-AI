@@ -10,12 +10,16 @@
 // con el wordmark real, y que el BottomNav trae exactamente los 5 destinos
 // operativos curados (Resumen/Calendario/Aprobaciones/Mis tareas/Precios) --
 // nunca más de 5 (REQ-UX-003).
+//
+// PR-7 (DS v2): el shell usa <VerticalShell>; la barra trae los 4 destinos de uso diario y
+// "Más" abre TODOS los destinos (11), de modo que Precios/Finanzas/iCal/... no quedan
+// inalcanzables en móvil. Un único <main>, skip link y nombre de la propiedad visible.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { RentasShell } from "../src/verticals/rentas/RentasShell.tsx";
 import type { PropertyOption } from "../src/verticals/rentas/lib/discovery-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
@@ -84,19 +88,93 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(bottomNav!.className).toContain("md:hidden");
   });
 
-  it("el BottomNav trae exactamente los 5 destinos operativos curados, nunca más de 5", async () => {
+  it("el BottomNav trae los 4 destinos de uso diario y el botón Más (nunca más de 5 lugares)", async () => {
+    rendered = await renderShell();
+    const bottomNav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    expect([...bottomNav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/rentas/demo",
+      "/rentas/demo/calendario",
+      "/rentas/demo/aprobaciones",
+      "/rentas/demo/mis-tareas",
+    ]);
+    expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
+  });
+
+  it('el botón "Más" abre los 11 destinos, incluidos Precios, Finanzas y Auditoría', async () => {
+    rendered = await renderShell();
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toHaveLength(11);
+    expect(hrefs).toEqual(
+      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria"]),
+    );
+  });
+
+  it("expone skip link, un único <main> enfocable y el nombre de la propiedad activa", async () => {
     rendered = await renderShell();
     const root = rendered.container;
-    const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
-    const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Resumen", "Calendario", "Aprobaciones", "Mis tareas", "Precios"]);
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    const mains = root.querySelectorAll("main");
+    expect(mains).toHaveLength(1);
+    expect(mains[0]!.id).toBe("contenido-principal");
+    expect(root.querySelector("aside")!.textContent).toContain("Depa Marina");
+    expect([...root.querySelectorAll("header")].some((h) => h.textContent?.includes("Demo · Depa Marina"))).toBe(true);
+  });
+
+  it("el item Resumen del Sidebar solo esta activo en la raiz, no en las paginas hijas", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify(SESSION));
+    fetchPropertiesMock.mockResolvedValue([{ propertyId: "prop-1", nombre: "Depa Marina" }]);
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={["/rentas/demo/aprobaciones"]}>
+        <RentasShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {() => <div>child</div>}
+        </RentasShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
+    expect(activos).toEqual(["/rentas/demo/aprobaciones"]);
+  });
+
+  it("con varias propiedades ofrece el selector real, lo persiste por organización y remonta la página", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify(SESSION));
+    fetchPropertiesMock.mockResolvedValue([
+      { propertyId: "prop-1", nombre: "Depa Marina" },
+      { propertyId: "prop-2", nombre: "Casa Centro" },
+    ]);
+    rendered = renderComponent(
+      <MemoryRouter>
+        <RentasShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {(ctx) => <div data-testid="hijo">{ctx.propertyId}</div>}
+        </RentasShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const select = rendered.container.querySelector<HTMLSelectElement>("select#rentas-propiedad-activa")!;
+    expect(select).not.toBeNull();
+    expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-1");
+    await act(async () => {
+      select.value = "prop-2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-2");
+    expect(window.localStorage.getItem("atiende.rentas.selectedProperty.demo")).toBe("prop-2");
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];
-    const desktopHeader = headers.find((h) => h.textContent?.includes("Demo") && !h.className.includes("md:hidden"));
+    const desktopHeader = headers.find((h) => h.textContent?.includes("Demo ·") && !h.className.includes("md:hidden"));
     expect(desktopHeader).toBeDefined();
     expect(desktopHeader!.parentElement!.className).toContain("hidden");
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
