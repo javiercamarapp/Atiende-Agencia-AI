@@ -8,7 +8,8 @@ export { calcularNoches, diaDeLaSemana, esFechaCalendario, esRangoValido, noches
 export type { EjecutorTransaccional, FilaSql } from "./ejecutor.ts";
 export { bloquearOwnerStatementEnTransaccion, bloquearUnidadEnTransaccion, esViolacionExclusion } from "./ejecutor.ts";
 
-export { RentasDomainError } from "./errors.ts";
+export { RentasDomainError, ReglaComisionCanalNoConfiguradaError } from "./errors.ts";
+export { CODIGO_CANAL_DIRECTO, FUENTE_COMISION_DIRECTA_POR_DEFECTO, reglaComisionPorDefecto } from "./finanzas/regla-comision-por-defecto.ts";
 export type { RentasErrorCode } from "./errors.ts";
 
 export {

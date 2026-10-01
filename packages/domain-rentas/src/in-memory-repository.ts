@@ -23,6 +23,8 @@
 import { randomUUID } from "node:crypto";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
+import { ReglaComisionCanalNoConfiguradaError } from "./errors.ts";
+import { reglaComisionPorDefecto } from "./finanzas/regla-comision-por-defecto.ts";
 import type { OcupacionCalendarioPage, OcupacionCalendarioVentana, OcupacionVentanaOpciones, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
@@ -685,7 +687,11 @@ export class InMemoryRentasRepository implements RentasRepository {
     if (especifica) return especifica.config;
     const global = this.reglasComisionCanal.find((r) => r.propertyId === null && r.canalId === canalId);
     if (global) return global.config;
-    throw new Error(`No hay rentas.regla_comision_canal configurada para canalId="${canalId}" (ni específica de la property ni global del tenant).`);
+    // Rn-18: mismo criterio que PostgresRentasRepository (default solo para reservas sin canal externo).
+    const canalCodigo = canalId === null ? null : ([...this.calendarStore.canales.values()].find((c) => c.id === canalId)?.codigo ?? "desconocido");
+    const porDefecto = reglaComisionPorDefecto(canalCodigo);
+    if (porDefecto) return porDefecto;
+    throw new ReglaComisionCanalNoConfiguradaError(canalCodigo);
   }
 
   async insertReservaFinanciero(input: NewReservaFinancieroInput): Promise<{ id: string; createdAt: string }> {

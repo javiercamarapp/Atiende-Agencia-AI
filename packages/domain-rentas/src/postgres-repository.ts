@@ -10,6 +10,8 @@ import type { OcupacionCalendarioPage, OcupacionCalendarioVentana, OcupacionVent
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
+import { ReglaComisionCanalNoConfiguradaError } from "./errors.ts";
+import { reglaComisionPorDefecto } from "./finanzas/regla-comision-por-defecto.ts";
 import type {
   BloqueoRecord,
   CanalRecord,
@@ -557,7 +559,17 @@ export class PostgresRentasRepository implements RentasRepository {
     );
     const row = rows[0];
     if (!row) {
-      throw new Error(`No hay rentas.regla_comision_canal configurada para canalId="${canalId}" (ni específica de la property ni global del tenant).`);
+      // Rn-18: sin regla -> default SOLO para reservas sin canal externo; para un canal
+      // externo, error de negocio con la accion a seguir (ver regla-comision-por-defecto.ts).
+      // Son lecturas planas (ningun error de Postgres), la transaccion del request sigue sana.
+      let canalCodigo: string | null = null;
+      if (canalId !== null) {
+        const canal = await this.db.query<{ codigo: string }>(`select codigo from rentas.canal where id = $1;`, [canalId]);
+        canalCodigo = canal.rows[0]?.codigo ?? "desconocido";
+      }
+      const porDefecto = reglaComisionPorDefecto(canalCodigo);
+      if (porDefecto) return porDefecto;
+      throw new ReglaComisionCanalNoConfiguradaError(canalCodigo);
     }
     return { yaNetoDeComision: row.ya_neto_de_comision, comisionBasisPoints: row.comision_basis_points, fuente: row.fuente };
   }
