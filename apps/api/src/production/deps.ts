@@ -77,6 +77,7 @@ import {
   PostgresRentasRepository,
   PostgresRentasCalendarSyncRepository,
   PostgresRentasAccesoRepository,
+  PostgresRentasCatalogoRepository,
   PostgresRentasReportesRepository,
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
@@ -443,6 +444,7 @@ export function buildProductionDeps(): AppDeps {
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
     rentasReportesRepo: (db) => new PostgresRentasReportesRepository(db),
     rentasAccesoRepo: (db) => new PostgresRentasAccesoRepository(db),
+    rentasCatalogoRepo: (db) => new PostgresRentasCatalogoRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).

@@ -48,6 +48,7 @@ import type {
   CanalMensajeriaCodigo,
   RentasCalendarSyncRepository,
   RentasAccesoRepository,
+  RentasCatalogoRepository,
   RentasReportesRepository,
   RentasMensajeriaRepository,
   RentasOnboardingRepository,
@@ -312,6 +313,10 @@ export interface AppDeps {
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
   readonly rentasAccesoRepo?: (db: TenantDbSession) => RentasAccesoRepository;
+  /** Rn-18 / Rn-19 -- reglas de comisión de canal y catálogo (propiedades, unidades, propietarios; migración 027).
+   * OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasCatalogoRepository` y los
+   * tests inyectan el doble en memoria. */
+  readonly rentasCatalogoRepo?: (db: TenantDbSession) => RentasCatalogoRepository;
   /** Fase 5 -- obtiene el contenido de un feed iCal externo (Airbnb/Booking/VRBO/...).
    * A diferencia de `citasGoogleCalendarPortResolver` (por-proveedor, requiere OAuth),
    * este puerto es ÚNICO para toda la plataforma: un feed iCal de canal es una URL

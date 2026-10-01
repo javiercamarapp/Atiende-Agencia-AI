@@ -387,3 +387,4 @@ export {
 // ---- Rn-20: correo de invitacion de staff ----
 export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
+export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from "./staff-invite-email.ts";
