@@ -31,7 +31,7 @@ async function setup(opts: { holdsEnabled?: boolean; migrated?: boolean } = {}) 
   const voz = (tool: string, body: unknown, secret = SECRET) =>
     app.request(`/v1/hoteles/${ctx.propertyId}/voz/reservas/${tool}`, jsonRequestInit(body, { "x-atiende-tool-secret": secret }));
   const staff = (role: keyof HotelesTestContext["staff"], method: string, path: string, body?: unknown) => {
-    reservas.actor = { userId: ctx.staff[role].userId ?? `u-${role}`, role: role === "owner" || role === "gm" || role === "frontdesk" || role === "reservations" ? role : "housekeeping" };
+    reservas.actor = { userId: ctx.staff[role].id, role: role === "owner" || role === "gm" || role === "frontdesk" || role === "reservations" ? role : "housekeeping" };
     return app.request(`/hoteles/${ctx.propertyId}/reservas-agente${path}`, { ...authedJson(ctx.staff[role].token, body), method });
   };
   const stay = { fecha_llegada: "2031-06-12", fecha_salida: "2031-06-14" };

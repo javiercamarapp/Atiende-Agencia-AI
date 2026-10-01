@@ -248,7 +248,7 @@ describe("cantidades y fechas absurdas", () => {
   });
 
   it.each([
-    ["0", 0], ["negativo", -3], ["decimal", 2.5], ["texto", "dos"], ["texto numerico", "2"], ["infinito", 1e999], ["absurdo", 1_000_000], ["null", null],
+    ["0", 0], ["negativo", -3], ["decimal", 2.5], ["texto", "dos"], ["texto numerico", "2"], ["infinito", Number.POSITIVE_INFINITY], ["absurdo", 1_000_000], ["null", null],
   ])("26. huespedes %s se rechaza (parametros_invalidos) y no se aparta nada", async (_n, huespedes) => {
     const w = makeWorld();
     const { results } = await w.run([tool("crear_pre_reserva", holdArgs(w, { huespedes })), say("ok")]);
