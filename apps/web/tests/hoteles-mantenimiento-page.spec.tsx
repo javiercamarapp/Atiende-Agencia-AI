@@ -71,6 +71,18 @@ describe("MantenimientoPage (hoteles) — cierre con dialogos", () => {
     expect(posts()).toEqual([]);
   });
 
+  it("cancelar el dialogo de la nota de cierre (segundo paso) no cierra el ticket", async () => {
+    stub();
+    rendered = renderComponent(<MantenimientoPage {...CTX} />);
+    await esperar();
+    await abrirCierre();
+    await pulsarEnDialogo("Continuar");
+    expect(dialogo()!.querySelector("textarea")).not.toBeNull();
+    await pulsarEnDialogo("Cancelar");
+    await esperar();
+    expect(posts()).toEqual([]);
+  });
+
   it("un costo invalido bloquea el boton; con costo y nota manda POST .../cerrar y nunca usa window.prompt", async () => {
     stub();
     const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("no debe usarse");
