@@ -130,6 +130,9 @@ describe("Calendario — cancelar una reserva", () => {
       const method = init?.method ?? "GET";
       if (method === "POST" && url.endsWith("/reservas/o1/cancelar")) return res({ id: "o1", estado: "cancelado", estadoAnterior: "confirmado" });
       if (url.endsWith("/unidades")) return res({ unidades: [UNIDAD] });
+      if (url.includes("/calendario?")) return res({ zona_horaria: "America/Cancun", hoy: "2026-11-01", total: 0, truncado: false, ocupaciones: [] });
+      if (url.includes("/tareas?")) return res({ tareas: [] });
+      if (url.includes("/conflictos?")) return res({ zona_horaria: "America/Cancun", conflictos: [], total_abiertos: 0 });
       if (url.endsWith("/unidades/u1/ocupaciones")) return res({ ocupaciones: [RESERVA] });
       throw new Error(`fetch inesperado en el test: ${method} ${url}`);
     });
@@ -139,6 +142,9 @@ describe("Calendario — cancelar una reserva", () => {
   async function abrir(): Promise<RenderedComponent> {
     stub();
     const r = renderComponent(<CalendarioPage {...CTX} />);
+    await esperar();
+    // Rn-06: la página abre en el calendario visual; la gestión (cancelar) vive en la pestaña "Lista".
+    click(botonPagina(r, "Lista"));
     await esperar();
     click(botonPagina(r, "Cancelar reserva"));
     await esperar();

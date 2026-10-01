@@ -207,6 +207,7 @@ const RAZON_ETIQUETA: Record<string, string> = {
 };
 
 const ESTADO_OCUPACION_ETIQUETA: Record<string, string> = { confirmado: "confirmada", provisional: "provisional", conflicto_pendiente: "con conflicto pendiente", cancelado: "cancelada" };
+const ESTADO_BLOQUEO_ETIQUETA: Record<string, string> = { confirmado: "activo", provisional: "provisional", conflicto_pendiente: "con conflicto pendiente", cancelado: "liberado" };
 const TIPO_TAREA_ETIQUETA: Record<TipoTareaOperativa, string> = { limpieza: "Limpieza", mantenimiento: "Mantenimiento", inspeccion: "Inspección" };
 const ESTADO_TAREA_ETIQUETA: Record<EstadoTareaOperativa, string> = {
   pendiente: "pendiente",
@@ -238,7 +239,7 @@ export function elementoDeOcupacion(o: OcupacionVisual, enConflictoIds: Readonly
   const esReserva = o.capa === "reserva";
   const razon = RAZON_ETIQUETA[o.razon] ?? o.razon;
   const etiqueta = esReserva ? (o.huespedNombre?.trim() || etiquetaCanal(o.canalCodigo)) : razon;
-  const estadoTxt = ESTADO_OCUPACION_ETIQUETA[o.estado] ?? o.estado;
+  const estadoTxt = (esReserva ? ESTADO_OCUPACION_ETIQUETA : ESTADO_BLOQUEO_ETIQUETA)[o.estado] ?? o.estado;
   const partes = [esReserva ? `Reserva ${estadoTxt}` : `${razon} (${estadoTxt})`];
   if (esReserva) partes.push(`canal ${etiquetaCanal(o.canalCodigo)}`);
   if (esReserva && o.huespedNombre?.trim()) partes.push(`huésped ${o.huespedNombre.trim()}`);
