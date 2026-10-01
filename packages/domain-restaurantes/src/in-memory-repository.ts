@@ -16,6 +16,8 @@ import type {
   CanalPedido,
   Branch,
   BranchPolicy,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
@@ -293,6 +295,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly branchPolicies = new Map<string, BranchPolicy>();
   private readonly branchHoursExceptions: BranchHoursException[] = [];
   private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
+  private readonly whatsAppAgentConfigs = new Map<string, WhatsAppAgentConfigRow>();
   private readonly branchDeliveryZones = new Map<string, Set<string>>();
   private readonly whatsappBranchChannels = new Map<string, { organizationId: string; propertyId: string }>();
   private readonly noDomicilioProducts = new Set<string>();
@@ -1586,6 +1589,20 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.branches.has(propertyId)) throw new Error(`upsertBranchZonaHoraria: la property "${propertyId}" no existe.`);
     this.branchZonaHoraria.set(propertyId, zonaHoraria);
     return { zonaHoraria };
+  }
+
+  // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
+  async findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    const propia = propertyId ? this.whatsAppAgentConfigs.get(`${organizationId}:${propertyId}`) : undefined;
+    return propia ?? this.whatsAppAgentConfigs.get(`${organizationId}:`) ?? null;
+  }
+
+  async upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow> {
+    // Mismo contrato que el `with check` de la policy: la property debe ser de la organizacion.
+    if (propertyId && this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`upsertWhatsAppAgentConfig: la property "${propertyId}" no pertenece a la organizacion.`);
+    const row: WhatsAppAgentConfigRow = { ...config, propertyId };
+    this.whatsAppAgentConfigs.set(`${organizationId}:${propertyId ?? ""}`, row);
+    return row;
   }
 
   // ---- Modelo PM (migracion 023) ----

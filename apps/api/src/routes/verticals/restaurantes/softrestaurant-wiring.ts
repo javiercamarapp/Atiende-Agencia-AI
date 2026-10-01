@@ -15,15 +15,19 @@ import {
 } from "@atiende/domain-restaurantes/softrestaurant";
 import type { AppDeps } from "../../../deps.ts";
 
-export function softRestaurantStoreFor(deps: AppDeps, db: TenantDbSession): ComandaOutboxStore {
+/** Solo lo que necesita el cableado: permite usarlo tambien desde el turn handler de WhatsApp de
+ * produccion (que no recibe el `AppDeps` completo) con los valores por omision. */
+export type SoftRestaurantDeps = Pick<AppDeps, "softRestaurantStore" | "softRestaurantPort" | "softRestaurantMapeo">;
+
+export function softRestaurantStoreFor(deps: SoftRestaurantDeps, db: TenantDbSession): ComandaOutboxStore {
   return deps.softRestaurantStore ? deps.softRestaurantStore(db) : new PostgresComandaOutboxStore(db);
 }
 
-export function softRestaurantPortFor(deps: AppDeps): SoftRestaurantPort {
+export function softRestaurantPortFor(deps: SoftRestaurantDeps): SoftRestaurantPort {
   return deps.softRestaurantPort ?? new SoftRestaurantNoConfiguradoPort();
 }
 
-export function softRestaurantComandaDeps(deps: AppDeps, db: TenantDbSession, repo: RestaurantesRepository): DepsComandaPos {
+export function softRestaurantComandaDeps(deps: SoftRestaurantDeps, db: TenantDbSession, repo: RestaurantesRepository): DepsComandaPos {
   return {
     store: softRestaurantStoreFor(deps, db),
     port: softRestaurantPortFor(deps),
