@@ -14,7 +14,7 @@ import { configAgenteDesdeFila, fotoConfigAgente } from "./whatsapp/agent-config
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import { fotoConfigMensajes } from "./whatsapp/message-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
-import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
   ConfirmDataRightsOutcome,
   DataRightsEventRow,
@@ -840,7 +840,15 @@ export class PostgresCitasRepository implements CitasRepository {
           idempotencyKey,
         ]),
       );
-      return { outcome: "created", appointment: mapAppointment(rows[0]!.create_appointment_idempotent) };
+      const cita = mapAppointment(rows[0]!.create_appointment_idempotent);
+      // Notificacion in-app (productor compartido, `citas.cita.nueva`): una cita agendada por un CANAL (agente de voz/WhatsApp o agenda
+      // publica) es "algo nuevo que atender". Una por cita (clave = id: un reintento idempotente que devuelve la misma cita no vuelve a
+      // avisar), sin PII (titulo del catalogo), acotada a quienes ven la sucursal de la cita. Las capturadas a mano (`manual`) no avisan.
+      // SAVEPOINT en emitirNotificacion: contra la base sin migrar no aborta la transaccion del request.
+      if (cita.source !== "manual") {
+        await emitirNotificacion(this.db, { evento: "citas.cita.nueva", organizationId: cita.organizationId, propertyId: cita.propertyId, clave: cita.id, entidadTipo: "appointment", entidadId: cita.id });
+      }
+      return { outcome: "created", appointment: cita };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT423") return { outcome: "conflict_slot_taken" };
@@ -878,6 +886,11 @@ export class PostgresCitasRepository implements CitasRepository {
     try {
       const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ [key: string]: AppointmentRow }>(`select citas.${fn}($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+      // Notificacion in-app (`citas.cita.cancelada`): SOLO cuando la cancelacion la hace el cliente/agente (RPC de sistema), no cuando la
+      // hace el propio staff desde el panel; una por cita cancelada (clave = id) y solo si esta llamada la cancelo de verdad.
+      if (fn === "cancel_appointment_idempotent" && appointment.status === "cancelled") {
+        await emitirNotificacion(this.db, { evento: "citas.cita.cancelada", organizationId: appointment.organizationId, propertyId: appointment.propertyId, clave: appointment.id, entidadTipo: "appointment", entidadId: appointment.id });
+      }
       return { outcome: appointment.status === "cancelled" ? "cancelled" : "already_cancelled", appointment };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
