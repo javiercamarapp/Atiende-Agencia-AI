@@ -45,7 +45,7 @@ function rep(doctos: RepDocumentoRelacionado[], extra: { fechaPago?: string; mon
   };
 }
 
-const FACTURA: FacturaLigable = { folioFiscal: U1, rfcEmisor: EMISOR, rfcReceptor: RECEPTOR, totalCentavos: 116000, ivaCentavos: 16000 };
+const FACTURA: FacturaLigable = { folioFiscal: U1, rfcEmisor: EMISOR, rfcReceptor: RECEPTOR, totalCentavos: 116000, ivaCentavos: 16000, metodoPago: "PPD" };
 const facturas = (...f: FacturaLigable[]) => new Map(f.map((x) => [x.folioFiscal, x]));
 
 describe("proporcionCentavos", () => {
@@ -65,6 +65,7 @@ describe("analizarComplementoPago", () => {
     const d = a.documentos[0]!;
     expect(d).toMatchObject({ ligado: true, saldoCoherente: true, liquidaFactura: false, ivaCentavos: 8000, fuenteIva: "rep", periodoFlujo: "2026-09", saldoInsolutoCalculadoCentavos: 58000 });
     expect(d.hallazgos).toEqual([]);
+    expect(d.facturaEsPpd).toBe(true);
     expect(a.totales).toEqual({ pagadoCentavos: 58000, ivaCentavos: 8000, ivaRetenidoCentavos: 0 });
     expect(a.porPeriodo).toEqual({ "2026-09": { pagadoCentavos: 58000, ivaCentavos: 8000 } });
     expect(a.documentosSinLigar).toBe(0);
@@ -147,7 +148,13 @@ describe("analizarComplementoPago", () => {
     expect(Object.keys(a.porPeriodo)).toEqual(["2026-11"]);
   });
 
-  it("siempre declara que no se verificó el método de pago PPD", () => {
-    expect(analizarComplementoPago(rep([docto()]), EMISOR, facturas(FACTURA)).advertencias[0]).toMatch(/PPD/);
+  it("verifica que la factura ligada sea PPD: PPD ok, PUE se señala, método desconocido no se asume", () => {
+    expect(analizarComplementoPago(rep([docto()]), EMISOR, facturas(FACTURA)).documentos[0]).toMatchObject({ facturaEsPpd: true, hallazgos: [] });
+    const pue = analizarComplementoPago(rep([docto()]), EMISOR, facturas({ ...FACTURA, metodoPago: "PUE" })).documentos[0]!;
+    expect(pue.facturaEsPpd).toBe(false);
+    expect(pue.hallazgos.join(" ")).toMatch(/PUE no debería/);
+    const nulo = analizarComplementoPago(rep([docto()]), EMISOR, facturas({ ...FACTURA, metodoPago: null })).documentos[0]!;
+    expect(nulo.facturaEsPpd).toBeNull();
+    expect(nulo.hallazgos.join(" ")).toMatch(/No se pudo verificar/);
   });
 });

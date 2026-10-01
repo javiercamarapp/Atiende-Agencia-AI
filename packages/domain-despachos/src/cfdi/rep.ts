@@ -9,9 +9,9 @@
 // Todo en CENTAVOS ENTEROS. Fuente del IVA, en orden: (1) `ImpuestosDR` del propio REP (autoridad fiscal); (2) prorrateo
 // de la factura ligada (IVA x pagado / total). Si no hay ninguna de las dos, `sin_dato`: nunca se inventa una cifra.
 //
-// NO verifica que la factura ligada sea de método de pago PPD: `despachos.invoice` no persiste MetodoPago todavía
-// (lo agrega D-22, PR #290). Queda declarado en `advertencias`. Solo pesos mexicanos: un documento en otra moneda se
-// reporta pero no se suma ni se convierte (no se inventa un tipo de cambio).
+// Liga a CFDI PPD: la factura ligada debe tener MetodoPago = PPD (columna persistida por D-22). Una factura PUE, o una
+// ingerida antes de D-22 (MetodoPago desconocido), se señala en `hallazgos`; nunca se asume. Solo pesos mexicanos: un
+// documento en otra moneda se reporta pero no se suma ni se convierte (no se inventa un tipo de cambio).
 // ═══════════════════════════════════════════════════════════════════════════
 import type { RepDocumentoRelacionado, RepParseResult } from "@atiende/billing";
 
@@ -25,6 +25,8 @@ export interface FacturaLigable {
   readonly rfcReceptor: string;
   readonly totalCentavos: number;
   readonly ivaCentavos: number | null;
+  /** c_MetodoPago persistido (PUE/PPD); null = desconocido (CFDI ingerido antes de D-22 o con la base sin migrar). */
+  readonly metodoPago: string | null;
 }
 
 export class RepRfcAjenoError extends Error {
@@ -50,6 +52,8 @@ export interface AnalisisDocumentoRep {
   readonly saldoInsolutoCalculadoCentavos: number;
   readonly saldoCoherente: boolean;
   readonly liquidaFactura: boolean;
+  /** La factura ligada es de método de pago PPD; null = no se pudo verificar (sin liga o método desconocido). */
+  readonly facturaEsPpd: boolean | null;
   readonly ivaCentavos: number | null;
   readonly fuenteIva: FuenteIvaRep;
   readonly ivaRetenidoCentavos: number;
@@ -96,9 +100,7 @@ export function analizarComplementoPago(rep: RepParseResult, rfcContribuyente: s
   else throw new RepRfcAjenoError();
 
   const documentos: AnalisisDocumentoRep[] = [];
-  const advertencias: string[] = [
-    "No se verificó que las facturas ligadas sean de método de pago PPD: el despacho aún no persiste MetodoPago del CFDI (pendiente D-22).",
-  ];
+  const advertencias: string[] = [];
 
   rep.pagos.forEach((pago, pagoIndex) => {
     let sumaPagadoMxn = 0;
@@ -119,6 +121,15 @@ export function analizarComplementoPago(rep: RepParseResult, rfcContribuyente: s
         hallazgos.push("El CFDI ligado tiene emisor/receptor distintos a los del complemento de pago.");
       } else {
         ligado = true;
+      }
+      let facturaEsPpd: boolean | null = null;
+      if (ligado && factura) {
+        if (factura.metodoPago === null) {
+          hallazgos.push("No se pudo verificar que la factura ligada sea PPD: su método de pago no está registrado (CFDI ingerido antes de D-22).");
+        } else {
+          facturaEsPpd = factura.metodoPago === "PPD";
+          if (!facturaEsPpd) hallazgos.push(`La factura ligada es de método de pago ${factura.metodoPago}: un CFDI PUE no debería tener complemento de pago.`);
+        }
       }
 
       const calculado = d.impSaldoAntCentavos - d.impPagadoCentavos;
@@ -166,6 +177,7 @@ export function analizarComplementoPago(rep: RepParseResult, rfcContribuyente: s
         saldoInsolutoCalculadoCentavos: calculado,
         saldoCoherente,
         liquidaFactura: d.impSaldoInsolutoCentavos === 0 && saldoCoherente,
+        facturaEsPpd,
         ivaCentavos,
         fuenteIva,
         ivaRetenidoCentavos: ivaRetenidoDelRep(d),

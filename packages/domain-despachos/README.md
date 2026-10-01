@@ -235,8 +235,7 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   al insert histórico ante 42703/42P01; la ficha, el desglose y el filtro por sentido degradan a vacío /
   «no disponible» (ver `tests/cartera-postgres-savepoint.spec.ts` y
   `apps/api/tests/despachos-cfdi-ingesta-base-sin-migrar.spec.ts`).
-- **Pendiente (D-23)**: liga persistida del REP a CFDI PPD (el análisis de solo lectura ya existe, ver la sección
-  siguiente). `parseCfdiXml` sigue excluyendo el complemento de pagos; lo lee `parseComplementoPagoXml`.
+- **D-23**: el análisis de solo lectura del REP ya existe (sección siguiente); falta persistir la liga. `parseCfdiXml` rechaza el CFDI tipo P; lo lee `parseComplementoPagoXml`.
 
 ## Calendario fiscal (D-26) y complemento de pago 2.0 (D-23)
 
@@ -250,4 +249,4 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   Migración `019_despachos_calendario_fiscal_tipos.sql` (espejo `20240101000262`); verificación en
   `scripts/verify-despachos-calendario-fiscal/`.
 - `src/cfdi/rep.ts`: análisis del REP 2.0 (`POST .../cfdi/rep/analizar`, solo lectura): saldo insoluto e IVA efectivamente
-  pagado por mes de pago, en centavos. No persiste ni alimenta DIOT/pagos provisionales todavía (la persistencia depende de la liga a PPD, D-23).
+  pagado por mes de pago, en centavos. Verifica MetodoPago = PPD de la factura ligada (columna de D-22). No persiste los pagos ni alimenta DIOT/pagos provisionales todavía.

@@ -451,8 +451,10 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         folioFiscal: inv.folioFiscal,
         rfcEmisor: inv.rfcEmisor,
         rfcReceptor: inv.rfcReceptor,
-        totalCentavos: Math.round(inv.total * 100),
-        ivaCentavos: inv.iva === null ? null : Math.round(inv.iva * 100),
+        // Centavos persistidos por D-22; si faltan (CFDI previo a la migración 018) se derivan de los pesos.
+        totalCentavos: inv.totalCentavos ?? Math.round(inv.total * 100),
+        ivaCentavos: inv.ivaTrasladadoCentavos ?? (inv.iva === null ? null : Math.round(inv.iva * 100)),
+        metodoPago: inv.metodoPago ?? null,
       });
     }
     try {

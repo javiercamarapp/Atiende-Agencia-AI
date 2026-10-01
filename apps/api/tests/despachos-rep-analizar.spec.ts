@@ -52,6 +52,7 @@ function sembrarFactura(overrides: Record<string, unknown> = {}) {
     requiresHumanReview: false,
     diot: { proveedoresReportables: [], reportable: false },
     fecha: "2026-09-01",
+    metodoPago: "PPD",
     ...overrides,
   } as never);
 }
@@ -71,6 +72,13 @@ describe("POST /despachos/:propertyId/cfdi/rep/analizar", () => {
     expect(body.documentos[0]).toMatchObject({ ligado: true, saldoInsolutoCalculadoCentavos: 58000, ivaCentavos: 8000, fuenteIva: "rep" });
     expect(body.totales).toMatchObject({ pagadoCentavos: 58000, ivaCentavos: 8000 });
     expect(body.porPeriodo["2026-09"]).toMatchObject({ ivaCentavos: 8000 });
+  });
+
+  it("verifica PPD con el método de pago persistido: PUE se señala; sin método no se asume", async () => {
+    await sembrarFactura({ metodoPago: "PUE" });
+    const pue = (await (await analizar({ xml: repXml(), rfcContribuyente: EMISOR })).json()) as { documentos: { facturaEsPpd: boolean | null; hallazgos: string[] }[] };
+    expect(pue.documentos[0]!.facturaEsPpd).toBe(false);
+    expect(pue.documentos[0]!.hallazgos.join(" ")).toMatch(/PUE/);
   });
 
   it("como receptor del REP el flujo es acreditable", async () => {
