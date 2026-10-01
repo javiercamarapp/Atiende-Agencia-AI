@@ -110,6 +110,21 @@ describe("e2e WhatsApp: casos de negocio", () => {
     expect(stack.sim.sentTo("5219991230007").length).toBe(before);
   });
 
+  it("PEDIDO GRANDE: el agente escala con escalar_a_humano, se abre el handoff y el comensal recibe la respuesta del turno", async () => {
+    stack = await startCicloStack();
+    const seen: unknown[] = [];
+    stack.setScript([
+      call("escalar_a_humano", { customer_name: "Evento Grande", motivo: "pedido_grande", resumen: "60 ordenes de tacos para el sabado" }),
+      sayObserving(seen, "Es un pedido grande: ya avise al equipo y le escribe una persona."),
+    ]);
+    await stack.sim.deliverText("5219991230012", "Necesito 60 ordenes de tacos para un evento el sabado");
+    expect(JSON.stringify(seen[0])).not.toMatch(/"error"/);
+    expect(stack.sim.lastSentTo("5219991230012")?.text).toMatch(/equipo|persona/);
+    expect(stack.conversaciones.handoffs.filter((h) => h.estado === "pendiente" && h.motivo === "pedido_grande")).toHaveLength(1);
+    const list = await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 5 } as never);
+    expect(list.orders).toHaveLength(0);
+  });
+
   it("REPLAY del webhook (mismos bytes y firma): un solo turno del agente y una sola respuesta", async () => {
     stack = await startCicloStack();
     stack.setScript([say("Hola, con gusto. Que se te antoja?")]);
@@ -119,6 +134,31 @@ describe("e2e WhatsApp: casos de negocio", () => {
     expect(again.status).toBe(200);
     await stack.dispatchWhatsApp();
     expect(stack.sim.sentTo("5219991230008")).toHaveLength(1);
+  });
+
+  it("CONCURRENCIA: el MISMO message.id entregado dos veces a la vez (reintento de Meta en carrera) genera un solo turno y una sola respuesta", async () => {
+    stack = await startCicloStack();
+    stack.setScript([say("Hola, con gusto."), say("SEGUNDO TURNO NO DEBERIA OCURRIR")]);
+    const [a, b] = await Promise.all([stack.sim.deliverText("5219991230013", "Hola", "wamid.CARRERA"), stack.sim.deliverText("5219991230013", "Hola", "wamid.CARRERA")]);
+    expect([a.status, b.status].every((s) => s === 200 || s === 500)).toBe(true);
+    await stack.dispatchWhatsApp();
+    expect(stack.sim.sentTo("5219991230013").filter((m) => /SEGUNDO/.test(m.text ?? ""))).toHaveLength(0);
+    expect(stack.sim.sentTo("5219991230013")).toHaveLength(1);
+  });
+
+  it("CANCELACION por el gerente: el pedido pasa a cancelado y el comensal (con ventana abierta) recibe el aviso", async () => {
+    stack = await startCicloStack();
+    const repo = stack.ctx.restaurantesRepo;
+    stack.setScript([say("Hola!")]);
+    await stack.sim.deliverText("5219991230014", "Hola");
+    const order = await createOrder(repo, { organizationId: stack.ctx.organizationId, branchSlug: "fco-montejo", customerName: "Cande", customerPhone: "9991230014", items: [{ productId: stack.products.coca, requestedQuantity: 5 }], source: "whatsapp", paymentMethod: "efectivo", canal: "recoger" });
+    const res = await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders/${order.id}/status`), authedJson(stack.ctx.staff.owner.token, { status: "cancelado" }, "PATCH"));
+    expect(res.status).toBe(200);
+    await stack.dispatchWhatsApp();
+    expect(stack.sim.lastSentTo("5219991230014")?.text).toMatch(/cancelado/);
+    // Un pedido cancelado no vuelve a avanzar.
+    const otra = await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders/${order.id}/status`), authedJson(stack.ctx.staff.owner.token, { status: "preparando" }, "PATCH"));
+    expect(otra.status).toBe(409);
   });
 
   it("firma invalida o ausente: 401, nada se procesa; un payload de ESTADOS (sin mensajes) se acusa 200 sin turno de LLM", async () => {

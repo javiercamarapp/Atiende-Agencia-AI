@@ -86,4 +86,21 @@ describe("e2e storefront web", () => {
     const sinOrigen = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront/fco-montejo/quote`), { method: "POST", headers: { "content-type": "application/json", "content-length": "2", origin: "https://sitio-ajeno.example" }, body: "{}" });
     expect(sinOrigen.status).toBe(403);
   });
+
+  it("correo de confirmacion: si el proveedor falla (5xx) el outbox reintenta y el correo sale UNA sola vez", async () => {
+    stack = await startCicloStack();
+    stack.sink.failNext(500);
+    const base = { session_id: SESSION, items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
+    const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
+    await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: q.quote_hash });
+    const created = await post("/fco-montejo/orders", { ...base, customer_name: "Correo Reintento", customer_phone: "9991230070", customer_email: "reintento@example.test", payment_method: "efectivo", quote_hash: q.quote_hash });
+    expect(created.status).toBe(200); // un fallo del proveedor de correo nunca tumba el pedido
+    expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(0);
+    expect(stack.sink.rejectedCount.value).toBe(1);
+    const run = await stack.dispatchEmail();
+    expect(run.status).toBe(200);
+    expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(1);
+    await stack.dispatchEmail();
+    expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(1);
+  });
 });
