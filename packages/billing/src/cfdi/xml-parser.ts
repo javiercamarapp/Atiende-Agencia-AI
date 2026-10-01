@@ -17,10 +17,31 @@
 // parcialidades/complemento de pagos, nómina vía XML (ya existe
 // `generarXmlCfdiNomina` para el sentido inverso, emisión, no consumo), y
 // cualquier CFDI con más de un `cfdi:Comprobante` en el mismo archivo.
+//
+// SEGURIDAD DE LA ENTRADA (D-22/D-29): el XML llega de un tercero (PAC, cliente del
+// despacho, portal). Antes de parsear se rechaza todo lo que no es un CFDI plano:
+// DTD/entidades (`<!DOCTYPE`, `<!ENTITY`: cierra XXE y la expansión de entidades),
+// hojas de estilo, bytes NUL, codificación declarada distinta de UTF-8 y documentos
+// de más de `CFDI_XML_MAX_CARACTERES`. El parser nunca resuelve nada externo ni
+// ejecuta nada; solo lee atributos.
 // ═══════════════════════════════════════════════════════════════════════════
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export class CfdiXmlParseError extends Error {}
+
+/** Un renglón de impuesto desglosado (Anexo 20: Traslado / Retencion). Los montos son
+ * cadenas decimales EXACTAS (suma sin pasar por flotantes, 6 decimales) para que el
+ * llamador las convierta a centavos sin error de punto flotante. */
+export interface CfdiXmlImpuesto {
+  readonly naturaleza: 'traslado' | 'retencion';
+  /** c_Impuesto: 001 ISR, 002 IVA, 003 IEPS. */
+  readonly impuesto: string;
+  readonly tipoFactor: 'Tasa' | 'Cuota' | 'Exento';
+  /** Tasa o cuota normalizada a 6 decimales ("0.160000"); null si es Exento. */
+  readonly tasaOCuota: string | null;
+  readonly base: string | null;
+  readonly importe: string | null;
+}
 
 export interface CfdiXmlConcepto {
   readonly cantidad: number;
@@ -59,7 +80,15 @@ export interface CfdiXmlParseResult {
   readonly ieps: number | null;
   readonly cfdiRelacionados?: readonly string[];
   readonly tipoRelacion?: string;
+  /** Moneda del comprobante (atributo obligatorio en CFDI 4.0; "MXN", "USD", "XXX"...). */
+  readonly moneda: string;
+  /** TipoCambio del comprobante; undefined cuando el XML no lo trae (MXN/XXX). */
+  readonly tipoCambio?: number;
+  /** Desglose de impuestos por (naturaleza, impuesto, factor, tasa). Vacío si el XML no trae detalle utilizable. */
+  readonly impuestos: readonly CfdiXmlImpuesto[];
 }
+
+export const CFDI_XML_MAX_CARACTERES = 2 * 1024 * 1024;
 
 // Catálogo c_Impuesto del SAT (los tres relevantes para el camino feliz —
 // ver catalogs.ts para el resto de catálogos SAT ya portados).
@@ -140,15 +169,118 @@ function sumarImporteImpuesto(
   // El nivel comprobante ya es la suma agregada de todos los conceptos (Anexo 20):
   // si está presente, es la fuente de verdad y evita sumar doble.
   const fuente = nivelComprobante.length > 0 ? nivelComprobante : nivelConcepto;
-  const relevantes = fuente.filter((n) => attrString(n.Impuesto) === codigoImpuesto);
+  // Un traslado con TipoFactor="Exento" no trae Importe (Anexo 20): no suma nada y NO debe tumbar la
+  // lectura de todo el comprobante (antes lanzaba "no trae Traslado.Importe" ante un CFDI con IVA exento).
+  const relevantes = fuente.filter((n) => attrString(n.Impuesto) === codigoImpuesto && attrString(n.TipoFactor) !== 'Exento');
   if (relevantes.length === 0) return null;
   return relevantes.reduce((acc, n) => acc + requireAttrNumber(n.Importe, `${nodo}.Importe`), 0);
+}
+
+/** "16.000001" -> 16000001n (micros). Acepta hasta 6 decimales (máximo del Anexo 20); null si no es decimal. */
+function decimalAMicros(valor: string): bigint | null {
+  const m = /^(\d{1,15})(?:\.(\d{1,6}))?$/.exec(valor.trim());
+  if (!m) return null;
+  return BigInt(m[1]!) * 1000000n + BigInt((m[2] ?? '').padEnd(6, '0'));
+}
+
+function microsADecimal(micros: bigint): string {
+  const entero = micros / 1000000n;
+  const frac = (micros % 1000000n).toString().padStart(6, '0');
+  return `${entero}.${frac}`;
+}
+
+function normalizarTasa(valor: string): string | null {
+  const micros = decimalAMicros(valor);
+  return micros === null ? null : microsADecimal(micros);
+}
+
+function extraerNodosImpuesto(
+  contenedor: Record<string, unknown> | undefined,
+  bloque: 'Traslados' | 'Retenciones',
+  nodo: 'Traslado' | 'Retencion',
+): readonly Record<string, unknown>[] {
+  return asArray(
+    ((contenedor?.Impuestos as Record<string, unknown> | undefined)?.[bloque] as Record<string, unknown> | undefined)?.[nodo] as
+      | Record<string, unknown>
+      | readonly Record<string, unknown>[]
+      | undefined,
+  );
+}
+
+/** Desglose de impuestos. Fuente preferida: los nodos por concepto (traen Base, TipoFactor y
+ * TasaOCuota también para retenciones, que a nivel comprobante vienen sin tasa); si ningún concepto
+ * trae desglose, los traslados del nivel comprobante. Las retenciones solo a nivel comprobante (sin
+ * tasa ni factor) NO se desglosan: su total ya viaja en `retencionIsr`/`retencionIva`. */
+function desglosarImpuestos(comprobante: Record<string, unknown>): readonly CfdiXmlImpuesto[] {
+  const conceptos = asArray(
+    (comprobante.Conceptos as Record<string, unknown> | undefined)?.Concepto as Record<string, unknown> | readonly Record<string, unknown>[] | undefined,
+  );
+  const candidatos: { naturaleza: 'traslado' | 'retencion'; nodo: Record<string, unknown> }[] = [];
+  for (const c of conceptos) {
+    for (const n of extraerNodosImpuesto(c, 'Traslados', 'Traslado')) candidatos.push({ naturaleza: 'traslado', nodo: n });
+    for (const n of extraerNodosImpuesto(c, 'Retenciones', 'Retencion')) candidatos.push({ naturaleza: 'retencion', nodo: n });
+  }
+  if (candidatos.length === 0) {
+    for (const n of extraerNodosImpuesto(comprobante, 'Traslados', 'Traslado')) candidatos.push({ naturaleza: 'traslado', nodo: n });
+  }
+
+  const grupos = new Map<string, { naturaleza: 'traslado' | 'retencion'; impuesto: string; tipoFactor: 'Tasa' | 'Cuota' | 'Exento'; tasa: string | null; base: bigint; importe: bigint; tieneBase: boolean; tieneImporte: boolean }>();
+  for (const { naturaleza, nodo } of candidatos) {
+    const impuesto = attrString(nodo.Impuesto);
+    const factor = attrString(nodo.TipoFactor);
+    if (!impuesto || !/^00[123]$/.test(impuesto)) continue;
+    if (factor !== 'Tasa' && factor !== 'Cuota' && factor !== 'Exento') continue;
+    if (factor === 'Exento' && naturaleza === 'retencion') continue;
+    const tasaTexto = attrString(nodo.TasaOCuota);
+    const tasa = factor === 'Exento' ? null : tasaTexto ? normalizarTasa(tasaTexto) : null;
+    if (factor !== 'Exento' && tasa === null) continue;
+    const baseTexto = attrString(nodo.Base);
+    const importeTexto = attrString(nodo.Importe);
+    const base = baseTexto ? decimalAMicros(baseTexto) : null;
+    const importe = importeTexto ? decimalAMicros(importeTexto) : null;
+    if (factor !== 'Exento' && importe === null) continue;
+    const clave = `${naturaleza}|${impuesto}|${factor}|${tasa ?? ''}`;
+    const g = grupos.get(clave) ?? { naturaleza, impuesto, tipoFactor: factor, tasa, base: 0n, importe: 0n, tieneBase: false, tieneImporte: false };
+    if (base !== null) {
+      g.base += base;
+      g.tieneBase = true;
+    }
+    if (importe !== null) {
+      g.importe += importe;
+      g.tieneImporte = true;
+    }
+    grupos.set(clave, g);
+  }
+  return [...grupos.values()].map((g) => ({
+    naturaleza: g.naturaleza,
+    impuesto: g.impuesto,
+    tipoFactor: g.tipoFactor,
+    tasaOCuota: g.tasa,
+    base: g.tieneBase ? microsADecimal(g.base) : null,
+    importe: g.tieneImporte ? microsADecimal(g.importe) : null,
+  }));
+}
+
+/** Rechaza todo lo que no sea un CFDI plano ANTES de entregarlo al parser (ver cabecera: seguridad de la entrada). */
+function rechazarXmlPeligroso(xml: string): void {
+  if (xml.length > CFDI_XML_MAX_CARACTERES) {
+    throw new CfdiXmlParseError('El XML excede el tamaño máximo permitido.');
+  }
+  if (xml.includes('\u0000')) throw new CfdiXmlParseError('El XML contiene caracteres no permitidos.');
+  // `<!` solo se admite para comentarios y CDATA: cualquier otra declaración (DOCTYPE, ENTITY, ELEMENT, ATTLIST...) se rechaza.
+  if (/<!(?!--|\[CDATA\[)/.test(xml)) throw new CfdiXmlParseError('El XML no puede declarar DTD ni entidades.');
+  if (/<\?xml-stylesheet/i.test(xml)) throw new CfdiXmlParseError('El XML no puede incluir hojas de estilo.');
+  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml);
+  if (codificacion && codificacion[1]!.toLowerCase() !== 'utf-8') {
+    throw new CfdiXmlParseError('El XML debe declarar codificación UTF-8.');
+  }
 }
 
 export function parseCfdiXml(xml: string): CfdiXmlParseResult {
   if (typeof xml !== 'string' || xml.trim().length === 0) {
     throw new CfdiXmlParseError('El XML está vacío.');
   }
+  rechazarXmlPeligroso(xml);
 
   const validacion = XMLValidator.validate(xml);
   if (validacion !== true) {
@@ -226,5 +358,8 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     ieps: sumarImporteImpuesto(comprobante, 'Traslados', 'Traslado', IMPUESTO_IEPS),
     cfdiRelacionados,
     tipoRelacion,
+    moneda: requireAttrString(comprobante.Moneda, 'Moneda'),
+    tipoCambio: optionalAttrNumber(comprobante.TipoCambio, 'TipoCambio') ?? undefined,
+    impuestos: desglosarImpuestos(comprobante),
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInvoice, fetchInvoices, importarCfdiXml } from "../src/verticals/despachos/lib/cfdi-client.ts";
+import { fetchInvoice, fetchInvoices, importarCfdiXml, registrarEstadoSat } from "../src/verticals/despachos/lib/cfdi-client.ts";
 
 const SAMPLE_INVOICE = {
   id: "inv1",
@@ -73,5 +73,33 @@ describe("importarCfdiXml", () => {
   it("400 (XML inválido) -> propaga el mensaje real del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "XML mal formado." }), { status: 400 })) as unknown as typeof fetch;
     await expect(importarCfdiXml(fetchImpl, "http://api.local", "tok", "prop-1", "<xml/>")).rejects.toThrow("XML mal formado.");
+  });
+});
+
+describe("D-22: sentido (emitido/recibido) y estado SAT", () => {
+  it("fetchInvoices con direccion -> agrega ?direccion= y combina con requiereRevisionHumana", async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify([]), { status: 200 });
+    }) as unknown as typeof fetch;
+    await fetchInvoices(fetchImpl, "http://api.local", "tok", "prop-1", { direccion: "recibido" });
+    await fetchInvoices(fetchImpl, "http://api.local", "tok", "prop-1", { requiereRevisionHumana: false, direccion: "emitido" });
+    expect(urls).toEqual(["http://api.local/despachos/prop-1/cfdi?direccion=recibido", "http://api.local/despachos/prop-1/cfdi?requiereRevisionHumana=false&direccion=emitido"]);
+  });
+
+  it("registrarEstadoSat: PUT .../cfdi/:id/estado-sat con { estado }", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/despachos/prop-1/cfdi/inv1/estado-sat");
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ estado: "vigente" });
+      return new Response(JSON.stringify({ ...SAMPLE_INVOICE, estadoSat: "vigente", estadoSatVerificadoEn: "2026-09-30T00:00:00Z" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect((await registrarEstadoSat(fetchImpl, "http://api.local", "tok", "prop-1", "inv1", "vigente")).estadoSat).toBe("vigente");
+  });
+
+  it("un CFDI cancelado que se intenta cambiar (409) propaga el mensaje del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: "conflict", message: "un CFDI cancelado no cambia de estado" }), { status: 409 })) as unknown as typeof fetch;
+    await expect(registrarEstadoSat(fetchImpl, "http://api.local", "tok", "prop-1", "inv1", "vigente")).rejects.toThrow(/cancelado/);
   });
 });

@@ -36,6 +36,7 @@ import {
   PortalEnlaceInvalidoError,
   PortalEntradaInvalidaError,
   PortalSinAccesoError,
+  PostgresCarteraRepository,
   PostgresPortalClienteRepository,
   VER_PORTAL_CLIENTE_ROLES,
   esTokenPortalValido,
@@ -297,7 +298,7 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     let cfdi: { valido: boolean; requiereRevisionHumana: boolean } | null = null;
     if (doc.tipo === "cfdi_xml") {
       // Misma ingesta que `POST .../cfdi/importar-xml` (EFOS, cierre de periodo, cola de revision): sin duplicar.
-      const { invoice } = await ingestarXmlCfdiDespachos(deps.despachosRepo(c.get("db")), c.get("organizationId"), propertyId, new TextDecoder("utf-8").decode(doc.contenido));
+      const { invoice } = await ingestarXmlCfdiDespachos(deps.despachosRepo(c.get("db")), c.get("organizationId"), propertyId, new TextDecoder("utf-8").decode(doc.contenido), deps.carteraRepo ? deps.carteraRepo(c.get("db")) : new PostgresCarteraRepository(c.get("db")));
       invoiceId = invoice.id;
       cfdi = { valido: invoice.valido, requiereRevisionHumana: invoice.requiresHumanReview };
     }
