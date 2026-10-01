@@ -30,7 +30,7 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
       const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
       if (!Array.isArray(messages)) continue;
       for (const candidate of messages) {
-        const message = candidate as Partial<MetaTextMessage>;
+        const message = (candidate ?? {}) as Partial<MetaTextMessage>;
         if (
           message.type === "text" &&
           typeof message.id === "string" &&
