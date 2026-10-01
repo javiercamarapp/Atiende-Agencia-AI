@@ -1,4 +1,7 @@
-// H-01 -- barrido de PURGA POR RETENCION de la boveda de identidad (cron interno).
+// H-01/H-02 -- barrido de RETENCION de la boveda de identidad (cron interno): con la migracion 032
+// BLOQUEA las identidades vencidas (ventana 3-30 dias, sin acceso operativo) y PURGA solo las bloqueadas
+// con ventana vencida y sin retencion legal activa; en una base sin 032 cae al camino anterior (purga
+// directa de 031). El nombre de la ruta se conserva (esta registrada en vercel.json).
 // SIEMPRE sesion de sistema (`withAppSession({ userId: null })`, la funcion
 // `hoteles.purge_expired_identities` exige `auth.uid() is null`) y UNA transaccion POR
 // property (una property con datos raros nunca revierte la purga de las demas), con la
@@ -22,6 +25,10 @@ export interface IdentityPurgeSweepResult {
   readonly propertyId: string;
   readonly omitida: "migracion_pendiente" | null;
   readonly purgadas: number;
+  /** Identidades que pasaron a `bloqueada` en esta corrida (0 en una base sin 032). */
+  readonly bloqueadas: number;
+  /** `false` = base sin 032: se uso la purga directa de 031. `null` = property omitida o con error. */
+  readonly viaBloqueo: boolean | null;
   readonly error: string | null;
 }
 
@@ -30,16 +37,16 @@ export async function runIdentityPurgeSweep(deps: AppDeps): Promise<readonly Ide
   const results: IdentityPurgeSweepResult[] = [];
   for (const p of properties) {
     try {
-      const purgadas = await deps.engine.withAppSession({ userId: null }, async (db) => {
+      const sweep = await deps.engine.withAppSession({ userId: null }, async (db) => {
         const repo: IdentityRepository = deps.hotelesIdentidadRepo ? deps.hotelesIdentidadRepo(db) : new PostgresIdentityRepository(db);
-        return repo.purgeExpired(p.propertyId, hoyFechaNegocio(resolverZonaHorariaNegocio(p.timezone)));
+        return repo.sweepRetention(p.propertyId, hoyFechaNegocio(resolverZonaHorariaNegocio(p.timezone)));
       });
-      results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: null, purgadas, error: null });
+      results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: null, purgadas: sweep.purged, bloqueadas: sweep.blocked, viaBloqueo: sweep.viaBloqueo, error: null });
     } catch (err) {
       if (err instanceof IdentityUnavailableError) {
-        results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: "migracion_pendiente", purgadas: 0, error: null });
+        results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: "migracion_pendiente", purgadas: 0, bloqueadas: 0, viaBloqueo: null, error: null });
       } else {
-        results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: null, purgadas: 0, error: err instanceof Error ? err.message : String(err) });
+        results.push({ organizationId: p.organizationId, propertyId: p.propertyId, omitida: null, purgadas: 0, bloqueadas: 0, viaBloqueo: null, error: err instanceof Error ? err.message : String(err) });
       }
     }
   }
@@ -60,7 +67,8 @@ export function hotelesIdentidadPurgaCronRoutes(deps: AppDeps): Hono {
           ok: failures.length === 0,
           properties_revisadas: results.length,
           purgadas_total: results.reduce((n, r) => n + r.purgadas, 0),
-          corridas: results.map((r) => ({ organizationId: r.organizationId, propertyId: r.propertyId, omitida: r.omitida, purgadas: r.purgadas, error: r.error })),
+          bloqueadas_total: results.reduce((n, r) => n + r.bloqueadas, 0),
+          corridas: results.map((r) => ({ organizationId: r.organizationId, propertyId: r.propertyId, omitida: r.omitida, purgadas: r.purgadas, bloqueadas: r.bloqueadas, via_bloqueo: r.viaBloqueo, error: r.error })),
         },
         200,
       );

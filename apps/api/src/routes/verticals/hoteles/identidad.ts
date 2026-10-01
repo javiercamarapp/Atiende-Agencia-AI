@@ -23,6 +23,7 @@ import {
   IDENTITY_CAPTURE_ROLES,
   IDENTITY_REVEAL_ROLES,
   IdentityAccessDeniedError,
+  IdentityBlockedError,
   IdentityConflictError,
   IdentityDecryptError,
   IdentityDoubleControlError,
@@ -80,6 +81,7 @@ function toApiError(err: unknown): unknown {
   if (err instanceof IdentityDoubleControlError) return Errors.forbidden(err.message);
   if (err instanceof IdentityInvalidInputError) return Errors.validation(err.message);
   if (err instanceof IdentityPurgedError) return Errors.conflict(err.message);
+  if (err instanceof IdentityBlockedError) return Errors.conflict(err.message);
   if (err instanceof IdentityRequestResolvedError) return Errors.conflict(err.message);
   if (err instanceof IdentityConflictError) return Errors.conflict(err.message);
   if (err instanceof IdentityDecryptError) return Errors.serviceUnavailable(err.message);
@@ -128,6 +130,12 @@ function serializeIdentity(r: IdentityVaultRecord) {
     capturadaPor: r.capturedBy,
     creadaEn: r.createdAt,
     purgadaEn: r.purgedAt,
+    // Bloqueo previo a la purga (migracion 032); todo `null` en una base sin ella.
+    bloqueadaEn: r.blockedAt,
+    bloqueadaHasta: r.blockedUntil,
+    ventanaBloqueoDias: r.blockWindowDays,
+    motivoBloqueo: r.blockReason,
+    bloqueadaPor: r.blockedBy,
   };
 }
 function serializePurge(r: IdentityPurgeRequestRecord) {
@@ -174,7 +182,7 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const guestId = c.req.query("huespedId");
     const estado = c.req.query("estado");
     if (guestId !== undefined) requireUuid(guestId, "huespedId");
-    if (estado !== undefined && estado !== "activo" && estado !== "purgado") throw Errors.validation("estado: 'activo' o 'purgado'.");
+    if (estado !== undefined && estado !== "activo" && estado !== "bloqueada" && estado !== "purgado") throw Errors.validation("estado: 'activo', 'bloqueada' o 'purgado'.");
     const result = await guarded(() => identityRepo(deps, c).listIdentities(propertyId, { guestId, status: estado, limit: parseLimit(c.req.query("limit")) }));
     return c.json({ disponible: result.available, llaveConfigurada: llaveConfigurada(), items: result.items.map(serializeIdentity) });
   });
@@ -259,7 +267,7 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, IDENTITY_ADMIN_ROLES);
     const propertyId = c.req.param("propertyId");
     const estado = c.req.query("estado");
-    if (estado !== undefined && estado !== "pendiente" && estado !== "ejecutada" && estado !== "rechazada") throw Errors.validation("estado: pendiente, ejecutada o rechazada.");
+    if (estado !== undefined && estado !== "pendiente" && estado !== "ejecutada" && estado !== "rechazada" && estado !== "en_bloqueo") throw Errors.validation("estado: pendiente, en_bloqueo, ejecutada o rechazada.");
     const result = await guarded(() => identityRepo(deps, c).listPurgeRequests(propertyId, { status: estado, limit: parseLimit(c.req.query("limit")) }));
     return c.json({ disponible: result.available, items: result.items.map(serializePurge) });
   });
