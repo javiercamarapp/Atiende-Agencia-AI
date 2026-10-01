@@ -319,7 +319,7 @@ describe("FormDialog", () => {
 describe("motion de overlays (keyframes de 4.4)", () => {
   const animaciones = (preset.theme!.extend as { animation: Record<string, string> }).animation;
 
-  it("Dialog usa overlay-in/out y modal-in/out, definidos en el preset; el overlay v2 lleva blur", () => {
+  it("Dialog usa overlay-in/out y modal-in/out, definidos en el preset; el overlay lleva blur", () => {
     rendered = renderComponent(
       <Dialog open>
         <DialogContent>
@@ -332,8 +332,9 @@ describe("motion de overlays (keyframes de 4.4)", () => {
     const overlay = document.body.querySelector<HTMLElement>("[data-state='open'].fixed.inset-0")!.className;
     for (const clase of ["animate-modal-in", "animate-modal-out"]) expect(contenido).toContain(`:${clase}`);
     for (const clase of ["animate-overlay-in", "animate-overlay-out"]) expect(overlay).toContain(`:${clase}`);
-    expect(overlay).toContain("v2:bg-foreground/40");
-    expect(overlay).toContain("v2:backdrop-blur-sm");
+    expect(overlay).toContain("bg-foreground/40");
+    expect(overlay).toContain("backdrop-blur-sm");
+    expect(overlay).not.toContain("v2:");
     // el centrado ya no usa translate (que pisaria el transform de los keyframes)
     expect(contenido).not.toContain("translate-x");
     for (const nombre of ["modal-in", "modal-out", "overlay-in", "overlay-out", "sheet-up", "sheet-down", "popover-in"]) {
