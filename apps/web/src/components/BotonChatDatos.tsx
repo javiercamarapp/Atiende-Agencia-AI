@@ -1,17 +1,7 @@
-// Píldora "Chatea con tus datos" del header, mismo patrón visual que
-// AdminDashboard.tsx de atiende-restaurantes (botón outline rounded-full con
-// MessageCircle + texto). A diferencia de la versión anterior de este archivo
-// (deshabilitado con solo un toast) -- ahora SÍ abre el panel real
-// (`PanelChateaConTusDatos`, mismo nivel de pulido visual que la referencia de
-// restaurantes: CampoPixeles de fondo, wordmark animado, hilo de conversación,
-// historial) como overlay de pantalla completa, sin que el Shell que monta este
-// botón necesite conocer ningún estado de sección nuevo.
-//
-// Sigue siendo honesto: este monorepo no tiene ningún backend de RAG/chat-con-
-// datos en apps/api (sin ruta /pregunta, sin endpoint de embeddings -- se
-// revisó de nuevo al construir el panel) -- `PanelChateaConTusDatos` responde
-// SIEMPRE con el mismo aviso de roadmap, nunca una respuesta de IA fabricada
-// (ver el comentario de cabecera de ese archivo).
+// Boton "Chatea con tus datos" del header. Este monorepo no tiene ningun backend
+// de RAG/chat-con-datos en apps/api, asi que el boton lo dice de frente: lleva
+// la etiqueta "Pronto" y abre un aviso honesto (ver PanelChateaConTusDatos.tsx),
+// nunca una conversacion simulada.
 import { useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@atiende/ui";
@@ -31,6 +21,7 @@ export function BotonChatDatos({ className, nombreNegocio }: { className?: strin
       >
         <MessageCircle className="w-3.5 h-3.5" />
         Chatea con tus datos
+        <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Pronto</span>
       </Button>
       {abierto && <PanelChateaConTusDatos onClose={() => setAbierto(false)} nombreNegocio={nombreNegocio} />}
     </>

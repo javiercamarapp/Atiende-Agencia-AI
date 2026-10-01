@@ -7,6 +7,8 @@ import { Hono } from "hono";
 import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
+import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
+import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
@@ -55,6 +57,10 @@ export function buildApp(deps: AppDeps): Hono {
   // completo de qué correlaciona y qué no.
   app.use("*", requestId());
 
+  // Cabeceras de seguridad (HSTS, nosniff, anti-framing, CSP restrictiva de API, etc.)
+  // en TODA respuesta, incluidos 401/404/500 -- ver ./cabeceras-seguridad.ts.
+  app.use("*", cabecerasSeguridadApi());
+
   app.onError((err, c) => {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
@@ -63,7 +69,8 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  // /health real (BD + latidos + rate limiter, degrada a 503), ver routes/health.ts.
+  app.route("/", healthRoutes(deps));
 
   app.route("/", authRoutes(deps));
   app.route("/", authGoogleRoutes(deps));

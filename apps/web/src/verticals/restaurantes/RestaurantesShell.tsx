@@ -20,6 +20,7 @@ import {
   ClipboardList,
   History,
   LayoutDashboard,
+  Mic,
   Settings,
   Store,
   Tag,
@@ -30,6 +31,7 @@ import {
 import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -113,6 +115,9 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas, mismo
         // umbral owner/admin (STAFF_NAV_ROLES) que Staff/Auditoría.
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
+        // Agente de voz (config, vista previa, conversaciones) -- mismo umbral
+        // owner/admin: la configuración del agente es de gestión, no de operación.
+        { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
       ],
     });
   }
@@ -327,7 +332,15 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={<div className="flex items-center gap-2">{branches.length > 1 ? sucursalSelector : null}</div>}
+        action={
+          <MobileHeaderActions
+            selector={branches.length > 1 ? sucursalSelector : null}
+            notif={notif}
+            user={{ email: session.email, rol: role }}
+            onLogout={() => void handleLogout()}
+            loggingOut={loggingOut}
+          />
+        }
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3">
