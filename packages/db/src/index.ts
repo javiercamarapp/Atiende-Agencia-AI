@@ -194,3 +194,5 @@ export type { BillingSnapshotRow, CfoOrgRow, CfoRepository } from "./superadmin-
 export { InMemoryCfoRepository, PostgresCfoRepository } from "./superadmin-cfo-repository.ts";
 export type { InfraCostRow, PylRepository } from "./superadmin-pyl-repository.ts";
 export { InMemoryPylRepository, PostgresPylRepository } from "./superadmin-pyl-repository.ts";
+export type { CfoAccessLogRow, CfoZoneRepository, CfoZoneRoleRow, ZonaCfoAccion, ZonaCfoRol } from "./superadmin-zona-cfo-repository.ts";
+export { InMemoryCfoZoneRepository, PostgresCfoZoneRepository } from "./superadmin-zona-cfo-repository.ts";
