@@ -15,7 +15,7 @@ import { esRespuestaMarcada, fallo } from "./respuestas.ts";
 import { leerToken } from "./tokens.ts";
 import { rutasAuth } from "./fixtures/auth.ts";
 import { todasLasRutas } from "./fixtures/indice.ts";
-import type { EstadoEscenario, Falla, Persona, RegistroPeticion, Ruta } from "./tipos.ts";
+import type { EstadoEscenario, Falla, RegistroPeticion, Ruta } from "./tipos.ts";
 
 const ANON = "anon";
 const MAX_REGISTROS = 5000;
