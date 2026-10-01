@@ -1,0 +1,278 @@
+// Rn-01/Rn-02 -- Monitor de sincronización y conflictos de calendario. Pantalla del staff
+// para ver, de un vistazo, el riesgo de overbooking entre canales: estado de cada feed
+// iCal (al día / desactualizado / en espera / en cuarentena), las alertas abiertas del
+// sync (cuarentena, conflictos detectados, errores) y los conflictos de calendario
+// pendientes de resolver (dos reservas de canales distintos sobre las mismas noches, o una
+// reserva sobre un bloqueo). Resolver un conflicto es una decisión HUMANA: el sistema
+// nunca cancela una reserva por su cuenta.
+//
+// Hecha con componentes de @atiende/ui (Card/Badge/Button/Table/Estado*) y el cliente
+// lib/ical-monitor-client.ts. Gate de rol en el CLIENTE calcado de
+// SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES (el servidor re-valida
+// siempre). Contra una base sin la migración 024 las alertas se muestran como "no
+// disponibles aún" y resolver responde un error legible -- nunca una pantalla rota.
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, RefreshCcw } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import {
+  atenderAlertaSync,
+  ETIQUETA_SALUD_FEED,
+  ETIQUETA_TIPO_CONFLICTO,
+  fetchConflictos,
+  fetchMonitorSync,
+  resolverConflicto,
+} from "../lib/ical-monitor-client.ts";
+import type { ConflictoCalendario, EstadoSaludFeed, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
+import type { RentasShellContext } from "../RentasShell.tsx";
+
+// Espejo web de SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES
+// (packages/domain-rentas/src/roles.ts) -- apps/web nunca importa un paquete domain-*.
+const SYNC_CALENDARIO_LECTURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"]);
+const SYNC_CALENDARIO_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
+
+const VARIANTE_SALUD: Record<EstadoSaludFeed, "default" | "secondary" | "destructive" | "outline"> = {
+  ok: "default",
+  desactualizado: "secondary",
+  en_backoff: "secondary",
+  en_cuarentena: "destructive",
+  sin_sincronizar: "outline",
+  inactivo: "outline",
+};
+
+const VARIANTE_SEVERIDAD: Record<SeveridadAlerta, "default" | "secondary" | "destructive" | "outline"> = { info: "outline", aviso: "secondary", critica: "destructive" };
+const ETIQUETA_SEVERIDAD: Record<SeveridadAlerta, string> = { info: "Info", aviso: "Aviso", critica: "Crítica" };
+
+function formatearFechaHora(iso: string | null): string {
+  if (!iso) return "nunca";
+  return new Date(iso).toLocaleString("es-MX");
+}
+
+function describirOcupacion(o: OcupacionConflicto | null): string {
+  if (!o) return "—";
+  const origen = o.canal ?? (o.capa === "bloqueo" ? "bloqueo" : "reserva directa");
+  return `${origen}: ${o.inicio} → ${o.fin}`;
+}
+
+export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
+  const org = session.organizations.find((o) => o.slug === orgSlug);
+  const puedeLeer = org ? SYNC_CALENDARIO_LECTURA_ROLES.has(org.rol) : false;
+  const puedeEscribir = org ? SYNC_CALENDARIO_ESCRITURA_ROLES.has(org.rol) : false;
+
+  const [monitor, setMonitor] = useState<MonitorSync | null>(null);
+  const [conflictos, setConflictos] = useState<readonly ConflictoCalendario[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [recarga, setRecarga] = useState(0);
+
+  useEffect(() => {
+    if (!puedeLeer) return;
+    let cancelado = false;
+    setError(null);
+    (async () => {
+      try {
+        const [m, c] = await Promise.all([fetchMonitorSync(fetch, apiBaseUrl, token, propertyId), fetchConflictos(fetch, apiBaseUrl, token, propertyId, "abiertos")]);
+        if (cancelado) return;
+        setMonitor(m);
+        setConflictos(c.conflictos);
+      } catch (err) {
+        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar el monitor de sincronización.");
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, puedeLeer, recarga]);
+
+  async function ejecutarAccion(id: string, accion: () => Promise<void>) {
+    setOcupado(id);
+    setErrorAccion(null);
+    try {
+      await accion();
+      setRecarga((n) => n + 1);
+    } catch (err) {
+      setErrorAccion(err instanceof Error ? err.message : "No se pudo completar la acción.");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  const encabezado = (
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Monitor de sincronización</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Estado de cada feed iCal, alertas del sync y conflictos de calendario (dos canales sobre las mismas noches). Resolver un conflicto es una decisión tuya: el sistema nunca cancela una
+          reserva solo.
+        </p>
+      </div>
+      {puedeLeer && (
+        <Button type="button" variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>
+          <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Actualizar
+        </Button>
+      )}
+    </header>
+  );
+
+  if (!puedeLeer) {
+    return (
+      <div className="flex flex-col gap-4 max-w-[640px]">
+        {encabezado}
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso al monitor de sincronización. Roles con acceso:{" "}
+          <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
+          <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">operador:solo_calendario</strong>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5 max-w-[960px]">
+      {encabezado}
+
+      {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
+      {!error && (monitor === null || conflictos === null) && <EstadoCargando lineas={4} />}
+
+      {!error && monitor !== null && conflictos !== null && (
+        <>
+          {errorAccion && <EstadoError mensaje={errorAccion} />}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Conflictos de calendario abiertos ({monitor.conflictosAbiertos})</CardTitle>
+            </CardHeader>
+            <CardContent className={conflictos.length === 0 ? undefined : "p-0"}>
+              {conflictos.length === 0 ? (
+                <EstadoVacio icon={CheckCircle2} titulo="Sin conflictos abiertos" mensaje="No hay dos reservas de canales distintos sobre las mismas noches pendientes de revisar." />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Unidad</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Reservas en pugna</TableHead>
+                      <TableHead>Detectado</TableHead>
+                      {puedeEscribir && <TableHead />}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {conflictos.map((k) => (
+                      <TableRow key={k.id}>
+                        <TableCell className="text-xs">{k.unidadNombre ?? k.unidadId}</TableCell>
+                        <TableCell>
+                          <Badge variant={k.tipo === "overbooking_confirmado" ? "destructive" : "secondary"} className="text-[10px]">
+                            {ETIQUETA_TIPO_CONFLICTO[k.tipo]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div>{describirOcupacion(k.ocupacionA)}</div>
+                          <div className="text-muted-foreground">{describirOcupacion(k.ocupacionB)}</div>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(k.detectadoEn)}</TableCell>
+                        {puedeEscribir && (
+                          <TableCell>
+                            <Button type="button" size="sm" variant="outline" disabled={ocupado === k.id} onClick={() => ejecutarAccion(k.id, () => resolverConflicto(fetch, apiBaseUrl, token, propertyId, k.id))}>
+                              {ocupado === k.id ? "Guardando…" : "Marcar resuelto"}
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Alertas del sync ({monitor.alertas.length})</CardTitle>
+            </CardHeader>
+            <CardContent className={monitor.alertasDisponibles && monitor.alertas.length > 0 ? "p-0" : undefined}>
+              {!monitor.alertasDisponibles ? (
+                <EstadoVacio icon={AlertTriangle} titulo="Alertas no disponibles aún" mensaje="La bitácora de sincronización todavía no está habilitada en esta base de datos. Los conflictos y el estado de los feeds de arriba y abajo sí son reales." />
+              ) : monitor.alertas.length === 0 ? (
+                <EstadoVacio icon={CheckCircle2} titulo="Sin alertas abiertas" mensaje="Ningún feed requiere atención ahora mismo." />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Severidad</TableHead>
+                      <TableHead>Canal / unidad</TableHead>
+                      <TableHead>Detalle</TableHead>
+                      <TableHead>Cuándo</TableHead>
+                      {puedeEscribir && <TableHead />}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {monitor.alertas.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell>
+                          <Badge variant={VARIANTE_SEVERIDAD[a.severidad]} className="text-[10px]">
+                            {ETIQUETA_SEVERIDAD[a.severidad]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {a.canal} · {a.unidadNombre ?? a.unidadId}
+                        </TableCell>
+                        <TableCell className="text-xs">{a.detalle}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(a.creadoEn)}</TableCell>
+                        {puedeEscribir && (
+                          <TableCell>
+                            <Button type="button" size="sm" variant="outline" disabled={ocupado === a.id} onClick={() => ejecutarAccion(a.id, () => atenderAlertaSync(fetch, apiBaseUrl, token, propertyId, a.id))}>
+                              {ocupado === a.id ? "Guardando…" : "Marcar atendida"}
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Feeds conectados ({monitor.feeds.length})</CardTitle>
+            </CardHeader>
+            <CardContent className={monitor.feeds.length > 0 ? "p-0" : undefined}>
+              {monitor.feeds.length === 0 ? (
+                <EstadoVacio icon={AlertTriangle} titulo="Sin feeds conectados" mensaje="Conecta el feed iCal de un canal en Sincronización iCal para empezar a evitar doble reserva." />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Canal / unidad</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Última sincronización exitosa</TableHead>
+                      <TableHead>Próximo intento</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {monitor.feeds.map((f) => (
+                      <TableRow key={f.id}>
+                        <TableCell className="text-xs">
+                          {f.canal} · {f.unidadNombre ?? f.unidadId}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={VARIANTE_SALUD[f.salud]} className="text-[10px]" title={f.motivoCuarentena ?? undefined}>
+                            {ETIQUETA_SALUD_FEED[f.salud]}
+                          </Badge>
+                          {f.intentosFallidosConsecutivos > 0 && <span className="ml-2 text-[11px] text-muted-foreground">{f.intentosFallidosConsecutivos} fallo(s) seguidos</span>}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(f.ultimaSincronizacionExitosaEn)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.proximoIntentoEn ? formatearFechaHora(f.proximoIntentoEn) : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}

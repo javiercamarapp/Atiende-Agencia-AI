@@ -16,6 +16,7 @@ import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
 import { rentasIcalSyncRoutes } from "./ical-sync.ts";
 import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
+import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
 import { rentasMensajeriaConversacionesRoutes } from "./mensajeria-conversaciones.ts";
 import { rentasMensajeriaBorradoresRoutes } from "./mensajeria-borradores.ts";
 import { rentasMensajeriaPlantillasRoutes } from "./mensajeria-plantillas.ts";
@@ -71,6 +72,7 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasFinanzasStatementsRoutes(deps));
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
   app.route("/", rentasIcalSyncRoutes(deps));
+  app.route("/", rentasIcalMonitorRoutes(deps));
   // Cron interno (Fase 5) -- mismo patrón que citas/google-calendar-sync.ts: sin
   // requirePropertyMembership, guardado por x-atiende-internal-secret.
   app.route("/", rentasIcalSyncCronRoutes(deps));

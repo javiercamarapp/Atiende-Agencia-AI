@@ -82,6 +82,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  AlertTriangle,
   CalendarDays,
   ClipboardCheck,
   ClipboardList,
@@ -129,6 +130,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
         { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
+        { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
       ],
     },
     {

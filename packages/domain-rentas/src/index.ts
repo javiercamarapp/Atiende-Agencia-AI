@@ -199,6 +199,12 @@ export { ejecutarCicloImportacion, exportarFeedParaUnidad } from "./sync/motor.t
 export type { ContextoExportacion, ContextoSincronizacion, EventoDescartadoPorError, ResultadoImportarCiclo, RevisionUidReciclado } from "./sync/motor.ts";
 export type { RentasCalendarSyncRepository } from "./sync/repository.ts";
 export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./sync/tipos.ts";
+export { BACKOFF_FEED_BASE_SEGUNDOS, BACKOFF_FEED_MAX_SEGUNDOS, calcularBackoffFeedSegundos, eventosBitacoraDeCiclo, OPCIONES_RECLAMO_POR_DEFECTO } from "./sync/lease.ts";
+export type { EventoBitacora, FeedReclamado, OpcionesReclamo, ResultadoReclamo, SeveridadBitacora, TipoEventoBitacora } from "./sync/lease.ts";
+export { clasificarSaludFeed, UMBRAL_FEED_DESACTUALIZADO_MS } from "./sync/monitor.ts";
+export type { AlertaSyncRecord, ConflictoMonitorRecord, EstadoSaludFeed, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoMarcarResuelto } from "./sync/monitor.ts";
+export { ejecutarLoteSync } from "./sync/lote.ts";
+export type { DepsLoteSync, OpcionesLoteSync, ResultadoFeedLote, ResultadoLoteSync } from "./sync/lote.ts";
 export { InMemoryRentasCalendarSyncRepository } from "./sync/in-memory-repository.ts";
 export { PostgresRentasCalendarSyncRepository } from "./sync/postgres-repository.ts";
 
