@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificacion manual, opt-in, contra un Postgres LOCAL real -- mismo patron que
 # scripts/verify-restaurantes-agente-config/run.sh. Prueba, con RLS/GRANT/auth.uid() reales (nunca el repositorio en
-# memoria), packages/domain-restaurantes/migrations/036_demo_organization.sql: la marca demo, sus GRANT y la funcion de
+# memoria), packages/domain-restaurantes/migrations/037_demo_organization.sql: la marca demo, sus GRANT y la funcion de
 # limpieza restaurantes.demo_limpiar.
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH. Si no estan disponibles falla explicito.
@@ -43,7 +43,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 036_demo_organization.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 037_demo_organization.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

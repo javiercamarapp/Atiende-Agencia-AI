@@ -18,7 +18,7 @@ import { loadSeedInputs } from "./inputs.ts";
 export { loadSeedInputs };
 
 const USO = `Uso: node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts [--demo] [--apply] [--confirm-host=<host>] [--owner-email=<correo>]
-  --demo: carga la cuenta como DEMO (slug los-taquitos-de-pm-demo, marca is_demo; requiere la migracion 036)
+  --demo: carga la cuenta como DEMO (slug los-taquitos-de-pm-demo, marca is_demo; requiere la migracion 037)
   (sin --apply: dry-run, no abre ninguna conexion)
   SEED_DATABASE_URL=postgresql://usuario@host:puerto/base   (obligatoria con --apply)`;
 

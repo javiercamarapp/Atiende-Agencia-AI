@@ -2,7 +2,7 @@
 
 Verificacion contra Postgres real del seed de VOLUMEN de la cuenta demo (R-20): `packages/domain-restaurantes/src/seed/demo-volume.ts`
 (generador sobre el motor real de pedidos), `demo-volume-sql.ts` (el SQL idempotente que ejecuta `scripts/seed-pm-demo/seed-volumen.ts`)
-y la limpieza `restaurantes.demo_limpiar` (migracion 036).
+y la limpieza `restaurantes.demo_limpiar` (migracion 037).
 
 `assertions.sql` es **generado**: crea funciones con el cuerpo plpgsql REAL del seed de la cuenta demo y del seed de volumen (con un
 volumen pequeno, 10 dias x 12 pedidos, producido por el motor real) y las ejecuta dentro de cada escenario contra TODAS las migraciones

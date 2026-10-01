@@ -161,7 +161,7 @@ export interface AppDeps {
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
   readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
-  /** R-19 -- marca de organizacion demo (migracion 036) para el widget publico de chat sin Meta. OPCIONAL: sin ella el
+  /** R-19 -- marca de organizacion demo (migracion 037) para el widget publico de chat sin Meta. OPCIONAL: sin ella el
    * widget responde "no disponible" (404) en vez de atender cualquier organizacion. En produccion es
    * `(db) => new PostgresDemoRepository(db)` (degrada con SAVEPOINT a "no es demo" contra la base sin migrar). */
   readonly demoRepo?: (db: TenantDbSession) => DemoRepository;

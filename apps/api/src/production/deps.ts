@@ -318,7 +318,7 @@ export function buildProductionDeps(): AppDeps {
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
-    // R-19: marca de organizacion demo (migración 036) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
+    // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
     demoRepo: (db) => new PostgresDemoRepository(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     dataChat: buildProductionDataChat(llmGateway),

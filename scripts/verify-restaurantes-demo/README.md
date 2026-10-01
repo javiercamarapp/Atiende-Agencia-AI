@@ -1,6 +1,6 @@
 # verify-restaurantes-demo
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/036_demo_organization.sql`
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/037_demo_organization.sql`
 (`restaurantes.demo_organization`, la marca `is_demo`, y `restaurantes.demo_limpiar`).
 
 Cubre: lectura de la marca por la sesion de sistema y por el staff de la propia organizacion (y NO por el de otra ni por

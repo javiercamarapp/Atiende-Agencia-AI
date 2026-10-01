@@ -44,7 +44,7 @@ export function demoPhoneForSession(sessionId: string): string {
 }
 
 export type DemoWidgetMotivoNoDisponible =
-  /** La organizacion no esta marcada como demo (o la base aun no tiene la migracion 036). */
+  /** La organizacion no esta marcada como demo (o la base aun no tiene la migracion 037). */
   | "no_es_demo"
   /** El operador apago el widget de esta demo (`activo = false`). */
   | "apagada"

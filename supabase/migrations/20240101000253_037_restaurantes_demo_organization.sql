@@ -1,5 +1,5 @@
 -- R-19/R-20: marca de organizacion DEMO (`is_demo`). Prefijo de supabase/migrations asignado para esta tarea:
--- 20240101000253 (interno 036).
+-- 20240101000253 (interno 037).
 --
 -- Una organizacion demo es una cuenta de demostracion (p. ej. "Los Taquitos de PM" cargada por
 -- scripts/seed-pm-demo) que se puede presentar a un cliente SIN credenciales de Meta/Twilio/ElevenLabs/SoftRestaurant.

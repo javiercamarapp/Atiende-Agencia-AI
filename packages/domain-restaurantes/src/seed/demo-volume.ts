@@ -9,7 +9,7 @@
 // Garantias:
 //   * Determinista: misma semilla y mismas opciones -> mismas filas (idempotencia: el SQL deduplica por clave de idempotencia).
 //   * Sin PII real: telefonos del rango RESERVADO `0001xxxxxx` (lada 000: no existe), nombres compuestos ficticios, direcciones
-//     genericas, sin correos. La limpieza (`restaurantes.demo_limpiar`, migracion 036) borra por ese rango.
+//     genericas, sin correos. La limpieza (`restaurantes.demo_limpiar`, migracion 037) borra por ese rango.
 //   * Sin canal de voz: la voz de la demo esta deshabilitada, asi que no hay pedidos "por voz" que la contradigan.
 //   * Las proporciones por sucursal y canal son ILUSTRATIVAS (no son los volumenes reales del cliente).
 import { createHash } from "node:crypto";

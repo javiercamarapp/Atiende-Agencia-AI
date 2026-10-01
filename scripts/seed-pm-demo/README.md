@@ -13,7 +13,7 @@ SEED_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/atiende_demo \
 ```
 
 Con `--demo` la cuenta se carga como **demo**: slug `los-taquitos-de-pm-demo`, nombre "Los Taquitos de PM (demo)" y marca en
-`restaurantes.demo_organization` (migracion 036: la exige el preflight). Es la cuenta que atiende el widget publico `/demo/:orgSlug`
+`restaurantes.demo_organization` (migracion 037: la exige el preflight). Es la cuenta que atiende el widget publico `/demo/:orgSlug`
 y la que borra `limpiar-demo.ts`. Sin `--demo` el seed se comporta como siempre (la cuenta real de PM, sin marca). El runbook
 completo de carga y limpieza esta en `docs/DEMO-PM-CARGA.md`.
 

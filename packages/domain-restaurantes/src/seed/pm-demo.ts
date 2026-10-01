@@ -219,7 +219,7 @@ export interface PmSeedPlan {
   };
   /** Pendientes del dueño que NO se inventan (checklist R-33). */
   readonly pendientes: readonly PmSeedPendiente[];
-  /** Presente solo con `{ demo: true }`: la organizacion queda marcada en `restaurantes.demo_organization` (migracion 036). */
+  /** Presente solo con `{ demo: true }`: la organizacion queda marcada en `restaurantes.demo_organization` (migracion 037). */
   readonly demo: { readonly seedVersion: string } | null;
   /** Resumen legible para el modo dry-run. */
   readonly summary: {
@@ -435,9 +435,9 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
 ];
 
-/** Esquema extra que solo exige la carga como demo (`--demo`): la marca de organizacion demo (migracion 036). */
+/** Esquema extra que solo exige la carga como demo (`--demo`): la marca de organizacion demo (migracion 037). */
 export const PM_SEED_REQUIRED_SCHEMA_DEMO: typeof PM_SEED_REQUIRED_SCHEMA = [
-  { table: "restaurantes.demo_organization", columns: ["organization_id", "seed_version", "activo"], migration: "036_demo_organization.sql" },
+  { table: "restaurantes.demo_organization", columns: ["organization_id", "seed_version", "activo"], migration: "037_demo_organization.sql" },
 ];
 
 /** SQL de solo lectura que devuelve una fila por columna FALTANTE (vacio = esquema completo). */

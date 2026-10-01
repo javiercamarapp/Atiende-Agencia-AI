@@ -1,7 +1,7 @@
 // R-19/R-20 -- organizacion DEMO. Tipos compartidos por el widget publico de chat, el seed de volumen y la limpieza.
 
 /** Rango RESERVADO de telefonos ficticios (lada 000: no existe en Mexico). El seed de volumen usa `0001xxxxxx` y las
- * sesiones del widget publico `0009xxxxxx`; la funcion SQL `restaurantes.demo_limpiar` (migracion 036) borra por este
+ * sesiones del widget publico `0009xxxxxx`; la funcion SQL `restaurantes.demo_limpiar` (migracion 037) borra por este
  * mismo prefijo, asi que NUNCA se mezcla con una persona real. */
 export const DEMO_PHONE_PREFIX_VOLUME = "0001";
 export const DEMO_PHONE_PREFIX_WIDGET = "0009";
@@ -20,11 +20,11 @@ export function esTelefonoDemo(phone: string): boolean {
 export interface DemoOrganizationInfo {
   readonly organizationId: string;
   readonly seedVersion: string;
-  /** `false` = el operador apago el widget publico de esta demo (migracion 036). */
+  /** `false` = el operador apago el widget publico de esta demo (migracion 037). */
   readonly activo: boolean;
 }
 
-/** Puerto de lectura de la marca demo (`restaurantes.demo_organization`, migracion 036). Contra una base sin la
+/** Puerto de lectura de la marca demo (`restaurantes.demo_organization`, migracion 037). Contra una base sin la
  * migracion devuelve `null` ("esta organizacion no es demo"): nunca lanza por falta de migracion. */
 export interface DemoRepository {
   findDemoOrganization(organizationId: string): Promise<DemoOrganizationInfo | null>;

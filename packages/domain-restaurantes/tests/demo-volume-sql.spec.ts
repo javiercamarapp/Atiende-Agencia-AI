@@ -37,9 +37,9 @@ describe("SQL del seed de volumen", () => {
     expect(renderDemoVolumeDoBlock("los-taquitos-de-pm-demo", VACIO)).toMatch(/^do \$seed_volumen\$/);
   });
 
-  it("el preflight pide las migraciones 028, 031, 033 y 036", () => {
+  it("el preflight pide las migraciones 028, 031, 033 y 037", () => {
     const sql = renderVolumePreflightSql();
-    for (const m of ["028_conversaciones_handoff_turnos.sql", "031_recoger_promociones_automaticas_puentes.sql", "033_agente_config_historial_y_callbacks_estado.sql", "036_demo_organization.sql"]) expect(sql).toContain(m);
+    for (const m of ["028_conversaciones_handoff_turnos.sql", "031_recoger_promociones_automaticas_puentes.sql", "033_agente_config_historial_y_callbacks_estado.sql", "037_demo_organization.sql"]) expect(sql).toContain(m);
   });
 
   it("assertions.sql del verify esta sincronizado con los seeds (regenerar con ejecutar.mjs verify-demo-volumen)", async () => {

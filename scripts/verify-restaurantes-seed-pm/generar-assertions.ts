@@ -14,7 +14,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export function construirAssertions(): string {
   const { data, agent } = loadSeedInputs();
   const body = renderPmSeedPlpgsql(buildPmSeedPlan(data, agent));
-  // Carga como DEMO (`--demo`): slug `<slug>-demo` + marca en restaurantes.demo_organization (migracion 036).
+  // Carga como DEMO (`--demo`): slug `<slug>-demo` + marca en restaurantes.demo_organization (migracion 037).
   const bodyDemo = renderPmSeedPlpgsql(buildPmSeedPlan(data, agent, { demo: true }));
   const escenarios = readFileSync(path.join(HERE, "escenarios.sql"), "utf8");
   const marcador = "\\set ON_ERROR_STOP off\n\\pset pager off\n";

@@ -26,8 +26,8 @@ de nada, ni tareas programadas. **No toca** ninguna otra organización (si el sl
 
 1. **Migraciones aplicadas** en la base destino. El *preflight* de cada script lista exactamente cuáles faltan y sale con código 3 sin
    escribir nada. Para la demo completa hacen falta, además de las anteriores del esquema de restaurantes: `022`, `023`, `025`, `027`,
-   `028`, `029`, `031`, `033` y **`036_demo_organization.sql`** (la nueva de este trabajo; espejo
-   `supabase/migrations/20240101000253_036_restaurantes_demo_organization.sql`). Aplicarlas es una decisión aparte (`docs/DEPLOY.md`).
+   `028`, `029`, `031`, `033` y **`037_demo_organization.sql`** (la nueva de este trabajo; espejo
+   `supabase/migrations/20240101000253_037_restaurantes_demo_organization.sql`). Aplicarlas es una decisión aparte (`docs/DEPLOY.md`).
 2. **Código desplegado**: el chat público `/demo/<slug>` y el endpoint `/v1/restaurantes/demo/<slug>/…` ya están en el despliegue.
 3. **Una cadena de conexión de propietario** (la que puede saltarse RLS y ejecutar `restaurantes.demo_limpiar`), en la variable
    **`SEED_DATABASE_URL`** (a propósito **no** se lee `DATABASE_URL`):
@@ -129,7 +129,7 @@ select count(*) from restaurantes.orders where organization_id = (select id from
 
 ## 7. Cómo BORRAR la demo
 
-El script de limpieza llama a `restaurantes.demo_limpiar` (migración 036: `security definer`, `search_path` fijo, solo sesión de sistema/operador,
+El script de limpieza llama a `restaurantes.demo_limpiar` (migración 037: `security definer`, `search_path` fijo, solo sesión de sistema/operador,
 **se niega a operar sobre una organización que no esté marcada como demo**). Por omisión es *dry-run*: cuenta lo que borraría.
 
 ```bash
@@ -149,7 +149,7 @@ node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts --modo=todo
 Comprobación tras 7.4: `select count(*) from core.organization where slug = 'los-taquitos-de-pm-demo';` → 0. La cuenta real de PM
 (`los-taquitos-de-pm`) y cualquier otra organización **no se tocan** (probado en el verify con una organización ajena que usa el mismo rango de teléfonos).
 
-Para revertir la migración 036 en sí (no recomendado salvo que no queden demos): `drop function restaurantes.demo_limpiar(uuid, text, integer); drop table restaurantes.demo_organization;`.
+Para revertir la migración 037 en sí (no recomendado salvo que no queden demos): `drop function restaurantes.demo_limpiar(uuid, text, integer); drop table restaurantes.demo_organization;`.
 
 ## 8. Qué verifica CI (y qué no)
 

@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 036, marca demo): la lectura corre dentro de la
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 037, marca demo): la lectura corre dentro de la
 // transaccion unica del request. Un 42P01/42703/42883/42501 sin SAVEPOINT la dejaria abortada (25P02).
 // `AbortAwareFakeSession` reproduce ese estado; cada caso verifica el camino anterior ("no es demo") y que la MISMA
 // sesion sigue viva para la siguiente consulta del request.

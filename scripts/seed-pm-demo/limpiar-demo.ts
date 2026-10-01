@@ -1,5 +1,5 @@
 // Limpieza de la cuenta demo (R-20): borra lo ficticio por modo, o la organizacion demo completa. Invoca la funcion SQL
-// `restaurantes.demo_limpiar` (migracion 036), que SOLO opera sobre organizaciones marcadas como demo y borra por el rango de
+// `restaurantes.demo_limpiar` (migracion 037), que SOLO opera sobre organizaciones marcadas como demo y borra por el rango de
 // telefonos ficticios (0001 = volumen, 0009 = sesiones del widget): nunca toca pedidos, clientes ni conversaciones reales.
 //
 // Por defecto es DRY-RUN: cuenta lo que se borraria y NO borra nada. Borrar exige `--apply` + SEED_DATABASE_URL y, si la base no es

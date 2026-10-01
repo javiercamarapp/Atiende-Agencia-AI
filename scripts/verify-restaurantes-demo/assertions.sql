@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT + auth.uid() reales -- nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/036_demo_organization.sql (restaurantes.demo_organization y
+-- packages/domain-restaurantes/migrations/037_demo_organization.sql (restaurantes.demo_organization y
 -- restaurantes.demo_limpiar).
 --
 -- Cada escenario corre en su propio `begin; ... rollback;`. Un escenario "RECHAZADO" termina en ERROR real de Postgres

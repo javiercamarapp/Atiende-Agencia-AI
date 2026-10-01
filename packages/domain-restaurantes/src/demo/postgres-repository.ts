@@ -1,5 +1,5 @@
 // Adaptador Postgres de `DemoRepository`. REGLA DURA de compatibilidad con la base SIN migrar: la lectura corre dentro
-// de la transaccion unica del request y la migracion 036 no se aplica sola al mergear. Un 42P01/42703/42883/42501
+// de la transaccion unica del request y la migracion 037 no se aplica sola al mergear. Un 42P01/42703/42883/42501
 // sin SAVEPOINT dejaria la transaccion abortada (25P02) y el siguiente paso del request fallaria; con SAVEPOINT cae a
 // "no es demo" (el widget responde "no disponible") y la sesion sigue viva.
 import { runWithSavepointFallback } from "@atiende/db";

@@ -122,10 +122,10 @@ describe("carga como demo (--demo)", () => {
     expect(renderPmSeedPlpgsql(buildPmSeedPlan(data, agent))).toContain('"demo":null');
   });
 
-  it("la verificacion de esquema exige la migracion 036 SOLO en modo demo, y la 033 siempre", () => {
+  it("la verificacion de esquema exige la migracion 037 SOLO en modo demo, y la 033 siempre", () => {
     expect(renderSchemaPreflightSql()).toContain("033_agente_config_historial_y_callbacks_estado.sql");
     expect(renderSchemaPreflightSql()).not.toContain("demo_organization");
-    expect(renderSchemaPreflightSql({ demo: true })).toContain("036_demo_organization.sql");
+    expect(renderSchemaPreflightSql({ demo: true })).toContain("037_demo_organization.sql");
   });
 
   it("la CLI reconoce --demo", () => {

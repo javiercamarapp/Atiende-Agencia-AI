@@ -3,7 +3,7 @@
 // corre dos veces.
 //
 // Reglas del bloque (todas verificadas en scripts/verify-restaurantes-demo-volumen):
-//   * SOLO escribe en una organizacion marcada en `restaurantes.demo_organization` (migracion 036); si no, aborta sin tocar nada.
+//   * SOLO escribe en una organizacion marcada en `restaurantes.demo_organization` (migracion 037); si no, aborta sin tocar nada.
 //   * Solo acepta telefonos del rango reservado `0001xxxxxx`: nunca puede crear ni tocar a una persona real.
 //   * Idempotente: los pedidos se deduplican por (organizacion, clave de idempotencia); clientes por telefono; conversaciones por
 //     telefono; handoffs por conversacion; contactos por telefono y fecha. Re-ejecutar el mismo volumen no cambia nada.
@@ -12,9 +12,9 @@ import type { DemoVolumeBatch } from "./demo-volume.ts";
 
 export const DEMO_VOLUME_PHONE_RE = "^0001[0-9]{6}$";
 
-/** Tablas y columnas que el seed de volumen necesita (migraciones 028, 031, 033 y 036). */
+/** Tablas y columnas que el seed de volumen necesita (migraciones 028, 031, 033 y 037). */
 export const DEMO_VOLUME_REQUIRED_SCHEMA: readonly { readonly table: string; readonly columns: readonly string[]; readonly migration: string }[] = [
-  { table: "restaurantes.demo_organization", columns: ["organization_id", "activo"], migration: "036_demo_organization.sql" },
+  { table: "restaurantes.demo_organization", columns: ["organization_id", "activo"], migration: "037_demo_organization.sql" },
   { table: "restaurantes.orders", columns: ["canal", "propina", "idempotency_key"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
   { table: "restaurantes.conversation_handoff", columns: ["estado", "solicitado_por", "conversation_id"], migration: "028_conversaciones_handoff_turnos.sql" },
   { table: "restaurantes.callback_requests", columns: ["status"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
