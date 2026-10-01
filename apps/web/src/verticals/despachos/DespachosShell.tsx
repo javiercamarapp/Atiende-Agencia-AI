@@ -31,6 +31,7 @@ import {
   FolderInput,
   HandCoins,
   Landmark,
+  Link2,
   LayoutDashboard,
   Settings,
   Undo2,
@@ -105,6 +106,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "bookkeeping", label: "Bookkeeping" },
   { to: "reportes", label: "Reportes de cliente" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
+  { to: "portal-cliente", label: "Portal del cliente" },
   { to: "staff", label: "Staff" },
   { to: "configuracion", label: "Configuración" },
 ];
@@ -148,6 +150,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
     {
       title: "Equipo",
       items: [
+        { ...item("portal-cliente"), icon: Link2 },
         { ...item("staff"), icon: UsersRound },
         { ...item("configuracion"), icon: Settings },
       ],
@@ -156,7 +159,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las
- * secciones fiscales/contables (los 15 destinos de `buildSidebarSections`, sin curarlos a ojo). */
+ * secciones fiscales/contables (los 16 destinos de `buildSidebarSections`, sin curarlos a ojo). */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/despachos/${orgSlug}`;
   return [

@@ -152,6 +152,8 @@ import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
 import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
 import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
 import { ConfiguracionPage as DespachosConfiguracionPage } from "./verticals/despachos/pages/Configuracion.tsx";
+import { PortalClientePage as DespachosPortalClientePage } from "./verticals/despachos/pages/PortalCliente.tsx";
+import { PortalClientePage as PortalClientePublicoPage } from "./verticals/despachos/portal/PortalClientePage.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -869,6 +871,7 @@ const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login",
 const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
 const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
+const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
 
 export function App() {
   return (
@@ -1040,6 +1043,9 @@ export function App() {
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
+        <Route path="/despachos/:orgSlug/portal-cliente" element={<DespachosPortalClienteRoute />} />
+        {/* D-08: portal PUBLICO del cliente final; el token va en el fragmento (#t=...), nunca en la ruta. */}
+        <Route path="/portal/cliente" element={<PortalClientePublicoPage apiBaseUrl={API_BASE_URL} />} />
         <Route path="/" element={<SeleccionarVerticalPage />} />
         {/* Cualquier URL sin ruta propia: 404 real en vez de pantalla en blanco. */}
         <Route path="*" element={<NotFoundPage />} />

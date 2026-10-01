@@ -124,6 +124,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       'Feed .ics público de disponibilidad (GET /rentas/.../feed.ics, sin auth, ver apps/api/src/routes/verticals/rentas/ical-feed-publico.ts) -- hallazgo de auditoría (rubro 10, "performance y escalabilidad": sin rate-limit, 3+2N queries por request). El límite es contra scraping/ráfaga (cada request ejecuta varias queries por unidad), nunca la última defensa de integridad -- el contenido es solo disponibilidad, nunca dato sensible. Negar por completo un poll real de una OTA (Airbnb/Booking/VRBO) por un blip de Redis rompe la sincronización de calendario más tiempo del que vale la pena; el backend en memoria de esta instancia sigue acotando la ráfaga mientras dura la avería.',
   },
+  'despachos:portal-cliente': {
+    failMode: 'closed',
+    reason:
+      'Portal del cliente final del despacho (apps/api, /portal-cliente/*): superficie NO autenticada que solo presenta un token de enlace. Abrir sin freno permitiria adivinar tokens o llenar la bandeja de documentos del despacho con una avería de Redis: negar una peticion legitima aislada es preferible (el cliente reintenta en un minuto). La defensa de fondo (256 bits de entropia, topes por hora en la base) sigue vigente, esto es la capa contra fuerza bruta y ráfagas.',
+  },
   'data-chat:query': {
     failMode: 'closed',
     reason:

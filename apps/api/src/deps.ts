@@ -38,7 +38,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { DespachosRepository } from "@atiende/domain-despachos";
+import type { DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -271,6 +271,8 @@ export interface AppDeps {
   /** L-05: WhatsApp de licitaciones (contactos, tokens de un solo uso, outbox, bitacora). `production/deps.ts` lo cablea a `PostgresWhatsAppRepository`; OPCIONAL a proposito: si falta, las rutas responden 503, el webhook acusa recibo sin procesar y el despacho se omite. */
   readonly licitacionesWhatsAppRepo?: (db: TenantDbSession) => WhatsAppRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
+  /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
    * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un
    * mapeo de migración de catálogo (migracion-catalogo.ts). Implementa
