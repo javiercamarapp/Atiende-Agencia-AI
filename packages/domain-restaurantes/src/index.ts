@@ -222,6 +222,8 @@ export type { DiferenciaCampo, LineaDiff, ResultadoValidacion } from "./whatsapp
 export * from "./conversaciones/index.ts";
 // R-19/R-20: organizacion demo (marca, widget publico de chat sin Meta, telefonos ficticios).
 export * from "./demo/index.ts";
+// R-33: checklist de onboarding calculado con datos reales.
+export * from "./onboarding.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,

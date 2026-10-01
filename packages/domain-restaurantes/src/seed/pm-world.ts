@@ -67,5 +67,16 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       productIds: promo.productNames.map((n) => productIds.get(n)!).filter(Boolean),
     });
   }
+  // Misma configuracion del agente que inserta el SQL del seed (perfil taqueria_pm con los datos del dueño; sin nombre inventado).
+  await repo.upsertWhatsAppAgentConfig(organizationId, null, {
+    perfil: plan.whatsappAgent.perfil,
+    agentName: plan.whatsappAgent.agentName,
+    businessName: plan.whatsappAgent.businessName,
+    toneStyle: plan.whatsappAgent.toneStyle as never,
+    deliveryTimeText: plan.whatsappAgent.deliveryTimeText,
+    salsasText: plan.whatsappAgent.salsasText,
+    promosText: plan.whatsappAgent.promosText,
+    escalationReasonsOff: [],
+  });
   return { repo, organizationId, propertyBySlug, productIds };
 }
