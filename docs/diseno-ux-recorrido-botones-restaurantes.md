@@ -61,7 +61,7 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 |---|---|---|
 | H-1 | Baja de staff y "quitar zona" usaban `window.confirm` (nativo, sin nombre accesible, bloqueante) | `useConfirm` con tono peligro, nombre del objeto y prueba de cancelar/confirmar |
 | H-2 | Boton de solo icono (papelera) de zonas sin nombre accesible | `aria-label="Quitar zona <nombre>"` |
-| H-3 | Barra inferior movil con 5 destinos fijos: Conversaciones, Turnos, Promociones, Sucursales, Clientes y todo el bloque Equipo no tenian acceso movil | 4 destinos + "Mas" con todas las secciones |
+| H-3 | Barra inferior movil con 5 destinos fijos (Panel, Pedidos, Historial, Productos, Clientes): Conversaciones, Turnos, Promociones, Sucursales y todo el bloque Equipo no tenian acceso movil | 4 destinos (Panel, Pedidos, Historial, Productos) + "Mas" con todas las secciones; Clientes pasa a "Mas" |
 | H-4 | "Panel" de la barra movil quedaba activo en cualquier subruta (no tenia `end`) | `end: true` |
 | H-5 | `Dashboard` renderizaba un `<main>` dentro del `<main>` del shell (HTML invalido) | `PageContainer` (div) |
 | H-6 | Las listas de productos de una promocion eran `<select multiple>` (poco usable en movil/teclado) | grupos de casillas con `role="group"`; conservan el orden del catalogo |

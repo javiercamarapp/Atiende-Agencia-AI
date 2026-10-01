@@ -88,7 +88,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(bottomNav!.className).toContain("md:hidden");
   });
 
-  // PR-5 (shell unico): antes eran 5 destinos fijos y Conversaciones/Turnos/Promociones/Sucursales/Clientes y las
+  // PR-5 (shell unico): antes eran 5 destinos fijos y Conversaciones/Turnos/Promociones/Sucursales y las
   // de gestión no se alcanzaban en móvil. Ahora la barra trae 4 destinos curados + "Más", que abre TODAS las secciones.
   it("el BottomNav trae los 4 destinos operativos curados más 'Más', que lista todas las secciones (nunca más de 5 lugares)", async () => {
     rendered = await renderShell();
