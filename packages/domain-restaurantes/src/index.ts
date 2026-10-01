@@ -141,6 +141,8 @@ export { registerCallbackRequest } from "./callback-requests.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
+export { assignBranch, rankBranchesByKm, FUERA_DE_ZONA_MENSAJE } from "./branch-assignment.ts";
+export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBranch } from "./branch-assignment.ts";
 
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
