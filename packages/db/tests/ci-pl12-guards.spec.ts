@@ -72,10 +72,11 @@ describe("rollback.sh (herramienta manual, sin secretos)", () => {
     dir = mkdtempSync(path.join(tmpdir(), "rollback-spec-"));
     const registro = path.join(dir, "llamadas.log");
     writeFileSync(path.join(dir, "vercel"), `#!/bin/sh\necho "$@" >> "${registro}"\n`, { mode: 0o755 });
-    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}`, ...extra };
-    // En GitHub Actions CI=true: para probar el camino "no CI" hay que quitarlo.
-    delete env.CI;
-    delete env.GITHUB_ACTIONS;
+    // En GitHub Actions CI=true: para probar el camino "no CI" se quitan CI y GITHUB_ACTIONS del entorno hijo
+    // (sin leer variables por nombre: el guard env-inventory-guard solo admite variables registradas).
+    const heredado = Object.entries(process.env).filter(([nombre]) => nombre !== "CI" && nombre !== "GITHUB_ACTIONS");
+    const env: NodeJS.ProcessEnv = { ...Object.fromEntries(heredado), ...extra };
+    env["PATH"] = `${dir}:${Object.fromEntries(heredado)["PATH"] ?? ""}`;
     return { env, registro };
   }
 

@@ -74,7 +74,7 @@ describe("zonas con horario de verano (no deben desfasar el dia en la transicion
 });
 
 describe("independencia de la zona del proceso", () => {
-  it("el resultado depende solo del instante y de la zona pedida, nunca de process.env.TZ", () => {
+  it("el resultado depende solo del instante y de la zona pedida, nunca de la zona del proceso", () => {
     a("2027-01-01T05:30:00.000Z");
     // Si el helper leyera la zona local del proceso, esta igualdad se rompe bajo la matriz de TZ del job clock-guard.
     expect(hoyFechaNegocio("America/Merida")).toBe("2026-12-31");
