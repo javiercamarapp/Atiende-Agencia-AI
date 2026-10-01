@@ -42,14 +42,15 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
-| `restaurantes.pedido.nuevo` | operacion | info | owner/admin, staff | ShoppingBag | `/restaurantes/{orgSlug}/pedidos` | un aviso por pedido (clave = id del pedido) | 7 d | pendiente: alta de pedidos por checkout publico sin sesion de staff: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `restaurantes.pedido.nuevo` | operacion | info | owner/admin, staff | ShoppingBag | `/restaurantes/{orgSlug}/pedidos` | un aviso por pedido (clave = id del pedido) | 7 d | conectado: `packages/domain-restaurantes/src/postgres-repository.ts` |
 | `restaurantes.handoff.solicitado` | agentes | atencion | owner/admin, staff | UserRoundCog | `/restaurantes/{orgSlug}/conversaciones` | una por conversacion derivada | 3 d | conectado: `packages/domain-restaurantes/src/conversaciones/postgres-repository.ts` (`PostgresHandoffAgentGate.solicitarHumano`: la toma abierta por el agente de WhatsApp real o por el widget de la demo) |
 | `restaurantes.voz.llamada_escalada` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/agente-voz` | una por llamada | 3 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
 | `restaurantes.voz.proveedor_con_fallas` | salud | atencion | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/agente-voz` | una por sucursal por hora | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-interno.ts` |
-| `restaurantes.callback.pendiente` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/conversaciones` | una por dia | 2 d | pendiente: estado de callbacks del agente de voz: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `restaurantes.callback.pendiente` | agentes | atencion | owner/admin, staff | PhoneCall | `/restaurantes/{orgSlug}/conversaciones` | una por solicitud de contacto (clave = id) | 3 d | conectado: `packages/domain-restaurantes/src/postgres-repository.ts` |
 | `restaurantes.proveedor.falla` | salud | critica | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/configuracion` | una por proveedor por dia | 7 d | pendiente: requiere el estado de salud por proveedor del gateway (PR de OpenRouter/gateway) |
 | `restaurantes.demo.tope_diario_alcanzado` | cierres | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/configuracion` | una por dia | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/demo-widget.ts` (el chat público de la demo llegó al tope diario de mensajes de la organización: tope de costo) |
 | `restaurantes.costo.umbral_voz` | cierres | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/agente-voz` | una por umbral (80, 100) por mes | 31 d | pendiente: alertas de costo de voz (migracion 035) aun no escriben core.notification |
+| `restaurantes.onboarding.listo` | onboarding | info | owner/admin | CircleCheckBig | `/restaurantes/{orgSlug}/primeros-pasos` | una por organizacion | 30 d | conectado: `apps/api/src/routes/verticals/restaurantes/admin-onboarding.ts` |
 
 ### hoteles
 

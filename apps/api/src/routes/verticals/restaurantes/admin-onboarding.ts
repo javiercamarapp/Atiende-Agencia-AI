@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { emitirNotificacion } from "@atiende/db";
 import { STAFF_INVITE_ROLES, cargarOnboarding } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -24,7 +25,13 @@ export function restaurantesAdminOnboardingRoutes(deps: AppDeps): Hono<CoreAuthH
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null) throw Errors.forbidden("El checklist de onboarding es de toda la organización: requiere acceso a todas las sucursales.");
     c.header("Cache-Control", "no-store");
-    return c.json(await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId));
+    const checklist = await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId);
+    // Cierre del checklist: cuando todos los puntos obligatorios estan hechos se avisa UNA vez por organizacion (clave de dedupe =
+    // organizacion; la base la depura al vencer la vigencia). Dentro de un SAVEPOINT (emitirNotificacion): sin migrar no aborta la lectura.
+    if (checklist.listoParaOperar) {
+      await emitirNotificacion(c.get("db"), { evento: "restaurantes.onboarding.listo", organizationId, clave: organizationId });
+    }
+    return c.json(checklist);
   });
 
   return app;
