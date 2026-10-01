@@ -34,6 +34,7 @@ import {
   EstadoVacio,
   Input,
   Label,
+  PageContainer,
   Table,
   TableBody,
   TableCell,
@@ -117,7 +118,7 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageContainer padding="none" className="gap-6">
       <header>
         <h1 className="text-xl font-display font-semibold text-foreground">Asistencia</h1>
         <p className="mt-1 text-sm text-muted-foreground">Checador de autoservicio — LFT art. 132 fr. XXXIV.</p>
@@ -182,7 +183,7 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
       </section>
 
       {ATTENDANCE_ADMIN_ROLES_NAV.has(role) && <AdministracionAsistencia apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
-    </div>
+    </PageContainer>
   );
 }
 

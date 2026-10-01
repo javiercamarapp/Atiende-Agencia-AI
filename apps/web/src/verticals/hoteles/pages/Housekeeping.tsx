@@ -5,7 +5,23 @@
 // sin la migracion 033 el tablero degrada a solo-estado de habitacion y avisa (sin 500).
 import { useCallback, useEffect, useState } from "react";
 import { BedDouble, ClipboardCheck, Sparkles } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  useConfirm,
+} from "@atiende/ui";
 import {
   HABITACION_ESTADO_LABELS,
   HK_OUT_OF_SERVICE_ROLES,
@@ -23,6 +39,7 @@ import {
   rehabilitar,
 } from "../lib/limpieza-client.ts";
 import type { Camarista, ReporteDiario, Tablero, TableroHabitacion, TareaAccion } from "../lib/limpieza-client.ts";
+import { HABITACION_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const ACCION_LABELS: Record<TareaAccion, string> = {
@@ -33,12 +50,6 @@ const ACCION_LABELS: Record<TareaAccion, string> = {
   cancelar: "Cancelar tarea",
 };
 
-function badgeVariant(estado: TableroHabitacion["estado"]): "default" | "secondary" | "destructive" | "outline" {
-  if (estado === "sucia") return "destructive";
-  if (estado === "disponible") return "default";
-  return "secondary";
-}
-
 export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
   const [fecha, setFecha] = useState<string | undefined>(undefined);
   const [tablero, setTablero] = useState<Tablero | null>(null);
@@ -46,6 +57,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
   const [camaristas, setCamaristas] = useState<readonly Camarista[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<"tablero" | "reporte">("tablero");
 
@@ -88,37 +100,55 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
     return camaristas.find((c) => c.id === id)?.nombre ?? "Otro responsable";
   }
 
-  function handleAccion(h: TableroHabitacion, accion: TareaAccion) {
+  async function handleAccion(h: TableroHabitacion, accion: TareaAccion) {
     const tarea = h.tarea;
     if (!tarea) return;
     if (accion === "inspeccionar") {
-      const aprobada = window.confirm(`Inspeccion de la habitacion ${h.codigo}: Aceptar = aprobada, Cancelar = rechazada.`);
-      const nota = aprobada ? window.prompt("Nota (opcional):") ?? "" : window.prompt("Que debe corregirse (obligatorio al rechazar):") ?? "";
-      if (!aprobada && !nota.trim()) return setError("Para rechazar una inspeccion indica que debe corregirse.");
+      // Antes: window.confirm "Aceptar = aprobada, Cancelar = rechazada" + window.prompt para la nota.
+      const aprobada = await confirmar({ titulo: `Inspección de la habitación ${h.codigo}`, descripcion: "¿La habitación pasó la inspección?", confirmar: "Aprobada", cancelar: "Rechazada" });
+      const nota = await pedirTexto({
+        titulo: aprobada ? `Aprobar la habitación ${h.codigo}` : `Rechazar la habitación ${h.codigo}`,
+        confirmar: aprobada ? "Aprobar" : "Rechazar",
+        campo: aprobada ? { etiqueta: "Nota (opcional)", requerido: false, multilinea: true } : { etiqueta: "Qué debe corregirse", multilinea: true },
+      });
+      if (nota === null) return;
       return void run(tarea.id, () => accionTarea(fetch, apiBaseUrl, token, propertyId, tarea.id, "inspeccionar", { aprobada, nota: nota.trim() || undefined }));
     }
     if (accion === "asignar") {
       const lista = camaristas.map((c, i) => `${i + 1}. ${c.nombre}`).join("\n");
-      const elegido = window.prompt(`Asignar habitacion ${h.codigo} a (numero):\n${lista}`);
+      const elegido = await pedirTexto({
+        titulo: `Asignar la habitación ${h.codigo}`,
+        descripcion: <span className="whitespace-pre-line">{`Escribe el número de la camarista:\n${lista}`}</span>,
+        confirmar: "Asignar",
+        campo: { etiqueta: "Número", validar: (v) => (camaristas[Number(v) - 1] ? null : "Escribe un número de la lista.") },
+      });
       const camarista = elegido ? camaristas[Number(elegido) - 1] : undefined;
       if (!camarista) return;
       return void run(tarea.id, () => accionTarea(fetch, apiBaseUrl, token, propertyId, tarea.id, "asignar", { asignadoA: camarista.id }));
     }
-    if (accion === "cancelar" && !window.confirm(`Cancelar la tarea de la habitacion ${h.codigo}?`)) return;
+    if (accion === "cancelar") {
+      const ok = await confirmar({ titulo: `Cancelar la tarea de la habitación ${h.codigo}`, tono: "danger", confirmar: "Cancelar tarea", cancelar: "Volver" });
+      if (!ok) return;
+    }
     void run(tarea.id, () => accionTarea(fetch, apiBaseUrl, token, propertyId, tarea.id, accion));
   }
 
-  function handleInhabilitar(h: TableroHabitacion) {
-    const motivo = window.prompt(`Motivo para inhabilitar la habitacion ${h.codigo} (3 a 300 caracteres):`);
+  async function handleInhabilitar(h: TableroHabitacion) {
+    const motivo = await pedirTexto({
+      titulo: `Inhabilitar la habitación ${h.codigo}`,
+      confirmar: "Continuar",
+      campo: { etiqueta: "Motivo", minLength: 3, maxLength: 300, multilinea: true },
+    });
     if (!motivo) return;
-    const falla = window.confirm("Aceptar = fuera de orden (falla). Cancelar = fuera de servicio (decision operativa).");
+    // Antes: window.confirm "Aceptar = fuera de orden (falla). Cancelar = fuera de servicio (decisión operativa)."
+    const falla = await confirmar({ titulo: `Tipo de baja de la habitación ${h.codigo}`, descripcion: "¿Es una falla (fuera de orden) o una decisión operativa (fuera de servicio)?", confirmar: "Fuera de orden (falla)", cancelar: "Fuera de servicio" });
     void run(h.roomId, () => inhabilitar(fetch, apiBaseUrl, token, propertyId, { roomId: h.roomId, tipo: falla ? "fuera_de_orden" : "fuera_de_servicio", motivo: motivo.trim() }), `Habitacion ${h.codigo} inhabilitada.`);
   }
 
   const conteo = (estado: TableroHabitacion["estado"]) => tablero?.habitaciones.filter((h) => h.estado === estado).length ?? 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Housekeeping</h1>
         <div className="flex items-end gap-2 flex-wrap">
@@ -175,7 +205,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                         </p>
                         <p className="text-xs text-muted-foreground">{h.tipoHabitacion}</p>
                       </div>
-                      <Badge variant={badgeVariant(h.estado)}>{HABITACION_ESTADO_LABELS[h.estado]}</Badge>
+                      <StatusBadge tone={statusTone(HABITACION_ESTADO_TONES, h.estado)}>{HABITACION_ESTADO_LABELS[h.estado]}</StatusBadge>
                     </div>
 
                     {h.fueraDeServicio && (
@@ -197,7 +227,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                     <div className="flex flex-wrap gap-2 mt-1">
                       {puedeOperar && h.tarea && !h.fueraDeServicio &&
                         accionesDisponibles(h.tarea.estado).map((a) => (
-                          <Button key={a} type="button" size="sm" variant={a === "cancelar" ? "outline" : "default"} disabled={busy === h.tarea?.id} onClick={() => handleAccion(h, a)}>
+                          <Button key={a} type="button" size="sm" variant={a === "cancelar" ? "outline" : "default"} disabled={busy === h.tarea?.id} onClick={() => void handleAccion(h, a)}>
                             {ACCION_LABELS[a]}
                           </Button>
                         ))}
@@ -207,7 +237,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                         </Button>
                       )}
                       {puedeInhabilitar && tablero.tareasDisponibles && !h.fueraDeServicio && h.estado !== "ocupada" && (
-                        <Button type="button" size="sm" variant="outline" disabled={busy === h.roomId} onClick={() => handleInhabilitar(h)}>
+                        <Button type="button" size="sm" variant="outline" disabled={busy === h.roomId} onClick={() => void handleInhabilitar(h)}>
                           Inhabilitar
                         </Button>
                       )}
@@ -260,6 +290,7 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
           </TabsContent>
         </Tabs>
       )}
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

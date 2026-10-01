@@ -18,29 +18,28 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  ConfirmDialog,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  Input,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
 } from "@atiende/ui";
 import {
   COUNTERFACTUAL_METHOD_LABELS,
@@ -63,6 +62,8 @@ import {
 import type { CounterfactualMethod, PricingRule, RateRecommendation, RevenueBacktestRun, RevenueGate, RevenueGateState } from "../lib/revenue-client.ts";
 import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomTypeOption } from "../lib/reservas-client.ts";
+import { dineroMxConSigno } from "../lib/dinero.ts";
+import { RECOMENDACION_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const DOW_LABELS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -85,10 +86,6 @@ function summarizeSignal(kind: string, value: unknown): string | null {
     default:
       return null;
   }
-}
-
-function fmtMoney(n: number): string {
-  return n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
 }
 
 function daysSince(iso: string): number {
@@ -310,7 +307,7 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Revenue management</h1>
       </header>
@@ -337,9 +334,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
           ) : (
             <>
               <div className="flex items-center gap-3 flex-wrap">
-                <Badge variant={gate.gate === "autopilot" ? "default" : "secondary"} className="text-sm">
+                <StatusBadge tone={gate.gate === "autopilot" ? "info" : "neutral"} className="text-sm">
                   {REVENUE_GATE_STATE_LABELS[gate.gate]}
-                </Badge>
+                </StatusBadge>
                 {gate.gate === "shadow" && <span className="text-xs text-muted-foreground">{daysSince(gate.shadowStartedAt)} de 90 días en shadow</span>}
                 {gate.ownerApprovedAutopilotAt && <Badge variant="outline">Autopilot aprobado por owner el {fmtDate(gate.ownerApprovedAutopilotAt)}</Badge>}
               </div>
@@ -414,9 +411,8 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
             <label className="text-sm font-medium text-foreground" htmlFor="counterfactual-method">
               Método contrafactual
             </label>
-            <select
+            <NativeSelect
               id="counterfactual-method"
-              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={method}
               onChange={(e) => setMethod(e.target.value as CounterfactualMethod)}
             >
@@ -425,13 +421,13 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   {label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <label className="text-sm font-medium text-foreground" htmlFor="evaluations">
               Ventanas evaluadas (JSON)
             </label>
-            <textarea
+            <Textarea
               id="evaluations"
-              className="flex min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
+              className="min-h-[140px] text-xs font-mono"
               placeholder={DEFAULT_EVALUATIONS_PLACEHOLDER}
               value={evaluationsRaw}
               onChange={(e) => setEvaluationsRaw(e.target.value)}
@@ -473,9 +469,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                       </TableCell>
                       <TableCell>{run.improvementPct.toFixed(1)}%</TableCell>
                       <TableCell>
-                        <Badge variant={run.passes ? "default" : "destructive"}>{run.passes ? "Pasa" : "No pasa"}</Badge>
+                        <StatusBadge tone={run.passes ? "success" : "danger"}>{run.passes ? "Pasa" : "No pasa"}</StatusBadge>
                         {!run.passes && run.failureReasons.length > 0 && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">{run.failureReasons.join("; ")}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{run.failureReasons.join("; ")}</p>
                         )}
                       </TableCell>
                     </TableRow>
@@ -512,12 +508,12 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{rec.fecha}</span>
                         <span className="text-xs text-muted-foreground">{roomTypeName(rec.roomTypeId)}</span>
-                        <Badge variant={rec.estado === "aplicada" ? "default" : rec.estado === "descartada" || rec.estado === "expirada" ? "secondary" : "outline"}>
+                        <StatusBadge tone={statusTone(RECOMENDACION_ESTADO_TONES, rec.estado, "info")}>
                           {RATE_RECOMMENDATION_STATUS_LABELS[rec.estado]}
-                        </Badge>
+                        </StatusBadge>
                       </div>
                       <div className="text-sm">
-                        {fmtMoney(rec.currentBarPrice)} → <strong>{fmtMoney(rec.recommendedPrice)}</strong>
+                        {dineroMxConSigno(rec.currentBarPrice, 0)} → <strong>{dineroMxConSigno(rec.recommendedPrice, 0)}</strong>
                         <span className="text-xs text-muted-foreground ml-2">LOS sugerido: {rec.suggestedMinStay}</span>
                       </div>
                     </div>
@@ -570,9 +566,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
           <label className="text-sm font-medium text-foreground" htmlFor="pricing-room-type">
             Tipo de habitación
           </label>
-          <select
+          <NativeSelect
             id="pricing-room-type"
-            className="flex h-11 w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm"
+            wrapperClassName="max-w-sm"
             value={selectedRoomTypeId}
             onChange={(e) => setSelectedRoomTypeId(e.target.value)}
           >
@@ -581,7 +577,7 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                 {rt.nombre}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {pricingRule?.esDefault && <p className="text-xs text-muted-foreground">Sin configurar todavía — mostrando el default razonable del motor.</p>}
           {pricingForm && (
             <form className="flex flex-col gap-3" onSubmit={(e) => void handleSavePricingRule(e)}>
@@ -590,10 +586,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   <label className="text-xs text-muted-foreground" htmlFor="floor-price">
                     Tarifa mínima (floor)
                   </label>
-                  <input
+                  <Input
                     id="floor-price"
                     type="number"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={pricingForm.floorPrice}
                     onChange={(e) => setPricingForm({ ...pricingForm, floorPrice: e.target.value })}
                   />
@@ -602,10 +597,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   <label className="text-xs text-muted-foreground" htmlFor="ceiling-price">
                     Tarifa máxima (ceiling)
                   </label>
-                  <input
+                  <Input
                     id="ceiling-price"
                     type="number"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={pricingForm.ceilingPrice}
                     onChange={(e) => setPricingForm({ ...pricingForm, ceilingPrice: e.target.value })}
                   />
@@ -615,11 +609,11 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
               <div className="grid grid-cols-7 gap-2 max-w-lg">
                 {DOW_LABELS.map((label, i) => (
                   <div key={label}>
-                    <label className="text-[10px] text-muted-foreground block text-center">{label}</label>
-                    <input
+                    <label className="text-2xs text-muted-foreground block text-center">{label}</label>
+                    <Input
                       type="number"
                       step="0.05"
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-1 py-1 text-xs text-center"
+                      className="h-8 px-1 py-1 text-center"
                       value={pricingForm.multipliers[i]}
                       onChange={(e) => {
                         const next = [...pricingForm.multipliers];
@@ -635,10 +629,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   <label className="text-xs text-muted-foreground" htmlFor="min-stay-default">
                     Estancia mínima (default)
                   </label>
-                  <input
+                  <Input
                     id="min-stay-default"
                     type="number"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={pricingForm.minStayDefault}
                     onChange={(e) => setPricingForm({ ...pricingForm, minStayDefault: e.target.value })}
                   />
@@ -647,10 +640,9 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   <label className="text-xs text-muted-foreground" htmlFor="min-stay-high-demand">
                     Estancia mínima (alta demanda)
                   </label>
-                  <input
+                  <Input
                     id="min-stay-high-demand"
                     type="number"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={pricingForm.minStayOnHighDemand}
                     onChange={(e) => setPricingForm({ ...pricingForm, minStayOnHighDemand: e.target.value })}
                   />
@@ -673,39 +665,34 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
           <form className="flex flex-col gap-2" onSubmit={(e) => void handleCreateLocalEvent(e)}>
             <h3 className="text-sm font-medium">Evento local (feria, concierto, congreso…)</h3>
             <p className="text-xs text-muted-foreground">Solo el staff de esta property lo sabe -- nunca se inventa ni se scrapea.</p>
-            <input
+            <Input
               placeholder="Nombre del evento"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={localEventForm.nombre}
               onChange={(e) => setLocalEventForm({ ...localEventForm, nombre: e.target.value })}
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <Input
                 type="date"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={localEventForm.fechaInicio}
                 onChange={(e) => setLocalEventForm({ ...localEventForm, fechaInicio: e.target.value })}
               />
-              <input
+              <Input
                 type="date"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={localEventForm.fechaFin}
                 onChange={(e) => setLocalEventForm({ ...localEventForm, fechaFin: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <NativeSelect
                 value={localEventForm.impacto}
                 onChange={(e) => setLocalEventForm({ ...localEventForm, impacto: e.target.value as "alza_demanda" | "baja_demanda" })}
               >
                 <option value="alza_demanda">Sube la demanda</option>
                 <option value="baja_demanda">Baja la demanda</option>
-              </select>
-              <input
+              </NativeSelect>
+              <Input
                 type="number"
                 placeholder="Magnitud %"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={localEventForm.magnitudPct}
                 onChange={(e) => setLocalEventForm({ ...localEventForm, magnitudPct: e.target.value })}
               />
@@ -718,23 +705,20 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
           <form className="flex flex-col gap-2" onSubmit={(e) => void handleCreateCompetitorRate(e)}>
             <h3 className="text-sm font-medium">Tarifa de competidor (captura manual)</h3>
             <p className="text-xs text-muted-foreground">Nunca un scraper -- ver knownGaps del motor para la extensión futura con un proveedor de rate-shopping.</p>
-            <input
+            <Input
               placeholder="Nombre del competidor"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={competitorForm.competidor}
               onChange={(e) => setCompetitorForm({ ...competitorForm, competidor: e.target.value })}
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <Input
                 type="date"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={competitorForm.fecha}
                 onChange={(e) => setCompetitorForm({ ...competitorForm, fecha: e.target.value })}
               />
-              <input
+              <Input
                 type="number"
                 placeholder="Tarifa (MXN)"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={competitorForm.tarifa}
                 onChange={(e) => setCompetitorForm({ ...competitorForm, tarifa: e.target.value })}
               />
@@ -747,24 +731,17 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
         </CardContent>
       </Card>
 
-      <AlertDialog open={pendingAutopilot} onOpenChange={(open) => { if (!open) setPendingAutopilot(false); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Aprobar autopilot pleno</AlertDialogTitle>
-            <AlertDialogDescription>
-              REQ-REV-003 (P0/GOB) exige una aprobación explícita del rol owner antes de habilitar autopilot pleno para esta property. Esta aprobación
-              queda registrada y es requisito, junto con un backtest vigente que pase, para promover el gate a autopilot.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void handleConfirmAutopilotApproval()} disabled={busy}>
-              Aprobar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={pendingAutopilot}
+        onOpenChange={(open) => {
+          if (!open) setPendingAutopilot(false);
+        }}
+        titulo="Aprobar autopilot pleno"
+        descripcion="REQ-REV-003 (P0/GOB) exige una aprobación explícita del rol owner antes de habilitar autopilot pleno para esta property. Esta aprobación queda registrada y es requisito, junto con un backtest vigente que pase, para promover el gate a autopilot."
+        confirmar="Aprobar"
+        onConfirm={handleConfirmAutopilotApproval}
+      />
+    </PageContainer>
   );
 }
 

@@ -9,7 +9,25 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Plus, Wrench } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+  useConfirm,
+} from "@atiende/ui";
 import { closeTicket, createTicket, fetchTickets, TICKET_SEVERITY_LABELS, TICKET_STATUS_LABELS } from "../lib/housekeeping-client.ts";
 import type { MaintenanceTicketSeverity, MaintenanceTicketStatus, MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -18,6 +36,7 @@ const FILTERS: ReadonlyArray<MaintenanceTicketStatus | "todos"> = ["todos", "abi
 const SEVERITIES: readonly MaintenanceTicketSeverity[] = ["alta", "media", "baja"];
 
 export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
+  const { pedirTexto, dialogo } = useConfirm();
   const [filter, setFilter] = useState<MaintenanceTicketStatus | "todos">("abierto");
   const [tickets, setTickets] = useState<readonly MaintenanceTicketSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,14 +84,19 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
   }
 
   async function handleClose(ticket: MaintenanceTicketSummary) {
-    const costStr = window.prompt(`Costo real de cerrar "${ticket.titulo}" (MXN):`, String(ticket.costoEstimado));
+    const costStr = await pedirTexto({
+      titulo: `Cerrar el ticket "${ticket.titulo}"`,
+      confirmar: "Continuar",
+      campo: {
+        etiqueta: "Costo real (MXN)",
+        valorInicial: String(ticket.costoEstimado),
+        validar: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? null : "El costo real debe ser un número >= 0."),
+      },
+    });
     if (costStr === null) return;
     const actualCost = Number(costStr);
-    if (!Number.isFinite(actualCost) || actualCost < 0) {
-      setError("El costo real debe ser un número >= 0.");
-      return;
-    }
-    const nota = window.prompt("Nota de resolución (opcional):") ?? undefined;
+    const nota = await pedirTexto({ titulo: `Cerrar el ticket "${ticket.titulo}"`, confirmar: "Cerrar ticket", campo: { etiqueta: "Nota de resolución (opcional)", requerido: false, multilinea: true } });
+    if (nota === null) return;
     setBusyId(ticket.id);
     setError(null);
     try {
@@ -86,7 +110,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Mantenimiento</h1>
         <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
@@ -105,29 +129,27 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
               </div>
               <div>
                 <Label htmlFor="mant-descripcion">Descripción</Label>
-                <textarea
+                <Textarea
                   id="mant-descripcion"
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   required
-                  className="mt-1 flex w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
                   <Label htmlFor="mant-severidad">Severidad</Label>
-                  <select
+                  <NativeSelect
                     id="mant-severidad"
                     value={severidad}
                     onChange={(e) => setSeveridad(e.target.value as MaintenanceTicketSeverity)}
-                    className="mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {SEVERITIES.map((s) => (
                       <option key={s} value={s}>
                         {TICKET_SEVERITY_LABELS[s]}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="flex-1">
                   <Label htmlFor="mant-room">Habitación (opcional)</Label>
@@ -171,9 +193,9 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
                         {t.roomId ? `Habitación ${t.roomId}` : "Sin habitación"} · Origen: {t.origen} · Estimado: ${t.costoEstimado.toLocaleString("es-MX")}
                       </p>
                     </div>
-                    <Badge variant={t.severidad === "alta" ? "destructive" : "secondary"} className="self-start">
+                    <StatusBadge tone={t.severidad === "alta" ? "danger" : "neutral"} className="self-start">
                       {TICKET_SEVERITY_LABELS[t.severidad]} · {TICKET_STATUS_LABELS[t.estado]}
-                    </Badge>
+                    </StatusBadge>
                   </div>
                   <p className="mt-2 text-sm text-foreground">{t.descripcion}</p>
                   {t.notaResolucion && <p className="mt-1.5 text-xs text-muted-foreground">Resolución: {t.notaResolucion}</p>}
@@ -190,6 +212,7 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }
