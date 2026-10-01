@@ -1,6 +1,8 @@
 import type { ComponentType } from "react";
 import { Inbox } from "lucide-react";
 
+import { cn } from "../lib/utils";
+
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
 /**
@@ -14,14 +16,26 @@ export function EstadoVacio({
   titulo = "Sin datos aún",
   mensaje,
   accion,
+  compacto = false,
+  className,
 }: {
   icon?: IconType;
   titulo?: string;
   mensaje: string;
   accion?: React.ReactNode;
+  /** Menos aire vertical, para vacíos dentro de una tarjeta o tabla. */
+  compacto?: boolean;
+  className?: string;
 }) {
   return (
-    <div role="status" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
+    <div
+      role="status"
+      className={cn(
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-6 text-center",
+        compacto ? "py-6" : "py-12",
+        className,
+      )}
+    >
       <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
         <Icon className="w-5 h-5" strokeWidth={1.75} />
       </div>
