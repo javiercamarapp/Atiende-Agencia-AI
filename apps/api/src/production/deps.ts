@@ -53,7 +53,7 @@ import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-h
 import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -283,6 +283,8 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
+    handoffGate: (db) => new PostgresHandoffAgentGate(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),

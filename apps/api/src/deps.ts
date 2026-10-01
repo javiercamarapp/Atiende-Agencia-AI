@@ -14,7 +14,7 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, HandoffAgentGate, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -134,6 +134,10 @@ export interface AppDeps {
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
   readonly voiceProvider?: VoiceAgentProvider;
+  /** R-21 (migración 027): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
+   * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
+  readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
+  readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
