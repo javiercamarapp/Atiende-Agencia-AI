@@ -141,4 +141,30 @@ describe("HotelesShell — nav móvil", () => {
     expect(select).not.toBeNull();
     expect([...select!.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Hotel Centro", "Hotel Norte"]);
   });
+
+  it("PR-6: expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical hoteles", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    expect(root.querySelector("main#contenido-principal")!.getAttribute("tabindex")).toBe("-1");
+    const operacion = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Administración"))!;
+    click(operacion);
+    expect(window.localStorage.getItem("atiende:hoteles:sidebar:grupo")).toBe("Administración");
+  });
+
+  it("PR-6: cambiar de hotel con el selector persiste la elección y remonta la página (key=propertyId)", async () => {
+    rendered = await renderShell([
+      { propertyId: "prop-1", nombre: "Hotel Centro" },
+      { propertyId: "prop-2", nombre: "Hotel Norte" },
+    ]);
+    const select = rendered.container.querySelector<HTMLSelectElement>("aside select#hoteles-hotel-activo")!;
+    expect(select.value).toBe("prop-1");
+    await act(async () => {
+      select.value = "prop-2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector<HTMLSelectElement>("aside select#hoteles-hotel-activo")!.value).toBe("prop-2");
+    expect(window.localStorage.getItem("atiende.hoteles.selectedProperty.demo")).toBe("prop-2");
+  });
 });
