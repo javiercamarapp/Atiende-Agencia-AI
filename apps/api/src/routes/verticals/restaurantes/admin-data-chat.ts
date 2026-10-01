@@ -16,7 +16,7 @@ import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
-import { respondDataChat } from "../../../data-chat/ndjson.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 
 export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -41,7 +41,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
     const organizationId = c.get("organizationId");
     const completion = dataChat?.completion;
     if (!dataChat || !completion) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     const db = c.get("db");

@@ -32,6 +32,15 @@ export const NDJSON_ERROR_MENSAJE = "No pude completar la consulta en este momen
 /** Corre un turno con la sesion RLS que se le da y reporta pasos. */
 export type DataChatTurnRunner = (db: TenantDbSession, onEvento: (e: DataChatPasoEvento) => void, signal: AbortSignal) => Promise<DataChatAnswer>;
 
+/** Respuesta fija cuando el asistente no esta activado para la cuenta (sin proveedor de IA o sin lector de la vertical). */
+export const DATA_CHAT_NOT_ACTIVATED: DataChatAnswer = {
+  status: "unavailable",
+  text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.",
+  blocks: [],
+  sources: [],
+  toolsUsed: [],
+};
+
 export function wantsNdjson(c: Context<CoreAuthHonoEnv>): boolean {
   return /(^|[\s,;])application\/x-ndjson(?=$|[\s,;])/i.test(c.req.header("accept") ?? "");
 }
@@ -97,6 +106,15 @@ export function respondDataChat(c: Context<CoreAuthHonoEnv>, deps: AppDeps, run:
   return new Response(stream, {
     status: 200,
     headers: { "content-type": NDJSON_CONTENT_TYPE, "cache-control": "no-store, no-transform", "x-accel-buffering": "no" },
+  });
+}
+
+/** Respuesta ya resuelta (sin consultar nada): JSON de siempre, o el unico evento `fin` si el cliente pidio NDJSON. */
+export function respondDataChatStatic(c: Context<CoreAuthHonoEnv>, respuesta: DataChatAnswer): Response {
+  if (!wantsNdjson(c)) return c.json(respuesta);
+  return new Response(`${JSON.stringify({ t: "fin", respuesta } satisfies DataChatStreamEvent)}\n`, {
+    status: 200,
+    headers: { "content-type": NDJSON_CONTENT_TYPE, "cache-control": "no-store, no-transform" },
   });
 }
 

@@ -15,7 +15,7 @@ import type { AppDeps } from "../deps.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../production/llm-models.ts";
 import { parseDataChatRequest } from "./body.ts";
 import { buildDataChatEstado } from "./estado.ts";
-import { respondDataChat } from "./ndjson.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "./ndjson.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 
 export interface VerticalDataChatConfig {
@@ -57,7 +57,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const completion = dataChat?.completion;
     const catalog = cfg.catalog(deps, db);
     if (!dataChat || !completion || !catalog) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     // Alcance por membership: nunca se ensancha mas alla de las propiedades de este usuario (mismo criterio que

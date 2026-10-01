@@ -17,7 +17,7 @@ import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core
 import { LICITACIONES_ROLES, buildLicitacionesDataChatCatalog } from "@atiende/domain-licitaciones";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
-import { respondDataChat } from "../../../data-chat/ndjson.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { LICITACIONES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -43,7 +43,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
     if (!dataChat || !completion || !dataChat.licitacionesReader) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     const db = c.get("db");

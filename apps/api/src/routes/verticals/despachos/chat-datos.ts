@@ -17,7 +17,7 @@ import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core
 import { VER_DASHBOARD_ROLES, buildDespachosDataChatCatalog } from "@atiende/domain-despachos";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
-import { respondDataChat } from "../../../data-chat/ndjson.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
@@ -44,7 +44,7 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
     if (!dataChat || !completion || !dataChat.despachosReader) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     const db = c.get("db");
