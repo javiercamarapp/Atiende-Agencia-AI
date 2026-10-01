@@ -1,7 +1,7 @@
 // Pestana "Programados" (R-11): pedidos que el cliente dejo para una hora futura. Siguen fuera de cocina hasta
 // que se promueven solos a "Recibido" (30 min antes de la hora; la promocion la hace el servidor al consultar).
 // Desde aqui el staff puede ADELANTARLO a cocina o CANCELARLO (la cancelacion pide confirmacion en Pedidos.tsx).
-import { Badge, Button, Card, CardContent, EstadoVacio, StatusBadge, formatMoney, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, EstadoVacio, StatusBadge, formatMoney, statusTone } from "@atiende/ui";
 import { CalendarClock } from "lucide-react";
 import { faltaPara } from "../lib/sondeo-pedidos.ts";
 import { ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
@@ -56,7 +56,7 @@ export function ProgramadosPanel({
                   </p>
                 </div>
                 <div className="flex flex-wrap items-start gap-1.5 self-start">
-                  {o.canal && <Badge variant="outline">{o.canal === "recoger" ? "Recoger" : "Domicilio"}</Badge>}
+                  {o.canal && <StatusBadge tone="neutral" dot={false}>{o.canal === "recoger" ? "Recoger" : "Domicilio"}</StatusBadge>}
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>
               </div>

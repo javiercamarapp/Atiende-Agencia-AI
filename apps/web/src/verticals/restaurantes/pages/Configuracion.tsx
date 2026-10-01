@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge } from "@atiende/ui";
 import { Clock, Info, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -216,7 +216,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
               <Button type="submit" disabled={savingWhatsapp}>
                 {savingWhatsapp ? "Guardando…" : "Guardar"}
               </Button>
-              {whatsappSaved && <Badge variant="secondary">Guardado</Badge>}
+              {whatsappSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
           )}
           {whatsapp && !whatsapp.phoneNumberId && <p className="mt-2 text-xs text-muted-foreground">Todavía no hay ningún número conectado.</p>}
@@ -260,7 +260,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
               <Button type="submit" disabled={savingZonaHoraria}>
                 {savingZonaHoraria ? "Guardando…" : "Guardar"}
               </Button>
-              {zonaHorariaSaved && <Badge variant="secondary">Guardado</Badge>}
+              {zonaHorariaSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
           )}
         </CardContent>

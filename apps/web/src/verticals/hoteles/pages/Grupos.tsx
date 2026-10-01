@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { UsersRound } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -447,7 +446,7 @@ export function GruposPage({ apiBaseUrl, token, propertyId, role }: HotelesShell
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <h2 className="text-sm font-semibold text-foreground">Rooming list — {detalle.nombreGrupo}</h2>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{describirLiberacion(detalle, hoyLocal())}</Badge>
+                      <StatusBadge tone="neutral" dot={false}>{describirLiberacion(detalle, hoyLocal())}</StatusBadge>
                       {puedeGestionar && detalle.estado === "activo" && (
                         <>
                           <Button type="button" size="sm" variant="outline" disabled={busy === detalle.id} onClick={() => void liberar(detalle)}>

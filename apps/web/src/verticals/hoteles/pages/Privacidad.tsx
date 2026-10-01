@@ -11,7 +11,7 @@
 // incidentes); aquí solo se ordena la UX. Base sin la migración 032: estado honesto "no disponible aún".
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone, toast } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone, toast } from "@atiende/ui";
 import {
   ARCO_CANAL_LABELS,
   ARCO_DERECHO_LABELS,
@@ -472,7 +472,7 @@ function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
                 </p>
               </div>
               <div className="flex gap-1 self-start">
-                <Badge variant="secondary">{ARCO_ESTADO_LABELS[a.estado]}</Badge>
+                <StatusBadge tone="neutral" dot={false}>{ARCO_ESTADO_LABELS[a.estado]}</StatusBadge>
                 <StatusBadge tone={statusTone(ARCO_PLAZO_TONES, a.plazo.estado)}>{PLAZO_ESTADO_LABELS[a.plazo.estado]}</StatusBadge>
               </div>
             </div>

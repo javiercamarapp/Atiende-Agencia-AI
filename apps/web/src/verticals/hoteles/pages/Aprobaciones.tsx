@@ -7,7 +7,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ClipboardCheck } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -178,7 +177,7 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
         </div>
       ),
     },
-    { id: "origen", encabezado: "Origen", valorOrden: (a) => a.agente, celda: (a) => (a.propuestaPorAgente ? <Badge variant="secondary">Agente: {a.agente}</Badge> : <Badge variant="outline">Persona</Badge>) },
+    { id: "origen", encabezado: "Origen", valorOrden: (a) => a.agente, celda: (a) => (a.propuestaPorAgente ? <StatusBadge tone="info" dot={false}>Agente: {a.agente}</StatusBadge> : <StatusBadge tone="neutral" dot={false}>Persona</StatusBadge>) },
     {
       id: "vence",
       encabezado: "Vigencia",
