@@ -3,7 +3,7 @@
 // (privacidad coordinada con la boveda). RLS/GRANT/funciones SQL las cubre scripts/verify-hoteles-privacidad-arco
 // contra Postgres real.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson, type HotelesTestContext } from "./hoteles-fixtures.ts";
 
@@ -260,7 +260,17 @@ describe("incidentes / vulneraciones", () => {
 });
 
 describe("retencion legal (legal hold) por incidente", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("aplicar con folio + motivo + autorizacion; impide la purga mientras dure; liberar (nota obligatoria) la permite", async () => {
+    // El repo en memoria de privacidad calcula reviewDueOn desde su reloj sintetico (2026-01-01 + 365 d =
+    // 2027-01-01), pero la ruta compara contra el "hoy" real: sin fijar Date, el estado pasaba de "vigente" a
+    // "revision_proxima" (desde 2026-12-02) y a "revision_vencida" (desde 2027-01-02). Se fija Date cerca del
+    // reloj sintetico; solo Date, para no tocar timers que usen otras capas.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-01T18:00:00.000Z"));
     const { ctx, app } = await setup();
     const { identidad } = await capture(app, ctx);
     await ctx.identidadRepo.sweepRetention(ctx.propertyId, "2099-01-01"); // bloquea (retencion vencida)
