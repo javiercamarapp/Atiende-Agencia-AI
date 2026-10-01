@@ -45,3 +45,11 @@ export function isCitasRole(value: string): value is CitasRole {
  * esta lista es solo el primer filtro (quién llega siquiera a la ruta).
  */
 export const STAFF_INVITE_ROLES: readonly CitasRole[] = ["owner", "admin"];
+
+/**
+ * C-10 -- "Chatea con tus datos" de citas: solo owner/admin. El catalogo lee ingresos (precio de servicios x citas
+ * completadas), tasas de cancelacion por profesional y el estado de envio de recordatorios: informacion de gestion que
+ * el rol `staff` no tiene en el panel. La RLS de citas.appointments no distingue rol (staff ve las citas de su
+ * sucursal), asi que ESTA lista es el candado de rol y la funcion de la migracion 027 repite la misma regla.
+ */
+export const DATA_CHAT_ROLES: readonly CitasRole[] = ["owner", "admin"];
