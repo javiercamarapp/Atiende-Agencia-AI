@@ -220,6 +220,26 @@ describe("anti-abuso", () => {
     }
     expect(last).toBe(429);
   });
+
+  it("limite de tasa: rotar session_id en cada peticion NO da un bucket nuevo (tope por IP)", async () => {
+    const s = await setup();
+    const headers = { ...ORIGIN, "x-forwarded-for": "203.0.113.10" };
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const sid = `rotada-${String(i).padStart(2, "0")}-abcdefghij`;
+      statuses.push((await s.post("/fco-montejo/orders", { session_id: sid, items: [s.coca], canal: "recoger", payment_method: "efectivo", customer_name: "A", customer_phone: "9991234567" }, headers)).status);
+    }
+    expect(statuses.slice(0, 10)).not.toContain(429);
+    expect(statuses.slice(10)).toEqual([429, 429]);
+  });
+
+  it("limite de tasa: otra IP conserva su propio cupo aunque la primera ya se agoto", async () => {
+    const s = await setup();
+    const a = { ...ORIGIN, "x-forwarded-for": "203.0.113.11" };
+    for (let i = 0; i < 11; i += 1) await s.post("/fco-montejo/quote", { session_id: `ip-a-${String(i).padStart(2, "0")}-abcdefghijk`, items: [s.coca], canal: "recoger" }, a);
+    const otra = { ...ORIGIN, "x-forwarded-for": "203.0.113.12" };
+    expect((await s.post("/fco-montejo/quote", { session_id: SESSION, items: [s.coca], canal: "recoger" }, otra)).status).not.toBe(429);
+  });
 });
 
 describe("comanda a SoftRestaurant desde el storefront", () => {
