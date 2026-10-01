@@ -318,10 +318,10 @@ export class InMemoryRentasCalendarStore {
    *  capa='bloqueo', activa Y cancelada), ordenadas por fecha de inicio -- el listado
    *  unificado que le faltaba al calendario (a diferencia de `listBloqueos` arriba,
    *  acotado a una sola capa). */
-  listOcupaciones(propertyId: string, unidadId: string): OcupacionCalendarioItem[] {
+  listOcupaciones(propertyId: string, unidadId: string | undefined): OcupacionCalendarioItem[] {
     const codigoPorCanalId = new Map([...this.canales.values()].map((c) => [c.id, c.codigo]));
     return [...this.ocupaciones.values()]
-      .filter((o) => o.propertyId === propertyId && o.unidadId === unidadId)
+      .filter((o) => o.propertyId === propertyId && (unidadId === undefined || o.unidadId === unidadId))
       .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
       .map((o) => {
         const huesped = o.huespedMinimoId ? (this.huespedes.get(o.huespedMinimoId) ?? null) : null;
@@ -745,6 +745,7 @@ export class InMemoryRentasCalendarStore {
       .filter((t) => t.propertyId === propertyId)
       .filter((t) => !filtraAsignacion || t.asignadoA === (filtro.asignadoA ?? null))
       .filter((t) => !filtro.estados || filtro.estados.includes(t.estado))
+      .filter((t) => (filtro.programadaDesde === undefined || t.programadaPara >= filtro.programadaDesde) && (filtro.programadaHasta === undefined || t.programadaPara <= filtro.programadaHasta))
       .sort((a, b) => (a.programadaPara < b.programadaPara ? -1 : a.programadaPara > b.programadaPara ? 1 : a.creadoEn < b.creadoEn ? -1 : 1))
       .map((t) => this.tareaToRecord(t));
   }
