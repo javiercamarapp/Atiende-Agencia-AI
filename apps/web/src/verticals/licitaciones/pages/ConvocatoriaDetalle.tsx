@@ -190,6 +190,9 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
           <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className={ENLACE_SECUNDARIO}>
             Subir bases y ver requisitos extraídos →
           </Link>
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/sala-guerra`} className={ENLACE_SECUNDARIO}>
+            Sala de guerra: tablero de preparación y preguntas de la junta de aclaraciones →
+          </Link>
           <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} className={ENLACE_SECUNDARIO}>
             Correr checklist, aprobar y ensamblar el paquete de cierre →
           </Link>
