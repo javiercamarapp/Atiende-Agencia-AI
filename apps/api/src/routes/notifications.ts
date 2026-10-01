@@ -78,11 +78,18 @@ export function notificationsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get("/notifications", async (c) => {
     const staffId = c.get("userId");
     const options = parseListOptions(c.req.query());
-    const [notifications, unreadCount] = await Promise.all([
-      deps.coreRepo.listNotificationsForStaff(staffId, options),
-      deps.coreRepo.countUnreadNotificationsForStaff(staffId),
-    ]);
+    // Secuencial a proposito: ambas lecturas comparten la sesion transaccional del request cuando el
+    // repositorio se monta sobre una sola sesion (Promise.all sobre ella intercalaria consultas y, ante un
+    // error recuperable, dejaria el SAVEPOINT de la otra lectura en un estado indefinido).
+    const notifications = await deps.coreRepo.listNotificationsForStaff(staffId, options);
+    const unreadCount = await deps.coreRepo.countUnreadNotificationsForStaff(staffId);
     return c.json({ notifications: notifications.map(serializeNotification), unreadCount });
+  });
+
+  // Contador barato para el sondeo de la campana (punto rojo sin numero): una sola consulta indexada, sin lista.
+  app.get("/notifications/unread-count", async (c) => {
+    const unreadCount = await deps.coreRepo.countUnreadNotificationsForStaff(c.get("userId"));
+    return c.json({ unreadCount });
   });
 
   app.post("/notifications/:id/read", async (c) => {

@@ -77,7 +77,7 @@ export {
   type ChatDatosOpcionSinIa,
 } from "./components/ChatDatosDialog.js";
 export * from "./components/copiloto/index.js";
-export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
+export { NotificationBell, type NotificationBellProps } from "./components/NotificationBell.js";
 
 export { Button, buttonVariants, TEXTO_GUARDANDO, type ButtonProps } from "./components/ui/button.js";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
