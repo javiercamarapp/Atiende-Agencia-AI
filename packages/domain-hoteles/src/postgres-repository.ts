@@ -2363,16 +2363,46 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return rows[0] ? this.toRevenueGateRecord(rows[0]) : null;
   }
 
+  // Hallazgo a5 (auditoría lógica-api): `POST .../revenue/gate` se documenta
+  // EXPLÍCITAMENTE como idempotente, pero este método hacía un SELECT
+  // (`findRevenueGate`) y, si no encontraba fila, un INSERT plano SIN `on conflict`
+  // -- pese a que `hoteles.revenue_engine_gate` YA tiene `unique (property_id)` desde
+  // migrations/011 (no es una migración nueva de este PR). Camino de fallo real: dos
+  // POST casi-simultáneos a la misma property (cada uno en su PROPIA transacción, ver
+  // `dbSession`) pueden ambos pasar el SELECT antes de que cualquiera de los dos
+  // haga commit del INSERT (ninguno ve la fila del otro todavía) -- el segundo INSERT
+  // choca con el `unique (property_id)` (23505) y ese error se propaga sin capturar
+  // hasta `app.onError`, que lo aplana a un 500 genérico para el staff, rompiendo la
+  // idempotencia documentada.
+  //
+  // `ON CONFLICT (property_id) DO NOTHING` + relectura (mismo patrón que
+  // `packages/domain-despachos/src/postgres-repository.ts::createDeadline`, mismo
+  // hallazgo de fondo -- ver ese archivo) resuelve la carrera de raíz: el segundo
+  // INSERT nunca lanza, `DO NOTHING` lo descarta en silencio y se relee la fila que
+  // el primero ya escribió. A diferencia de `createDeadline`, no hace falta
+  // `runWithSavepointFallback`/degradar a un INSERT plano para 42P10 -- el índice
+  // `unique (property_id)` es de migrations/011 (ya aplicado hace mucho en la base
+  // real, muy anterior a este PR), no una migración nueva que la base vieja pudiera
+  // no tener todavía.
   async ensureRevenueGate(propertyId: string, organizationId: string, actorUserId: string): Promise<RevenueGateRecord> {
     void actorUserId; // el trigger fija updated_by = auth.uid() por su cuenta, ver migrations/011.
     const existing = await this.findRevenueGate(propertyId);
     if (existing) return existing;
     const { rows } = await this.db.query<RevenueGateRow>(
       `insert into hoteles.revenue_engine_gate (organization_id, property_id, gate) values ($1, $2, 'shadow')
+       on conflict (property_id) do nothing
        returning ${this.REVENUE_GATE_COLUMNS};`,
       [organizationId, propertyId],
     );
-    return this.toRevenueGateRecord(rows[0]!);
+    if (rows[0]) return this.toRevenueGateRecord(rows[0]);
+    // DO NOTHING sin fila devuelta: otra transacción concurrente ganó la carrera e
+    // insertó la fila entre nuestro SELECT y este INSERT -- se relee la que ya existe
+    // (idempotente de verdad), nunca se propaga el 23505 crudo de antes de este fix.
+    const race = await this.findRevenueGate(propertyId);
+    if (!race) {
+      throw new Error(`ensureRevenueGate: ON CONFLICT DO NOTHING no devolvió fila y la relectura tampoco encontró un revenue_engine_gate para property=${propertyId}.`);
+    }
+    return race;
   }
 
   async updateRevenueGateState(propertyId: string, to: RevenueGateState, actorUserId: string): Promise<RevenueGateRecord> {
