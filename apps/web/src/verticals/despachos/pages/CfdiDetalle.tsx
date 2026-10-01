@@ -4,7 +4,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, X } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, PageContainer, Skeleton, StatusBadge, Textarea } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
 import { fetchInvoice } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
@@ -148,14 +148,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
                 {revisionError}
               </p>
             )}
-            {/* Sub-widget anidado dentro de la ficha: tratamiento de carga
-                compacto (una línea de skeleton) en vez del bloque acolchado de
-                EstadoCargando, que ya se usa para la ficha completa arriba. */}
-            {revisionLoading && !revision && (
-              <div role="status" aria-busy="true" aria-label="Cargando estado de revisión…">
-                <span className="sr-only">Cargando estado de revisión…</span>
-                <Skeleton className="h-4 w-56 rounded" />
-              </div>
+                        {revisionLoading && !revision && (
+              <EstadoCargando etiqueta="Cargando estado de revisión…" lineas={1} />
             )}
 
             {!revisionLoading && !revision && !revisionError && (

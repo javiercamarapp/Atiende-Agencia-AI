@@ -22,7 +22,6 @@ import {
   Input,
   Label,
   PageContainer,
-  Skeleton,
   StatusBadge,
   Table,
   TableBody,
@@ -196,9 +195,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
         </div>
       </header>
 
-      {/* Avisos transitorios de la importación: se dejan como banderas inline
-          (no `toast`) porque `apps/web` no monta ningún `<Toaster />` y mandar
-          esto a sonner lo haría desaparecer sin que el staff lo vea. */}
+      {/* Avisos de la importación: banderas inline (persisten hasta la siguiente importación; un toast se iría solo). */}
       {importError && (
         <p role="alert" className="text-destructive text-sm">
           {importError}
@@ -265,15 +262,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
               {revisionesError}
             </p>
           )}
-          {/* Sub-widget anidado: tratamiento de carga/vacío compacto (skeletons y
-              una línea) en vez del bloque acolchado de EstadoCargando/EstadoVacio,
-              que aquí competiría visualmente con los estados de la tabla de abajo. */}
-          {revisionesLoading && !revisiones && (
-            <div role="status" aria-busy="true" aria-label="Cargando cola de revisión…" className="space-y-2">
-              <span className="sr-only">Cargando cola de revisión…</span>
-              <Skeleton className="h-4 w-40 rounded" />
-              <Skeleton className="h-4 w-64 rounded" />
-            </div>
+                    {revisionesLoading && !revisiones && (
+            <EstadoCargando etiqueta="Cargando cola de revisión…" lineas={2} />
           )}
           {revisiones && revisiones.length === 0 && !revisionesLoading && (
             <p role="status" className="text-sm text-muted-foreground">

@@ -29,10 +29,10 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  EstadoCargando,
   Input,
   Label,
   PageContainer,
-  Skeleton,
   StatusBadge,
   Table,
   TableBody,
@@ -265,13 +265,8 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
           Genera el catálogo de cuentas XML, la balanza de comprobación XML y el paquete completo (con hash SHA-1) exigidos por el SAT cada mes. El catálogo usa el default Anexo 24 del SAT
           {catalogoBase ? ` (${catalogoBase.length} cuentas)` : ""}.
         </p>
-        {/* Carga del catálogo base: sub-widget de una línea dentro del encabezado
-            -- un skeleton angosto, no el bloque acolchado de EstadoCargando. */}
         {!catalogoBase && !catalogoError && (
-          <div role="status" aria-busy="true" aria-label="Cargando catálogo base del SAT…" className="mt-1.5">
-            <span className="sr-only">Cargando catálogo base del SAT…</span>
-            <Skeleton className="h-3.5 w-48 rounded" />
-          </div>
+          <EstadoCargando etiqueta="Cargando catálogo base del SAT…" lineas={1} />
         )}
         {catalogoError && (
           <p role="alert" className="mt-1 text-destructive text-sm">

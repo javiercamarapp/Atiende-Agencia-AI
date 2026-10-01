@@ -32,11 +32,11 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  EstadoCargando,
   Input,
   Label,
   NativeSelect,
   PageContainer,
-  Skeleton,
   StatusBadge,
   Table,
   TableBody,
@@ -425,14 +425,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           {catalogoAbierto && (
             <>
               {!catalogo ? (
-                // Sub-widget anidado dentro del panel plegable: skeletons
-                // compactos en vez del bloque acolchado de EstadoCargando.
-                <div role="status" aria-busy="true" aria-label="Cargando catálogo de cuentas…" className="space-y-2">
-                  <span className="sr-only">Cargando catálogo de cuentas…</span>
-                  <Skeleton className="h-9 w-80 rounded-md" />
-                  <Skeleton className="h-4 w-full rounded" />
-                  <Skeleton className="h-4 w-4/5 rounded" />
-                </div>
+                                <EstadoCargando etiqueta="Cargando catálogo de cuentas…" lineas={3} />
               ) : (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="catalogo-filtro" className="sr-only">
