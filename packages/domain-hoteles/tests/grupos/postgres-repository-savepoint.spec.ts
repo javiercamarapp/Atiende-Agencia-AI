@@ -129,7 +129,7 @@ describe("mapGruposPgError", () => {
     expect(mapGruposPgError(pgError("23514", 'new row for relation "group_block_night" violates check constraint'), "x")).toMatchObject({ message: expect.not.stringMatching(/new row/) });
     expect(mapGruposPgError(pgError("P0002", "bloqueo_no_encontrado"), "x")).toBeInstanceOf(GruposNotFoundError);
     expect(mapGruposPgError(pgError("23505", "duplicate key value violates unique constraint"), "x")).toBeInstanceOf(GruposConflictError);
-    expect(mapGruposPgError(pgError("42883", "function does not exist"), "x")).toBeInstanceOf(GruposUnavailableError);
+    expect(mapGruposPgError(pgError("42883", "function hoteles.group_quote_accept(uuid, timestamp with time zone) does not exist"), "x")).toBeInstanceOf(GruposUnavailableError);
     const unknown = pgError("57014", "statement timeout");
     expect(mapGruposPgError(unknown, "x")).toBe(unknown);
   });
