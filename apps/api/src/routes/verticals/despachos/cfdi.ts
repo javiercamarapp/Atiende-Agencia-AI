@@ -9,9 +9,9 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { validarCfdiDespachos, aplicarEfosAlResultado, hallazgoEfosParaCfdi, EFOS_NO_DISPONIBLE, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
-import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, EfosConsulta, EfosSituacion, InvoiceRecord } from "@atiende/domain-despachos";
-import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
+import { analizarComplementoPago, RepRfcAjenoError, validarCfdiDespachos, aplicarEfosAlResultado, hallazgoEfosParaCfdi, EFOS_NO_DISPONIBLE, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
+import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, EfosConsulta, EfosSituacion, FacturaLigable, InvoiceRecord } from "@atiende/domain-despachos";
+import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -20,6 +20,11 @@ import type { AppDeps } from "../../../deps.ts";
  * conceptos; 512 KB deja margen holgado (complementos, muchos conceptos) sin abrir
  * la puerta a un XML gigante como vector de denegación de servicio. */
 const MAX_CFDI_XML_BYTES = 512 * 1024;
+
+/** Tope del cuerpo JSON de `POST .../cfdi/rep/analizar` (XML de hasta 512 KB escapado como cadena JSON). */
+const MAX_REP_BODY_BYTES = 640 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RFC_RE = /^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/i;
 
 const TIPOS_COMPROBANTE_VALIDOS = new Set(["I", "E", "T", "P", "N"]);
 
@@ -337,6 +342,51 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml);
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
+  });
+
+  // D-23: análisis (SOLO LECTURA, no persiste nada) de un complemento de pago 2.0 (REP). Liga cada
+  // `DoctoRelacionado` a la factura que el despacho ya tiene (misma property), y calcula saldo insoluto e IVA
+  // efectivamente pagado por mes de pago, en centavos. `rfcContribuyente` decide el flujo: emisor del REP = IVA
+  // trasladado cobrado; receptor = IVA acreditable pagado. Persistir los pagos y alimentar DIOT/pagos provisionales
+  // depende del modelo CFDI completo (D-22, PR #290): hueco declarado en el cuerpo del PR.
+  app.post("/despachos/:propertyId/cfdi/rep/analizar", async (c) => {
+    assertVerticalRole(c, VER_CFDI_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const raw = await readJsonCapped<{ xml?: unknown; rfcContribuyente?: unknown }>(c.req.raw, MAX_REP_BODY_BYTES);
+    if (typeof raw.xml !== "string" || raw.xml.trim() === "") throw Errors.validation("xml: se esperaba el XML del complemento de pago como texto.");
+    if (raw.xml.length > MAX_CFDI_XML_BYTES) throw Errors.payloadTooLarge();
+    if (typeof raw.rfcContribuyente !== "string" || !RFC_RE.test(raw.rfcContribuyente.trim())) throw Errors.validation("rfcContribuyente: RFC inválido.");
+
+    let rep;
+    try {
+      rep = parseComplementoPagoXml(raw.xml);
+    } catch (err) {
+      if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
+      throw err;
+    }
+
+    // Solo UUID bien formados llegan a la columna `uuid` (un valor mal formado sería un 22P02 -> 500).
+    const ids = [...new Set(rep.pagos.flatMap((p) => p.documentos.map((d) => d.idDocumento)))].filter((id) => UUID_RE.test(id));
+    const facturas = new Map<string, FacturaLigable>();
+    for (const id of ids) {
+      const inv = await repo.findInvoiceByFolioFiscal(organizationId, id);
+      if (!inv || inv.propertyId !== propertyId) continue;
+      facturas.set(id, {
+        folioFiscal: inv.folioFiscal,
+        rfcEmisor: inv.rfcEmisor,
+        rfcReceptor: inv.rfcReceptor,
+        totalCentavos: Math.round(inv.total * 100),
+        ivaCentavos: inv.iva === null ? null : Math.round(inv.iva * 100),
+      });
+    }
+    try {
+      return c.json(analizarComplementoPago(rep, raw.rfcContribuyente, facturas));
+    } catch (err) {
+      if (err instanceof RepRfcAjenoError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
