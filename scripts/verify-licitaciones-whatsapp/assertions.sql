@@ -520,5 +520,72 @@ do $$ declare r record; begin
 end $$;
 rollback;
 
+\echo '--- 47. UPSERT del panel (el SQL exacto de la API): alta, y cambio de telefono reinicia el consentimiento ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c4', true);
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, notify_plazos, notify_convocatorias, notify_fallos, notify_decisiones)
+  values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c4', '+5215511110004', true, true, true, true)
+  on conflict (organization_id, user_id) do update
+    set phone_e164 = excluded.phone_e164, notify_plazos = excluded.notify_plazos, notify_convocatorias = excluded.notify_convocatorias,
+        notify_fallos = excluded.notify_fallos, notify_decisiones = excluded.notify_decisiones
+  returning status;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, notify_plazos, notify_convocatorias, notify_fallos, notify_decisiones)
+  values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c4', '+5215588887777', false, true, true, true)
+  on conflict (organization_id, user_id) do update
+    set phone_e164 = excluded.phone_e164, notify_plazos = excluded.notify_plazos, notify_convocatorias = excluded.notify_convocatorias,
+        notify_fallos = excluded.notify_fallos, notify_decisiones = excluded.notify_decisiones
+  returning status;
+do $$ declare r record; begin
+  select * into r from licitaciones.whatsapp_contact where user_id = '00000000-0000-0000-0000-0000000000c4';
+  if r.phone_e164 <> '+5215588887777' or r.notify_plazos <> false or r.status <> 'pendiente' then raise exception 'upsert inesperado: %', r; end if;
+end $$;
+rollback;
+
+\echo '--- 48. SISTEMA: el duenno de un token se resuelve por su hash (para abrir la sesion de ESE usuario) ---'
+begin;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'go', repeat('b', 64), now() + interval '1 day');
+select count(*) as duenno_deberia_ser_1 from licitaciones.system_whatsapp_token_owner(repeat('b', 64)) where user_id = '00000000-0000-0000-0000-0000000000c5';
+rollback;
+
+\echo '--- 49. DECISION ATOMICA: con la sesion del usuario, consumir el token e insertar go_no_go_decision (RLS can_go_no_go_org) en la misma transaccion ---'
+begin;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'go', repeat('b', 64), now() + interval '1 day');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c5', true);
+do $$ declare r record; begin
+  select * into r from licitaciones.whatsapp_consume_action_token(repeat('b', 64), '+5215511110005', 'wamid.dec');
+  if r.resultado <> 'ok' then raise exception 'consumo: %', r.resultado; end if;
+  insert into licitaciones.go_no_go_decision (organization_id, tender_id, decision, reasons, match_score, match_eligibility_status, match_inputs_hash, decided_by)
+    values ('00000000-0000-0000-0000-0000000000d1', r.convocatoria_id, r.accion, array['Decision registrada por boton de WhatsApp.'], 0, 'no_evaluable', 'h', auth.uid());
+  update licitaciones.tender set status = r.accion, updated_at = now() where organization_id = '00000000-0000-0000-0000-0000000000d1' and id = r.convocatoria_id;
+end $$;
+select count(*) as decisiones_deberia_ser_1 from licitaciones.go_no_go_decision where decided_by = '00000000-0000-0000-0000-0000000000c5' and decision = 'go';
+rollback;
+
+\echo '--- 50. ATOMICIDAD: si el insert de la decision falla, el consumo se revierte y el token queda SIN usar ---'
+begin;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'go', repeat('b', 64), now() + interval '1 day');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c5', true);
+do $$ begin
+  begin
+    perform * from licitaciones.whatsapp_consume_action_token(repeat('b', 64), '+5215511110005', 'wamid.fail');
+    raise exception 'fallo simulado del insert de la decision';
+  exception when others then
+    null;
+  end;
+end $$;
+reset role;
+select count(*) as consumidos_deberia_ser_0 from licitaciones.whatsapp_action_token where consumed_at is not null;
+rollback;
+
 \echo ''
 \echo '=== fin: los escenarios marcados should_fail / deberia_ser_N deben terminar en ERROR / en el valor N; el resto sin error ==='
