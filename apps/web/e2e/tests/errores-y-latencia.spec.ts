@@ -23,6 +23,7 @@ test.describe("errores y latencia @errores", () => {
 
   test("401 con sesion vencida: la SPA refresca el token una vez y reintenta sin pedir login", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("citas", "owner");
+    await expect(page.getByText("Citas hoy")).toBeVisible(); // la carga inicial ya termino: la falla es para el goto de abajo
     await mock.limpiarRegistro();
     await mock.inyectarFalla({ metodo: "GET", ruta: "/resumen", status: 401, veces: 1 });
     await page.goto(RESUMEN);
@@ -35,6 +36,7 @@ test.describe("errores y latencia @errores", () => {
 
   test("refresh rechazado: la sesion se limpia y vuelve al login de la vertical", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("citas", "owner");
+    await expect(page.getByText("Citas hoy")).toBeVisible();
     await mock.inyectarFalla({ metodo: "GET", ruta: "/resumen", status: 401, veces: 1 });
     await mock.inyectarFalla({ metodo: "POST", ruta: "/auth/refresh", status: 401, veces: 1 });
     await page.goto(RESUMEN);
@@ -54,6 +56,7 @@ test.describe("errores y latencia @errores", () => {
 
   test("latencia: con 700 ms por peticion se ve el estado de carga antes de los datos", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("citas", "owner");
+    await expect(page.getByText("Citas hoy")).toBeVisible();
     await mock.configurar({ latenciaMs: 700 });
     await page.goto(RESUMEN);
     await expect(page.getByRole("status", { name: "Cargando resumen…" }).or(page.getByText("Cargando resumen…")).first()).toBeVisible();

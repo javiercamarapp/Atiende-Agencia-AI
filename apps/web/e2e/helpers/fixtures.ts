@@ -65,6 +65,9 @@ export const test = base.extend<Fixtures>({
       const puente = objetivo === "superadmin" ? "restaurantes" : objetivo;
       await page.goto(`/${puente}/auth/google/callback?code=${encodeURIComponent(mock.codigoLogin(persona.id))}`);
       await page.waitForURL((url) => !url.pathname.includes("/auth/google/callback"), { timeout: 15_000 });
+      // Hasta que el shell pinto (sesion y sucursales ya cargadas): si no, una falla inyectada justo despues del login
+      // podria consumirla la carga inicial en vez de la accion que la prueba quiere ejercitar (flake visto en CI).
+      await page.locator("main").first().waitFor({ state: "visible", timeout: 15_000 });
       return new URL(page.url()).pathname;
     });
   },
