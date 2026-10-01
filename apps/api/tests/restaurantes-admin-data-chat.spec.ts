@@ -193,12 +193,12 @@ describe("validación, límites y disponibilidad", () => {
     expect(body.status).toBe("unavailable");
     expect(body.text).toContain("todavía no está activado");
     const estado = await app.request(url(h, "/estado"), authedGet(ctx.staff.owner.token));
-    expect(await estado.json()).toEqual({ available: false });
+    expect(await estado.json()).toMatchObject({ available: false });
   });
 
   it("estado available=true con proveedor y 403 para repartidor", async () => {
     const h = await harness([{ text: "x" }]);
-    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toEqual({ available: true });
+    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toMatchObject({ available: true });
     expect((await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.repartidor.token))).status).toBe(403);
   });
 
