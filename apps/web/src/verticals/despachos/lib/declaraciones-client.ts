@@ -94,3 +94,19 @@ export interface DiotAgregado {
 export async function fetchDiot(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<DiotAgregado> {
   return fetchJson<DiotAgregado>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/declaraciones/diot/${periodo}`, token);
 }
+
+export interface DiotLayoutRespuesta {
+  readonly version: string;
+  readonly periodo: string;
+  readonly rfcContribuyente: string | null;
+  readonly renglones: readonly { readonly rfc: string; readonly tipoOperacion: DiotTipoOperacion }[];
+  readonly omitidos: readonly { readonly rfc: string; readonly motivo: "rfc_generico" | "rfc_invalido" | "sin_valor_tras_redondeo" }[];
+  readonly advertencias: readonly string[];
+  readonly txt: string;
+  readonly xml: string;
+}
+
+/** D-05: layout DIOT (TXT/XML) del periodo, sin firma ni envio (ver declaraciones.ts, ruta .../layout). */
+export async function fetchDiotLayout(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<DiotLayoutRespuesta> {
+  return fetchJson<DiotLayoutRespuesta>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/declaraciones/diot/${periodo}/layout`, token);
+}

@@ -1,5 +1,5 @@
 -- Ejerce, contra Postgres REAL (RLS + GRANT reales; el repositorio en memoria nunca los aplica), la
--- migración 013_despachos_estado_cuenta_movimiento (D-03): libro de movimientos importados de
+-- migración 015_despachos_estado_cuenta_movimiento (D-03): libro de movimientos importados de
 -- estados de cuenta, con idempotencia por hash. Cada escenario corre en su propio
 -- `begin; ... rollback;` -- nada persiste salvo el fixture de arriba. El SQL de INSERT es el MISMO
 -- de `PostgresDespachosRepository.insertEstadoCuentaMovimientos` (copiado literal).

@@ -31,3 +31,6 @@ export type {
 // jobs/despachos/README.md).
 export { runCobranzaReminderSweep } from "./jobs/despachos/cobranza-reminders.ts";
 export type { CobranzaReminderSweepResult, CobranzaReminderPropertyResult, RunCobranzaReminderSweepOptions } from "./jobs/despachos/cobranza-reminders.ts";
+// despachos: ingesta mensual de la lista 69-B del SAT (D-04), con adaptador de fuente.
+export { runEfos69bIngestion, FixtureEfos69bSource } from "./jobs/despachos/efos-69b-ingestion.ts";
+export type { Efos69bSource, Efos69bIngestionResult } from "./jobs/despachos/efos-69b-ingestion.ts";

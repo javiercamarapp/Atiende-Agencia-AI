@@ -5,7 +5,9 @@
 // que InMemoryHotelesRepository/InMemoryRestaurantesRepository.
 import { randomUUID } from "node:crypto";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
+import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
+import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
+import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
@@ -48,6 +50,8 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   // FASE 3 (producto) -- zona horaria por negocio (migración 012), ver
   // `repository.ts::findPropertyConfig`/`upsertPropertyConfigZonaHoraria`.
   private readonly propertyConfigs = new Map<string, DespachosPropertyConfigRecord>();
+  // D-04 (migración 014): ediciones de la lista 69-B por periodo.
+  private readonly efosListas = new Map<string, { sha: string; filas: readonly EfosContribuyente[]; ingestadoEn: string }>();
 
   /** Espejo en memoria de `despachos.audit_log` -- f2-orden-total-bitacoras.
    * Expuesto directo (mismo criterio que `InMemoryRentasRepository.auditLog`, ver
@@ -640,7 +644,7 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return fn();
   }
 
-  // ---- Libro de estados de cuenta importados (D-03, migración 013) ----
+  // ---- Libro de estados de cuenta importados (D-03, migración 015) ----
   private readonly estadoCuentaHashes = new Map<string, Set<string>>();
 
   async listEstadoCuentaHashesExistentes(propertyId: string, hashes: readonly string[]): Promise<ReadonlySet<string>> {
@@ -669,5 +673,50 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     const record: DespachosPropertyConfigRecord = { propertyId, organizationId, zonaHoraria };
     this.propertyConfigs.set(propertyId, record);
     return record;
+  }
+
+  // ---- D-04: lista 69-B (EFOS) ----
+  private efosPeriodoVigente(): string | null {
+    const periodos = [...this.efosListas.keys()].sort();
+    return periodos.length > 0 ? periodos[periodos.length - 1]! : null;
+  }
+
+  async consultarEfos(rfcs: readonly string[]): Promise<EfosConsulta> {
+    const periodo = this.efosPeriodoVigente();
+    if (periodo === null) return EFOS_NO_DISPONIBLE;
+    const buscados = new Set(rfcs.map((r) => r.trim().toUpperCase()));
+    return { estado: "disponible", periodoLista: periodo, coincidencias: this.efosListas.get(periodo)!.filas.filter((f) => buscados.has(f.rfc)) };
+  }
+
+  async estadoEfos(): Promise<EfosEstadoLista> {
+    const periodo = this.efosPeriodoVigente();
+    if (periodo === null) return { estado: "no_disponible", periodo: null, filas: null, ingestadoEn: null };
+    const l = this.efosListas.get(periodo)!;
+    return { estado: "disponible", periodo, filas: l.filas.length, ingestadoEn: l.ingestadoEn };
+  }
+
+  async listarInvoicesEfosAfectados(propertyId: string): Promise<EfosAfectadosResultado> {
+    const periodo = this.efosPeriodoVigente();
+    if (periodo === null) return { estado: "no_disponible", items: [] };
+    const porRfc = new Map(this.efosListas.get(periodo)!.filas.map((f) => [f.rfc, f] as const));
+    const items = [...this.invoices.values()]
+      .filter((i) => i.propertyId === propertyId)
+      .flatMap((i) => {
+        const c = porRfc.get(i.rfcEmisor.trim().toUpperCase());
+        if (!c || (c.situacion !== "presunto" && c.situacion !== "definitivo")) return [];
+        return [{ invoiceId: i.id, folioFiscal: i.folioFiscal, rfcEmisor: i.rfcEmisor, emisorNombre: i.emisorNombre, fecha: i.fecha, total: i.total, situacion: c.situacion, periodoLista: periodo }];
+      })
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0))
+      .slice(0, 500);
+    return { estado: "disponible", items };
+  }
+
+  async ingestarListaEfos(periodo: string, fuenteSha256: string, filas: readonly EfosContribuyente[]): Promise<EfosIngestaResultado> {
+    if (filas.length === 0) throw new Error("ingestarListaEfos: lista vacía");
+    if (new Set(filas.map((f) => f.rfc)).size !== filas.length) throw new Error("ingestarListaEfos: RFC duplicado dentro de la edición");
+    const previa = this.efosListas.get(periodo);
+    if (previa && previa.sha === fuenteSha256) return "sin_cambios";
+    this.efosListas.set(periodo, { sha: fuenteSha256, filas: [...filas], ingestadoEn: new Date().toISOString() });
+    return previa ? "reemplazada" : "insertada";
   }
 }

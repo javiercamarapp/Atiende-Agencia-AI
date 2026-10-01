@@ -237,7 +237,7 @@ describe("POST .../conciliacion/importar-estado-de-cuenta/guardar (libro idempot
     vi.spyOn(ctx.despachosRepo, "insertEstadoCuentaMovimientos").mockRejectedValue(pgError("42P01", 'relation "despachos.estado_cuenta_movimiento" does not exist'));
     const r = await guardar(ctx.staff.contador.token, { contenido: CSV_OK });
     expect(r.status).toBe(503);
-    expect(JSON.stringify(await r.json())).toContain("migración 013");
+    expect(JSON.stringify(await r.json())).toContain("migración 015");
   });
 
   it("BASE SIN MIGRAR en la vista previa (42P01 al leer el libro): sigue funcionando con libroDisponible=false", async () => {

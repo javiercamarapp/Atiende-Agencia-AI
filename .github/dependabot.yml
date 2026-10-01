@@ -1,0 +1,30 @@
+# PL-11. Actualizaciones automaticas de dependencias (npm del monorepo + GitHub Actions).
+# Frugal a proposito: semanal, agrupado y con tope de PRs abiertos. Cada PR de Dependabot pasa por el mismo
+# CI del repo (typecheck, lint, tests, gate de Postgres, gitleaks); ninguno se fusiona solo. El despliegue a
+# Vercel sigue gobernado por la bandera [deploy] en el mensaje de commit, que estos PRs no llevan.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      # Minor/patch juntos en un solo PR; los major llegan por separado para revisarse uno a uno.
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"

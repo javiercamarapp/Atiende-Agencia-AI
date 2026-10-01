@@ -53,7 +53,7 @@ import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-h
 import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -85,6 +85,7 @@ import {
   PostgresImpersonationRepository,
   PostgresMfaRepository,
   PostgresCfoRepository,
+  PostgresPylRepository,
   PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
@@ -298,6 +299,8 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
+    privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
@@ -480,6 +483,7 @@ export function buildProductionDeps(): AppDeps {
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
     cfoRepo: (db) => new PostgresCfoRepository(db),
+    pylRepo: (db) => new PostgresPylRepository(db),
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
     alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),

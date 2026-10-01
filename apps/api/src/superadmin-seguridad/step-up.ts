@@ -36,6 +36,7 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
+  { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
   { method: "DELETE", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "quitar un limite de plan" },

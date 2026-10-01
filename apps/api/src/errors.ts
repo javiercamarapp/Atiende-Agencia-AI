@@ -11,6 +11,12 @@ export const Errors = {
   notFound: (message = "No encontrado.") => new ApiError(404, "not_found", message),
   conflict: (message: string) => new ApiError(409, "conflict", message),
   tooManyRequests: (message = "Demasiadas solicitudes.") => new ApiError(429, "too_many_requests", message, { "Retry-After": "60" }),
+  /** Bloqueo temporal por intentos de login fallidos (`LoginLockout`). Mismo codigo y mensaje que el rate
+   *  limit de login: quien llama no distingue "cuenta existente" de "cuenta inexistente" ni "bloqueo" de "tope". */
+  loginLocked: (retryAfterMs: number) =>
+    new ApiError(429, "too_many_requests", "Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.", {
+      "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+    }),
   payloadTooLarge: (message = "Payload demasiado grande.") => new ApiError(413, "payload_too_large", message),
   serviceUnavailable: (message = "Servicio no configurado.") => new ApiError(503, "service_unavailable", message),
   // ---- segundo factor / step-up / contrasena (L-01, L-02) ----

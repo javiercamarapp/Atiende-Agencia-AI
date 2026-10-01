@@ -7,6 +7,7 @@ import type {
   LlmUsageRepository,
   MfaRepository,
   CfoRepository,
+  PylRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
@@ -17,7 +18,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, HandoffAgentGate, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -142,6 +143,10 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** PM PR-9 -- privacidad de restaurantes (ARCO, aviso, retencion; migracion 030). OPCIONAL: ausente =
+   * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
+   * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
+  readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
   readonly voiceProvider?: VoiceAgentProvider;
   /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
@@ -496,6 +501,11 @@ export interface AppDeps {
    *  sesion del caller; el cron usa `withAppSession({ userId: null })` (SOLO sistema). OPCIONAL:
    *  ausente -> `disponible: false` / el cron responde `migracion_pendiente`. */
   readonly cfoRepo?: (db: TenantDbSession) => CfoRepository;
+  /** Infraestructura compartida capturada para el P&L por vertical y cliente
+   *  (packages/db/migrations/0032_superadmin_pyl_infra.sql, ver routes/superadmin-pyl.ts). Fabrica por
+   *  sesion del caller. OPCIONAL: ausente -> el P&L se calcula sin infra ("sin_infra_capturada") y la
+   *  captura responde 503. El ingreso y el costo del P&L salen de `cfoRepo`. */
+  readonly pylRepo?: (db: TenantDbSession) => PylRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;

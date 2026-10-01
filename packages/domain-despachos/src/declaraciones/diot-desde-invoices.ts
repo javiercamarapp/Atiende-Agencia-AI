@@ -17,12 +17,11 @@ import type { DiotAgregado, RegistroDiotCandidato } from "./types.ts";
 
 export type DiotDesdeInvoices = Omit<DiotAgregado, "rfcContribuyente"> & { readonly rfcContribuyente: string | null };
 
-export function construirDiotDesdeInvoices(invoices: readonly InvoiceRecord[], periodo: string): DiotDesdeInvoices {
+/** Candidatos DIOT (un renglón por CFDI reportable) reconstruidos desde los invoices
+ * persistidos. Compartido por `construirDiotDesdeInvoices` y por el generador de layout
+ * (`diot-layout.ts`) para que ambos lean la MISMA regla y no puedan divergir. */
+export function candidatosDiotDesdeInvoices(invoices: readonly InvoiceRecord[]): { readonly candidatos: RegistroDiotCandidato[]; readonly rfcContribuyente: string | null } {
   const reportables = invoices.filter((inv) => inv.diot.reportable && inv.diot.proveedoresReportables.length > 0);
-  if (reportables.length === 0) {
-    return { registros: [], totalMontoNeto: 0, totalIvaTrasladado: 0, totalIvaAcreditable: 0, periodo, rfcContribuyente: null };
-  }
-
   const candidatos: RegistroDiotCandidato[] = reportables.map((inv) => {
     const p = inv.diot.proveedoresReportables[0]!;
     return {
@@ -39,6 +38,13 @@ export function construirDiotDesdeInvoices(invoices: readonly InvoiceRecord[], p
       fecha: inv.fecha,
     };
   });
+  return { candidatos, rfcContribuyente: reportables[0]?.rfcReceptor ?? null };
+}
 
-  return agregarDiot(candidatos, reportables[0]!.rfcReceptor, periodo);
+export function construirDiotDesdeInvoices(invoices: readonly InvoiceRecord[], periodo: string): DiotDesdeInvoices {
+  const { candidatos, rfcContribuyente } = candidatosDiotDesdeInvoices(invoices);
+  if (candidatos.length === 0 || rfcContribuyente === null) {
+    return { registros: [], totalMontoNeto: 0, totalIvaTrasladado: 0, totalIvaAcreditable: 0, periodo, rfcContribuyente: null };
+  }
+  return agregarDiot(candidatos, rfcContribuyente, periodo);
 }

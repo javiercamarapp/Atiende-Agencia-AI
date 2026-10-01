@@ -28,6 +28,11 @@ export interface SolicitudArcoVista {
   readonly respuestaVenceEn: string | null;
   readonly ejecucionVenceEn: string | null;
   readonly notaResolucion: string | null;
+  /** Canal por el que llegó la solicitud (opcional: citas solo recibe WhatsApp). */
+  readonly canal?: "whatsapp" | "voice";
+  /** Con qué se verificó la identidad del titular. `llamada_identificador` = el identificador de
+   * llamada puede falsearse: el staff debe verificar al titular por otra vía antes de responder. */
+  readonly identidadVerificadaPor?: "whatsapp_numero" | "llamada_identificador";
 }
 
 export const SOLICITUD_ARCO_DERECHO_LABEL: Record<SolicitudArcoDerecho, string> = {
@@ -108,7 +113,7 @@ export function SolicitudesArcoPanel({ solicitudes, disponible, puedeGestionar, 
       <EstadoVacio
         icon={ShieldCheck}
         titulo="Seguimiento ARCO no disponible aún"
-        mensaje="El seguimiento de solicitudes de derechos ARCO todavía no está habilitado en esta base de datos. Cuando se habilite, las solicitudes que lleguen por WhatsApp aparecerán aquí."
+        mensaje="El seguimiento de solicitudes de derechos ARCO todavía no está habilitado en esta base de datos. Cuando se habilite, las solicitudes que lleguen por WhatsApp o por llamada aparecerán aquí."
       />
     );
   }
@@ -169,7 +174,16 @@ export function SolicitudesArcoPanel({ solicitudes, disponible, puedeGestionar, 
                     <TableRow key={s.id}>
                       <TableCell className="font-mono text-xs">{s.folio}</TableCell>
                       <TableCell className="text-xs">{SOLICITUD_ARCO_DERECHO_LABEL[s.derecho]}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{s.telefono}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <div className="flex flex-col gap-1">
+                          <span>{s.telefono}</span>
+                          {s.identidadVerificadaPor === "llamada_identificador" && (
+                            <Badge variant="secondary" className="w-fit text-[10px]" title="El identificador de llamada puede falsearse">
+                              Llamada: verifica identidad por otra vía
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <span className="text-xs">{SOLICITUD_ARCO_ESTADO_LABEL[s.estado]}</span>

@@ -40,7 +40,7 @@ export interface VistaPreviaImportacion {
   readonly coincidencias: readonly CoincidenciaImportacion[];
   /** Cobranza consultada: false = la base aún no tiene esa tabla o no hay datos accesibles. */
   readonly cobranzaDisponible: boolean;
-  /** Libro de importaciones consultado: false = la base aún no tiene la migración 013, así que no se
+  /** Libro de importaciones consultado: false = la base aún no tiene la migración 015, así que no se
    * puede saber qué ya se importó (ni guardar) y la vista previa lo dice en vez de aparentar "todo nuevo". */
   readonly libroDisponible: boolean;
 }

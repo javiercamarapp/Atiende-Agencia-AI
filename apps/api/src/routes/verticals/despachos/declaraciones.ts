@@ -27,7 +27,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, construirDiotDesdeInvoices, DECLARACIONES_ROLES, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
+import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, candidatosDiotDesdeInvoices, construirDiotDesdeInvoices, construirDiotLayout, DECLARACIONES_ROLES, DiotLayoutError, LAYOUT_DIOT_VERSION, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -115,6 +115,39 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // con los reportes de cliente (`reportes/`) para que ambas superficies no puedan divergir.
     const invoices = await repo.listInvoices(propertyId, { periodo });
     return c.json(construirDiotDesdeInvoices(invoices, periodo));
+  });
+
+  // D-05: layout DIOT (TXT "|" y XML) del periodo, SIN firma ni envío (el envío con e.firma
+  // es D-18). Lectura pura sobre invoices ya persistidos -- mismo rol y misma reconstrucción
+  // que el GET de arriba (`candidatosDiotDesdeInvoices` comparte la regla). No requiere
+  // migración: no usa ninguna tabla/función nueva. Devuelve JSON con ambos archivos para que
+  // el panel los descargue como Blob; `advertencias`/`omitidos` dicen qué NO se capturó.
+  app.get("/despachos/:propertyId/declaraciones/diot/:periodo/layout", async (c) => {
+    assertVerticalRole(c, VER_DECLARACIONES_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
+    const periodo = c.req.param("periodo");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
+
+    const invoices = await repo.listInvoices(c.req.param("propertyId"), { periodo });
+    const { candidatos, rfcContribuyente } = candidatosDiotDesdeInvoices(invoices);
+    if (candidatos.length === 0 || rfcContribuyente === null) {
+      return c.json({
+        version: LAYOUT_DIOT_VERSION,
+        periodo,
+        rfcContribuyente: null,
+        renglones: [],
+        omitidos: [],
+        advertencias: ["No hay terceros reportables en el periodo: el archivo no contiene renglones."],
+        txt: "",
+        xml: "",
+      });
+    }
+    try {
+      return c.json(construirDiotLayout(candidatos, rfcContribuyente, periodo));
+    } catch (err) {
+      if (err instanceof DiotLayoutError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   return app;

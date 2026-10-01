@@ -142,12 +142,12 @@ describe("ImportarEstadoCuentaPage (despachos)", () => {
     expect(botonGuardar()).toBeUndefined();
   });
 
-  it("base sin la migración 013 (libroDisponible=false): avisa y no ofrece Guardar", async () => {
+  it("base sin la migración 015 (libroDisponible=false): avisa y no ofrece Guardar", async () => {
     fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ...VISTA_SIN_ERRORES, libroDisponible: false }) }) as unknown as Response);
     vi.stubGlobal("fetch", fetchMock);
     rendered = renderPage();
     await subirArchivo("Fecha;Concepto\n", "estado.csv");
-    expect(rendered.container.textContent).toContain("migración 013");
+    expect(rendered.container.textContent).toContain("migración 015");
     expect(botonGuardar()).toBeUndefined();
   });
 

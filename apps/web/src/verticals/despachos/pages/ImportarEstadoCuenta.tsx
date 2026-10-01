@@ -225,7 +225,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 </Callout>
               ) : !vista.libroDisponible ? (
                 <Callout tone="warning" titulo="Guardar aún no está disponible en esta base">
-                  Falta aplicar la migración 013 (libro de movimientos importados). Mientras tanto la pantalla solo valida y concilia; no se puede saber qué ya se importó.
+                  Falta aplicar la migración 015 (libro de movimientos importados). Mientras tanto la pantalla solo valida y concilia; no se puede saber qué ya se importó.
                 </Callout>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">

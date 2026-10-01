@@ -292,6 +292,9 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
+-- Desde la migracion 030 (PM PR-9) la transcripcion solo se persiste con consentimiento de grabacion
+-- 'otorgado' (por defecto se exige): el servicio de voz lo registra antes del primer turno.
+select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-0000000d0001', '00000000-0000-0000-0000-0000000d00c1', true);
 select restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000d0001', '00000000-0000-0000-0000-0000000d00c1', 2, 'cliente', 'hola', 1200, 300, 50);
 select restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000d0001', '00000000-0000-0000-0000-0000000d00c1', 2, 'cliente', 'hola', 1200, 300, 50);
 -- el sistema no lee las tablas (solo owner/admin): se vuelve a superusuario para verificar el efecto

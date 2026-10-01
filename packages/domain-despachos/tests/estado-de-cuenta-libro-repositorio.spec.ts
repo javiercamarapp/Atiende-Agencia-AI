@@ -1,4 +1,4 @@
-// Libro de movimientos importados (D-03, migración 013): repositorio en memoria y adaptador de
+// Libro de movimientos importados (D-03, migración 015): repositorio en memoria y adaptador de
 // Postgres. El fallback contra la base SIN migrar se prueba con AbortAwareFakeSession (reproduce
 // 25P02; una sesión falsa plana NO sirve para probar el SAVEPOINT).
 import { describe, expect, it } from "vitest";

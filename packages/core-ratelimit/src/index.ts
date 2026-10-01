@@ -13,3 +13,14 @@ export { InMemoryWindowStore } from './memory-window.ts';
 export { attemptRedisIncrement, SCRIPT_INCR_WITH_TTL, type AttemptRedisIncrementParams } from './redis-backend.ts';
 
 export { ENDPOINT_POLICIES, resolvePolicy, type EndpointPolicy, type FailMode } from './endpoint-policy.ts';
+
+export {
+  LoginLockout,
+  getDefaultLoginLockout,
+  resetDefaultLoginLockoutForTests,
+  lockDurationMs,
+  SCRIPT_RECORD_FAILURE,
+  type LoginLockoutOptions,
+  type LockoutStatus,
+  type LockoutFailureResult,
+} from './login-lockout.ts';

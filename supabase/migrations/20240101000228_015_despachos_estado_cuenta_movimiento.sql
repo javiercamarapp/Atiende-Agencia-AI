@@ -1,4 +1,4 @@
--- Decimotercera migración del esquema `despachos.*` (D-03) — libro de movimientos
+-- Decimoquinta migración del esquema `despachos.*` (D-03) — libro de movimientos
 -- importados de estados de cuenta bancarios, con idempotencia por huella (hash).
 --
 -- Contexto: el parseo de CSV/OFX (`domain-despachos/src/conciliacion/estado-de-cuenta/`)
@@ -7,8 +7,8 @@
 -- el mismo archivo, o dos archivos de periodos traslapados, NO duplica movimientos
 -- porque `unique (property_id, hash)` + `insert ... on conflict do nothing` los descarta.
 --
--- Nota de numeración: el siguiente número interno libre de este directorio es 013;
--- la migración de EFOS (PR #233) ocupa 014 y no tiene relación con esta tabla.
+-- Nota de numeración: el siguiente número interno libre al integrar este PR es 015;
+-- la migración de EFOS (PR #233) ocupa 014 (la 013 queda sin usar) y no tiene relación con esta tabla.
 --
 -- Diseño de seguridad (cada punto con su justificación):
 --  * RLS habilitada; autoridad SIEMPRE `core.has_property_access` (mismo patrón que el

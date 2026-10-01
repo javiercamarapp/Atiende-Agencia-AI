@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero (initdb/pg_ctl) de la migración
-# 013_despachos_estado_cuenta_movimiento (D-03): RLS real, GRANT por columna, libro de solo-anexar,
+# 015_despachos_estado_cuenta_movimiento (D-03): RLS real, GRANT por columna, libro de solo-anexar,
 # idempotencia por hash (el SQL de `PostgresDespachosRepository.insertEstadoCuentaMovimientos`
 # copiado literal en assertions.sql). En CI lo corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre cualquier scripts/verify-*/).

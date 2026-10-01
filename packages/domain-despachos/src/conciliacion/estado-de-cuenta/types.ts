@@ -57,7 +57,7 @@ export interface ResultadoParseoEstado {
   readonly saldoFinal: number | null;
 }
 
-/** Movimiento listo para el libro `despachos.estado_cuenta_movimiento` (migración 013). */
+/** Movimiento listo para el libro `despachos.estado_cuenta_movimiento` (migración 015). */
 export interface NuevoMovimientoEstadoCuenta {
   readonly hash: string;
   readonly cuenta: string | null;

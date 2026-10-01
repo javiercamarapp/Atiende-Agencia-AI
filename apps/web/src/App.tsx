@@ -18,6 +18,7 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
+import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
@@ -44,6 +45,7 @@ import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.ts
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
 import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
+import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
@@ -221,6 +223,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
 // Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
+// PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
+const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // R-21: bandeja de conversaciones con handoff a humano y turnos de personal por sucursal.
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
@@ -381,6 +385,15 @@ function SuperAdminCfoDashboardRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminPylVerticalRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminPylVerticalPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -828,6 +841,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
+        <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
@@ -851,6 +865,7 @@ export function App() {
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
+        <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />

@@ -23,6 +23,7 @@ import { despachosCobranzaRoutes } from "./cobranza.ts";
 import { despachosConfiguracionRoutes } from "./configuracion.ts";
 import { despachosDashboardRoutes } from "./dashboard.ts";
 import { despachosReportesRoutes } from "./reportes.ts";
+import { despachosEfosRoutes } from "./efos.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -33,6 +34,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // sin SQL", ver admin-staff.ts.
   app.route("/", despachosAdminStaffRoutes(deps));
   app.route("/", despachosCfdiRoutes(deps));
+  app.route("/", despachosEfosRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));
   app.route("/", despachosDeclaracionesRoutes(deps));

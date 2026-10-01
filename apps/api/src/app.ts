@@ -8,6 +8,7 @@ import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
+import { originGuard, sinCacheEnSesion } from "./origin-guard.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
@@ -28,6 +29,7 @@ import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores
 import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
 import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
 import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
+import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
 import { superadminPlanesRoutes } from "./routes/superadmin-planes.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
@@ -68,6 +70,13 @@ export function buildApp(deps: AppDeps): Hono {
   // en TODA respuesta, incluidos 401/404/500 -- ver ./cabeceras-seguridad.ts.
   app.use("*", cabecerasSeguridadApi());
 
+  // PL-09: validacion de Origin/Host en las rutas de sesion (`/auth/*`) y de back office
+  // (`/superadmin/*`) para metodos con efectos, y sin cache en sus respuestas -- ver ./origin-guard.ts.
+  for (const prefijo of ["/auth/*", "/superadmin/*"]) {
+    app.use(prefijo, originGuard({ allowedOrigins: deps.env.allowedOrigins, appBaseUrl: deps.env.appBaseUrl }));
+    app.use(prefijo, sinCacheEnSesion());
+  }
+
   app.onError((err, c) => {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
@@ -100,6 +109,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminOrganizacionesRoutes(deps));
   app.route("/", superadminCostosRoutes(deps));
   app.route("/", superadminCfoRoutes(deps));
+  app.route("/", superadminPylRoutes(deps));
   app.route("/", superadminPlanesRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));

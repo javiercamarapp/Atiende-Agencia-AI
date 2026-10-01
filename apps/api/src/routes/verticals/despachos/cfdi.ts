@@ -9,8 +9,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
-import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, InvoiceRecord } from "@atiende/domain-despachos";
+import { validarCfdiDespachos, aplicarEfosAlResultado, hallazgoEfosParaCfdi, EFOS_NO_DISPONIBLE, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
+import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, EfosConsulta, EfosSituacion, InvoiceRecord } from "@atiende/domain-despachos";
 import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
@@ -170,9 +170,18 @@ function serializeInvoice(invoice: InvoiceRecord) {
   };
 }
 
-function resumirMotivoRevision(result: ReturnType<typeof validarCfdiDespachos>, tipo: string): string {
+/** Resultado de la consulta EFOS que acompaña la respuesta de ingesta (NO se persiste en el
+ * invoice: issues/warnings ya llevan el hallazgo; `estado` dice si la lista estaba disponible). */
+interface EfosIngesta {
+  readonly estado: EfosConsulta["estado"];
+  readonly periodoLista: string | null;
+  readonly situacion: EfosSituacion | null;
+}
+
+function resumirMotivoRevision(result: ReturnType<typeof validarCfdiDespachos>, tipo: string, efosSituacion: EfosSituacion | null): string {
   const motivos: string[] = [];
   if (result.issues.length > 0) motivos.push(`${result.issues.length} hallazgo(s): ${result.issues.map((i) => i.codigo).join(", ")}`);
+  if (efosSituacion === "presunto") motivos.push("emisor presunto en la lista 69-B del SAT");
   if (result.diot.reportable) motivos.push("proveedor reportable en DIOT");
   if (tipo === "E") motivos.push("nota de crédito (tipo E)");
   if (tipo === "P") motivos.push("comprobante de pago (tipo P)");
@@ -190,7 +199,7 @@ async function ingestarCfdiDespachos(
   propertyId: string,
   datos: DatosCfdiDespachos,
   categoria: CategoriaContable,
-): Promise<InvoiceRecord> {
+): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
   // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
   // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
   // conciliación bancaria, DIOT, devolución de IVA y declaraciones dependen de
@@ -219,7 +228,14 @@ async function ingestarCfdiDespachos(
     }
   }
 
-  const resultado = validarCfdiDespachos(datos);
+  // D-04: lista 69-B del SAT (EFOS). Se consulta el RFC del emisor (el proveedor, en un CFDI
+  // recibido); la nómina (tipo N) la emite el propio contribuyente, no un proveedor. El repositorio
+  // degrada a `no_disponible` si la lista aún no existe en la base (migración 014 pendiente o
+  // ninguna edición ingerida): en ese caso el CFDI se valida exactamente como antes y la
+  // respuesta lo dice -- NUNCA se interpreta como "emisor limpio".
+  const consultaEfos = datos.tipo === "N" ? EFOS_NO_DISPONIBLE : await repo.consultarEfos([datos.rfcEmisor]);
+  const coincidenciaEfos = consultaEfos.coincidencias.find((c) => c.rfc === datos.rfcEmisor.trim().toUpperCase()) ?? null;
+  const resultado = aplicarEfosAlResultado(validarCfdiDespachos(datos), hallazgoEfosParaCfdi(datos.rfcEmisor, coincidenciaEfos, consultaEfos.periodoLista));
 
   try {
     const invoice = await repo.insertInvoice({
@@ -251,11 +267,11 @@ async function ingestarCfdiDespachos(
         organizationId,
         propertyId,
         invoiceId: invoice.id,
-        reason: resumirMotivoRevision(resultado, datos.tipo),
+        reason: resumirMotivoRevision(resultado, datos.tipo, coincidenciaEfos?.situacion ?? null),
       });
     }
 
-    return invoice;
+    return { invoice, efos: { estado: consultaEfos.estado, periodoLista: consultaEfos.periodoLista, situacion: coincidenciaEfos?.situacion ?? null } };
   } catch (err) {
     if (err instanceof InvoiceAlreadyExistsError) throw Errors.conflict(err.message);
     throw err;
@@ -276,8 +292,8 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
     const { categoria, ...datos } = parseIngestaBody(raw);
 
-    const invoice = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria);
-    return c.json(serializeInvoice(invoice), 201);
+    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria);
+    return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
   // ALCANCE (ver TAREA): consume el CFDI 4.0 tal como lo entrega el PAC —
@@ -308,8 +324,8 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw err;
     }
 
-    const invoice = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
-    return c.json(serializeInvoice(invoice), 201);
+    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
+    return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
   // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero

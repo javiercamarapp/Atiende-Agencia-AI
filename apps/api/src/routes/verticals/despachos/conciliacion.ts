@@ -174,7 +174,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   /** D-03 -- vista previa de la importación de un estado de cuenta (CSV u OFX): parsea, valida
    * renglón por renglón (los errores se devuelven con su número de línea, no abortan el
    * archivo), calcula el hash de idempotencia de cada movimiento, marca los que YA se habían
-   * importado (libro `despachos.estado_cuenta_movimiento`, migración 013) y concilia el resto
+   * importado (libro `despachos.estado_cuenta_movimiento`, migración 015) y concilia el resto
    * contra los CFDI ya ingeridos reutilizando el motor de niveles 1-3; si hay cuentas por
    * cobrar pendientes de los CFDI conciliados con un abono, las sugiere. SOLO lectura: no
    * persiste nada ni marca cuentas como pagadas. El contenido llega ya decodificado como texto
@@ -215,7 +215,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
    * Todo o nada respecto a errores de parseo: si el archivo tiene renglones con error se rechaza
    * completo (400) para no importar a medias un estado de cuenta que el contador aún debe corregir.
    * No marca cuentas por cobrar como pagadas ni concilia nada: eso sigue siendo decisión humana.
-   * Contra una base sin la migración 013 responde 503 honesto (SAVEPOINT vía `leerFuenteOpcional`). */
+   * Contra una base sin la migración 015 responde 503 honesto (SAVEPOINT vía `leerFuenteOpcional`). */
   app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta/guardar", async (c) => {
     assertVerticalRole(c, CONCILIACION_ROLES);
     const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
@@ -245,7 +245,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         })),
       }),
     );
-    if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 013 (libro de movimientos importados).");
+    if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 015 (libro de movimientos importados).");
     return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length }, resultado.insertados > 0 ? 201 : 200);
   });
 
