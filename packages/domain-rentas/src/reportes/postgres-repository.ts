@@ -6,11 +6,11 @@
 // parcial), la consulta de respaldo trae solo noches. Esa degradación corre bajo
 // SAVEPOINT (runWithSavepointFallback): la sesión es UNA transacción por request y un
 // error de Postgres la dejaría abortada (25P02) para la consulta de respaldo.
-import type { TenantDbSession } from "@atiende/core-tenancy";
+import { ZONA_HORARIA_NEGOCIO_DEFAULT, type TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { RangoFechas } from "../tipos.ts";
 import { CANAL_SIN_CODIGO } from "./calculo.ts";
-import type { DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
+import type { ContextoPropiedadReporte, DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
 import type { FinancieroReservaReporte, ReservaParaReporte } from "./tipos.ts";
 
 interface FilaReserva {
@@ -49,10 +49,13 @@ function esDegradable(err: unknown): boolean {
 export class PostgresRentasReportesRepository implements RentasReportesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
-  async cargarDatosReporte(propertyId: string, periodo: RangoFechas, filtros: FiltrosReporte): Promise<DatosReporte> {
+  async leerContextoPropiedad(propertyId: string): Promise<ContextoPropiedadReporte> {
     const config = await this.db.query<{ zona_horaria: string; moneda: string }>(`select zona_horaria, moneda from rentas.property_config where property_id = $1;`, [propertyId]);
-    const moneda = (config.rows[0]?.moneda ?? "MXN").trim();
-    const zonaHoraria = config.rows[0]?.zona_horaria ?? "America/Mexico_City";
+    return { moneda: (config.rows[0]?.moneda ?? "MXN").trim(), zonaHoraria: config.rows[0]?.zona_horaria ?? ZONA_HORARIA_NEGOCIO_DEFAULT };
+  }
+
+  async cargarDatosReporte(propertyId: string, periodo: RangoFechas, filtros: FiltrosReporte): Promise<DatosReporte> {
+    const { moneda, zonaHoraria } = await this.leerContextoPropiedad(propertyId);
 
     const unidadesSql = await this.db.query<{ id: string; name: string; owner_id: string | null; owner_name: string | null }>(
       `select u.id, u.name, u.owner_id, o.name as owner_name

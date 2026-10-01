@@ -75,6 +75,7 @@ import {
   PostgresBreakGlassSessionRepository,
   PostgresRentasRepository,
   PostgresRentasCalendarSyncRepository,
+  PostgresRentasReportesRepository,
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
 } from "@atiende/domain-rentas";
@@ -410,6 +411,7 @@ export function buildProductionDeps(): AppDeps {
     // GOOGLE_CLIENT_ID/SECRET), este puerto funciona hoy sin ninguna credencial de
     // plataforma pendiente.
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
+    rentasReportesRepo: (db) => new PostgresRentasReportesRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).

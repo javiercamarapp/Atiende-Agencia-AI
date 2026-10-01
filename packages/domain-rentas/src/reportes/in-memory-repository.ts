@@ -3,7 +3,7 @@
 // scripts/verify-rentas-reportes-acceso).
 import { rangosSeSuperponen } from "../fechas.ts";
 import type { RangoFechas } from "../tipos.ts";
-import type { DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
+import type { ContextoPropiedadReporte, DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
 import type { ReservaParaReporte, UnidadParaReporte } from "./tipos.ts";
 
 export class InMemoryRentasReportesRepository implements RentasReportesRepository {
@@ -12,6 +12,10 @@ export class InMemoryRentasReportesRepository implements RentasReportesRepositor
   financieroDisponible = true;
   readonly unidades: UnidadParaReporte[] = [];
   readonly reservas: ReservaParaReporte[] = [];
+
+  async leerContextoPropiedad(): Promise<ContextoPropiedadReporte> {
+    return { moneda: this.moneda, zonaHoraria: this.zonaHoraria };
+  }
 
   async cargarDatosReporte(_propertyId: string, periodo: RangoFechas, filtros: FiltrosReporte): Promise<DatosReporte> {
     const unidades = this.unidades.filter((u) => (!filtros.unidadId || u.id === filtros.unidadId) && (!filtros.ownerId || u.ownerId === filtros.ownerId));

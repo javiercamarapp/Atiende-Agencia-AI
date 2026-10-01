@@ -13,6 +13,6 @@ export type {
   ResultadoReporte,
   UnidadParaReporte,
 } from "./tipos.ts";
-export type { DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
+export type { ContextoPropiedadReporte, DatosReporte, FiltrosReporte, RentasReportesRepository } from "./repository.ts";
 export { InMemoryRentasReportesRepository } from "./in-memory-repository.ts";
 export { PostgresRentasReportesRepository } from "./postgres-repository.ts";
