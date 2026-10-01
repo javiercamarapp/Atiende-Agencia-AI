@@ -40,7 +40,9 @@ export interface NearestBranchMatch {
   readonly recognizedZoneName: string;
 }
 
-export type TortillaChoice = "maiz" | "harina";
+/** Tipo de tortilla de un renglon de tacos. `mixta` (mitad maiz, mitad harina) es una opcion
+ * normal de PM, sin costo. */
+export type TortillaChoice = "maiz" | "harina" | "mixta";
 export type CustomerTier = "BLACK" | "PLATINUM" | "GOLD" | "BLUE";
 
 /**
@@ -93,7 +95,22 @@ export interface OrderQuote {
 }
 
 export type RequestedComplement = "salsa_habanero" | "crema_ajo";
-export type DefaultComplement = "salsa_verde" | "salsa_roja" | "limones" | "cebolla";
+/** Las 9 salsas/guarniciones incluidas sin costo (PM): roja, verde, mexicana, guacamolera, limones,
+ * crema de ajo, cebolla con cilantro, pina y habanero (soasado o picado con limon). `cebolla` es el
+ * nombre historico de `cebolla_cilantro` y se sigue aceptando al omitir. */
+export type DefaultComplement =
+  | "salsa_roja"
+  | "salsa_verde"
+  | "salsa_mexicana"
+  | "salsa_guacamolera"
+  | "limones"
+  | "crema_ajo"
+  | "cebolla_cilantro"
+  | "salsa_pina"
+  | "salsa_habanero"
+  | "cebolla";
+/** Salsa de la que el cliente quiere doble porcion (extra COBRADO; las porciones normales van incluidas). */
+export type DoubleSalsa = Exclude<DefaultComplement, "cebolla">;
 
 export interface CustomerAddress {
   readonly address: string;
@@ -152,6 +169,9 @@ export interface CreateOrderInput {
   readonly adultConfirmed?: boolean;
   readonly requestedComplements?: readonly RequestedComplement[];
   readonly omitDefaultComplements?: readonly DefaultComplement[];
+  /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
+   * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
+  readonly doubleSalsas?: readonly DoubleSalsa[];
   readonly callTranscript?: string;
   readonly callRecordingUrl?: string;
   /** Fase 11 — código de promoción a aplicar al total (ver promotions.ts). Opcional:

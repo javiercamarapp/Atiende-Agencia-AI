@@ -8,12 +8,12 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
-import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import type { Branch, CanalPedido, CreateOrderInput, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
+import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -117,6 +117,12 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.propina !== undefined && (typeof raw.propina !== "number" || !Number.isFinite(raw.propina) || raw.propina < 0 || raw.propina > 100000)) {
     throw new OrderValidationError("La propina debe ser un monto en pesos mayor o igual a 0.");
   }
+  if (
+    raw.doubleSalsas !== undefined &&
+    (!Array.isArray(raw.doubleSalsas) || raw.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || raw.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))
+  ) {
+    throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
+  }
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
   // Para recoger no hay direccion de entrega que exigir.
   if (agentOrder && canal === "domicilio" && (typeof raw.customerAddress !== "string" || !raw.customerAddress.trim())) {
@@ -142,7 +148,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
       (item.productId !== undefined && (typeof item.productId !== "string" || item.productId.length > 64)) ||
       (item.productName !== undefined && (typeof item.productName !== "string" || item.productName.length > 240)) ||
       (!(typeof item.productId === "string" && UUID_PATTERN.test(item.productId)) && !(typeof item.productName === "string" && item.productName.trim())) ||
-      (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina")
+      (item.tortilla !== undefined && !isTortillaChoice(item.tortilla))
     ) {
       throw new OrderValidationError("Productos o cantidades inválidos");
     }
@@ -242,6 +248,13 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
       quantity: quote.quantity,
       ...(quote.tortilla ? { tortilla: quote.tortilla } : {}),
     });
+  }
+
+  // Doble porcion de salsas: extra COBRADO (producto "Extra salsa" del catalogo, precio de catalogo).
+  const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, payload.doubleSalsas ?? []);
+  if (doubleSalsaLine) {
+    total = Math.round((total + doubleSalsaLine.lineTotal) * 100) / 100;
+    orderItems.push({ id: doubleSalsaLine.productId, name: doubleSalsaLine.name, price: doubleSalsaLine.price, quantity: doubleSalsaLine.quantity });
   }
 
   // Modelo PM (migracion 023) -- reglas por sucursal: horario, pedido minimo por canal
@@ -356,6 +369,8 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       items: itemsOrdenados.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, tortilla: item.tortilla ?? null })),
       requested_complements: [...(payload.requestedComplements ?? [])].sort(),
       omit_default_complements: [...(payload.omitDefaultComplements ?? [])].sort(),
+      // Solo entra al hash cuando hay doble porcion: el hash de pedidos sin ella no cambia.
+      ...(payload.doubleSalsas && payload.doubleSalsas.length > 0 ? { double_salsas: [...new Set(payload.doubleSalsas)].sort() } : {}),
     }),
   );
   const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : null;
@@ -442,6 +457,8 @@ export async function quoteOrder(
     readonly canal?: CanalPedido;
     readonly colonia?: string;
     readonly paymentMethod?: "efectivo" | "tarjeta";
+    /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
+    readonly doubleSalsas?: readonly DoubleSalsa[];
   },
 ): Promise<OrderQuote & QuotePolicyInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
@@ -450,7 +467,11 @@ export async function quoteOrder(
   }
   const canal = normalizarCanal(args.canal);
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
-  const quote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  const baseQuote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  const doubleSalsaLine = buildDoubleSalsaLine(resolved.products, args.doubleSalsas ?? []);
+  const quote: OrderQuote = doubleSalsaLine
+    ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
+    : baseQuote;
   const reglas = await aplicarReglasDeSucursal(repo, { branch, canal, subtotal: quote.total, colonia: args.colonia, paymentMethod: args.paymentMethod });
   return {
     ...quote,

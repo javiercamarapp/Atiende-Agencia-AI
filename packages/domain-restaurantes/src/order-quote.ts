@@ -7,25 +7,89 @@
 // `product.price` (que ya viene de branch_products, resuelto server-side) — nunca de
 // lo que mande el cliente.
 import { OrderValidationError } from "./errors.ts";
-import type { CanalPedido, DefaultComplement, OrderQuote, ProductoEncontrado, QuotedOrderLine, RequestedComplement, RequestedOrderItemInput } from "./types.ts";
+import type { CanalPedido, DefaultComplement, DoubleSalsa, OrderQuote, ProductoEncontrado, QuotedOrderLine, RequestedComplement, RequestedOrderItemInput, TortillaChoice } from "./types.ts";
 
-export const DEFAULT_COMPLEMENTS: readonly DefaultComplement[] = ["salsa_verde", "salsa_roja", "limones", "cebolla"];
+/** Las 9 salsas/guarniciones que PM incluye sin costo en cada pedido de tacos. */
+export const DEFAULT_COMPLEMENTS: readonly DefaultComplement[] = [
+  "salsa_roja",
+  "salsa_verde",
+  "salsa_mexicana",
+  "salsa_guacamolera",
+  "limones",
+  "crema_ajo",
+  "cebolla_cilantro",
+  "salsa_pina",
+  "salsa_habanero",
+];
 
 const COMPLEMENT_LABELS: Record<DefaultComplement | RequestedComplement, string> = {
-  salsa_verde: "salsa verde",
   salsa_roja: "salsa roja",
+  salsa_verde: "salsa verde",
+  salsa_mexicana: "salsa mexicana",
+  salsa_guacamolera: "salsa guacamolera",
   limones: "limones",
-  cebolla: "cebolla",
-  salsa_habanero: "salsa habanero",
   crema_ajo: "crema de ajo",
+  cebolla_cilantro: "cebolla con cilantro",
+  salsa_pina: "salsa de piña",
+  salsa_habanero: "salsa habanero (soasada o picada con limón)",
+  cebolla: "cebolla con cilantro",
 };
+
+/** Tortillas validas de un renglon de tacos (`mixta` = mitad maiz, mitad harina). */
+export const TORTILLA_CHOICES: readonly TortillaChoice[] = ["maiz", "harina", "mixta"];
+
+export function isTortillaChoice(value: unknown): value is TortillaChoice {
+  return typeof value === "string" && (TORTILLA_CHOICES as readonly string[]).includes(value);
+}
+
+/** `cebolla` es el nombre historico de `cebolla_cilantro`: ambos omiten la misma salsa. */
+function canonicalComplement(item: DefaultComplement): DefaultComplement {
+  return item === "cebolla" ? "cebolla_cilantro" : item;
+}
+
+/** Producto del catalogo que cobra la doble porcion de una salsa ("Extra salsa ..."). El precio SIEMPRE
+ * sale del catalogo de la sucursal, nunca de lo que mande el cliente o el modelo. */
+const EXTRA_SALSA_PRODUCT_RE = /^extra\s+salsa\b/i;
+
+export function findExtraSalsaProduct(products: readonly ProductoEncontrado[]): ProductoEncontrado | null {
+  return products.find((p) => EXTRA_SALSA_PRODUCT_RE.test(p.name.trim())) ?? null;
+}
+
+/**
+ * Renglon cobrado de la doble porcion de salsas: una pieza del producto "Extra salsa" del catalogo
+ * por cada salsa pedida en doble. Sin ese producto en el catalogo de la sucursal NO se inventa un
+ * precio: se rechaza con un mensaje accionable (el extra aun no tiene precio cargado).
+ */
+export function buildDoubleSalsaLine(products: readonly ProductoEncontrado[], doubleSalsas: readonly DoubleSalsa[]): QuotedOrderLine | null {
+  const unique = [...new Set(doubleSalsas)];
+  if (unique.length === 0) return null;
+  const extra = findExtraSalsaProduct(products);
+  if (!extra) {
+    throw new OrderValidationError(
+      "El extra por doble porción de salsa todavía no tiene precio en el catálogo de esta sucursal: no lo ofrezca ni lo cobre por su cuenta. Pase la solicitud a una persona (escalar_a_humano) o continúe el pedido sin doble porción.",
+    );
+  }
+  const price = Number(extra.price);
+  const quantity = unique.length;
+  return {
+    productId: extra.id,
+    name: `${extra.name} (doble porción: ${unique.map((s) => COMPLEMENT_LABELS[s]).join(", ")})`,
+    price,
+    requestedQuantity: quantity,
+    packSize: null,
+    quantity,
+    tortilla: null,
+    requiresAdultConfirmation: false,
+    lineTotal: Math.round(price * quantity * 100) / 100,
+  };
+}
 
 export function buildComplementNotes(
   notes?: string,
   requested: readonly RequestedComplement[] = [],
   omitted: readonly DefaultComplement[] = [],
 ): string {
-  const omittedSet = new Set(omitted);
+  const omittedSet = new Set(omitted.map(canonicalComplement));
   const included = DEFAULT_COMPLEMENTS.filter((item) => !omittedSet.has(item));
   const uniqueRequested = [...new Set(requested)];
   const lines = [notes?.trim()].filter(Boolean) as string[];
@@ -94,12 +158,12 @@ export function buildOrderQuoteFromProducts(
     }
     if (product.requiresAdultConfirmation) containsAlcohol = true;
 
-    if (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina") {
-      throw new OrderValidationError(`Tortilla inválida para ${product.name}: elige maíz o harina.`);
+    if (item.tortilla !== undefined && !isTortillaChoice(item.tortilla)) {
+      throw new OrderValidationError(`Tortilla inválida para ${product.name}: elige maíz, harina o mixta.`);
     }
     const requiresTortilla = /\btacos?\b/i.test(product.name);
     if (requiresTortilla && !item.tortilla) {
-      throw new OrderValidationError(`Antes de continuar, confirma si ${product.name} va con tortilla de maíz o harina.`);
+      throw new OrderValidationError(`Antes de continuar, confirma si ${product.name} va con tortilla de maíz, harina o mixta.`);
     }
     // Un renglón que no requiere tortilla nunca la carga, aunque el caller la mande
     // (los modelos a veces copian el último enum de tortilla a todos los renglones).

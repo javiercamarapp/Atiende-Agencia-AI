@@ -24,7 +24,7 @@ describe("buildOrderQuoteFromProducts", () => {
   });
 
   it("exige tortilla para productos cuyo nombre matchea /\\btacos?\\b/ y nunca la carga en productos que no la requieren", () => {
-    expect(() => buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3 }], [tacos])).toThrow(/maíz o harina/);
+    expect(() => buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3 }], [tacos])).toThrow(/maíz, harina o mixta/);
     const quote = buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3, tortilla: "maiz" }], [tacos]);
     expect(quote.lines[0]!.tortilla).toBe("maiz");
     const cocaQuote = buildOrderQuoteFromProducts([{ productId: "coca", requestedQuantity: 1, tortilla: "maiz" }], [coca]);
@@ -53,7 +53,9 @@ describe("buildOrderQuoteFromProducts", () => {
 describe("buildComplementNotes", () => {
   it("lista los complementos incluidos por default cuando no se omite ninguno", () => {
     const notes = buildComplementNotes(undefined, [], []);
-    expect(notes).toBe("Complementos incluidos: salsa verde, salsa roja, limones, cebolla.");
+    expect(notes).toBe(
+      "Complementos incluidos: salsa roja, salsa verde, salsa mexicana, salsa guacamolera, limones, crema de ajo, cebolla con cilantro, salsa de piña, salsa habanero (soasada o picada con limón).",
+    );
   });
   it("dice explícitamente 'no enviar complementos' cuando se omiten todos", () => {
     const notes = buildComplementNotes(undefined, [], [...DEFAULT_COMPLEMENTS]);
@@ -61,6 +63,7 @@ describe("buildComplementNotes", () => {
   });
   it("agrega los complementos solicitados sin duplicar", () => {
     const notes = buildComplementNotes(undefined, ["salsa_habanero", "salsa_habanero"], []);
-    expect(notes.match(/salsa habanero/g)).toHaveLength(1);
+    expect(notes.match(/Complementos solicitados: salsa habanero[^,]*\.$/m)).not.toBeNull();
+    expect(notes.match(/solicitados/g)).toHaveLength(1);
   });
 });
