@@ -29,6 +29,7 @@ import {
   Star,
   Tags,
   TrendingUp,
+  UsersRound,
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
@@ -132,6 +133,8 @@ const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "front
 const IDENTIDAD_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
 // H-03 -- catalogo de agentes y cola de aprobaciones humanas: mismo conjunto que AGENT_VIEW_ROLES (cosmetico; la RLS manda).
 const AGENTES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
+/** H-06: mismos roles que ven grupos en la base (`hoteles.can_view_groups`); cosmético, el servidor es la barrera real. */
+const GRUPOS_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
 
 // H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
@@ -182,6 +185,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
         ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
         ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
+        ...(GRUPOS_NAV_ROLES.has(role) ? [{ to: `${base}/grupos`, label: "Grupos", icon: UsersRound }] : []),
       ],
     },
     {
