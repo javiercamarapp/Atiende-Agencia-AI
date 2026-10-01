@@ -3,16 +3,15 @@
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav de
 // CitasShell.tsx -- mismo patrón que restaurantes-shell-mobile-nav.spec.tsx:
 // el <Sidebar> compartido de @atiende/ui es `hidden md:flex`, y en viewport
-// móvil el usuario depende de <MobileHeader> + <BottomNav> (≤5 destinos
-// curados, ver buildMobileItems en CitasShell.tsx). Protege que el fix se
-// mantenga y que la curación siga siendo exactamente Agenda/Proveedores/
-// Servicios/Clientes/Configuración.
+// móvil el usuario depende de <MobileHeader> + <BottomNav> (4 destinos
+// curados + "Más", ver buildMobileItems en CitasShell.tsx). Protege que el fix se
+// mantenga y que la curación siga siendo Agenda/Proveedores/Servicios/Clientes.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CitasShell } from "../src/verticals/citas/CitasShell.tsx";
 import type { BranchOption } from "../src/verticals/citas/lib/admin-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
@@ -81,12 +80,40 @@ describe("CitasShell — nav móvil", () => {
     expect(bottomNav!.className).toContain("md:hidden");
   });
 
-  it("el BottomNav trae exactamente los 5 destinos operativos curados, nunca más de 5", async () => {
+  // PR-4 (shell unico): antes eran 5 destinos fijos y Disponibilidad/Staff/Auditoría/Privacidad no se
+  // alcanzaban en móvil. Ahora la barra trae 4 destinos curados + "Más", que abre TODAS las secciones.
+  it("el BottomNav trae los 4 destinos operativos curados más 'Más', que lista todas las secciones (nunca más de 5 lugares)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Agenda", "Proveedores", "Servicios", "Clientes", "Configuración"]);
+    expect(labels).toEqual(["Agenda", "Proveedores", "Servicios", "Clientes"]);
+    const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
+    expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
+    click(mas);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
+      "Agenda",
+      "Proveedores",
+      "Servicios",
+      "Clientes",
+      "Disponibilidad",
+      "Configuración",
+      "Staff",
+      "Auditoría",
+      "Privacidad",
+    ]);
+  });
+
+  it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical citas", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    expect(root.querySelector("main#contenido-principal")!.getAttribute("tabindex")).toBe("-1");
+    const negocio = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Administrar"))!;
+    click(negocio);
+    expect(window.localStorage.getItem("atiende:citas:sidebar:grupo")).toBe("Administrar");
+    expect(window.localStorage.getItem("atiende-hoteles-sidebar-grupo-abierto")).toBeNull();
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {

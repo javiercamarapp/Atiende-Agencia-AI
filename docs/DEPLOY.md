@@ -188,6 +188,16 @@ se aplica 032 la purga deja de ser inmediata: una identidad vencida o con purga 
 de bloqueo (7 días por defecto, 3 a 30). No hay variables de entorno nuevas ni cambios en `vercel.json`.
 Los plazos son decisiones de producto, no asesoría legal: ver `packages/domain-hoteles/README.md` §H-02.
 
+**Hoteles H-05 (migración 034, tickets de huésped con SLA) — orden de despliegue.** Mergear NO aplica
+`20240101000218_034_guest_ticket_sla_escalacion.sql` a la base real. El código nuevo funciona contra la
+base vieja: la pantalla Tickets avisa que aún no está activa, las lecturas responden `disponible:false`, las
+escrituras 503 y el cron `/internal/hoteles/tickets-sla` omite las properties (`migracion_pendiente`).
+Orden: (1) despliega el código; (2) aplica la 034 (`supabase db push`; requiere 013 y 033 ya aplicadas);
+(3) verifica `GET /internal/hoteles/tickets-sla` con el secreto interno (debe reportar `omitida:null`);
+(4) cuando se decida, programa ese cron en `vercel.json` (p. ej. cada 15 minutos) — este PR NO lo programa.
+Con la 034 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas
+nuevas. No hay variables de entorno nuevas.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las

@@ -51,6 +51,13 @@ la migración 023, se comporta como antes):
   `RestaurantesConfigUnavailableError` (503), nunca deja la transacción abortada. Cubierto en
   `tests/modelo-pm-savepoint.spec.ts` y en `scripts/verify-restaurantes-modelo-pm/`.
 
+## Agente de WhatsApp de Los Taquitos de PM
+
+- Perfil por organizacion/sucursal: tabla `restaurantes.whatsapp_agent_config` (migracion 029) y `GET/PUT /v1/restaurantes/:propertyId/admin/config/agente-whatsapp` (owner/admin). Sin fila o con la base sin migrar el agente es el generico de siempre (SAVEPOINT + 42P01/42703/42883/42501).
+- Prompt del perfil: `src/whatsapp/perfil-pm.ts` (usted, orden del cuestionario, reglas duras H1-H12), con los nombres del registro unico de tools.
+- Comanda de SoftRestaurant tambien desde WhatsApp: opcion `encolarComanda` del handler (mismo helper que voz/web).
+- Evaluaciones: `src/evals/agente-pm/README.md`.
+
 ## Conversaciones, handoff a humano y turnos (R-21, migración 028)
 
 `src/conversaciones/`: bandeja por sucursal (WhatsApp y llamadas), toma de la conversación por una persona (mientras

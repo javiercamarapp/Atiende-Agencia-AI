@@ -26,10 +26,39 @@ export interface SidebarProps {
   onLogout: () => void;
   /** Selector de hotel (multi-hotel), renderizado bajo el logo. */
   hotelSelector?: ReactNode;
+  /**
+   * Identificador de la vertical ("citas", "hoteles"...). Con él el grupo
+   * abierto y el colapso se recuerdan POR VERTICAL (`atiende:<vertical>:sidebar:*`);
+   * sin él se conservan las claves compartidas de siempre, para no cambiar el
+   * comportamiento de las verticales que aún no migran al shell único.
+   */
+  storageScope?: string;
 }
 
 const CLAVE_GRUPO_ABIERTO = "atiende-hoteles-sidebar-grupo-abierto";
 const CLAVE_COLAPSADO = "atiende-hoteles-sidebar-colapsado";
+
+/** Claves de localStorage del Sidebar: por vertical si hay `scope`, las compartidas heredadas si no. */
+export function clavesSidebar(scope?: string): { grupo: string; colapsado: string } {
+  if (!scope) return { grupo: CLAVE_GRUPO_ABIERTO, colapsado: CLAVE_COLAPSADO };
+  return { grupo: `atiende:${scope}:sidebar:grupo`, colapsado: `atiende:${scope}:sidebar:colapsado` };
+}
+
+function leerAlmacen(clave: string): string | null {
+  try {
+    return typeof window !== "undefined" ? window.localStorage.getItem(clave) : null;
+  } catch {
+    return null;
+  }
+}
+
+function escribirAlmacen(clave: string, valor: string): void {
+  try {
+    window.localStorage.setItem(clave, valor);
+  } catch {
+    // Sin almacenamiento (modo privado, cuota): la preferencia solo dura la sesión de la pestaña.
+  }
+}
 
 /**
  * Sidebar hotelero — misma anatomía visual que AdminSidebar de
@@ -40,18 +69,18 @@ const CLAVE_COLAPSADO = "atiende-hoteles-sidebar-colapsado";
  * de sección porque era un SPA de una sola ruta; aquí cada ítem es una
  * ruta real, lo que además hace cada pantalla capturable/enlazable).
  */
-export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProps) {
+export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope }: SidebarProps) {
   const location = useLocation();
+  const claves = clavesSidebar(storageScope);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(CLAVE_COLAPSADO) === "1";
+    return leerAlmacen(claves.colapsado) === "1";
   });
 
   const grupoDeRuta = (pathname: string) =>
     sections.find((s) => s.items.some((it) => pathname.startsWith(it.to)))?.title ?? null;
 
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
-    const guardado = typeof window !== "undefined" ? window.localStorage.getItem(CLAVE_GRUPO_ABIERTO) : null;
+    const guardado = leerAlmacen(claves.grupo);
     // La clave de localStorage la comparten todas las verticales: un grupo
     // guardado que no existe en ESTA vertical (p. ej. "Operación" de hoteles
     // dentro de citas) dejaba todos los acordeones cerrados. Solo se respeta si
@@ -64,14 +93,14 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
   const alternarGrupo = (titulo: string) => {
     setGrupoAbierto((actual) => {
       const nuevo = actual === titulo ? null : titulo;
-      window.localStorage.setItem(CLAVE_GRUPO_ABIERTO, nuevo ?? "");
+      escribirAlmacen(claves.grupo, nuevo ?? "");
       return nuevo;
     });
   };
 
   const alternarColapso = () => {
     setCollapsed((v) => {
-      window.localStorage.setItem(CLAVE_COLAPSADO, !v ? "1" : "0");
+      escribirAlmacen(claves.colapsado, !v ? "1" : "0");
       return !v;
     });
   };

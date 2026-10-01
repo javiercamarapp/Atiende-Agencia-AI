@@ -182,3 +182,16 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
 - El sistema **no envía ninguna notificación** a titulares ni autoridades: el recordatorio del art. 19 es un
   campo calculado (`recordatorio`) de `GET incidentes`.
 - Base sin la migración 032: lecturas `disponible:false`, escrituras 503, la captura de identidad sigue sin ledger.
+
+## Tickets de huésped (H-05, migración 034)
+
+- `tickets.ts` — `GET/POST /hoteles/:propertyId/tickets` (cualquier rol hotelero; la RLS filtra por rol),
+  `GET .../tickets/:ticketId` (con bitácora), `POST .../iniciar|cerrar|cancelar` (manager, el departamento del
+  ticket o el responsable), `POST .../escalar` y `.../reasignar` (owner/gm/frontdesk), `POST .../asignar`,
+  `GET/PUT .../tickets/sla` (la política la escribe owner/gm), `GET .../tickets/resenas-pendientes` y
+  `POST .../tickets/desde-resena` (reutiliza `hoteles.guest_review`; solo reseñas negativas).
+- `tickets-sla-cron.ts` — `GET|POST /internal/hoteles/tickets-sla`: barrido de SLA (escala vencidos y avisa
+  al 75%), sesión de sistema y una transacción por property. Protegido con el secreto interno. **No está en
+  `vercel.json`**: programarlo es una decisión de despliegue (ver `docs/DEPLOY.md`).
+- Base sin la migración 034: lecturas `disponible:false`, escrituras 503, el cron omite la property
+  (`omitida: migracion_pendiente`).
