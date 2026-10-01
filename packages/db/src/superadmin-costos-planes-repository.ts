@@ -215,7 +215,7 @@ async function guarded<TOk, TMissing>(db: TenantDbSession, run: () => Promise<TO
 const num = (v: string | number | null): number => (v === null ? 0 : Number(v));
 const numOrNull = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
-interface ReportRaw {
+export interface ReportRaw {
   organization_id: string;
   organization_name: string;
   organization_slug: string;
@@ -242,7 +242,7 @@ interface ReportRaw {
   llm_alert_pct: string | number;
 }
 
-function mapReport(r: ReportRaw): CostReportRow {
+export function mapReport(r: ReportRaw): CostReportRow {
   return {
     organizationId: r.organization_id,
     organizationName: r.organization_name,
