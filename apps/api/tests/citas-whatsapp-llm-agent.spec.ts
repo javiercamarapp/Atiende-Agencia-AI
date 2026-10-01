@@ -11,6 +11,8 @@
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  buildAppointmentButtonId,
+  createAppointment,
   createDefaultConversationGuard,
   createCalendarSyncPortResolver, createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler,
@@ -18,6 +20,7 @@ import {
   RealCalComPort,
   RealCalDavPort,
   type WhatsAppTurnHandler,
+  zonedTimeToUtc,
 } from "@atiende/domain-citas";
 import { InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyRestaurantesTurnHandler } from "@atiende/domain-restaurantes";
@@ -460,5 +463,80 @@ describe("Agente de WhatsApp de citas con LLM real — end-to-end vía el webhoo
     const res = await app.request("/v1/citas/whatsapp/webhook", signedPostInit(metaPayload("wamid.citas-faq-1", "hola, quiero información", PHONE_A_WA_ID)));
     expect(res.status).toBe(200);
     expect(sawFaqBlock).toBe(true);
+  });
+});
+
+function metaButtonPayload(messageId: string, buttonId: string, title: string, fromWaId: string) {
+  return {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: "1234567890" },
+              messages: [{ id: messageId, from: fromWaId, type: "interactive", interactive: { type: "button_reply", button_reply: { id: buttonId, title } } }],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("C-01 -- botones Confirmar/Cancelar/Reagendar del recordatorio, vía el webhook HTTP real", () => {
+  async function bookPending(citasRepo: InMemoryCitasRepository, organizationId: string, providerId: string, serviceId: string) {
+    // Primer martes futuro a las 10:00 de Mérida (horario L-V 9-17 del fixture).
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() + (((2 - d.getUTCDay() + 7) % 7) || 7));
+    return createAppointment(citasRepo, {
+      organizationId,
+      providerId,
+      serviceId,
+      customerName: "Cliente botones",
+      customerPhone: PHONE_A_E164.replace(/\D/g, "").slice(-10),
+      startsAt: zonedTimeToUtc(d.toISOString().slice(0, 10), "10:00", "America/Merida").toISOString(),
+      source: "web",
+    });
+  }
+
+  it("Confirmar: el toque ya NO se descarta -- confirma la cita sin llamar al LLM y encola la respuesta", async () => {
+    const { citasRepo, organizationId, providerId, serviceId } = buildCitasAgentRepo();
+    const apt = await bookPending(citasRepo, organizationId, providerId, serviceId);
+    let llmCalls = 0;
+    const turnHandler: WhatsAppTurnHandler = { handleInboundMessage: async () => { llmCalls += 1; return { reply: "llm", appointmentId: null, propertyId: null }; } };
+    const app = buildApp(buildFullAppDeps(citasRepo, turnHandler));
+
+    const res = await app.request("/v1/citas/whatsapp/webhook", signedPostInit(metaButtonPayload("wamid.btn-http-1", buildAppointmentButtonId("confirmar", apt.id), "Confirmar", PHONE_A_WA_ID)));
+
+    expect(res.status).toBe(200);
+    expect(llmCalls).toBe(0);
+    expect((await citasRepo.findAppointmentForOrganization(organizationId, apt.id))?.status).toBe("confirmed");
+    const reply = citasRepo.getOutbox().find((m) => m.eventType === "whatsapp.inbound_reply");
+    expect((reply?.payload as { body: string }).body).toContain("quedó confirmada");
+  });
+
+  it("Cancelar: cancela la cita; el reintento del webhook con el MISMO id de mensaje no duplica nada", async () => {
+    const { citasRepo, organizationId, providerId, serviceId } = buildCitasAgentRepo();
+    const apt = await bookPending(citasRepo, organizationId, providerId, serviceId);
+    const turnHandler: WhatsAppTurnHandler = { handleInboundMessage: async () => ({ reply: "llm", appointmentId: null, propertyId: null }) };
+    const app = buildApp(buildFullAppDeps(citasRepo, turnHandler));
+    const init = () => signedPostInit(metaButtonPayload("wamid.btn-http-2", buildAppointmentButtonId("cancelar", apt.id), "Cancelar", PHONE_A_WA_ID));
+
+    expect((await app.request("/v1/citas/whatsapp/webhook", init())).status).toBe(200);
+    expect((await app.request("/v1/citas/whatsapp/webhook", init())).status).toBe(200);
+
+    expect((await citasRepo.findAppointmentForOrganization(organizationId, apt.id))?.status).toBe("cancelled");
+    expect(citasRepo.getOutbox().filter((m) => m.eventType === "whatsapp.inbound_reply")).toHaveLength(1);
+  });
+
+  it("un mensaje interactivo SIN reply reconocible se ignora con 200, igual que antes", async () => {
+    const { citasRepo } = buildCitasAgentRepo();
+    const turnHandler: WhatsAppTurnHandler = { handleInboundMessage: async () => ({ reply: "llm", appointmentId: null, propertyId: null }) };
+    const app = buildApp(buildFullAppDeps(citasRepo, turnHandler));
+    const payload = { entry: [{ changes: [{ value: { metadata: { phone_number_id: "1234567890" }, messages: [{ id: "wamid.nfm", from: PHONE_A_WA_ID, type: "interactive", interactive: { type: "nfm_reply" } }] } }] }] };
+    const res = await app.request("/v1/citas/whatsapp/webhook", signedPostInit(payload));
+    expect(res.status).toBe(200);
+    expect(citasRepo.getOutbox()).toHaveLength(0);
   });
 });
