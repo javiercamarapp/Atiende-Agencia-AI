@@ -65,7 +65,7 @@ describe('LoginLockout en memoria (sin Redis)', () => {
 });
 
 describe('LoginLockout con Redis', () => {
-  const mk = (onEvent?: never) => new LoginLockout({ redisUrl: 'https://fake.upstash.io', redisToken: 't', onEvent });
+  const mk = (onEvent?: (e: { type: 'redis_failure'; op: 'status' | 'failure' | 'success' }) => void) => new LoginLockout({ redisUrl: 'https://fake.upstash.io', redisToken: 't', onEvent });
 
   it('recordFailure usa el script atómico y no manda la llave en claro', async () => {
     const calls: unknown[][] = [];
@@ -93,7 +93,7 @@ describe('LoginLockout con Redis', () => {
   it('Redis caído: nunca lanza, degrada al conteo en memoria y SÍ bloquea', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
     const events: unknown[] = [];
-    const l = mk((e: unknown) => events.push(e) as never);
+    const l = mk((e) => { events.push(e); });
     let last;
     for (let i = 0; i < 5; i++) last = await l.recordFailure('k');
     expect(last).toMatchObject({ locked: true, degraded: true, failures: 5 });
