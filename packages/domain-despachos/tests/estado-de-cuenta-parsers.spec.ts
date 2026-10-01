@@ -163,10 +163,10 @@ describe("errores por renglón (no abortan el archivo)", () => {
   });
 
   it("tope de renglones: un archivo gigante no se procesa completo", () => {
-    const filas = Array.from({ length: 20_010 }, (_, i) => `05/01/2026,MOV ${i},,1.00`);
+    const filas = Array.from({ length: 5_010 }, (_, i) => `05/01/2026,MOV ${i},,1.00`);
     const r = parsearEstadoDeCuenta(["Fecha,Descripción,Cargo,Abono", ...filas].join("\n"));
-    expect(r.movimientos.length).toBeLessThanOrEqual(20_000);
-    expect(r.errores.some((e) => e.mensaje.includes("20000"))).toBe(true);
+    expect(r.movimientos.length).toBeLessThanOrEqual(5_000);
+    expect(r.errores.some((e) => e.mensaje.includes("5000"))).toBe(true);
   });
 });
 

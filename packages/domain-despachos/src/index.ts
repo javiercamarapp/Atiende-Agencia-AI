@@ -176,6 +176,8 @@ export {
   conceptoCanonico as conceptoCanonicoEstadoCuenta,
   BANCOS_MX,
   MAX_RENGLONES_ESTADO,
+  construirVistaPreviaImportacion,
+  MAX_MOVIMIENTOS_CONCILIACION,
 } from "./conciliacion/estado-de-cuenta/index.ts";
 export type {
   BancoMx,
@@ -185,6 +187,10 @@ export type {
   ErrorRenglonEstado,
   AdvertenciaEstado,
   OpcionesParseoEstado,
+  VistaPreviaImportacion,
+  CoincidenciaImportacion,
+  EntradaVistaPrevia,
+  CuentaPorCobrarPendiente,
 } from "./conciliacion/estado-de-cuenta/index.ts";
 
 // ---- Conciliación bancaria — nivel 4 asistido por LLM (Fase 11) ----

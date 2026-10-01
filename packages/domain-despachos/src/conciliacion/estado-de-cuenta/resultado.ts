@@ -2,9 +2,9 @@
 import { centavosAPesos } from "./montos.ts";
 import type { AdvertenciaEstado, BancoMx, ErrorRenglonEstado, FormatoEstadoCuenta, MovimientoImportado, ResultadoParseoEstado } from "./types.ts";
 
-/** Tope defensivo: un estado de cuenta mensual empresarial rara vez pasa de unas
- * decenas de miles de renglones; el tope evita que un archivo enorme consuma memoria. */
-export const MAX_RENGLONES_ESTADO = 20_000;
+/** Tope defensivo: un estado de cuenta mensual de un despacho rara vez pasa de unos
+ * miles de renglones; el tope acota memoria y el tamaño de la respuesta de la vista previa. */
+export const MAX_RENGLONES_ESTADO = 5_000;
 
 export function armar(
   formato: FormatoEstadoCuenta,

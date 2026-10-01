@@ -30,3 +30,5 @@ export function parsearEstadoDeCuenta(texto: string, opciones: OpcionesParseoEst
   const base = { ...(opciones.banco ? { banco: opciones.banco } : {}), ...(opciones.cuenta !== undefined ? { cuenta: opciones.cuenta } : {}) };
   return formato === "ofx" ? parsearOfxEstadoCuenta(texto, base) : parsearCsvEstadoCuenta(texto, base);
 }
+export { construirVistaPreviaImportacion, MAX_MOVIMIENTOS_CONCILIACION } from "./previsualizacion.ts";
+export type { VistaPreviaImportacion, CoincidenciaImportacion, EntradaVistaPrevia, CuentaPorCobrarPendiente } from "./previsualizacion.ts";
