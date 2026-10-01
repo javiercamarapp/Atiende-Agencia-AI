@@ -49,6 +49,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const organizationId = randomUUID();
 
     const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },

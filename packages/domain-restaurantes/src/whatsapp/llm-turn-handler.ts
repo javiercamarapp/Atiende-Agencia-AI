@@ -28,7 +28,8 @@ import { vipNote } from "../customers.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order } from "../types.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp } from "../types.ts";
+import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -131,6 +132,10 @@ export interface WhatsAppLlmAgentConfig {
   readonly toneStyle: WhatsAppToneStyle;
   readonly timezone: string;
   readonly deliveryTimeText: string;
+  /** Ausente = `generico` (el agente de siempre). */
+  readonly perfil?: PerfilAgenteWhatsApp;
+  /** Como se presenta el agente (solo el perfil PM lo usa). */
+  readonly agentName?: string;
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -153,7 +158,55 @@ export function getAgentConfig(_organizationId: string): WhatsAppLlmAgentConfig 
   return FALLBACK_CONFIG;
 }
 
+/** Valores por omision del perfil de Los Taquitos de PM. El tiempo de entrega es un TEXTO configurable por
+ * organizacion/sucursal (no hay todavia una fuente de carga de cocina): sin "si llueve" ni minutos fijos de pico. */
+export const PM_CONFIG_POR_OMISION: WhatsAppLlmAgentConfig = {
+  businessName: "Los Taquitos de PM",
+  toneStyle: "formal_directo",
+  timezone: "America/Merida",
+  deliveryTimeText: "aproximadamente de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
+  perfil: "taqueria_pm",
+  agentName: PM_AGENT_NAME_POR_OMISION,
+};
+
+/** Config del agente para ESTA organizacion y sucursal de entrada: fila de la sucursal, luego la de la
+ * organizacion, y sin fila (o con la base sin migrar: el repositorio degrada con SAVEPOINT a `null`) el
+ * agente generico de siempre. Una fila con perfil `generico` solo pisa los campos que traiga. */
+export async function resolveAgentConfig(repo: RestaurantesRepository, organizationId: string, propertyId: string | null): Promise<WhatsAppLlmAgentConfig> {
+  const row = await repo.findWhatsAppAgentConfig(organizationId, propertyId);
+  if (!row) return getAgentConfig(organizationId);
+  const base = row.perfil === "taqueria_pm" ? PM_CONFIG_POR_OMISION : FALLBACK_CONFIG;
+  return {
+    ...base,
+    perfil: row.perfil,
+    businessName: row.businessName ?? base.businessName,
+    toneStyle: row.toneStyle ?? base.toneStyle,
+    deliveryTimeText: row.deliveryTimeText ?? base.deliveryTimeText,
+    ...(row.agentName ? { agentName: row.agentName } : {}),
+  };
+}
+
+function fechaHoraLocal(timezone: string, now: Date): { readonly fechaHora: string; readonly dia: string } {
+  const fechaHora = new Intl.DateTimeFormat("es-MX", { timeZone: timezone, dateStyle: "long", timeStyle: "short", hourCycle: "h23" }).format(now);
+  const dia = new Intl.DateTimeFormat("es-MX", { timeZone: timezone, weekday: "long" }).format(now);
+  return { fechaHora, dia };
+}
+
 function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
+  if (config.perfil === "taqueria_pm") {
+    const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
+    return buildPmSystemPrompt({
+      businessName: config.businessName,
+      agentName: config.agentName ?? PM_AGENT_NAME_POR_OMISION,
+      deliveryTimeText: config.deliveryTimeText,
+      saludo: saludoSegunHora(config.timezone, now),
+      branches,
+      entryBranch: entryBranch ? { name: entryBranch.name, slug: entryBranch.slug } : null,
+      customer,
+      fechaHoraLocal: fechaHora,
+      diaSemana: dia,
+    });
+  }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
 Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto es WhatsApp, no una carta), actúa natural — no leas listas completas de golpe, ve conversando.
 
@@ -224,7 +277,8 @@ export function enforceBistecPackNotice(reply: string, messages: readonly LlmMes
   return reply.trim() ? `${notice}\n\n${reply.trim()}` : notice;
 }
 
-export function providerFailureReply(orderId: string | null): string {
+export function providerFailureReply(orderId: string | null, perfil: PerfilAgenteWhatsApp = "generico"): string {
+  if (perfil === "taqueria_pm") return orderId ? PM_COPY.pedidoRegistrado : PM_COPY.problemaTecnico;
   return orderId
     ? "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina."
     : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
@@ -307,14 +361,16 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
  * turn-handler.ts.
  */
 export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gateway: LlmGateway, options: WhatsAppLlmAgentOptions): WhatsAppTurnHandler {
-  const maxToolUseTurns = options.maxToolUseTurns ?? 4;
   const turnBudgetMs = options.turnBudgetMs ?? 45_000;
   const now = options.now ?? (() => new Date());
 
   return {
     async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId }) {
       const deadline = Date.now() + turnBudgetMs;
-      const config = getAgentConfig(organizationId);
+      const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
+      // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
+      const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
       const branches = await repo.listBranchesForOrganization(organizationId);
       // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
       const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
@@ -333,7 +389,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return { reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId };
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -351,12 +407,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return { reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId };
         }
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const reply = safeReply(completion.text || "¿Me puedes repetir tu pedido?");
+          const reply = safeReply(completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puedes repetir tu pedido?"));
           return { reply, orderId, propertyId };
         }
 
@@ -390,9 +446,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       if (orderId) {
-        return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+        return { reply: safeReply(providerFailureReply(orderId, perfil)), orderId, propertyId };
       }
-      return { reply: "Se me complicó procesar tu pedido, un momento por favor.", orderId, propertyId };
+      return { reply: perfil === "taqueria_pm" ? PM_COPY.turnoComplicado : "Se me complicó procesar tu pedido, un momento por favor.", orderId, propertyId };
     },
   };
 }

@@ -182,6 +182,26 @@ export interface BranchPolicy {
   readonly propinaPolitica: PropinaPolitica | null;
 }
 
+/** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de
+ * Los Taquitos de PM (usted, recoger y domicilio, reglas duras de PM). */
+export type PerfilAgenteWhatsApp = "generico" | "taqueria_pm";
+export const PERFILES_AGENTE_WHATSAPP: readonly PerfilAgenteWhatsApp[] = ["generico", "taqueria_pm"];
+export const TONOS_AGENTE_WHATSAPP = ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"] as const;
+export type TonoAgenteWhatsApp = (typeof TONOS_AGENTE_WHATSAPP)[number];
+
+/** Configuracion del agente de WhatsApp por organizacion (`propertyId` null) o por sucursal. Cada campo
+ * nulo cae al valor por omision del perfil. */
+export interface WhatsAppAgentConfigRow {
+  readonly propertyId: string | null;
+  readonly perfil: PerfilAgenteWhatsApp;
+  readonly agentName: string | null;
+  readonly businessName: string | null;
+  readonly toneStyle: TonoAgenteWhatsApp | null;
+  readonly deliveryTimeText: string | null;
+}
+
+export type WhatsAppAgentConfigInput = Omit<WhatsAppAgentConfigRow, "propertyId">;
+
 export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
 
 /** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
