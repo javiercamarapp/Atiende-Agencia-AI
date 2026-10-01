@@ -17,7 +17,6 @@ import {
 import { ALL_PRODUCTION_ROLES } from "../src/production/llm-gateway.ts";
 import { buildOpenRouterProviderPrefs, lookupModelPrice } from "@atiende/agent-core";
 
-const allDefaultRoutes = [DEFAULT_ROUTE, ...Object.values(DEFAULT_ROLE_ROUTES)];
 
 const CHINESE_LABS = ["deepseek", "qwen", "alibaba", "z-ai", "zhipu", "moonshotai", "minimax", "baidu", "tencent", "bytedance", "bytedance-seed", "xiaomi", "stepfun", "01-ai", "meituan", "inclusionai"];
 const isChinese = (model: string): boolean => CHINESE_LABS.includes(model.split("/")[0]!);
