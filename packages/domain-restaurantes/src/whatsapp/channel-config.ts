@@ -8,6 +8,7 @@
 // firmas (ver restaurantes.whatsapp_channel_config en migrations/001).
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
+import { formatLocationMessage, isValidCoordinate } from "./location.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -57,15 +58,14 @@ export type MetaInboundMessage = { readonly id: string; readonly from: string; r
 
 const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
 
-function unsupportedBody(type: string, message: { location?: { latitude?: unknown; longitude?: unknown } }): string {
+function unsupportedBody(type: string): string {
   if (type === "audio" || type === "voice") {
     return "[El cliente envió una nota de voz que este asistente no puede escuchar. Pídale amablemente que escriba su mensaje por texto.]";
   }
   if (type === "location") {
-    const lat = message.location?.latitude;
-    const lng = message.location?.longitude;
-    const coords = typeof lat === "number" && typeof lng === "number" ? ` (${lat}, ${lng})` : "";
-    return `[El cliente compartió su ubicación${coords}. ${coords ? "Úsela con buscar_sucursal_cercana (lat y lng) para asignar la sucursal." : "No trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto."}]`;
+    // Una ubicacion con coordenadas validas ya se convirtio en marcador (ver extractMetaInboundMessages); aqui solo
+    // llegan las invalidas (ausentes, no numericas o fuera de rango): nunca se repiten ni se mandan a buscar_sucursal_cercana.
+    return "[El cliente compartió su ubicación pero no trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto.]";
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
 }
@@ -92,16 +92,14 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           continue;
         }
         const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
-        if (
-          typeof message.type === "string" &&
-          UNSUPPORTED_KINDS.has(message.type) &&
-          typeof message.id === "string" &&
-          message.id.length >= 1 &&
-          message.id.length <= 255 &&
-          typeof message.from === "string" &&
-          /^\d{7,20}$/.test(message.from)
-        ) {
-          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type, message) });
+        if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
+        // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
+        // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
+        if (message.type === "location" && isValidCoordinate(message.location?.latitude, message.location?.longitude)) {
+          const { latitude, longitude } = message.location ?? {};
+          result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
+        } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type) });
         }
       }
     }

@@ -18,8 +18,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, validarHorario } from "@atiende/domain-restaurantes";
-import type { BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, OrderValidationError, RestaurantesConfigUnavailableError, STAFF_INVITE_ROLES, WhatsappNumberInUseError, horarioDePuente, validarExcepcionHorario, validarHorario } from "@atiende/domain-restaurantes";
+import type { BranchHoursException, BranchPolicy, PropinaPolitica } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -77,6 +77,41 @@ function serializePolitica(p: BranchPolicy) {
   return { horario: p.horario, pedidoMinimoDomicilio: p.pedidoMinimoDomicilio, pedidoMinimoRecoger: p.pedidoMinimoRecoger, propinaPolitica: p.propinaPolitica };
 }
 
+// ---- puentes (migracion 031): excepciones de horario por fecha ----
+
+interface PuenteBody {
+  readonly branchIds?: unknown;
+  readonly fechaDesde?: unknown;
+  readonly fechaHasta?: unknown;
+  /** Turnos que rigen TODOS los dias del puente: [{abre:"HH:MM", cierra:"HH:MM"}]. Parametrizable: la hora del
+   * cambio de turno la define el negocio. Alternativa avanzada: `horario` completo (con `dias`). */
+  readonly turnos?: unknown;
+  readonly horario?: unknown;
+  readonly motivo?: unknown;
+}
+
+const MAX_SUCURSALES_PUENTE = 20;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseHorarioPuente(raw: PuenteBody) {
+  if ((raw.turnos === undefined) === (raw.horario === undefined)) throw Errors.validation("Envíe `turnos` (lista de {abre, cierra} para todos los días del puente) o `horario` completo, no ambos ni ninguno.");
+  try {
+    let horario: unknown = raw.horario;
+    if (raw.turnos !== undefined) {
+      if (!Array.isArray(raw.turnos) || raw.turnos.length === 0 || raw.turnos.length > 4) throw new OrderValidationError("turnos: se esperaba una lista de 1 a 4 turnos {abre, cierra}.");
+      horario = horarioDePuente(raw.turnos as { abre: string; cierra: string }[]);
+    }
+    return validarExcepcionHorario({ fechaDesde: raw.fechaDesde, fechaHasta: raw.fechaHasta, horario, motivo: raw.motivo });
+  } catch (err) {
+    if (err instanceof OrderValidationError) throw Errors.validation(err.message);
+    throw err;
+  }
+}
+
+function serializePuente(e: BranchHoursException) {
+  return { id: e.id, branchId: e.propertyId, fechaDesde: e.fechaDesde, fechaHasta: e.fechaHasta, horario: e.horario, motivo: e.motivo };
+}
+
 function asUnavailable(err: unknown): never {
   if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable(err.message);
   throw err;
@@ -89,11 +124,13 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
   const politicaPath = `${branchBase}/politica`;
   const zonasRepartoPath = `${branchBase}/zonas-reparto`;
   const whatsappPath = `${branchBase}/whatsapp`;
+  const puentesPath = "/v1/restaurantes/:propertyId/admin/config/puentes";
+  const puentePath = `${puentesPath}/:exceptionId`;
   const noDomicilioPath = "/v1/restaurantes/:propertyId/admin/config/no-domicilio";
   const noDomicilioProductoPath = `${noDomicilioPath}/productos/:productId`;
   const noDomicilioCategoriaPath = `${noDomicilioPath}/categorias/:categoryId`;
 
-  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
+  for (const path of [politicaPath, zonasRepartoPath, whatsappPath, puentesPath, puentePath, noDomicilioPath, noDomicilioProductoPath, noDomicilioCategoriaPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -107,6 +144,79 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
     if (!branch) throw Errors.notFound("Sucursal no encontrada.");
     return { organizationId, branch, repo: deps.restaurantesRepo(c.get("db")) };
   }
+
+  // ---- puentes: excepciones de horario por fecha (owner/admin, como la política) ----
+  // Lista las vigentes y futuras de las sucursales dentro del alcance del staff. Base sin migrar -> lista vacia.
+  app.get(puentesPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    const desde = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+    const todas = await deps.restaurantesRepo(c.get("db")).listUpcomingBranchHoursExceptions(organizationId, desde);
+    return c.json({ puentes: todas.filter((e) => scope === null || scope.includes(e.propertyId)).map(serializePuente) });
+  });
+
+  // Crea el MISMO puente para varias sucursales a la vez (p. ej. las dos que abren ambos turnos en un puente).
+  app.post(puentesPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const raw = await readJsonCapped<PuenteBody>(c.req.raw, 16 * 1024);
+    if (!Array.isArray(raw.branchIds) || raw.branchIds.length === 0 || raw.branchIds.length > MAX_SUCURSALES_PUENTE || raw.branchIds.some((id) => typeof id !== "string" || !UUID_RE.test(id))) {
+      throw Errors.validation(`branchIds: se esperaba una lista de 1 a ${MAX_SUCURSALES_PUENTE} ids de sucursal.`);
+    }
+    const branchIds = [...new Set(raw.branchIds as string[])];
+    const datos = parseHorarioPuente(raw);
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    for (const branchId of branchIds) {
+      if (scope !== null && !scope.includes(branchId)) throw Errors.forbidden("No tienes acceso a una de las sucursales indicadas.");
+      if (!(await repo.findBranchById(organizationId, branchId))) throw Errors.notFound(`Sucursal no encontrada: ${branchId}`);
+    }
+    const creados: BranchHoursException[] = [];
+    try {
+      for (const branchId of branchIds) {
+        creados.push(await repo.createBranchHoursException(organizationId, { propertyId: branchId, ...datos }));
+      }
+    } catch (err) {
+      return asUnavailable(err);
+    }
+    logEvent(c, "info", "restaurantes_admin_puente_creado", { actorUserId: c.get("userId"), organizationId, sucursales: branchIds.length, fechaDesde: datos.fechaDesde, fechaHasta: datos.fechaHasta });
+    for (const e of creados) {
+      await repo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "configuracion.puente_creado",
+        entityType: "configuracion",
+        entityId: e.propertyId,
+        campo: "puente",
+        antes: null,
+        despues: JSON.stringify({ fechaDesde: e.fechaDesde, fechaHasta: e.fechaHasta, turnos: e.horario.length, motivo: e.motivo }),
+      });
+    }
+    return c.json({ puentes: creados.map(serializePuente) }, 201);
+  });
+
+  app.delete(puentePath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const exceptionId = c.req.param("exceptionId") ?? "";
+    if (!UUID_RE.test(exceptionId)) throw Errors.validation("exceptionId: se esperaba un UUID.");
+    // Alcance: el staff acotado a una sucursal solo borra puentes de SU sucursal.
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    const existente = (await repo.listUpcomingBranchHoursExceptions(organizationId, "1970-01-01")).find((e) => e.id === exceptionId);
+    if (!existente) throw Errors.notFound("Puente no encontrado.");
+    if (scope !== null && !scope.includes(existente.propertyId)) throw Errors.forbidden("No tienes acceso a esta sucursal.");
+    let borrado: boolean;
+    try {
+      borrado = await repo.deleteBranchHoursException(organizationId, exceptionId);
+    } catch (err) {
+      return asUnavailable(err);
+    }
+    if (!borrado) throw Errors.notFound("Puente no encontrado.");
+    logEvent(c, "info", "restaurantes_admin_puente_eliminado", { actorUserId: c.get("userId"), organizationId, exceptionId });
+    return c.json({ ok: true });
+  });
 
   // ---- política por sucursal ----
   app.get(politicaPath, async (c) => {

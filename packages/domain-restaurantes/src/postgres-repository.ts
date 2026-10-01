@@ -17,10 +17,13 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
   Branch,
   BranchProductState,
+  BranchHoursException,
   BranchPolicy,
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
   CanalPedido,
+  NewBranchHoursExceptionInput,
+  OrderPickupInfo,
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
@@ -184,6 +187,10 @@ interface OrderRow {
   readonly assigned_repartidor_id: string | null;
   readonly estimated_delivery_at: string | null;
   readonly incident_note: string | null;
+  /** Migracion 031 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
+  readonly canal?: CanalPedido | null;
+  readonly propina?: string | null;
+  readonly hora_recogida?: string | null;
 }
 
 function mapOrder(row: OrderRow): Order {
@@ -215,6 +222,9 @@ function mapOrder(row: OrderRow): Order {
     assignedRepartidorId: row.assigned_repartidor_id,
     estimatedDeliveryAt: row.estimated_delivery_at,
     incidentNote: row.incident_note,
+    ...(row.canal !== undefined ? { canal: row.canal } : {}),
+    ...(row.propina !== undefined ? { propina: row.propina === null ? null : Number(row.propina) } : {}),
+    ...(row.hora_recogida !== undefined ? { horaRecogida: row.hora_recogida } : {}),
   };
 }
 
@@ -288,6 +298,10 @@ interface PromotionRow {
   /** Migracion 027 -- ausentes (undefined) cuando la base todavia no la tiene. */
   readonly channels?: readonly CanalPedido[] | null;
   readonly product_ids?: readonly string[] | null;
+  /** Migracion 031 -- ausentes (undefined) cuando la base todavia no la tiene. */
+  readonly auto_apply?: boolean;
+  readonly courtesy_product_ids?: readonly string[] | null;
+  readonly courtesy_quantity?: number | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -319,6 +333,9 @@ function mapPromotion(row: PromotionRow): Promotion {
     isActive: row.is_active,
     channels: row.channels ?? null,
     productIds: row.product_ids ?? null,
+    autoApply: row.auto_apply ?? false,
+    courtesyProductIds: row.courtesy_product_ids ?? null,
+    courtesyQuantity: row.courtesy_quantity ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -328,6 +345,22 @@ const PROMOTION_COLUMNS =
   "id, organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, times_used, is_active, created_at, updated_at";
 /** Con las columnas de la migracion 027 (canales y productos elegibles). */
 const PROMOTION_COLUMNS_V2 = `${PROMOTION_COLUMNS}, channels, product_ids`;
+/** Con las columnas de la migracion 031 (auto_apply y combo de cortesia). */
+const PROMOTION_COLUMNS_V3 = `${PROMOTION_COLUMNS_V2}, auto_apply, courtesy_product_ids, courtesy_quantity`;
+
+interface BranchHoursExceptionRow {
+  readonly id: string;
+  readonly property_id: string;
+  readonly fecha_desde: string;
+  readonly fecha_hasta: string;
+  readonly horario: unknown;
+  readonly motivo: string | null;
+}
+
+function mapBranchHoursException(row: BranchHoursExceptionRow): BranchHoursException {
+  // Un horario ilegible (dato viejo/corrupto) se trata como "sin turnos": nunca bloquea un pedido.
+  return { id: row.id, propertyId: row.property_id, fechaDesde: row.fecha_desde, fechaHasta: row.fecha_hasta, horario: leerHorarioPersistido(row.horario) ?? [], motivo: row.motivo };
+}
 
 interface BranchProductRow {
   readonly property_id: string;
@@ -813,6 +846,10 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
             payment_method: order.paymentMethod,
             call_transcript: order.callTranscript,
             call_recording_url: order.callRecordingUrl,
+            // Migracion 031: el create_order_idempotent VIEJO ignora estas llaves del jsonb.
+            canal: order.canal ?? null,
+            propina: order.propina ?? null,
+            hora_recogida: order.horaRecogida ?? null,
           }),
           dedupeFingerprint,
           idempotencyKey,
@@ -1471,14 +1508,40 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
    * crear pedido con codigo), asi que el respaldo EXIGE SAVEPOINT. */
   private async queryPromotions(where: string, params: readonly unknown[], suffix = ""): Promise<readonly Promotion[]> {
     const select = (columns: string) => `select ${columns} from restaurantes.promotions where ${where}${suffix};`;
+    // Dos escalones de compatibilidad (cada uno con su SAVEPOINT, porque corren dentro de la transaccion
+    // unica del request): migracion 031 (auto_apply/cortesia) -> 027 (canales/productos) -> columnas base.
     const rows = await runWithSavepointFallback<readonly PromotionRow[]>({
       session: this.db,
-      savepointName: "sp_restaurantes_promociones_2x1_lectura",
-      primary: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS_V2), [...params])).rows,
+      savepointName: "sp_restaurantes_promociones_031_lectura",
+      primary: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS_V3), [...params])).rows,
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS), [...params])).rows,
+      fallback: () =>
+        runWithSavepointFallback<readonly PromotionRow[]>({
+          session: this.db,
+          savepointName: "sp_restaurantes_promociones_2x1_lectura",
+          primary: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS_V2), [...params])).rows,
+          isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+          fallback: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS), [...params])).rows,
+        }),
     });
     return rows.map(mapPromotion);
+  }
+
+  async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {
+    // Contra la base sin migrar `auto_apply` no existe (42703): vacio honesto, nunca error.
+    return runWithSavepointFallback<readonly Promotion[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promociones_auto_lectura",
+      primary: async () => {
+        const { rows } = await this.db.query<PromotionRow>(
+          `select ${PROMOTION_COLUMNS_V3} from restaurantes.promotions where organization_id = $1 and auto_apply and is_active order by created_at, code;`,
+          [organizationId],
+        );
+        return rows.map(mapPromotion);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
   }
 
   async listPromotions(organizationId: string): Promise<readonly Promotion[]> {
@@ -1510,6 +1573,38 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       input.maxUses ?? null,
       input.isActive ?? true,
     ];
+    const usaMigracion031 = input.type === "cortesia" || input.autoApply !== undefined || input.courtesyProductIds !== undefined || input.courtesyQuantity !== undefined;
+    if (usaMigracion031) {
+      // Escribe columnas de la migracion 031 (y las de la 027): contra una base SIN migrar falla con
+      // 42703 y se traduce a "config no disponible" con SAVEPOINT, nunca a una promocion a medias.
+      return runWithSavepointFallback<Promotion>({
+        session: this.db,
+        savepointName: "sp_restaurantes_promociones_031_alta",
+        primary: async () => {
+          const { rows } = await this.db.query<PromotionRow>(
+            `insert into restaurantes.promotions
+               (organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, is_active,
+                channels, product_ids, auto_apply, courtesy_product_ids, courtesy_quantity)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11::time, $12::time, $13, $14, $15::text[], $16::uuid[], $17, $18::uuid[], $19)
+             returning ${PROMOTION_COLUMNS_V3};`,
+            [
+              ...base,
+              input.channels ? [...input.channels] : null,
+              input.productIds ? [...input.productIds] : null,
+              input.autoApply ?? false,
+              input.courtesyProductIds ? [...input.courtesyProductIds] : null,
+              input.courtesyQuantity ?? null,
+            ],
+          );
+          return mapPromotion(rows[0]!);
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("promotions", err, "031_recoger_promociones_automaticas_puentes.sql");
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    }
     const usaMigracion027 = input.type === "bogo" || input.channels !== undefined || input.productIds !== undefined;
     if (usaMigracion027) {
       // Escribe columnas de la migracion 027: contra una base SIN migrar falla con 42703 (analisis
@@ -1585,6 +1680,44 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       patch.maxUses ?? null,
       patch.isActive ?? null,
     ];
+    const usaMigracion031 = patch.type === "cortesia" || patch.autoApply !== undefined || patch.courtesyProductIds !== undefined || patch.courtesyQuantity !== undefined;
+    if (usaMigracion031) {
+      return runWithSavepointFallback<Promotion | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_promociones_031_cambio",
+        primary: async () => {
+          const { rows } = await this.db.query<PromotionRow>(
+            `update restaurantes.promotions
+             ${setBase},
+               channels = case when $24::boolean then $25::text[] else channels end,
+               product_ids = case when $26::boolean then $27::uuid[] else product_ids end,
+               auto_apply = coalesce($28, auto_apply),
+               courtesy_product_ids = case when $29::boolean then $30::uuid[] else courtesy_product_ids end,
+               courtesy_quantity = case when $31::boolean then $32::smallint else courtesy_quantity end
+             where id = $1 and organization_id = $2
+             returning ${PROMOTION_COLUMNS_V3};`,
+            [
+              ...params,
+              patch.channels !== undefined,
+              patch.channels ? [...patch.channels] : null,
+              patch.productIds !== undefined,
+              patch.productIds ? [...patch.productIds] : null,
+              patch.autoApply ?? null,
+              patch.courtesyProductIds !== undefined,
+              patch.courtesyProductIds ? [...patch.courtesyProductIds] : null,
+              patch.courtesyQuantity !== undefined,
+              patch.courtesyQuantity ?? null,
+            ],
+          );
+          return rows[0] ? mapPromotion(rows[0]) : null;
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("promotions", err, "031_recoger_promociones_automaticas_puentes.sql");
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    }
     const usaMigracion027 = patch.type === "bogo" || patch.channels !== undefined || patch.productIds !== undefined;
     if (usaMigracion027) {
       return runWithSavepointFallback<Promotion | null>({
@@ -1621,16 +1754,26 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const update = (columns: string) => `update restaurantes.promotions ${setBase} where id = $1 and organization_id = $2 returning ${columns};`;
     return runWithSavepointFallback<Promotion | null>({
       session: this.db,
-      savepointName: "sp_restaurantes_promociones_2x1_cambio_lectura",
+      savepointName: "sp_restaurantes_promociones_031_cambio_lectura",
       primary: async () => {
-        const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS_V2), params);
+        const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS_V3), params);
         return rows[0] ? mapPromotion(rows[0]) : null;
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: async () => {
-        const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS), params);
-        return rows[0] ? mapPromotion(rows[0]) : null;
-      },
+      fallback: () =>
+        runWithSavepointFallback<Promotion | null>({
+          session: this.db,
+          savepointName: "sp_restaurantes_promociones_2x1_cambio_lectura",
+          primary: async () => {
+            const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS_V2), params);
+            return rows[0] ? mapPromotion(rows[0]) : null;
+          },
+          isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+          fallback: async () => {
+            const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS), params);
+            return rows[0] ? mapPromotion(rows[0]) : null;
+          },
+        }),
     });
   }
 
@@ -1725,14 +1868,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     // `order-lifecycle.ts` validó (con una lectura que para este punto puede ya
     // estar obsoleta por una escritura concurrente). Devuelve 0 filas (null) tanto
     // si el pedido no existe como si su estado real ya cambió — ver repository.ts.
-    const { rows } = await this.db.query<OrderRow>(
-      `update restaurantes.orders
-       set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
-       where id = $1 and organization_id = $2 and status = $4
-       returning ${ORDER_COLUMNS};`,
-      [orderId, organizationId, toStatus, fromStatus],
-    );
-    return rows[0] ? mapOrder(rows[0]) : null;
+    const run = async () => {
+      const { rows } = await this.db.query<OrderRow>(
+        `update restaurantes.orders
+         set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+         where id = $1 and organization_id = $2 and status = $4
+         returning ${ORDER_COLUMNS};`,
+        [orderId, organizationId, toStatus, fromStatus],
+      );
+      return rows[0] ? mapOrder(rows[0]) : null;
+    };
+    // Los estados de recoger (`listo_para_recoger`/`no_recogido`) los acepta el CHECK de la migracion 031:
+    // contra la base SIN migrar el UPDATE falla con 23514 (check_violation). Este UPDATE corre dentro de la
+    // transaccion unica del request, asi que el respaldo EXIGE SAVEPOINT; sin el, la transaccion quedaria
+    // abortada (25P02) y el COMMIT perderia el resto del request.
+    if (toStatus === "listo_para_recoger" || toStatus === "no_recogido") {
+      return runWithSavepointFallback<Order | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_estado_recoger",
+        primary: run,
+        isRecoverable: (err) => (err as { code?: string } | null)?.code === "23514",
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("orders", err, "031_recoger_promociones_automaticas_puentes.sql");
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    }
+    return run();
   }
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el
@@ -2159,6 +2321,101 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: async () => EMPTY_BRANCH_POLICY,
+    });
+  }
+
+  // ---- Puentes (migracion 031): horario por fecha ----
+
+  async listBranchHoursExceptions(propertyId: string, fechaDesde: string, fechaHasta: string): Promise<readonly BranchHoursException[]> {
+    return runWithSavepointFallback<readonly BranchHoursException[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_hours_exception_read",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchHoursExceptionRow>(
+          `select id, property_id, to_char(fecha_desde, 'YYYY-MM-DD') as fecha_desde, to_char(fecha_hasta, 'YYYY-MM-DD') as fecha_hasta, horario, motivo
+           from restaurantes.branch_hours_exception
+           where property_id = $1 and fecha_desde <= $3::date and fecha_hasta >= $2::date
+           order by fecha_desde, created_at;`,
+          [propertyId, fechaDesde, fechaHasta],
+        );
+        return rows.map(mapBranchHoursException);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
+  }
+
+  async listUpcomingBranchHoursExceptions(organizationId: string, desdeFecha: string): Promise<readonly BranchHoursException[]> {
+    return runWithSavepointFallback<readonly BranchHoursException[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_hours_exception_upcoming",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchHoursExceptionRow>(
+          `select id, property_id, to_char(fecha_desde, 'YYYY-MM-DD') as fecha_desde, to_char(fecha_hasta, 'YYYY-MM-DD') as fecha_hasta, horario, motivo
+           from restaurantes.branch_hours_exception
+           where organization_id = $1 and fecha_hasta >= $2::date
+           order by fecha_desde, created_at
+           limit 200;`,
+          [organizationId, desdeFecha],
+        );
+        return rows.map(mapBranchHoursException);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
+  }
+
+  async createBranchHoursException(organizationId: string, input: NewBranchHoursExceptionInput): Promise<BranchHoursException> {
+    return runWithSavepointFallback<BranchHoursException>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_hours_exception_write",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchHoursExceptionRow>(
+          `insert into restaurantes.branch_hours_exception (organization_id, property_id, fecha_desde, fecha_hasta, horario, motivo)
+           values ($1, $2, $3::date, $4::date, $5::jsonb, $6)
+           returning id, property_id, to_char(fecha_desde, 'YYYY-MM-DD') as fecha_desde, to_char(fecha_hasta, 'YYYY-MM-DD') as fecha_hasta, horario, motivo;`,
+          [organizationId, input.propertyId, input.fechaDesde, input.fechaHasta, JSON.stringify(input.horario), input.motivo ?? null],
+        );
+        return mapBranchHoursException(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("branch_hours_exception", err, "031_recoger_promociones_automaticas_puentes.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async deleteBranchHoursException(organizationId: string, exceptionId: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_hours_exception_delete",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string }>(`delete from restaurantes.branch_hours_exception where id = $1 and organization_id = $2 returning id;`, [exceptionId, organizationId]);
+        return rows.length > 0;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("branch_hours_exception", err, "031_recoger_promociones_automaticas_puentes.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async listOrderPickupInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderPickupInfo[]> {
+    if (orderIds.length === 0) return [];
+    return runWithSavepointFallback<readonly OrderPickupInfo[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_order_pickup_info",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; canal: CanalPedido | null; propina: string | null; hora_recogida: string | null }>(
+          `select id, canal, propina, hora_recogida from restaurantes.orders where organization_id = $1 and id = any($2::uuid[]);`,
+          [organizationId, [...orderIds]],
+        );
+        return rows.map((r) => ({ orderId: r.id, canal: r.canal, propina: r.propina === null ? null : Number(r.propina), horaRecogida: r.hora_recogida }));
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
     });
   }
 

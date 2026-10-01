@@ -28,8 +28,12 @@ export type {
   NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
+  BranchHoursException,
+  DoubleSalsa,
+  NewBranchHoursExceptionInput,
   Order,
   OrderHistoryItem,
+  OrderPickupInfo,
   OrderListFilter,
   OrderListPage,
   OrderQuote,
@@ -60,12 +64,23 @@ export { EMPTY_BRANCH_POLICY } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
 
-export { validarHorario, leerHorarioPersistido, estaAbiertoAhora, mensajeSucursalCerrada } from "./horarios.ts";
-export type { TurnoHorario, HorarioSucursal, EstadoApertura } from "./horarios.ts";
+export {
+  validarHorario,
+  leerHorarioPersistido,
+  estaAbiertoAhora,
+  mensajeSucursalCerrada,
+  aperturaConExcepciones,
+  horarioDePuente,
+  horarioParaFecha,
+  validarExcepcionHorario,
+  fechaLocal,
+  fechaAnterior,
+} from "./horarios.ts";
+export type { TurnoHorario, HorarioSucursal, EstadoApertura, ApreturaConExcepciones } from "./horarios.ts";
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
-export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, PROMOTION_CODE_PATTERN } from "./promotions.ts";
+export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
 export { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 
@@ -74,7 +89,7 @@ export type { RestaurantesRole } from "./roles.ts";
 
 export { tokenizeForProductSearch, matchesProductSearch, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
-export { DEFAULT_COMPLEMENTS, buildComplementNotes, buildOrderQuoteFromProducts } from "./order-quote.ts";
+export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 
 export type {
   RestaurantesRepository,
@@ -102,6 +117,8 @@ export { lookupCustomer, getCustomerDetailById, vipNote } from "./customers.ts";
 
 export {
   ORDER_STATUSES,
+  PICKUP_ONLY_STATUSES,
+  esPedidoParaRecoger,
   OrderStatusTransitionError,
   isOrderStatus,
   nextValidStatuses,
@@ -113,7 +130,7 @@ export {
 } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
-export type { PreparedOrder, QuotePolicyInfo } from "./orders.ts";
+export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./orders.ts";
 
 export {
   notifyCustomerOnOrderStatusChangeCore,
@@ -150,7 +167,7 @@ export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBr
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaTextMessages, extractMetaInboundMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
+export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
@@ -207,5 +224,8 @@ export {
 } from "./agent-tools/order-flow.ts";
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
+
+export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
+export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
