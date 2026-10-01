@@ -5,7 +5,7 @@
 // constructor — no hay agregación upstream que la haga variar.
 
 import type { LlmCompletionRequest, LlmCompletionResult, LlmProvider } from '../types.js';
-import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
+import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireToolChoice, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
 
 export interface OpenAiProviderOptions {
   apiKey: string;
@@ -52,6 +52,7 @@ export class OpenAiProvider implements LlmProvider {
         max_tokens: request.maxOutputTokens ?? 500,
         temperature: request.temperature ?? 0.4,
         ...(toOpenAiWireTools(request.tools) ? { tools: toOpenAiWireTools(request.tools) } : {}),
+        ...(toOpenAiWireToolChoice(request.tools, request.toolChoice) ? { tool_choice: toOpenAiWireToolChoice(request.tools, request.toolChoice) } : {}),
       }),
     });
 

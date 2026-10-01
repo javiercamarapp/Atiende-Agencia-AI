@@ -69,7 +69,7 @@ class InMemoryOutboxPort implements MessagingOutboxPort {
   }
 }
 
-function validPayload(overrides: Partial<{ to: string; phone_number_id: string; body: string; buttons: string[] }> = {}) {
+function validPayload(overrides: Partial<{ to: string; phone_number_id: string; body: string; buttons: unknown[] }> = {}) {
   return { to: "+529991112233", phone_number_id: "phone-1", body: "hola", ...overrides };
 }
 
@@ -242,5 +242,28 @@ describe("WhatsAppOutboundDispatcher", () => {
 
     await dispatcher.dispatchPending(port);
     expect(client.sent[0]?.buttons).toEqual(["Confirmar", "Cancelar", "Reagendar"]);
+  });
+
+  it("C-01: acepta botones {id,title} (id atado a la cita) y los pasa tal cual al graph client", async () => {
+    const buttons = [{ id: "cita:confirmar:a1", title: "Confirmar" }, { id: "cita:cancelar:a1", title: "Cancelar" }];
+    const id = port.enqueue(validPayload({ buttons }));
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const summary = await dispatcher.dispatchPending(port);
+    expect(summary.sent).toBe(1);
+    expect(client.sent[0]?.buttons).toEqual(buttons);
+    expect(port.rows.get(id)?.status).toBe("sent");
+  });
+
+  it("C-01: un botón con forma inválida (sin title o número) manda el mensaje a dead sin tocar la red", async () => {
+    const id = port.enqueue(validPayload({ buttons: [{ id: "solo-id" }] }));
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const summary = await dispatcher.dispatchPending(port);
+    expect(summary.dead).toBe(1);
+    expect(client.sent).toHaveLength(0);
+    expect(port.rows.get(id)?.status).toBe("dead");
   });
 });

@@ -46,6 +46,15 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
   return (await res.json()) as T;
 }
 
+/** Rn-03 -- descarga binaria (CSV/PDF) con el mismo refresh de sesión que `fetchJson`. */
+export async function fetchBlob(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<Blob> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    throw new RentasAdminError(await readErrorMessage(res, `No se pudo descargar el reporte (${res.status}).`));
+  }
+  return res.blob();
+}
+
 /** Fase 13 -- primer POST/PATCH real del panel de staff de rentas (calendario:
  * crear/modificar/cancelar reservas, crear/cancelar bloqueos). Ninguna ruta de
  * escritura de rentas exige `Idempotency-Key` (a diferencia de hoteles) -- mismo
@@ -54,7 +63,7 @@ export async function sendJson<T>(
   fetchImpl: typeof fetch,
   url: string,
   token: string,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "PUT",
   payload: unknown = {},
   authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
 ): Promise<T> {

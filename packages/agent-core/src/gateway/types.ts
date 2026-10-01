@@ -57,6 +57,11 @@ export interface LlmCompletionRequest {
   /** Herramientas ofrecidas al modelo en esta llamada — omitir cuando el rol
    *  no usa tool-calling (comportamiento idéntico al de antes de este campo). */
   tools?: LlmToolDefinition[];
+  /** Fuerza que el modelo llame a ESTA herramienta (`tool_choice` de OpenAI/
+   *  OpenRouter: `{type:'function', function:{name}}`). Solo tiene efecto si `tools`
+   *  incluye una con ese nombre; omitirlo deja la elección al modelo (comportamiento
+   *  anterior). Los proveedores sin tool-calling (Anthropic adaptado aquí) lo ignoran. */
+  toolChoice?: { name: string };
   maxOutputTokens?: number;
   temperature?: number;
   signal?: AbortSignal;

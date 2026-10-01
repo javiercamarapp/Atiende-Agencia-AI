@@ -66,7 +66,7 @@ import {
   crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
+import { PostgresLicitacionesRepository, PostgresSalaGuerraRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import {
   CanalMensajeriaPartnerPendiente,
@@ -75,6 +75,8 @@ import {
   PostgresBreakGlassSessionRepository,
   PostgresRentasRepository,
   PostgresRentasCalendarSyncRepository,
+  PostgresRentasAccesoRepository,
+  PostgresRentasReportesRepository,
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
 } from "@atiende/domain-rentas";
@@ -405,6 +407,8 @@ export function buildProductionDeps(): AppDeps {
     // @atiende/domain-citas::crearValidadorUrlCaldav.
     citasCaldavUrlValidator: crearValidadorUrlCaldav(),
     licitacionesRepo: (db) => new PostgresLicitacionesRepository(db),
+    // L-04 -- sala de guerra + junta de aclaraciones (migracion 029; degrada a "no disponible aun" si falta).
+    licitacionesSalaGuerraRepo: (db) => new PostgresSalaGuerraRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/
@@ -425,6 +429,8 @@ export function buildProductionDeps(): AppDeps {
     // GOOGLE_CLIENT_ID/SECRET), este puerto funciona hoy sin ninguna credencial de
     // plataforma pendiente.
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
+    rentasReportesRepo: (db) => new PostgresRentasReportesRepository(db),
+    rentasAccesoRepo: (db) => new PostgresRentasAccesoRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).

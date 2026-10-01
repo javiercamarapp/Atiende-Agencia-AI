@@ -67,6 +67,7 @@ export {
   CALENDARIO_LECTURA_ROLES,
   CANCELAR_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
+  ACCESO_HUESPED_ROLES,
   FINANZAS_ESCRITURA_ROLES,
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
@@ -289,3 +290,26 @@ export { PostgresRentasOnboardingRepository } from "./onboarding/postgres-reposi
 // que un incidente de emergencia necesita registrar.
 // ---------------------------------------------------------------------------
 export * from "./break-glass/index.ts";
+
+// ---------------------------------------------------------------------------
+// Rn-03 -- reportes de ocupación e ingresos por unidad, propietario, canal y mes (con
+// exportación CSV/PDF) -- ver src/reportes/*. Solo lectura, sin migración nueva.
+// ---------------------------------------------------------------------------
+export * from "./reportes/index.ts";
+
+// ---------------------------------------------------------------------------
+// Rn-04 -- liberación de instrucciones de acceso al huésped N horas antes del check-in,
+// solo con reserva confirmada y pagada según la política (migración 025) -- ver
+// src/acceso/*. El cron vive en apps/api y NO está en vercel.json (decisión de Javier).
+// ---------------------------------------------------------------------------
+export { correoAccesoHuesped } from "./emails/acceso-templates.ts";
+export type { AccesoCorreoDatos } from "./emails/acceso-templates.ts";
+export { EVENTO_OUTBOX_ACCESO, MAX_LIBERACIONES_POR_CORRIDA, ejecutarLiberacionAcceso } from "./acceso/liberacion.ts";
+export type { ContextoLiberacion, ResumenLiberacionAcceso, WithLiberacionTx } from "./acceso/liberacion.ts";
+export { HORAS_ANTES_MAX, HORAS_ANTES_MIN, POLITICA_ACCESO_POR_DEFECTO } from "./acceso/tipos.ts";
+export type { EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ReservaAccesoRecord, ResultadoAcceso, ResultadoConfirmarPago } from "./acceso/tipos.ts";
+export { validarInstruccion, validarPolitica } from "./acceso/validacion.ts";
+export type { EntradaInstruccion, EntradaPolitica } from "./acceso/validacion.ts";
+export type { RentasAccesoRepository } from "./acceso/repository.ts";
+export { InMemoryRentasAccesoRepository } from "./acceso/in-memory-repository.ts";
+export { PostgresRentasAccesoRepository } from "./acceso/postgres-repository.ts";

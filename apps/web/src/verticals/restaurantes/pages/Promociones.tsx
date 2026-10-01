@@ -27,7 +27,9 @@ import {
   setPromotionActive,
   updatePromotion,
 } from "../lib/promotions-client.ts";
-import type { Promotion, PromotionType } from "../lib/promotions-client.ts";
+import type { Promotion, PromotionCanal, PromotionType } from "../lib/promotions-client.ts";
+import { fetchProducts } from "../lib/catalog-client.ts";
+import type { Product } from "../lib/catalog-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -36,7 +38,9 @@ const SELECT_CLASES =
   "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatValue(type: PromotionType, value: number): string {
-  return type === "percentage" ? `${value}%` : `$${value.toFixed(2)}`;
+  if (type === "bogo") return "2x1";
+  if (type === "cortesia") return "Combo de cortesía";
+  return type === "percentage" ? `${value}% de descuento` : `$${value.toFixed(2)} de descuento`;
 }
 
 // BUG REAL corregido aquí (revisión de PR #170): `dateInputToIso` construye el
@@ -73,9 +77,35 @@ interface FormState {
   readonly startsAt: string;
   readonly endsAt: string;
   readonly maxUses: string;
+  /** "" = todos los canales. */
+  readonly canal: "" | PromotionCanal;
+  readonly autoApply: boolean;
+  readonly days: readonly number[];
+  readonly productIds: readonly string[];
+  readonly courtesyProductIds: readonly string[];
+  readonly courtesyQuantity: string;
 }
 
-const EMPTY_FORM: FormState = { code: "", name: "", type: "percentage", value: "", minOrderTotal: "", startsAt: "", endsAt: "", maxUses: "" };
+const EMPTY_FORM: FormState = {
+  code: "",
+  name: "",
+  type: "percentage",
+  value: "",
+  minOrderTotal: "",
+  startsAt: "",
+  endsAt: "",
+  maxUses: "",
+  canal: "",
+  autoApply: false,
+  days: [],
+  productIds: [],
+  courtesyProductIds: [],
+  courtesyQuantity: "2",
+};
+
+function selectedValues(select: HTMLSelectElement): string[] {
+  return [...select.selectedOptions].map((o) => o.value);
+}
 
 export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [promotions, setPromotions] = useState<readonly Promotion[] | null>(null);
@@ -94,6 +124,14 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  // Catalogo para elegir productos del 2x1 / combo de cortesia. Si falla, el formulario sigue sirviendo para
+  // los demas tipos y avisa por que no hay lista.
+  const [products, setProducts] = useState<readonly Product[] | null>(null);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  useEffect(() => {
+    fetchProducts(fetch, apiBaseUrl, token, propertyId).then(setProducts, (err) => setProductsError(err instanceof Error ? err.message : "No se pudo cargar el catálogo."));
+  }, [apiBaseUrl, token, propertyId]);
+
   async function load() {
     setError(null);
     try {
@@ -109,8 +147,18 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
-    const value = Number(form.value);
+    const sinValor = form.type === "bogo" || form.type === "cortesia";
+    const value = sinValor ? 1 : Number(form.value);
     if (!form.code.trim() || !form.name.trim() || !Number.isFinite(value) || value <= 0) return;
+    // Mismas reglas que el servidor (que re-valida): automatica exige canal; cortesia exige listas y cantidad.
+    if (form.autoApply && form.canal === "") {
+      setError("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
+      return;
+    }
+    if (form.type === "cortesia" && (form.productIds.length === 0 || form.courtesyProductIds.length === 0 || !(Number(form.courtesyQuantity) >= 1))) {
+      setError("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
@@ -125,6 +173,11 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         ...(maxUses !== undefined ? { maxUses } : {}),
         startsAt: dateInputToIso(form.startsAt, false),
         endsAt: dateInputToIso(form.endsAt, true),
+        ...(form.canal !== "" ? { channels: [form.canal] } : {}),
+        ...(form.autoApply ? { autoApply: true } : {}),
+        ...(form.days.length > 0 ? { daysOfWeek: form.days } : {}),
+        ...((form.type === "bogo" || form.type === "cortesia") && form.productIds.length > 0 ? { productIds: form.productIds } : {}),
+        ...(form.type === "cortesia" ? { courtesyProductIds: form.courtesyProductIds, courtesyQuantity: Number(form.courtesyQuantity) } : {}),
       });
       setForm(EMPTY_FORM);
       setModalCrearAbierto(false);
@@ -199,6 +252,8 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                     <div className="m-0 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-foreground">
                       <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{p.code}</code>
                       <span>· {p.name}</span>
+                      {p.autoApply && <Badge variant="secondary">Automática</Badge>}
+                      {p.channels && p.channels.length > 0 && <Badge variant="outline">{p.channels.map((c) => (c === "recoger" ? "Solo recoger" : "Solo domicilio")).join(" / ")}</Badge>}
                       {!p.isActive && (
                         <Badge variant="outline" className="text-muted-foreground">
                           Inactiva
@@ -206,7 +261,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {formatValue(p.type, p.value)} de descuento
+                      {formatValue(p.type, p.value)}
                       {p.minOrderTotal !== null ? ` · pedido mín. $${p.minOrderTotal.toFixed(2)}` : ""}
                       {p.maxUses !== null ? ` · usado ${p.timesUsed}/${p.maxUses}` : ` · usado ${p.timesUsed} veces`}
                       {p.daysOfWeek && p.daysOfWeek.length > 0 ? ` · ${p.daysOfWeek.map((d) => DAY_LABELS[d]).join("/")}` : ""}
@@ -243,7 +298,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         open={modalCrearAbierto}
         onOpenChange={setModalCrearAbierto}
         titulo="Crear un código nuevo"
-        subtitulo="El código nace activo. Días y horario de vigencia solo se pueden ajustar por API por ahora — la fecha de inicio/fin y la vigencia sí se editan desde el panel."
+        subtitulo="El código nace activo. El horario (hora de inicio/fin) solo se ajusta por API por ahora; los días, el canal y las fechas de vigencia sí se eligen aquí."
         anchoClase="max-w-3xl"
         footer={
           <Button type="submit" form="restaurantes-promocion-nueva" className="rounded-full px-6" disabled={creating}>
@@ -290,23 +345,106 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             >
               <option value="percentage">% descuento</option>
               <option value="fixed">$ fijo</option>
+              <option value="bogo">2x1</option>
+              <option value="cortesia">Combo de cortesía</option>
             </select>
           </div>
+          {form.type !== "bogo" && form.type !== "cortesia" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="promocion-valor" className="text-xs text-muted-foreground">
+                Valor
+              </Label>
+              <Input
+                id="promocion-valor"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={form.type === "percentage" ? "Valor (0-100)" : "Valor ($)"}
+                value={form.value}
+                onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+                required
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-valor" className="text-xs text-muted-foreground">
-              Valor
+            <Label htmlFor="promocion-canal" className="text-xs text-muted-foreground">
+              Canal
             </Label>
-            <Input
-              id="promocion-valor"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder={form.type === "percentage" ? "Valor (0-100)" : "Valor ($)"}
-              value={form.value}
-              onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
-              required
-            />
+            <select id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))} className={SELECT_CLASES}>
+              <option value="">Todos los canales</option>
+              <option value="recoger">Solo recoger</option>
+              <option value="domicilio">Solo domicilio</option>
+            </select>
           </div>
+          <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
+            <input type="checkbox" id="promocion-auto" checked={form.autoApply} onChange={(e) => setForm((f) => ({ ...f, autoApply: e.target.checked }))} />
+            Aplicar automáticamente (sin código, según día y canal). Exige elegir un canal.
+          </label>
+          <fieldset className="flex flex-wrap items-center gap-3 sm:col-span-2">
+            <legend className="text-xs text-muted-foreground">Días (vacío = todos)</legend>
+            {DAY_LABELS.map((label, d) => (
+              <label key={d} className="flex items-center gap-1 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  data-testid={`promocion-dia-${d}`}
+                  checked={form.days.includes(d)}
+                  onChange={(e) => setForm((f) => ({ ...f, days: e.target.checked ? [...f.days, d].sort() : f.days.filter((x) => x !== d) }))}
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+          {(form.type === "bogo" || form.type === "cortesia") && (
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="promocion-productos" className="text-xs text-muted-foreground">
+                {form.type === "bogo" ? "Productos del 2x1 (vacío = todos)" : "Productos que disparan el combo"}
+              </Label>
+              <select
+                id="promocion-productos"
+                multiple
+                size={6}
+                value={[...form.productIds]}
+                onChange={(e) => setForm((f) => ({ ...f, productIds: selectedValues(e.target) }))}
+                className={SELECT_CLASES}
+              >
+                {products?.map((pr) => (
+                  <option key={pr.id} value={pr.id}>
+                    {pr.name}
+                  </option>
+                ))}
+              </select>
+              {productsError && <p className="m-0 text-xs text-destructive">No se pudo cargar el catálogo: {productsError}</p>}
+            </div>
+          )}
+          {form.type === "cortesia" && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="promocion-cortesia" className="text-xs text-muted-foreground">
+                  Productos de cortesía (el cliente elige)
+                </Label>
+                <select
+                  id="promocion-cortesia"
+                  multiple
+                  size={6}
+                  value={[...form.courtesyProductIds]}
+                  onChange={(e) => setForm((f) => ({ ...f, courtesyProductIds: selectedValues(e.target) }))}
+                  className={SELECT_CLASES}
+                >
+                  {products?.map((pr) => (
+                    <option key={pr.id} value={pr.id}>
+                      {pr.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="promocion-cortesia-cantidad" className="text-xs text-muted-foreground">
+                  Piezas de cortesía por producto
+                </Label>
+                <Input id="promocion-cortesia-cantidad" type="number" min="1" max="10" step="1" value={form.courtesyQuantity} onChange={(e) => setForm((f) => ({ ...f, courtesyQuantity: e.target.value }))} />
+              </div>
+            </>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="promocion-minimo" className="text-xs text-muted-foreground">
               Pedido mínimo ($, opc.)

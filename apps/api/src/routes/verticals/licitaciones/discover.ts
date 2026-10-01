@@ -25,8 +25,8 @@
 // incluido el latido: antes, `ok:false` en el body nunca se reflejaba en el latido
 // (`CronPartialFailureError` faltaba en estas 2 rutas, a diferencia de sus hermanas).
 import { Hono } from "hono";
-import { runDeadlineReminderSweep, runDiscoverTendersSweep } from "@atiende/worker";
-import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
+import { runDeadlineReminderSweep, runDiscoverTendersSweep, runJuntaQuestionReminderSweep } from "@atiende/worker";
+import type { LicitacionesRepository, SalaGuerraRepository } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -101,9 +101,33 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const scanned = sweep.reduce((sum, r) => sum + r.scanned, 0);
       const created = sweep.reduce((sum, r) => sum + r.created, 0);
-      const response = c.json({ ok: failures.length === 0, organizations_checked: sweep.length, scanned, created, failures }, 200);
-      if (failures.length > 0) {
-        throw new CronPartialFailureError(`deadline-reminders: ${failures.length} de ${sweep.length} organizaciones fallaron`, response);
+      // L-04 -- segundo plazo vigilado por el mismo cron: limite de envio de preguntas a la junta de
+      // aclaraciones. Corre DESPUES del barrido existente y en transacciones propias: nunca afecta a los
+      // recordatorios de plazo de presentacion ya procesados. Base sin migrar -> `unavailable`, no fallo.
+      const salaFactory = deps.licitacionesSalaGuerraRepo;
+      const withSalaRepo = <T>(fn: (repo: SalaGuerraRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(salaFactory!(db)));
+      const juntaSweep = salaFactory
+        ? await runJuntaQuestionReminderSweep(
+            sweep.map((r) => r.organizationId),
+            withSalaRepo,
+          )
+        : [];
+      const juntaFailures = juntaSweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
+      const juntaCreated = juntaSweep.reduce((sum, r) => sum + r.created, 0);
+      const allFailures = [...failures, ...juntaFailures];
+      const response = c.json(
+        {
+          ok: allFailures.length === 0,
+          organizations_checked: sweep.length,
+          scanned,
+          created,
+          failures: allFailures,
+          junta_question_reminders: { created: juntaCreated, unavailable: juntaSweep.filter((r) => r.unavailable).length },
+        },
+        200,
+      );
+      if (allFailures.length > 0) {
+        throw new CronPartialFailureError(`deadline-reminders: ${allFailures.length} fallo(s) en ${sweep.length} organizaciones`, response);
       }
       return response;
     })();

@@ -15,9 +15,10 @@
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { lookupCustomer } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
+import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
+import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import { assertWebOrderRules } from "../storefront.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
@@ -35,11 +36,11 @@ import type {
   CanalPedido,
   CreateOrderInput,
   DefaultComplement,
+  DoubleSalsa,
   Order,
   OrderQuote,
   RequestedComplement,
   RequestedOrderItemInput,
-  TortillaChoice,
 } from "../types.ts";
 
 /** "web" = checkout publico del storefront (R-09): solo cotizar/confirmar/crear, con la misma maquina de estados
@@ -82,6 +83,9 @@ export interface AgentToolContext {
   /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
    * (camino legado: voz con secreto global sin token de llamada). */
   readonly flow?: OrderFlowRef;
+  /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
+   * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
+  readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
 }
 
 export interface AgentToolOutcome {
@@ -141,6 +145,12 @@ const ITEM_SCHEMA = {
     tortilla: { type: "string", enum: ["maiz", "harina", "mixta"] },
   },
   required: ["product_id", "product_name", "requested_quantity"],
+} as const;
+
+const DOBLE_SALSAS_SCHEMA = {
+  type: "array",
+  description: "Salsas de las que el cliente quiere DOBLE porción. Las 9 salsas ya van incluidas sin costo; la doble porción es un extra cobrado.",
+  items: { type: "string", enum: [...DEFAULT_COMPLEMENTS] },
 } as const;
 
 export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
@@ -203,6 +213,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Si el pedido es a domicilio o para recoger en sucursal. Por defecto 'domicilio'." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
+        doble_salsas: DOBLE_SALSAS_SCHEMA,
       },
       required: ["branch_slug", "items"],
     },
@@ -230,12 +241,14 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         items: { type: "array", items: ITEM_SCHEMA },
         notes: { type: "string" },
         requested_complements: { type: "array", items: { type: "string", enum: ["salsa_habanero", "crema_ajo"] } },
-        omit_default_complements: { type: "array", items: { type: "string", enum: ["salsa_verde", "salsa_roja", "limones", "cebolla"] } },
+        omit_default_complements: { type: "array", items: { type: "string", enum: [...DEFAULT_COMPLEMENTS, "cebolla"] } },
+        doble_salsas: DOBLE_SALSAS_SCHEMA,
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"] },
         adult_confirmed: { type: "boolean" },
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
         propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
@@ -335,12 +348,12 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       requestedQuantity: qty,
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" || item.tortilla === "mixta" ? (item.tortilla as TortillaChoice) : undefined,
+      tortilla: isTortillaChoice(item.tortilla) ? item.tortilla : undefined,
     };
   });
 }
 
-export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
+export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Partial<QuotePromotionInfo>) {
   return {
     lines: quote.lines.map((line) => ({
       product_id: line.productId,
@@ -353,8 +366,23 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
       requires_adult_confirmation: line.requiresAdultConfirmation,
       line_total: line.lineTotal,
     })),
+    // `total` es el TOTAL A PAGAR (ya con la promocion automatica, si hubo); `subtotal` es la suma de renglones.
     total: quote.total,
     contains_alcohol: quote.containsAlcohol,
+    ...(quote.promocionAplicada
+      ? { subtotal: quote.subtotal, descuento: quote.descuento, promocion_aplicada: { code: quote.promocionAplicada.code, name: quote.promocionAplicada.name, type: quote.promocionAplicada.type, descuento: quote.promocionAplicada.descuento } }
+      : {}),
+    ...(quote.promocionesSugeridas && quote.promocionesSugeridas.length > 0
+      ? {
+          promociones_sugeridas: quote.promocionesSugeridas.map((s) => ({
+            code: s.code,
+            name: s.name,
+            motivo: s.motivo,
+            mensaje: s.mensaje,
+            ...(s.opcionesCortesia ? { opciones_cortesia: s.opcionesCortesia.map((o) => ({ product_id: o.productId, name: o.name })), cortesia_por_unidad: s.cortesiaPorUnidad ?? 0 } : {}),
+          })),
+        }
+      : {}),
     // Modelo PM: politica de la sucursal que aplico la herramienta (minimo ya cumplido,
     // propina, horario). Solo se incluye lo que la cotizacion reporto.
     ...(quote.canal ? { canal: quote.canal } : {}),
@@ -362,6 +390,11 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
     ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
     ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
   };
+}
+
+/** `undefined` si no vino; un valor fuera del catalogo se deja pasar para que la validacion de dominio lo rechace. */
+function toDoubleSalsas(raw: unknown): readonly DoubleSalsa[] | undefined {
+  return Array.isArray(raw) ? (raw as readonly DoubleSalsa[]) : undefined;
 }
 
 function toCanal(raw: unknown): CanalPedido | undefined {
@@ -404,7 +437,7 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       quantity: typeof item.quantity === "number" ? item.quantity : undefined,
       requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : undefined,
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" || item.tortilla === "mixta" ? (item.tortilla as TortillaChoice) : undefined,
+      tortilla: isTortillaChoice(item.tortilla) ? item.tortilla : undefined,
     };
   });
 }
@@ -426,9 +459,11 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
     requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
+    doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
+    horaRecogida: str(input.hora_recogida),
   };
   if (lenient) return base;
   // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
@@ -495,6 +530,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       canal: canalOf(input.canal),
       adultConfirmed: input.adult_confirmed === true,
       items: toRequestedItems(input.items, lenient),
+      doubleSalsas: toDoubleSalsas(input.doble_salsas),
     });
     for (let attempt = 0; attempt < 3; attempt++) {
       const snap = await readFlow(repo, ctx, flow);
@@ -529,6 +565,7 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
     canal: canalOf(input.canal),
     adultConfirmed: input.adult_confirmed === true,
     items: toRequestedItems(input.items, lenient),
+    doubleSalsas: toDoubleSalsas(input.doble_salsas),
   });
   let claimed: { version: number; context: OrderFlowContext } | null = null;
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
@@ -597,8 +634,15 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_sucursal_cercana": {
-      const lat = typeof input.lat === "number" ? input.lat : undefined;
-      const lng = typeof input.lng === "number" ? input.lng : undefined;
+      let lat = typeof input.lat === "number" ? input.lat : undefined;
+      let lng = typeof input.lng === "number" ? input.lng : undefined;
+      // Ubicacion compartida por WhatsApp: se usa solo si el modelo no mando coordenadas ni una colonia
+      // explicita (una colonia dicha por el cliente despues de compartir manda).
+      const coloniaDicha = typeof input.colonia === "string" && input.colonia.trim() !== "";
+      if (lat === undefined && lng === undefined && !coloniaDicha && ctx.sharedLocation) {
+        lat = ctx.sharedLocation.lat;
+        lng = ctx.sharedLocation.lng;
+      }
       const match = await assignBranch(repo, {
         organizationId,
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,
@@ -642,6 +686,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
         canal: toCanal(input.canal),
         colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
+        doubleSalsas: toDoubleSalsas(input.doble_salsas),
       });
       return { result: { quote: quoteToWire(quote) }, raw: quote, orderId: null, propertyId: null };
     }

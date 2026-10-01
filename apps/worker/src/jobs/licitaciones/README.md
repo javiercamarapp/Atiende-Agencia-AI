@@ -161,3 +161,11 @@ Administración** (dataset con ficha fresca en el catálogo, pero verificado
 que resuelve contra la MISMA infraestructura `api-ocds.nl.gob.mx` que
 `nl_ocds` ya consulta — lo más probable es que el conector NL existente ya
 vea estos datos, así que no se registró un conector duplicado).
+
+## L-04 — `junta-question-reminders.ts`
+
+Segundo plazo que vigila el mismo cron de recordatorios (`/internal/licitaciones/deadline-reminders`):
+el límite para enviar preguntas a la junta de aclaraciones, solo mientras haya preguntas sin enviar
+(borrador/aprobada). Una transacción por organización, registro deduplicado por convocatoria y día,
+sin canal de envío real (igual que `deadline-reminders.ts`; el correo no está cableado para este
+recordatorio). Con la migración 029 pendiente reporta `unavailable`, no un fallo.

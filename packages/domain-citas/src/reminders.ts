@@ -11,6 +11,7 @@
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
+import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
 export const MAX_WAITLIST_NOTIFICATIONS = 3;
@@ -168,7 +169,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
               to: apt.customerPhone,
               phone_number_id: phoneNumberId,
               body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
-              buttons: ["Confirmar", "Cancelar", "Reagendar"],
+              buttons: appointmentReminderButtons(apt.appointmentId),
             });
             sentLocal += 1;
             remindedSomehow = true;

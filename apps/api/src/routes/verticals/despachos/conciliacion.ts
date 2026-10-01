@@ -11,11 +11,12 @@
 // para `aprobarSugerenciaLLM`), no bloqueante para el valor del motor de dominio.
 // Mismo criterio que declaraciones.ts/nomina.ts: es un endpoint puro/
 // calculadora — el cliente HTTP manda los movimientos bancarios ya parseados
-// (parsing de CSV/OFX/etc. queda fuera de esta fase, ver informe de auditoría) y el
+// (el parsing de CSV/OFX lo hace `POST .../importar-estado-de-cuenta`, D-03) y el
 // motor los concilia contra los CFDI YA INGERIDOS de esta property
 // (`repo.listInvoices`) sin necesitar una tabla nueva de "trabajo de conciliación" —
 // ese es el alcance explícito de esta fase; persistir el historial de conciliaciones
 // corridas es un incremento natural futuro, no bloqueante para el valor del motor.
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -28,8 +29,12 @@ import {
   clasificarDeposito,
   verificarSpeiContraMovimientos,
   verificarPagoProveedor,
+  BANCOS_MX,
+  construirVistaPreviaImportacion,
+  leerFuenteOpcional,
+  parsearEstadoDeCuenta,
 } from "@atiende/domain-despachos";
-import type { MovimientoBancario, RegistroConciliable, InvoiceRecord } from "@atiende/domain-despachos";
+import type { BancoMx, FormatoEstadoCuenta, MovimientoBancario, RegistroConciliable, InvoiceRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -48,6 +53,20 @@ interface MovimientoBody {
 
 interface MatchingBody {
   readonly movimientos?: unknown;
+  readonly dateToleranceDays?: unknown;
+  readonly montoTolerancePct?: unknown;
+  readonly fuzzyThreshold?: unknown;
+}
+
+/** Tope del cuerpo JSON de la importación (CSV/OFX como texto): 2 MB cubren holgadamente
+ * MAX_RENGLONES_ESTADO renglones y quedan por debajo del límite de cuerpo de Vercel. */
+const MAX_BODY_IMPORTACION_BYTES = 2 * 1024 * 1024;
+
+interface ImportarBody {
+  readonly contenido?: unknown;
+  readonly formato?: unknown;
+  readonly banco?: unknown;
+  readonly cuenta?: unknown;
   readonly dateToleranceDays?: unknown;
   readonly montoTolerancePct?: unknown;
   readonly fuzzyThreshold?: unknown;
@@ -123,6 +142,111 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     });
 
     return c.json(resultado);
+  });
+
+  /** Valida el cuerpo de la importación y parsea el archivo (compartido por la vista previa y
+   * el guardado: el servidor SIEMPRE re-parsea el contenido, nunca confía en movimientos que
+   * mande el cliente). */
+  function prepararImportacion(raw: ImportarBody) {
+    if (typeof raw.contenido !== "string" || raw.contenido.trim().length === 0) throw Errors.validation("contenido: se esperaba el texto del archivo (no vacío).");
+    let formato: FormatoEstadoCuenta | undefined;
+    if (raw.formato !== undefined && raw.formato !== null) {
+      if (raw.formato !== "csv" && raw.formato !== "ofx") throw Errors.validation("formato: se esperaba 'csv' u 'ofx'.");
+      formato = raw.formato;
+    }
+    let banco: BancoMx | undefined;
+    if (raw.banco !== undefined && raw.banco !== null && raw.banco !== "") {
+      if (typeof raw.banco !== "string" || !(BANCOS_MX as readonly string[]).includes(raw.banco)) throw Errors.validation(`banco: se esperaba uno de ${BANCOS_MX.join(", ")}.`);
+      banco = raw.banco as BancoMx;
+    }
+    let cuenta: string | null | undefined;
+    if (raw.cuenta !== undefined && raw.cuenta !== null && raw.cuenta !== "") {
+      if (typeof raw.cuenta !== "string" || !/^[0-9A-Za-z-]{4,34}$/.test(raw.cuenta.trim())) throw Errors.validation("cuenta: se esperaba una CLABE o número de cuenta (4 a 34 caracteres alfanuméricos).");
+      cuenta = raw.cuenta.trim();
+    }
+    return parsearEstadoDeCuenta(raw.contenido, {
+      ...(formato ? { formato } : {}),
+      ...(banco ? { banco } : {}),
+      ...(cuenta ? { cuenta } : {}),
+    });
+  }
+
+  /** D-03 -- vista previa de la importación de un estado de cuenta (CSV u OFX): parsea, valida
+   * renglón por renglón (los errores se devuelven con su número de línea, no abortan el
+   * archivo), calcula el hash de idempotencia de cada movimiento, marca los que YA se habían
+   * importado (libro `despachos.estado_cuenta_movimiento`, migración 015) y concilia el resto
+   * contra los CFDI ya ingeridos reutilizando el motor de niveles 1-3; si hay cuentas por
+   * cobrar pendientes de los CFDI conciliados con un abono, las sugiere. SOLO lectura: no
+   * persiste nada ni marca cuentas como pagadas. El contenido llega ya decodificado como texto
+   * (el navegador decodifica UTF-8 o Windows-1252). Libro y cobranza se leen cada uno en su
+   * propio SAVEPOINT (`leerFuenteOpcional`): contra una base sin esas tablas responden
+   * `libroDisponible`/`cobranzaDisponible: false`, nunca un 500. */
+  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta", async (c) => {
+    assertVerticalRole(c, CONCILIACION_ROLES);
+    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+    const parseo = prepararImportacion(raw);
+
+    const repo = deps.despachosRepo(c.get("db"));
+    const propertyId = c.req.param("propertyId");
+    const hayMovimientos = parseo.movimientos.length > 0;
+    const invoices = hayMovimientos ? await repo.listInvoices(propertyId) : [];
+    const registros = invoices.map(invoiceARegistroConciliable);
+    const hashesYaImportados = hayMovimientos ? await leerFuenteOpcional(repo, () => repo.listEstadoCuentaHashesExistentes(propertyId, parseo.movimientos.map((m) => m.hash))) : new Set<string>();
+    const cartera = hayMovimientos && invoices.length > 0 ? await leerFuenteOpcional(repo, () => repo.listReceivables(propertyId, { pendiente: true })) : [];
+
+    return c.json(
+      construirVistaPreviaImportacion({
+        parseo,
+        registros,
+        cuentasPorCobrarPendientes: cartera === null ? null : cartera.map((r) => ({ id: r.id, invoiceId: r.invoiceId })),
+        hashesYaImportados,
+        opciones: {
+          dateToleranceDays: optionalNumber(raw.dateToleranceDays, "dateToleranceDays", 3),
+          montoTolerancePct: optionalNumber(raw.montoTolerancePct, "montoTolerancePct", 5.0),
+          fuzzyThreshold: optionalNumber(raw.fuzzyThreshold, "fuzzyThreshold", 80),
+        },
+      }),
+    );
+  });
+
+  /** D-03 -- guarda en el libro los movimientos del archivo, de forma IDEMPOTENTE por hash
+   * (`insert ... on conflict (property_id, hash) do nothing`): subir dos veces el mismo archivo,
+   * o dos archivos con periodos traslapados, no duplica nada (`yaExistentes` cuenta lo descartado).
+   * Todo o nada respecto a errores de parseo: si el archivo tiene renglones con error se rechaza
+   * completo (400) para no importar a medias un estado de cuenta que el contador aún debe corregir.
+   * No marca cuentas por cobrar como pagadas ni concilia nada: eso sigue siendo decisión humana.
+   * Contra una base sin la migración 015 responde 503 honesto (SAVEPOINT vía `leerFuenteOpcional`). */
+  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta/guardar", async (c) => {
+    assertVerticalRole(c, CONCILIACION_ROLES);
+    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+    const parseo = prepararImportacion(raw);
+    if (parseo.errores.length > 0) throw Errors.validation(`El archivo tiene ${parseo.errores.length} renglón(es) con error (primero: renglón ${parseo.errores[0]!.renglon}, ${parseo.errores[0]!.mensaje}). Corrígelos y vuelve a subirlo.`);
+    if (parseo.movimientos.length === 0) throw Errors.validation("El archivo no trae movimientos que guardar.");
+
+    const repo = deps.despachosRepo(c.get("db"));
+    const resultado = await leerFuenteOpcional(repo, () =>
+      repo.insertEstadoCuentaMovimientos({
+        organizationId: c.get("organizationId"),
+        propertyId: c.req.param("propertyId"),
+        loteId: randomUUID(),
+        movimientos: parseo.movimientos.map((m) => ({
+          hash: m.hash,
+          cuenta: parseo.cuenta,
+          banco: parseo.banco,
+          formato: parseo.formato,
+          fecha: m.fecha,
+          descripcion: m.descripcion,
+          referencia: m.referencia,
+          cargo: m.cargo,
+          abono: m.abono,
+          monto: m.monto,
+          saldo: m.saldo,
+          renglon: m.renglon,
+        })),
+      }),
+    );
+    if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 015 (libro de movimientos importados).");
+    return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length }, resultado.insertados > 0 ? 201 : 200);
   });
 
   /** Alertas de antigüedad/comisión/duplicados sobre un lote de movimientos ya

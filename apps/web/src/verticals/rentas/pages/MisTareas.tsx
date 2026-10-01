@@ -37,11 +37,13 @@ import {
   fetchTareas,
   fetchUnidades,
   PRIORIDAD_LABELS,
+  confirmarBloqueoIncidencia,
+  fetchIncidencias,
   reportarIncidencia,
   SEVERIDAD_LABELS,
   TIPO_TAREA_LABELS,
 } from "../lib/limpieza-client.ts";
-import type { ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
+import type { IncidenciaMantenimiento, ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"]);
@@ -50,6 +52,10 @@ const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_tota
 // (que sí puede operar la tarea una vez creada). Mismo criterio de "gate en el
 // cliente solo por UX" que el resto del archivo: el servidor siempre re-valida.
 const LIMPIEZA_CREACION_MANUAL_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
+// Espejo de LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES (Rn-05): quien reporta (limpieza) nunca confirma el bloqueo.
+const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
+// Incidencias graves cuyo bloqueo de mantenimiento aún no se confirmó ni se cerró.
+const ESTADOS_BLOQUEO_PENDIENTE = new Set(["abierta", "en_revision", "bloqueo_propuesto"]);
 
 /** Mismos tokens que el <Input> de @atiende/ui aplicados a los controles nativos que
  * siguen siendo nativos a propósito: <select> de datos reales (unidad, tipo,
@@ -115,6 +121,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const puedeOperar = org ? LIMPIEZA_OPERACION_ROLES.has(org.rol) : false;
   const puedeCrearManual = org ? LIMPIEZA_CREACION_MANUAL_ROLES.has(org.rol) : false;
+  const puedeConfirmarBloqueo = org ? LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES.has(org.rol) : false;
 
   const [misTareas, setMisTareas] = useState<readonly TareaOperativa[] | null>(null);
   const [sinAsignar, setSinAsignar] = useState<readonly TareaOperativa[] | null>(null);
@@ -138,6 +145,11 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const [incEnviando, setIncEnviando] = useState(false);
   const [incError, setIncError] = useState<string | null>(null);
   const [incAviso, setIncAviso] = useState<string | null>(null);
+  const [incidenciasGraves, setIncidenciasGraves] = useState<readonly IncidenciaMantenimiento[]>([]);
+  const [rangosBloqueo, setRangosBloqueo] = useState<Record<string, { inicio: string; fin: string }>>({});
+  const [bloqueoEnCurso, setBloqueoEnCurso] = useState<string | null>(null);
+  const [bloqueoError, setBloqueoError] = useState<string | null>(null);
+  const [bloqueoAviso, setBloqueoAviso] = useState<string | null>(null);
 
   const [mostrarFormNueva, setMostrarFormNueva] = useState(false);
   const [nuevaUnidadId, setNuevaUnidadId] = useState("");
@@ -292,6 +304,60 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
     }
   }
 
+  // Rn-05: incidencias graves de la unidad elegida que esperan confirmación de bloqueo.
+  const cargarIncidenciasGraves = useCallback(
+    async (unidadId: string) => {
+      if (!puedeConfirmarBloqueo || !unidadId) {
+        setIncidenciasGraves([]);
+        return;
+      }
+      try {
+        const todas = await fetchIncidencias(fetch, apiBaseUrl, token, propertyId, unidadId);
+        const pendientes = todas.filter((i) => i.severidad === "grave" && ESTADOS_BLOQUEO_PENDIENTE.has(i.estado));
+        setIncidenciasGraves(pendientes);
+        setRangosBloqueo((prev) => {
+          const next = { ...prev };
+          for (const i of pendientes) next[i.id] = next[i.id] ?? { inicio: i.propuestaBloqueoRango?.inicio ?? "", fin: i.propuestaBloqueoRango?.fin ?? "" };
+          return next;
+        });
+      } catch (err) {
+        setIncidenciasGraves([]);
+        setBloqueoError(err instanceof Error ? err.message : "No se pudieron cargar las incidencias de la unidad.");
+      }
+    },
+    [apiBaseUrl, token, propertyId, puedeConfirmarBloqueo],
+  );
+
+  useEffect(() => {
+    setBloqueoError(null);
+    setBloqueoAviso(null);
+    void cargarIncidenciasGraves(incUnidadId);
+  }, [incUnidadId, cargarIncidenciasGraves]);
+
+  async function handleConfirmarBloqueo(incidencia: IncidenciaMantenimiento) {
+    const rango = rangosBloqueo[incidencia.id] ?? { inicio: "", fin: "" };
+    setBloqueoError(null);
+    setBloqueoAviso(null);
+    if (!rango.inicio || !rango.fin) {
+      setBloqueoError("Indica las fechas de inicio y fin del bloqueo.");
+      return;
+    }
+    setBloqueoEnCurso(incidencia.id);
+    try {
+      const r = await confirmarBloqueoIncidencia(fetch, apiBaseUrl, token, propertyId, incidencia.unidadId, incidencia.id, rango);
+      setBloqueoAviso(
+        r.conflictosCapaCruzada > 0
+          ? `Bloqueo de mantenimiento confirmado. Atención: se cruza con ${r.conflictosCapaCruzada} reserva(s) -- quedaron como conflicto para tu revisión; ninguna reserva se canceló.`
+          : "Bloqueo de mantenimiento confirmado.",
+      );
+      await cargarIncidenciasGraves(incidencia.unidadId);
+    } catch (err) {
+      setBloqueoError(err instanceof Error ? err.message : "No se pudo confirmar el bloqueo.");
+    } finally {
+      setBloqueoEnCurso(null);
+    }
+  }
+
   async function handleReportarIncidencia(e: FormEvent) {
     e.preventDefault();
     setIncError(null);
@@ -313,11 +379,12 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       });
       setIncAviso(
         resultado.requiereConfirmacionHumana
-          ? "Incidencia registrada como GRAVE — puede requerir confirmar un bloqueo de mantenimiento (lo hace admin_gestora/operador desde el calendario)."
+          ? "Incidencia registrada como GRAVE — puede requerir confirmar un bloqueo de mantenimiento (lo confirma admin_gestora/operador aquí mismo, eligiendo la unidad)."
           : "Incidencia registrada.",
       );
       setIncTitulo("");
       setIncDescripcion("");
+      void cargarIncidenciasGraves(incUnidadId);
     } catch (err) {
       setIncError(err instanceof Error ? err.message : "No se pudo registrar la incidencia.");
     } finally {
@@ -608,6 +675,48 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
           </form>
         </CardContent>
       </Card>
+
+      {puedeConfirmarBloqueo && incUnidadId && (
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Incidencias graves por bloquear</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
+            <p className="m-0 text-xs text-muted-foreground">
+              Una incidencia grave puede requerir bloquear la unidad por mantenimiento. Confirmarlo es decisión tuya: el bloqueo nunca cancela una reserva; si se cruza con alguna, queda como conflicto
+              para que lo resuelvas.
+            </p>
+            {bloqueoError && (
+              <p role="alert" className="m-0 text-[13px] text-destructive">
+                {bloqueoError}
+              </p>
+            )}
+            {bloqueoAviso && <p className="m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground">{bloqueoAviso}</p>}
+            {incidenciasGraves.length === 0 ? (
+              <p className="m-0 text-xs text-muted-foreground">No hay incidencias graves pendientes en esta unidad.</p>
+            ) : (
+              incidenciasGraves.map((i) => (
+                <div key={i.id} className="flex flex-col gap-2 rounded-lg border border-border p-2.5">
+                  <strong className="text-[13px] text-foreground">{i.titulo}</strong>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <Label className={LABEL_CLASES}>
+                      Bloquear desde
+                      <Input type="date" value={rangosBloqueo[i.id]?.inicio ?? ""} onChange={(e) => setRangosBloqueo((p) => ({ ...p, [i.id]: { inicio: e.target.value, fin: p[i.id]?.fin ?? "" } }))} />
+                    </Label>
+                    <Label className={LABEL_CLASES}>
+                      Hasta (exclusivo)
+                      <Input type="date" value={rangosBloqueo[i.id]?.fin ?? ""} onChange={(e) => setRangosBloqueo((p) => ({ ...p, [i.id]: { inicio: p[i.id]?.inicio ?? "", fin: e.target.value } }))} />
+                    </Label>
+                    <Button type="button" size="sm" disabled={bloqueoEnCurso === i.id} onClick={() => void handleConfirmarBloqueo(i)}>
+                      {bloqueoEnCurso === i.id ? "Confirmando…" : "Confirmar bloqueo de mantenimiento"}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
