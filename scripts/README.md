@@ -52,6 +52,14 @@ CI): backoff exponencial del correo del outbox y equidad por tenant de los
 `claim_*_outbox_batch` de las 6 verticales (PL-07, migración
 `packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql`). Ver su `README.md`.
 
+## `respaldo/` y `verify-respaldo-drill/`
+
+Respaldo lógico de la base (`backup.sh`), restauración a una base nueva (`restore.sh`) y drill
+con reporte pass/fail y RPO/RTO medidos (`drill.sh`, modo `--synthetic` sin credenciales). Lo
+corre el workflow `.github/workflows/respaldo-drill.yml`; runbook en
+`docs/RESPALDO-Y-RESTAURACION.md`. `verify-respaldo-drill/run.sh` es su gate (casos negativos);
+no usa el contrato de 3 archivos de `verify-real-postgres-ci/`, levanta sus propios Postgres.
+
 ## `verify-real-postgres-ci/`
 
 Convierte cualquier `verify-*/` de arriba (y cualquier `verify-*/` que se agregue
