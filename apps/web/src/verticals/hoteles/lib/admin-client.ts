@@ -77,6 +77,25 @@ export async function sendJson<T>(
   return (await res.json()) as T;
 }
 
+/** Igual que `sendJson` pero NO lanza por un 4xx/5xx de negocio: devuelve `{ ok, status, body }` para que la pantalla muestre el
+ * cuerpo estructurado del rechazo (p. ej. las violaciones de la LFT del 422 al publicar turnos). Sigue refrescando el token en un
+ * 401 y lanza solo si no hay respuesta o el cuerpo no es JSON. */
+export async function sendJsonConEstado<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  method: "POST" | "PATCH" | "PUT",
+  payload: unknown = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<{ readonly ok: boolean; readonly status: number; readonly body: T }> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, { method, headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify(payload) }),
+  );
+  const body = (await res.json().catch(() => null)) as T | null;
+  if (body === null) throw new HotelesAdminError(`Respuesta inesperada del servidor (${res.status}).`);
+  return { ok: res.ok, status: res.status, body };
+}
+
 /** Genera una idempotency-key nueva por cada intento de envío — `crypto.randomUUID`
  * está disponible en todo navegador moderno (mismo requisito que ya tiene el resto
  * de este panel, sin polyfill). Reintentar el MISMO envío (p. ej. doble clic) debe

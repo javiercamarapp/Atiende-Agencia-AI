@@ -1,0 +1,234 @@
+// Ficha de huesped (H-27) -- perfil, resumen e historial de estancias, notas y preferencias, solicitudes de contacto,
+// consentimientos y estado de identidad/ARCO. Consume apps/api/.../hoteles/huespedes.ts. Privacidad: el documento del
+// huesped NUNCA se muestra aqui (solo si ya hay identidad registrada; se captura y revela en Identidad); las notas rechazan
+// numeros de tarjeta/documento; con una solicitud ARCO de cancelacion u oposicion en curso no se agregan notas. Lo que la
+// base aun no tiene (migraciones 031/032/038) se dice como "no disponible aun", nunca como "sin datos".
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Archive, UserRound } from "lucide-react";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
+import { formatMoney } from "@atiende/ui";
+import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
+import { HUESPED_CRM_ROLES, NOTA_MAX_LENGTH, NOTA_TIPO_LABELS, agregarNota, archivarNota, fetchFicha, notaTieneDatoSensible } from "../lib/huespedes-client.ts";
+import type { Ficha, NotaTipo } from "../lib/huespedes-client.ts";
+import { RESERVA_ESTADO_LABELS } from "../lib/recepcion-client.ts";
+import type { HotelesShellContext } from "../HotelesShell.tsx";
+
+const ESTADO_ESTANCIA: Record<string, string> = { ...RESERVA_ESTADO_LABELS, cancelada: "Cancelada", no_show: "No se presentó", cotizada: "Cotizada" };
+
+function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="p-4 flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-foreground">{titulo}</h2>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: HotelesShellContext) {
+  const { guestId = "" } = useParams<{ guestId: string }>();
+  const [ficha, setFicha] = useState<Ficha | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [errorNota, setErrorNota] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tipo, setTipo] = useState<NotaTipo>("nota");
+  const [texto, setTexto] = useState("");
+  const puedeVer = HUESPED_CRM_ROLES.has(role);
+
+  const load = useCallback(async () => {
+    if (!puedeVer) return;
+    setError(null);
+    try {
+      setFicha(await fetchFicha(fetch, apiBaseUrl, token, propertyId, guestId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar la ficha del huésped.");
+    }
+  }, [apiBaseUrl, token, propertyId, guestId, puedeVer]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!puedeVer) {
+    return (
+      <PageContainer padding="none" className="gap-4">
+        <EstadoVacio mensaje="Tu rol no tiene acceso a la ficha de huéspedes." />
+      </PageContainer>
+    );
+  }
+
+  async function guardarNota(e: FormEvent) {
+    e.preventDefault();
+    const limpio = texto.trim();
+    if (!limpio) return;
+    if (notaTieneDatoSensible(limpio)) {
+      setErrorNota("No captures números de tarjeta ni de documento en una nota: la identidad se registra solo en Identidad.");
+      return;
+    }
+    setBusy(true);
+    setErrorNota(null);
+    try {
+      await agregarNota(fetch, apiBaseUrl, token, propertyId, guestId, tipo, limpio);
+      setTexto("");
+      await load();
+    } catch (err) {
+      setErrorNota(err instanceof Error ? err.message : "No se pudo guardar la nota.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function archivar(noteId: string) {
+    setBusy(true);
+    setErrorNota(null);
+    try {
+      await archivarNota(fetch, apiBaseUrl, token, propertyId, guestId, noteId);
+      await load();
+    } catch (err) {
+      setErrorNota(err instanceof Error ? err.message : "No se pudo archivar la nota.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const restringido = ficha?.arco?.restriccion === true;
+
+  return (
+    <PageContainer padding="none" className="gap-4">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
+          <UserRound className="size-5 text-muted-foreground" strokeWidth={1.75} />
+          {ficha?.huesped.nombreCompleto ?? "Huésped"}
+        </h1>
+        <Link to={`/hoteles/${orgSlug}/huespedes`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+          <ArrowLeft className="size-4" strokeWidth={1.75} />
+          Huéspedes
+        </Link>
+      </header>
+
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!ficha && !error && <EstadoCargando etiqueta="Cargando ficha…" />}
+
+      {ficha && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Seccion titulo="Perfil">
+            <p className="text-sm text-foreground">{ficha.huesped.email ?? "Sin correo"}</p>
+            <p className="text-sm text-foreground">{ficha.huesped.telefono ?? "Sin teléfono"}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <StatusBadge tone={ficha.identidad === null ? "neutral" : ficha.identidad.registrada ? "success" : "warning"}>
+                {ficha.identidad === null ? "Identidad: no disponible aún" : ficha.identidad.registrada ? "Identidad registrada" : "Sin identidad registrada"}
+              </StatusBadge>
+              {restringido && <StatusBadge tone="danger">ARCO en curso: sin notas nuevas</StatusBadge>}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {ficha.resumen.estancias} estancia(s) · {ficha.resumen.noches} noche(s)
+              {ficha.resumen.ultimaEstancia ? ` · última: ${formatFechaSolo(ficha.resumen.ultimaEstancia)}` : ""}
+              {ficha.resumen.proximaLlegada ? ` · próxima llegada: ${formatFechaSolo(ficha.resumen.proximaLlegada)}` : ""}
+            </p>
+          </Seccion>
+
+          <Seccion titulo="Notas y preferencias">
+            {!ficha.notas.disponible && <p className="text-sm text-muted-foreground">Las notas y preferencias aún no están activas en esta base de datos.</p>}
+            {ficha.notas.disponible && ficha.notas.items.length === 0 && <p className="text-sm text-muted-foreground">Sin notas ni preferencias.</p>}
+            {ficha.notas.items.map((n) => (
+              <div key={n.id} className="flex items-start justify-between gap-2 border-b border-border pb-2 last:border-b-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="text-sm text-foreground whitespace-pre-line">{n.texto}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {NOTA_TIPO_LABELS[n.tipo]} · {formatFechaSolo(n.creadaEn.slice(0, 10))}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void archivar(n.id)} aria-label="Archivar nota">
+                  <Archive className="size-3.5" strokeWidth={1.75} />
+                </Button>
+              </div>
+            ))}
+            {ficha.notas.disponible && !restringido && (
+              <form onSubmit={(e) => void guardarNota(e)} className="flex flex-col gap-2 pt-1">
+                <div className="flex gap-2">
+                  <NativeSelect size="sm" aria-label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value as NotaTipo)}>
+                    <option value="nota">Nota</option>
+                    <option value="preferencia">Preferencia</option>
+                  </NativeSelect>
+                </div>
+                <Textarea aria-label="Texto de la nota" value={texto} maxLength={NOTA_MAX_LENGTH} rows={3} onChange={(e) => setTexto(e.target.value)} placeholder="Prefiere piso alto, almohada extra…" />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {texto.length}/{NOTA_MAX_LENGTH} · sin números de tarjeta ni de documento
+                  </span>
+                  <Button type="submit" size="sm" disabled={busy || texto.trim() === ""}>
+                    Guardar
+                  </Button>
+                </div>
+              </form>
+            )}
+            {errorNota && (
+              <p role="alert" className="text-sm text-destructive">
+                {errorNota}
+              </p>
+            )}
+          </Seccion>
+
+          <Seccion titulo="Historial de estancias">
+            {ficha.estancias.length === 0 && <p className="text-sm text-muted-foreground">Sin estancias registradas.</p>}
+            {ficha.estancias.map((s) => (
+              <div key={s.reservaId} className="flex items-start justify-between gap-2 border-b border-border pb-2 last:border-b-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="text-sm text-foreground">
+                    {formatFechaSolo(s.entrada)} → {formatFechaSolo(s.salida)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.tipoHabitacion ?? "Sin tipo"}
+                    {s.habitacion ? ` · Habitación ${s.habitacion}` : ""} · ${formatMoney(s.montoNetoCentavos / 100)} neto
+                  </p>
+                </div>
+                <StatusBadge tone={s.estado === "cancelada" || s.estado === "no_show" ? "danger" : s.estado === "confirmada" ? "warning" : "info"}>{ESTADO_ESTANCIA[s.estado] ?? s.estado}</StatusBadge>
+              </div>
+            ))}
+          </Seccion>
+
+          <div className="flex flex-col gap-3">
+            <Seccion titulo="Solicitudes de contacto">
+              {ficha.contactos.length === 0 && <p className="text-sm text-muted-foreground">Sin solicitudes de contacto por voz o WhatsApp.</p>}
+              {ficha.contactos.map((c) => (
+                <div key={c.id} className="border-b border-border pb-2 last:border-b-0 last:pb-0">
+                  <p className="text-sm text-foreground">{c.motivo}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.canal === "voz" ? "Voz" : "WhatsApp"} · {formatFechaSolo(c.creadoEn.slice(0, 10))}
+                  </p>
+                  {c.mensaje && <p className="text-xs text-muted-foreground whitespace-pre-line">{c.mensaje}</p>}
+                </div>
+              ))}
+            </Seccion>
+
+            <Seccion titulo="Consentimientos de privacidad">
+              {ficha.consentimientos === null && <p className="text-sm text-muted-foreground">Los consentimientos aún no están activos en esta base de datos.</p>}
+              {ficha.consentimientos?.length === 0 && <p className="text-sm text-muted-foreground">Sin consentimientos registrados.</p>}
+              {ficha.consentimientos?.map((k) => (
+                <div key={k.id} className="flex items-start justify-between gap-2">
+                  <p className="text-sm text-foreground">
+                    Aviso {k.aviso} · {formatFechaSolo(k.fecha.slice(0, 10))}
+                    <span className="block text-xs text-muted-foreground">
+                      {k.finalidadesOpcionales.length > 0 ? `Finalidades opcionales: ${k.finalidadesOpcionales.join(", ")}` : "Solo finalidades obligatorias"}
+                    </span>
+                  </p>
+                  <StatusBadge tone={k.revocado ? "danger" : "success"}>{k.revocado ? "Revocado" : "Vigente"}</StatusBadge>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                Las solicitudes ARCO y el acceso al documento se gestionan en{" "}
+                <Link className="underline underline-offset-4" to={`/hoteles/${orgSlug}/identidad`}>
+                  Identidad
+                </Link>
+                .
+              </p>
+            </Seccion>
+          </div>
+        </div>
+      )}
+    </PageContainer>
+  );
+}

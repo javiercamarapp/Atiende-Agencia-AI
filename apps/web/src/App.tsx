@@ -52,6 +52,7 @@ import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
@@ -69,6 +70,9 @@ import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
 import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
 import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
+import { RecepcionPage } from "./verticals/hoteles/pages/Recepcion.tsx";
+import { HuespedesPage } from "./verticals/hoteles/pages/Huespedes.tsx";
+import { HuespedFichaPage } from "./verticals/hoteles/pages/HuespedFicha.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -477,6 +481,23 @@ function SuperAdminContratosRoute() {
   );
 }
 
+function SuperAdminNotificacionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <NotificacionesPagina {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+// Pagina de notificaciones (campana): una sola pagina compartida, montada en el shell de cada vertical.
+const RestaurantesNotificacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const HotelesNotificacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const RentasNotificacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const CitasNotificacionesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const DespachosNotificacionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const LicitacionesNotificacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
   return (
@@ -549,6 +570,9 @@ const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => 
 const HotelesAgentesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AgentesPage {...ctx} />);
 const HotelesAprobacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AprobacionesAgentesPage {...ctx} />);
 const HotelesGruposRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <GruposPage {...ctx} />);
+const HotelesRecepcionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <RecepcionPage {...ctx} />);
+const HotelesHuespedesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedesPage {...ctx} />);
+const HotelesHuespedFichaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedFichaPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -930,6 +954,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
+        <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -958,6 +983,7 @@ export function App() {
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/contratos" element={<SuperAdminContratosRoute />} />
+        <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
         <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
@@ -974,11 +1000,15 @@ export function App() {
         <Route path="/hoteles/:orgSlug/agentes" element={<HotelesAgentesRoute />} />
         <Route path="/hoteles/:orgSlug/aprobaciones" element={<HotelesAprobacionesRoute />} />
         <Route path="/hoteles/:orgSlug/grupos" element={<HotelesGruposRoute />} />
+        <Route path="/hoteles/:orgSlug/recepcion" element={<HotelesRecepcionRoute />} />
+        <Route path="/hoteles/:orgSlug/huespedes" element={<HotelesHuespedesRoute />} />
+        <Route path="/hoteles/:orgSlug/huespedes/:guestId" element={<HotelesHuespedFichaRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
+        <Route path="/hoteles/:orgSlug/notificaciones" element={<HotelesNotificacionesRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
         <Route path="/hoteles/:orgSlug/reputacion" element={<HotelesReputacionRoute />} />
@@ -996,6 +1026,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
         <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
+        <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
         <Route path="/rentas/:orgSlug/equipo" element={<RentasEquipoRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
@@ -1023,6 +1054,7 @@ export function App() {
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
+        <Route path="/citas/:orgSlug/notificaciones" element={<CitasNotificacionesRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
         <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
@@ -1045,6 +1077,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
+        <Route path="/licitaciones/:orgSlug/notificaciones" element={<LicitacionesNotificacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
@@ -1057,6 +1090,7 @@ export function App() {
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
+        <Route path="/despachos/:orgSlug/notificaciones" element={<DespachosNotificacionesRoute />} />
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />

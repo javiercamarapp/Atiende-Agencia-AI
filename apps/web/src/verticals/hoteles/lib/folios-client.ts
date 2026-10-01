@@ -2,9 +2,8 @@
 // apps/api/src/routes/verticals/hoteles/folios.ts (H5). Mismo aislamiento que
 // reservas-client.ts: `ChargeConcept` se redeclara en vez de importarse de
 // @atiende/domain-hoteles (apps/web no depende de ningún paquete domain-*). Cubre el
-// subconjunto de flujo diario de recepción/caja (cargo/descuento/reverso/pago/cierre)
-// — transferir-entre-folios y split quedan fuera de esta fase (operaciones menos
-// frecuentes, ver README del vertical para el detalle de qué queda pendiente).
+// flujo de recepción/caja: cargo/descuento/reverso/pago/cierre y, desde H-35,
+// transferir un cargo a otro folio de la misma reserva y dividir un folio (split).
 import { fetchJson, sendJson } from "./admin-client.ts";
 
 export type ChargeConcept = "hospedaje" | "ab" | "extras" | "ajuste" | "propina" | "otro" | "descuento" | "reverso";
@@ -98,4 +97,38 @@ export async function addPayment(fetchImpl: typeof fetch, apiBaseUrl: string, to
 
 export async function closeFolio(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, folioId: string, motivo: "saldo_cero" | "cuenta_por_cobrar"): Promise<{ id: string; estado: string; motivoCierre: string; saldo: number }> {
   return sendJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/folios/${folioId}/cerrar`, token, "POST", { motivo });
+}
+
+/** H-35: mueve un cargo real a otro folio ABIERTO (reverso en el origen + cargo nuevo en el destino, con su rastro). */
+export async function transferCharge(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  folioId: string,
+  chargeId: string,
+  folioDestinoId: string,
+  motivo: string | undefined,
+  idempotencyKey: string,
+): Promise<{ id: string; folioDestinoId: string }> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/folios/${folioId}/cargos/${chargeId}/transferir`, token, "POST", motivo ? { folioDestinoId, motivo } : { folioDestinoId }, idempotencyKey);
+}
+
+/** H-35: crea un folio nuevo (misma reserva) y le mueve los cargos elegidos. */
+export async function splitFolio(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  folioId: string,
+  etiqueta: string,
+  chargeIds: readonly string[],
+  idempotencyKey: string,
+): Promise<{ id: string; etiqueta: string }> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/folios/${folioId}/split`, token, "POST", { etiqueta, chargeIds }, idempotencyKey);
+}
+
+/** Cargos que se pueden mover entre folios: reales (no reversos ni descuentos) y vigentes (no reversados/transferidos). */
+export function cargoTransferible(c: Pick<ChargeSummary, "concepto" | "revertidoPor">): boolean {
+  return c.revertidoPor === null && c.concepto !== "reverso" && c.concepto !== "descuento";
 }

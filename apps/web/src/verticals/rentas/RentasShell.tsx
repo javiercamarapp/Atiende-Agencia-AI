@@ -183,6 +183,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/rentas/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="rentas"
       sections={buildSections(orgSlug)}

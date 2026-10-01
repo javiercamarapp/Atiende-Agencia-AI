@@ -114,6 +114,31 @@ Las seis rutas (`restaurantes`, `hoteles`, `rentas`, `citas`, `despachos`, `lici
   implementación de producción: requiere una función SQL que exponga el uso diario del usuario); la medición corre en
   SAVEPOINT y degrada a `null` en la base sin migrar. El rol sin acceso sigue siendo 403.
 
+## Conversaciones guardadas (CHAT-04)
+
+Migración `0041_copiloto_conversaciones.sql` (tablas `core.data_chat_conversation` / `core.data_chat_message`,
+escritura solo por `core.append_data_chat_turn`) y `apps/api/src/data-chat/conversaciones.ts`. Las seis rutas de chat
+montan, bajo su base, `GET .../conversaciones`, `GET|PATCH|DELETE .../conversaciones/:id`.
+
+- **Opt-in**: `POST` acepta `conversationId` = `"new"` (conversación nueva) o el id de una propia. Sin el campo todo
+  funciona como antes (nada se guarda, el historial lo aporta el cuerpo). Con él, `history` en el cuerpo es 400 y el
+  historial del modelo sale de la base. La respuesta (JSON y evento NDJSON `fin`) trae `conversationId` y `seq`
+  (el `fin` además `conversacionId`, como `CopilotoTransporte`). Si no se pudo guardar, el turno se responde igual con
+  `guardado: false` y `motivoNoGuardado` (`no_disponible`, `limite_conversaciones`, `conversacion_no_encontrada`,
+  `sin_acceso`, `error`). Las respuestas de transporte (tope, presupuesto, entrada inválida, no disponible) no se guardan.
+- **Quién ve qué**: solo el autor, con membresía vigente en la organización (RLS + filtros por usuario, organización y
+  vertical). El owner tampoco lee las conversaciones de su staff (la auditoría sigue en `data_chat_query_log`, sin
+  texto). Un id ajeno, de otra organización o inexistente es 404, nunca 403.
+- **Qué se guarda**: pregunta redactada (`redactPii`), texto de la respuesta, bloques (celdas de texto redactadas, 50
+  filas, ~40 KB) y fuentes, y las herramientas ejecutadas con sus parámetros tipados. No se guardan prompts, salida
+  cruda del modelo ni adjuntos. Una consulta directa (botón sin IA) guarda `Consulta directa: <herramienta>`.
+- **Límites**: 200 conversaciones por usuario y organización (la 201 no se guarda y lo dice); 100 mensajes por
+  conversación (el siguiente turno abre una de continuación).
+- **Base sin migrar**: cada acceso va en SAVEPOINT; la lista responde `{ disponible: false, conversaciones: [] }`,
+  abrir/renombrar/borrar 404 y continuar una conversación 404 antes de gastar un turno de modelo.
+- **Pruebas**: `scripts/verify-copiloto-conversaciones/` (Postgres real, en el gate de CI),
+  `apps/api/tests/copiloto-conversaciones-{rutas,repo}.spec.ts`.
+
 ## Catálogos de despachos y licitaciones
 
 Ambos son de solo lectura, con parámetros tipados (periodo, cliente por **nombre**, horizonte en días, límite),
@@ -227,7 +252,10 @@ la membership en lugar de depender de ella.
 - Despachos: sin CFDI emitidos ni carga por contador (el modelo no los guarda); la consulta 69-B revisa a lo
   más 40 clientes por pregunta (lo declara en la respuesta) y toda tabla trae a lo más 50 filas.
 - Licitaciones: sin montos por propuesta ni conversión de moneda.
-- La conversación no se guarda en servidor (el historial vive en la ventana del navegador).
+- Sin `conversationId` la conversación no se guarda en servidor (el historial vive en la ventana del navegador); el
+  guardado es opt-in, ver «Conversaciones guardadas». Aún no hay retención automática (90 días), exportar/borrar todo
+  (ARCO), PDF ni fijar sobre lo guardado (CHAT-18, CHAT-14, CHAT-15), ni argumentos de herramienta completos para
+  re-ejecutar (solo los parámetros tipados que registra la bitácora).
 - Las ventas del chat excluyen pedidos cancelados; los tableros de KPIs hoy suman todos los estados: las cifras
   pueden diferir y cada respuesta lo dice en su fuente.
 - Sin evaluación con un modelo real (los tests usan guion): la calidad de la elección de herramienta depende del

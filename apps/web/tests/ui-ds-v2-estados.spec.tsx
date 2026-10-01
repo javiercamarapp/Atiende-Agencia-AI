@@ -19,19 +19,19 @@ function raiz(): HTMLElement {
 }
 
 describe("EstadoCargando", () => {
-  it("la variante por defecto conserva el comportamiento de siempre (status, aria-busy, etiqueta y 3 lineas + bloque)", () => {
+  it("la variante por defecto: status, aria-busy, etiqueta y 3 filas de skeleton (la ultima al 60 %)", () => {
     rendered = renderComponent(<EstadoCargando />);
     expect(raiz().getAttribute("role")).toBe("status");
     expect(raiz().getAttribute("aria-busy")).toBe("true");
     expect(raiz().getAttribute("aria-label")).toBe("Cargando…");
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(4);
+    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(3);
     expect(raiz().textContent).toBe("Cargando…");
   });
 
   it("acepta etiqueta y numero de lineas", () => {
     rendered = renderComponent(<EstadoCargando etiqueta="Cargando citas" lineas={5} />);
     expect(raiz().getAttribute("aria-label")).toBe("Cargando citas");
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(6);
+    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(5);
   });
 
   it("tabla: cabecera + `filas` filas de esqueleto, anunciada una sola vez", () => {
@@ -43,9 +43,10 @@ describe("EstadoCargando", () => {
     expect(raiz().textContent).toBe("Cargando pagos");
   });
 
-  it("tarjeta: contenedor con borde y radio de tarjeta", () => {
+  it("tarjeta: contenedor card con relleno p-4", () => {
     rendered = renderComponent(<EstadoCargando variante="tarjeta" lineas={2} />);
-    expect(raiz().className).toContain("rounded-card");
+    expect(raiz().className).toContain("card");
+    expect(raiz().className).toContain("p-4");
     expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(3);
   });
 
@@ -61,25 +62,25 @@ describe("EstadoCargando", () => {
 });
 
 describe("Skeleton", () => {
-  it("lleva la clase ds-skeleton (brillo en v2) y conserva el pulso por defecto", () => {
+  it("lleva la clase ds-skeleton (barrido de brillo de Likida) y ya no el pulso de Tailwind", () => {
     rendered = renderComponent(<Skeleton className="h-4 w-10" />);
     expect(raiz().className).toContain("ds-skeleton");
-    expect(raiz().className).toContain("animate-pulse");
+    expect(raiz().className).not.toContain("animate-pulse");
     expect(raiz().className).toContain("h-4");
   });
 });
 
 describe("EstadoVacio y EstadoError", () => {
-  it("EstadoVacio: role=status, titulo, mensaje, accion; compacto reduce el aire vertical", () => {
+  it("EstadoVacio: role=status, titulo, mensaje, accion; compacto reduce el relleno a p-3", () => {
     const onClick = vi.fn();
     rendered = renderComponent(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" accion={<button onClick={onClick}>Nueva</button>} />);
     expect(raiz().getAttribute("role")).toBe("status");
-    expect(raiz().className).toContain("py-12");
+    expect(raiz().className).toContain("p-4");
     click(rendered.container.querySelector("button")!);
     expect(onClick).toHaveBeenCalled();
     rendered.rerender(<EstadoVacio mensaje="Nada" compacto className="mt-2" />);
-    expect(raiz().className).toContain("py-6");
-    expect(raiz().className).not.toContain("py-12");
+    expect(raiz().className).toContain("p-3");
+    expect(raiz().className).not.toContain("p-4");
     expect(raiz().className).toContain("mt-2");
     expect(raiz().textContent).toContain("Sin datos aún");
   });
@@ -92,7 +93,7 @@ describe("EstadoVacio y EstadoError", () => {
     expect(onReintentar).toHaveBeenCalledTimes(1);
     rendered.rerender(<EstadoError compacto integracion="PMS" pendienteCredenciales />);
     expect(rendered.container.querySelector("button")).toBeNull();
-    expect(raiz().className).toContain("py-6");
+    expect(raiz().className).toContain("p-3");
     expect(raiz().textContent).toContain("pendiente de credenciales");
   });
 });

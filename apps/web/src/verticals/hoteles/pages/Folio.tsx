@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
   EstadoCargando,
   EstadoError,
@@ -26,7 +27,7 @@ import {
   NativeSelect,
   PageContainer,
 } from "@atiende/ui";
-import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
+import { addCharge, addDiscount, addPayment, cargoTransferible, closeFolio, fetchFolio, fetchFoliosByReservation, reverseCharge, splitFolio, transferCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
 import { dineroMx } from "../lib/dinero.ts";
@@ -59,10 +60,22 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
   // confirmar. Ver el <Dialog> de confirmación al final de este archivo.
   const [pendingClose, setPendingClose] = useState<"saldo_cero" | "cuenta_por_cobrar" | null>(null);
 
+  // H-35: otros folios abiertos de la MISMA reserva (destino de una transferencia), transferencia en curso y split.
+  const [otrosFolios, setOtrosFolios] = useState<readonly FolioSummary[]>([]);
+  const [transfer, setTransfer] = useState<{ chargeId: string; destino: string; motivo: string } | null>(null);
+  const [splitEtiqueta, setSplitEtiqueta] = useState("");
+  const [splitCargos, setSplitCargos] = useState<ReadonlySet<string>>(new Set());
+  const [aviso, setAviso] = useState<string | null>(null);
+
   async function load() {
     setError(null);
     try {
-      setFolio(await fetchFolio(fetch, apiBaseUrl, token, propertyId, folioId));
+      const actual = await fetchFolio(fetch, apiBaseUrl, token, propertyId, folioId);
+      setFolio(actual);
+      // Si no se pueden listar los demas folios, solo se oculta la transferencia (no se rompe el folio).
+      setOtrosFolios(
+        (await fetchFoliosByReservation(fetch, apiBaseUrl, token, propertyId, actual.reservationId).catch(() => [] as readonly FolioSummary[])).filter((f) => f.id !== folioId && f.estado === "abierto"),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el folio.");
     }
@@ -114,6 +127,36 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
     await withBusy(async () => {
       await addPayment(fetch, apiBaseUrl, token, propertyId, folioId, { monto, metodo: paymentMethod }, newIdempotencyKey());
       setPaymentAmount("");
+    });
+  }
+
+  async function handleTransfer() {
+    if (!transfer || !transfer.destino) return;
+    const { chargeId, destino, motivo } = transfer;
+    await withBusy(async () => {
+      await transferCharge(fetch, apiBaseUrl, token, propertyId, folioId, chargeId, destino, motivo.trim() || undefined, newIdempotencyKey());
+      setTransfer(null);
+      setAviso("Cargo transferido al otro folio.");
+    });
+  }
+
+  async function handleSplit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!splitEtiqueta.trim() || splitCargos.size === 0) return setError("Escribe un nombre para el folio nuevo y elige al menos un cargo.");
+    await withBusy(async () => {
+      const nuevo = await splitFolio(fetch, apiBaseUrl, token, propertyId, folioId, splitEtiqueta.trim(), [...splitCargos], newIdempotencyKey());
+      setSplitEtiqueta("");
+      setSplitCargos(new Set());
+      setAviso(`Folio "${nuevo.etiqueta}" creado con los cargos elegidos.`);
+    });
+  }
+
+  function toggleSplit(chargeId: string) {
+    setSplitCargos((prev) => {
+      const next = new Set(prev);
+      if (next.has(chargeId)) next.delete(chargeId);
+      else next.add(chargeId);
+      return next;
     });
   }
 
@@ -181,6 +224,11 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
       </header>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
+      {aviso && (
+        <p role="status" className="text-sm text-foreground">
+          {aviso}
+        </p>
+      )}
 
       <section>
         <h2 className="text-sm font-semibold text-foreground mb-2">Cargos</h2>
@@ -196,6 +244,11 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-foreground">{dineroMx(ch.monto + ch.impuesto)}</span>
+                {isOpen && cargoTransferible(ch) && otrosFolios.length > 0 && (
+                  <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => setTransfer(transfer?.chargeId === ch.id ? null : { chargeId: ch.id, destino: "", motivo: "" })} disabled={busy}>
+                    Transferir
+                  </Button>
+                )}
                 {isOpen && !ch.revertidoPor && ch.concepto !== "reverso" && (
                   <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs text-destructive border-destructive/40 hover:border-destructive" onClick={() => void handleReverse(ch.id)} disabled={busy}>
                     Reversar
@@ -206,6 +259,49 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           ))}
         </div>
       </section>
+
+      {isOpen && transfer && (
+        <div className="flex flex-col gap-2 border border-border rounded-lg p-4">
+          <p className="text-sm font-semibold text-foreground">Transferir cargo a otro folio</p>
+          <div className="flex gap-2 flex-wrap">
+            <NativeSelect aria-label="Folio destino" value={transfer.destino} onChange={(e) => setTransfer({ ...transfer, destino: e.target.value })}>
+              <option value="">Folio destino…</option>
+              {otrosFolios.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.etiqueta}
+                  {f.esPrincipal ? " (principal)" : ""}
+                </option>
+              ))}
+            </NativeSelect>
+            <Input placeholder="Motivo (opcional)" value={transfer.motivo} maxLength={200} onChange={(e) => setTransfer({ ...transfer, motivo: e.target.value })} className="flex-1 min-w-[160px]" />
+            <Button type="button" disabled={busy || transfer.destino === ""} onClick={() => void handleTransfer()}>
+              Confirmar transferencia
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setTransfer(null)}>
+              Cancelar
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">El cargo se reversa en este folio y se crea igual en el destino; ambos movimientos quedan registrados.</p>
+        </div>
+      )}
+
+      {isOpen && folio.cargos.some(cargoTransferible) && (
+        <form onSubmit={handleSplit} className="flex flex-col gap-2 border border-border rounded-lg p-4">
+          <p className="text-sm font-semibold text-foreground">Dividir folio</p>
+          <p className="text-xs text-muted-foreground">Elige los cargos que pasan a un folio nuevo de esta misma reserva (por ejemplo, para facturar aparte).</p>
+          <div className="flex flex-col gap-1">
+            {folio.cargos.filter(cargoTransferible).map((ch) => (
+              <Checkbox key={ch.id} label={`${CHARGE_CONCEPT_LABELS[ch.concepto]} · ${ch.descripcion} · ${dineroMx(ch.monto + ch.impuesto)}`} checked={splitCargos.has(ch.id)} onChange={() => toggleSplit(ch.id)} />
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Input placeholder="Nombre del folio nuevo" value={splitEtiqueta} maxLength={80} onChange={(e) => setSplitEtiqueta(e.target.value)} className="flex-1 min-w-[160px]" />
+            <Button type="submit" variant="outline" disabled={busy || splitCargos.size === 0 || splitEtiqueta.trim() === ""}>
+              Crear folio con los cargos elegidos
+            </Button>
+          </div>
+        </form>
+      )}
 
       {isOpen && (
         <form onSubmit={handleAddCharge} className="flex flex-col gap-2 border border-border rounded-lg p-4">

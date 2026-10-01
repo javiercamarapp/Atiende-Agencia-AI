@@ -4,7 +4,7 @@
 // recomendaciones de tarifa ni una tabla que las almacene -- lo que SÍ es real
 // end-to-end aquí es el estado del gate (shadow/propone/autopilot), la aprobación
 // explícita de "owner" para autopilot, y el historial de backtests walk-forward.
-import { fetchJson, sendJson } from "./admin-client.ts";
+import { fetchJson, sendJson, sendJsonConEstado } from "./admin-client.ts";
 
 export type RevenueGateState = "shadow" | "propone" | "autopilot";
 
@@ -224,3 +224,83 @@ export async function createCompetitorRate(
 ): Promise<CompetitorRate> {
   return sendJson<CompetitorRate>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/competitor-rates`, token, "POST", input);
 }
+
+// ---------------------------------------------------------------------------
+// H-35 -- herramientas deterministas que ya existian en el servidor sin boton: explicacion de un precio recomendado,
+// verificacion de paridad con canales (OTAs) y verificacion del benchmark de compset. No persisten nada; el servidor valida y
+// calcula, esta pantalla solo captura el insumo y muestra el resultado tal cual.
+// ---------------------------------------------------------------------------
+export type FactorPrecio =
+  | { readonly kind: "pickup"; readonly onTheBooksVsExpectedPct: number }
+  | { readonly kind: "compset"; readonly ownRateVsMedianPct: number }
+  | { readonly kind: "evento"; readonly nombre: string; readonly impacto: "alza_demanda" | "baja_demanda"; readonly magnitudPct: number }
+  | { readonly kind: "tipo_cambio"; readonly moneda: string; readonly variacionPct: number };
+
+export interface ExplicacionPrecioInput {
+  readonly fecha: string;
+  readonly currentPrice: number;
+  readonly recommendedPrice: number;
+  readonly currency: string;
+  readonly factors: readonly FactorPrecio[];
+}
+
+export interface ExplicacionPrecio {
+  readonly direction: "sube" | "baja" | "sin_cambio";
+  readonly deltaPct: number;
+  readonly headline: string;
+  readonly factors: readonly { readonly kind: string; readonly text: string; readonly magnitude: number }[];
+  readonly fullText: string;
+}
+
+export function explicarPrecio(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: ExplicacionPrecioInput): Promise<ExplicacionPrecio> {
+  return sendJson<ExplicacionPrecio>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/explicacion-precio`, token, "POST", { hotelId: propertyId, ...input });
+}
+
+export interface CanalParidad {
+  readonly channel: string;
+  readonly referenceRate: number;
+  readonly toleranceAllowedPct: number;
+}
+
+export interface VerificacionParidad {
+  readonly mode: "bloquea" | "alerta";
+  readonly proposedRate: number;
+  readonly allowed: boolean;
+  readonly violations: readonly { readonly channel: string; readonly referenceRate: number; readonly floorRate: number; readonly deficitPct: number }[];
+  readonly reasons: readonly string[];
+}
+
+export function verificarParidad(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  input: { readonly mode: "bloquea" | "alerta"; readonly channels: readonly CanalParidad[]; readonly proposedRate: number },
+): Promise<VerificacionParidad> {
+  return sendJson<VerificacionParidad>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/verificacion-paridad`, token, "POST", {
+    config: { hotelId: propertyId, mode: input.mode, channels: input.channels },
+    proposedRate: input.proposedRate,
+  });
+}
+
+export interface VerificacionCompset {
+  readonly allowed: boolean;
+  readonly motivo?: string;
+}
+
+/** 200 = permitido; 422 = no permitido (con el motivo). Cualquier otro fallo lanza. */
+export async function verificarCompset(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  input: { readonly competitorCount: number; readonly monthsOfHistory: number; readonly hasAntitrustOpinion: boolean },
+): Promise<VerificacionCompset> {
+  const r = await sendJsonConEstado<{ allowed?: boolean; motivo?: string; message?: string }>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/compset/verificacion`, token, "POST", input);
+  if (r.status === 422 && r.body.allowed === false) return { allowed: false, motivo: r.body.motivo };
+  if (!r.ok) throw new Error(r.body.message ?? `No se pudo verificar el compset (${r.status}).`);
+  return { allowed: true };
+}
+
+// Espejo cosmetico de REVENUE_GATE_MANAGE_ROLES (domain-hoteles/src/roles.ts): el servidor es la barrera real (403).
+export const REVENUE_TOOLS_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);

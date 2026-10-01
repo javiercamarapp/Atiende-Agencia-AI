@@ -42,6 +42,9 @@ export interface HousekeepingRepository {
   findRoom(propertyId: string, roomId: string): Promise<{ readonly id: string; readonly code: string; readonly status: HotelRoomStatus } | null>;
   /** disponible/ocupada -> sucia (p. ej. tras un check-out). `null` si no aplica. */
   markRoomDirty(propertyId: string, roomId: string): Promise<HotelRoomStatus | null>;
+  /** disponible -> ocupada (check-in: el huesped ya esta en la habitacion, por lo que el dia genera tareas de estancia).
+   *  `null` si la habitacion no estaba `disponible` (sucia, fuera de servicio, ya ocupada). */
+  markRoomOccupied(propertyId: string, roomId: string): Promise<HotelRoomStatus | null>;
 
   listOutOfService(propertyId: string, onlyActive: boolean): Promise<readonly OutOfServiceRecord[]>;
   /** Inhabilita la habitacion (registro + room.status) en una sola transaccion. */

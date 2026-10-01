@@ -1,14 +1,14 @@
 import { AlertTriangle } from "lucide-react";
-import { Button } from "./ui/button";
+
 import { cn } from "../lib/utils";
 
 /**
- * Portado de EstadoError (kit.tsx) — docs/referencia/06-backoffice-agentes-likida.md
- * §3.5: tarjeta con botón "Reintentar" para un fallo de lectura explícito,
- * nunca una pantalla en blanco ni un stack trace. Cuando la causa es una
- * integración externa sin credenciales, `integracion` nombra la integración
- * y el mensaje declara el estado "pendiente de credenciales" (REQ-UX-002,
- * ACEPTACION §criterio 10).
+ * `EstadoError` identico al de Likida (kit.tsx; spec UNI-3c 6.5): tarjeta p-4 con
+ * chip de peligro (tinte + AlertTriangle de 17 px) y el boton "Reintentar" en
+ * pildora, para un fallo de lectura explicito, nunca una pantalla en blanco ni
+ * un stack trace. Cuando la causa es una integracion externa sin credenciales,
+ * `integracion` nombra la integracion y el mensaje declara el estado "pendiente
+ * de credenciales" (REQ-UX-002, ACEPTACION criterio 10).
  */
 export function EstadoError({
   titulo = "No se pudo cargar la información",
@@ -26,7 +26,7 @@ export function EstadoError({
   /** Marca el mensaje como bloqueo de credenciales en vez de error transitorio. */
   pendienteCredenciales?: boolean;
   onReintentar?: () => void;
-  /** Menos aire vertical, para errores dentro de una tarjeta o tabla. */
+  /** Relleno p-3 en lugar de p-4, para errores dentro de una tarjeta o tabla. */
   compacto?: boolean;
   className?: string;
 }) {
@@ -39,31 +39,30 @@ export function EstadoError({
       : "Ocurrió un problema al conectar con el servidor. Verifica la conexión e inténtalo de nuevo.");
 
   return (
-    <div
-      role="alert"
-      className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 text-center",
-        compacto ? "py-6" : "py-12",
-        className,
-      )}
-    >
-      <div className="w-11 h-11 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
-        <AlertTriangle className="w-5 h-5" strokeWidth={1.75} />
+    <div role="alert" className={cn("card flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card shadow-card", compacto ? "p-3" : "p-4", className)}>
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive-tint">
+        <AlertTriangle aria-hidden="true" className="size-[17px] text-destructive" strokeWidth={1.75} />
       </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">{titulo}</p>
-        <p className="mt-1 text-sm text-muted-foreground max-w-sm">{descripcion}</p>
+      <div className="min-w-0 flex-1 pt-0.5 text-sm">
+        <p className="font-medium text-foreground">{titulo}</p>
+        <p className="mt-0.5 text-muted-foreground">{descripcion}</p>
         {pendienteCredenciales && (
-          <p className="mt-2 inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+          <p className="mt-2 inline-flex items-center rounded-full border border-border bg-canvas px-2.5 py-0.5 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">
             Pendiente de credenciales
           </p>
         )}
+        {onReintentar && (
+          <div>
+            <button
+              type="button"
+              onClick={onReintentar}
+              className="mt-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-70"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
       </div>
-      {onReintentar && (
-        <Button type="button" variant="outline" size="sm" onClick={onReintentar}>
-          Reintentar
-        </Button>
-      )}
     </div>
   );
 }
