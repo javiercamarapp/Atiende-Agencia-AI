@@ -148,7 +148,7 @@ export type NrrCfo =
       /** Organizaciones con MRR el mes anterior cuyo ingreso actual no se conoce: no cuentan como churn ni como contraccion. */
       readonly excluidasSinDato: number;
     }
-  | { readonly disponible: false; readonly razon: 'sin_foto_previa' | 'no_migrado' };
+  | { readonly disponible: false; readonly razon: 'sin_foto_previa' | 'sin_foto_del_mes' };
 
 /**
  * NRR/GRR de `actual` contra `previo`. `previo = null` (no hay foto del mes anterior) devuelve
@@ -340,8 +340,8 @@ export interface EntradaDashboardCfo {
   readonly mxnPorUsd: number | null;
   /** Foto del mes anterior; `null` = no existe (o la migracion no esta aplicada). */
   readonly snapshotsPrevios: readonly SnapshotMrr[] | null;
-  /** Foto del mes consultado: la guardada o, en el mes en curso, la calculada en vivo. */
-  readonly snapshotsActuales: readonly SnapshotMrr[];
+  /** Foto del mes consultado: la guardada o, en el mes en curso, la calculada en vivo. `null` = un mes ya cerrado sin foto guardada. */
+  readonly snapshotsActuales: readonly SnapshotMrr[] | null;
   readonly ahoraMs: number;
 }
 
@@ -394,7 +394,12 @@ export function armarDashboardCfo(e: EntradaDashboardCfo): DashboardCfo {
   return {
     mes: e.mes,
     ingresos: calcularIngresos(e.filas),
-    nrr: e.snapshotsPrevios === null ? { disponible: false, razon: 'sin_foto_previa' } : calcularNrr(e.snapshotsPrevios, e.snapshotsActuales),
+    nrr:
+      e.snapshotsActuales === null
+        ? { disponible: false, razon: 'sin_foto_del_mes' }
+        : e.snapshotsPrevios === null
+          ? { disponible: false, razon: 'sin_foto_previa' }
+          : calcularNrr(e.snapshotsPrevios, e.snapshotsActuales),
     margen,
     caja: { disponible: false, razon: 'Todavia no hay una fuente de caja (saldos bancarios, cuentas por cobrar y pagos); el forecast de caja es un item pendiente.' },
     cobranza,

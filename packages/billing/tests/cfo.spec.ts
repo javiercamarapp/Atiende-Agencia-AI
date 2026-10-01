@@ -244,6 +244,12 @@ describe('armarDashboardCfo', () => {
     expect(d.margen).toEqual({ disponible: false, razon: 'sin_ingreso_conocido' });
   });
 
+  it('un mes cerrado sin foto guardada: NRR no disponible (no se compara contra una foto vacia, que parecería churn total)', () => {
+    const previo: SnapshotMrr[] = [{ organizationId: 'a', orgStatus: 'active', billingStatus: null, mrrCentavos: 100_000 }];
+    const d = armarDashboardCfo({ mes: '2026-05', filas: [filas[0]!], mxnPorUsd: 20, snapshotsPrevios: previo, snapshotsActuales: null, ahoraMs: AHORA });
+    expect(d.nrr).toEqual({ disponible: false, razon: 'sin_foto_del_mes' });
+  });
+
   it('con foto del mes anterior calcula el NRR', () => {
     const previo: SnapshotMrr[] = [{ organizationId: 'a', orgStatus: 'active', billingStatus: null, mrrCentavos: 100_000 }];
     const d = armarDashboardCfo({ mes: '2026-09', filas: [filas[0]!], mxnPorUsd: 20, snapshotsPrevios: previo, snapshotsActuales: [snapshotDesdeFila(filas[0]!)], ahoraMs: AHORA });

@@ -6,6 +6,7 @@ import type {
   ImpersonationRepository,
   LlmUsageRepository,
   MfaRepository,
+  CfoRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
@@ -485,6 +486,12 @@ export interface AppDeps {
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
   readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
+  /** Dashboard ejecutivo CFO, foto mensual de ingreso (NRR) y entradas de las alertas CFO
+   *  (packages/db/migrations/0030_superadmin_cfo_dashboard.sql, ver routes/superadmin-cfo.ts y
+   *  routes/internal/superadmin-alertas-cfo.ts). Fabrica por sesion: lectura del dashboard con la
+   *  sesion del caller; el cron usa `withAppSession({ userId: null })` (SOLO sistema). OPCIONAL:
+   *  ausente -> `disponible: false` / el cron responde `migracion_pendiente`. */
+  readonly cfoRepo?: (db: TenantDbSession) => CfoRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;
