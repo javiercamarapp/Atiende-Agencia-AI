@@ -81,7 +81,7 @@ describe("diferencias y fotos", () => {
 
 describe("la personalidad en el prompt del agente", () => {
   const ahora = new Date("2026-03-02T18:30:00.000Z");
-  const cliente = { isNew: true } as const;
+  const cliente = { isNew: true as const, fullName: null, upcomingAppointments: [] };
 
   it("sin personalidad el prompt es EXACTAMENTE el de siempre", () => {
     const base = buildSystemPrompt(FALLBACK_CONFIG, cliente, ahora, null);

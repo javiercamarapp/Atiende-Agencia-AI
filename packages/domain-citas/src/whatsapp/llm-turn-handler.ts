@@ -191,7 +191,7 @@ const AHORA_DE_MUESTRA = new Date("2026-03-02T18:30:00.000Z"); // un lunes por l
 /** C-15 -- el prompt que el agente usaria con esta personalidad, con un cliente nuevo y el negocio por omision. SOLO LECTURA:
  * no toca la base. Muestra las reglas duras completas, que la personalidad no puede quitar. */
 export function previewPromptAgente(agent: WhatsappAgentConfig, businessName: string = FALLBACK_CONFIG.businessName): string {
-  return buildSystemPrompt({ ...FALLBACK_CONFIG, businessName }, { isNew: true }, AHORA_DE_MUESTRA, null, agent);
+  return buildSystemPrompt({ ...FALLBACK_CONFIG, businessName }, { isNew: true, fullName: null, upcomingAppointments: [] }, AHORA_DE_MUESTRA, null, agent);
 }
 
 export function providerFailureReply(appointmentId: string | null): string {

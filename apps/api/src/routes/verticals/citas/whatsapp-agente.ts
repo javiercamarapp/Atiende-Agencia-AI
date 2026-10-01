@@ -23,7 +23,6 @@ import {
   TONO_ETIQUETAS,
   diferenciasConfigAgente,
   estadoConexion,
-  fotoConfigAgente,
   previewPromptAgente,
   validarConfigAgente,
   validarPhoneNumberId,
