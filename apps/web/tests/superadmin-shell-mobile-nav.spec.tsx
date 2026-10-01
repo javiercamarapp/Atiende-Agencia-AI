@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 vi.mock("../src/lib/useNotifications.ts", () => ({
   useNotifications: () => ({ items: [], unreadCount: 0, loading: false, refetch: () => {}, onMarkRead: () => {}, onMarkAllRead: () => {} }),
@@ -56,13 +57,13 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(desktop.closest(".hidden")?.className).toContain("md:block");
     expect([...root.querySelectorAll('nav[aria-label="Navegación móvil"] a')].map((a) => a.getAttribute("href"))).toEqual([
       "/superadmin",
-      "/superadmin/resumen",
       "/superadmin/salud",
       "/superadmin/acciones",
+      "/superadmin/prospectos",
     ]);
   });
 
-  it("el item raíz «Organizaciones» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
+  it("el item raíz «Resumen» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
     rendered = await renderShell(() => {}, "/superadmin/planes");
     const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
     expect(activos).toEqual(["/superadmin/planes"]);
@@ -78,12 +79,51 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
   });
 
+  // UNI-6: el menu de hoy con el marco de Likida -- Resumen raiz sin titulo, categorias en el orden de Likida, acordeon
+  // exclusivo, pie con "Costos de IA" y "Ver los otros paneles" (sale de las secciones) y tarjeta de usuario.
+  it("el Sidebar agrupa los 21 destinos en el orden de Likida, con acordeon exclusivo y el pie de la consola", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Agentes", "Negocio", "Plataforma", "Control", "Sistema"]);
+    expect(categoriasAbiertas(root)).toEqual(["Agentes"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Gasto de API de LLM"]);
+    abrirCategoria(root, "Negocio");
+    expect(categoriasAbiertas(root)).toEqual(["Negocio"]);
+    expect(linksSidebar(root)).toEqual([
+      "Resumen",
+      "Gestión de organizaciones",
+      "Prospectos",
+      "Planes y precios",
+      "Contratos por cliente",
+      "Facturación",
+      "Dashboard CFO",
+      "P&L por vertical",
+      "Costos y margen",
+      "Zona CFO segura",
+    ]);
+    abrirCategoria(root, "Plataforma");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Integraciones", "Interruptores", "Acciones"]);
+    abrirCategoria(root, "Control");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Seguridad (MFA)", "Privacidad", "Romper cristal", "Impersonación", "Auditoría de denegaciones"]);
+    abrirCategoria(root, "Sistema");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Salud operativa", "Resumen diario"]);
+    // Pie: pildoras con destino real, fuera del <nav> de las categorias.
+    const pie = [...root.querySelectorAll<HTMLAnchorElement>("aside > div a")].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
+    expect(pie).toEqual([
+      ["Costos de IA", "/superadmin/costos-margen"],
+      ["Ver los otros paneles", "/superadmin/paneles"],
+    ]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Root", rol: "Superadmin" });
+  });
+
   it('"Más" abre los 22 destinos de la consola (incluye privacidad, gestión de organizaciones, interruptores, seguridad MFA, zona CFO segura, dashboard CFO, costos y margen, planes y contratos por cliente)', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(22);
+    // 21 de las categorias + "Ver los otros paneles" (pie, seccion "Cuenta"); "Costos de IA" repite /costos-margen.
+    expect(new Set(hrefs).size).toBe(22);
+    expect(hrefs).toContain("/superadmin/paneles");
     expect(hrefs).toContain("/superadmin/privacidad");
     expect(hrefs).toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
