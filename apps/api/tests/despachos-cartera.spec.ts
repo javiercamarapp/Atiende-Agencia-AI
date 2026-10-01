@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword } from "@atiende/db";
+import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
@@ -130,9 +131,11 @@ describe("POST /v1/despachos/:orgSlug/admin/cartera (alta)", () => {
     const id = randomUUID();
     const email = "acotado@despacho-de-prueba.mx";
     const password = "correcto-caballo-batería";
-    ctx.deps.coreRepo.addStaff({ id, email, fullName: "Acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
-    ctx.deps.coreRepo.addMembership({ userId: id, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
-    ctx.deps.engine.seedMembership({ userId: id, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
+    const coreRepo = ctx.deps.coreRepo as unknown as InMemoryCoreRepository;
+    const engine = ctx.deps.engine as unknown as InMemoryTenancyEngine;
+    coreRepo.addStaff({ id, email, fullName: "Acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+    coreRepo.addMembership({ userId: id, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
+    engine.seedMembership({ userId: id, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
     const app = buildApp(ctx.deps);
     const login = await app.request("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) });
     const token = ((await login.json()) as { token: string }).token;

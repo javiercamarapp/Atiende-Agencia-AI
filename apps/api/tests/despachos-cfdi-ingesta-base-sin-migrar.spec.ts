@@ -32,7 +32,7 @@ class SesionBaseSinMigrar implements TenantDbSession {
   async query<T>(sql: string): Promise<{ rows: T[] }> {
     await new Promise<void>((r) => setImmediate(r));
     const q = sql.replace(/\s+/g, " ").trim().toLowerCase();
-    this.queries.push(q.slice(0, 90));
+    this.queries.push(q);
     if (this.aborted) throw pgError("25P02", "current transaction is aborted, commands ignored until end of transaction block");
     const falla = (code: string, msg: string): never => {
       this.aborted = true;
