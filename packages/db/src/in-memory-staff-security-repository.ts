@@ -1,5 +1,5 @@
 // Implementacion en memoria de `StaffSecurityRepository` con la MISMA semantica que
-// `migrations/0025_staff_totp_stepup_reset.sql` (lockout 5 intentos/15 min, anti-replay por
+// `migrations/0026_staff_totp_stepup_reset.sql` (lockout 5 intentos/15 min, anti-replay por
 // paso, codigos de respaldo de un solo uso, tokens de un solo uso con vencimiento). Sirve
 // para tests de rutas; NO sustituye la verificacion contra Postgres real
 // (`scripts/verify-staff-2fa`), que es la que prueba RLS/GRANT/`auth.uid()`.

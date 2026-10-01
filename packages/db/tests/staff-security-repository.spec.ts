@@ -2,7 +2,7 @@
 // (SQLSTATE 42883/42P01/42703) a `StaffSecurityUnavailableError` FUERA de la transaccion y
 // abre UNA transaccion propia por metodo (AbortAwareFakeSession reproduce el estado abortado
 // de Postgres; una sesion falsa plana no); (2) la implementacion en memoria tiene la misma
-// semantica que la migracion 0025 (lockout, anti-replay, un solo uso, vencimiento).
+// semantica que la migracion 0026 (lockout, anti-replay, un solo uso, vencimiento).
 import { describe, expect, it } from "vitest";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import {
@@ -93,7 +93,7 @@ describe("PostgresStaffSecurityRepository", () => {
   });
 });
 
-describe("InMemoryStaffSecurityRepository (misma semantica que la migracion 0025)", () => {
+describe("InMemoryStaffSecurityRepository (misma semantica que la migracion 0026)", () => {
   function setup() {
     const core = new InMemoryCoreRepository();
     core.addStaff({ id: "u1", email: "u1@x.mx", fullName: "U1", passwordHash: "scrypt$old", createdVia: "seed", emailVerifiedAt: null });

@@ -5,14 +5,17 @@
 // `BotonChatDatos` (no aplica a un panel de plataforma, no de negocio).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, LayoutGrid, ListChecks, Newspaper, Plug, Receipt, ShieldAlert, ShieldOff, TrendingUp } from "lucide-react";
-import { DashboardHeader, NotificationBell, Sidebar } from "@atiende/ui";
+import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, KeyRound, LayoutGrid, ListChecks, Newspaper, Plug, Power, Receipt, ShieldAlert, ShieldOff, TrendingUp } from "lucide-react";
+import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
+import { MobileHeaderActions } from "../components/MobileHeaderActions.tsx";
 import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
+import { StepUpDialog } from "./components/StepUpDialog.tsx";
+import { limpiarStepUp } from "./lib/stepup.ts";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -26,6 +29,9 @@ const SECTIONS = [
     siempreAbierto: true,
     items: [
       { to: "/superadmin", label: "Organizaciones", icon: Building2 },
+      { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
+      { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
+      { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },
       { to: "/superadmin/resumen", label: "Resumen diario", icon: Newspaper },
       { to: "/superadmin/salud", label: "Salud operativa", icon: Activity },
       { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
@@ -59,6 +65,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
     try {
       await logout(fetch, apiBaseUrl, session.refreshToken);
     } finally {
+      limpiarStepUp();
       clearSuperadminSession(window.localStorage);
       setSession(null);
       onRequireLogin();
@@ -77,8 +84,15 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   return (
     <div className="min-h-screen bg-background flex gap-4 p-4">
       <Sidebar sections={SECTIONS} user={{ email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin" }} onLogout={handleLogout} />
-      <main className="flex-1 min-w-0 flex flex-col gap-4">
+
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={<MobileHeaderActions notif={notif} user={{ email: session.email, rol: "Superadmin" }} onLogout={handleLogout} loggingOut={loggingOut} conChat={false} />}
+      />
+
+      <main className="flex-1 min-w-0 flex flex-col gap-4 pt-16 pb-24 md:pt-0 md:pb-0">
         <DashboardHeader
+          className="hidden md:flex"
           variant="superadmin"
           icon={<LayoutGrid className="w-[15px] h-[15px] text-muted-foreground" strokeWidth={1.75} />}
           title="Consola de Atiende"
@@ -98,8 +112,20 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
           }
         />
         <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
+        <StepUpDialog />
         {children({ apiBaseUrl, token: session.token })}
       </main>
+
+      {/* 15 destinos: la barra trae los 4 de uso diario y "Más" abre todos. */}
+      <BottomNav
+        items={[
+          { to: "/superadmin", label: "Orgs", icon: Building2, end: true },
+          { to: "/superadmin/resumen", label: "Resumen", icon: Newspaper },
+          { to: "/superadmin/salud", label: "Salud", icon: Activity },
+          { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
+        ]}
+        moreSections={SECTIONS}
+      />
     </div>
   );
 }

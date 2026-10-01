@@ -92,7 +92,7 @@ export const CONTRACT_DECISION_TRANSITIONS: readonly ContractStatus[] = ["rescin
 
 /**
  * Transiciones que ADEMÁS exigen step-up (segundo factor TOTP reciente) cuando la base
- * ya tiene la migración de 2FA (`packages/db/migrations/0025_staff_totp_stepup_reset.sql`):
+ * ya tiene la migración de 2FA (`packages/db/migrations/0026_staff_totp_stepup_reset.sql`):
  * las decisiones económicas/legales de `CONTRACT_DECISION_TRANSITIONS` más marcar el pago
  * (`pagado`), que cierra la cobranza. El control de rol (`DECISION_ROLES`/`WRITE_ROLES`)
  * se mantiene como primera capa; el step-up es la segunda. Con la base sin migrar, el

@@ -7,11 +7,11 @@
 // (2) la migracion pendiente se traduce a `StaffSecurityUnavailableError` sin tocar la
 // transaccion del request (`dbSession`).
 import {
-  decryptTotpSecret,
+  decryptStaffTotpSecret,
   hashBackupCode,
   normalizeBackupCode,
   verifyStepUpToken,
-  verifyTotp,
+  verifyStaffTotp,
 } from "@atiende/core-auth";
 import type { StepUpScope } from "@atiende/core-auth";
 import { StaffSecurityUnavailableError } from "@atiende/db";
@@ -59,11 +59,11 @@ export async function checkSecondFactor(deps: AppDeps, userId: string, input: Se
   } else if (typeof input.code === "string") {
     let plain: string | null = null;
     try {
-      plain = decryptTotpSecret(secret.secretCiphertext, deps.env.jwtSecret);
+      plain = decryptStaffTotpSecret(secret.secretCiphertext, deps.env.jwtSecret);
     } catch {
       plain = null; // clave rotada o fila corrupta: nunca valida, cuenta como fallo
     }
-    const step = plain ? verifyTotp(plain, input.code, Date.now()) : null;
+    const step = plain ? verifyStaffTotp(plain, input.code, Date.now()) : null;
     if (step !== null && (secret.lastUsedStep === null || step > secret.lastUsedStep) && (await repo.registerTotpSuccess(userId, step))) {
       return "ok";
     }

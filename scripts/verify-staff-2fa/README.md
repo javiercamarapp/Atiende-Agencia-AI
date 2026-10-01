@@ -1,7 +1,7 @@
 # verify-staff-2fa
 
 Verificacion contra Postgres REAL (RLS, GRANT, `auth.uid()`) de
-`packages/db/migrations/0025_staff_totp_stepup_reset.sql`: segundo factor TOTP, codigos de
+`packages/db/migrations/0026_staff_totp_stepup_reset.sql`: segundo factor TOTP, codigos de
 respaldo, lockout, anti-replay, cambio/reset de contrasena y verificacion de correo.
 
 Cubre: positivo (la propia cuenta), negativo (formato/vencido/usado), cross-user (otra cuenta

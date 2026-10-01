@@ -85,8 +85,9 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { AtiendeWordmark, DashboardHeader, MobileHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
+import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearDespachosSession, logout, readPersistedDespachosSession } from "./lib/auth-client.ts";
@@ -341,26 +342,34 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       </div>
     ) : null;
 
+  const sections = buildSidebarSections(orgSlug);
+
   return (
     <div className="min-h-screen bg-background flex gap-3 p-3">
       <Sidebar
-        sections={buildSidebarSections(orgSlug)}
+        sections={sections}
         user={{ email: session.email, rol: role }}
         onLogout={handleLogout}
         hotelSelector={contribuyenteSelector}
       />
 
-      {/* Hallazgo de auditoría (severidad ALTA, "en viewport móvil el usuario ve el
-          contenido sin logo/menú/logout"): mismo síntoma exacto que
-          RestaurantesShell.tsx/RentasShell.tsx -- el <Sidebar> compartido es
-          `hidden md:flex` y este Shell nunca importaba/renderizaba MobileHeader.
-          Sin BottomNav a propósito (12 destinos, ver NAV_ITEMS arriba): mismo
-          criterio ya aplicado en HotelesShell.tsx (13 destinos) -- una barra de
-          ≤5 ítems no puede representar honestamente 12 secciones fiscales/contables
-          sin privilegiar arbitrariamente unas sobre otras, así que el acceso móvil a
-          TODAS las secciones (incluida "Staff") sigue siendo el acordeón completo
-          del propio Sidebar (desktop) más el selector de contribuyente aquí. */}
-      <MobileHeader title={<AtiendeWordmark className="scale-90 origin-left" />} action={contribuyenteSelector} />
+      {/* En viewport móvil el <Sidebar> compartido es `hidden md:flex`: el
+          acceso móvil es <MobileHeader> (logo, selector de contribuyente, campana
+          y menú de cuenta con chat y cerrar sesión) más <BottomNav>, cuya barra
+          trae los 4 destinos de uso diario y cuyo botón "Más" abre las 13
+          secciones fiscales/contables (todas, sin curarlas a ojo). */}
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={
+          <MobileHeaderActions
+            selector={contribuyenteSelector}
+            notif={notif}
+            user={{ email: session.email, rol: role }}
+            onLogout={handleLogout}
+            loggingOut={loggingOut}
+          />
+        }
+      />
 
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="hidden md:block">
@@ -404,10 +413,20 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
             `useEffect` con `propertyId` en su arreglo de dependencias) no cambian de
             comportamiento: un remount con las mismas dependencias dispara el mismo
             fetch que ya disparaban. */}
-        <main key={propertyId} className="flex-1 overflow-auto pb-6 pt-20 md:pt-0">
+        <main key={propertyId} className="flex-1 overflow-auto pb-24 pt-20 md:pb-6 md:pt-0">
           {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
         </main>
       </div>
+
+      <BottomNav
+        items={[
+          { to: `/despachos/${orgSlug}/cierre-mensual`, label: "Cierre", icon: CalendarCheck },
+          { to: `/despachos/${orgSlug}/cfdi`, label: "CFDI", icon: FileText },
+          { to: `/despachos/${orgSlug}/cobranza`, label: "Cobranza", icon: HandCoins },
+          { to: `/despachos/${orgSlug}/vencimientos`, label: "Vencim.", icon: CalendarClock },
+        ]}
+        moreSections={sections}
+      />
     </div>
   );
 }

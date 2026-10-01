@@ -59,6 +59,7 @@ import {
   OpenAiProvider,
   OpenRouterProvider,
   type GatewayBudgetLimits,
+  type GatewayKillSwitch,
   type LlmProvider,
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
@@ -106,7 +107,7 @@ export const LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE = "licitaciones:proposal_dra
  *  invocación por movimiento, nunca un loop de varios turnos. */
 export const DESPACHOS_CONCILIACION_LLM_ROLE = "despachos:conciliacion_llm_agent";
 
-const ALL_PRODUCTION_ROLES: readonly string[] = [
+export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
   RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
   HOTELES_WHATSAPP_AGENT_ROLE,
@@ -169,7 +170,7 @@ function buildProviderLadder(env: ApiEnv): LlmProvider[] {
  * real que construir (ver el `throw` explícito al inicio de
  * `buildProductionDeps`).
  */
-export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine): LlmGateway | undefined {
+export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
   const providers = buildProviderLadder(env);
   if (providers.length === 0) return undefined;
 
@@ -179,6 +180,8 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine): L
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
     orgMonthlyBudgetStore: new ProductionOrgMonthlyBudgetStore(engine),
+    // Interruptor de plataforma (kill switch por agente/global) -- opcional.
+    killSwitch,
   });
 
   for (const role of ALL_PRODUCTION_ROLES) {
@@ -223,7 +226,7 @@ export const RESUMEN_DIARIO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
  * narrativa por LLM -- se usa la plantilla determinista, nunca se finge una
  * llamada.
  */
-export function buildResumenDiarioLlmGateway(env: ApiEnv): LlmGateway | undefined {
+export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
   const providers = buildProviderLadder(env);
   if (providers.length === 0) return undefined;
 
@@ -231,6 +234,7 @@ export function buildResumenDiarioLlmGateway(env: ApiEnv): LlmGateway | undefine
     breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: RESUMEN_DIARIO_LLM_BUDGET_LIMITS,
+    killSwitch,
   });
   gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, providers);
   return gateway;

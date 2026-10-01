@@ -17,10 +17,12 @@ import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
 import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
+import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
 import { TerminosPage } from "./pages/Terminos.tsx";
+import { NotFoundPage } from "./pages/NotFound.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
@@ -35,6 +37,9 @@ import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
 import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
+import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
+import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
+import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -44,6 +49,7 @@ import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
+import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
@@ -193,6 +199,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 // FASE 3 (producto) — configuración editable de WhatsApp/zonas conocidas
 // (owner/admin), mismo patrón exacto que RestaurantesAuditoriaRoute de arriba.
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
+// Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
+const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
@@ -300,6 +308,33 @@ function SuperAdminAccionesRoute() {
   );
 }
 
+function SuperAdminSeguridadRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminSeguridadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminInterruptoresRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminInterruptoresPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminGestionOrganizacionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminGestionOrganizacionesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
   return (
@@ -373,6 +408,8 @@ const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ct
 const HotelesAsistenciaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AsistenciaPage {...ctx} />);
 
 const HotelesFraudeRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <FraudePage {...ctx} />);
+/** H-01 — bóveda de identidad + registro migratorio + purga con doble control (pages/Identidad.tsx). */
+const HotelesIdentidadRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <IdentidadPage {...ctx} />);
 const HotelesCfdiListadoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCfdiListadoPage {...ctx} />);
 
 /** Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
@@ -691,6 +728,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/promociones" element={<RestaurantesPromocionesRoute />} />
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
+        <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -704,6 +742,9 @@ export function App() {
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/resumen" element={<SuperAdminResumenRoute />} />
         <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
+        <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
+        <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
+        <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
         <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
@@ -717,6 +758,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
+        <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
@@ -789,6 +831,8 @@ export function App() {
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
         <Route path="/" element={<SeleccionarVerticalPage />} />
+        {/* Cualquier URL sin ruta propia: 404 real en vez de pantalla en blanco. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );

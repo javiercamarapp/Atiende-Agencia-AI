@@ -1,5 +1,5 @@
 -- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), la migracion
--- packages/db/migrations/0025_staff_totp_stepup_reset.sql:
+-- packages/db/migrations/0026_staff_totp_stepup_reset.sql:
 --   * funciones del segundo factor atadas al usuario (auth.uid() = p_staff_id): positivo,
 --     negativo (otro usuario), cross-tenant/cross-user y anon;
 --   * tablas sin acceso directo para authenticated/anon;

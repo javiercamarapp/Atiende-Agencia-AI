@@ -140,3 +140,28 @@ export {
   TotpNotEnrolledError,
 } from "./staff-security-repository.ts";
 export { InMemoryStaffSecurityRepository } from "./in-memory-staff-security-repository.ts";
+export type {
+  BlockedSwitch,
+  MfaAttemptResult,
+  MfaFactorRow,
+  MfaRepository,
+  OrgActionEstado,
+  OrgActionTipo,
+  OrgAdminActionRow,
+  OrgAdminRepository,
+  PlatformSwitchRepository,
+  PlatformSwitchRow,
+  SecurityEventRow,
+  SeguridadAvailability,
+  SeguridadErrorCode,
+  SwitchScope,
+} from "./superadmin-seguridad-repository.ts";
+export {
+  InMemoryMfaRepository,
+  InMemoryOrgAdminRepository,
+  InMemoryPlatformSwitchRepository,
+  PostgresMfaRepository,
+  PostgresOrgAdminRepository,
+  PostgresPlatformSwitchRepository,
+  SuperadminSeguridadError,
+} from "./superadmin-seguridad-repository.ts";

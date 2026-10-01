@@ -11,14 +11,14 @@ import { Hono } from "hono";
 import {
   authMiddleware,
   buildOtpAuthUrl,
-  encryptTotpSecret,
+  encryptStaffTotpSecret,
   generateBackupCodes,
   generateTotpSecret,
   hashBackupCode,
-  decryptTotpSecret,
+  decryptStaffTotpSecret,
   signStepUpToken,
   STEP_UP_TTL_SECONDS,
-  verifyTotp,
+  verifyStaffTotp,
 } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv, StepUpScope } from "@atiende/core-auth";
 import { StaffSecurityUnavailableError, TotpAlreadyEnrolledError, TotpNoPendingEnrollmentError, TotpNotEnrolledError, verifyPassword } from "@atiende/db";
@@ -77,7 +77,7 @@ export function auth2faRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     await throttle(c);
     const secret = generateTotpSecret();
     try {
-      await orUnavailable(() => repo.beginTotpEnrollment(c.get("userId"), encryptTotpSecret(secret, deps.env.jwtSecret)));
+      await orUnavailable(() => repo.beginTotpEnrollment(c.get("userId"), encryptStaffTotpSecret(secret, deps.env.jwtSecret)));
     } catch (err) {
       if (err instanceof TotpAlreadyEnrolledError) throw Errors.conflict("Ya tienes la verificación en dos pasos activa. Desactívala primero para reconfigurarla.");
       throw err;
@@ -98,7 +98,7 @@ export function auth2faRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     let step: number | null = null;
     try {
-      step = verifyTotp(decryptTotpSecret(row.secretCiphertext, deps.env.jwtSecret), body.code.trim(), Date.now());
+      step = verifyStaffTotp(decryptStaffTotpSecret(row.secretCiphertext, deps.env.jwtSecret), body.code.trim(), Date.now());
     } catch {
       step = null;
     }

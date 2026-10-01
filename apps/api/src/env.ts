@@ -19,6 +19,13 @@ export interface ApiEnv {
    *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
    *  un envío sin ella. */
   readonly whatsappAccessToken: string | null;
+  /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
+   *  (`HOTELES_IDENTITY_KEY`). `null` cuando no esta configurada: captura/revelacion de
+   *  identidad responden 503 explicito, NUNCA se guarda un documento sin cifrar. */
+  readonly hotelesIdentityKey: string | null;
+  /** Version de la llave de arriba (`HOTELES_IDENTITY_KEY_VERSION`, default 1); se guarda
+   *  en cada sobre para la rotacion futura. */
+  readonly hotelesIdentityKeyVersion: number;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
    * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
    * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
@@ -93,6 +100,18 @@ export interface ApiEnv {
    * profundidad barata, un token de propietario nunca verifica bajo el secreto de
    * staff ni viceversa. */
   readonly rentasOwnerJwtSecret: string;
+  /** MFA obligatoria del superadmin: con `true`, las acciones sensibles exigen un
+   *  step-up verificado AUNQUE el superadmin no haya enrolado todavia (en ese caso
+   *  responden 403 `mfa_enrollment_required`) y fallan cerrado si la migracion de
+   *  MFA no esta aplicada. Sin ella (default), el step-up solo se exige a quien ya
+   *  tiene un factor activo -- ningun flujo actual se rompe antes de enrolar.
+   *  OPCIONAL: los fixtures de tests no necesitan declararla. */
+  readonly superadminMfaRequired?: boolean;
+  /** Material de llave para cifrar el secreto TOTP en reposo (>= 16 caracteres).
+   *  Sin ella se deriva de `jwtSecret` (HKDF con etiqueta propia) -- rotar
+   *  JWT_SECRET entonces invalida los factores enrolados (hay que re-enrolar), por
+   *  eso se recomienda una llave dedicada. OPCIONAL. */
+  readonly mfaEncryptionKey?: string;
   readonly rentasOwnerAccessTokenTtlSeconds: number;
   readonly rentasOwnerRefreshTokenTtlSeconds: number;
   /**
@@ -131,12 +150,16 @@ function requireEnv(name: string, fallback?: string): string {
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
+    superadminMfaRequired: ["1", "true"].includes((process.env.SUPERADMIN_MFA_REQUIRED ?? "").toLowerCase()),
+    mfaEncryptionKey: process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || undefined,
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
+    hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
+    hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
     googleOAuth:

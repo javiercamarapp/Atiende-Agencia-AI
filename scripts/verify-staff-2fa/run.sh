@@ -3,7 +3,7 @@
 # que scripts/verify-restaurantes-config-staff-baja/run.sh (ver ese archivo para el
 # porqué de cada paso). Cubre, contra RLS/GRANT/auth.uid() reales (nunca el
 # repositorio en memoria, que no aplica ninguno de los tres):
-#   - packages/db/migrations/0025_staff_totp_stepup_reset.sql
+#   - packages/db/migrations/0026_staff_totp_stepup_reset.sql
 #     (2FA TOTP, codigos de respaldo, reset y cambio de contrasena, verificacion de correo)
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente — en este
@@ -50,7 +50,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0025_staff_totp_stepup_reset.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0026_staff_totp_stepup_reset.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

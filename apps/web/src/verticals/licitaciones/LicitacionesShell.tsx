@@ -19,6 +19,7 @@ import { Building2, FileText, Gavel, Radar, ShieldCheck, Target, Users } from "l
 import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
@@ -212,16 +213,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Licitaciones · {orgSlug}</span>
           </span>
         }
-        action={
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="text-[12px] text-destructive font-medium min-h-11 px-2"
-          >
-            {loggingOut ? "Saliendo…" : "Salir"}
-          </button>
-        }
+        action={<MobileHeaderActions notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} />}
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3 pt-16 pb-20 md:pt-0 md:pb-0">

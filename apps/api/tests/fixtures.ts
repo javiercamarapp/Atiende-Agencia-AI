@@ -46,6 +46,8 @@ export const TEST_ENV: ApiEnv = {
   // `AppDeps.whatsAppDispatcher` con un `FakeWhatsAppGraphClient` — nunca tocan la
   // red real, nunca usan un WHATSAPP_ACCESS_TOKEN real.
   whatsappAccessToken: null,
+  hotelesIdentityKey: null,
+  hotelesIdentityKeyVersion: 1,
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
   googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },

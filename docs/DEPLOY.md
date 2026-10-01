@@ -21,6 +21,8 @@ impacto) y esta rama sí agrega `vercel.json` + el adaptador `hono/vercel` reale
   serverless Node.js de `apps/api` (`api/index.ts` → `apps/api/src/vercel.ts`, usando
   el adaptador real `hono/vercel`), con rewrites de `/health`, `/auth/*`,
   `/v1/restaurantes/*`, `/hoteles/*` hacia la función y fallback de SPA para el resto.
+  Incluye el bloque `headers` (cabeceras de seguridad; CSP en Report-Only) — ver
+  `docs/SEGURIDAD-CABECERAS.md`, que también documenta `/health` y cómo promover la CSP.
 - **`packages/db/src/managed-postgres-engine.ts`** (`openManagedPostgres`) — motor de
   producción contra Postgres gestionado, port real (mismo comportamiento, mismo
   patrón `set local role authenticated` + `set_config('request.jwt.claim.sub', ...)`
@@ -173,7 +175,7 @@ como parámetro plano.
   `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
   en la misma rama, despliega el caller primero.
 
-**Migración `0025_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
+**Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
 transiciones sensibles del contrato siguen exigiendo solo el rol y las rutas `/auth/2fa/*`

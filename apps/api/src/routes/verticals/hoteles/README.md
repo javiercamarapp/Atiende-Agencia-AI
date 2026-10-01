@@ -130,3 +130,20 @@ ejecutarse de verdad) e índice de reputación agregado. Ver
 Migraciones nuevas: `migrations/006_cfdi_hospedaje.sql` (`hoteles.cfdi_emision` +
 columnas `dsa_per_night`/`rfc_emisor` en `hoteles.tax_config`) y
 `migrations/007_fraude_alerta.sql` (`hoteles.fraud_alert`).
+
+## H-01 — bóveda de identidad + registro migratorio + purga con doble control
+
+Modelo en `packages/domain-hoteles/migrations/031_hoteles_boveda_identidad.sql`; dominio en
+`@atiende/domain-hoteles::identity`; verificación contra Postgres real en
+`scripts/verify-hoteles-boveda-identidad/`.
+
+- `identidad.ts` — `GET/POST /hoteles/:propertyId/identidad` (captura cifrada AES-256-GCM en la
+  API; la base solo guarda el sobre), `POST .../identidad/:id/verificar`, `.../revelar` (motivo
+  obligatorio, huella en la bitácora, `Cache-Control: no-store`), `GET .../accesos` (owner/gm),
+  `POST .../solicitar-purga`, `GET /identidad-purgas`, `POST /identidad-purgas/:id/decidir`
+  (doble control: decide otra persona), y `GET/POST /registro-migratorio` + `.../reportar`.
+- `identidad-purga-cron.ts` — `GET|POST /internal/hoteles/identidad-purga`: purga por retención,
+  una transacción por property con su fecha de negocio. NO está en `vercel.json`: programarlo es una
+  decisión de despliegue (ya hay 20 crons).
+- Llave: `HOTELES_IDENTITY_KEY` (base64, 32 bytes). Sin ella captura/revelación responden 503.
+- Base sin la migración 031: lecturas `disponible:false`, escrituras 503, el cron omite la property.

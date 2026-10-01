@@ -17,6 +17,8 @@ import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
+import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
+import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -46,5 +48,9 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminConfigRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
+  // SoftRestaurant (POS de PM) -- bandera por organizacion, comandas pendientes/fallidas y
+  // captura manual (staff) + dispatcher del outbox (cron). Ver softrestaurant/README.md.
+  app.route("/", restaurantesAdminSoftRestauranteRoutes(deps));
+  app.route("/", restaurantesSoftRestauranteDispatchRoutes(deps));
   return app;
 }

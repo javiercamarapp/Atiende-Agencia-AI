@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { InMemoryHotelesRepository, InMemoryIdentityRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -40,6 +40,9 @@ export interface HotelesTestContext {
    * pasar por una ruta HTTP -- ya no se puede hacer `ctx.deps.hotelesRepo.metodo()`
    * porque `deps.hotelesRepo` es ahora una fábrica `(db) => HotelesRepository`. */
   readonly hotelesRepo: InMemoryHotelesRepository;
+  /** H-01 -- boveda de identidad en memoria (mismo objeto que resuelve `deps.hotelesIdentidadRepo(...)`);
+   *  ya trae sembrados el huesped `guestId` y la reserva `reservationId` de esta property. */
+  readonly identidadRepo: InMemoryIdentityRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly reservationId: string;
@@ -74,6 +77,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const coreRepo = new InMemoryCoreRepository();
   const engine = new InMemoryTenancyEngine();
   const hotelesRepo = new InMemoryHotelesRepository();
+  const identidadRepo = new InMemoryIdentityRepository();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -170,13 +174,15 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const rentasRepoUnused = new InMemoryRentasRepository();
   const rentasOwnerPortalRepoUnused = new InMemoryRentasOwnerPortalRepository();
   const deps: AppDeps = {
-    env: TEST_ENV,
+    // H-01: llave de prueba fija de la boveda de identidad (32 bytes en base64).
+    env: { ...TEST_ENV, hotelesIdentityKey: Buffer.alloc(32, 7).toString("base64"), hotelesIdentityKeyVersion: 1 },
     coreRepo,
     coreStaffRepo: (_db) => coreRepo,
     engine,
     restaurantesRepo: (_db) => restaurantesRepoUnused,
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
     hotelesRepo: (_db) => hotelesRepo,
+    hotelesIdentidadRepo: (_db) => identidadRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
     citasRepo: (_db) => citasRepoForResolver,
@@ -234,9 +240,13 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     signInAndGetToken(app, accountantSeed.email, accountantSeed.password),
   ]);
 
+  identidadRepo.seedGuest(propertyId, guestId);
+  identidadRepo.seedReservation(propertyId, reservationId, "2026-03-10", "2026-03-12");
+
   return {
     deps,
     hotelesRepo,
+    identidadRepo,
     organizationId,
     propertyId,
     reservationId,

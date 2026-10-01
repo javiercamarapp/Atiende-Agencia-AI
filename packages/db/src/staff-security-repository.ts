@@ -1,6 +1,6 @@
 // Puerto de seguridad de la cuenta de staff: segundo factor TOTP (+ codigos de respaldo),
 // cambio/reset de contrasena y verificacion de correo. SQL en
-// `migrations/0025_staff_totp_stepup_reset.sql`.
+// `migrations/0026_staff_totp_stepup_reset.sql`.
 //
 // Contrato de transacciones (importante para la regla de compatibilidad con la base sin
 // migrar): CADA metodo abre SU PROPIA transaccion (`engine.withAppSession`) y no hace nada
@@ -34,7 +34,7 @@ export interface TotpSecretRow {
   readonly lockedUntil: string | null;
 }
 
-/** La migracion 0025 todavia no se aplico a esta base: las rutas responden "no disponible aun". */
+/** La migracion 0026 todavia no se aplico a esta base: las rutas responden "no disponible aun". */
 export class StaffSecurityUnavailableError extends Error {
   constructor() {
     super("El segundo factor y la gestion de contrasena todavia no estan disponibles en esta base (migracion pendiente).");

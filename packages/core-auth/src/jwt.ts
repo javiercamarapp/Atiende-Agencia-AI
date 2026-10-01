@@ -8,7 +8,7 @@
 // login y la acción. Este es el MISMO principio que hoteles ya aplica hoy, solo que
 // generalizado (antes: `hotel_ids`, ahora: `property_ids`; se añade `vertical` porque
 // un token ahora puede corresponder a cualquiera de las 5 verticales, no solo hoteles).
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify, errors as joseErrors } from "jose";
 import type { Vertical } from "@atiende/core-tenancy";
 
@@ -103,5 +103,46 @@ export async function verifyRefreshToken(token: string, secret: string): Promise
     if (err instanceof joseErrors.JWTExpired) throw new TokenExpiredError("El refresh token expiró.");
     if (err instanceof TokenInvalidError) throw err;
     throw new TokenInvalidError("Refresh token inválido.");
+  }
+}
+
+// ── Step-up (MFA reciente) del superadmin ─────────────────────────────────
+// Un token de step-up prueba "este usuario acaba de verificar su TOTP, con ESTE
+// access token". Se ata al access token por `ath` (SHA-256 del token, como
+// `at_hash` de OIDC): un step-up robado no sirve con otro access token, y un
+// refresh de sesión obliga a re-verificar. TTL corto fijo (5 min).
+export const STEPUP_TTL_SECONDS = 300;
+
+export interface StepUpTokenClaims {
+  readonly sub: string;
+  readonly ath: string;
+  readonly type: "stepup";
+}
+
+export function accessTokenHash(accessToken: string): string {
+  return createHash("sha256").update(accessToken).digest("base64url");
+}
+
+export async function signStepUpToken(userId: string, accessToken: string, secret: string, ttlSeconds: number = STEPUP_TTL_SECONDS): Promise<string> {
+  return new SignJWT({ type: "stepup", ath: accessTokenHash(accessToken) })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${ttlSeconds}s`)
+    .setSubject(userId)
+    .sign(secretKey(secret));
+}
+
+/** Lanza `TokenInvalidError`/`TokenExpiredError`; valida tipo, dueño (`sub`) y atadura al access token. */
+export async function verifyStepUpToken(stepUpToken: string, accessToken: string, expectedUserId: string, secret: string): Promise<StepUpTokenClaims> {
+  try {
+    const { payload } = await jwtVerify(stepUpToken, secretKey(secret));
+    if (payload.type !== "stepup") throw new TokenInvalidError("El token no es un token de step-up.");
+    if (payload.sub !== expectedUserId) throw new TokenInvalidError("El token de step-up pertenece a otro usuario.");
+    if (payload.ath !== accessTokenHash(accessToken)) throw new TokenInvalidError("El token de step-up no corresponde a esta sesión.");
+    return payload as unknown as StepUpTokenClaims;
+  } catch (err) {
+    if (err instanceof joseErrors.JWTExpired) throw new TokenExpiredError("El step-up expiró.");
+    if (err instanceof TokenInvalidError) throw err;
+    throw new TokenInvalidError("Token de step-up inválido.");
   }
 }

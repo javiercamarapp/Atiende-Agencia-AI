@@ -1,20 +1,18 @@
 // @vitest-environment jsdom
 //
-// Smoke test real (rubro 9, "0 tests de componentes React") del hallazgo de
-// auditoría ALTA cerrado en esta ronda: DespachosShell.tsx nunca importaba/
-// renderizaba <MobileHeader> -- el <Sidebar> compartido de @atiende/ui es
-// `hidden md:flex`, así que en viewport móvil el usuario se quedaba sin
-// logo/menú/logout. A diferencia de RestaurantesShell.tsx/RentasShell.tsx (7-8
-// destinos, caben curados en un <BottomNav>), despachos tiene 12 destinos
-// (NAV_ITEMS) -- deliberadamente SIN <BottomNav> (mismo criterio que
-// HotelesShell.tsx, 13 destinos): protege que el fix se mantenga sin inventar
-// una curación arbitraria de secciones fiscales/contables.
+// Smoke test real (rubro 9, "0 tests de componentes React") de la nav móvil de
+// DespachosShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
+// así que en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>.
+// Despachos tiene 13 destinos: la barra trae los 4 de uso diario y "Más" abre
+// TODOS (PR-0 del informe de diseno-ux, F-01: antes había un comentario que
+// afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
+// Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { DespachosShell } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { BranchOption } from "../src/verticals/despachos/lib/admin-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
@@ -42,6 +40,7 @@ afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   fetchBranchesMock.mockReset();
+  vi.unstubAllGlobals();
 });
 
 async function renderShell(): Promise<RenderedComponent> {
@@ -62,7 +61,7 @@ async function renderShell(): Promise<RenderedComponent> {
 }
 
 describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
-  it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader (sin BottomNav: 12 destinos)", async () => {
+  it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader + BottomNav", async () => {
     rendered = await renderShell();
     const root = rendered.container;
 
@@ -76,8 +75,42 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(mobileHeader).toBeDefined();
     expect(mobileHeader!.textContent).toContain("atiende");
 
-    // Deliberadamente sin BottomNav (ver comentario de cabecera del archivo).
-    expect(root.querySelector('nav[aria-label="Navegación móvil"]')).toBeNull();
+    const nav = root.querySelector('nav[aria-label="Navegación móvil"]');
+    expect(nav).not.toBeNull();
+    expect([...nav!.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/despachos/demo/cierre-mensual",
+      "/despachos/demo/cfdi",
+      "/despachos/demo/cobranza",
+      "/despachos/demo/vencimientos",
+    ]);
+  });
+
+  it('el botón "Más" abre los 13 destinos, incluidos Staff y Configuración', async () => {
+    rendered = await renderShell();
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/nomina", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
+  });
+
+  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+    rendered = await renderShell();
+    const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect(hoja.textContent).toContain("Chatea con tus datos");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => {
+      click([...hoja.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar sesión")!);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/auth/logout");
+    expect(window.localStorage.getItem("atiende.despachos.session")).toBeNull();
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {

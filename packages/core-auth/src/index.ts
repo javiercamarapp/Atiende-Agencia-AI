@@ -6,7 +6,28 @@ export {
   verifyRefreshToken,
   TokenInvalidError,
   TokenExpiredError,
+  STEPUP_TTL_SECONDS,
+  accessTokenHash,
+  signStepUpToken,
+  verifyStepUpToken,
 } from "./jwt.ts";
+export type { StepUpTokenClaims } from "./jwt.ts";
+
+export {
+  TOTP_DEFAULT_WINDOW,
+  TOTP_DIGITS,
+  TOTP_PERIOD_SECONDS,
+  base32Decode,
+  base32Encode,
+  buildOtpauthUri,
+  decryptTotpSecret,
+  encryptTotpSecret,
+  generateTotpSecret,
+  hotp,
+  totpAt,
+  totpStep,
+  verifyTotp,
+} from "./totp.ts";
 
 export { ApiError, Errors } from "./errors.ts";
 
@@ -21,6 +42,7 @@ export {
   dbSession,
   requirePropertyMembership,
   assertVerticalRole,
+  organizationSuspendedError,
 } from "./middleware.ts";
 
 export type { OAuthStateClaims, GoogleTokenResponse, GoogleIdTokenClaims } from "./google-oauth.ts";
@@ -37,23 +59,17 @@ export {
 } from "./google-oauth.ts";
 
 export {
-  TOTP_PERIOD_SECONDS,
-  TOTP_DIGITS,
-  TOTP_DEFAULT_WINDOW,
   BACKUP_CODE_COUNT,
-  base32Encode,
-  base32Decode,
-  generateTotpSecret,
   computeTotp,
   totpTimeStep,
-  verifyTotp,
+  verifyStaffTotp,
   buildOtpAuthUrl,
   generateBackupCodes,
   normalizeBackupCode,
   hashBackupCode,
-  encryptTotpSecret,
-  decryptTotpSecret,
-} from "./totp.ts";
+  encryptStaffTotpSecret,
+  decryptStaffTotpSecret,
+} from "./staff-totp.ts";
 
 export type { StepUpScope, StepUpClaims } from "./step-up.ts";
 export { STEP_UP_TTL_SECONDS, signStepUpToken, verifyStepUpToken } from "./step-up.ts";

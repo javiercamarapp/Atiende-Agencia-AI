@@ -1,134 +1,109 @@
 import { describe, expect, it } from "vitest";
 import {
-  base32Decode,
-  base32Encode,
-  buildOtpAuthUrl,
-  computeTotp,
-  decryptTotpSecret,
-  encryptTotpSecret,
-  generateBackupCodes,
-  generateTotpSecret,
-  hashBackupCode,
-  normalizeBackupCode,
-  signAccessToken,
-  signStepUpToken,
+  STEPUP_TTL_SECONDS,
   TokenExpiredError,
   TokenInvalidError,
-  totpTimeStep,
-  verifyAccessToken,
+  base32Decode,
+  base32Encode,
+  buildOtpauthUri,
+  decryptTotpSecret,
+  encryptTotpSecret,
+  generateTotpSecret,
+  hotp,
+  signStepUpToken,
+  totpAt,
+  totpStep,
   verifyStepUpToken,
   verifyTotp,
 } from "../src/index.ts";
 
-// Vector de RFC 6238 (apendice B): secreto ASCII "12345678901234567890", SHA1, T=59 s.
+// Vectores de RFC 4226 apéndice D (secreto ASCII "12345678901234567890").
 const RFC_SECRET = base32Encode(Buffer.from("12345678901234567890"));
+const RFC_HOTP = ["755224", "287082", "359152", "969429", "338314", "254676", "287922", "162583", "399871", "520489"];
 
-describe("TOTP (RFC 6238)", () => {
-  it("coincide con los vectores oficiales del RFC (6 digitos = ultimos 6 de los de 8)", () => {
-    expect(computeTotp(RFC_SECRET, 59_000)).toBe("287082");
-    expect(computeTotp(RFC_SECRET, 1_111_111_109_000)).toBe("081804");
-    expect(computeTotp(RFC_SECRET, 1_234_567_890_000)).toBe("005924");
-    expect(computeTotp(RFC_SECRET, 20_000_000_000_000)).toBe("353130");
+describe("TOTP/HOTP", () => {
+  it("coincide con los vectores de RFC 4226", () => {
+    RFC_HOTP.forEach((expected, counter) => expect(hotp(RFC_SECRET, counter)).toBe(expected));
   });
 
-  it("base32 hace ida y vuelta", () => {
+  it("coincide con el vector de RFC 6238 (T=59 s -> 94287082 con 8 dígitos; 6 dígitos = 287082)", () => {
+    expect(totpAt(RFC_SECRET, 59_000)).toBe("287082");
+  });
+
+  it("base32 ida y vuelta, y rechaza caracteres inválidos", () => {
     const bytes = Buffer.from([0, 1, 2, 250, 251, 252, 253, 254, 255]);
-    expect(base32Decode(base32Encode(bytes)).equals(bytes)).toBe(true);
-    expect(() => base32Decode("no-es-base32!")).toThrow();
+    expect(base32Decode(base32Encode(bytes))).toEqual(bytes);
+    expect(() => base32Decode("AB1!")).toThrow();
   });
 
-  it("acepta el paso actual y +-1, rechaza +-2 y devuelve el paso coincidente", () => {
+  it("verifyTotp devuelve el paso que coincide dentro de ±1 y null fuera de la ventana", () => {
+    const secret = generateTotpSecret();
     const now = 1_700_000_000_000;
-    const step = totpTimeStep(now);
-    expect(verifyTotp(RFC_SECRET, computeTotp(RFC_SECRET, now), now)).toBe(step);
-    expect(verifyTotp(RFC_SECRET, computeTotp(RFC_SECRET, now - 30_000), now)).toBe(step - 1);
-    expect(verifyTotp(RFC_SECRET, computeTotp(RFC_SECRET, now + 30_000), now)).toBe(step + 1);
-    expect(verifyTotp(RFC_SECRET, computeTotp(RFC_SECRET, now - 60_000), now)).toBeNull();
-    expect(verifyTotp(RFC_SECRET, computeTotp(RFC_SECRET, now + 60_000), now)).toBeNull();
+    const step = totpStep(now);
+    expect(verifyTotp(secret, totpAt(secret, now), now)).toBe(step);
+    expect(verifyTotp(secret, totpAt(secret, now - 30_000), now)).toBe(step - 1);
+    expect(verifyTotp(secret, totpAt(secret, now + 30_000), now)).toBe(step + 1);
+    expect(verifyTotp(secret, totpAt(secret, now - 120_000), now)).toBeNull();
   });
 
-  it("rechaza formatos que no son 6 digitos sin lanzar", () => {
-    expect(verifyTotp(RFC_SECRET, "12345", 0)).toBeNull();
-    expect(verifyTotp(RFC_SECRET, "abcdef", 0)).toBeNull();
-    expect(verifyTotp(RFC_SECRET, "1234567", 0)).toBeNull();
+  it("verifyTotp rechaza formatos que no son 6 dígitos", () => {
+    const secret = generateTotpSecret();
+    for (const bad of ["", "12345", "1234567", "abcdef", "12 456", "٠٠٠٠٠٠"]) expect(verifyTotp(secret, bad, Date.now())).toBeNull();
   });
 
-  it("genera secretos distintos de 160 bits y una URL otpauth bien formada", () => {
-    const a = generateTotpSecret();
-    expect(a).not.toBe(generateTotpSecret());
-    expect(base32Decode(a)).toHaveLength(20);
-    const url = buildOtpAuthUrl({ issuer: "Atiende", accountEmail: "ana@ejemplo.mx", secretBase32: a });
-    expect(url.startsWith("otpauth://totp/Atiende:ana%40ejemplo.mx?")).toBe(true);
-    expect(url).toContain(`secret=${a}`);
-    expect(url).toContain("digits=6");
-    expect(url).toContain("period=30");
-  });
-});
-
-describe("codigos de respaldo", () => {
-  it("genera 8 codigos unicos con formato XXXXX-XXXXX sin caracteres ambiguos", () => {
-    const codes = generateBackupCodes();
-    expect(codes).toHaveLength(8);
-    expect(new Set(codes).size).toBe(8);
-    for (const c of codes) expect(c).toMatch(/^[A-HJKMNP-Z2-9]{5}-[A-HJKMNP-Z2-9]{5}$/u);
+  it("el secreto generado tiene 32 caracteres base32 (160 bits)", () => {
+    expect(generateTotpSecret()).toMatch(/^[A-Z2-7]{32}$/u);
   });
 
-  it("normaliza minusculas, espacios y guion opcional; rechaza basura", () => {
-    expect(normalizeBackupCode("abcde fghjk")).toBe("ABCDE-FGHJK");
-    expect(normalizeBackupCode("abcdefghjk")).toBe("ABCDE-FGHJK");
-    expect(normalizeBackupCode("ABCDE-FGHJ")).toBeNull();
-    expect(normalizeBackupCode("ABCDE-FGHJ0")).toBeNull();
-  });
-
-  it("el hash es determinista, hex de 64 y distinto por codigo", () => {
-    expect(hashBackupCode("ABCDE-FGHJK")).toMatch(/^[0-9a-f]{64}$/u);
-    expect(hashBackupCode("ABCDE-FGHJK")).toBe(hashBackupCode("ABCDE-FGHJK"));
-    expect(hashBackupCode("ABCDE-FGHJK")).not.toBe(hashBackupCode("ABCDE-FGHJM"));
+  it("otpauth URI trae secreto, emisor y parámetros estándar", () => {
+    const uri = buildOtpauthUri({ secretBase32: "ABC234", accountName: "ana@example.com", issuer: "Atiende" });
+    expect(uri).toBe("otpauth://totp/Atiende:ana%40example.com?secret=ABC234&issuer=Atiende&algorithm=SHA1&digits=6&period=30");
   });
 });
 
 describe("cifrado del secreto TOTP", () => {
-  it("descifra con la misma clave, no con otra, y detecta manipulacion", () => {
-    const s = generateTotpSecret();
-    const stored = encryptTotpSecret(s, "secreto-app-1");
-    expect(stored).not.toContain(s);
-    expect(decryptTotpSecret(stored, "secreto-app-1")).toBe(s);
-    expect(() => decryptTotpSecret(stored, "otro-secreto")).toThrow();
-    const parts = stored.split(".");
-    parts[3] = Buffer.from("manipulado").toString("base64url");
-    expect(() => decryptTotpSecret(parts.join("."), "secreto-app-1")).toThrow();
-    expect(() => decryptTotpSecret("basura", "secreto-app-1")).toThrow();
+  const KEY = "una-llave-de-servidor-suficientemente-larga";
+  it("ida y vuelta", () => {
+    const secret = generateTotpSecret();
+    expect(decryptTotpSecret(encryptTotpSecret(secret, KEY, "user-1"), KEY, "user-1")).toBe(secret);
   });
-
-  it("dos cifrados del mismo secreto difieren (IV aleatorio)", () => {
-    expect(encryptTotpSecret("ABC", "k")).not.toBe(encryptTotpSecret("ABC", "k"));
+  it("falla con otra llave, con otro dueño (aad) o con el ciphertext alterado", () => {
+    const enc = encryptTotpSecret("JBSWY3DPEHPK3PXP", KEY, "user-1");
+    expect(() => decryptTotpSecret(enc, "otra-llave-de-servidor-distinta-xx", "user-1")).toThrow();
+    expect(() => decryptTotpSecret(enc, KEY, "user-2")).toThrow();
+    const parts = enc.split(".");
+    parts[3] = Buffer.from("alterado").toString("base64url");
+    expect(() => decryptTotpSecret(parts.join("."), KEY, "user-1")).toThrow();
+    expect(() => decryptTotpSecret("v2.a.b.c", KEY, "user-1")).toThrow();
+  });
+  it("rechaza material de llave vacio y produce cifrados distintos (IV aleatorio)", () => {
+    expect(() => encryptTotpSecret("X", "", "u")).toThrow();
+    expect(encryptTotpSecret("X", KEY, "u")).not.toBe(encryptTotpSecret("X", KEY, "u"));
   });
 });
 
 describe("token de step-up", () => {
-  const secret = "s".repeat(40);
-  const expected = { userId: "u1", organizationId: "o1", scope: "contract_sensitive" } as const;
-
-  it("emite y verifica un token atado a usuario, organizacion y alcance", async () => {
-    const t = await signStepUpToken(expected, secret);
-    const claims = await verifyStepUpToken(t, secret, expected);
-    expect(claims.sub).toBe("u1");
-    expect(claims.org).toBe("o1");
+  const SECRET = "jwt-secret-de-prueba-0123456789";
+  it("valida con el mismo access token y usuario", async () => {
+    const t = await signStepUpToken("u1", "access-A", SECRET);
+    await expect(verifyStepUpToken(t, "access-A", "u1", SECRET)).resolves.toMatchObject({ sub: "u1", type: "stepup" });
   });
-
-  it("rechaza otro usuario, otra organizacion, otro secreto y un token vencido", async () => {
-    const t = await signStepUpToken(expected, secret);
-    await expect(verifyStepUpToken(t, secret, { ...expected, userId: "u2" })).rejects.toBeInstanceOf(TokenInvalidError);
-    await expect(verifyStepUpToken(t, secret, { ...expected, organizationId: "o2" })).rejects.toBeInstanceOf(TokenInvalidError);
-    await expect(verifyStepUpToken(t, "otro".repeat(12), expected)).rejects.toBeInstanceOf(TokenInvalidError);
-    const vencido = await signStepUpToken(expected, secret, -10);
-    await expect(verifyStepUpToken(vencido, secret, expected)).rejects.toBeInstanceOf(TokenExpiredError);
+  it("rechaza otro access token (atadura ath), otro usuario y otra firma", async () => {
+    const t = await signStepUpToken("u1", "access-A", SECRET);
+    await expect(verifyStepUpToken(t, "access-B", "u1", SECRET)).rejects.toBeInstanceOf(TokenInvalidError);
+    await expect(verifyStepUpToken(t, "access-A", "u2", SECRET)).rejects.toBeInstanceOf(TokenInvalidError);
+    await expect(verifyStepUpToken(t, "access-A", "u1", "otro-secreto-distinto-0123456789")).rejects.toBeInstanceOf(TokenInvalidError);
   });
-
-  it("un access token no sirve como step-up ni al reves", async () => {
-    const access = await signAccessToken({ sub: "u1", org_id: "o1", vertical: "licitaciones", property_ids: null, email: "a@b.mx" }, secret, 60);
-    await expect(verifyStepUpToken(access, secret, expected)).rejects.toBeInstanceOf(TokenInvalidError);
-    const stepUp = await signStepUpToken(expected, secret);
-    await expect(verifyAccessToken(stepUp, secret)).rejects.toBeInstanceOf(TokenInvalidError);
+  it("rechaza un access token o refresh token usado como step-up", async () => {
+    const { signAccessToken } = await import("../src/index.ts");
+    const access = await signAccessToken({ sub: "u1", org_id: "o", vertical: "hoteles", property_ids: null, email: "a@b.c" }, SECRET, 60);
+    await expect(verifyStepUpToken(access, access, "u1", SECRET)).rejects.toBeInstanceOf(TokenInvalidError);
+  });
+  it("expira", async () => {
+    const t = await signStepUpToken("u1", "access-A", SECRET, -10);
+    await expect(verifyStepUpToken(t, "access-A", "u1", SECRET)).rejects.toBeInstanceOf(TokenExpiredError);
+  });
+  it("TTL por defecto de 5 minutos", () => {
+    expect(STEPUP_TTL_SECONDS).toBe(300);
   });
 });
