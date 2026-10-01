@@ -36,6 +36,36 @@ Fuera de workflows: `/.github/CODEOWNERS` (rutas sensibles; solo obliga revisió
 protección de `main` exige "Code Owners") y `/.github/dependabot.yml` (npm y Actions, semanal,
 agrupado, tope de 3 y 2 PRs abiertos; ningún PR se fusiona solo).
 
+## Workflows de plataforma agregados en PL-12
+
+Mismas reglas que PL-11: ninguno usa `pull_request_target`, ninguno usa secretos, ninguno despliega ni toca
+Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excepciones indicadas abajo).
+
+- `codeql.yml` — CodeQL (`javascript-typescript`, `build-mode: none`, suite `security-extended`) en cada PR, en
+  cada push a `main` y los lunes 09:17 UTC. El job de análisis agrega `security-events: write` (necesario para
+  subir resultados); en un PR desde un fork el token es de solo lectura, el análisis corre y la subida se omite.
+  No activar a la vez el "default setup" de code scanning desde la UI (hoy está sin configurar).
+- `clock-guard.yml` — guard anti-bombas de tiempo: `npm run test:clock-guard` (config
+  `vitest.clock-guard.config.ts`, 19 specs con relojes simulados: `hoyFechaNegocio`, `servidor-hoy` de
+  rentas/hoteles/despachos/licitaciones/citas, zona horaria, fin de mes) bajo `TZ` = `UTC`, `America/Merida`,
+  `America/Mexico_City` y `Pacific/Kiritimati`. Dispara en PR/push a `main` con `paths` de código, semanal
+  (domingo 08:43 UTC) y a mano. Para agregar una spec sensible al reloj, súmala a `SPECS_SENSIBLES_AL_RELOJ`;
+  un test de `packages/db/tests/ci-pl12-guards.spec.ts` verifica que cada ruta listada exista. Local:
+  `TZ=America/Merida npm run test:clock-guard -- --maxWorkers=2`.
+- `prod-health.yml` — cada 15 minutos hace `GET /health` (público) a la URL de la variable de repositorio
+  `PROD_BASE_URL` (no es secreto; sin ella el job sale en verde sin hacer nada) con 3 intentos; en rojo si no
+  responde 200 con `{ok:true}` o tarda más de 8 s, con el motivo en el resumen del job. Con la variable
+  `PROD_HEALTH_OPEN_ISSUE=true` además abre/comenta/cierra un issue `salud-produccion` (por eso el job declara
+  `issues: write`; apagado por defecto porque un issue público anuncia la caída). NO envía alertas por los
+  canales de la app: el despachador `ALERTAS_*`/`SENTRY_DSN` (docs/CREDENCIALES.md) se configura en Vercel.
+- Trinquete de lint: no es un workflow aparte sino un paso nuevo de `ci-checks.yml` (`npm run lint:ratchet`,
+  `scripts/lint-ratchet/`): falla si las advertencias de ESLint superan `scripts/lint-ratchet/baseline.json`
+  (hoy 1). El baseline solo baja: `node --experimental-strip-types scripts/lint-ratchet/ratchet.ts --update`
+  lo baja si hay menos, nunca lo sube.
+- Fuera de workflows: `docs/ROLLBACK.md` + `scripts/rollback/rollback.sh` (rollback MANUAL de Vercel por
+  Javier, nunca desde CI) y `docs/E2E-PLAYWRIGHT.md` + `e2e/` (diseño y esqueleto inactivo de Playwright; no hay
+  workflow de e2e ni dependencia instalada).
+
 ## ci-checks.yml
 
 Agregado 19-sep-2026, para cerrar un hueco que `postgres-real-gate.yml` (ver

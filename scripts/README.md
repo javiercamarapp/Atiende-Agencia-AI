@@ -10,6 +10,13 @@ Empaqueta `apps/api` como la función serverless de Vercel (`api/index.ts` →
 `apps/api/src/vercel.ts`) — ver el comentario de cabecera del propio archivo y
 `docs/DEPLOY.md`.
 
+## `lint-ratchet/`, `health-check/`, `rollback/` (PL-12)
+
+`lint-ratchet/ratchet.ts` (`npm run lint:ratchet`): falla si las advertencias de ESLint superan
+`baseline.json`. `health-check/check.ts`: sondeo de `/health` de una URL (lo usa `prod-health.yml`; no envía
+nada). `rollback/rollback.sh`: envoltorio manual de `vercel rollback`, ver `docs/ROLLBACK.md`. Pruebas:
+`packages/db/tests/ci-pl12-guards.spec.ts`.
+
 ## `verify-migration-versions/`
 
 Guard puro (sin Postgres) que corre dentro de `npm run test:unit` Y como su
