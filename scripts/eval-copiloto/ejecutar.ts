@@ -120,7 +120,7 @@ export function construirPlan(args: Map<string, string>, todos: readonly CasoEva
     if (casos.length === 0) throw new Error("fase cfo: no hay casos CFO/superadmin (en main no existe un catalogo de datos de superadmin; ver docs/EVAL-COPILOTO.md)");
   }
 
-  const tope = fase === "humo" ? TOPE_HUMO_USD : fase === "piloto" ? 8 : TOPE_TOTAL_USD;
+  const tope = fase === "humo" ? TOPE_HUMO_USD : fase === "piloto" ? 12 : TOPE_TOTAL_USD;
   const maxUsd = numero(args, "max-usd", tope, 0.01, TOPE_TOTAL_USD);
   if (fase === "humo" && maxUsd > TOPE_HUMO_USD) throw new Error(`el humo no puede pasar de ${TOPE_HUMO_USD} USD`);
   return { fase, modo, modelos, casos, k, maxUsd };

@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   console.log(`fase=${plan.fase} modo=${plan.modo} casos=${plan.casos.length} k=${plan.k} modelos=${plan.modelos.length} tope=${plan.maxUsd} USD`);
   console.log(`proyeccion de gasto (8k tokens de entrada y 900 de salida por turno): ${p.totalUsd} USD`);
   for (const m of p.porModelo) console.log(`  ${m.modelo}: ${m.usd} USD`);
+  if (p.totalUsd > plan.maxUsd) console.warn(`AVISO: la proyeccion (${p.totalUsd} USD) supera el tope (${plan.maxUsd} USD): la corrida se cortara al llegar al tope y reportara los casos no corridos. La proyeccion es conservadora (el humo real salio ~3 veces mas barato).`);
   if (args.has("dry-run")) return;
 
   if (plan.modo === "real") {
