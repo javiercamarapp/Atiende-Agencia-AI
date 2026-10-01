@@ -385,6 +385,17 @@ begin
     return h;
   end if;
 
+  -- Dedupe natural: el mismo contacto ya tiene un hold ABIERTO para el mismo tipo y fechas (otra llave, mismo pedido: un
+  -- reintento del LLM, un mensaje repetido) => se devuelve ese, no se retiene una segunda habitacion.
+  select * into h from hoteles.booking_hold
+   where property_id = p_property_id and contact_phone = v_phone and room_type_id = p_room_type_id
+     and check_in_date = p_check_in and check_out_date = p_check_out
+     and status in ('pendiente_aprobacion', 'pendiente_pago', 'aprobado') and expires_at > v_now
+   order by created_at limit 1;
+  if found then
+    return h;
+  end if;
+
   v_nights := hoteles.agent_validate_stay(p_property_id, p_check_in, p_check_out, v_now);
   select max_occupancy into v_max_occ from hoteles.room_type where id = p_room_type_id and property_id = p_property_id;
   if not found then

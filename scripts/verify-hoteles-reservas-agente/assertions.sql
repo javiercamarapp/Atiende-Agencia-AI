@@ -299,6 +299,15 @@ select public.verify_assert(public.verify_booked('00000000-0000-0000-0000-000000
 select count(*) as un_solo_hold_deberia_ser_1 from hoteles.booking_hold;
 rollback;
 
+\echo '=== 12b. dedupe natural: el mismo telefono, tipo y fechas con OTRA llave devuelve el hold abierto (no retiene una segunda habitacion) ==='
+begin;
+select public.verify_enable();
+select public.verify_hold('hold-dedupe-00001');
+select public.verify_assert(public.verify_hold('hold-dedupe-00002') = (select id from public.verify_hid()), 'mismo hold');
+select public.verify_su();
+select count(*) as una_sola_retencion_deberia_ser_1 from hoteles.booking_hold h where public.verify_booked('00000000-0000-0000-0000-0000000d0001', '2031-06-12') = 1;
+rollback;
+
 \echo '=== 13. el precio lo calcula la base: un total esperado distinto (descuento pedido, precio viejo o inventado) se rechaza (22023) ==='
 begin;
 select public.verify_enable();
