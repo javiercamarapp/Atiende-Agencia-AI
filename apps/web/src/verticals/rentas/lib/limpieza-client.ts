@@ -237,3 +237,19 @@ export async function fetchIncidencias(fetchImpl: typeof fetch, apiBaseUrl: stri
   const body = await fetchJson<{ incidencias: readonly IncidenciaMantenimiento[] }>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/unidades/${unidadId}/incidencias`, token);
   return body.incidencias;
 }
+
+/** Rn-05 -- confirma el bloqueo de mantenimiento que propuso una incidencia GRAVE
+ *  (POST .../incidencias/:incidenciaId/confirmar-bloqueo). Sin `rango` el servidor usa el
+ *  propuesto. `conflictosCapaCruzada` > 0 = el bloqueo solapa reservas (se registran como
+ *  conflicto para revisión humana; ninguna reserva se cancela). */
+export async function confirmarBloqueoIncidencia(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  unidadId: string,
+  incidenciaId: string,
+  rango?: { readonly inicio: string; readonly fin: string },
+): Promise<{ incidenciaId: string; bloqueoId: string; conflictosCapaCruzada: number }> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/unidades/${unidadId}/incidencias/${incidenciaId}/confirmar-bloqueo`, token, "POST", rango ? { rango } : {});
+}
