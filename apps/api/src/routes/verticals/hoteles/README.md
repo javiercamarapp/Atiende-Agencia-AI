@@ -230,3 +230,16 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
 - Gobierno de agentes: el turno de WhatsApp (`production/hoteles-agentes-gobierno.ts`) y el barrido de revenue
   consultan el kill switch y el presupuesto de su agente por property; pausado o sin presupuesto, el mensaje
   se deriva a una persona. Base sin la 035: lecturas `disponible:false`, escrituras 503, comportamiento previo.
+- `recepcion.ts` (H-28, migración 038) — vista de RECEPCIÓN: `GET /hoteles/:propertyId/recepcion?fecha=` (llegadas, salidas y en casa del día en
+  la zona horaria de la property; rack de habitaciones con el estado de limpieza de `housekeeping/tablero` y la ocupación por reservas; solo
+  la bandera `identidadRegistrada`, nunca el documento), `POST .../recepcion/reservas/:id/check-in` (confirmada → check_in → en_estancia de
+  un clic; exige llegada no futura, estancia vigente, habitación del mismo tipo, limpia y sin traslape con otra reserva activa),
+  `POST .../check-out` (en_estancia → check_out, la habitación queda sucia; NO cierra el folio, avisa cuántos siguen abiertos) y
+  `POST .../cambiar-habitacion` (función atómica `hoteles.change_reservation_room` con bitácora). Ven owner/gm/frontdesk/reservations; operan
+  owner/gm/frontdesk. Base sin la 038: tablero y check-out igual, check-in cae a la asignación simple con revisión de traslape en la
+  aplicación, cambio de habitación responde 503 "no disponible aún".
+- `huespedes.ts` (H-27, migración 038) — FICHA DE HUÉSPED: `GET /hoteles/:propertyId/huespedes/:guestId/ficha` (perfil, resumen e historial de
+  estancias con monto neto en centavos, notas y preferencias, solicitudes de contacto de voz/WhatsApp enlazadas por teléfono, consentimientos,
+  bandera de identidad y de ARCO) y `POST .../notas` / `.../notas/:id/archivar`. Minimización: nunca el documento; una nota con 13 a 19
+  dígitos (tarjeta/documento) se rechaza; con ARCO de cancelación u oposición en curso no se agregan notas (409 `arco_en_curso`). Roles:
+  owner/gm/frontdesk/reservations. Base sin la 031/032/038: perfil e historial siguen, lo que falta va como `null` o `disponible:false`.

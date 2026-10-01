@@ -448,3 +448,11 @@ función solo se respetan en sesión de sistema (un usuario no puede rebobinar l
 contra Postgres real: `scripts/verify-hoteles-agentes-aprobaciones/`. Fuera de esta entrega: ejecutores
 automáticos de descuento/reembolso/cargo/mensaje masivo (hoy una persona aplica el cambio y registra la
 referencia), envío real de plantillas a Meta, y que el agente de WhatsApp proponga acciones sensibles.
+
+**H-28 recepción y H-27 ficha de huésped (migración 038).** `src/recepcion/` (clasificación pura del día en llegadas/salidas/en casa, puerto
+`RecepcionRepository`, Postgres con SAVEPOINT contra base sin migrar e in-memory) y `src/huespedes/` (ficha, notas, errores de dominio).
+Modelo SQL en `migrations/038_hoteles_recepcion_ficha_huesped.sql`: `hoteles.guest_note` (GRANT de columna, minimización, bloqueo por ARCO),
+`hoteles.reservation_room_change` (append-only) y las funciones `security definer` `change_reservation_room` (misma categoría, sin traslape,
+habitación apta, bitácora, advisory lock por habitación) y `guest_has_arco_restriction` (solo un booleano). Verificación contra Postgres
+real: `scripts/verify-hoteles-recepcion-ficha/`. Fuera de esta entrega: cambio de habitación a OTRA categoría (mueve inventario y tarifa: es una
+reserva nueva), edición del perfil del huésped (la rectificación sigue el flujo ARCO) y exportación de datos del huésped (H-30).

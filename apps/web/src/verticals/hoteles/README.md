@@ -122,3 +122,15 @@ asumido:
   siguen sin ejecutarse de verdad). Sin ingesta automática desde
   Google/Booking/TripAdvisor — las reseñas se capturan manualmente hasta que
   exista esa credencial.
+
+H-28 / H-27 / H-35 (paridad 2):
+
+- `pages/Recepcion.tsx` (`lib/recepcion-client.ts`) — recepción: resumen del día, llegadas/salidas/en casa, rack con limpieza, check-in y
+  check-out de un clic y cambio de habitación; solo owner/gm/frontdesk operan, reservations ve. El documento nunca se muestra: solo si ya hay
+  identidad registrada (con enlace a Identidad).
+- `pages/Huespedes.tsx` y `pages/HuespedFicha.tsx` (`lib/huespedes-client.ts`) — búsqueda del catálogo y ficha con historial, notas y
+  preferencias, contactos, consentimientos y estado ARCO. Lo que la base sin migrar aún no tiene se dice "no disponible aún".
+- H-35, botones para endpoints que ya existían: `Folio.tsx` (transferir un cargo a otro folio abierto de la misma reserva y dividir el folio),
+  `CotizadorPanel.tsx` (botón Cotizar en Reservas, `POST /quotes`), `TurnosPanel.tsx` (pestaña Turnos de Housekeeping: cumplimiento de la LFT y
+  publicación de la plantilla; el 422 se muestra con su cita legal) y `RevenueHerramientas.tsx` (explicar un precio, verificar paridad y
+  benchmark de compset; solo owner/gm).
