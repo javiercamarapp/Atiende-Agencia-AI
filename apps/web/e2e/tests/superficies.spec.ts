@@ -6,10 +6,7 @@ import { afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
-import { despachos } from "../mock-api/fixtures/despachos.ts";
-import { hoteles } from "../mock-api/fixtures/hoteles.ts";
-import { licitaciones } from "../mock-api/fixtures/licitaciones.ts";
-import { rentas } from "../mock-api/fixtures/rentas.ts";
+import { citas } from "../mock-api/fixtures/citas.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 interface Pantalla {
@@ -18,13 +15,14 @@ interface Pantalla {
   readonly ruta: string;
 }
 
+// Solo pantallas con tabla Y fixture en la API simulada (si no, la pagina muestra un estado de error sin tabla).
 const PANTALLAS: readonly Pantalla[] = [
-  { nombre: "restaurantes-staff", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/staff` },
-  { nombre: "hoteles-tickets", objetivo: "hoteles", ruta: `/hoteles/${hoteles.orgSlug}/tickets` },
-  { nombre: "despachos-cobranza", objetivo: "despachos", ruta: `/despachos/${despachos.orgSlug}/cobranza` },
-  { nombre: "licitaciones-convocatorias", objetivo: "licitaciones", ruta: `/licitaciones/${licitaciones.orgSlug}/convocatorias` },
-  { nombre: "rentas-auditoria", objetivo: "rentas", ruta: `/rentas/${rentas.orgSlug}/auditoria` },
-  { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin/gestion-organizaciones" },
+  { nombre: "citas-proveedores", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/proveedores` },
+  { nombre: "citas-servicios", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/servicios` },
+  { nombre: "citas-clientes", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/clientes` },
+  { nombre: "citas-agenda", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/agenda` },
+  { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos` },
+  { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
 ];
 
 test.describe("superficies de Likida @ds @oscuro", () => {
@@ -33,8 +31,8 @@ test.describe("superficies de Likida @ds @oscuro", () => {
       await iniciarSesion(pantalla.objetivo, pantalla.objetivo === "superadmin" ? undefined : "owner");
       await page.goto(pantalla.ruta);
       await afirmarPantallaSana(page, pantalla.nombre);
-      // Espera a que cargue algo con superficie (tabla o tarjetas) antes de medir.
-      await expect(page.locator("main .card").first()).toBeVisible();
+      // La pantalla debe pintar una tabla real (no un estado de error o de carga) antes de medir.
+      await expect(page.locator("main table").first()).toBeVisible();
       await afirmarSinScrollHorizontal(page);
 
       const medidas = await page.evaluate(() => {
@@ -73,9 +71,9 @@ test.describe("superficies de Likida @ds @oscuro", () => {
   }
 
   test("receta medida: tarjeta de radio 16 con hairline, cabecera mono de 10 px y celdas de 12 x 8 px (tolerancia 1 px)", async ({ page, iniciarSesion, vigilante }) => {
-    await iniciarSesion("restaurantes", "owner");
-    await page.goto(`/restaurantes/${restaurantes.orgSlug}/staff`);
-    await afirmarPantallaSana(page, "restaurantes staff");
+    await iniciarSesion("citas", "owner");
+    await page.goto(`/citas/${citas.orgSlug}/proveedores`);
+    await afirmarPantallaSana(page, "citas proveedores");
     const tabla = page.locator("main table").first();
     await expect(tabla).toBeVisible();
     const m = await page.evaluate(() => {
