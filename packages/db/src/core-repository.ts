@@ -202,6 +202,26 @@ export interface NotificationRow {
   readonly createdAt: string;
   /** null = no leída. */
   readonly readAt: string | null;
+  /** Campos del productor compartido (migración 0039). Contra la base sin migrar llegan en
+   *  `null` / "info" (las filas de 0013 no los traen). */
+  readonly organizationId: string | null;
+  readonly tipo: string | null;
+  readonly categoria: string | null;
+  readonly severidad: NotificationSeverity;
+  /** Ruta interna relativa de apps/web (ya con el slug resuelto por la base). */
+  readonly enlace: string | null;
+}
+
+export type NotificationSeverity = "info" | "atencion" | "critica";
+
+/** Filtros de lectura de la campana / página de notificaciones (todos opcionales). */
+export interface ListNotificationsOptions {
+  /** 1..100, default 50. */
+  readonly limit?: number;
+  /** ISO 8601: solo notificaciones creadas ANTES de esta fecha (paginación por fecha). */
+  readonly before?: string;
+  readonly soloNoLeidas?: boolean;
+  readonly categoria?: string;
 }
 
 /** Fila de `core.organization_billing` cruzada con `core.get_organization_billing_
@@ -397,7 +417,7 @@ export interface CoreRepository {
    *  aparte porque `core.list_notifications_for_staff` recibe `p_staff_id` explícito y
    *  no depende de `auth.uid()` — el caller HTTP (`routes/notifications.ts`) siempre
    *  pasa `c.get("userId")` de la sesión JWT ya verificada, nunca un id ajeno. */
-  listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]>;
+  listNotificationsForStaff(staffId: string, options?: ListNotificationsOptions): Promise<readonly NotificationRow[]>;
   /** Conteo real para el badge de la campana — misma fuente de verdad que
    *  `listNotificationsForStaff`, nunca recalculado en cliente restando arreglos. */
   countUnreadNotificationsForStaff(staffId: string): Promise<number>;

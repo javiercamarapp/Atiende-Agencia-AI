@@ -14,6 +14,7 @@
 // acepta GET/POST con el secreto interno.
 import { Hono } from "hono";
 import { PostgresGuestTicketRepository, TicketUnavailableError, type GuestTicketRepository, type SlaSweepItem } from "@atiende/domain-hoteles";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -38,7 +39,20 @@ export async function runTicketsSlaSweep(deps: AppDeps, now: Date = new Date()):
     try {
       const items = await deps.engine.withAppSession({ userId: null }, async (db) => {
         const repo: GuestTicketRepository = deps.hotelesTicketsRepo ? deps.hotelesTicketsRepo(db) : new PostgresGuestTicketRepository(db);
-        return repo.sweepSla(p.propertyId, now);
+        const barrido = await repo.sweepSla(p.propertyId, now);
+        // Aviso in-app (campana) a gerencia/recepcion cuando hay tickets ESCALADOS por SLA vencido: una por
+        // propiedad por dia (clave de dedupe). Dentro de un SAVEPOINT: contra la base sin migrar no revierte el barrido.
+        const escalados = barrido.filter((i) => i.kind === "escalado").length;
+        if (escalados > 0) {
+          await emitirNotificacion(db, {
+            evento: "hoteles.ticket.sla_vencido",
+            organizationId: p.organizationId,
+            propertyId: p.propertyId,
+            clave: `${p.propertyId}:${now.toISOString().slice(0, 10)}`,
+            parametros: { cantidad: escalados },
+          });
+        }
+        return barrido;
       });
       results.push({ ...base, omitida: null, escalados: items.filter((i) => i.kind === "escalado").length, avisados: items.filter((i) => i.kind === "aviso_sla").length, items, error: null });
     } catch (err) {

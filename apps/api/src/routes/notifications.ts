@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { NotificationNotFoundError } from "@atiende/db";
-import type { NotificationRow } from "@atiende/db";
+import type { ListNotificationsOptions, NotificationRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
 
@@ -31,7 +31,39 @@ function serializeNotification(n: NotificationRow) {
     entidadId: n.entidadId,
     createdAt: n.createdAt,
     readAt: n.readAt,
+    organizationId: n.organizationId,
+    tipo: n.tipo,
+    categoria: n.categoria,
+    severidad: n.severidad,
+    enlace: n.enlace,
   };
+}
+
+const CATEGORIA_QUERY_RE = /^[a-z][a-z_]{1,39}$/;
+
+/** Filtros opcionales de `GET /notifications` (`limit` 1..100, `before` ISO 8601, `unread=1`, `categoria`).
+ *  Un valor invalido es 400: nunca se ignora en silencio un filtro que cambiaria lo que se muestra. */
+function parseListOptions(query: Record<string, string>): ListNotificationsOptions {
+  const out: { limit?: number; before?: string; soloNoLeidas?: boolean; categoria?: string } = {};
+  if (query.limit !== undefined) {
+    const n = Number(query.limit);
+    if (!Number.isInteger(n) || n < 1 || n > 100) throw Errors.validation("limit debe ser un entero entre 1 y 100");
+    out.limit = n;
+  }
+  if (query.before !== undefined) {
+    const t = Date.parse(query.before);
+    if (Number.isNaN(t)) throw Errors.validation("before debe ser una fecha ISO 8601");
+    out.before = new Date(t).toISOString();
+  }
+  if (query.unread !== undefined) {
+    if (query.unread !== "1" && query.unread !== "0") throw Errors.validation("unread debe ser 1 o 0");
+    out.soloNoLeidas = query.unread === "1";
+  }
+  if (query.categoria !== undefined) {
+    if (!CATEGORIA_QUERY_RE.test(query.categoria)) throw Errors.validation("categoria invalida");
+    out.categoria = query.categoria;
+  }
+  return out;
 }
 
 export function notificationsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -45,8 +77,9 @@ export function notificationsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // dropdown, sin una segunda query aparte para el número.
   app.get("/notifications", async (c) => {
     const staffId = c.get("userId");
+    const options = parseListOptions(c.req.query());
     const [notifications, unreadCount] = await Promise.all([
-      deps.coreRepo.listNotificationsForStaff(staffId),
+      deps.coreRepo.listNotificationsForStaff(staffId, options),
       deps.coreRepo.countUnreadNotificationsForStaff(staffId),
     ]);
     return c.json({ notifications: notifications.map(serializeNotification), unreadCount });
