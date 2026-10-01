@@ -196,3 +196,23 @@ categoría, rotulado como insumo), nómina procesada (ISR retenido/IMSS por empl
 los recibos CFDI tipo N ingeridos), CFDI emitidos por el contribuyente (IVA trasladado,
 saldo de IVA e ISR del período) y la asignación de trabajo por miembro del staff (la carga
 de trabajo es por cliente).
+
+## D-11 — Cola de cobranza (gestiones, reporte de cartera, WhatsApp en cola)
+
+Complementa la cobranza de la Fase 10 sin duplicarla: la cartera sigue siendo `despachos.receivable` + `despachos.invoice`;
+lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cobranza.sql` (espejo `20240101000248`).
+
+- **Gestiones** (`despachos.cobranza_gestion`): promesa de pago, recordatorio, llamada y nota sobre una cuenta por cobrar
+  (el cliente es el RFC receptor del CFDI). Montos de promesa en **centavos enteros MXN**; estado `pendiente` →
+  `cumplida`/`incumplida`/`cancelada` (nunca se borran). Escritura solo por funciones `security definer` (admin/contador).
+- **Cola**: las gestiones pendientes de cuentas vivas, ordenadas por urgencia (`ordenarCola`, puro) contra la fecha de negocio
+  de la property (por omisión `America/Mexico_City`).
+- **Reporte de cartera y antigüedad** (`construirReporteCartera`): por cliente y por CFDI, cubetas corriente / 1-30 / 31-60 /
+  61-90 / +90. Entrega JSON y PDF reutilizando el render de `reporte-pdf.ts` (pdf-lib; no se agregó ninguna dependencia). Solo lee tablas
+  ya existentes, así que funciona aunque la migración 017 no esté aplicada.
+- **WhatsApp**: consentimiento opt-in/opt-out por cliente (con evidencia obligatoria para el opt-in) y un outbox
+  (`cobranza_whatsapp_outbox`) donde los recordatorios quedan en `pendiente`. **Nada los envía**: no existe despachador ni credencial de
+  WhatsApp para despachos; conectarlo es trabajo futuro. Un opt-out cancela los pendientes del cliente.
+- **Base sin migrar**: el adaptador Postgres corre cada operación bajo `runWithSavepointFallback`; sin la 017 las lecturas devuelven
+  `disponible: false` y las escrituras responden 503, nunca un 500.
+- **Verificación**: `scripts/verify-despachos-cola-cobranza/` (Postgres real, 78 escenarios, integrado al gate de CI).

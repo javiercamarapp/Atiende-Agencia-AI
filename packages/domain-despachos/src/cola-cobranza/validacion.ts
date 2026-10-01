@@ -23,7 +23,7 @@ export function esGestionTipo(v: unknown): v is GestionTipo {
 }
 
 /** Devuelve el primer motivo de rechazo en espanol, o `null` si la gestion es valida. `hoy` = fecha de negocio. */
-export function validarNuevaGestion(g: Omit<NuevaGestionInput, "propertyId">, hoy: string): string | null {
+export function validarNuevaGestion(g: Pick<NuevaGestionInput, "tipo" | "nota" | "montoPromesaCentavos" | "fechaPromesa" | "fechaSeguimiento">, hoy: string): string | null {
   if (g.nota !== null && (g.nota.trim().length < 1 || g.nota.trim().length > MAX_NOTA)) return `nota: debe tener entre 1 y ${MAX_NOTA} caracteres.`;
   if ((g.tipo === "llamada" || g.tipo === "nota") && g.nota === null) return "nota: es obligatoria para una llamada o una nota.";
   if (g.fechaSeguimiento !== null) {

@@ -166,13 +166,13 @@ describe("InMemoryColaCobranzaRepository", () => {
     const b = await repo.encolarWhatsApp(msg);
     expect(a).toMatchObject({ valor: { duplicado: false } });
     expect(b).toMatchObject({ valor: { duplicado: true } });
-    expect((await repo.listarOutbox(PROP)) as { valor: unknown[] }).toMatchObject({ valor: [{ estado: "pendiente" }] });
+    expect((await repo.listarOutbox(PROP)) as unknown as { valor: unknown[] }).toMatchObject({ valor: [{ estado: "pendiente" }] });
     // El opt-in de un cliente no habilita a otro de la misma property.
     await expect(repo.encolarWhatsApp({ ...msg, receivableId: "c2", dedupeKey: "k2" })).rejects.toBeInstanceOf(ColaSinConsentimientoError);
     // Una cuenta pagada nunca recibe recordatorios.
     await expect(repo.encolarWhatsApp({ ...msg, receivableId: "pagada", dedupeKey: "k3" })).rejects.toBeInstanceOf(ColaEntradaInvalidaError);
     await repo.fijarConsentimiento({ propertyId: PROP, rfcReceptor: "RRR010101RR1", telefono: "+529981234567", estado: "opt_out", evidencia: null });
-    expect((await repo.listarOutbox(PROP)) as { valor: unknown[] }).toMatchObject({ valor: [{ estado: "cancelado" }] });
+    expect((await repo.listarOutbox(PROP)) as unknown as { valor: unknown[] }).toMatchObject({ valor: [{ estado: "cancelado" }] });
     await expect(repo.encolarWhatsApp({ ...msg, dedupeKey: "k4" })).rejects.toBeInstanceOf(ColaSinConsentimientoError);
   });
 
@@ -181,7 +181,7 @@ describe("InMemoryColaCobranzaRepository", () => {
     await expect(repo.fijarConsentimiento({ propertyId: OTRA, rfcReceptor: "RRS020202RS2", telefono: "+529981234567", estado: "opt_out", evidencia: null })).rejects.toBeInstanceOf(ColaNoEncontradaError);
     await repo.fijarConsentimiento({ propertyId: PROP, rfcReceptor: "RRR010101RR1", telefono: "+529981234567", estado: "opt_in", evidencia: "ok" });
     await repo.encolarWhatsApp({ propertyId: PROP, receivableId: CUENTA, cuerpo: "x", dedupeKey: "k" });
-    const lista = (await repo.listarOutbox(PROP)) as { valor: Record<string, unknown>[] };
+    const lista = (await repo.listarOutbox(PROP)) as unknown as { valor: Record<string, unknown>[] };
     expect(Object.keys(lista.valor[0]!)).not.toContain("telefono");
   });
 
