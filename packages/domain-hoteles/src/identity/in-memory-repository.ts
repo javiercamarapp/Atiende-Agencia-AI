@@ -196,6 +196,41 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     return p && p.propertyId === propertyId ? p : null;
   }
 
+  /** Para adaptadores de prueba hermanos: la identidad por id, sin filtrar por property. */
+  getById(vaultId: string): IdentityVaultRecord | null {
+    const e = this.vault.get(vaultId);
+    return e ? this.strip(e) : null;
+  }
+
+  /** Bloqueo manual de una identidad ACTIVA (espejo de `hoteles.block_identity`); lo usa el adaptador de privacidad en memoria. */
+  async blockIdentity(vaultId: string, reason: string, actorUserId: string): Promise<void> {
+    this.assertAvailable("identity-block");
+    const e = this.vault.get(vaultId);
+    if (!e) throw new IdentityAccessDeniedError("identity-block");
+    if (e.status === "purgado") throw new IdentityPurgedError();
+    if (e.status === "bloqueada") throw new IdentityBlockedError("La identidad ya esta bloqueada.");
+    this.blockEntry(e, "manual", this.businessDate, actorUserId, reason);
+  }
+
+  /** Bloquea las identidades ACTIVAS de un huesped (ARCO de cancelacion procedente); devuelve cuantas bloqueo. */
+  blockGuestIdentities(guestId: string, actorUserId: string, note: string): number {
+    let n = 0;
+    for (const e of [...this.vault.values()]) {
+      if (e.guestId !== guestId || e.status !== "activo") continue;
+      this.blockEntry(e, "arco", this.businessDate, actorUserId, note);
+      n += 1;
+    }
+    return n;
+  }
+
+  /** Bloquea UNA identidad activa por ARCO de cancelacion; `false` si no estaba activa. */
+  blockIdentityForArco(vaultId: string, actorUserId: string, note: string): boolean {
+    const e = this.vault.get(vaultId);
+    if (!e || e.status !== "activo") return false;
+    this.blockEntry(e, "arco", this.businessDate, actorUserId, note);
+    return true;
+  }
+
   private blockEntry(e: VaultEntry, reason: NonNullable<IdentityVaultRecord["blockReason"]>, today: string, actorUserId: string | null, note: string | null): void {
     this.vault.set(e.id, {
       ...e, status: "bloqueada", blockedAt: this.now(), blockedUntil: addDaysYmd(today, this.windowDays), blockWindowDays: this.windowDays, blockReason: reason, blockedBy: actorUserId,
