@@ -23,6 +23,7 @@ import {
   type NewIncidentInput,
   type NewLegalHoldInput,
   type NewPrivacyNoticeInput,
+  type PrivacyNoticeRecord,
 } from "./types.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -222,4 +223,17 @@ export function parseLegalHoldInput(raw: unknown, vaultId: string): NewLegalHold
     authorizationRef: text(b.autorizacion, "autorizacion", 3, 200),
     incidentId: optionalUuid(b.incidenteId, "incidenteId"),
   };
+}
+
+/** Verifica contra el aviso (ANTES de capturar): se aceptan EXACTAMENTE las finalidades obligatorias y las opcionales son un subconjunto.
+ *  La base lo vuelve a exigir con un trigger; aqui da un error claro y evita capturas a medias en adaptadores sin transaccion real. */
+export function assertConsentMatchesNotice(fields: Pick<ConsentFields, "acceptedMandatory" | "acceptedOptional">, notice: Pick<PrivacyNoticeRecord, "version" | "mandatoryPurposes" | "optionalPurposes">): void {
+  const accepted = new Set(fields.acceptedMandatory);
+  const missing = notice.mandatoryPurposes.filter((p) => !accepted.has(p));
+  const extra = fields.acceptedMandatory.filter((p) => !notice.mandatoryPurposes.includes(p));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new PrivacyInvalidInputError(`finalidadesObligatorias: se deben aceptar exactamente las del aviso ${notice.version} (${notice.mandatoryPurposes.join("; ")}).`);
+  }
+  const unknown = fields.acceptedOptional.filter((p) => !notice.optionalPurposes.includes(p));
+  if (unknown.length > 0) throw new PrivacyInvalidInputError(`finalidadesOpcionales: no estan en el aviso ${notice.version}: ${unknown.join("; ")}.`);
 }
