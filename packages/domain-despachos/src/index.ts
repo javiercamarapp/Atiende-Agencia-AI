@@ -90,6 +90,9 @@ export type {
   NuevoVencimiento,
 } from "./vencimientos/engine.ts";
 
+export { RepRfcAjenoError, analizarComplementoPago, proporcionCentavos } from "./cfdi/rep.ts";
+export type { AnalisisDocumentoRep, AnalisisRep, FacturaLigable, FlujoRep, FuenteIvaRep } from "./cfdi/rep.ts";
+
 export {
   ANIOS_CALENDARIO_VERIFICADOS,
   RegimenNoSoportadoError,
