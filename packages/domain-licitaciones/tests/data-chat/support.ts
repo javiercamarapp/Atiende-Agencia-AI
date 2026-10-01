@@ -6,6 +6,7 @@ import {
   type GoNoGoRow,
   type LicitacionesDataChatReader,
   type LicitacionesDataChatWindow,
+  type PreguntaJuntaRow,
   type PropuestaEstadoRow,
   type RenovacionRow,
   type SemaforoRow,
@@ -61,6 +62,11 @@ export class FakeReader implements LicitacionesDataChatReader {
     { contrato: "IMSS-2025-044", titulo: "Servicio de limpieza hospitalaria", dependencia: "IMSS-Bienestar", finVigencia: "2026-11-15", diasRestantes: 47, opcionRenovacion: true, status: "en_ejecucion", alertaPendiente: true },
     { contrato: null, titulo: "Mantenimiento de aires", dependencia: null, finVigencia: "2026-12-01", diasRestantes: 63, opcionRenovacion: false, status: "adjudicado", alertaPendiente: false },
   ];
+  junta: readonly PreguntaJuntaRow[] = [
+    { titulo: "Suministro de uniformes escolares", pregunta: "¿Se aceptan tallas intermedias en la partida 3?", tema: "tecnico", prioridad: "alta", status: "aprobada", limitePreguntas: "2026-10-02 15:00", diasLimite: 3, junta: "2026-10-05 11:00" },
+    { titulo: "Servicio de limpieza hospitalaria", pregunta: "¿El anexo 4 sustituye al formato de la convocatoria?", tema: "administrativo", prioridad: "media", status: "borrador", limitePreguntas: null, diasLimite: null, junta: null },
+    { titulo: "Servicio de limpieza hospitalaria", pregunta: "¿Cómo se acredita la experiencia en el apartado legal?", tema: "legal", prioridad: "baja", status: "enviada", limitePreguntas: "2026-10-12 12:00", diasLimite: 13, junta: "2026-10-14 10:00" },
+  ];
   failWith: Error | null = null;
 
   private enter(method: string, window?: LicitacionesDataChatWindow, extra?: unknown): void {
@@ -91,6 +97,10 @@ export class FakeReader implements LicitacionesDataChatReader {
   async fallos(w: LicitacionesDataChatWindow) {
     this.enter("fallos", w);
     return this.fallosRows;
+  }
+  async preguntasJunta(w: LicitacionesDataChatWindow) {
+    this.enter("preguntasJunta", w);
+    return this.junta;
   }
   async renovaciones(w: LicitacionesDataChatWindow, horizonteDias: number) {
     this.enter("renovaciones", w, horizonteDias);

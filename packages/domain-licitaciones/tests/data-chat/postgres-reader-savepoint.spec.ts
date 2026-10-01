@@ -40,6 +40,7 @@ describe("PostgresLicitacionesDataChatReader — base sin migrar", () => {
       ["propuestas", (r) => r.propuestasPorEstado(WINDOW), /from licitaciones\.proposal p/i],
       ["fallos", (r) => r.fallos(WINDOW), /tender_resolution/i],
       ["renovaciones", (r) => r.renovaciones(WINDOW, 90), /from licitaciones\.contract c/i],
+      ["junta", (r) => r.preguntasJunta(WINDOW), /from licitaciones\.junta_question q/i],
     ];
     for (const err of [pgError("42703", 'column t.contracting_body does not exist'), pgError("42883", "function licitaciones.algo(uuid) does not exist")]) {
       for (const [name, run, match] of calls) {
@@ -88,6 +89,7 @@ describe("PostgresLicitacionesDataChatReader — base sin migrar", () => {
       { match: /monto_mxn/i, respond: () => [{ titulo: "Uniformes", dependencia: null, entidad: null, status: "go", fecha_limite: "2026-10-01 10:00", dias_restantes: "2", monto_mxn: "1250000.50", moneda: "MXN" }] },
       { match: /group by b\.semaforo/i, respond: () => [{ semaforo: "Rojo (3 días o menos)", convocatorias: "2" }] },
       { match: /go_no_go_decision/i, respond: () => [{ titulo: "Uniformes", decision: "go", elegibilidad: "cumple", puntaje: "87.50", fecha: "2026-09-20", motivo: null }] },
+      { match: /from licitaciones\.junta_question q/i, respond: () => [{ titulo: "Uniformes", pregunta: "¿Se aceptan tallas?", tema: "tecnico", prioridad: "alta", status: "aprobada", limite_preguntas: "2026-10-02 15:00", dias_limite: "3", junta: null }] },
       { match: /from licitaciones\.contract c/i, respond: () => [{ contrato: null, titulo: "Limpieza", dependencia: null, fin_vigencia: "2026-11-15", dias_restantes: "47", opcion_renovacion: true, status: "en_ejecucion", alerta_pendiente: false }] },
     ]);
     const original = base.query.bind(base);
@@ -105,6 +107,8 @@ describe("PostgresLicitacionesDataChatReader — base sin migrar", () => {
     expect(await reader.renovaciones(WINDOW, 90)).toEqual([
       { contrato: null, titulo: "Limpieza", dependencia: null, finVigencia: "2026-11-15", diasRestantes: 47, opcionRenovacion: true, status: "en_ejecucion", alertaPendiente: false },
     ]);
+    expect(await reader.preguntasJunta(WINDOW)).toEqual([{ titulo: "Uniformes", pregunta: "¿Se aceptan tallas?", tema: "tecnico", prioridad: "alta", status: "aprobada", limitePreguntas: "2026-10-02 15:00", diasLimite: 3, junta: null }]);
+    expect(seen[4]).toEqual([ORG_A, "America/Merida", NOW.toISOString(), 51]); // junta: org, zona, ahora, tope
     expect(seen[0]).toEqual([ORG_A, "America/Merida", NOW.toISOString(), 7, 51]); // abiertas: org, zona, ahora, horizonte, tope
     expect(seen[1]).toEqual([ORG_A, "America/Merida", NOW.toISOString(), 51]); // semaforo
     expect(seen[2]).toEqual([ORG_A, "America/Merida", "2026-09-01T06:00:00.000Z", "2026-09-30T06:00:00.000Z", 51]); // go/no-go

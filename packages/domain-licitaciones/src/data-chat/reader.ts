@@ -55,6 +55,18 @@ export interface RenovacionRow {
   readonly alertaPendiente: boolean;
 }
 
+export interface PreguntaJuntaRow {
+  readonly titulo: string;
+  readonly pregunta: string;
+  readonly tema: string;
+  readonly prioridad: string;
+  readonly status: string;
+  /** "AAAA-MM-DD HH:MM" en la zona del negocio, o null si la convocatoria no tiene fecha limite de preguntas. */
+  readonly limitePreguntas: string | null;
+  readonly diasLimite: number | null;
+  readonly junta: string | null;
+}
+
 /** La base todavia no tiene la tabla/columna/funcion (migracion pendiente): honesto, no un 500. */
 export class DataChatUnavailableError extends Error {
   constructor(readonly what: string) {
@@ -72,4 +84,5 @@ export interface LicitacionesDataChatReader {
   propuestasPorEstado(w: LicitacionesDataChatWindow): Promise<readonly PropuestaEstadoRow[]>;
   fallos(w: LicitacionesDataChatWindow): Promise<readonly FalloRow[]>;
   renovaciones(w: LicitacionesDataChatWindow, horizonteDias: number): Promise<readonly RenovacionRow[]>;
+  preguntasJunta(w: LicitacionesDataChatWindow): Promise<readonly PreguntaJuntaRow[]>;
 }

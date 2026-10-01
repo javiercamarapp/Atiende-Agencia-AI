@@ -12,11 +12,12 @@ import {
   type GoNoGoRow,
   type LicitacionesDataChatReader,
   type LicitacionesDataChatWindow,
+  type PreguntaJuntaRow,
   type PropuestaEstadoRow,
   type RenovacionRow,
   type SemaforoRow,
 } from "./reader.ts";
-import { SQL_CONVOCATORIAS_ABIERTAS, SQL_FALLOS, SQL_GO_NO_GO, SQL_ORG_TIMEZONE, SQL_PLAZOS_SEMAFORO, SQL_PROPUESTAS_POR_ESTADO, SQL_RENOVACIONES } from "./sql.ts";
+import { SQL_CONVOCATORIAS_ABIERTAS, SQL_FALLOS, SQL_GO_NO_GO, SQL_ORG_TIMEZONE, SQL_PLAZOS_SEMAFORO, SQL_PREGUNTAS_JUNTA, SQL_PROPUESTAS_POR_ESTADO, SQL_RENOVACIONES } from "./sql.ts";
 
 const num = (v: unknown): number => Number(v ?? 0);
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
@@ -118,5 +119,19 @@ export class PostgresLicitacionesDataChatReader implements LicitacionesDataChatR
       status: r.status,
       alertaPendiente: r.alerta_pendiente,
     }));
+  }
+
+  async preguntasJunta(w: LicitacionesDataChatWindow): Promise<readonly PreguntaJuntaRow[]> {
+    const rows = await this.query<{
+      titulo: string;
+      pregunta: string;
+      tema: string;
+      prioridad: string;
+      status: string;
+      limite_preguntas: string | null;
+      dias_limite: string | number | null;
+      junta: string | null;
+    }>("junta de aclaraciones", SQL_PREGUNTAS_JUNTA, [w.organizationId, w.timezone, w.ahora.toISOString(), w.limit]);
+    return rows.map((r) => ({ titulo: r.titulo, pregunta: r.pregunta, tema: r.tema, prioridad: r.prioridad, status: r.status, limitePreguntas: r.limite_preguntas, diasLimite: numOrNull(r.dias_limite), junta: r.junta }));
   }
 }

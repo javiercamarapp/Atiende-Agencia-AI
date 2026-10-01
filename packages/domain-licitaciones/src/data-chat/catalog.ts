@@ -1,14 +1,14 @@
 // Catalogo CERRADO de "Chatea con tus datos" para LICITACIONES publicas en Mexico (ComprasMX, LAASSP:
-// Ley de Adquisiciones, Arrendamientos y Servicios del Sector Publico). Seis herramientas de solo lectura
+// Ley de Adquisiciones, Arrendamientos y Servicios del Sector Publico). Siete herramientas de solo lectura
 // con parametros tipados (periodo, horizonte en dias, limite) y alcance fijado por el servidor: la
 // ORGANIZACION completa del usuario (licitaciones no tiene sucursales). Para agregar otra vertical: ver
 // docs/DATA-CHAT.md.
 //
-// Lo que NO existe todavia y por tanto NO se ofrece:
-//  - Preguntas de la junta de aclaraciones pendientes: la pieza que las persiste (L-04, PR #240) aun no esta
-//    en main. Cuando se fusione se agrega una herramienta mas; mientras tanto el chat lo declara.
+// Lo que NO se ofrece porque el modelo no lo tiene o seria inventarlo:
 //  - Montos de propuestas por estado y montos en moneda distinta de MXN (no se convierte ni se inventa
 //    tipo de cambio).
+//  - Respuestas, actas y referencias de envio de la junta de aclaraciones: solo el texto de las preguntas
+//    pendientes y las fechas de la junta.
 import {
   DEFAULT_DATA_CHAT_TIMEZONE,
   PERIOD_PARAMS,
@@ -62,6 +62,9 @@ const STATUS_CONTRATO: Readonly<Record<string, string>> = {
   rescindido: "Rescindido",
   en_inconformidad: "En inconformidad",
 };
+const STATUS_PREGUNTA: Readonly<Record<string, string>> = { borrador: "Borrador", aprobada: "Aprobada (sin enviar)", enviada: "Enviada (sin respuesta)" };
+const TEMA_PREGUNTA: Readonly<Record<string, string>> = { administrativo: "Administrativo", legal: "Legal", tecnico: "Técnico", economico: "Económico", otro: "Otro" };
+const PRIORIDAD_PREGUNTA: Readonly<Record<string, string>> = { alta: "Alta", media: "Media", baja: "Baja" };
 const ELEGIBILIDAD: Readonly<Record<string, string>> = { cumple: "Cumple", no_cumple: "No cumple", no_evaluable: "No evaluable" };
 
 const SCOPE_LABEL = "toda tu organización";
@@ -342,14 +345,62 @@ export function buildLicitacionesDataChatTools(reader: LicitacionesDataChatReade
     },
   );
 
-  return [abiertas, semaforo, goNoGo, propuestas, fallos, renovaciones];
+  const SRC_JUNTA = "Preguntas de la junta de aclaraciones sin cerrar (borrador, aprobada o enviada, aún sin respuesta) y las fechas de la junta de su convocatoria";
+  const junta = tool(
+    reader,
+    {
+      name: "preguntas_junta_pendientes",
+      label: "Preguntas de junta de aclaraciones pendientes",
+      description:
+        "Preguntas para la junta de aclaraciones de una convocatoria que siguen pendientes (borrador, aprobada sin enviar o enviada sin respuesta), con tema, prioridad, fecha límite para enviar preguntas, días restantes y fecha de la junta. No incluye respuestas ni actas.",
+      source: SRC_JUNTA,
+      withPeriod: false,
+      params: {},
+    },
+    async (w) => {
+      const shown = await reader.preguntasJunta(w);
+      const truncated = shown.length > w.limit - 1;
+      const porEstado = (s: string) => shown.filter((r) => r.status === s).length;
+      return {
+        status: shown.length === 0 ? "empty" : "ok",
+        columns: [
+          { key: "convocatoria", label: "Convocatoria", kind: "text" },
+          { key: "pregunta", label: "Pregunta", kind: "text" },
+          { key: "tema", label: "Tema", kind: "text" },
+          { key: "prioridad", label: "Prioridad", kind: "text" },
+          { key: "estatus", label: "Estatus", kind: "text" },
+          { key: "limite", label: "Límite para preguntas", kind: "text" },
+          { key: "dias", label: "Días al límite", kind: "integer" },
+          { key: "junta", label: "Junta", kind: "text" },
+        ],
+        rows: shown.map((r) => ({
+          convocatoria: r.titulo,
+          pregunta: r.pregunta,
+          tema: TEMA_PREGUNTA[r.tema] ?? r.tema,
+          prioridad: PRIORIDAD_PREGUNTA[r.prioridad] ?? r.prioridad,
+          estatus: STATUS_PREGUNTA[r.status] ?? r.status,
+          limite: r.limitePreguntas ?? "Sin fecha registrada",
+          dias: r.diasLimite,
+          junta: r.junta ?? "Sin fecha registrada",
+        })),
+        summary:
+          shown.length === 0
+            ? "No hay preguntas de junta de aclaraciones pendientes."
+            : truncated
+              ? `Hay más de ${w.limit - 1} preguntas de junta pendientes; se muestran las más urgentes.`
+              : `${shown.length} preguntas de junta pendientes: ${porEstado("borrador")} en borrador, ${porEstado("aprobada")} aprobadas sin enviar y ${porEstado("enviada")} enviadas sin respuesta.`,
+      };
+    },
+  );
+
+  return [abiertas, semaforo, goNoGo, propuestas, fallos, renovaciones, junta];
 }
 
 export function buildLicitacionesDataChatCatalog(reader: LicitacionesDataChatReader): DataChatCatalog {
   return {
     vertical: "licitaciones",
     domain:
-      "una empresa que participa en licitaciones públicas en México (convocatorias de ComprasMX conforme a la LAASSP: plazos, decisiones go/no-go, propuestas, fallos y renovaciones de contratos). Las preguntas de la junta de aclaraciones todavía no están disponibles en este catálogo",
+      "una empresa que participa en licitaciones públicas en México (convocatorias de ComprasMX conforme a la LAASSP: plazos, decisiones go/no-go, propuestas, fallos, preguntas de la junta de aclaraciones y renovaciones de contratos)",
     tools: buildLicitacionesDataChatTools(reader),
   };
 }

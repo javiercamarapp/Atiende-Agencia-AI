@@ -15,9 +15,8 @@ function toolOf(reader: FakeReader, name: string): DataChatTool {
 describe("catálogo de licitaciones — cerrado y sin escape", () => {
   const tools = buildLicitacionesDataChatTools(new FakeReader());
 
-  it("expone exactamente las 6 herramientas del catálogo (sin preguntas de junta: #240 no está en main)", () => {
-    expect(tools.map((t) => t.name)).toEqual(["convocatorias_abiertas", "plazos_semaforo", "go_no_go", "propuestas_por_estado", "fallos", "renovaciones"]);
-    expect(tools.some((t) => /junta|pregunta/i.test(t.name))).toBe(false);
+  it("expone exactamente las 7 herramientas del catálogo (incluye las preguntas de junta de #240)", () => {
+    expect(tools.map((t) => t.name)).toEqual(["convocatorias_abiertas", "plazos_semaforo", "go_no_go", "propuestas_por_estado", "fallos", "renovaciones", "preguntas_junta_pendientes"]);
   });
 
   it("ninguna herramienta acepta organización, tenant, rol, SQL ni identificadores crudos", () => {
@@ -34,6 +33,7 @@ describe("catálogo de licitaciones — cerrado y sin escape", () => {
     expect(keys("fallos")).toEqual(["desde", "hasta", "periodo"]);
     expect(keys("convocatorias_abiertas")).toEqual(["limite", "vencen_en_dias"]);
     expect(keys("renovaciones")).toEqual(["dentro_de_dias"]);
+    expect(keys("preguntas_junta_pendientes")).toEqual([]);
     expect(keys("plazos_semaforo")).toEqual([]);
     expect(keys("propuestas_por_estado")).toEqual([]);
   });
@@ -42,7 +42,7 @@ describe("catálogo de licitaciones — cerrado y sin escape", () => {
     const all = tools.map((t) => t.description).join(" ") + buildLicitacionesDataChatCatalog(new FakeReader()).domain;
     expect(all).toMatch(/ComprasMX/);
     expect(all).toMatch(/LAASSP/);
-    expect(buildLicitacionesDataChatCatalog(new FakeReader()).domain).toContain("junta de aclaraciones todavía no están disponibles");
+    expect(buildLicitacionesDataChatCatalog(new FakeReader()).domain).toContain("preguntas de la junta de aclaraciones");
   });
 });
 
@@ -212,8 +212,39 @@ describe("propuestas_por_estado y renovaciones", () => {
   });
 });
 
+describe("preguntas_junta_pendientes (L-04, #240)", () => {
+  it("lista las pendientes con tema, prioridad, estatus en español, límite de preguntas y fecha de la junta", async () => {
+    const reader = new FakeReader();
+    const r = await toolOf(reader, "preguntas_junta_pendientes").run(ctx(), {});
+    expect(r.status).toBe("ok");
+    expect(r.rows[0]).toMatchObject({ convocatoria: "Suministro de uniformes escolares", tema: "Técnico", prioridad: "Alta", estatus: "Aprobada (sin enviar)", limite: "2026-10-02 15:00", dias: 3, junta: "2026-10-05 11:00" });
+    expect(r.rows[1]).toMatchObject({ estatus: "Borrador", limite: "Sin fecha registrada", dias: null, junta: "Sin fecha registrada" });
+    expect(r.rows[2]).toMatchObject({ estatus: "Enviada (sin respuesta)", tema: "Legal" });
+    expect(r.summary).toBe("3 preguntas de junta pendientes: 1 en borrador, 1 aprobadas sin enviar y 1 enviadas sin respuesta.");
+    expect(reader.calls.find((c) => c.method === "preguntasJunta")!.window).toMatchObject({ organizationId: ORG_A, timezone: "America/Merida", limit: 51 });
+  });
+
+  it("no expone respuestas ni actas (columnas acotadas) y la fuente lo dice", async () => {
+    const r = await toolOf(new FakeReader(), "preguntas_junta_pendientes").run(ctx(), {});
+    expect(r.columns.map((c) => c.key)).toEqual(["convocatoria", "pregunta", "tema", "prioridad", "estatus", "limite", "dias", "junta"]);
+    expect(r.source).toContain("aún sin respuesta");
+  });
+
+  it("sin preguntas pendientes: empty honesto; más filas que el tope: avisa en vez de contar sobre un recorte", async () => {
+    const reader = new FakeReader();
+    reader.junta = [];
+    const vacia = await toolOf(reader, "preguntas_junta_pendientes").run(ctx(), {});
+    expect(vacia.status).toBe("empty");
+    expect(vacia.summary).toBe("No hay preguntas de junta de aclaraciones pendientes.");
+    reader.junta = Array.from({ length: 51 }, (_, i) => ({ titulo: `C${i}`, pregunta: `Pregunta número ${i} de prueba`, tema: "otro", prioridad: "media", status: "borrador", limitePreguntas: null, diasLimite: null, junta: null }));
+    const larga = await toolOf(reader, "preguntas_junta_pendientes").run(ctx(), {});
+    expect(larga.summary).toContain("más de 50 preguntas");
+    expect(larga.summary).not.toContain("en borrador");
+  });
+});
+
 describe("base sin migrar / errores", () => {
-  it.each(["convocatorias_abiertas", "plazos_semaforo", "go_no_go", "propuestas_por_estado", "fallos", "renovaciones"])("%s: DataChatUnavailableError -> status unavailable (honesto), no excepción", async (name) => {
+  it.each(["convocatorias_abiertas", "plazos_semaforo", "go_no_go", "propuestas_por_estado", "fallos", "renovaciones", "preguntas_junta_pendientes"])("%s: DataChatUnavailableError -> status unavailable (honesto), no excepción", async (name) => {
     const reader = new FakeReader();
     reader.failWith = unavailable();
     const r = await toolOf(reader, name).run(ctx(), { periodo: "hoy" });
@@ -249,12 +280,22 @@ describe("de punta a punta con el motor (guion, cero red)", () => {
     expect(a.blocks).toHaveLength(0);
   });
 
-  it("preguntas de junta de aclaraciones: fuera de catálogo, sin inventar cifras", async () => {
+  it("preguntas de junta de aclaraciones: herramienta del catálogo, tabla con fuente y alcance del servidor", async () => {
     const reader = new FakeReader();
-    const llm = scriptedCompletion([{ text: "Tienes 12 preguntas de junta pendientes." }]);
-    const a = await runDataChatTurn({ catalog: buildLicitacionesDataChatCatalog(reader), scope: OWNER_SCOPE, question: "¿cuántas preguntas de la junta de aclaraciones tengo pendientes?", complete: llm.complete, now: NOW });
+    const llm = scriptedCompletion([CALL("preguntas_junta_pendientes", {}), { text: "Tienes 3 preguntas de junta pendientes." }]);
+    const a = await runDataChatTurn({ catalog: buildLicitacionesDataChatCatalog(reader), scope: OWNER_SCOPE, question: "¿qué preguntas de la junta de aclaraciones tengo pendientes?", complete: llm.complete, now: NOW });
+    expect(a.status).toBe("ok");
+    expect(a.toolsUsed).toEqual(["preguntas_junta_pendientes"]);
+    expect(a.blocks[0]!.rows).toHaveLength(3);
+    expect(a.text).toBe("Tienes 3 preguntas de junta pendientes.");
+  });
+
+  it("pregunta fuera de catálogo (monto adjudicado de propuestas): lo dice sin inventar cifras", async () => {
+    const reader = new FakeReader();
+    const llm = scriptedCompletion([{ text: "Tus propuestas suman $9,999,999 MXN." }]);
+    const a = await runDataChatTurn({ catalog: buildLicitacionesDataChatCatalog(reader), scope: OWNER_SCOPE, question: "¿cuánto suman mis propuestas presentadas?", complete: llm.complete, now: NOW });
     expect(a.status).toBe("out_of_catalog");
-    expect(a.text).not.toMatch(/\b12\b/);
+    expect(a.text).not.toMatch(/9,999,999/);
     expect(a.text).toContain("Convocatorias abiertas");
   });
 

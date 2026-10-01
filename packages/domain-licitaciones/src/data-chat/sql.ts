@@ -115,6 +115,22 @@ export const SQL_RENOVACIONES = `select c.contract_number as contrato, t.title a
   order by c.end_date asc, t.title asc
   limit $5`;
 
+// $3 = ahora, $4 = tope. Preguntas de la junta de aclaraciones SIN cerrar (borrador, aprobada o enviada: aun sin
+// respuesta ni descarte), con las fechas de la junta de su convocatoria (migracion 029, L-04). Solo el
+// texto de la pregunta (recortado a 160) y su metadato: nunca respuestas, actas ni referencias de envio.
+export const SQL_PREGUNTAS_JUNTA = `select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ${DIA_LOCAL("j.questions_deadline_at")} - ${DIA_LOCAL("$3::timestamptz")} end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4`;
+
 export const ALL_DATA_CHAT_SQL: Readonly<Record<string, string>> = {
   SQL_ORG_TIMEZONE,
   SQL_CONVOCATORIAS_ABIERTAS,
@@ -123,4 +139,5 @@ export const ALL_DATA_CHAT_SQL: Readonly<Record<string, string>> = {
   SQL_PROPUESTAS_POR_ESTADO,
   SQL_FALLOS,
   SQL_RENOVACIONES,
+  SQL_PREGUNTAS_JUNTA,
 };
