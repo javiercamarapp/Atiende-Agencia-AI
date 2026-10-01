@@ -51,6 +51,8 @@ export interface ResultadoLlamada {
   readonly costoMicroUsd: number;
 }
 
+const MENSAJES_QUE_NO_CORTAN: ReadonlySet<MensajeId> = new Set<MensajeId>(["tool_timeout", "silencio_reprompt", "aviso_duracion"]);
+
 export class ControladorLlamada {
   readonly maquina: CallStateMachine;
   readonly transcripcion: TurnoTranscrito[] = [];
@@ -104,6 +106,14 @@ export class ControladorLlamada {
   }
   silencio(ms: number): Promise<void> {
     return this.encolar(() => this.eventoInterno({ tipo: "silencio", ms }));
+  }
+  /** Costo adicional estimado de la llamada (micro-USD). */
+  costo(microUsd: number): Promise<void> {
+    return this.encolar(() => this.eventoInterno({ tipo: "costo", microUsd }));
+  }
+  /** El agente o el reconocedor no pudo interpretar lo que dijo el cliente. */
+  noEntendido(): Promise<void> {
+    return this.encolar(() => this.eventoInterno({ tipo: "no_entendido" }));
   }
   ruido(): Promise<void> {
     return this.encolar(() => this.eventoInterno({ tipo: "ruido" }));
@@ -206,7 +216,9 @@ export class ControladorLlamada {
     this.log("accion", { mensaje: a.tipo === "decir" ? a.mensaje : a.tipo });
     switch (a.tipo) {
       case "decir":
-        this.sesion?.interrumpir();
+        // Los avisos que no cierran la llamada (tool lenta, re-pregunta, aviso de duracion) se superponen sin cortar el
+        // turno del agente: si no, una tool lenta dejaria al modelo a medias. Los terminales si lo callan.
+        if (!MENSAJES_QUE_NO_CORTAN.has(a.mensaje)) this.sesion?.interrumpir();
         await this.deps.reproducir(a.mensaje);
         return;
       case "pedir_repetir":
