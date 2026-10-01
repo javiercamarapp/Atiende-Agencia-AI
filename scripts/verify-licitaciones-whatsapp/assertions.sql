@@ -498,5 +498,27 @@ reset role;
 select count(*) as rastro_deberia_ser_1 from licitaciones.whatsapp_event_log where event = 'decision_por_whatsapp' and message_id = 'wamid.20';
 rollback;
 
+\echo '--- 45. IDEMPOTENCIA: emitir dos veces para el mismo usuario/convocatoria/accion devuelve NULL la segunda (no duplica la solicitud) ---'
+begin;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'go', repeat('b', 64), now() + interval '1 day');
+select (licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'go', repeat('c', 64), now() + interval '1 day') is null)::int as repetida_nula_deberia_ser_1;
+rollback;
+
+\echo '--- 46. ROL: el consumo exitoso devuelve el rol vigente del usuario (para sellar go_no_go_decision) ---'
+begin;
+insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select licitaciones.system_issue_whatsapp_action_token('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '00000000-0000-0000-0000-0000000000e1', 'no_go', repeat('b', 64), now() + interval '1 day');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c5', true);
+do $$ declare r record; begin
+  select * into r from licitaciones.whatsapp_consume_action_token(repeat('b', 64), '+5215511110005', 'wamid.rol');
+  if r.resultado <> 'ok' or r.rol <> 'analyst' or r.accion <> 'no_go' then raise exception 'esperado ok/analyst/no_go, obtuve %/%/%', r.resultado, r.rol, r.accion; end if;
+end $$;
+rollback;
+
 \echo ''
 \echo '=== fin: los escenarios marcados should_fail / deberia_ser_N deben terminar en ERROR / en el valor N; el resto sin error ==='

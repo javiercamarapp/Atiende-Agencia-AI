@@ -224,53 +224,54 @@ $$;
 -- identico al del token y rol vigente; (d) un rechazo NO consume el token.
 create or replace function licitaciones.whatsapp_consume_action_token(
   p_token_hash text, p_sender_phone text, p_message_id text
-) returns table(resultado text, convocatoria_id uuid, accion text)
+) returns table(resultado text, convocatoria_id uuid, accion text, rol text)
 language plpgsql security definer set search_path = licitaciones, core, pg_temp as $$
-declare t licitaciones.whatsapp_action_token; c licitaciones.whatsapp_contact;
+declare t licitaciones.whatsapp_action_token; c licitaciones.whatsapp_contact; v_role text;
 begin
   if auth.uid() is null then
     raise exception 'whatsapp_consume_action_token requiere un usuario autenticado' using errcode = '42501';
   end if;
   if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' or p_message_id is null or length(p_message_id) not between 1 and 255 then
-    return query select 'no_encontrado'::text, null::uuid, null::text; return;
+    return query select 'no_encontrado'::text, null::uuid, null::text, null::text; return;
   end if;
   select * into t from licitaciones.whatsapp_action_token w where w.token_hash = p_token_hash for update;
   if not found or t.user_id <> auth.uid() then
-    return query select 'no_encontrado'::text, null::uuid, null::text; return;
+    return query select 'no_encontrado'::text, null::uuid, null::text, null::text; return;
   end if;
   if t.consumed_at is not null then
     if t.consumed_message_id = p_message_id then
-      return query select 'duplicado'::text, t.tender_id, t.action; return;
+      return query select 'duplicado'::text, t.tender_id, t.action, null::text; return;
     end if;
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, message_id)
       values (t.organization_id, t.user_id, t.tender_id, 'token_rechazado_reutilizado', p_message_id);
-    return query select 'ya_usado'::text, t.tender_id, t.action; return;
+    return query select 'ya_usado'::text, t.tender_id, t.action, null::text; return;
   end if;
   if t.expires_at <= now() then
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, message_id)
       values (t.organization_id, t.user_id, t.tender_id, 'token_rechazado_expirado', p_message_id);
-    return query select 'expirado'::text, t.tender_id, t.action; return;
+    return query select 'expirado'::text, t.tender_id, t.action, null::text; return;
   end if;
   select * into c from licitaciones.whatsapp_contact where organization_id = t.organization_id and user_id = t.user_id;
   if not found or c.status <> 'activo' then
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, message_id)
       values (t.organization_id, t.user_id, t.tender_id, 'token_rechazado_contacto_inactivo', p_message_id);
-    return query select 'contacto_inactivo'::text, t.tender_id, t.action; return;
+    return query select 'contacto_inactivo'::text, t.tender_id, t.action, null::text; return;
   end if;
   if c.phone_e164 <> t.phone_e164 or t.phone_e164 <> p_sender_phone then
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, message_id)
       values (t.organization_id, t.user_id, t.tender_id, 'token_rechazado_telefono_distinto', p_message_id);
-    return query select 'telefono_distinto'::text, t.tender_id, t.action; return;
+    return query select 'telefono_distinto'::text, t.tender_id, t.action, null::text; return;
   end if;
   if not licitaciones.can_go_no_go_org(t.organization_id) then
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, message_id)
       values (t.organization_id, t.user_id, t.tender_id, 'token_rechazado_rol', p_message_id);
-    return query select 'rol_insuficiente'::text, t.tender_id, t.action; return;
+    return query select 'rol_insuficiente'::text, t.tender_id, t.action, null::text; return;
   end if;
   update licitaciones.whatsapp_action_token set consumed_at = now(), consumed_message_id = p_message_id where id = t.id;
   insert into licitaciones.whatsapp_event_log (organization_id, user_id, tender_id, event, detail, message_id)
     values (t.organization_id, t.user_id, t.tender_id, 'decision_por_whatsapp', t.action, p_message_id);
-  return query select 'ok'::text, t.tender_id, t.action;
+  select m.vertical_role into v_role from core.membership m where m.organization_id = t.organization_id and m.user_id = t.user_id;
+  return query select 'ok'::text, t.tender_id, t.action, v_role;
 end;
 $$;
 
@@ -341,6 +342,10 @@ begin
   end if;
   select * into c from licitaciones.whatsapp_contact where organization_id = p_organization_id and user_id = p_user_id;
   if not found or c.status <> 'activo' then raise exception 'contacto de WhatsApp no activo'; end if;
+  if exists (select 1 from licitaciones.whatsapp_action_token w where w.user_id = p_user_id and w.tender_id = p_tender_id
+             and w.action = p_action and w.consumed_at is null and w.expires_at > now()) then
+    return null;
+  end if;
   insert into licitaciones.whatsapp_action_token (organization_id, user_id, tender_id, action, phone_e164, token_hash, expires_at)
   values (p_organization_id, p_user_id, p_tender_id, p_action, c.phone_e164, p_token_hash, p_expires_at)
   returning id into v_id;
