@@ -101,6 +101,12 @@ select count(*)::int as promocion_2x1_correcta_deberia_ser_1
     and pm.days_of_week = array[1]::smallint[] and cardinality(pm.product_ids) = 1;
 rollback;
 
+\echo '=== B2b. La promocion se carga AUTOMATICA (auto_apply): el agente no manda codigos, asi que sin esto el descuento nunca llegaba al total ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as promos_auto_apply_deberia_ser_1 from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.code = 'LUNES2X1PM' and p.auto_apply;
+rollback;
+
 \echo '=== B3. La voz se carga DESHABILITADA (sin gasto de proveedores) en las 5 sucursales activas ==='
 begin;
 select public.seed_pm_demo();

@@ -201,6 +201,9 @@ export interface PmSeedPlan {
     readonly daysOfWeek: readonly number[];
     readonly channels: readonly string[];
     readonly productNames: readonly string[];
+    /** Se aplica sola (sin codigo) al cotizar en el canal y dia que corresponden. El agente de WhatsApp NO manda codigos de
+     * promocion: sin esto el 2x1 del lunes nunca se aplicaria y el cliente no veria el descuento en la cotizacion. */
+    readonly autoApply: true;
   }[];
   readonly voice: { readonly voiceId: string; readonly comportamiento: string; readonly greetings: readonly { readonly branchSlug: string; readonly mensajeInicial: string }[] };
   /** Fila de `restaurantes.whatsapp_agent_config` de la organizacion (la voz sigue DESHABILITADA). */
@@ -337,7 +340,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     if (p.canales.includes("domicilio")) fail(`${p.codigo}: las promociones de PM no aplican a domicilio.`);
     if (p.canales.length === 0) fail(`${p.codigo}: debe declarar al menos un canal.`);
     for (const nombre of p.productos) if (!productNames.has(nombre)) fail(`${p.codigo}: el producto elegible "${nombre}" no existe en el menu.`);
-    return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos] };
+    return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos], autoApply: true as const };
   });
 
   // --- agente de WhatsApp (config editable del perfil PM) --------------------------------------------------
@@ -428,6 +431,7 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_policy", columns: ["horario", "pedido_minimo_domicilio", "pedido_minimo_recoger", "propina_politica"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
+  { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
   { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
 ];
 
@@ -579,13 +583,16 @@ begin
     on conflict (property_id) do update set comportamiento = excluded.comportamiento, mensaje_inicial = excluded.mensaje_inicial, updated_at = now();
 
   -- 9) promociones (2x1 por dia y canal sobre productos elegibles)
-  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids)
+  -- auto_apply = true: el agente de WhatsApp no manda codigos de promocion, asi que el 2x1 solo se aplica si la propia
+  -- cotizacion lo aplica sola (por dia y canal). Sin esto el descuento prometido nunca llegaba al total.
+  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids, auto_apply)
     select v_org, x.code, x.name, x.description, x.type, 1, (select array_agg(d::smallint) from jsonb_array_elements_text(x."daysOfWeek") d),
            (select array_agg(c) from jsonb_array_elements_text(x.channels) c),
-           (select array_agg(pr.id) from jsonb_array_elements_text(x."productNames") n join restaurantes.products pr on pr.organization_id = v_org and pr.name = n)
-    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb)
+           (select array_agg(pr.id) from jsonb_array_elements_text(x."productNames") n join restaurantes.products pr on pr.organization_id = v_org and pr.name = n),
+           x."autoApply"
+    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb, "autoApply" boolean)
     on conflict (organization_id, code) do update set name = excluded.name, description = excluded.description, type = excluded.type,
-      days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, updated_at = now();
+      days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, auto_apply = excluded.auto_apply, updated_at = now();
 
   -- 10) agente de WhatsApp: perfil taqueria_pm de la organizacion con los datos del dueño. DO NOTHING si ya hay fila:
   -- re-ejecutar el seed NUNCA pisa lo que el dueño cambio en el editor del agente (tono, tiempos, salsas...), mismo criterio

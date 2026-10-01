@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, renderSchemaPreflightSql, WHATSAPP_AGENT_LIMITES } from "../src/seed/pm-demo.ts";
 import { parseSeedArgs } from "../src/seed/target-safety.ts";
 import { aplicarFilaAConfig, buildSystemPrompt } from "../src/whatsapp/llm-turn-handler.ts";
+import { prepareCreateOrder } from "../src/orders.ts";
+import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
 import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
 
 const { data, agent } = loadSeedInputs();
@@ -29,7 +31,7 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(plan.whatsappAgent.promosText).not.toMatch(/martes|nachos/i);
     expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM"]);
     const malo = clone(data);
-    (malo.agente_whatsapp as { promociones: string }).promociones = "lunes 2x1 en pastor; martes nachos con 2 aguas";
+    (malo.agente_whatsapp as unknown as { promociones: string }).promociones = "lunes 2x1 en pastor; martes nachos con 2 aguas";
     expect(() => buildPmSeedPlan(malo, agent)).toThrow(PmSeedError);
   });
 
@@ -38,10 +40,10 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(plan.whatsappAgent.salsasText.length).toBeLessThanOrEqual(WHATSAPP_AGENT_LIMITES.salsasText);
     expect(plan.whatsappAgent.promosText.length).toBeLessThanOrEqual(WHATSAPP_AGENT_LIMITES.promosText);
     const largo = clone(data);
-    (largo.agente_whatsapp as { salsas: string }).salsas = "x".repeat(WHATSAPP_AGENT_LIMITES.salsasText + 1);
+    (largo.agente_whatsapp as unknown as { salsas: string }).salsas = "x".repeat(WHATSAPP_AGENT_LIMITES.salsasText + 1);
     expect(() => buildPmSeedPlan(largo, agent)).toThrow(/salsasText/);
     const motivo = clone(data);
-    (motivo.agente_whatsapp as { motivos_escalacion_apagados: string[] }).motivos_escalacion_apagados = ["queja"];
+    (motivo.agente_whatsapp as unknown as { motivos_escalacion_apagados: string[] }).motivos_escalacion_apagados = ["queja"];
     expect(() => buildPmSeedPlan(motivo, agent)).toThrow(/no se puede apagar/);
   });
 
@@ -95,7 +97,7 @@ describe("pendientes del dueño (checklist R-33): visibles y sin inventar", () =
 
   it("un pendiente duplicado invalida el seed", () => {
     const malo = clone(data);
-    (malo as { pendientes_dueno: unknown[] }).pendientes_dueno = [data.pendientes_dueno[0], data.pendientes_dueno[0]];
+    (malo as unknown as { pendientes_dueno: unknown[] }).pendientes_dueno = [data.pendientes_dueno[0], data.pendientes_dueno[0]];
     expect(() => buildPmSeedPlan(malo, agent)).toThrow(PmSeedError);
   });
 });
@@ -129,5 +131,44 @@ describe("carga como demo (--demo)", () => {
   it("la CLI reconoce --demo", () => {
     expect(parseSeedArgs([]).demo).toBe(false);
     expect(parseSeedArgs(["--demo", "--apply"])).toMatchObject({ demo: true, apply: true });
+  });
+});
+
+describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda codigos)", () => {
+  it("el plan la marca auto_apply y el SQL la persiste y la repara al re-ejecutar", () => {
+    const plan = buildPmSeedPlan(data, agent);
+    expect(plan.promotions.every((p) => p.autoApply === true)).toBe(true);
+    const sql = renderPmSeedPlpgsql(plan);
+    expect(sql).toMatch(/insert into restaurantes\.promotions \([^)]*auto_apply\)/);
+    expect(sql).toMatch(/auto_apply = excluded\.auto_apply/);
+    expect(renderSchemaPreflightSql()).toContain("031_recoger_promociones_automaticas_puentes.sql");
+  });
+
+  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger; a domicilio o en otro dia no", async () => {
+    const plan = buildPmSeedPlan(data, agent);
+    const world = await buildInMemoryPmWorld(plan);
+    const lunes = new Date("2026-10-12T20:00:00Z"); // lunes 14:00 en Merida
+    const martes = new Date("2026-10-13T20:00:00Z");
+    const pedido = (canal: "recoger" | "domicilio") => ({
+      organizationId: world.organizationId,
+      branchSlug: "altabrisa",
+      customerName: "Cliente Prueba",
+      customerPhone: "0001000001",
+      ...(canal === "domicilio" ? { customerAddress: "Calle 7 #270, Vista Alegre" } : {}),
+      canal,
+      source: "web" as const,
+      items: [
+        { productId: world.productIds.get("Taco Al Pastor (individual)")!, requestedQuantity: 4, tortilla: "maiz" as const },
+        { productId: world.productIds.get("Coca-Cola")!, requestedQuantity: 6 },
+      ],
+    });
+    const base = await prepareCreateOrder(world.repo, pedido("recoger"), { asOf: martes });
+    const conPromo = await prepareCreateOrder(world.repo, pedido("recoger"), { asOf: lunes });
+    expect(base.discount).toBe(0);
+    expect(conPromo.discount).toBeGreaterThan(0);
+    expect(conPromo.appliedPromotion?.code).toBe("LUNES2X1PM");
+    expect(conPromo.total).toBeCloseTo(base.total - conPromo.discount, 2);
+    const domicilio = await prepareCreateOrder(world.repo, pedido("domicilio"), { asOf: lunes });
+    expect(domicilio.discount).toBe(0);
   });
 });
