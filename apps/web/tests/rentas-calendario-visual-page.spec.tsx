@@ -127,10 +127,10 @@ describe("Calendario visual -- carga y mes", () => {
     click(rendered.container.querySelector('button[aria-label="Mes siguiente"]')!);
     await esperar();
     expect(urlsDe("/calendario?").at(-1)).toBe("https://api.test/rentas/prop-1/calendario?desde=2026-10-26&hasta=2026-12-07");
-    expect(rendered.container.querySelector("h2")!.textContent).toBe("noviembre de 2026");
+    expect(rendered.container.querySelector("h2")!.textContent).toBe("Noviembre de 2026");
     click(botonPorTexto(rendered, "Hoy"));
     await esperar();
-    expect(rendered.container.querySelector("h2")!.textContent).toBe("octubre de 2026");
+    expect(rendered.container.querySelector("h2")!.textContent).toBe("Octubre de 2026");
     expect(urlsDe("/calendario?").at(-1)).toContain("desde=2026-09-28");
   });
 
@@ -269,7 +269,7 @@ describe("Calendario visual -- teclado y accesibilidad", () => {
     act(() => celda(rendered!, "2026-10-15").focus());
     keydown(celda(rendered, "2026-10-15"), "PageDown");
     await esperar();
-    expect(rendered.container.querySelector("h2")!.textContent).toBe("noviembre de 2026");
+    expect(rendered.container.querySelector("h2")!.textContent).toBe("Noviembre de 2026");
     expect(document.activeElement).toBe(celda(rendered, "2026-11-15"));
     act(() => celda(rendered!, "2026-11-30").focus());
     keydown(celda(rendered, "2026-11-30"), "ArrowRight"); // 1-dic está en la última semana de la rejilla de noviembre
