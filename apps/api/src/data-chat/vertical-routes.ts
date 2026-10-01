@@ -1,4 +1,4 @@
-// Rutas de "Chatea con tus datos" para las verticales POR PROPIEDAD (hoteles, rentas): misma cadena de
+// Rutas de "Chatea con tus datos" para las verticales POR PROPIEDAD (hoteles, rentas, citas): misma cadena de
 // autorizacion que la ruta de restaurantes -- JWT -> sesion RLS del usuario (`dbSession`) -> membership verificada
 // (`requirePropertyMembership`) -> rol permitido de la vertical -- y el MISMO motor (`runDataChatTurn`).
 //
@@ -17,16 +17,17 @@ import { parseDataChatBody } from "./body.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 
 export interface VerticalDataChatConfig {
-  /** "hoteles" | "rentas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
-  readonly vertical: "hoteles" | "rentas";
+  /** "hoteles" | "rentas" | "citas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
+  readonly vertical: "hoteles" | "rentas" | "citas";
   /** Roles de la vertical que pueden usar el chat (la RLS sigue siendo la autoridad final). */
   readonly roles: readonly string[];
   /** Catalogo ya ligado al lector de la sesion RLS del usuario; undefined = esta vertical no esta cableada. */
   readonly catalog: (deps: AppDeps, db: TenantDbSession) => DataChatCatalog | undefined;
   /** Rol de gateway de esta vertical (`<vertical>:data_chat`: apagable y con registro de uso propio). */
   readonly role: string;
-  /** Zona horaria IANA ya resuelta de la propiedad activa. */
-  readonly timezone: (deps: AppDeps, db: TenantDbSession, propertyId: string) => Promise<string>;
+  /** Zona horaria IANA ya resuelta de la propiedad activa (`organizationId` = la de la sesion verificada, para las
+   *  verticales que caen a la zona de la organizacion cuando la propiedad no tiene una propia). */
+  readonly timezone: (deps: AppDeps, db: TenantDbSession, propertyId: string, organizationId: string) => Promise<string>;
 }
 
 export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfig): Hono<CoreAuthHonoEnv> {
@@ -62,7 +63,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     // restaurantes/admin-scope.ts). Si la membership completa no aparece, cae a la unica propiedad ya verificada.
     const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
     const propertyId = c.req.param("propertyId") ?? "";
-    const timezone = await cfg.timezone(deps, db, propertyId);
+    const timezone = await cfg.timezone(deps, db, propertyId, organizationId);
 
     const answer = await runDataChatTurn({
       catalog,

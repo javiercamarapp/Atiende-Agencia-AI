@@ -37,7 +37,7 @@ export { AppointmentAlternativesError, AppointmentConflictError, AppointmentForb
 export { computeAvailableSlots, dayOfWeekInTimeZone, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 export type { ComputeAvailableSlotsInput } from "./availability.ts";
 
-export { CITAS_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "./roles.ts";
+export { CITAS_ROLES, DATA_CHAT_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "./roles.ts";
 export type { CitasRole } from "./roles.ts";
 
 export { actorHash, consumeRateLimit, requestActor } from "./rate-limit.ts";
@@ -312,3 +312,7 @@ export type {
 } from "./whatsapp/message-config.ts";
 export { armarMensaje, enqueueAppointmentWhatsappCore, formatearFechaYHora, resolverValoresCita, tryEnqueueAppointmentWhatsapp } from "./whatsapp/message-send.ts";
 export type { AppointmentWhatsappEvent, AppointmentWhatsappResult } from "./whatsapp/message-send.ts";
+
+// ---- C-10 -- "Chatea con tus datos" de citas (ver docs/DATA-CHAT.md) ----
+export { ALL_CITAS_DATA_CHAT_SQL, buildCitasDataChatCatalog, buildCitasDataChatTools, CitasDataChatUnavailableError, PostgresCitasDataChatReader } from "./data-chat/index.ts";
+export type { CitasDataChatReader, CitasDataChatWindow } from "./data-chat/index.ts";

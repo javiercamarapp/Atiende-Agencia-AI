@@ -13,6 +13,7 @@ import { PostgresHotelesDataChatReader, type HotelesDataChatReader } from "@atie
 import { PostgresRentasDataChatReader, type RentasDataChatReader } from "@atiende/domain-rentas";
 import { PostgresDespachosDataChatReader, type DespachosDataChatReader } from "@atiende/domain-despachos";
 import { PostgresLicitacionesDataChatReader, type LicitacionesDataChatReader } from "@atiende/domain-licitaciones";
+import { PostgresCitasDataChatReader, type CitasDataChatReader } from "@atiende/domain-citas";
 
 
 export interface DataChatDeps {
@@ -23,6 +24,7 @@ export interface DataChatDeps {
   readonly rentasReader?: (db: TenantDbSession) => RentasDataChatReader;
   readonly despachosReader?: (db: TenantDbSession) => DespachosDataChatReader;
   readonly licitacionesReader?: (db: TenantDbSession) => LicitacionesDataChatReader;
+  readonly citasReader?: (db: TenantDbSession) => CitasDataChatReader;
   readonly audit: (db: TenantDbSession) => DataChatAuditSink;
   readonly rateLimiter: DataChatRateLimiter;
   /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". `role` es el rol del gateway
@@ -88,6 +90,7 @@ export function buildProductionDataChat(gateway: LlmGateway | undefined): DataCh
     rentasReader: (db) => new PostgresRentasDataChatReader(db),
     despachosReader: (db) => new PostgresDespachosDataChatReader(db),
     licitacionesReader: (db) => new PostgresLicitacionesDataChatReader(db),
+    citasReader: (db) => new PostgresCitasDataChatReader(db),
     audit: (db) => new PostgresDataChatAuditSink(db),
     rateLimiter: dataChatRateLimiter,
     completion: gateway ? (organizationId, role = RESTAURANTES_DATA_CHAT_ROLE) => gatewayCompletion(gateway, { tenantId: organizationId, role }) : undefined,
