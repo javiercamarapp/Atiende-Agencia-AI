@@ -60,7 +60,7 @@ Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excep
   canales de la app: el despachador `ALERTAS_*`/`SENTRY_DSN` (docs/CREDENCIALES.md) se configura en Vercel.
 - Trinquete de lint: no es un workflow aparte sino un paso nuevo de `ci-checks.yml` (`npm run lint:ratchet`,
   `scripts/lint-ratchet/`): falla si las advertencias de ESLint superan `scripts/lint-ratchet/baseline.json`
-  (hoy 1). El baseline solo baja: `node --experimental-strip-types scripts/lint-ratchet/ratchet.ts --update`
+  (hoy 0). El baseline solo baja: `node --experimental-strip-types scripts/lint-ratchet/ratchet.ts --update`
   lo baja si hay menos, nunca lo sube.
 - Fuera de workflows: `docs/ROLLBACK.md` + `scripts/rollback/rollback.sh` (rollback MANUAL de Vercel por
   Javier, nunca desde CI) y `docs/E2E-PLAYWRIGHT.md` + `e2e/` (diseño y esqueleto inactivo de Playwright; no hay
