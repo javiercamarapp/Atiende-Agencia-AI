@@ -61,12 +61,13 @@ describe("SuperAdminShell — nav móvil", () => {
     ]);
   });
 
-  it('"Más" abre los 19 destinos de la consola (incluye gestión de organizaciones, interruptores, seguridad MFA, zona CFO segura, dashboard CFO, costos y margen, y planes)', async () => {
+  it('"Más" abre los 21 destinos de la consola (incluye privacidad, gestión de organizaciones, interruptores, seguridad MFA, zona CFO segura, dashboard CFO, costos y margen, y planes)', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(20);
+    expect(hrefs).toHaveLength(21);
+    expect(hrefs).toContain("/superadmin/privacidad");
     expect(hrefs).toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
     expect(hrefs).toContain("/superadmin/seguridad");
