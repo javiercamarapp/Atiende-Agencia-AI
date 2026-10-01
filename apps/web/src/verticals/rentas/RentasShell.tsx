@@ -32,7 +32,9 @@ import {
   LayoutDashboard,
   RefreshCcw,
   Tag,
+  Users,
   Wallet,
+  Building2,
 } from "lucide-react";
 import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
@@ -93,6 +95,10 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: ruta("precios"), label: "Precios", icon: Tag },
         { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
         { to: ruta("reportes"), label: "Reportes", icon: BarChart3 },
+        // Rn-19: alta y edición de propiedades, unidades y propietarios; Rn-20: invitar, rol y baja del equipo. Cada
+        // página gatea su contenido por rol (el servidor es la autoridad real).
+        { to: ruta("catalogo"), label: "Catálogo", icon: Building2 },
+        { to: ruta("equipo"), label: "Equipo", icon: Users },
         // Bitácora de auditoría del staff; AuditoriaPage gatea su propio contenido por admin_gestora.
         { to: ruta("auditoria"), label: "Auditoría", icon: ClipboardCheck },
       ],
@@ -101,7 +107,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario en piso (incluido `Mis tareas`, único panel funcional del rol
- * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (los 11
+ * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (los 13
  * destinos), de modo que Precios, Finanzas, iCal, Monitor, Acceso al huésped, Reportes y Auditoría siguen alcanzables. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/rentas/${orgSlug}`;
