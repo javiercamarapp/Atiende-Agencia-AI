@@ -30,6 +30,31 @@ export function bloqueATsv(b: CopilotoBloque): string {
   return [limpiar(b.title), cab, ...filas].join("\n");
 }
 
+const BOM = "\uFEFF";
+
+/** Celda de CSV: sin formato (numeros crudos), entre comillas si hace falta y neutralizada contra formulas de hoja de calculo. */
+function celdaCsv(valor: CopilotoCelda, separador: string): string {
+  if (valor === null) return "";
+  if (typeof valor === "number") return Number.isFinite(valor) ? String(valor) : "";
+  const seguro = /^[=+\-@\t\r]/.test(valor) ? `'${valor}` : valor;
+  return /["\r\n]/.test(seguro) || seguro.includes(separador) ? `"${seguro.replace(/"/g, '""')}"` : seguro;
+}
+
+/** Tabla del bloque como CSV UTF-8 con BOM (Excel abre bien los acentos), todas las filas del bloque, sin formato de moneda. */
+export function bloqueACsv(b: CopilotoBloque, separador: "," | ";" = ","): string {
+  const cab = b.columns.map((c) => celdaCsv(c.label, separador)).join(separador);
+  const filas = b.rows.map((r) => b.columns.map((c) => celdaCsv(r[c.key] ?? null, separador)).join(separador));
+  return BOM + [cab, ...filas].join("\r\n") + "\r\n";
+}
+
+/** atiende-{vertical}-{herramienta}-{AAAAMMDD-HHmm}.csv con la hora local del navegador. */
+export function nombreArchivoCsv(vertical: string | undefined, herramienta: string, fecha: Date): string {
+  const limpio = (t: string) => t.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "datos";
+  const dos = (n: number) => String(n).padStart(2, "0");
+  const sello = `${fecha.getFullYear()}${dos(fecha.getMonth() + 1)}${dos(fecha.getDate())}-${dos(fecha.getHours())}${dos(fecha.getMinutes())}`;
+  return ["atiende", vertical ? limpio(vertical) : undefined, limpio(herramienta), sello].filter(Boolean).join("-") + ".csv";
+}
+
 export type GrupoHistorial = "fijadas" | "hoy" | "ayer" | "semana" | "anteriores";
 export const ETIQUETA_GRUPO: Readonly<Record<GrupoHistorial, string>> = {
   fijadas: "Fijadas",
