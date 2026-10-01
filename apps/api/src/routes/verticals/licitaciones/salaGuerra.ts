@@ -77,6 +77,11 @@ function summarizeQuestion(q: JuntaQuestionRecord) {
   return { id: q.id, questionText: q.questionText, status: q.status, priority: q.priority };
 }
 
+/** 409 con el MISMO formato de error que el resto de la API (`{ code, message }`, ver app.ts::onError) mas la pregunta existente. */
+function duplicateResponse(c: Ctx, err: JuntaQuestionDuplicateError) {
+  return c.json({ code: "duplicate_question", message: err.message, existing: err.existing ? summarizeQuestion(err.existing) : null }, 409);
+}
+
 /** Reintenta un bloque de lectura que degrada a "no disponible aun" en vez de fallar. */
 async function readOrUnavailable<T>(fn: () => Promise<T>, fallback: T): Promise<{ value: T; available: boolean }> {
   try {
@@ -142,6 +147,7 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     return c.json({
       available: items.available && entries.available,
       now: nowIso,
+      viewerUserId: c.get("userId"),
       tender: { id: tender.id, title: tender.title, submissionDeadline: tender.submissionDeadline, status: tender.status ?? null },
       board,
       entries: entries.value,
@@ -305,7 +311,7 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         return c.json({ question, similar: similar.map((s) => ({ ...summarizeQuestion(s.question), similarity: s.similarity })), suggestion }, 201);
       } catch (err) {
         if (err instanceof JuntaQuestionDuplicateError) {
-          return c.json({ error: { code: "duplicate_question", message: err.message }, existing: err.existing ? summarizeQuestion(err.existing) : null }, 409);
+          return duplicateResponse(c, err);
         }
         throw err;
       }
@@ -393,7 +399,7 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         return c.json(updated);
       } catch (err) {
         if (err instanceof JuntaQuestionDuplicateError) {
-          return c.json({ error: { code: "duplicate_question", message: err.message }, existing: err.existing ? summarizeQuestion(err.existing) : null }, 409);
+          return duplicateResponse(c, err);
         }
         throw err;
       }
@@ -422,7 +428,7 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         return c.json(updated);
       } catch (err) {
         if (err instanceof JuntaQuestionDuplicateError) {
-          return c.json({ error: { code: "duplicate_question", message: err.message }, existing: err.existing ? summarizeQuestion(err.existing) : null }, 409);
+          return duplicateResponse(c, err);
         }
         throw err;
       }

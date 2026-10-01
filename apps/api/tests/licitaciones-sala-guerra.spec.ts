@@ -52,7 +52,7 @@ const REQ = (id: string, text: string, obligatoriedad: RequirementItemRecord["ob
 
 describe("sala de guerra: tablero", () => {
   it("writer crea items; viewer solo lee (403 al escribir)", async () => {
-    const { call } = await setup();
+    const { ctx, call } = await setup();
     expect((await call("POST", "/sala-guerra/items", "viewer", { kind: "tarea", title: "Recabar firmas" })).status).toBe(403);
     const created = await call("POST", "/sala-guerra/items", "writer", { kind: "riesgo", title: "Fianza sin tramitar", severity: "alta" });
     expect(created.status).toBe(201);
@@ -60,6 +60,7 @@ describe("sala de guerra: tablero", () => {
     const board = await call("GET", "/sala-guerra", "viewer");
     expect(board.status).toBe(200);
     expect(board.json.available).toBe(true);
+    expect(board.json.viewerUserId).toBe(ctx.staff.viewer.id);
     expect(board.json.board.summary.riesgosAltos).toBe(1);
     // el alta deja un evento automatico en la bitacora
     expect(board.json.entries.some((e: any) => e.entryKind === "evento")).toBe(true);
@@ -156,7 +157,8 @@ describe("junta de aclaraciones: preguntas", () => {
 
     const dup = await call("POST", "/junta/questions", "writer", { questionText: "¿SE ACEPTAN contratos de dependencias estatales como experiencia comprobable" });
     expect(dup.status).toBe(409);
-    expect(dup.json.error.code).toBe("duplicate_question");
+    expect(dup.json.code).toBe("duplicate_question");
+    expect(dup.json.message).toMatch(/Ya existe/);
     expect(dup.json.existing.id).toBe(first.json.question.id);
 
     const parecida = await call("POST", "/junta/questions", "writer", { questionText: "Se aceptan contratos de dependencias estatales o municipales como experiencia comprobable en el ramo?" });
