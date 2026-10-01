@@ -49,13 +49,59 @@ describe("Postgres*Repository -- base sin migrar", () => {
       { match: /request_org_admin_action/, respond: () => missingFn("request_org_admin_action") },
       { match: /confirm_org_admin_action/, respond: () => missingFn("confirm_org_admin_action") },
       { match: /cancel_org_admin_action/, respond: () => missingFn("cancel_org_admin_action") },
+      { match: /approve_org_admin_action/, respond: () => missingFn("approve_org_admin_action") },
       { match: /list_org_admin_actions_for_superadmin/, respond: () => missingFn("list_org_admin_actions_for_superadmin") },
+      { match: /select 1 as sigue_viva/, respond: () => [{ sigue_viva: 1 }] },
     ]);
     const repo = new PostgresOrgAdminRepository(session);
     await expect(repo.request("u1", "suspender", "o1", {}, "motivo suficientemente largo para pasar")).resolves.toEqual({ availability: "not_migrated", action: null });
     await expect(repo.confirm("u1", "a1")).resolves.toEqual({ availability: "not_migrated", action: null });
     await expect(repo.cancel("u1", "a1")).resolves.toEqual({ availability: "not_migrated", action: null });
+    await expect(repo.approve("u1", "a1")).resolves.toEqual({ availability: "not_migrated", action: null });
     await expect(repo.list("u1")).resolves.toEqual({ availability: "not_migrated", actions: [] });
+    // El 42883 de la funcion nueva (0038) revierte SOLO su savepoint: la transaccion de la sesion sigue viva.
+    await expect(session.query("select 1 as sigue_viva")).resolves.toEqual({ rows: [{ sigue_viva: 1 }] });
+  });
+
+  it("organizaciones: una base con 0025 pero SIN 0038 (filas sin columnas nuevas) se lee como 'sin doble control', y aprobar cae a not_migrated con la sesion viva", async () => {
+    const filaVieja = {
+      id: "a1", tipo: "suspender", organization_id: "o1", payload: {}, motivo: "motivo suficientemente largo para pasar",
+      estado: "pending", creado_por: "u1", creado_en: "2026-10-01T10:00:00Z", vence_en: "2026-10-01T10:10:00Z",
+      confirmado_por: null, confirmado_en: null, resultado: null,
+    };
+    const session = new AbortAwareFakeSession([
+      { match: /list_org_admin_actions_for_superadmin/, respond: () => [filaVieja] },
+      { match: /approve_org_admin_action/, respond: () => missingFn("approve_org_admin_action") },
+      { match: /select 1 as sigue_viva/, respond: () => [{ sigue_viva: 1 }] },
+    ]);
+    const repo = new PostgresOrgAdminRepository(session);
+    const { actions } = await repo.list("u1");
+    expect(actions[0]).toMatchObject({ requiereDobleControl: false, contratoId: null, contratoVersion: null, aprobadoPor: null, aprobadoEnMs: null });
+    await expect(repo.approve("u2", "a1")).resolves.toEqual({ availability: "not_migrated", action: null });
+    await expect(session.query("select 1 as sigue_viva")).resolves.toEqual({ rows: [{ sigue_viva: 1 }] });
+  });
+
+  it("organizaciones: las columnas de 0038 se mapean (doble control, contrato, aprobacion)", async () => {
+    const fila = {
+      id: "a1", tipo: "suspender", organization_id: "o1", payload: {}, motivo: "motivo suficientemente largo para pasar",
+      estado: "pending", creado_por: "u1", creado_en: "2026-10-01T10:00:00Z", vence_en: "2026-10-01T11:00:00Z",
+      confirmado_por: null, confirmado_en: null, resultado: null,
+      requiere_doble_control: true, contrato_id: "c1", contrato_version: 3, aprobado_por: "u2", aprobado_en: "2026-10-01T10:05:00Z",
+    };
+    const session = new AbortAwareFakeSession([{ match: /approve_org_admin_action/, respond: () => [fila] }]);
+    const { action } = await new PostgresOrgAdminRepository(session).approve("u2", "a1");
+    expect(action).toMatchObject({ requiereDobleControl: true, contratoId: "c1", contratoVersion: 3, aprobadoPor: "u2", aprobadoEnMs: Date.parse("2026-10-01T10:05:00Z") });
+  });
+
+  it("organizaciones: approve traduce los SQLSTATE de negocio (42501 -> forbidden, 55006 -> conflict) y deja la sesion usable", async () => {
+    for (const [sqlstate, code] of [["42501", "forbidden"], ["55006", "conflict"]] as const) {
+      const session = new AbortAwareFakeSession([
+        { match: /approve_org_admin_action/, respond: () => pgError(sqlstate, "falla de negocio") },
+        { match: /select 1 as sigue_viva/, respond: () => [{ sigue_viva: 1 }] },
+      ]);
+      await expect(new PostgresOrgAdminRepository(session).approve("u1", "a1")).rejects.toMatchObject({ name: "SuperadminSeguridadError", code });
+      await expect(session.query("select 1 as sigue_viva")).resolves.toBeDefined();
+    }
   });
 
   it("un 42883 que NO es 'function ... does not exist' (bug de tipos) NO se enmascara como migracion pendiente", async () => {
@@ -187,6 +233,59 @@ describe("InMemoryOrgAdminRepository", () => {
     await repo.confirm("u1", action!.id);
     const id = repo.organizationBySlug("nueva")!;
     expect(repo.organizationStatus(id)).toBe("trial");
+  });
+  it("doble control: suspender con contrato exige aprobacion de OTRO superadmin, vence a los 60 min, un solo uso", async () => {
+    let now = 0;
+    const repo = new InMemoryOrgAdminRepository({ now: () => now });
+    for (const u of ["u1", "u2", "u3"]) repo.seedSuperadmin(u);
+    repo.seedOrganization("oa", { vertical: "citas", name: "A", slug: "a", status: "active" });
+    repo.seedContract("oa", { contractId: "c1", version: 2 });
+    const { action } = await repo.request("u1", "suspender", "oa", {}, motivo);
+    expect(action).toMatchObject({ requiereDobleControl: true, contratoId: "c1", contratoVersion: 2, venceEnMs: 60 * 60_000 });
+    await expect(repo.confirm("u1", action!.id)).rejects.toMatchObject({ code: "conflict" }); // sin aprobacion
+    await expect(repo.approve("u1", action!.id)).rejects.toMatchObject({ code: "forbidden" }); // el solicitante
+    await expect(repo.approve("zz", action!.id)).rejects.toMatchObject({ code: "forbidden" }); // no superadmin
+    now += 30 * 60_000;
+    const aprobada = await repo.approve("u2", action!.id);
+    expect(aprobada.action).toMatchObject({ aprobadoPor: "u2", estado: "pending" });
+    await expect(repo.approve("u3", action!.id)).rejects.toMatchObject({ code: "conflict" }); // ya aprobada
+    await expect(repo.confirm("u2", action!.id)).rejects.toMatchObject({ code: "forbidden" }); // el aprobador no ejecuta
+    const hecha = await repo.confirm("u1", action!.id);
+    expect(hecha.action!.resultado).toMatchObject({ status: "suspended", doble_control: true, aprobado_por: "u2", contrato_version: 2 });
+    await expect(repo.confirm("u1", action!.id)).rejects.toMatchObject({ code: "conflict" }); // replay
+    await expect(repo.approve("u3", action!.id)).rejects.toMatchObject({ code: "conflict" }); // ya ejecutada
+    expect(repo.organizationStatus("oa")).toBe("suspended");
+  });
+  it("doble control: aprobar sin contrato (no aplica) o vencida es conflicto; cambiar a prueba con contrato se rechaza", async () => {
+    let now = 0;
+    const repo = new InMemoryOrgAdminRepository({ now: () => now });
+    repo.seedSuperadmin("u1");
+    repo.seedSuperadmin("u2");
+    repo.seedOrganization("oa", { vertical: "citas", name: "A", slug: "a", status: "active" });
+    const simple = await repo.request("u1", "suspender", "oa", {}, motivo);
+    expect(simple.action).toMatchObject({ requiereDobleControl: false, contratoId: null, venceEnMs: 10 * 60_000 });
+    await expect(repo.approve("u2", simple.action!.id)).rejects.toMatchObject({ code: "conflict" });
+    await repo.cancel("u1", simple.action!.id);
+    repo.seedContract("oa", { contractId: "c1", version: 1 });
+    await expect(repo.request("u1", "cambiar_plan", "oa", { plan: "trial" }, motivo)).rejects.toMatchObject({ code: "conflict" });
+    const doble = await repo.request("u1", "suspender", "oa", {}, motivo);
+    now += 61 * 60_000;
+    await expect(repo.approve("u2", doble.action!.id)).rejects.toMatchObject({ code: "conflict" });
+    expect((await repo.confirm("u1", doble.action!.id)).action!.estado).toBe("expired");
+    expect(repo.organizationStatus("oa")).toBe("active");
+  });
+  it("una pendiente ya vencida no bloquea una solicitud nueva (se marca vencida); una vigente si", async () => {
+    let now = 0;
+    const repo = new InMemoryOrgAdminRepository({ now: () => now });
+    repo.seedSuperadmin("u1");
+    repo.seedSuperadmin("u2");
+    repo.seedOrganization("oa", { vertical: "citas", name: "A", slug: "a", status: "active" });
+    const vieja = await repo.request("u1", "suspender", "oa", {}, motivo);
+    now += 11 * 60_000;
+    const nueva = await repo.request("u2", "cambiar_plan", "oa", { plan: "trial" }, motivo);
+    expect(nueva.action!.estado).toBe("pending");
+    expect((await repo.list("u2")).actions.find((a) => a.id === vieja.action!.id)!.estado).toBe("expired");
+    await expect(repo.request("u1", "suspender", "oa", {}, motivo)).rejects.toMatchObject({ code: "conflict" });
   });
   it("no superadmin: forbidden en escrituras y lista vacia", async () => {
     const repo = build();

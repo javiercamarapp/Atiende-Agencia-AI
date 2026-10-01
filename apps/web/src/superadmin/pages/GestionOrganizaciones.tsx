@@ -1,6 +1,7 @@
 // Gestion de organizaciones: alta, suspender, reactivar y cambiar plan de cuenta
 // (prueba <-> activa), SIEMPRE en dos pasos -- solicitar y confirmar -- con motivo
-// obligatorio. Backend real: apps/api/src/routes/superadmin-organizaciones.ts (ver
+// obligatorio. Suspender una organizacion con contrato vigente pide ademas la
+// aprobacion de un SEGUNDO superadmin (doble control, migracion 0038). Backend real: apps/api/src/routes/superadmin-organizaciones.ts (ver
 // docs/SUPERADMIN_ORGANIZACIONES.md). Confirmar pide tu codigo MFA (step-up).
 // "Plan de cuenta" NO es el plan de cobro: no toca Stripe ni la facturacion.
 import { useEffect, useState, type FormEvent } from "react";
@@ -29,6 +30,11 @@ interface Accion {
   readonly estado: Estado;
   readonly venceEnMs: number;
   readonly resultado: Record<string, unknown> | null;
+  // SA-06 (migracion 0038): una API/base sin ella no manda estos campos (se leen como "sin doble control").
+  readonly requiereDobleControl?: boolean;
+  readonly contratoVersion?: number | null;
+  readonly aprobadoPor?: string | null;
+  readonly esSolicitante?: boolean;
 }
 
 interface Solicitud {
@@ -137,7 +143,17 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
     }
   }
 
-  async function resolver(accion: Accion, que: "confirmar" | "cancelar") {
+  async function resolver(accion: Accion, que: "confirmar" | "cancelar" | "aprobar") {
+    if (que === "aprobar") {
+      // Aprobar es el segundo control: autoriza que el solicitante ejecute; cerrar o descartar el diálogo NO aprueba nada.
+      const ok = await confirmar({
+        titulo: `Aprobar ${ETIQUETA_TIPO[accion.tipo].toLowerCase()}: ${accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : "organización nueva"}`,
+        descripcion: `Motivo registrado: ${accion.motivo}${accion.contratoVersion ? ` · Contrato vigente, versión ${accion.contratoVersion}.` : ""} Tu aprobación queda en la bitácora; la acción solo la ejecuta quien la solicitó.`,
+        tono: "danger",
+        confirmar: "Aprobar",
+      });
+      if (!ok) return;
+    }
     if (que === "confirmar") {
       // Confirmar ejecuta el alta / suspensión / reactivación / cambio de cuenta de una organización: Cancelar / cerrar el diálogo NO ejecuta nada.
       const nombre = accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : String(accion.payload.name ?? "organización nueva");
@@ -154,7 +170,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
     setError(null);
     try {
       await fetchJson(apiBaseUrl, token, `/superadmin/organizaciones/acciones/${accion.id}/${que}`, { method: "POST", body: JSON.stringify({}) });
-      setAviso(que === "confirmar" ? "Acción ejecutada." : "Solicitud cancelada.");
+      setAviso(que === "confirmar" ? "Acción ejecutada." : que === "aprobar" ? "Aprobada. Ahora quien la solicitó puede confirmarla." : "Solicitud cancelada.");
       await cargar();
     } catch (err) {
       setAviso(err instanceof Error ? err.message : "No se pudo completar.");
@@ -206,28 +222,48 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
             <CardTitle>Pendientes de confirmar</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {pendientes.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-3 flex-wrap rounded-md border border-border p-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {ETIQUETA_TIPO[a.tipo]} — {nombreDe(a.organizationId)}
-                    {a.tipo === "cambiar_plan" ? ` → ${a.payload.plan === "active" ? "activa" : "prueba"}` : ""}
-                    {a.tipo === "alta" ? ` (${String(a.payload.name)})` : ""}
-                  </p>
-                  <p className="text-sm text-muted-foreground truncate" title={a.motivo}>
-                    {a.motivo}
-                  </p>
+            {pendientes.map((a) => {
+              const esMia = a.esSolicitante !== false;
+              const dobleControl = a.requiereDobleControl === true;
+              const aprobada = Boolean(a.aprobadoPor);
+              return (
+                <div key={a.id} className="flex items-center justify-between gap-3 flex-wrap rounded-md border border-border p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {ETIQUETA_TIPO[a.tipo]} — {nombreDe(a.organizationId)}
+                      {a.tipo === "cambiar_plan" ? ` → ${a.payload.plan === "active" ? "activa" : "prueba"}` : ""}
+                      {a.tipo === "alta" ? ` (${String(a.payload.name)})` : ""}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate" title={a.motivo}>
+                      {a.motivo}
+                    </p>
+                    {dobleControl && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Doble control: la organización tiene contrato vigente{a.contratoVersion ? ` (versión ${a.contratoVersion})` : ""}.{" "}
+                        {aprobada ? "Aprobada por un segundo superadmin." : esMia ? "Falta la aprobación de un segundo superadmin." : "Espera tu aprobación."}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {esMia && (
+                      <Button variant="outline" size="sm" onClick={() => void resolver(a, "cancelar")} disabled={trabajando === a.id}>
+                        Cancelar
+                      </Button>
+                    )}
+                    {dobleControl && !esMia && !aprobada && (
+                      <Button size="sm" onClick={() => void resolver(a, "aprobar")} disabled={trabajando === a.id}>
+                        {trabajando === a.id ? "Aprobando…" : "Aprobar"}
+                      </Button>
+                    )}
+                    {esMia && (
+                      <Button size="sm" onClick={() => void resolver(a, "confirmar")} disabled={trabajando === a.id || (dobleControl && !aprobada)}>
+                        {trabajando === a.id ? "Ejecutando…" : "Confirmar"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => void resolver(a, "cancelar")} disabled={trabajando === a.id}>
-                    Cancelar
-                  </Button>
-                  <Button size="sm" onClick={() => void resolver(a, "confirmar")} disabled={trabajando === a.id}>
-                    {trabajando === a.id ? "Ejecutando…" : "Confirmar"}
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
