@@ -313,6 +313,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let anyToolCalled = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal);
+      // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
+      let escalarMotivo: string | null = null;
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
@@ -330,12 +333,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (isToolErrorResult(aviso.result)) {
           return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
         }
-        return { reply: riesgo.reply, orderId: null, propertyId };
+        // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
+        // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
+        escalarMotivo = riesgo.motivo;
+        return done({ reply: riesgo.reply, orderId: null, propertyId });
       }
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -353,7 +359,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // residencia bloqueado — nunca se propaga un 500 crudo al cliente
           // de WhatsApp; si ya hay un orderId real, se lo confirmamos con
           // éxito en vez de sonar a error (bug real corregido en el origen).
-          return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+          return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -371,7 +377,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 ),
                 orderId,
               );
-          return { reply: safeReply(conPregunta), orderId, propertyId };
+          return done({ reply: safeReply(conPregunta), orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -396,6 +402,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               propertyId = executed.propertyId;
             }
           }
+          if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
+            escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
+          }
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
@@ -404,9 +413,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       }
 
       if (orderId) {
-        return { reply: safeReply(providerFailureReply(orderId)), orderId, propertyId };
+        return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
       }
-      return { reply: "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId };
+      return done({ reply: "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
     },
   };
 }

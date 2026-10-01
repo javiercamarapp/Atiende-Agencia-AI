@@ -168,6 +168,8 @@ describe("E.7 / E.4 motivos de alto riesgo: se avisan al equipo ANTES del modelo
       expect(turn.reply).not.toMatch(TUTEO);
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]![0]).toMatchObject({ customerPhone: PHONE, reason: `escalada:${motivo}`, source: "whatsapp" });
+      // R-21 (#217): el aviso fijo tambien abre la toma de handoff, con el mismo motivo y sin segundo aviso al equipo.
+      expect((turn as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo });
     });
   }
 

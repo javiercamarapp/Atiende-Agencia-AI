@@ -13,6 +13,7 @@
 //   - REGLA DURA de compatibilidad con la base sin migrar: el repositorio degrada las
 //     lecturas a `disponible: false` y las escrituras a 503 (SAVEPOINT, ver
 //     PostgresIdentityRepository) -- nunca un 500, nunca romper un flujo existente.
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { assertVerticalRole, authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
@@ -23,6 +24,7 @@ import {
   IDENTITY_CAPTURE_ROLES,
   IDENTITY_REVEAL_ROLES,
   IdentityAccessDeniedError,
+  IdentityBlockedError,
   IdentityConflictError,
   IdentityDecryptError,
   IdentityDoubleControlError,
@@ -32,6 +34,13 @@ import {
   IdentityUnavailableError,
   IdentityVaultService,
   PostgresIdentityRepository,
+  PrivacyAccessDeniedError,
+  PrivacyConflictError,
+  PrivacyDoubleControlError,
+  PrivacyInvalidInputError,
+  PrivacyUnavailableError,
+  assertConsentMatchesNotice,
+  parseConsentFields,
   computeMigratoryRetentionUntil,
   createIdentityCipher,
   parseCaptureIdentityInput,
@@ -45,6 +54,7 @@ import {
   type MigratoryRegistrationRecord,
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
+import { privacyRepo, serializeConsent } from "./privacidad-comun.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -55,7 +65,7 @@ const cipherCache = new WeakMap<object, IdentityCipher | null>();
 
 /** Cifrador de la boveda segun el entorno (memoizado por `deps.env`). Una llave presente
  *  pero invalida es un error de configuracion explicito (503), no "sin llave" en silencio. */
-function resolveCipher(deps: AppDeps): IdentityCipher | null {
+export function resolveCipher(deps: AppDeps): IdentityCipher | null {
   if (cipherCache.has(deps.env)) return cipherCache.get(deps.env) ?? null;
   let cipher: IdentityCipher | null = null;
   try {
@@ -74,15 +84,21 @@ function identityRepo(deps: AppDeps, c: Context<CoreAuthHonoEnv>): IdentityRepos
 }
 
 /** Traduce los errores de dominio de la boveda a respuestas HTTP (nunca un 500 crudo). */
-function toApiError(err: unknown): unknown {
+export function toApiError(err: unknown): unknown {
   if (err instanceof IdentityUnavailableError) return Errors.serviceUnavailable(err.message);
   if (err instanceof IdentityAccessDeniedError) return Errors.forbidden(err.message);
   if (err instanceof IdentityDoubleControlError) return Errors.forbidden(err.message);
   if (err instanceof IdentityInvalidInputError) return Errors.validation(err.message);
   if (err instanceof IdentityPurgedError) return Errors.conflict(err.message);
+  if (err instanceof IdentityBlockedError) return Errors.conflict(err.message);
   if (err instanceof IdentityRequestResolvedError) return Errors.conflict(err.message);
   if (err instanceof IdentityConflictError) return Errors.conflict(err.message);
   if (err instanceof IdentityDecryptError) return Errors.serviceUnavailable(err.message);
+  // H-02 (privacidad): mismos codigos que la boveda -- 503 migracion pendiente, 403 sin permiso/doble control, 409 estado, 400 entrada.
+  if (err instanceof PrivacyUnavailableError) return Errors.serviceUnavailable(err.message);
+  if (err instanceof PrivacyAccessDeniedError || err instanceof PrivacyDoubleControlError) return Errors.forbidden(err.message);
+  if (err instanceof PrivacyInvalidInputError) return Errors.validation(err.message);
+  if (err instanceof PrivacyConflictError) return Errors.conflict(err.message);
   return err;
 }
 
@@ -94,25 +110,25 @@ async function guarded<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function requireUuid(value: string, field: string): string {
+export function requireUuid(value: string, field: string): string {
   if (!UUID_RE.test(value)) throw Errors.validation(`${field}: se esperaba un UUID.`);
   return value;
 }
 
-function parseLimit(raw: string | undefined): number {
+export function parseLimit(raw: string | undefined): number {
   if (raw === undefined) return 50;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > 200) throw Errors.validation("limit: entero entre 1 y 200.");
   return n;
 }
 
-async function readBody(c: Context<CoreAuthHonoEnv>): Promise<Record<string, unknown>> {
+export async function readBody(c: Context<CoreAuthHonoEnv>): Promise<Record<string, unknown>> {
   const raw = await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("El cuerpo debe ser un objeto JSON.");
   return raw as Record<string, unknown>;
 }
 
-function serializeIdentity(r: IdentityVaultRecord) {
+export function serializeIdentity(r: IdentityVaultRecord) {
   return {
     id: r.id,
     huespedId: r.guestId,
@@ -128,6 +144,12 @@ function serializeIdentity(r: IdentityVaultRecord) {
     capturadaPor: r.capturedBy,
     creadaEn: r.createdAt,
     purgadaEn: r.purgedAt,
+    // Bloqueo previo a la purga (migracion 032); todo `null` en una base sin ella.
+    bloqueadaEn: r.blockedAt,
+    bloqueadaHasta: r.blockedUntil,
+    ventanaBloqueoDias: r.blockWindowDays,
+    motivoBloqueo: r.blockReason,
+    bloqueadaPor: r.blockedBy,
   };
 }
 function serializePurge(r: IdentityPurgeRequestRecord) {
@@ -174,7 +196,7 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const guestId = c.req.query("huespedId");
     const estado = c.req.query("estado");
     if (guestId !== undefined) requireUuid(guestId, "huespedId");
-    if (estado !== undefined && estado !== "activo" && estado !== "purgado") throw Errors.validation("estado: 'activo' o 'purgado'.");
+    if (estado !== undefined && estado !== "activo" && estado !== "bloqueada" && estado !== "purgado") throw Errors.validation("estado: 'activo', 'bloqueada' o 'purgado'.");
     const result = await guarded(() => identityRepo(deps, c).listIdentities(propertyId, { guestId, status: estado, limit: parseLimit(c.req.query("limit")) }));
     return c.json({ disponible: result.available, llaveConfigurada: llaveConfigurada(), items: result.items.map(serializeIdentity) });
   });
@@ -182,7 +204,19 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.post("/hoteles/:propertyId/identidad", async (c) => {
     assertVerticalRole(c, IDENTITY_CAPTURE_ROLES);
     const propertyId = c.req.param("propertyId");
-    const input = await guarded(async () => parseCaptureIdentityInput(await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES)));
+    const rawBody = await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES);
+    const input = await guarded(async () => parseCaptureIdentityInput(rawBody));
+    // H-02: consentimiento OPCIONAL ligado a la captura (aviso aceptado, finalidades, canal, evidencia). Se valida
+    // ANTES de capturar y se registra en la MISMA transaccion: si la base lo rechaza, la captura se revierte.
+    const rawConsent = rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>).consentimiento : undefined;
+    const consent = rawConsent === undefined || rawConsent === null ? null : await guarded(async () => parseConsentFields(rawConsent));
+    if (consent) {
+      const privacy = privacyRepo(deps, c);
+      const notice = await guarded(() => privacy.findNotice(propertyId, consent.noticeId));
+      if (notice) await guarded(async () => assertConsentMatchesNotice(consent, notice));
+      // Sin aviso: o la base no tiene 032 (la captura sigue sin ledger) o el aviso no existe en esta property (400).
+      else if ((await guarded(() => privacy.listNotices(propertyId, { limit: 1 }))).available) throw Errors.validation("avisoId: el aviso no existe en esta property.");
+    }
     const hotelesRepo = deps.hotelesRepo(c.get("db"));
     const today = hoyFechaNegocio(resolverZonaHorariaNegocio(await hotelesRepo.findPropertyTimezone(propertyId)));
     // El plazo de la imagen cuenta desde el check-out de la reserva ligada (si no hay, desde hoy).
@@ -191,8 +225,23 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const checkOutDate = input.reservationId ? ((await hotelesRepo.findReservation(propertyId, input.reservationId))?.checkOutDate ?? null) : null;
     const service = new IdentityVaultService(identityRepo(deps, c), resolveCipher(deps));
     const record = await guarded(() => service.capture({ propertyId, actorUserId: c.get("userId"), today, checkOutDate, input }));
+    let consentimiento: Record<string, unknown> | null = null;
+    if (consent) {
+      try {
+        const saved = await privacyRepo(deps, c).recordConsent(
+          propertyId,
+          { id: randomUUID(), guestId: input.guestId, vaultId: record.id, noticeId: consent.noticeId, acceptedMandatory: consent.acceptedMandatory, acceptedOptional: consent.acceptedOptional, channel: consent.channel, evidenceMethod: consent.evidenceMethod, sensitiveData: consent.sensitiveData },
+          c.get("userId"),
+        );
+        consentimiento = { estado: "registrado", ...serializeConsent(saved) };
+      } catch (err) {
+        // Base sin la migracion 032 (SAVEPOINT ya recupero la sesion): la captura sigue valiendo, sin ledger.
+        if (!(err instanceof PrivacyUnavailableError)) throw toApiError(err);
+        consentimiento = { estado: "no_disponible" };
+      }
+    }
     c.header("Cache-Control", "no-store");
-    return c.json({ identidad: serializeIdentity(record) }, 201);
+    return c.json({ identidad: serializeIdentity(record), consentimiento }, 201);
   });
 
   app.post("/hoteles/:propertyId/identidad/:identidadId/verificar", async (c) => {
@@ -259,7 +308,7 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, IDENTITY_ADMIN_ROLES);
     const propertyId = c.req.param("propertyId");
     const estado = c.req.query("estado");
-    if (estado !== undefined && estado !== "pendiente" && estado !== "ejecutada" && estado !== "rechazada") throw Errors.validation("estado: pendiente, ejecutada o rechazada.");
+    if (estado !== undefined && estado !== "pendiente" && estado !== "ejecutada" && estado !== "rechazada" && estado !== "en_bloqueo") throw Errors.validation("estado: pendiente, en_bloqueo, ejecutada o rechazada.");
     const result = await guarded(() => identityRepo(deps, c).listPurgeRequests(propertyId, { status: estado, limit: parseLimit(c.req.query("limit")) }));
     return c.json({ disponible: result.available, items: result.items.map(serializePurge) });
   });

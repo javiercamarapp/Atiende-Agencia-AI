@@ -240,7 +240,7 @@ describe("purga con doble control", () => {
     await solicitar(app, ctx, id);
   });
 
-  it("DOBLE CONTROL: el solicitante no puede decidir (403); otro admin aprueba; la identidad queda purgada y ya no se revela (409)", async () => {
+  it("DOBLE CONTROL: el solicitante no puede decidir (403); otro admin aprueba; la identidad queda BLOQUEADA (no purgada) y ya no se revela (409)", async () => {
     const { ctx, app } = await setup();
     const { id } = await capture(app, ctx);
     const requestId = await solicitar(app, ctx, id, ctx.staff.owner.token);
@@ -251,11 +251,14 @@ describe("purga con doble control", () => {
 
     const ok = await app.request(`/hoteles/${ctx.propertyId}/identidad-purgas/${requestId}/decidir`, post(ctx.staff.gm.token, { aprobar: true, nota: "Aprobada tras verificar" }));
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ resultado: "ejecutada" });
-    expect(ctx.identidadRepo.storedEnvelope(id)).toBeNull();
+    expect(await ok.json()).toEqual({ resultado: "en_bloqueo" });
+    // Desde 032 aprobar NO purga: el sobre se conserva durante la ventana de bloqueo.
+    expect(ctx.identidadRepo.storedEnvelope(id)).not.toBeNull();
+    expect((await ctx.identidadRepo.findIdentity(ctx.propertyId, id))?.status).toBe("bloqueada");
 
-    const reveal = await app.request(`/hoteles/${ctx.propertyId}/identidad/${id}/revelar`, post(ctx.staff.frontdesk.token, { motivo: "Intento de revelar tras purga" }));
+    const reveal = await app.request(`/hoteles/${ctx.propertyId}/identidad/${id}/revelar`, post(ctx.staff.frontdesk.token, { motivo: "Intento de revelar bloqueada" }));
     expect(reveal.status).toBe(409);
+    expect(((await reveal.json()) as { message: string }).message).toMatch(/bloqueada/);
     const again = await app.request(`/hoteles/${ctx.propertyId}/identidad-purgas/${requestId}/decidir`, post(ctx.staff.gm.token, { aprobar: true }));
     expect(again.status).toBe(409);
   });
@@ -320,17 +323,30 @@ describe("cron de purga por retencion (/internal/hoteles/identidad-purga)", () =
     expect((await app.request("/internal/hoteles/identidad-purga", { method: "POST" })).status).toBe(401);
   });
 
-  it("purga solo lo vencido segun la fecha de negocio de cada property", async () => {
+  it("BLOQUEA lo vencido (no purga de golpe) segun la fecha de negocio de cada property; la purga llega al vencer la ventana", async () => {
     const { ctx, app } = await setup();
     const vencida = await capture(app, ctx);
     const vigente = await capture(app, ctx);
     ctx.identidadRepo.setRetention(vencida.id, "2020-01-01");
     const res = await app.request("/internal/hoteles/identidad-purga", { method: "POST", headers: cronHeaders(ctx) });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; purgadas_total: number; corridas: { omitida: string | null; error: string | null }[] };
-    expect(body).toMatchObject({ ok: true, purgadas_total: 1 });
-    expect((await ctx.identidadRepo.findIdentity(ctx.propertyId, vencida.id))?.status).toBe("purgado");
+    const body = (await res.json()) as { ok: boolean; purgadas_total: number; bloqueadas_total: number; corridas: { omitida: string | null; error: string | null; via_bloqueo: boolean | null }[] };
+    expect(body).toMatchObject({ ok: true, purgadas_total: 0, bloqueadas_total: 1 });
+    expect(body.corridas.every((r) => r.via_bloqueo === true)).toBe(true);
+    expect((await ctx.identidadRepo.findIdentity(ctx.propertyId, vencida.id))?.status).toBe("bloqueada");
+    expect(ctx.identidadRepo.storedEnvelope(vencida.id)).not.toBeNull();
     expect((await ctx.identidadRepo.findIdentity(ctx.propertyId, vigente.id))?.status).toBe("activo");
+  });
+
+  it("la corrida siguiente, con la ventana vencida (en memoria: fecha de negocio posterior), purga lo bloqueado", async () => {
+    const { ctx, app } = await setup();
+    const vencida = await capture(app, ctx);
+    ctx.identidadRepo.setRetention(vencida.id, "2020-01-01");
+    await app.request("/internal/hoteles/identidad-purga", { method: "POST", headers: cronHeaders(ctx) });
+    const blockedUntil = (await ctx.identidadRepo.findIdentity(ctx.propertyId, vencida.id))!.blockedUntil!;
+    expect(await ctx.identidadRepo.purgeExpired(ctx.propertyId, blockedUntil)).toBe(1);
+    expect((await ctx.identidadRepo.findIdentity(ctx.propertyId, vencida.id))?.status).toBe("purgado");
+    expect(ctx.identidadRepo.storedEnvelope(vencida.id)).toBeNull();
   });
 
   it("base sin migrar: la property se OMITE (migracion_pendiente), el cron responde 200 ok, nada se rompe", async () => {
