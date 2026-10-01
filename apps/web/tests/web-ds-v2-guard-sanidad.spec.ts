@@ -21,8 +21,8 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "<textarea>", viola: "<textarea />", limpio: "<Textarea />" },
   { regla: "checkbox crudo", viola: '<input type="checkbox" />', limpio: "<Checkbox />" },
   { regla: "formatMoney local", viola: "function formatMoney(n: number) { return String(n); }", limpio: 'import { formatMoney } from "@atiende/ui";', ruta: "verticals/x/pages/Y.tsx" },
-  { regla: "fmtMoney local", viola: "function fmtMoney(n: number) { return String(n); }", limpio: 'import { formatMoney } from "@atiende/ui";', ruta: "pages/Y.tsx" },
-  { regla: "fmtMoney local", viola: 'n.toLocaleString("es-MX", { minimumFractionDigits: 2 })', limpio: "formatMoney(n)", ruta: "pages/Y.tsx" },
+  { regla: "fmtMoney local", viola: "function fmtMoney(n: number) { return String(n); }", limpio: 'import { formatMoney } from "@atiende/ui";', ruta: "verticals/hoteles/pages/Y.tsx" },
+  { regla: "fmtMoney local", viola: 'n.toLocaleString("es-MX", { minimumFractionDigits: 2 })', limpio: "formatMoney(n)", ruta: "verticals/hoteles/pages/Y.tsx" },
   { regla: "ModalFormularioLateral", viola: "<ModalFormularioLateral />", limpio: "<FormDialog />" },
   { regla: "<table>", viola: "<table><tr /></table>", limpio: "<DataTable />" },
   { regla: "<Badge>", viola: '<Badge className="x">a</Badge>', limpio: "<StatusBadge tone=\"success\">a</StatusBadge>" },
@@ -58,6 +58,13 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {
     const regla = porRegla("formatMoney local");
     expect(infractores([fuente("function formatMoney() {}", "lib/format.ts")], regla)).toEqual([]);
+  });
+
+  it("la regla fmtMoney solo aplica a paginas de hoteles (otras paginas formatean porcentajes o moneda con sufijo)", () => {
+    const regla = porRegla("fmtMoney local");
+    const codigo = 'n.toLocaleString("es-MX", { minimumFractionDigits: 1 })';
+    expect(infractores([fuente(codigo, "verticals/despachos/pages/Dashboard.tsx")], regla)).toEqual([]);
+    expect(infractores([fuente(codigo, "verticals/hoteles/lib/x.ts")], regla)).toEqual([]);
   });
 
   it("una violacion dentro de un comentario no cuenta (el guard escanea codigo, no prosa)", () => {

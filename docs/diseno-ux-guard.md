@@ -27,7 +27,7 @@ npx vitest run apps/web/tests/web-ds-v2-guard.spec.ts apps/web/tests/web-ds-v2-g
 | `style={{...}}` | clases |
 | `<select>`, `<textarea>`, `type="checkbox"` crudos | `NativeSelect`, `Textarea`, `Checkbox` |
 | `function formatMoney` en `pages/` | `formatMoney` de `@atiende/ui` |
-| `function fmtMoney` o `toLocaleString("es-MX", { minimumFractionDigits` en `pages/` | `formatMoney` de `@atiende/ui` |
+| `function fmtMoney` o `toLocaleString("es-MX", { minimumFractionDigits` en `verticals/hoteles/pages/` (alcance heredado del guard de hoteles) | `formatMoney` de `@atiende/ui` |
 | `ModalFormularioLateral` | `FormDialog` |
 | `<table>` crudo | `Table` / `DataTable` |
 | `<Badge>` | `StatusBadge` |
@@ -43,7 +43,7 @@ Se borraron `restaurantes|hoteles|rentas|despachos|licitaciones|superadmin-ds-v2
 
 - Las 10 reglas comunes de los 6 guards (confirm, text-[px], paleta, hex, style, select, textarea, checkbox, formatMoney, p-6) ya estaban en el global.
 - `ModalFormularioLateral` y `<Badge>` (en despachos, rentas, licitaciones, superadmin) ya estaban en el global.
-- Reglas que SOLO existian en un guard por vertical y se movieron al global: `fmtMoney`/`toLocaleString` en paginas (hoteles), delegacion de `dashboard-client` (restaurantes) y de `lib/format` (despachos).
+- Reglas que SOLO existian en un guard por vertical y se movieron al global: `fmtMoney`/`toLocaleString` en paginas de hoteles (con `alcance` propio: aplicarla a todas las paginas fallaba en `superadmin/pages/BreakGlass.tsx` y `rentas/pages/OwnerPortalDashboard.tsx`, que formatean moneda con sufijo, y `despachos/pages/Dashboard.tsx`, un porcentaje; los dos primeros ya figuran como pendientes en `diseno-ux-inventario-restante.md`), delegacion de `dashboard-client` (restaurantes) y de `lib/format` (despachos).
 - Los minimos de archivos por vertical (40/30/30/30/30/25) se conservan en el global como "escanea al menos N archivos en <area>".
 - Diferencia de alcance a favor del global: las reglas `soloPaginas` usaban `startsWith("pages")` por vertical; el global usa cualquier directorio `pages/`, mas amplio.
 - Alcance nuevo: dos reglas anti-regresion para los legados ya retirados (tokens `gold/terracotta/sand/olive/cream`, `shadow-glow`, `gradient-hero`, variantes de `Button`), que hoy no tienen ningun uso.

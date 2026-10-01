@@ -16,6 +16,8 @@ export interface ReglaGuard {
   readonly patron: RegExp;
   /** Solo se aplica a archivos bajo un directorio `pages/`. */
   readonly soloPaginas?: boolean;
+  /** Si existe, la regla solo se aplica a las rutas que lo cumplan (conserva el alcance de un guard por vertical). */
+  readonly alcance?: RegExp;
 }
 
 export function archivos(dir: string): string[] {
@@ -50,7 +52,7 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "<textarea> crudo (usar Textarea)", patron: /<textarea[\s>]/ },
   { nombre: "checkbox crudo (usar Checkbox)", patron: /type="checkbox"/ },
   { nombre: "formatMoney local (usar formatMoney de @atiende/ui)", patron: /function\s+formatMoney\s*\(/, soloPaginas: true },
-  { nombre: "fmtMoney local o dinero con toLocaleString a mano en paginas (usar formatMoney de @atiende/ui)", patron: /function\s+fmtMoney\s*\(|toLocaleString\("es-MX",\s*\{\s*minimumFractionDigits/, soloPaginas: true },
+  { nombre: "fmtMoney local o dinero con toLocaleString a mano en paginas de hoteles (usar formatMoney de @atiende/ui)", patron: /function\s+fmtMoney\s*\(|toLocaleString\("es-MX",\s*\{\s*minimumFractionDigits/, soloPaginas: true, alcance: /^verticals\/hoteles\// },
   { nombre: "ModalFormularioLateral (usar FormDialog de @atiende/ui)", patron: /ModalFormularioLateral/ },
   { nombre: "<table> crudo (usar Table o DataTable de @atiende/ui)", patron: /<table[\s>]/ },
   { nombre: "<Badge> con colores propios (usar StatusBadge)", patron: /<Badge[\s>]/ },
@@ -63,7 +65,8 @@ const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);
 
 /** Rutas de las fuentes que infringen la regla (respetando `soloPaginas`). */
 export function infractores(fuentes: ReadonlyArray<Fuente>, regla: ReglaGuard): string[] {
-  const candidatos = regla.soloPaginas ? fuentes.filter(esPagina) : fuentes;
+  const enAlcance = regla.alcance ? fuentes.filter((f) => regla.alcance!.test(f.ruta)) : fuentes;
+  const candidatos = regla.soloPaginas ? enAlcance.filter(esPagina) : enAlcance;
   return candidatos.filter((f) => regla.patron.test(f.codigo)).map((f) => f.ruta);
 }
 
