@@ -3,7 +3,7 @@
 // Quien cubre cada turno sale del staff de la organizacion (`fetchOrgMembers`, owner/admin) con acceso a esta sucursal.
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer } from "@atiende/ui";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { OrgMember } from "../lib/staff-client.ts";
 import { fetchTurnos, guardarTurnos } from "../lib/conversaciones-client.ts";
@@ -12,7 +12,6 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const EDITAN = new Set(["owner", "admin"]);
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
-const INPUT = "flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground";
 
 /** Doble turno de PM por omision: 12:00-18:00 y 18:00-01:00 todos los dias. */
 const TURNOS_SUGERIDOS: readonly TurnoWire[] = [
@@ -133,15 +132,15 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
                 <div className="flex flex-wrap gap-3 items-end">
                   <label className="flex flex-col gap-1">
                     Nombre
-                    <input aria-label={`Nombre del turno ${i + 1}`} value={t.nombre} disabled={!puedeEditar} maxLength={60} onChange={(e) => cambiar(i, { nombre: e.target.value })} className={INPUT} />
+                    <Input aria-label={`Nombre del turno ${i + 1}`} value={t.nombre} disabled={!puedeEditar} maxLength={60} onChange={(e) => cambiar(i, { nombre: e.target.value })} className="w-auto" />
                   </label>
                   <label className="flex flex-col gap-1">
                     Inicia
-                    <input type="time" aria-label={`Inicio del turno ${i + 1}`} value={t.inicia} disabled={!puedeEditar} onChange={(e) => cambiar(i, { inicia: e.target.value })} className={INPUT} />
+                    <Input type="time" aria-label={`Inicio del turno ${i + 1}`} value={t.inicia} disabled={!puedeEditar} onChange={(e) => cambiar(i, { inicia: e.target.value })} className="w-auto" />
                   </label>
                   <label className="flex flex-col gap-1">
                     Termina (si es menor, cruza la medianoche)
-                    <input type="time" aria-label={`Fin del turno ${i + 1}`} value={t.termina} disabled={!puedeEditar} onChange={(e) => cambiar(i, { termina: e.target.value })} className={INPUT} />
+                    <Input type="time" aria-label={`Fin del turno ${i + 1}`} value={t.termina} disabled={!puedeEditar} onChange={(e) => cambiar(i, { termina: e.target.value })} className="w-auto" />
                   </label>
                   {puedeEditar && (
                     <Button variant="outline" onClick={() => setTurnos((a) => (a ?? []).filter((_, j) => j !== i))}>

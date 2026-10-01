@@ -6,8 +6,8 @@ Alcance: `apps/web/src/verticals/restaurantes/**` (panel de gestion, repartidor,
 ## Metodo y limites (leer primero)
 
 - **Estatico, sobre el codigo de esta rama**: se extrajo cada `Button`, `button`, `Link`/`a`, `TabsTrigger`, `Checkbox`,
-  `NativeSelect`, `form` y `AlertDialogAction/Cancel` de las 20 paginas y de `RestaurantesShell.tsx` (184 sitios JSX con
-  controles de entrada incluidos) y se leyo el handler de cada uno hasta la funcion de cliente que llama al API
+  `NativeSelect`, `form` y `AlertDialogAction/Cancel` de los 19 archivos de `pages/`, de `voz/` y de `RestaurantesShell.tsx` (184 sitios JSX, campos
+  de entrada con handler incluidos) y se leyo el handler de cada uno hasta la funcion de cliente que llama al API
   (`apps/web/src/verticals/restaurantes/lib/*-client.ts`). Resultado por control: **CABLEADO** (handler real y efecto
   verificable), RETIRAR o CABLEAR-PENDIENTE. Un control "Pronto" no cuenta como cableado.
 - **Resultado: 0 controles RETIRAR y 0 CABLEAR-PENDIENTE** (ningun `disabled` fijo, ningun handler vacio, ningun `href="#"`).
@@ -25,7 +25,7 @@ Estados); 4 y 5 se resumen como "recarga/estado local + error en `EstadoError`/t
 
 | Control | Handler / destino | Efecto | Estado |
 |---|---|---|---|
-| Items del Sidebar (Panel, Pedidos, Conversaciones, Turnos, Historial, Productos, Promociones, Sucursales, Clientes; Staff, Auditoria, Configuracion, Agente de voz, Privacidad solo owner/admin) | `NavLink to=/restaurantes/:org/...` | las 14 rutas existen en `App.tsx` (lineas 841-859) | CABLEADO |
+| Items del Sidebar (Panel, Pedidos, Conversaciones, Turnos, Historial, Productos, Promociones, Sucursales, Clientes; Staff, Auditoria, Configuracion, Agente de voz, Privacidad solo owner/admin) | `NavLink to=/restaurantes/:org/...` | las 14 rutas existen en `App.tsx` (lineas 840-859) | CABLEADO |
 | Barra inferior movil: Panel, Pedidos, Historial, Productos | `NavLink` | rutas de `App.tsx`; **Panel ahora activo solo en su ruta exacta (`end`)** | CABLEADO |
 | Boton "Mas" (movil) | abre hoja con TODAS las secciones | antes 5 destinos fijos y el resto sin acceso movil | CABLEADO (probado) |
 | Selector de sucursal (Sidebar y MobileHeader, solo con 2+ sucursales) | `s.selectBranch` -> persiste por organizacion y remonta el `<main>` por `key` | cambia `propertyId` del contexto | CABLEADO (probado en `useVerticalSession`, #234) |
@@ -42,8 +42,8 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 | **Panel** (`Dashboard.tsx`) | Tabs de periodo -> `setPeriod` -> `fetchDashboardData` (GET `kpis/sales`, `sales/trend`, `channels`, `customers`); "Actualizar" -> `loadKpis` (`disabled` solo mientras carga) | restaurantes-dashboard-page |
 | **Pedidos** | Tabs de estado; casilla de auto-impresion -> `activarAutoImpresion/desactivarAutoImpresion` (preferencia local + sondeo); selector de repartidor -> `assignRepartidor` (PATCH `orders/:id/assign-repartidor`); "Imprimir/Reimprimir ticket" y "Vista previa" -> ticket de cocina; "Marcar X" -> `updateOrderStatus` (PATCH `orders/:id/status`), cancelar pide `AlertDialog` con el nombre del cliente; casilla "Avisar al cliente" | restaurantes-pedidos-page, -recoger-page, -ticket-cocina |
 | **Historial** | filtros estado/desde/hasta -> `fetchOrders`; "Cargar mas" -> siguiente cursor | No |
-| **Productos** | "Crear categoria" -> `createCategory` (POST); "Crear producto" -> `createProduct` (POST); precio (al salir del campo) -> `setBranchAvailability` (PATCH `branch-availability`); "Disponible/No disponible" -> `setBranchAvailability`; casilla Popular -> `updateProduct` (PATCH); casillas "no a domicilio" -> `setNoDomicilio` (PUT) | restaurantes-productos-no-domicilio-page |
-| **Promociones** | "Crear un codigo nuevo" -> `FormDialog` -> `createPromotion` (POST); "Editar vigencia" -> `FormDialog` -> `updatePromotion` (PATCH); "Activar/Desactivar" -> `updatePromotion`; tipo, canal, dias, productos (casillas) y fechas alimentan el cuerpo | restaurantes-promociones-page, -automaticas-page |
+| **Productos** | "Crear categoria" -> `createCategory` (POST); "Crear producto" -> `createProduct` (POST); precio (al salir del campo) -> `setBranchAvailability` (PATCH `products/:id/branch-availability`); "Disponible/No disponible" -> `setBranchAvailability`; casilla Popular -> `updateProduct` (PATCH); casillas "no a domicilio" -> `setNoDomicilio` (PUT) | restaurantes-productos-no-domicilio-page |
+| **Promociones** | "Crear un codigo nuevo" -> `FormDialog` -> `createPromotion` (POST); "Editar vigencia" -> `FormDialog` -> `updatePromotion` (PATCH); "Activar/Desactivar" -> `setPromotionActive`; tipo, canal, dias, productos (casillas) y fechas alimentan el cuerpo | restaurantes-promociones-page, -automaticas-page |
 | **Clientes / ficha** | busqueda -> `fetchCustomers`; fila -> `Link` a la ficha; "Volver a clientes" -> `Link` | No |
 | **Sucursales + reglas** | "Editar/Guardar/Cancelar" -> `updateBranchDetail` (PATCH); "Reglas de pedido" -> `ReglasSucursal`: turnos, minimos, propina, zonas -> `updatePoliticaSucursal`/`updateZonasReparto` (PUT); puentes -> crear/`deletePuente` (DELETE); numero -> `updateWhatsappSucursal` (PUT) | restaurantes-sucursales-page, -reglas-sucursal-page, -puentes-sucursal-page |
 | **Staff** | "Invitar" -> `createStaffInvite` (POST); "Revocar" -> `revokeStaffInvite` (DELETE); selector de rol -> `updateStaffRole` (PATCH); "Dar de baja" -> **`useConfirm` (peligro, con el nombre)** -> `removeStaffMember` (DELETE); `disabled` en la propia fila con `title` del motivo | restaurantes-confirmaciones-destructivas (baja: cancelar / confirmar) |
