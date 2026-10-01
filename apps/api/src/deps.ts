@@ -14,7 +14,7 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -128,6 +128,12 @@ export interface AppDeps {
    * las comandas van a captura manual (nunca se inventan codigos). */
   readonly softRestaurantMapeo?: { readonly resolverCodigos: ResolverCodigosPos; readonly resolverSucursal: ResolverSucursalPos };
   readonly turnHandler: WhatsAppTurnHandler;
+  /** Backend propio de voz de restaurantes (migración 025). OPCIONALES: si faltan, las rutas de
+   * voz responden 503 honesto en vez de fingir. En producción `vozRepo` es
+   * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
+   * (emite sesiones solo con `GEMINI_API_KEY`). */
+  readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  readonly voiceProvider?: VoiceAgentProvider;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los

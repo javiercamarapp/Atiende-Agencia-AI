@@ -160,3 +160,16 @@ documentados aquí mismo:
   `citas`?) fuera del alcance de "conectar lo ya construido" de esta fase.
   Configuración de voz tampoco tiene tabla (a diferencia de hoteles/citas),
   mismo criterio.
+
+## Voz propia (migración 025)
+
+- `voz-admin.ts` (panel, owner/admin, por sucursal `:propertyId`): `GET .../admin/voz/catalogo`,
+  `GET|PUT .../admin/voz/config`, `POST .../admin/voz/preview/sesion`,
+  `GET .../admin/voz/conversaciones[/:id]`. Base sin migrar: lecturas -> `disponible: false`,
+  escrituras y preview -> 503. Sin `GEMINI_API_KEY` / `VOICE_PREVIEW_TOKEN_SECRET`: 503 "voz no
+  configurada", nunca un falso éxito.
+- `voz-interno.ts` (sistema, header `x-atiende-internal-secret`): `POST /internal/restaurantes/voz/
+  conversaciones[/:id/turnos|/:id/cerrar]` y `.../previews/consumir`. Lo consumirá el servicio de
+  voz (otra tarea); escribe por funciones SQL de solo-sistema.
+- Contrato `VoiceAgentProvider` (emitirSesionPreview / catalogoVoces / salud) en
+  `packages/domain-restaurantes/src/voz/`: adaptador Gemini 3.8 Live y adaptador falso.

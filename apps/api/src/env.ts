@@ -131,6 +131,14 @@ export interface ApiEnv {
    * `undefined` y `production/deps.ts` cae en el mismo `notProductionReady`
    * explícito de siempre -- fail-closed, nunca silencioso.
    */
+  /**
+   * Backend propio de voz de restaurantes (migración 025). DELIBERADAMENTE opcionales y `?`
+   * (nunca `requireEnv`): sin `GEMINI_API_KEY` el adaptador de Gemini no emite sesiones y las
+   * rutas de preview responden 503 "voz no configurada"; sin `VOICE_PREVIEW_TOKEN_SECRET` (mínimo
+   * 16 caracteres) tampoco se firma el token efímero de preview. Nunca se inventa un valor.
+   */
+  readonly geminiApiKey?: string | null;
+  readonly voicePreviewTokenSecret?: string | null;
   readonly llmProviders: {
     /** Integración directa con la API de Anthropic (`providers/anthropic.ts`). */
     readonly anthropic: { readonly apiKey: string; readonly model: string } | null;
@@ -183,6 +191,8 @@ export function loadApiEnv(): ApiEnv {
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
+    geminiApiKey: process.env.GEMINI_API_KEY || null,
+    voicePreviewTokenSecret: process.env.VOICE_PREVIEW_TOKEN_SECRET || null,
     llmProviders: {
       anthropic:
         process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_MODEL
