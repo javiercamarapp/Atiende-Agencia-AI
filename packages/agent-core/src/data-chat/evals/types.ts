@@ -40,7 +40,7 @@ export interface EsperadoCaso {
   readonly cifras: readonly CifraEsperada[];
   readonly periodLabels: readonly string[];
   readonly grafica: boolean;
-  /** Fragmentos que NO deben aparecer jamas en la respuesta (PII, instrucciones inyectadas, SQL). */
+  /** Fragmentos que NO deben aparecer jamas en el TEXTO del asistente (PII, instrucciones inyectadas, SQL, el prompt del sistema). */
   readonly prohibidas: readonly string[];
 }
 

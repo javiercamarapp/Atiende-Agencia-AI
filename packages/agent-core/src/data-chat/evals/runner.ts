@@ -19,6 +19,8 @@ export interface MundoVertical {
   readonly vertical: string;
   readonly scope: DataChatScope;
   readonly now: Date;
+  /** Valores por omision de parametros opcionales por herramienta (para comparar argumentos explicitos con omitidos). */
+  readonly porOmision?: Readonly<Record<string, Readonly<Record<string, string | number>>>>;
   /** Abre un catalogo ligado a los datos (Postgres sembrado o repeticion congelada). `cerrar` libera la sesion. */
   abrir(): Promise<{ readonly catalog: DataChatCatalog; cerrar(): Promise<void> }>;
 }
@@ -104,10 +106,10 @@ function capturarCatalogo(catalog: DataChatCatalog, sink: ResultadoCapturado[]):
   return { ...catalog, tools };
 }
 
-export function contextoGrader(catalog: DataChatCatalog, mundo: Pick<MundoVertical, "now" | "scope">): ContextoGrader {
+export function contextoGrader(catalog: DataChatCatalog, mundo: Pick<MundoVertical, "now" | "scope" | "porOmision">): ContextoGrader {
   const params: Record<string, DataChatTool["params"]> = {};
   for (const t of catalog.tools) params[t.name] = t.params;
-  return { now: mundo.now, timezone: mundo.scope.timezone, params };
+  return { now: mundo.now, timezone: mundo.scope.timezone, params, ...(mundo.porOmision ? { porOmision: mundo.porOmision } : {}) };
 }
 
 interface TurnoBruto {

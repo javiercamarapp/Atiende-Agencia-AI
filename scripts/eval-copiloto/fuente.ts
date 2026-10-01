@@ -9,8 +9,8 @@ export type FilaSpec = "primera" | "ultima" | "suma" | "max" | "min" | "conteo" 
 
 export type CifraSpec =
   | { readonly l?: number; readonly col: string; readonly fila?: FilaSpec; readonly etiqueta?: string }
-  /** Todas las cifras del resumen determinista de la llamada (p.ej. ticket medio). */
-  | { readonly l?: number; readonly resumen: true; readonly etiqueta?: string };
+  /** Cifras del resumen determinista de la llamada SIN los parentesis (etiqueta de periodo y alcance); `tomar` elige por posicion. */
+  | { readonly l?: number; readonly resumen: true; readonly tomar?: readonly number[]; readonly etiqueta?: string };
 
 export interface CasoFuente {
   readonly id: string;
@@ -57,8 +57,10 @@ export function resolverCifra(spec: CifraSpec, resultados: readonly DataChatTool
   const r = resultados[spec.l ?? 0];
   if (!r) throw new Error(`${idCaso}: la cifra apunta a la llamada ${spec.l ?? 0} y no existe`);
   if ("resumen" in spec) {
-    const nums = extractNumbers(r.summary ?? "");
-    if (nums.length === 0) throw new Error(`${idCaso}: el resumen de la llamada ${spec.l ?? 0} no tiene cifras`);
+    const sinParentesis = (r.summary ?? "").replace(/\([^)]*\)/g, " ");
+    const todas = extractNumbers(sinParentesis);
+    const nums = spec.tomar ? spec.tomar.map((i) => todas[i]).filter((n): n is number => n !== undefined) : todas;
+    if (nums.length === 0) throw new Error(`${idCaso}: el resumen de la llamada ${spec.l ?? 0} no tiene cifras (${r.summary ?? ""})`);
     return nums.map((valor, i) => ({ etiqueta: `${spec.etiqueta ?? "resumen"}#${i + 1}`, valor }));
   }
   const fila = spec.fila ?? "primera";

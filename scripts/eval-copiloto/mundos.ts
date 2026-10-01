@@ -74,6 +74,16 @@ export const CONFIG: Readonly<Record<VerticalEval, ConfigVertical>> = {
   },
 };
 
+/** Valores por omision de parametros opcionales (leidos del codigo de los catalogos): mandarlos explicitos == omitirlos. */
+export const POR_OMISION: Readonly<Record<string, Readonly<Record<string, string | number>>>> = {
+  productos_mas_vendidos: { ordenar_por: "cantidad", limite: 10 },
+  horas_pico: { limite: 5 },
+  convocatorias_abiertas: { limite: 20 },
+  renovaciones: { dentro_de_dias: 90 },
+  tareas_pendientes: { tipo: "limpieza" },
+  ocupacion: { agrupar_por: "profesional" },
+};
+
 export function alcanceDe(v: VerticalEval): DataChatScope {
   const c = CONFIG[v];
   return { organizationId: c.organizationId, userId: c.userId, vertical: v, verticalRole: c.verticalRole, allowedPropertyIds: null, timezone: ZONA_EVAL };
@@ -123,6 +133,7 @@ export function mundoPostgres(vertical: VerticalEval, engine: ManagedPostgresEng
     vertical,
     scope: alcanceDe(vertical),
     now: AHORA_EVAL,
+    porOmision: POR_OMISION,
     async abrir() {
       const { session, cerrar } = await abrirSesion(engine, cfg.userId);
       return { catalog: cfg.conSesion(session), cerrar };
@@ -155,5 +166,5 @@ export function mundoRepeticion(vertical: VerticalEval, congelado: ArchivoCongel
     },
   }));
   const catalog: DataChatCatalog = { ...base, tools, describeScope: async () => congelado.scopeLine };
-  return { vertical, scope: alcanceDe(vertical), now: new Date(congelado.now), async abrir() { return { catalog, async cerrar() {} }; } };
+  return { vertical, scope: alcanceDe(vertical), now: new Date(congelado.now), porOmision: POR_OMISION, async abrir() { return { catalog, async cerrar() {} }; } };
 }
