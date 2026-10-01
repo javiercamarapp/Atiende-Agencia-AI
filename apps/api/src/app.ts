@@ -8,6 +8,7 @@ import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
+import { originGuard, sinCacheEnSesion } from "./origin-guard.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
@@ -66,6 +67,13 @@ export function buildApp(deps: AppDeps): Hono {
   // Cabeceras de seguridad (HSTS, nosniff, anti-framing, CSP restrictiva de API, etc.)
   // en TODA respuesta, incluidos 401/404/500 -- ver ./cabeceras-seguridad.ts.
   app.use("*", cabecerasSeguridadApi());
+
+  // PL-09: validacion de Origin/Host en las rutas de sesion (`/auth/*`) y de back office
+  // (`/superadmin/*`) para metodos con efectos, y sin cache en sus respuestas -- ver ./origin-guard.ts.
+  for (const prefijo of ["/auth/*", "/superadmin/*"]) {
+    app.use(prefijo, originGuard({ allowedOrigins: deps.env.allowedOrigins, appBaseUrl: deps.env.appBaseUrl }));
+    app.use(prefijo, sinCacheEnSesion());
+  }
 
   app.onError((err, c) => {
     if (err instanceof ApiError) {
