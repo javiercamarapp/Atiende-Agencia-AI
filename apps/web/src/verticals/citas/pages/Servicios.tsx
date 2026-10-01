@@ -27,14 +27,13 @@ import {
   TableBody,
   TableCell,
   TableRow,
+  Checkbox,
 } from "@atiende/ui";
 import { activoTone } from "../lib/status-tones.ts";
 import { createService, fetchServiceDetail, fetchServices, updateService } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatMoneyFromCents } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
-
-const CHECKBOX_CLASS = "size-4 rounded border-border accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [services, setServices] = useState<readonly ServiceSummary[] | null>(null);
@@ -123,7 +122,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
             <Card className="h-full transition-colors hover:border-foreground/20 hover:bg-muted/40">
               <CardContent className="p-4">
                 <p className="font-semibold text-foreground">{s.name}</p>
-                <p className="mt-1 text-[13px] text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {s.durationMinutes} min · {formatMoneyFromCents(s.priceCents)}
                 </p>
               </CardContent>
@@ -248,7 +247,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
       )}
       {service && editing && (
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="pt-6">
             <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-servicio-nombre">Nombre</Label>
@@ -272,10 +271,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
                 <Label htmlFor="citas-servicio-precio">Precio (vacío = sin precio fijo)</Label>
                 <Input id="citas-servicio-precio" type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
               </div>
-              <label className="flex items-center gap-2 text-[13px] text-foreground">
-                <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} className={CHECKBOX_CLASS} />
-                Activo
-              </label>
+              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label="Activo" />
               <div className="flex gap-2">
                 <Button type="submit" disabled={saving}>
                   {saving ? "Guardando…" : "Guardar cambios"}

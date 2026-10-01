@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -213,9 +213,9 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="w-fit text-2xs">
+                            <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
                               {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
-                            </Badge>
+                            </StatusBadge>
                             <span className="text-xs text-muted-foreground" title={item.action}>
                               {etiquetaAccion(item.action)}
                             </span>

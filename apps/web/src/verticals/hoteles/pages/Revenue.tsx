@@ -18,7 +18,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -338,7 +337,7 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                   {REVENUE_GATE_STATE_LABELS[gate.gate]}
                 </StatusBadge>
                 {gate.gate === "shadow" && <span className="text-xs text-muted-foreground">{daysSince(gate.shadowStartedAt)} de 90 días en shadow</span>}
-                {gate.ownerApprovedAutopilotAt && <Badge variant="outline">Autopilot aprobado por owner el {fmtDate(gate.ownerApprovedAutopilotAt)}</Badge>}
+                {gate.ownerApprovedAutopilotAt && <StatusBadge tone="neutral" dot={false}>Autopilot aprobado por owner el {fmtDate(gate.ownerApprovedAutopilotAt)}</StatusBadge>}
               </div>
 
               <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

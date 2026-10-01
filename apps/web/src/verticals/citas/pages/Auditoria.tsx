@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, NativeSelect, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
@@ -27,10 +27,7 @@ import type { CitasShellContext } from "../CitasShell.tsx";
 const AUDITORIA_LECTURA_ROLES = new Set(["owner", "admin"]);
 const PAGE_SIZE = 25;
 
-const SELECT_CLASES =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-const DATE_INPUT_CLASES = SELECT_CLASES;
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function formatearFechaHora(iso: string): string {
   try {
@@ -126,11 +123,11 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: CitasShel
     <div className="flex flex-col gap-5 max-w-[900px]">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Auditoría</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">Qué hizo cada miembro del staff: tarifas, citas canceladas, horarios, lista de espera y staff.</p>
+        <p className="m-0 text-sm text-muted-foreground">Qué hizo cada miembro del staff: tarifas, citas canceladas, horarios, lista de espera y staff.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden leer la bitácora de auditoría — tu rol actual es{" "}
           <strong className="text-foreground">{role}</strong>.
         </p>
@@ -143,22 +140,22 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: CitasShel
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Tipo de acción
-                <select value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")} className={SELECT_CLASES}>
+                <NativeSelect value={tipo} onChange={(e) => setTipo(e.target.value as AuditLogEntityType | "")}>
                   <option value="">Todos</option>
                   {AUDIT_LOG_ENTITY_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {AUDIT_LOG_ENTITY_TYPE_LABELS[t]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
                 Desde
-                <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={DATE_INPUT_CLASES} />
+                <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[160px]`}>
                 Hasta
-                <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={DATE_INPUT_CLASES} />
+                <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
               </Label>
             </CardContent>
           </Card>
@@ -216,9 +213,9 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: CitasShel
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="w-fit text-[10px]">
+                            <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
                               {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
-                            </Badge>
+                            </StatusBadge>
                             <span className="text-xs text-muted-foreground" title={item.action}>
                               {etiquetaAccion(item.action)}
                             </span>

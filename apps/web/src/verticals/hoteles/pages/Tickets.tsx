@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AlertTriangle, Clock, LifeBuoy } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -159,8 +158,8 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
               <StatusBadge tone={t.prioridad === "alta" ? "danger" : "neutral"}>{PRIORIDAD_LABELS[t.prioridad]}</StatusBadge>
-              <Badge variant="outline">{DEPARTAMENTO_LABELS[t.departamento]}</Badge>
-              <Badge variant="secondary">{ESTADO_LABELS[t.estado]}</Badge>
+              <StatusBadge tone="neutral" dot={false}>{DEPARTAMENTO_LABELS[t.departamento]}</StatusBadge>
+              <StatusBadge tone="neutral" dot={false}>{ESTADO_LABELS[t.estado]}</StatusBadge>
               {t.habitacion && <span className="text-xs text-muted-foreground">Hab. {t.habitacion}</span>}
               {t.resenaId && <span className="text-xs text-muted-foreground">Desde reseña</span>}
             </div>

@@ -153,13 +153,13 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
     <div className="flex flex-col gap-5 max-w-[1000px]">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Mensajes de WhatsApp</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Los textos que tus clientes reciben por WhatsApp: recordatorio de cita, confirmación, cancelación y reagendado. Puedes usar variables como {"{{nombre}}"} y {"{{hora}}"}; la vista previa muestra datos de ejemplo.
         </p>
       </header>
 
       {!puede ? (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden editar estos mensajes — tu rol actual es <strong className="text-foreground">{role}</strong>.
         </p>
       ) : (
@@ -187,7 +187,7 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
                 <section aria-label="Recordatorio" className="flex flex-col gap-3 rounded-card border border-border p-3">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="m-0 text-sm font-semibold">Recordatorio de cita</h3>
-                    <label className="flex items-center gap-2 text-[13px]">
+                    <label className="flex items-center gap-2 text-sm">
                       <Switch aria-label="Enviar recordatorio de cita" checked={form.reminderEnabled} disabled={!editable} onCheckedChange={(v) => cambiar("reminderEnabled", v)} />
                       Enviar
                     </label>
@@ -250,7 +250,7 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
                     <h3 className="m-0 text-sm font-semibold">Así se verían (datos de ejemplo)</h3>
                     <ul className="m-0 flex list-none flex-col gap-2 p-0">
                       {previa.vistaPrevia.map((m) => (
-                        <li key={m.kind} className="rounded-lg border border-border bg-card p-2.5 text-[13px]">
+                        <li key={m.kind} className="rounded-lg border border-border bg-card p-2.5 text-sm">
                           <p className="m-0 mb-1 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                             {opciones.mensajes.find((x) => x.kind === m.kind)?.etiqueta}
                             <StatusBadge tone={m.activo ? "success" : "neutral"}>{m.activo ? "Activo" : "Apagado"}</StatusBadge>
@@ -261,9 +261,9 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
                     </ul>
                     <h3 className="m-0 text-sm font-semibold">Qué cambia</h3>
                     {previa.diferencias.length === 0 ? (
-                      <p className="m-0 text-[13px] text-muted-foreground">No hay cambios respecto a lo vigente.</p>
+                      <p className="m-0 text-sm text-muted-foreground">No hay cambios respecto a lo vigente.</p>
                     ) : (
-                      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+                      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
                         {previa.diferencias.map((d) => (
                           <li key={d.campo}>
                             <strong>{d.campo}:</strong> <span className="text-muted-foreground line-through">{d.antes || "(por defecto)"}</span> → <span>{d.despues || "(por defecto)"}</span>
@@ -285,9 +285,9 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
                 {datos.disponible && (
                   <section aria-label="Historial de cambios" className="flex flex-col gap-2">
                     <h3 className="m-0 text-sm font-semibold">Historial</h3>
-                    {historial.length === 0 && <p className="m-0 text-[13px] text-muted-foreground">Todavía no hay cambios guardados.</p>}
+                    {historial.length === 0 && <p className="m-0 text-sm text-muted-foreground">Todavía no hay cambios guardados.</p>}
                     {historial.map((h) => (
-                      <div key={h.version} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5 text-[13px]">
+                      <div key={h.version} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5 text-sm">
                         <div>
                           <p className="m-0 font-semibold">
                             Versión {h.version} <StatusBadge tone={h.accion === "restablecido" ? "warning" : "info"}>{h.accion === "restablecido" ? "Restablecido" : "Actualizado"}</StatusBadge>
@@ -345,7 +345,7 @@ function PlantillaCampo({ kind, form, opciones, editable, cambiar }: PlantillaCa
       <div className="flex items-center justify-between gap-2">
         <h3 className="m-0 text-sm font-semibold">{info.etiqueta}</h3>
         {kind !== "recordatorio" && (
-          <label className="flex items-center gap-2 text-[13px]">
+          <label className="flex items-center gap-2 text-sm">
             <Switch aria-label={`Enviar ${info.etiqueta.toLowerCase()}`} checked={prendido} disabled={!editable} onCheckedChange={(v) => cambiar(activo, v as never)} />
             Enviar
           </label>
@@ -361,7 +361,7 @@ function PlantillaCampo({ kind, form, opciones, editable, cambiar }: PlantillaCa
             key={v}
             type="button"
             disabled={!editable}
-            className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] text-foreground disabled:opacity-50"
+            className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs text-foreground disabled:opacity-50"
             onClick={() => cambiar(texto, `${valor}{{${v}}}` as never)}
           >
             {`{{${v}}}`}

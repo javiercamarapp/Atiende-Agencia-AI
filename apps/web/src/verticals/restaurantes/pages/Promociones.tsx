@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -253,12 +253,12 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                     <div className="m-0 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-foreground">
                       <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{p.code}</code>
                       <span>· {p.name}</span>
-                      {p.autoApply && <Badge variant="secondary">Automática</Badge>}
-                      {p.channels && p.channels.length > 0 && <Badge variant="outline">{p.channels.map((c) => (c === "recoger" ? "Solo recoger" : "Solo domicilio")).join(" / ")}</Badge>}
+                      {p.autoApply && <StatusBadge tone="neutral" dot={false}>Automática</StatusBadge>}
+                      {p.channels && p.channels.length > 0 && <StatusBadge tone="neutral" dot={false}>{p.channels.map((c) => (c === "recoger" ? "Solo recoger" : "Solo domicilio")).join(" / ")}</StatusBadge>}
                       {!p.isActive && (
-                        <Badge variant="outline" className="text-muted-foreground">
+                        <StatusBadge tone="neutral" dot={false} className="text-muted-foreground">
                           Inactiva
-                        </Badge>
+                        </StatusBadge>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">

@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
 import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
@@ -77,7 +77,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                   <p className="m-0 font-semibold text-foreground">{b.name}</p>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span>/{b.slug} ·</span>
-                    <Badge variant={b.status === "active" ? "secondary" : "destructive"}>{b.status === "active" ? "Activa" : "Inactiva"}</Badge>
+                    <StatusBadge tone={b.status === "active" ? "success" : "danger"}>{b.status === "active" ? "Activa" : "Inactiva"}</StatusBadge>
                   </div>
                 </div>
                 {editing !== b.propertyId && (

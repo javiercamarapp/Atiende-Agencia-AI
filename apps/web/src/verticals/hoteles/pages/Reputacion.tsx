@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { MessageCircle, Plus } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -281,9 +280,9 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                       {r.topics.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {r.topics.map((t) => (
-                            <Badge key={t.topic} variant="outline" className="text-2xs">
+                            <StatusBadge key={t.topic} tone="neutral" dot={false} className="text-2xs">
                               {t.topic}
-                            </Badge>
+                            </StatusBadge>
                           ))}
                         </div>
                       )}
@@ -317,7 +316,7 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                                           </Button>
                                         </div>
                                       ) : (
-                                        <Badge variant="secondary">{ACTION_STATUS_LABELS[a.status]}</Badge>
+                                        <StatusBadge tone="neutral" dot={false}>{ACTION_STATUS_LABELS[a.status]}</StatusBadge>
                                       )}
                                     </div>
                                   ))}

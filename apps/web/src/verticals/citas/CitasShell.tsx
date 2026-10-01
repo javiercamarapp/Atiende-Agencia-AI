@@ -10,7 +10,7 @@
 // lo propio de citas: el adaptador de sesión, el mapa de navegación y el contexto
 // que reciben las páginas.
 import type { ReactNode } from "react";
-import { VerticalShellEstado } from "@atiende/ui";
+import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
   CalendarCheck,
@@ -158,24 +158,23 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   const branchSelector =
     branches.length > 1 ? (
       <div>
-        <label htmlFor="citas-sucursal-activa" className="block mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+        <label htmlFor="citas-sucursal-activa" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Sucursal activa
         </label>
-        <select
+        <NativeSelect
           id="citas-sucursal-activa"
           value={propertyId}
           onChange={(e) => s.selectBranch(e.target.value)}
-          className="block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
         >
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
     ) : (
-      <p className="text-[12px] text-muted-foreground truncate">{activeBranch.name}</p>
+      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
     );
 
   return (

@@ -32,11 +32,11 @@ export function BotonChatDatos({ className, nombreNegocio, chat }: { className?:
         variant="outline"
         size="sm"
         onClick={() => setAbierto(true)}
-        className={`h-8 rounded-full text-[13px] shrink-0 ${className ?? ""}`}
+        className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}
       >
         <MessageCircle className="w-3.5 h-3.5" />
         Chatea con tus datos
-        {disponible ? null : <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground">Pronto</span>}
+        {disponible ? null : <span className="font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">Pronto</span>}
       </Button>
       {abierto && <PanelChateaConTusDatos onClose={() => setAbierto(false)} nombreNegocio={nombreNegocio} chat={disponible ? chat : undefined} />}
     </>

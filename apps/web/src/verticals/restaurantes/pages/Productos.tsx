@@ -11,7 +11,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -34,6 +33,7 @@ import {
   TableHeader,
   TableRow,
   formatMoney,
+  StatusBadge,
 } from "@atiende/ui";
 import { FolderPlus, Plus } from "lucide-react";
 import {
@@ -218,9 +218,9 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
           </form>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {categories?.map((c) => (
-              <Badge key={c.id} variant="secondary">
+              <StatusBadge key={c.id} tone="neutral" dot={false}>
                 {c.name}
-              </Badge>
+              </StatusBadge>
             ))}
           </div>
           {marks && categories && categories.length > 0 && (

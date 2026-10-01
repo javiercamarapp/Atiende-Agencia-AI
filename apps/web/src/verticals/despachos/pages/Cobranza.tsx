@@ -52,7 +52,7 @@ import type { CobranzaAgeBucket, CobranzaReminderStage, CuentaCobranza, ResumenC
 import { formatDate, formatMoney } from "../lib/format.ts";
 import { COBRANZA_BUCKET_TONES } from "../lib/status-tones.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
-import { BarraProgreso } from "../components/BarraProgreso.tsx";
+import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);

@@ -35,6 +35,8 @@ import {
   TableBody,
   TableCell,
   TableRow,
+  Checkbox,
+  Callout,
 } from "@atiende/ui";
 import { syncTone } from "../lib/status-tones.ts";
 import {
@@ -57,7 +59,6 @@ import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
-const CHECKBOX_CLASS = "size-4 rounded border-border accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
@@ -130,7 +131,7 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
             <Card className="h-full transition-colors hover:border-foreground/20 hover:bg-muted/40">
               <CardContent className="p-4">
                 <p className="font-semibold text-foreground">{p.displayName}</p>
-                <p className="mt-1 text-[13px] text-muted-foreground">{p.roleLabel}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{p.roleLabel}</p>
               </CardContent>
             </Card>
           </Link>
@@ -169,7 +170,7 @@ function CalendarProviderCardShell({ title, connected, syncStatus, syncError, su
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">{title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {localError && <EstadoError mensaje={localError} />}
@@ -177,10 +178,10 @@ function CalendarProviderCardShell({ title, connected, syncStatus, syncError, su
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge tone={syncTone(syncStatus)}>{syncStatus === "error" ? "Conectado (con error)" : "Conectado"}</StatusBadge>
-              {summary && <span className="break-all text-[13px] text-muted-foreground">{summary}</span>}
+              {summary && <span className="break-all text-sm text-muted-foreground">{summary}</span>}
             </div>
-            {syncStatus === "error" && syncError && <p className="text-[13px] text-destructive">Error de sincronización: {syncError}</p>}
-            {testResult && <p className="text-[13px] text-muted-foreground">{testResult}</p>}
+            {syncStatus === "error" && syncError && <p className="text-sm text-destructive">Error de sincronización: {syncError}</p>}
+            {testResult && <p className="text-sm text-muted-foreground">{testResult}</p>}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
                 {testing ? "Probando…" : "Probar conexión"}
@@ -278,7 +279,7 @@ function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
       onDisconnect={() => void handleDisconnect()}
       connectForm={
         <form onSubmit={handleConnect} className="flex flex-col gap-3">
-          <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta Cal.com.</p>
+          <p className="text-sm text-muted-foreground">Este proveedor todavía no conecta Cal.com.</p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`citas-calcom-apikey-${providerId}`}>API key</Label>
             <Input id={`citas-calcom-apikey-${providerId}`} type="password" placeholder="cal_live_…" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
@@ -381,7 +382,7 @@ function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChang
       onDisconnect={() => void handleDisconnect()}
       connectForm={
         <form onSubmit={handleConnect} className="flex flex-col gap-3">
-          <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta CalDAV.</p>
+          <p className="text-sm text-muted-foreground">Este proveedor todavía no conecta CalDAV.</p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`citas-caldav-url-${providerId}`}>URL de la colección de calendario</Label>
             <Input id={`citas-caldav-url-${providerId}`} placeholder="https://caldav.fastmail.com/dav/calendars/user/tu@correo.com/abc/" value={calendarCollectionUrl} onChange={(e) => setCalendarCollectionUrl(e.target.value)} />
@@ -511,7 +512,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="font-display text-xl font-semibold text-foreground">{detail.provider.displayName}</h1>
-              <p className="mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+              <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                 {detail.provider.roleLabel} {!detail.provider.isActive && <StatusBadge tone="neutral">Inactivo</StatusBadge>}
               </p>
             </div>
@@ -525,7 +526,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
 
           {editing && (
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="pt-6">
                 <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="citas-proveedor-nombre">Nombre</Label>
@@ -535,10 +536,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                     <Label htmlFor="citas-proveedor-rol">Rol / etiqueta</Label>
                     <Input id="citas-proveedor-rol" value={editRoleLabel} onChange={(e) => setEditRoleLabel(e.target.value)} />
                   </div>
-                  <label className="flex items-center gap-2 text-[13px] text-foreground">
-                    <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} className={CHECKBOX_CLASS} />
-                    Activo
-                  </label>
+                  <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label="Activo" />
                   <div className="flex gap-2">
                     <Button type="submit" disabled={saving}>
                       {saving ? "Guardando…" : "Guardar cambios"}
@@ -554,7 +552,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
 
           <div className="flex flex-col gap-3">
             <h2 className="font-display text-base font-semibold text-foreground">Calendarios conectados</h2>
-            <p className="-mt-2 text-[13px] text-muted-foreground">Cada proveedor conecta su propio calendario — es personal, nunca compartido por todo el negocio.</p>
+            <p className="-mt-2 text-sm text-muted-foreground">Cada proveedor conecta su propio calendario — es personal, nunca compartido por todo el negocio.</p>
 
             {/* Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — advertencia
                 ámbar (nunca roja: la credencial sigue sirviendo, ver diseño en
@@ -563,21 +561,20 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                 del cliente). Se autolimpia sola en cuanto el staff corrige el dato y
                 reintenta -- nunca requiere que alguien la "cierre" a mano. */}
             {detail.calendarSyncIssues.count > 0 && (
-              <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
-                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-                <div className="text-[13px] text-amber-800 dark:text-amber-400">
-                  <p className="font-semibold">
-                    {detail.calendarSyncIssues.count} {detail.calendarSyncIssues.count === 1 ? "cita no se sincronizó" : "citas no se sincronizaron"} por un problema que la credencial no resuelve sola.
-                  </p>
-                  {detail.calendarSyncIssues.lastReason && <p className="mt-0.5">{detail.calendarSyncIssues.lastReason}</p>}
-                  <p className="mt-0.5 text-amber-700/80 dark:text-amber-400/80">Corrige el dato que falte y usa "Reintentar sincronización" en la cita, desde la Agenda.</p>
-                </div>
-              </div>
+              <Callout
+                role="alert"
+                tone="warning"
+                icon={<TriangleAlert aria-hidden className="size-4" />}
+                titulo={`${detail.calendarSyncIssues.count} ${detail.calendarSyncIssues.count === 1 ? "cita no se sincronizó" : "citas no se sincronizaron"} por un problema que la credencial no resuelve sola.`}
+              >
+                {detail.calendarSyncIssues.lastReason && <p className="mt-0.5">{detail.calendarSyncIssues.lastReason}</p>}
+                <p className="mt-0.5 text-muted-foreground">Corrige el dato que falte y usa "Reintentar sincronización" en la cita, desde la Agenda.</p>
+              </Callout>
             )}
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Google Calendar</CardTitle>
+                <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Google Calendar</CardTitle>
               </CardHeader>
               <CardContent>
                 {detail.googleCalendar.connected ? (
@@ -585,7 +582,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                     <StatusBadge tone={syncTone(detail.googleCalendar.syncStatus)}>
                       {detail.googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
                     </StatusBadge>
-                    <p className={detail.googleCalendar.syncStatus === "error" ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}>
+                    <p className={detail.googleCalendar.syncStatus === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
                       {detail.googleCalendar.syncStatus === "error"
                         ? `Error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}`
                         : "Las citas de este proveedor se sincronizan automáticamente."}
@@ -593,7 +590,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta su Google Calendar.</p>
+                    <p className="text-sm text-muted-foreground">Este proveedor todavía no conecta su Google Calendar.</p>
                     <Button onClick={() => void handleConnectGoogleCalendar()} disabled={connecting}>
                       <CalendarSync aria-hidden />
                       {connecting ? "Conectando…" : "Conectar Google Calendar"}
@@ -609,7 +606,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Servicios que ofrece</CardTitle>
+              <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Servicios que ofrece</CardTitle>
             </CardHeader>
             <CardContent>
               {servicesError ? (
@@ -623,16 +620,14 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                   {services.map((s) => {
                     const offered = detail.offeredServiceIds.includes(s.id);
                     return (
-                      <label key={s.id} className="flex items-center gap-2 py-1 text-[13px] text-foreground">
-                        <input
-                          type="checkbox"
-                          checked={offered}
-                          disabled={togglingServiceId === s.id}
-                          onChange={(e) => void handleToggleService(s.id, e.target.checked)}
-                          className={CHECKBOX_CLASS}
-                        />
-                        {s.name}
-                      </label>
+                      <Checkbox
+                        key={s.id}
+                        checked={offered}
+                        disabled={togglingServiceId === s.id}
+                        onChange={(e) => void handleToggleService(s.id, e.target.checked)}
+                        label={s.name}
+                        wrapperClassName="py-1"
+                      />
                     );
                   })}
                 </div>
@@ -642,7 +637,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
+              <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
             </CardHeader>
             <CardContent>
               {detail.availabilityRules.length === 0 ? (
@@ -666,7 +661,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                   </TableBody>
                 </Table>
               )}
-              <p className="mt-3 text-[12px] text-muted-foreground">Solo lectura — editar el horario todavía no está disponible desde el panel.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Solo lectura — editar el horario todavía no está disponible desde el panel.</p>
             </CardContent>
           </Card>
         </>

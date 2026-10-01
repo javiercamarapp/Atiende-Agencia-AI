@@ -15,6 +15,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Button, FormField, Input } from "@atiende/ui";
 import { acceptInvite, decideLandingPathForInvite, LoginError, persistSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
@@ -59,68 +60,30 @@ export function AceptarInvitacionPage({ apiBaseUrl, onAccepted }: AceptarInvitac
   }
 
   return (
-    <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 24 }}>
-      <form onSubmit={handleSubmit} style={{ width: "min(400px, 90vw)", display: "flex", flexDirection: "column", gap: 12 }} noValidate>
-        <h1 style={{ fontSize: 20, marginBottom: 4 }}>Aceptar invitación</h1>
-        <p style={{ margin: "0 0 4px", fontSize: 13, color: "#6b7280" }}>Pega el token que te compartió quien te invitó y fija tu contraseña para entrar.</p>
-        <label htmlFor="token">
-          Token de invitación
-          <input
-            id="token"
-            type="text"
-            autoComplete="off"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4, fontFamily: "monospace", fontSize: 13 }}
-          />
-        </label>
-        <label htmlFor="fullName">
-          Nombre completo
-          <input
-            id="fullName"
-            type="text"
-            autoComplete="name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-          />
-        </label>
-        <label htmlFor="password">
-          Contraseña (mínimo 8 caracteres)
-          <input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-          />
-        </label>
-        <label htmlFor="confirmPassword">
-          Confirma tu contraseña
-          <input
-            id="confirmPassword"
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-          />
-        </label>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+      <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-3" noValidate>
+        <h1 className="text-xl font-semibold">Aceptar invitación</h1>
+        <p className="text-sm text-muted-foreground">Pega el token que te compartió quien te invitó y fija tu contraseña para entrar.</p>
+        <FormField label="Token de invitación" required>
+          <Input type="text" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
+        </FormField>
+        <FormField label="Nombre completo" required>
+          <Input type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </FormField>
+        <FormField label="Contraseña (mínimo 8 caracteres)" required>
+          <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} />
+        </FormField>
+        <FormField label="Confirma tu contraseña" required>
+          <Input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} />
+        </FormField>
         {error && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
-        <button type="submit" disabled={submitting} style={{ padding: 10, fontWeight: 600 }}>
+        <Button type="submit" disabled={submitting}>
           {submitting ? "Aceptando…" : "Aceptar y entrar"}
-        </button>
+        </Button>
       </form>
     </main>
   );

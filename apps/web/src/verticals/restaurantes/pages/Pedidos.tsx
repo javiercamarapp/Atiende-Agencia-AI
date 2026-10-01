@@ -21,7 +21,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -360,9 +359,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
           Actualizar ahora
         </Button>
         {nuevosAviso > 0 && (
-          <Badge variant="outline" data-testid="aviso-nuevos">
+          <StatusBadge tone="neutral" dot={false} data-testid="aviso-nuevos">
             {nuevosAviso} pedido{nuevosAviso === 1 ? "" : "s"} nuevo{nuevosAviso === 1 ? "" : "s"}
-          </Badge>
+          </StatusBadge>
         )}
         <Checkbox
           id="sonido-pedidos"
@@ -434,9 +433,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                 </div>
                 <div className="flex flex-wrap items-start gap-1.5 self-start">
                   {o.canal && (
-                    <Badge variant="outline" data-testid={`canal-${o.id}`}>
+                    <StatusBadge tone="neutral" dot={false} data-testid={`canal-${o.id}`}>
                       {o.canal === "recoger" ? "Recoger" : "Domicilio"}
-                    </Badge>
+                    </StatusBadge>
                   )}
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>

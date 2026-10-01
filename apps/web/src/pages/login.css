@@ -144,7 +144,7 @@
 
   .login-entra {
     opacity: 0;
-    animation: login-sube 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: login-sube 0.7s cubic-bezier(0.22, 1, 0.36, 1) var(--retraso, 0ms) both;
   }
 }
 
@@ -168,4 +168,21 @@
 }
 .login-lamina-texto .login-kicker {
   color: color-mix(in srgb, white 70%, transparent);
+}
+
+/* Texto y velo sobre una foto (tarjetas del selector de vertical): el velo siempre es oscuro, asi que el texto es blanco fijo en ambos temas. */
+.foto-velo {
+  background: linear-gradient(to top, rgb(0 0 0 / 0.85), rgb(0 0 0 / 0.1), transparent);
+}
+.foto-texto {
+  color: white;
+}
+.foto-texto-suave {
+  color: rgb(255 255 255 / 0.8);
+}
+.login-kicker-foto {
+  color: color-mix(in srgb, white 78%, transparent);
+}
+.login-titular-foto {
+  font-size: clamp(1.25rem, 1.9vw, 1.6875rem);
 }

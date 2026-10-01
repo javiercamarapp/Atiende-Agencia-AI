@@ -19,7 +19,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -282,7 +281,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                     <div>
                       <p className="m-0 text-sm font-semibold text-foreground">{inv.email}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        <Badge variant="secondary">{ROLE_LABELS[inv.verticalRole]}</Badge>
+                        <StatusBadge tone="neutral" dot={false}>{ROLE_LABELS[inv.verticalRole]}</StatusBadge>
                         <StatusBadge tone={statusTone(INVITE_STATUS_TONE, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
                         <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
                       </div>

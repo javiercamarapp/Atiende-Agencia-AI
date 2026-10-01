@@ -12,7 +12,7 @@
 // de sesión con token efímero.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Mic, Wrench } from "lucide-react";
-import { Badge, Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
 import { fetchConversacionesVoz, fetchConversacionVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
@@ -330,7 +330,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm">
             {config.estado === "cargando" ? <EstadoCargando etiqueta="Consultando…" /> : null}
-            {config.estado === "listo" ? <Badge variant="secondary">Disponible</Badge> : null}
+            {config.estado === "listo" ? <StatusBadge tone="success" dot={false}>Disponible</StatusBadge> : null}
             {config.estado === "no_disponible" ? <p className="text-muted-foreground">Todavía no disponible para este negocio.</p> : null}
             {config.estado === "error" ? <p className="text-destructive">No se pudo consultar: {config.mensaje}</p> : null}
             {config.estado === "listo" && config.datos === null ? <p className="mt-1 text-xs text-muted-foreground">Esta sucursal aún no tiene configuración guardada.</p> : null}

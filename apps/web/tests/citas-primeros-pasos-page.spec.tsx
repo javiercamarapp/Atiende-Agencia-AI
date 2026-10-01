@@ -84,8 +84,8 @@ describe("PrimerosPasosPage (citas)", () => {
     expect(text).toContain("2 de 7 pasos");
     expect(text).toContain("1 servicio sin precio");
     expect(text).toContain("No disponible aún");
-    const barra = c.querySelector('[role="progressbar"]')!;
-    expect(barra.getAttribute("aria-valuenow")).toBe("29");
+    const barra = c.querySelector("progress")!;
+    expect(barra.getAttribute("value")).toBe("29");
     expect(c.querySelector('a[href="/citas/demo/disponibilidad"]')).not.toBeNull();
     expect(c.querySelector('a[href="/citas/demo/servicios"]')).not.toBeNull();
     // El paso no disponible no ofrece enlace a una pantalla que no puede resolverlo.
@@ -142,7 +142,7 @@ describe("PrimerosPasosPage (citas)", () => {
     await esperar();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(rendered.container.textContent).toContain("Solo los roles");
-    expect(rendered.container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(rendered.container.querySelector("progress")).toBeNull();
   });
 
   it("si la carga falla muestra el error y ninguna cifra inventada", async () => {
@@ -153,6 +153,6 @@ describe("PrimerosPasosPage (citas)", () => {
     expect(text).toContain("No se pudo cargar");
     expect(text).not.toMatch(/\d+ de \d+ pasos/);
     expect(text).not.toContain("Listo para recibir citas");
-    expect(rendered.container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(rendered.container.querySelector("progress")).toBeNull();
   });
 });

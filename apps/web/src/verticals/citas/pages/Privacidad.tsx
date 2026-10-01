@@ -4,16 +4,14 @@
 // revalida con 403; este gate es UX). Documentación operativa, no asesoría legal.
 import { useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL, NativeSelect } from "@atiende/ui";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchSolicitudesArco } from "../lib/privacidad-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 const PRIVACIDAD_ROLES = new Set(["owner", "admin"]);
 const PAGE_SIZE = 25;
-const SELECT_CLASES =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: CitasShellContext) {
   const puedeLeer = PRIVACIDAD_ROLES.has(role);
@@ -82,14 +80,14 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: CitasShe
     <div className="flex flex-col gap-5 max-w-[1000px]">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Privacidad</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solicitudes de derechos ARCO (acceso, rectificación, cancelación y oposición) que tus clientes abren por WhatsApp. El agente solo atiende al titular desde su propio número y nunca comparte datos por chat: tú los entregas tras verificar su identidad.
         </p>
-        <p className="m-0 mt-1 text-[12px] text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
+        <p className="m-0 mt-1 text-xs text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden ver las solicitudes ARCO — tu rol actual es <strong className="text-foreground">{role}</strong>.
         </p>
       ) : (
@@ -101,25 +99,25 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: CitasShe
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[200px]`}>
                 Estado
-                <select value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")} className={SELECT_CLASES}>
+                <NativeSelect value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_ESTADO_LABEL) as SolicitudArcoEstado[]).map((e) => (
                     <option key={e} value={e}>
                       {SOLICITUD_ARCO_ESTADO_LABEL[e]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Derecho
-                <select value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")} className={SELECT_CLASES}>
+                <NativeSelect value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_DERECHO_LABEL) as SolicitudArcoDerecho[]).map((d) => (
                     <option key={d} value={d}>
                       {SOLICITUD_ARCO_DERECHO_LABEL[d]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
             </CardContent>
           </Card>
