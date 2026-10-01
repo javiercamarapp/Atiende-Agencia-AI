@@ -39,8 +39,15 @@ Ver el cuerpo del PR: con la migración 222 sin aplicar, los escenarios 1, 2, 4,
 (`A=6`, "la fila fallida se reclamó sin respetar el backoff", falta la columna
 `next_attempt_at` en despachos/licitaciones); con ella aplicada pasan todos.
 
+## Concurrencia (manual)
+
+`concurrencia.sh` levanta un Postgres efimero, deja a la sesion 1 reclamando 4 filas con la
+transaccion abierta y lanza la sesion 2: reclama otras 4 DISTINTAS (8 filas `processing`, 8
+distintas), es decir, `for update of ... skip locked` evita duplicados y el reparto sobre 3 veces
+el lote evita que la segunda corrida se quede sin nada. No corre en el gate de CI (usa una
+conexion por escenario).
+
 ## Qué NO cubre
 
-- Concurrencia entre dos corridas simultáneas del claim (`for update of ... skip locked`
-  con el filtro de elegibilidad repetido): el gate usa una conexión por escenario. Se
-  comprobó a mano con dos sesiones `psql` (ver PR), no está en el gate automático.
+- Recuperacion de una fila de correo que se quede en `processing` si el worker muere despues del
+  claim: el claim de correo solo reclama `pending`/`failed` (comportamiento previo, sin lease).

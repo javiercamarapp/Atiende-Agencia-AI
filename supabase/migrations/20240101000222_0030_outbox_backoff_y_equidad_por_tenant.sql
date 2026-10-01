@@ -30,9 +30,11 @@
 --     round-robin entre organizaciones. Ninguna organizacion toma una segunda fila del lote
 --     mientras otra con filas elegibles no haya tomado la primera; con una sola organizacion
 --     con pendientes el lote se llena igual que antes (sin perder rendimiento). Despues del
---     reparto, la fila se bloquea con `for update of ... skip locked` repitiendo el filtro de
---     elegibilidad (READ COMMITTED lo revalida si otra corrida la tomo en medio), asi dos
---     corridas concurrentes nunca reclaman la misma fila.
+--     reparto, las filas se bloquean con `for update of ... skip locked` repitiendo el filtro
+--     de elegibilidad (READ COMMITTED lo revalida si otra corrida la tomo en medio) y
+--     conservando el orden justo; el reparto se calcula sobre 3 veces el lote para que, si otra
+--     corrida concurrente ya tiene bloqueadas las primeras filas, esta tome las siguientes en
+--     vez de quedarse sin nada. Dos corridas concurrentes nunca reclaman la misma fila.
 --
 -- Compatibilidad con la base SIN migrar (mergear despliega el codigo antes que la
 -- migracion): TODAS las firmas, nombres y tipos de retorno se conservan (`create or
@@ -87,7 +89,7 @@ begin
     where id in (
       select l.id from citas.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from citas.messaging_outbox e
@@ -97,12 +99,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -154,7 +158,7 @@ begin
     where id in (
       select l.id from despachos.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from despachos.messaging_outbox e
@@ -164,12 +168,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -221,7 +227,7 @@ begin
     where id in (
       select l.id from hoteles.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from hoteles.messaging_outbox e
@@ -231,12 +237,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -288,7 +296,7 @@ begin
     where id in (
       select l.id from licitaciones.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from licitaciones.messaging_outbox e
@@ -298,12 +306,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -355,7 +365,7 @@ begin
     where id in (
       select l.id from rentas.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from rentas.messaging_outbox e
@@ -365,12 +375,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -422,7 +434,7 @@ begin
     where id in (
       select l.id from restaurantes.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from restaurantes.messaging_outbox e
@@ -432,12 +444,14 @@ begin
             and e.next_attempt_at <= now()
         ) c
         order by c.turno, c.created_at, c.id
-        limit greatest(p_limit, 0)
+        limit greatest(p_limit, 0) * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'email'
         and l.status in ('pending', 'failed')
         and l.attempts < 5
         and l.next_attempt_at <= now()
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit greatest(p_limit, 0)
       for update of l skip locked
     )
     returning *;
@@ -490,7 +504,7 @@ begin
     where id in (
       select l.id from citas.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from citas.messaging_outbox e
@@ -501,13 +515,15 @@ begin
             )
         ) c
         order by c.turno, c.created_at, c.id
-        limit p_limit
+        limit p_limit * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'whatsapp'
         and (
           (l.status = 'pending' and l.next_attempt_at <= now())
           or (l.status = 'processing' and l.claimed_at < now() - make_interval(secs => p_lease_seconds))
         )
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit p_limit
       for update of l skip locked
     )
     returning *;
@@ -533,7 +549,7 @@ begin
     where id in (
       select l.id from hoteles.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from hoteles.messaging_outbox e
@@ -544,13 +560,15 @@ begin
             )
         ) c
         order by c.turno, c.created_at, c.id
-        limit p_limit
+        limit p_limit * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'whatsapp'
         and (
           (l.status = 'pending' and l.next_attempt_at <= now())
           or (l.status = 'processing' and l.claimed_at < now() - make_interval(secs => p_lease_seconds))
         )
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit p_limit
       for update of l skip locked
     )
     returning *;
@@ -576,7 +594,7 @@ begin
     where id in (
       select l.id from restaurantes.messaging_outbox l
       join (
-        select c.id from (
+        select c.id, c.turno, c.created_at from (
           select e.id, e.created_at,
                  row_number() over (partition by e.organization_id order by e.created_at, e.id) as turno
           from restaurantes.messaging_outbox e
@@ -587,13 +605,15 @@ begin
             )
         ) c
         order by c.turno, c.created_at, c.id
-        limit p_limit
+        limit p_limit * 3
       ) elegidos on elegidos.id = l.id
       where l.channel = 'whatsapp'
         and (
           (l.status = 'pending' and l.next_attempt_at <= now())
           or (l.status = 'processing' and l.claimed_at < now() - make_interval(secs => p_lease_seconds))
         )
+      order by elegidos.turno, elegidos.created_at, l.id
+      limit p_limit
       for update of l skip locked
     )
     returning *;
