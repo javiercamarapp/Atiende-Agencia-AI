@@ -100,3 +100,18 @@ escalación por minutos de espera) y registro de intentos de callback.
   `scripts/verify-restaurantes-conversaciones-handoff/`.
 - Alcance conocido: la escalación se calcula al leer (no hay cron ni aviso saliente al personal); el agente de voz aún no
   abre tomas por sí mismo (no existe el worker de voz): las llamadas aparecen en la bandeja y el staff puede tomarlas.
+
+`src/voz/kpi*.ts`: KPI de voz, costo por día y alertas operativas (R-13, migración 035). SQL agrega por día LOCAL de la
+sucursal (`voz_kpis_diarios`; una llamada cuenta en el día en que empezó); la capa pura (`kpi.ts`) suma días, saca
+porcentajes (sin denominador = `null`, nunca 0%) y evalúa umbrales con la misma regla que `voz_evaluar_alertas`. Costo
+en enteros: micro-USD y centavos MXN con el último `core.fx_rate` (sin tipo de cambio = `null`). Costo por sucursal =
+voz en vivo (`voice_conversation`) + telefonía (`core.usage_cost_event`, categoría `telefonia`); el LLM de texto es de la
+organización y se muestra aparte. Solo alertas internas (panel + `restaurantes.audit_log`); no envía WhatsApp ni correo.
+
+- Eventos: nada guardaba errores de proveedor ni latencia de herramientas; `voice_event` los recibe por
+  `POST /internal/restaurantes/voz/eventos` (solo sistema). Hasta que el servicio de voz los reporte, el p95 y los errores
+  salen en cero / "—".
+- Base sin migrar: lecturas -> `disponible: false`; escrituras -> `VozNoDisponibleError` (503), con SAVEPOINT; cubierto en
+  `tests/voz-kpi-repository-savepoint.spec.ts` y `apps/api/tests/restaurantes-voz-kpi-savepoint.spec.ts`.
+- SQL y permisos: `migrations/035_voz_kpi_alertas_costo.sql`, verificado contra Postgres real en
+  `scripts/verify-restaurantes-voz-kpi/`.
