@@ -142,6 +142,7 @@ import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/p
 import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
 import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMensualDetalle.tsx";
+import { CarteraPage } from "./verticals/despachos/pages/Cartera.tsx";
 import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
 import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
@@ -868,6 +869,7 @@ const DespachosDashboardRoute = shellRoute(DespachosShell, "/despachos/login", (
 const DespachosReportesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosReportesPage {...ctx} />);
 const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);
 const DespachosCierreMensualDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualDetallePage {...ctx} />);
+const DespachosCarteraRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CarteraPage {...ctx} />);
 const DespachosCfdiRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiPage {...ctx} />);
 const DespachosCfdiDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiDetallePage {...ctx} />);
 const DespachosCobranzaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CobranzaPage {...ctx} />);
@@ -1045,6 +1047,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />
+        <Route path="/despachos/:orgSlug/cartera" element={<DespachosCarteraRoute />} />
         <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
         <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
