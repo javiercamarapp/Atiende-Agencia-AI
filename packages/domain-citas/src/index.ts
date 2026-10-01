@@ -37,6 +37,8 @@ export { AppointmentAlternativesError, AppointmentConflictError, AppointmentForb
 export { computeAvailableSlots, dayOfWeekInTimeZone, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 export type { ComputeAvailableSlotsInput } from "./availability.ts";
 
+export { eventoRecordatorioFallido } from "./notification-events.ts";
+export type { EventoRecordatorioFallido, MotivoRecordatorioFallido, SeveridadNotificacion } from "./notification-events.ts";
 export { CITAS_ROLES, DATA_CHAT_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "./roles.ts";
 export type { CitasRole } from "./roles.ts";
 

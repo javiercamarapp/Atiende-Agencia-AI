@@ -233,3 +233,49 @@ describe("recordatorio de 24 h: una reserva recien hecha espera a la siguiente c
     expect(negocio.fixture.repo.getOutbox().filter((o) => o.channel === "whatsapp")).toHaveLength(1);
   });
 });
+
+describe("recordatorio fallido: evento para notificaciones (C-14)", () => {
+  it("una cita aislada por un error real genera un evento error_interno sin PII y con dedupe por cita", async () => {
+    const negocio = await negocioConCitas([{ zona: "America/Mexico_City", horas: ["10:00"] }]);
+    const cita = negocio.citas[0]!;
+    const original = negocio.fixture.repo.markReminderSent.bind(negocio.fixture.repo);
+    negocio.fixture.repo.markReminderSent = async () => {
+      throw Object.assign(new Error("deadlock detected"), { code: "40P01" });
+    };
+    const resumen = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-15T00:00:00.000Z"));
+    negocio.fixture.repo.markReminderSent = original;
+    expect(resumen.failedReminderEvents).toEqual([
+      {
+        tipo: "citas.recordatorio_fallido",
+        severidad: "atencion",
+        categoria: "recordatorios",
+        enlace: "agenda",
+        dedupeKey: `citas.recordatorio_fallido:${cita.id}:error_interno`,
+        organizationId: negocio.fixture.organizationId,
+        appointmentId: cita.id,
+        motivo: "error_interno",
+      },
+    ]);
+    expect(JSON.stringify(resumen.failedReminderEvents)).not.toContain("99988877");
+  });
+
+  it("recordatorio activo pero sin ningun canal (sin WhatsApp conectado y sin correo) genera un evento sin_canal, y la cita sigue pendiente", async () => {
+    const negocio = await negocioConCitas([{ zona: "America/Mexico_City", horas: ["10:00"] }]);
+    negocio.fixture.repo.seedWhatsAppConfig(negocio.fixture.organizationId, "");
+    const resumen = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-15T00:00:00.000Z"));
+    expect(resumen.sent).toBe(0);
+    expect(resumen.failedReminderEvents.map((e) => [e.motivo, e.severidad])).toEqual([["sin_canal", "info"]]);
+    // Sigue pendiente: al conectar WhatsApp la siguiente corrida lo envia.
+    negocio.fixture.repo.seedWhatsAppConfig(negocio.fixture.organizationId, "1234567890");
+    const siguiente = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-15T00:30:00.000Z"));
+    expect(siguiente.sent).toBe(1);
+    expect(siguiente.failedReminderEvents).toEqual([]);
+  });
+
+  it("un recordatorio apagado no es un fallo: sin evento", async () => {
+    const negocio = await negocioConCitas([{ zona: "America/Mexico_City", horas: ["10:00"] }]);
+    await negocio.fixture.repo.saveWhatsappMessageConfig(negocio.fixture.organizationId, 0, "actualizado", { ...MENSAJES_CONFIG_POR_OMISION, reminderEnabled: false });
+    const resumen = await runConfirmacionCitaCore(negocio.fixture.repo, negocio.fixture.organizationId, new Date("2026-09-15T00:00:00.000Z"));
+    expect(resumen.failedReminderEvents).toEqual([]);
+  });
+});

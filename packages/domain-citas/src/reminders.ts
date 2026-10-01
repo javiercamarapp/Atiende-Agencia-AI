@@ -10,6 +10,8 @@
 // es la pieza de mayor riesgo silencioso de todo el vertical — un bug de timezone no
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
+import { eventoRecordatorioFallido } from "./notification-events.ts";
+import type { EventoRecordatorioFallido } from "./notification-events.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
 import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
@@ -61,6 +63,9 @@ export interface ConfirmacionCitaSummary {
    * en el MISMO índice/orden — ambos arreglos se llenan juntos en el único
    * `catch` de abajo, nunca por separado, así que no pueden desincronizarse. */
   failedAppointmentErrors: string[];
+  /** C-14 -- eventos de "recordatorio fallido" para el productor de notificaciones (ver `notification-events.ts`): una cita
+   * aislada por un error real, o una cita que no se pudo avisar por ningun canal. Sin PII, con clave de dedupe. */
+  failedReminderEvents: EventoRecordatorioFallido[];
 }
 
 /**
@@ -90,7 +95,7 @@ export interface ConfirmacionCitaSummary {
  * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, skippedOutsideSendWindow: 0, failedAppointmentIds: [], failedAppointmentErrors: [] };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, skippedOutsideSendWindow: 0, failedAppointmentIds: [], failedAppointmentErrors: [], failedReminderEvents: [] };
 
   // C-04 -- anticipacion, horario de envio y texto editables desde el panel. Sin configuracion guardada (o con la base sin
   // migrar: el metodo del repositorio degrada con SAVEPOINT a `null`) es exactamente el comportamiento de siempre: 24 h
@@ -154,6 +159,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       let sentEmailLocal = 0;
       let skippedNoPhoneLocal = 0;
       let skippedOutsideWindowLocal = 0;
+      let sinCanalLocal = false;
 
       await repo.runWithRowSavepoint(async () => {
         let remindedSomehow = false;
@@ -211,6 +217,10 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
         // WhatsApp — no es un estado silencioso, el cron la vuelve a intentar.
         if (remindedSomehow) {
           await repo.markReminderSent(apt.appointmentId, now.toISOString());
+        } else if (config.reminderEnabled) {
+          // Recordatorio activo pero ningun canal aplico: no se marca (la siguiente corrida lo reintenta) y se registra el
+          // evento para avisar al negocio en vez de dejar la cita sin aviso en silencio.
+          sinCanalLocal = true;
         }
       });
 
@@ -220,10 +230,12 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       summary.sentEmail += sentEmailLocal;
       summary.skippedNoPhone += skippedNoPhoneLocal;
       summary.skippedOutsideSendWindow += skippedOutsideWindowLocal;
+      if (sinCanalLocal) summary.failedReminderEvents.push(eventoRecordatorioFallido(organizationId, apt.appointmentId, "sin_canal"));
     } catch (err) {
       console.error(`reminders: la cita ${apt.appointmentId} falló con un error real de Postgres, aislada por SAVEPOINT -- se sigue con las demás citas de la organización:`, err);
       summary.failedAppointmentIds.push(apt.appointmentId);
       summary.failedAppointmentErrors.push(err instanceof Error ? err.message : String(err));
+      summary.failedReminderEvents.push(eventoRecordatorioFallido(organizationId, apt.appointmentId, "error_interno"));
     }
   }
 

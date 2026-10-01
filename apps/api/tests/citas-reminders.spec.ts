@@ -35,7 +35,8 @@ async function seedCitaPendienteDeRecordatorio(ctx: CitasTestContext, phone: str
     dedupeFingerprint: null,
     idempotencyKey: null,
     reminder24hSentAt: null,
-    createdAt: new Date().toISOString(),
+    // C-14: una reserva de hace menos de 1 h espera a la siguiente corrida; esta se hizo hace 2 h.
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     googleEventId: null,
     googleSyncStatus: "skipped",
     googleSyncAttempts: 0,
@@ -134,8 +135,14 @@ describe("POST /internal/citas/confirmacion-cita", () => {
       ok: boolean;
       processed: number;
       sent: number;
+      notification_events: { tipo: string; severidad: string; categoria: string; enlace: string; dedupeKey: string; appointmentId: string; motivo: string }[];
       failures: { organization_id: string; appointment_id?: string; error: string }[];
     };
+    // C-14 -- el recordatorio fallido queda registrado como evento de notificacion (sin PII, con clave de dedupe).
+    expect(body.notification_events).toEqual([
+      expect.objectContaining({ tipo: "citas.recordatorio_fallido", severidad: "atencion", categoria: "recordatorios", enlace: "agenda", appointmentId: citaEnvenenadaId, motivo: "error_interno", dedupeKey: `citas.recordatorio_fallido:${citaEnvenenadaId}:error_interno` }),
+    ]);
+    expect(JSON.stringify(body.notification_events)).not.toContain("9990000001");
     // La cita sana SÍ se procesó y se envió pese al error de la envenenada.
     expect(body.processed).toBeGreaterThanOrEqual(2);
     expect(body.sent).toBeGreaterThanOrEqual(1);
