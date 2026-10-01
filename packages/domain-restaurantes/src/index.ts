@@ -180,8 +180,28 @@ export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTr
 export * from "./voz/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock } from "./whatsapp/perfil-pm.ts";
 export type { PerfilPmContexto } from "./whatsapp/perfil-pm.ts";
-export { PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
-export type { PerfilAgenteWhatsApp, TonoAgenteWhatsApp, WhatsAppAgentConfigInput, WhatsAppAgentConfigRow } from "./types.ts";
+export { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
+export type {
+  MotivoEscalacionDesactivable,
+  PerfilAgenteWhatsApp,
+  TonoAgenteWhatsApp,
+  WhatsAppAgentConfigAccion,
+  WhatsAppAgentConfigHistorialEntry,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
+} from "./types.ts";
+export { WhatsAppAgentConfigConflictError } from "./errors.ts";
+export {
+  AGENTE_LIMITES,
+  configPorDefectoDelPerfil,
+  diffLineasPrompt,
+  diferenciasConfigAgente,
+  fotoConfigAgente,
+  previewPromptAgente,
+  validarConfigAgenteWhatsapp,
+  valoresPorOmisionDelPerfil,
+} from "./whatsapp/agent-config-editor.ts";
+export type { DiferenciaCampo, LineaDiff, ResultadoValidacion } from "./whatsapp/agent-config-editor.ts";
 export * from "./conversaciones/index.ts";
 
 export {

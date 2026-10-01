@@ -198,9 +198,39 @@ export interface WhatsAppAgentConfigRow {
   readonly businessName: string | null;
   readonly toneStyle: TonoAgenteWhatsApp | null;
   readonly deliveryTimeText: string | null;
+  // Campos de la migracion 033 (R-10). Ausentes en una base sin migrar: todo cae a los valores del perfil.
+  /** Saludo propio ("Hola, bienvenido") en lugar del saludo segun la hora. Solo perfil `taqueria_pm`. */
+  readonly greetingText?: string | null;
+  /** Lista de salsas incluidas sin costo, en texto libre corto. Solo perfil `taqueria_pm`. */
+  readonly salsasText?: string | null;
+  /** Promociones listadas para recoger, en texto libre corto. Solo perfil `taqueria_pm`. */
+  readonly promosText?: string | null;
+  /** Motivos de escalacion que el negocio desactivo (solo los de `MOTIVOS_ESCALACION_DESACTIVABLES`). */
+  readonly escalationReasonsOff?: readonly MotivoEscalacionDesactivable[];
+  /** Version de la fila (sube en cada guardado; control de concurrencia optimista). */
+  readonly version?: number;
 }
 
-export type WhatsAppAgentConfigInput = Omit<WhatsAppAgentConfigRow, "propertyId">;
+/** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,
+ * transferencia, cancelaciones, reposiciones, etc.) son de seguridad y NO se pueden desactivar (CHECK en la base). */
+export const MOTIVOS_ESCALACION_DESACTIVABLES = ["pedido_grande", "zona_ambigua", "producto_agotado", "no_entiende"] as const;
+export type MotivoEscalacionDesactivable = (typeof MOTIVOS_ESCALACION_DESACTIVABLES)[number];
+
+export type WhatsAppAgentConfigInput = Omit<WhatsAppAgentConfigRow, "propertyId" | "version">;
+
+export type WhatsAppAgentConfigAccion = "actualizado" | "restablecido";
+
+/** Una entrada del historial de cambios del agente (append-only). `anterior`/`nuevo` son fotos de los campos editables. */
+export interface WhatsAppAgentConfigHistorialEntry {
+  readonly version: number;
+  readonly accion: WhatsAppAgentConfigAccion;
+  readonly propertyId: string | null;
+  readonly anterior: Readonly<Record<string, unknown>> | null;
+  readonly nuevo: Readonly<Record<string, unknown>>;
+  readonly actorUserId: string | null;
+  readonly actorNombre: string | null;
+  readonly creadoAt: string;
+}
 
 export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
 

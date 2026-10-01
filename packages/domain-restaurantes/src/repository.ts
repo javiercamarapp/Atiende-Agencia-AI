@@ -12,6 +12,8 @@ import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWrit
 import type {
   Branch,
   BranchPolicy,
+  WhatsAppAgentConfigAccion,
+  WhatsAppAgentConfigHistorialEntry,
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
   BranchProductState,
@@ -526,6 +528,21 @@ export interface RestaurantesRepository {
   /** Alta o reemplazo de la config de la organizacion (`propertyId` null) o de una sucursal. Lanza
    * `RestaurantesConfigUnavailableError` en una base sin migrar. */
   upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow>;
+  /** Fila EXACTA de ese alcance (organizacion si `propertyId` es null; si no, la de esa sucursal) sin la precedencia
+   * sucursal > organizacion de `findWhatsAppAgentConfig`. Incluye filas apagadas. `null` si no existe o la base no esta migrada. */
+  findWhatsAppAgentConfigExacta(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null>;
+  /** Guarda la config (migracion 033) con control de version y deja una entrada en el historial en la MISMA transaccion.
+   * `versionEsperada`: la version que la pantalla vio (0 = "no habia fila"); `null` = sin control. Si ya no es la
+   * vigente lanza `WhatsAppAgentConfigConflictError`. Sin la migracion 033 cae al guardado de 029 solo cuando no se usan
+   * campos nuevos (sin historial); con campos nuevos lanza `RestaurantesConfigUnavailableError`. */
+  guardarWhatsAppAgentConfig(
+    organizationId: string,
+    propertyId: string | null,
+    config: WhatsAppAgentConfigInput,
+    meta: { readonly accion: WhatsAppAgentConfigAccion; readonly actorUserId: string; readonly versionEsperada: number | null },
+  ): Promise<WhatsAppAgentConfigRow>;
+  /** Historial de cambios de ese alcance, mas reciente primero. Base sin migrar: lista vacia. */
+  listWhatsAppAgentConfigHistorial(organizationId: string, propertyId: string | null, limit: number): Promise<readonly WhatsAppAgentConfigHistorialEntry[]>;
 
   // ---- Modelo PM (migracion 023): politica por sucursal, cobertura de entrega,
   // WhatsApp por sucursal y marcas no_domicilio. Toda LECTURA degrada a "sin

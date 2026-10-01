@@ -8,13 +8,16 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
-import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   Branch,
   BranchPolicy,
+  WhatsAppAgentConfigAccion,
+  WhatsAppAgentConfigHistorialEntry,
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
   BranchProductState,
@@ -1632,6 +1635,53 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     const row: WhatsAppAgentConfigRow = { ...config, propertyId };
     this.whatsAppAgentConfigs.set(`${organizationId}:${propertyId ?? ""}`, row);
     return row;
+  }
+
+  async findWhatsAppAgentConfigExacta(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    return this.whatsAppAgentConfigs.get(`${organizationId}:${propertyId ?? ""}`) ?? null;
+  }
+
+  /** `true` simula la base sin la migracion 033 (solo el guardado de 029, sin historial ni version). */
+  whatsAppAgentConfigSin033 = false;
+  readonly whatsAppAgentConfigHistorial: Array<WhatsAppAgentConfigHistorialEntry & { readonly organizationId: string }> = [];
+
+  async guardarWhatsAppAgentConfig(
+    organizationId: string,
+    propertyId: string | null,
+    config: WhatsAppAgentConfigInput,
+    meta: { readonly accion: WhatsAppAgentConfigAccion; readonly actorUserId: string; readonly versionEsperada: number | null },
+  ): Promise<WhatsAppAgentConfigRow> {
+    if (propertyId && this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`guardarWhatsAppAgentConfig: la property "${propertyId}" no pertenece a la organizacion.`);
+    if (this.whatsAppAgentConfigSin033) {
+      const usaCamposNuevos = Boolean(config.greetingText || config.salsasText || config.promosText || (config.escalationReasonsOff?.length ?? 0) > 0);
+      if (usaCamposNuevos) throw new RestaurantesConfigUnavailableError();
+      return this.upsertWhatsAppAgentConfig(organizationId, propertyId, config);
+    }
+    const previa = await this.findWhatsAppAgentConfigExacta(organizationId, propertyId);
+    const versionVigente = previa?.version ?? (previa ? 1 : 0);
+    if (meta.versionEsperada !== null && meta.versionEsperada !== versionVigente) throw new WhatsAppAgentConfigConflictError();
+    const row: WhatsAppAgentConfigRow = { ...config, propertyId, version: versionVigente + 1 };
+    this.whatsAppAgentConfigs.set(`${organizationId}:${propertyId ?? ""}`, row);
+    this.whatsAppAgentConfigHistorial.push({
+      organizationId,
+      version: row.version!,
+      accion: meta.accion,
+      propertyId,
+      anterior: previa ? fotoConfigAgente(previa) : null,
+      nuevo: fotoConfigAgente(row)!,
+      actorUserId: meta.actorUserId,
+      actorNombre: null,
+      creadoAt: new Date().toISOString(),
+    });
+    return row;
+  }
+
+  async listWhatsAppAgentConfigHistorial(organizationId: string, propertyId: string | null, limit: number): Promise<readonly WhatsAppAgentConfigHistorialEntry[]> {
+    if (this.whatsAppAgentConfigSin033) return [];
+    return this.whatsAppAgentConfigHistorial
+      .filter((h) => h.organizationId === organizationId && h.propertyId === propertyId)
+      .sort((a, b) => b.version - a.version)
+      .slice(0, limit);
   }
 
   // ---- Modelo PM (migracion 023) ----

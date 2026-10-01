@@ -29,7 +29,8 @@ import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
-import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp } from "../types.ts";
+import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -152,6 +153,11 @@ export interface WhatsAppLlmAgentConfig {
   readonly perfil?: PerfilAgenteWhatsApp;
   /** Como se presenta el agente (solo el perfil PM lo usa). */
   readonly agentName?: string;
+  /** R-10 (solo perfil PM): saludo propio, salsas incluidas, promos para recoger y motivos de escalacion apagados. */
+  readonly greetingText?: string;
+  readonly salsasText?: string;
+  readonly promosText?: string;
+  readonly motivosDesactivados?: readonly string[];
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -189,9 +195,22 @@ export const PM_CONFIG_POR_OMISION: WhatsAppLlmAgentConfig = {
  * organizacion, y sin fila (o con la base sin migrar: el repositorio degrada con SAVEPOINT a `null`) el
  * agente generico de siempre. Una fila con perfil `generico` solo pisa los campos que traiga. */
 export async function resolveAgentConfig(repo: RestaurantesRepository, organizationId: string, propertyId: string | null): Promise<WhatsAppLlmAgentConfig> {
-  const row = await repo.findWhatsAppAgentConfig(organizationId, propertyId);
+  return aplicarFilaAConfig(await repo.findWhatsAppAgentConfig(organizationId, propertyId), organizationId);
+}
+
+/** Version pura de `resolveAgentConfig`: sirve tambien a la vista previa del editor (sin tocar la base). Los textos
+ * editables pasan por `sanitizeInlineText` aunque la fila se haya escrito directo en la base. */
+export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organizationId = ""): WhatsAppLlmAgentConfig {
   if (!row) return getAgentConfig(organizationId);
   const base = row.perfil === "taqueria_pm" ? PM_CONFIG_POR_OMISION : FALLBACK_CONFIG;
+  const texto = (v: string | null | undefined, max: number): string | undefined => {
+    const limpio = v ? sanitizeInlineText(v, max) : "";
+    return limpio.length > 0 ? limpio : undefined;
+  };
+  const saludo = texto(row.greetingText, 80);
+  const salsas = texto(row.salsasText, 300);
+  const promos = texto(row.promosText, 300);
+  const apagados = (row.escalationReasonsOff ?? []).filter((m) => (MOTIVOS_ESCALACION_DESACTIVABLES as readonly string[]).includes(m));
   return {
     ...base,
     perfil: row.perfil,
@@ -199,6 +218,10 @@ export async function resolveAgentConfig(repo: RestaurantesRepository, organizat
     toneStyle: row.toneStyle ?? base.toneStyle,
     deliveryTimeText: row.deliveryTimeText ?? base.deliveryTimeText,
     ...(row.agentName ? { agentName: row.agentName } : {}),
+    ...(saludo ? { greetingText: saludo } : {}),
+    ...(salsas ? { salsasText: salsas } : {}),
+    ...(promos ? { promosText: promos } : {}),
+    ...(apagados.length > 0 ? { motivosDesactivados: apagados } : {}),
   };
 }
 
@@ -208,7 +231,7 @@ function fechaHoraLocal(timezone: string, now: Date): { readonly fechaHora: stri
   return { fechaHora, dia };
 }
 
-function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -221,6 +244,10 @@ function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly Br
       customer,
       fechaHoraLocal: fechaHora,
       diaSemana: dia,
+      saludoPersonalizado: config.greetingText ?? null,
+      salsasTexto: config.salsasText ?? null,
+      promosTexto: config.promosText ?? null,
+      motivosDesactivados: config.motivosDesactivados ?? [],
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
