@@ -43,7 +43,7 @@ describe("parsearListado69B", () => {
 
   it("el SHA-256 es estable e ignora BOM y CRLF vs LF; cambia si cambia el contenido", () => {
     const lf = FIXTURE.replace(/\r\n/g, "\n");
-    expect(parsearListado69B("﻿" + lf).fuenteSha256).toBe(r.fuenteSha256);
+    expect(parsearListado69B("\uFEFF" + lf).fuenteSha256).toBe(r.fuenteSha256);
     expect(parsearListado69B(FIXTURE.replace("COMERCIAL BETA", "COMERCIAL BETA 2")).fuenteSha256).not.toBe(r.fuenteSha256);
     expect(r.fuenteSha256).toMatch(/^[0-9a-f]{64}$/);
   });

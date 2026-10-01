@@ -170,7 +170,7 @@ function parsearSituacion(valor: string): EfosSituacion | null {
 }
 
 export function parsearListado69B(textoOriginal: string): EfosListadoParseado {
-  const texto = textoOriginal.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const texto = textoOriginal.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const registros = parsearCsv(texto);
 
   const idxEncabezado = registros.findIndex((r) => {

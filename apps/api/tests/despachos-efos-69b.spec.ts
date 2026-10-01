@@ -25,15 +25,23 @@ function cfdi(rfcEmisor: string, folio: string, overrides: Record<string, unknow
   };
 }
 
-async function ingestarLista(body: BodyInit = CSV, periodo = "2026-07", secret = ctx.deps.env.internalSecret) {
+async function ingestarLista(body: string | Buffer = CSV, periodo = "2026-07", secret = ctx.deps.env.internalSecret) {
   const app = buildApp(ctx.deps);
-  return app.request(`/internal/despachos/efos-69b/ingestar?periodo=${periodo}`, { method: "POST", headers: { "x-atiende-internal-secret": secret, "content-length": String(typeof body === "string" ? Buffer.byteLength(body) : (body as Buffer).byteLength) }, body });
+  return app.request(`/internal/despachos/efos-69b/ingestar?periodo=${periodo}`, { method: "POST", headers: { "x-atiende-internal-secret": secret, "content-length": String(Buffer.byteLength(body)) }, body });
+}
+
+interface CfdiRespuesta {
+  valido: boolean;
+  issues: { codigo: string }[];
+  warnings: string[];
+  requiereRevisionHumana: boolean;
+  efos: { estado: string; periodoLista: string | null; situacion: string | null };
 }
 
 async function postCfdi(rfc: string, folio: string, overrides: Record<string, unknown> = {}) {
   const app = buildApp(ctx.deps);
   const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdi(rfc, folio, overrides)));
-  return { res, body: (await res.json()) as Record<string, any> };
+  return { res, body: (await res.json()) as CfdiRespuesta };
 }
 
 describe("POST /internal/despachos/efos-69b/ingestar", () => {
@@ -68,7 +76,7 @@ describe("ingesta de CFDI con la lista 69-B cargada", () => {
     const { res, body } = await postCfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000001");
     expect(res.status).toBe(201);
     expect(body.valido).toBe(false);
-    expect(body.issues.map((i: { codigo: string }) => i.codigo)).toContain("efos_69b_definitivo");
+    expect(body.issues.map((i) => i.codigo)).toContain("efos_69b_definitivo");
     expect(body.requiereRevisionHumana).toBe(true);
     expect(body.efos).toEqual({ estado: "disponible", periodoLista: "2026-07", situacion: "definitivo" });
     const pend = await ctx.despachosRepo.listPendingReviews(ctx.propertyId);
@@ -79,7 +87,7 @@ describe("ingesta de CFDI con la lista 69-B cargada", () => {
   it("emisor PRESUNTO: sigue valido, warning y revision con motivo explicito", async () => {
     const { body } = await postCfdi("BBB020202BB2", "11111111-2222-3333-4444-000000000002");
     expect(body.valido).toBe(true);
-    expect(body.warnings.some((w: string) => /PRESUNTO/.test(w))).toBe(true);
+    expect(body.warnings.some((w) => /PRESUNTO/.test(w))).toBe(true);
     expect(body.efos.situacion).toBe("presunto");
     const pend = await ctx.despachosRepo.listPendingReviews(ctx.propertyId);
     expect(pend.some((p) => /presunto en la lista 69-B/.test(p.reason))).toBe(true);
@@ -88,7 +96,7 @@ describe("ingesta de CFDI con la lista 69-B cargada", () => {
   it("emisor DESVIRTUADO: solo nota informativa, valido", async () => {
     const { body } = await postCfdi("CCC030303CC3", "11111111-2222-3333-4444-000000000003");
     expect(body.valido).toBe(true);
-    expect(body.warnings.some((w: string) => /Informativo/.test(w))).toBe(true);
+    expect(body.warnings.some((w) => /Informativo/.test(w))).toBe(true);
   });
 
   it("emisor fuera de la lista: sin hallazgos EFOS, efos.situacion null y estado disponible (limpio de verdad)", async () => {
