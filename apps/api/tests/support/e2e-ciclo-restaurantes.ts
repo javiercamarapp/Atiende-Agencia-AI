@@ -16,6 +16,10 @@ import {
   InMemoryConversacionesRepository,
   InMemoryHandoffAgentGate,
   InMemoryPrivacidadRepository,
+  InMemoryVozKpiRepository,
+  InMemoryVozRepository,
+  FakeVoiceProvider,
+  VOICE_TOOL_HTTP_PATHS,
   createLlmWhatsAppTurnHandler,
 } from "@atiende/domain-restaurantes";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -97,6 +101,8 @@ export interface CicloStack {
   readonly comandas: InMemoryComandaOutboxStore;
   readonly conversaciones: InMemoryConversacionesRepository;
   readonly privacidad: InMemoryPrivacidadRepository;
+  readonly voz: InMemoryVozRepository;
+  readonly vozKpi: InMemoryVozKpiRepository;
   readonly products: { readonly bistec3: string; readonly pastor: string; readonly coca: string; readonly heineken: string; readonly horchata: string };
   readonly propertyId: string;
   /** Reemplaza el guion del LLM (cada prueba trae el suyo). */
@@ -212,7 +218,11 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
     internalSecret: E2E_SECRETS.internalSecret,
     voiceToolSecret: E2E_SECRETS.voiceToolSecret,
     resend: { apiKey: E2E_SECRETS.resendKey, from: "atiende <pedidos@atiende.test>" },
+    voicePreviewTokenSecret: "e2e-voice-preview-token-secret",
   };
+  const voz = new InMemoryVozRepository();
+  voz.seedProperty(propertyId, organizationId);
+  const vozKpi = new InMemoryVozKpiRepository();
 
   const holder: { deps: AppDeps | null } = { deps: null };
   const turnHandler: WhatsAppTurnHandler = {
@@ -244,6 +254,9 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
     privacidadRepo: () => privacidad,
     conversacionesRepo: () => conversaciones,
     handoffGate: () => handoffGate,
+    vozRepo: () => voz,
+    vozKpiRepo: () => vozKpi,
+    voiceProvider: new FakeVoiceProvider(),
   };
   holder.deps = deps;
 
@@ -263,6 +276,8 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
     comandas,
     conversaciones,
     privacidad,
+    voz,
+    vozKpi,
     products,
     propertyId,
     setScript(steps) {
@@ -279,6 +294,34 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
       await api.close();
       await sim.stop();
       await sink.stop();
+    },
+  };
+}
+
+export interface VoiceCall {
+  readonly callId: string;
+  readonly token: string;
+  /** Invoca una tool del agente de voz por su ruta HTTP real (la misma del manifiesto) con secreto de sucursal/legado + token de llamada. */
+  tool(name: keyof typeof VOICE_TOOL_HTTP_PATHS, body: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }>;
+}
+
+/** "Telefonia": emite el token de llamada con el caller ID que reporta la linea (nunca el modelo) y devuelve el agente guionado. */
+export async function startVoiceCall(stack: CicloStack, callerPhone: string, callId: string): Promise<VoiceCall> {
+  const headers = { "content-type": "application/json", "x-atiende-tool-secret": E2E_SECRETS.voiceToolSecret };
+  const res = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/voice/call-token`), { method: "POST", headers, body: JSON.stringify({ call_id: callId, caller_phone: callerPhone, branch_slug: "fco-montejo" }) });
+  if (res.status !== 200) throw new Error(`call-token fallo: ${res.status} ${await res.text()}`);
+  const { call_token: token } = (await res.json()) as { call_token: string };
+  return {
+    callId,
+    token,
+    async tool(name, body) {
+      const raw = JSON.stringify(body);
+      const r = await fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}${VOICE_TOOL_HTTP_PATHS[name]}`), {
+        method: "POST",
+        headers: { ...headers, "x-atiende-call-token": token, "content-length": String(new TextEncoder().encode(raw).byteLength) },
+        body: raw,
+      });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
     },
   };
 }
