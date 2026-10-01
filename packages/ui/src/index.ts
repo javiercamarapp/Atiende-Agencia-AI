@@ -26,6 +26,7 @@ export { NotificationBell, type NotificationBellItem, type NotificationBellProps
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
+export { StatusBadge, STATUS_TONES, statusTone, type StatusBadgeProps, type StatusTone } from "./components/ui/status-badge.js";
 export {
   Table,
   TableHeader,
