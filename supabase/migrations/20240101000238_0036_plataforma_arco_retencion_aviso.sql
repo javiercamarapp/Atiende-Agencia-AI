@@ -26,7 +26,8 @@
 --            org_publish_privacy_notice, org_accept_privacy_notice, org_list_privacy_notices.
 --   Superadmin (solo lectura): platform_list_arco_requests, platform_privacy_overview,
 --            platform_list_purge_runs.
---   Solo sistema (cron/endpoint interno, NO programado): system_run_retention_purge.
+--   Solo sistema (cron/endpoint interno, NO programado): system_run_retention_purge y
+--            system_list_purge_targets (pares organizacion/clase por paginas de organizaciones).
 --
 -- Requiere: 0001 (core.organization, core.staff_user, core.membership), 0012
 -- (core.is_platform_superadmin), 0034 (core.cfo_zone_role), citas 024, restaurantes 030 y
@@ -56,6 +57,9 @@
 --   * platform_*: security definer, search_path fijo, GRANT a authenticated (no anon). Exigen
 --     auth.uid() = p_caller_id, superadmin real (core.is_platform_superadmin) y que NO tenga rol
 --     restringido de zona CFO; si no, cero filas. Son de solo lectura.
+--   * system_list_purge_targets: security definer, search_path fijo, GRANT a authenticated y guard
+--     `auth.uid() is null`. Razon: enumera organizaciones (solo id y clase, sin PII) para que el
+--     endpoint interno recorra una transaccion por unidad; un usuario de staff no la puede llamar.
 --   * system_run_retention_purge: security definer, search_path fijo, GRANT a authenticated (la
 --     sesion de sistema usa ese rol con sub vacio) y guard `auth.uid() is null`: un usuario de
 --     staff, aun owner, NO puede dispararla. Antes de borrar consulta el bloqueo (retencion legal
@@ -803,3 +807,28 @@ end;
 $$;
 revoke all on function core.system_run_retention_purge(uuid, text, boolean, integer) from public, anon;
 grant execute on function core.system_run_retention_purge(uuid, text, boolean, integer) to authenticated;
+
+-- Pares (organizacion, clase) que la plataforma purga, por paginas de organizaciones ordenadas por id
+-- (cursor p_after_org), o solo una organizacion (p_only_org). Una organizacion entra con las clases 'plataforma' de SU vertical. SOLO SISTEMA.
+create or replace function core.system_list_purge_targets(p_after_org uuid, p_org_limit integer default 50, p_only_org uuid default null)
+returns table (out_organization_id uuid, out_data_class text)
+language plpgsql stable security definer set search_path = core, pg_temp as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'system_list_purge_targets: solo para la sesion de sistema' using errcode = '42501';
+  end if;
+  return query
+    select o.id, c.data_class
+      from (
+        select x.id, x.vertical from core.organization x
+         where (p_after_org is null or x.id > p_after_org) and (p_only_org is null or x.id = p_only_org)
+           and exists (select 1 from core.retention_class k where k.vertical = x.vertical and k.executor = 'plataforma')
+         order by x.id
+         limit least(greatest(coalesce(p_org_limit, 50), 1), 500)
+      ) o
+      join core.retention_class c on c.vertical = o.vertical and c.executor = 'plataforma'
+     order by o.id, c.data_class;
+end;
+$$;
+revoke all on function core.system_list_purge_targets(uuid, integer, uuid) from public, anon;
+grant execute on function core.system_list_purge_targets(uuid, integer, uuid) to authenticated;

@@ -210,6 +210,7 @@ export type {
   PurgeRunResult,
   PurgeRunRow,
   PurgeStatus,
+  PurgeTarget,
   RetentionPolicyRow,
   RetentionSource,
 } from "./plataforma-privacidad-repository.ts";

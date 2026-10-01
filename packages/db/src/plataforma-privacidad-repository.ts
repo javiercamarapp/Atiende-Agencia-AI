@@ -10,6 +10,7 @@
 // 42883/42P01/42703 (0036 sin aplicar) revierte SOLO el savepoint y devuelve `availability:
 // "not_migrated"`; nunca un 500 ni un exito simulado. Los errores de negocio del SQL (42501, 22023,
 // 23514, 23505) se tipan como `PlataformaPrivacidadError`.
+import { randomUUID } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";
 import { runWithSavepointFallback } from "./savepoint-fallback.ts";
@@ -156,6 +157,13 @@ export interface PlataformaPrivacidadRepository {
   platformListPurgeRuns(callerId: string, limit: number, beforeSeq: number | null): Promise<{ availability: PrivacidadAvailability; items: readonly PurgeRunRow[] }>;
   /** SOLO SISTEMA (`withAppSession({ userId: null })`). Una organizacion y una clase por llamada. */
   runRetentionPurge(orgId: string, dataClass: string, dryRun: boolean, limit: number): Promise<{ availability: PrivacidadAvailability; result: PurgeRunResult | null }>;
+  /** SOLO SISTEMA. Pares (organizacion, clase) que la plataforma purga, por paginas de organizaciones (cursor = ultimo id). */
+  listPurgeTargets(afterOrgId: string | null, orgLimit: number, onlyOrgId?: string | null): Promise<{ availability: PrivacidadAvailability; targets: readonly PurgeTarget[] }>;
+}
+
+export interface PurgeTarget {
+  readonly organizationId: string;
+  readonly dataClass: string;
 }
 
 let warned = false;
@@ -552,6 +560,16 @@ export class PostgresPlataformaPrivacidadRepository implements PlataformaPrivaci
       () => ({ availability: "not_migrated" as const, result: null as PurgeRunResult | null }),
     );
   }
+  listPurgeTargets(afterOrgId: string | null, orgLimit: number, onlyOrgId: string | null = null) {
+    return guarded(
+      this.db,
+      async () => {
+        const { rows } = await this.db.query<{ out_organization_id: string; out_data_class: string }>(`select * from core.system_list_purge_targets($1, $2::int, $3);`, [afterOrgId, orgLimit, onlyOrgId]);
+        return { availability: "available" as const, targets: rows.map((r): PurgeTarget => ({ organizationId: r.out_organization_id, dataClass: r.out_data_class })) };
+      },
+      () => ({ availability: "not_migrated" as const, targets: [] as readonly PurgeTarget[] }),
+    );
+  }
 }
 
 /**
@@ -666,7 +684,7 @@ export class InMemoryPlataformaPrivacidadRepository implements PlataformaPrivaci
     if (r.length < 10 || r.length > 300) throw new PlataformaPrivacidadError("org_place_purge_hold: el motivo debe tener entre 10 y 300 caracteres", "invalid");
     if (this.holds.some((h) => h.orgId === orgId && h.active && h.dataClass === dataClass)) throw new PlataformaPrivacidadError("org_place_purge_hold: ya existe un bloqueo activo para esa clase", "conflict");
     this.holdSeq += 1;
-    const id = `hold-${this.holdSeq}`;
+    const id = randomUUID();
     this.holds.push({ id, orgId, dataClass, reason: r, placedAtMs: this.now(), releasedAtMs: null, releaseNote: null, active: true });
     return { availability: "available" as const, id };
   }
@@ -784,5 +802,19 @@ export class InMemoryPlataformaPrivacidadRepository implements PlataformaPrivaci
     };
     this.runs.push(row);
     return { availability: "available" as const, result: { runId: `run-${this.runSeq}`, status, retentionDays, rowsAffected: 0, rowsAnonymized: 0, rowsProtected: 0 } };
+  }
+
+  /** Organizaciones sembradas con `seedPurgeOrg`, ordenadas por id. */
+  private readonly purgeOrgs: string[] = [];
+  seedPurgeOrg(orgId: string): void {
+    this.purgeOrgs.push(orgId);
+    this.purgeOrgs.sort();
+  }
+
+  async listPurgeTargets(afterOrgId: string | null, orgLimit: number, onlyOrgId: string | null = null) {
+    if (!this.migrado) return { availability: "not_migrated" as const, targets: [] as readonly PurgeTarget[] };
+    const orgs = this.purgeOrgs.filter((o) => (afterOrgId === null || o > afterOrgId) && (onlyOrgId === null || o === onlyOrgId)).slice(0, orgLimit);
+    const classes = this.classes.filter((c) => c.executor === "plataforma");
+    return { availability: "available" as const, targets: orgs.flatMap((organizationId) => classes.map((c): PurgeTarget => ({ organizationId, dataClass: c.dataClass }))) };
   }
 }
