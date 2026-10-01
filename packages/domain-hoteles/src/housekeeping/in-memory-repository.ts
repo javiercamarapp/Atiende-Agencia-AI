@@ -181,6 +181,14 @@ export class InMemoryHousekeepingRepository implements HousekeepingRepository {
     return r.status;
   }
 
+  async markRoomOccupied(propertyId: string, roomId: string): Promise<HotelRoomStatus | null> {
+    this.requireMigrated("markRoomOccupied");
+    const r = this.rooms.get(roomId);
+    if (!r || r.propertyId !== propertyId || r.status !== "disponible") return null;
+    r.status = "ocupada";
+    return r.status;
+  }
+
   async listOutOfService(propertyId: string, onlyActive: boolean): Promise<readonly OutOfServiceRecord[]> {
     if (!this.migrated) return [];
     return [...this.oos.values()].filter((o) => o.propertyId === propertyId && (!onlyActive || o.status === "activo")).sort((a, b) => b.createdAt.localeCompare(a.createdAt));

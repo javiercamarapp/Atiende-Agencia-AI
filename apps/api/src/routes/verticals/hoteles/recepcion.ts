@@ -231,10 +231,19 @@ export function hotelesRecepcionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const enEstancia = await repo.transitionReservation(propertyId, reservationId, ["check_in"], "en_estancia", userId);
     if (!enEstancia) throw Errors.reservaConflictoDeEstado();
 
+    // El huesped ya esta en la habitacion: queda `ocupada` (asi el dia genera su tarea de estancia y el check-out la pasa a `sucia`).
+    // Consecuencia, no condicion: `markRoomOccupied` corre dentro de un SAVEPOINT y un fallo no invalida el check-in.
+    let habitacionMarcadaOcupada = false;
+    try {
+      habitacionMarcadaOcupada = (await hkRepo(c).markRoomOccupied(propertyId, roomId)) !== null;
+    } catch {
+      habitacionMarcadaOcupada = false;
+    }
     const identidad = enEstancia.guestId ? await guarded(() => recep.huespedesConIdentidad(propertyId, [enEstancia.guestId as string])) : new Set<string>();
     return c.json({
       ...serializeReserva(enEstancia),
       habitacion: { id: room.id, codigo: room.code },
+      habitacionMarcadaOcupada,
       identidadRegistrada: enEstancia.guestId === null || identidad === null ? null : identidad.has(enEstancia.guestId),
     });
   });

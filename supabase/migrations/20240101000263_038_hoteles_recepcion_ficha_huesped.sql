@@ -163,7 +163,7 @@ grant select, insert on hoteles.reservation_room_change to service_role;
 --    reserva nueva); no puede estar fuera de servicio (marca ni inhabilitacion activa), sucia u ocupada cuando el
 --    huesped ya esta en casa; y NINGUNA otra reserva activa (confirmada/check_in/en_estancia) puede traslapar sus
 --    fechas en esa habitacion. El advisory lock por habitacion serializa dos asignaciones concurrentes. Si la
---    reserva ya estaba en casa, la habitacion anterior queda `sucia` para limpieza.
+--    reserva ya estaba en casa, la habitacion anterior queda `sucia` para limpieza y la nueva `ocupada`.
 -- ---------------------------------------------------------------------------
 create or replace function hoteles.change_reservation_room(p_reservation_id uuid, p_new_room_id uuid, p_reason text default null)
 returns table (reservation_id uuid, from_room_id uuid, to_room_id uuid)
@@ -231,8 +231,12 @@ begin
   end if;
 
   update hoteles.reservation set room_id = v_room.id where id = v_res.id;
-  if v_res.room_id is not null and v_res.status in ('check_in', 'en_estancia') then
-    update hoteles.room set status = 'sucia' where id = v_res.room_id and property_id = v_res.property_id and status in ('disponible', 'ocupada');
+  if v_res.status in ('check_in', 'en_estancia') then
+    -- Huesped en casa: la habitacion anterior queda sucia y la nueva ocupada (la nueva ya se valido `disponible` arriba).
+    if v_res.room_id is not null then
+      update hoteles.room set status = 'sucia' where id = v_res.room_id and property_id = v_res.property_id and status in ('disponible', 'ocupada');
+    end if;
+    update hoteles.room set status = 'ocupada' where id = v_room.id and property_id = v_res.property_id and status = 'disponible';
   end if;
   insert into hoteles.reservation_room_change (organization_id, property_id, reservation_id, from_room_id, to_room_id, reason, changed_by)
   values (v_res.organization_id, v_res.property_id, v_res.id, v_res.room_id, v_room.id, v_reason, auth.uid());

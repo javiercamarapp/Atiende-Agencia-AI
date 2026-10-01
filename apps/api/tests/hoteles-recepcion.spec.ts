@@ -145,7 +145,8 @@ describe("POST /recepcion/reservas/:id/check-in", () => {
     const id = s.reserva({ roomId: s.r101 });
     const res = await post(s, `/reservas/${id}/check-in`, s.ctx.staff.frontdesk.token);
     expect(res.status).toBe(200);
-    expect(await json<{ estado: string; habitacion: { codigo: string } }>(res)).toMatchObject({ estado: "en_estancia", habitacion: { codigo: "101" } });
+    expect(await json<{ estado: string; habitacion: { codigo: string }; habitacionMarcadaOcupada: boolean }>(res)).toMatchObject({ estado: "en_estancia", habitacion: { codigo: "101" }, habitacionMarcadaOcupada: true });
+    expect(s.hk.roomStatus(s.r101)).toBe("ocupada");
     const tablero = await json<Tablero>(await s.app.request(s.base, authedJson(s.ctx.staff.frontdesk.token)));
     expect(tablero.enCasa.map((x) => x.reservaId)).toEqual([id]);
   });

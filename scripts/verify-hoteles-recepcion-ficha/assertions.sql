@@ -296,12 +296,13 @@ select public.verify_su();
 select public.verify_change_count('00000000-0000-0000-0000-0000000e0001') as una_entrada_deberia_ser_1;
 rollback;
 
-\echo '=== 14. cambio con el huesped en casa: la habitacion anterior queda sucia y el traslape se evalua en las fechas de la reserva ==='
+\echo '=== 14. cambio con el huesped en casa: la anterior queda sucia, la nueva ocupada y el traslape se evalua en las fechas de la reserva ==='
 begin;
 select public.verify_as('00000000-0000-0000-0000-0000000a0a03');
 select * from hoteles.change_reservation_room('00000000-0000-0000-0000-0000000e0003', '00000000-0000-0000-0000-0000000f0101', 'Ruido en la 103');
 select public.verify_su();
 select public.verify_assert(public.verify_room_status('00000000-0000-0000-0000-0000000f0103') = 'sucia', 'la 103 queda sucia');
+select public.verify_assert(public.verify_room_status('00000000-0000-0000-0000-0000000f0101') = 'ocupada', 'la 101 queda ocupada');
 select public.verify_change_count('00000000-0000-0000-0000-0000000e0003') as cambio_registrado_deberia_ser_1;
 rollback;
 
