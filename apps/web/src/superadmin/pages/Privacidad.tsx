@@ -4,7 +4,7 @@
 // apps/api/src/routes/superadmin-privacidad.ts (ver docs/PRIVACIDAD-PLATAFORMA.md). Referencia operativa,
 // no asesoria legal. Las solicitudes no traen telefono, correo ni nombre del titular.
 import { useCallback, useEffect, useState } from "react";
-import { Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import {
   DERECHO_ETIQUETA,
   ESTADO_ARCO_ETIQUETA,
@@ -136,36 +136,36 @@ export function SuperAdminPrivacidadPage({ apiBaseUrl, token }: { readonly apiBa
                 <EstadoVacio titulo="Sin organizaciones" mensaje="No hay organizaciones registradas." />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">Organización</th>
-                        <th className="py-2 pr-3 font-medium">Vertical</th>
-                        <th className="py-2 pr-3 font-medium">ARCO abiertas</th>
-                        <th className="py-2 pr-3 font-medium">Vencidas</th>
-                        <th className="py-2 pr-3 font-medium">Aviso vigente</th>
-                        <th className="py-2 pr-3 font-medium">Bloqueos</th>
-                        <th className="py-2 font-medium">Última purga</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Organización</TableHead>
+                        <TableHead>Vertical</TableHead>
+                        <TableHead>ARCO abiertas</TableHead>
+                        <TableHead>Vencidas</TableHead>
+                        <TableHead>Aviso vigente</TableHead>
+                        <TableHead>Bloqueos</TableHead>
+                        <TableHead>Última purga</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {organizaciones.map((o) => (
-                        <tr key={o.organizacionId} className="border-t border-border">
-                          <td className="py-2 pr-3 font-medium">{o.organizacion}</td>
-                          <td className="py-2 pr-3">{VERTICAL_ETIQUETA[o.vertical] ?? o.vertical}</td>
-                          <td className="py-2 pr-3">{o.arcoAbiertas}</td>
-                          <td className="py-2 pr-3">{o.arcoVencidas > 0 ? <StatusBadge tone="danger">{o.arcoVencidas}</StatusBadge> : 0}</td>
-                          <td className="py-2 pr-3">
+                        <TableRow key={o.organizacionId}>
+                          <TableCell className="font-medium">{o.organizacion}</TableCell>
+                          <TableCell>{VERTICAL_ETIQUETA[o.vertical] ?? o.vertical}</TableCell>
+                          <TableCell>{o.arcoAbiertas}</TableCell>
+                          <TableCell>{o.arcoVencidas > 0 ? <StatusBadge tone="danger">{o.arcoVencidas}</StatusBadge> : 0}</TableCell>
+                          <TableCell>
                             {o.avisoVersion === null ? <StatusBadge tone="warning">Sin aviso</StatusBadge> : `Versión ${o.avisoVersion} (${o.avisoAceptaciones} ${o.avisoAceptaciones === 1 ? "aceptación" : "aceptaciones"})`}
-                          </td>
-                          <td className="py-2 pr-3">{o.bloqueosActivos > 0 ? <StatusBadge tone="warning">{o.bloqueosActivos} activo{o.bloqueosActivos === 1 ? "" : "s"}</StatusBadge> : "—"}</td>
-                          <td className="py-2">
+                          </TableCell>
+                          <TableCell>{o.bloqueosActivos > 0 ? <StatusBadge tone="warning">{o.bloqueosActivos} activo{o.bloqueosActivos === 1 ? "" : "s"}</StatusBadge> : "—"}</TableCell>
+                          <TableCell>
                             {o.ultimaPurgaEnMs === null ? "—" : `${fechaMs(o.ultimaPurgaEnMs)} · ${PURGA_ETIQUETA[o.ultimaPurgaEstado ?? ""] ?? o.ultimaPurgaEstado ?? ""}`}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                   {datos.resumen.total > organizaciones.length && <p className="mt-2 text-xs text-muted-foreground">Mostrando {organizaciones.length} de {datos.resumen.total} organizaciones.</p>}
                 </div>
               )}
@@ -190,35 +190,35 @@ export function SuperAdminPrivacidadPage({ apiBaseUrl, token }: { readonly apiBa
                 <EstadoVacio titulo="Sin solicitudes" mensaje={soloVencidas ? "No hay solicitudes vencidas." : "No hay solicitudes ARCO abiertas."} />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">Organización</th>
-                        <th className="py-2 pr-3 font-medium">Vertical</th>
-                        <th className="py-2 pr-3 font-medium">Referencia</th>
-                        <th className="py-2 pr-3 font-medium">Derecho</th>
-                        <th className="py-2 pr-3 font-medium">Estado</th>
-                        <th className="py-2 pr-3 font-medium">Recibida</th>
-                        <th className="py-2 font-medium">Plazo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Organización</TableHead>
+                        <TableHead>Vertical</TableHead>
+                        <TableHead>Referencia</TableHead>
+                        <TableHead>Derecho</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Recibida</TableHead>
+                        <TableHead>Plazo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {solicitudes.map((r) => (
-                        <tr key={`${r.vertical}:${r.id}`} className="border-t border-border">
-                          <td className="py-2 pr-3">{r.organizacion ?? r.organizacionId}</td>
-                          <td className="py-2 pr-3">{VERTICAL_ETIQUETA[r.vertical] ?? r.vertical}</td>
-                          <td className="py-2 pr-3 font-mono text-xs">{r.referencia}</td>
-                          <td className="py-2 pr-3">{DERECHO_ETIQUETA[r.derecho] ?? r.derecho}</td>
-                          <td className="py-2 pr-3">{ESTADO_ARCO_ETIQUETA[r.estado] ?? r.estado}</td>
-                          <td className="py-2 pr-3">{fechaMs(r.abiertaEnMs)}</td>
-                          <td className="py-2">
+                        <TableRow key={`${r.vertical}:${r.id}`}>
+                          <TableCell>{r.organizacion ?? r.organizacionId}</TableCell>
+                          <TableCell>{VERTICAL_ETIQUETA[r.vertical] ?? r.vertical}</TableCell>
+                          <TableCell className="font-mono text-xs">{r.referencia}</TableCell>
+                          <TableCell>{DERECHO_ETIQUETA[r.derecho] ?? r.derecho}</TableCell>
+                          <TableCell>{ESTADO_ARCO_ETIQUETA[r.estado] ?? r.estado}</TableCell>
+                          <TableCell>{fechaMs(r.abiertaEnMs)}</TableCell>
+                          <TableCell>
                             <StatusBadge tone={PLAZO_TONO[r.plazo.estado]}>{PLAZO_ETIQUETA[r.plazo.estado]}</StatusBadge>
                             <span className="ml-2 text-xs text-muted-foreground">{textoPlazo(r.plazo)}</span>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                   {datos.arco.total > datos.arco.solicitudes.length && <p className="mt-2 text-xs text-muted-foreground">Mostrando {datos.arco.solicitudes.length} de {datos.arco.total} solicitudes abiertas.</p>}
                 </div>
               )}
@@ -237,36 +237,36 @@ export function SuperAdminPrivacidadPage({ apiBaseUrl, token }: { readonly apiBa
                 <EstadoVacio titulo="Sin purgas registradas" mensaje="Todavía no se ha ejecutado ni simulado ninguna purga." />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">Fecha</th>
-                        <th className="py-2 pr-3 font-medium">Organización</th>
-                        <th className="py-2 pr-3 font-medium">Clase</th>
-                        <th className="py-2 pr-3 font-medium">Estado</th>
-                        <th className="py-2 pr-3 font-medium">Retención</th>
-                        <th className="py-2 pr-3 font-medium">Afectadas</th>
-                        <th className="py-2 pr-3 font-medium">Anonimizadas</th>
-                        <th className="py-2 font-medium">Protegidas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Organización</TableHead>
+                        <TableHead>Clase</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Retención</TableHead>
+                        <TableHead>Afectadas</TableHead>
+                        <TableHead>Anonimizadas</TableHead>
+                        <TableHead>Protegidas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {datos.purgas.purgas.map((p) => (
-                        <tr key={p.seq} className="border-t border-border">
-                          <td className="py-2 pr-3">{fechaMs(p.ocurrioEnMs)}</td>
-                          <td className="py-2 pr-3">{p.organizacion ?? p.organizacionId}</td>
-                          <td className="py-2 pr-3">{etiquetaClase(p.claseDato)}</td>
-                          <td className="py-2 pr-3">
+                        <TableRow key={p.seq}>
+                          <TableCell>{fechaMs(p.ocurrioEnMs)}</TableCell>
+                          <TableCell>{p.organizacion ?? p.organizacionId}</TableCell>
+                          <TableCell>{etiquetaClase(p.claseDato)}</TableCell>
+                          <TableCell>
                             <StatusBadge tone={PURGA_TONO[p.estado] ?? "neutral"}>{PURGA_ETIQUETA[p.estado] ?? p.estado}</StatusBadge>
-                          </td>
-                          <td className="py-2 pr-3">{p.retencionDias === null ? "—" : `${p.retencionDias} días`}</td>
-                          <td className="py-2 pr-3">{p.filasAfectadas}</td>
-                          <td className="py-2 pr-3">{p.filasAnonimizadas}</td>
-                          <td className="py-2">{p.filasProtegidas}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell>{p.retencionDias === null ? "—" : `${p.retencionDias} días`}</TableCell>
+                          <TableCell>{p.filasAfectadas}</TableCell>
+                          <TableCell>{p.filasAnonimizadas}</TableCell>
+                          <TableCell>{p.filasProtegidas}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>

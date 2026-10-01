@@ -3,7 +3,7 @@
 // vacío honesto hasta que exista backend: nunca se muestran llamadas inventadas.
 import { useEffect, useState } from "react";
 import { MessageSquareText } from "lucide-react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import type { LineaTranscripcion } from "@atiende/ui";
 import type { ConversacionVoz } from "../lib/voz-client.ts";
 import { etiquetaResultado, formatoCostoUsd, formatoDuracion, formatoInstante } from "./formato-voz.ts";
@@ -71,32 +71,32 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
 
   return (
     <div className="rounded-xl border border-border overflow-hidden">
-      <table className="w-full text-xs">
-        <thead className="bg-muted/50 text-muted-foreground">
-          <tr className="text-left">
-            <th className="px-3 py-2 font-medium">Fecha</th>
-            <th className="px-3 py-2 font-medium">Duración</th>
-            <th className="px-3 py-2 font-medium">Costo</th>
-            <th className="px-3 py-2 font-medium">Resultado</th>
-            <th className="px-3 py-2" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+      <Table className="text-xs">
+        <TableHeader className="bg-muted/50">
+          <TableRow className="text-left">
+            <TableHead className="h-auto px-3 py-2">Fecha</TableHead>
+            <TableHead className="h-auto px-3 py-2">Duración</TableHead>
+            <TableHead className="h-auto px-3 py-2">Costo</TableHead>
+            <TableHead className="h-auto px-3 py-2">Resultado</TableHead>
+            <TableHead className="h-auto px-3 py-2" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {lista.map((c) => (
-            <tr key={c.id} data-conversacion={c.id}>
-              <td className="px-3 py-2">{formatoInstante(c.iniciadaEn)}</td>
-              <td className="px-3 py-2 tabular-nums">{formatoDuracion(c.duracionSegundos)}</td>
-              <td className="px-3 py-2 tabular-nums">{formatoCostoUsd(c.costoUsd)}</td>
-              <td className="px-3 py-2">{etiquetaResultado(c.resultado)}</td>
-              <td className="px-3 py-2 text-right">
+            <TableRow key={c.id} data-conversacion={c.id}>
+              <TableCell className="px-3 py-2">{formatoInstante(c.iniciadaEn)}</TableCell>
+              <TableCell className="px-3 py-2 tabular-nums">{formatoDuracion(c.duracionSegundos)}</TableCell>
+              <TableCell className="px-3 py-2 tabular-nums">{formatoCostoUsd(c.costoUsd)}</TableCell>
+              <TableCell className="px-3 py-2">{etiquetaResultado(c.resultado)}</TableCell>
+              <TableCell className="px-3 py-2 text-right">
                 <Button type="button" variant="outline" size="sm" onClick={() => setAbiertaId(c.id)}>
                   Ver transcripción
                 </Button>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
