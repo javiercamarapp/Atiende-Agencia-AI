@@ -132,7 +132,7 @@ describe("sin la bandera el aspecto de produccion no cambia", () => {
   it("las familias v2 referencian las fuentes autoalojadas declaradas con @font-face", () => {
     for (const familia of ["AtiendeSans", "AtiendeSerif", "AtiendeMono"]) {
       expect(css).toContain(`@font-face { font-family: "${familia}"`);
-      expect(v2["--font-body"] + v2["--font-serif"] + v2["--font-mono"]).toContain(familia);
+      expect(`${v2["--font-body"]}${v2["--font-serif"]}${v2["--font-mono"]}`).toContain(familia);
     }
     expect(css).toContain('url("/fonts/sans-400.woff2")');
   });
