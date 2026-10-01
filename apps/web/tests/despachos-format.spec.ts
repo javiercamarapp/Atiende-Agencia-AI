@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatEstadoVencimiento, formatMoney, formatPeriodStatus, formatPeriodo, formatPrioridadVencimiento, formatTaskCategory, formatTaskStatus } from "../src/verticals/despachos/lib/format.ts";
+import { formatCentavos, formatDireccionCfdi, formatEstadoSat, formatFormaPago, formatMetodoPago, formatTasaImpuesto, tonoEstadoSat, formatDate, formatDateTime, formatEstadoVencimiento, formatMoney, formatPeriodStatus, formatPeriodo, formatPrioridadVencimiento, formatTaskCategory, formatTaskStatus } from "../src/verticals/despachos/lib/format.ts";
 
 describe("formatMoney", () => {
   it("null -> guion largo, nunca $0", () => {
@@ -64,5 +64,45 @@ describe("formatDate / formatDateTime", () => {
 
   it("fecha inválida -> guion largo, nunca 'Invalid Date'", () => {
     expect(formatDate("no-es-fecha")).toBe("—");
+  });
+});
+
+describe("D-22 formatos de CFDI", () => {
+  it("formatCentavos: enteros a pesos sin pasar por flotantes; null/undefined -> guion largo, nunca $0", () => {
+    expect(formatCentavos(116000)).toBe("$1,160.00");
+    expect(formatCentavos(5)).toBe("$0.05");
+    expect(formatCentavos(0)).toBe("$0.00");
+    expect(formatCentavos(123456789)).toBe("$1,234,567.89");
+    expect(formatCentavos(-1999)).toBe("-$19.99");
+    expect(formatCentavos(null)).toBe("—");
+    expect(formatCentavos(undefined)).toBe("—");
+    expect(formatCentavos(Number.NaN)).toBe("—");
+  });
+  it("sentido, estado SAT y tono", () => {
+    expect(formatDireccionCfdi("emitido")).toBe("Emitido");
+    expect(formatDireccionCfdi("recibido")).toBe("Recibido");
+    expect(formatDireccionCfdi("indeterminado")).toBe("Sin clasificar");
+    expect(formatDireccionCfdi(null)).toBe("Sin clasificar");
+    expect(formatEstadoSat("pendiente")).toBe("Sin verificar");
+    expect(formatEstadoSat(undefined)).toBe("Sin verificar");
+    expect(formatEstadoSat("cancelado")).toBe("Cancelado");
+    expect(tonoEstadoSat("vigente")).toBe("success");
+    expect(tonoEstadoSat("cancelado")).toBe("danger");
+    expect(tonoEstadoSat("no_encontrado")).toBe("warning");
+    expect(tonoEstadoSat("pendiente")).toBe("neutral");
+  });
+  it("metodo y forma de pago con su clave del SAT; lo desconocido se muestra tal cual", () => {
+    expect(formatMetodoPago("PUE")).toContain("Una sola exhibición");
+    expect(formatMetodoPago("PPD")).toContain("Parcialidades");
+    expect(formatMetodoPago(null)).toBe("—");
+    expect(formatFormaPago("03")).toBe("03 · Transferencia electrónica de fondos");
+    expect(formatFormaPago("77")).toBe("77");
+    expect(formatFormaPago(undefined)).toBe("—");
+  });
+  it("tasa decimal del SAT a porcentaje", () => {
+    expect(formatTasaImpuesto("0.160000")).toBe("16%");
+    expect(formatTasaImpuesto("0.000000")).toBe("0%");
+    expect(formatTasaImpuesto("0.106667")).toBe("10.6667%");
+    expect(formatTasaImpuesto(null)).toBe("—");
   });
 });
