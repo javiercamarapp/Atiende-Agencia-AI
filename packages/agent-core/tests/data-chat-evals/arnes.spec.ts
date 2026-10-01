@@ -4,6 +4,10 @@ import { scriptedCompletion, type ScriptStep } from "../../src/data-chat/scripte
 import type { DataChatCompletion } from "../../src/data-chat/types.js";
 import {
   CANDIDATOS,
+  HOSTS_PERMITIDOS_GATEWAY,
+  JUEZ_ESPANOL_CADENA,
+  candidatosDeFase,
+  candidatosNoElegibles,
   PUERTAS,
   PresupuestoDuro,
   TopeDeGastoError,
@@ -308,22 +312,46 @@ describe("candidatos y proyeccion de costo", () => {
   it("todos con politica EE.UU./ZDR: deny + zdr + require_parameters y sin fallbacks propios", () => {
     for (const c of CANDIDATOS) {
       expect(c.routing.dataCollection, c.id).toBe("deny");
-      expect(c.routing.zdr, c.id).toBe(true);
+      // unica excepcion documentada (igual que el gateway): Muse Spark, cuyo unico host de EE.UU. (Meta) no ofrece ZDR hoy
+      expect(c.routing.zdr, c.id).toBe(c.id === "meta/muse-spark-1.3-contributor" ? undefined : true);
       expect(c.routing.requireParameters, c.id).toBe(true);
       expect(c.routing.allowFallbacks, c.id).toBe(false);
     }
     expect(new Set(CANDIDATOS.map((c) => c.id)).size).toBe(CANDIDATOS.length);
   });
 
-  it("los modelos que dicen tener host de EE.UU. traen lista `only`; los que no, lo declaran", () => {
-    for (const c of CANDIDATOS) if (c.hostEeuu) expect(c.routing.only?.length ?? 0, c.id).toBeGreaterThan(0);
+  it("los modelos que dicen tener host de EE.UU. traen lista `only`; los que no, son `noElegible` con su motivo", () => {
+    for (const c of CANDIDATOS) {
+      if (c.hostEeuu) expect(c.routing.only?.length ?? 0, c.id).toBeGreaterThan(0);
+      else expect(c.noElegible, c.id).toBeTruthy();
+    }
+  });
+
+  it("el `only` de cada candidato (y de cada ruta del juez) queda dentro de la allowlist de proveedores EE.UU. del gateway", () => {
+    for (const c of CANDIDATOS) if (c.hostEeuu) for (const h of c.routing.only ?? []) expect(HOSTS_PERMITIDOS_GATEWAY, `${c.id} -> ${h}`).toContain(h);
+    for (const r of JUEZ_ESPANOL_CADENA) {
+      expect(r.routing.only?.length ?? 0, r.etiqueta).toBeGreaterThan(0);
+      for (const h of r.routing.only ?? []) expect(HOSTS_PERMITIDOS_GATEWAY, `${r.etiqueta} -> ${h}`).toContain(h);
+      expect(r.routing.zdr, r.etiqueta).toBe(true);
+      expect(r.routing.dataCollection, r.etiqueta).toBe("deny");
+    }
+  });
+
+  it("los no elegibles (Qwen 3.7 Flash, Grok 4.3...) no entran a ninguna fase pero el reporte los lista; los elegibles no se marcan", () => {
+    const ids = candidatosNoElegibles("piloto").map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(["qwen/qwen3.7-flash", "x-ai/grok-4.3", "z-ai/glm-4.7-flash", "qwen/qwen3.5-flash-02-23", "bytedance-seed/seed-2.0-mini"]));
+    expect(candidatosDeFase("piloto").map((c) => c.id)).not.toEqual(expect.arrayContaining(["qwen/qwen3.7-flash"]));
+    for (const f of ["piloto", "barrido", "bakeoff", "cfo"] as const) for (const c of candidatosDeFase(f)) expect(c.noElegible, c.id).toBeUndefined();
+    expect(candidatoPorId("qwen/qwen3-235b-a22b-2507")!.noElegible).toBeUndefined();
   });
 
   it("Haiku y Grok solo en piloto; Sonnet solo cfo/bakeoff; Gemini 3.8 Flash solo bakeoff; ninguno es juez Sonnet", () => {
     for (const id of ["anthropic/claude-haiku-4.5", "x-ai/grok-4.3"]) expect(candidatoPorId(id)!.fases).toEqual(["piloto"]);
     expect(candidatoPorId("anthropic/claude-sonnet-5.5")!.fases).toEqual(["cfo", "bakeoff"]);
     expect(candidatoPorId("google/gemini-3.8-flash")!.fases).toEqual(["bakeoff"]);
-    expect(CANDIDATOS.filter((c) => c.roles.includes("juez_espanol")).map((c) => c.id)).toEqual(["qwen/qwen3.7-flash"]);
+    expect(CANDIDATOS.filter((c) => c.roles.includes("juez_espanol")).map((c) => c.id)).toEqual(["qwen/qwen3-235b-a22b-2507"]);
+    expect(JUEZ_ESPANOL_CADENA[0]!.id).toBe("qwen/qwen3-235b-a22b-2507");
+    expect(JUEZ_ESPANOL_CADENA[0]!.routing.only).toEqual(["parasail"]);
   });
 
   it("la proyeccion reproduce la tabla de work/eval-candidatos-baratos.md (piloto 210 casos x K=1, barrido K=3)", () => {

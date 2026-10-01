@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { scriptedCompletion } from "@atiende/agent-core/data-chat";
 import {
   CANDIDATOS,
+  HOSTS_PERMITIDOS_GATEWAY,
   JUEZ_ESPANOL_CADENA,
   PresupuestoDuro,
   candidatoPorId,
@@ -15,6 +16,7 @@ import {
   crearJuezOpenRouter,
   type CasoEval,
 } from "@atiende/agent-core/data-chat/evals";
+import { ALLOWED_PROVIDER_HOSTS } from "../../src/production/llm-models.js";
 import { VERTICALES_EVAL, mundoRepeticion } from "../../../../scripts/eval-copiloto/mundos.ts";
 import { leerCongelado } from "../../../../scripts/eval-copiloto/congelado.ts";
 import { cargarCasos, construirPlan, ejecutarPlan, finalistasDe, guionOro, leerLlave, parsearArgs, proyeccion, TOPE_HUMO_USD, TOPE_TOTAL_USD } from "../../../../scripts/eval-copiloto/ejecutar.ts";
@@ -49,7 +51,8 @@ describe("plan de corrida (fases)", () => {
     expect(p.k).toBe(1);
     const ids = p.modelos.map((m) => m.id);
     expect(ids).toContain("anthropic/claude-haiku-4.5");
-    expect(ids).toContain("x-ai/grok-4.3");
+    expect(ids).not.toContain("x-ai/grok-4.3"); // no elegible: su unico host (xai) no esta en la allowlist del gateway
+    expect(ids).not.toContain("qwen/qwen3.7-flash"); // no elegible: solo Alibaba, sin ZDR
     expect(ids).not.toContain("anthropic/claude-sonnet-5.5");
     expect(ids).not.toContain("google/gemini-3.8-flash");
     expect(proyeccion(p).totalUsd).toBeLessThan(TOPE_TOTAL_USD);
@@ -82,6 +85,7 @@ describe("plan de corrida (fases)", () => {
     expect(() => plan("--fase=piloto", "--max-usd=60")).toThrow(/entre/);
     expect(() => plan("--fase=cfo")).toThrow(/no hay casos CFO/);
     expect(() => plan("--fase=piloto", "--modelos=un/modelo-inventado")).toThrow(/candidatos/);
+    expect(() => plan("--fase=piloto", "--modelos=qwen/qwen3.7-flash")).toThrow(/no elegible.*Alibaba/);
     expect(() => parsearArgs(["suelto"])).toThrow();
   });
 
@@ -152,11 +156,13 @@ describe("modo real contra un OpenRouter falso (sin red, sin gasto)", () => {
     expect(salida.markdown).toContain("CORRIDA ABORTADA");
   });
 
-  it("el juez cae a la siguiente ruta cuando una responde 404 (sin endpoint EE.UU./ZDR) y cuenta su costo", async () => {
+  it("el juez usa Qwen3-235B por Parasail, cae a la siguiente ruta cuando una responde 404 (sin endpoint EE.UU./ZDR) y cuenta su costo", async () => {
     const rutas: string[] = [];
+    const proveedores: { zdr?: boolean; data_collection?: string; only?: string[] }[] = [];
     const fetchImpl = (async (_u: unknown, init?: { body?: string }) => {
-      const b = JSON.parse(String(init?.body)) as { model: string; provider: { zdr?: boolean; only?: string[] } };
-      rutas.push(`${b.model}|zdr=${b.provider.zdr ? "si" : "no"}`);
+      const b = JSON.parse(String(init?.body)) as { model: string; provider: { zdr?: boolean; data_collection?: string; only?: string[] } };
+      rutas.push(b.model);
+      proveedores.push(b.provider);
       if (rutas.length < 3) return new Response(JSON.stringify({ error: { message: "No endpoints found" } }), { status: 404 });
       return new Response(JSON.stringify({ model: b.model, choices: [{ message: { content: '{"nota": 5, "razon": "natural"}' } }], usage: { prompt_tokens: 90, completion_tokens: 12, cost: 0.00002 } }), { status: 200 });
     }) as unknown as typeof fetch;
@@ -165,10 +171,22 @@ describe("modo real contra un OpenRouter falso (sin red, sin gasto)", () => {
     const n = await juez.juzgar({ pregunta: "¿Cuánto vendí ayer?", texto: "Vendiste $1,000.00 MXN en 4 pedidos." });
     expect(n.nota).toBe(5);
     expect(n.modelo).toBe(JUEZ_ESPANOL_CADENA[2]!.etiqueta);
-    expect(rutas.map((r) => r.split("|")[0])).toEqual(["qwen/qwen3.7-flash", "qwen/qwen3.7-flash", "google/gemini-2.5-flash-lite"]);
+    expect(rutas).toEqual(["qwen/qwen3-235b-a22b-2507", "qwen/qwen3-235b-a22b-2507", "deepseek/deepseek-v4.1-flash"]);
+    expect(proveedores[0]).toMatchObject({ only: ["parasail"], zdr: true, data_collection: "deny" });
+    // ninguna ruta del juez relaja la politica EE.UU./ZDR
+    for (const p of proveedores) expect(p).toMatchObject({ zdr: true, data_collection: "deny" });
     expect(presupuesto.gastoUsd).toBeCloseTo(0.00002, 8);
-    // nunca Sonnet como juez
-    expect(JUEZ_ESPANOL_CADENA.some((r) => r.id.includes("claude"))).toBe(false);
+    // nunca Sonnet ni Qwen 3.7 Flash (solo Alibaba, sin ZDR) como juez
+    expect(JUEZ_ESPANOL_CADENA.some((r) => r.id.includes("claude") || r.id.includes("qwen3.7"))).toBe(false);
+  });
+
+  it("la lista de proveedores del arnes es la del gateway y el reporte lista los modelos no elegibles", async () => {
+    expect([...HOSTS_PERMITIDOS_GATEWAY].sort()).toEqual([...ALLOWED_PROVIDER_HOSTS].sort());
+    const p = plan("--fase=humo", "--modo=real");
+    const salida = await ejecutarPlan(p, congelados, { fabrica: crearFabricaOpenRouter(LLAVE_FALSA, { fetchImpl: openRouterFalso(0.0004) }), juez: crearJuezGuionado() });
+    expect(salida.reporte.noElegibles.map((n) => n.modelo)).toContain("qwen/qwen3.7-flash");
+    expect(salida.markdown).toContain("Modelos no elegibles");
+    expect(salida.markdown).toMatch(/Qwen 3\.7 Flash.*no elegible, hoy solo lo sirve Alibaba/);
   });
 });
 

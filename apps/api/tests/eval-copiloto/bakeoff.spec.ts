@@ -155,7 +155,7 @@ describe("runner del bake-off", () => {
     expect(bakeoffMarkdown(res)).toContain("CORRIDA ABORTADA");
   });
 
-  it("el juez de analisis usa la cadena barata (Qwen, luego Gemini Flash-Lite) con la rubrica de analisis y jamas Sonnet", async () => {
+  it("el juez de analisis usa la cadena barata (Qwen3-235B por Parasail, luego las demas rutas EE.UU./ZDR) con la rubrica de analisis y jamas Sonnet", async () => {
     const cuerpos: { model: string; system: string }[] = [];
     const fetchImpl = (async (_u: unknown, init?: { body?: string }) => {
       const b = JSON.parse(String(init?.body)) as { model: string; messages: { role: string; content: string }[] };
@@ -166,7 +166,7 @@ describe("runner del bake-off", () => {
     const juez = juezAnalisisDesde(crearJuezOpenRouter({ apiKey: LLAVE_FALSA, presupuesto, fetchImpl, rubrica: RUBRICA_ANALISIS }));
     const r = await juez.calificar({ peticion: "p", tablasJson: "[]", reporte: "{}" });
     expect(r.nota).toBe(4);
-    expect(cuerpos[0]!.model).toBe("qwen/qwen3.7-flash");
+    expect(cuerpos[0]!.model).toBe("qwen/qwen3-235b-a22b-2507");
     expect(cuerpos[0]!.system).toBe(RUBRICA_ANALISIS);
     expect(JUEZ_ESPANOL_CADENA.every((x) => !x.id.includes("claude"))).toBe(true);
   });
