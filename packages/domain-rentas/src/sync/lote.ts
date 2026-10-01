@@ -15,8 +15,8 @@
 // (migración 024 pendiente) el lote cae al camino anterior (todos los feeds activos, sin
 // lease/bitácora/backoff), idéntico en resultado al cron anterior.
 //
-// Presupuesto de tiempo: la función serverless tiene maxDuration=30 s (vercel.json).
-// El lote deja de reclamar al agotar `presupuestoMs`; los feeds reclamados pero no
+// Presupuesto de tiempo: la función serverless tiene maxDuration=30 s (vercel.json) y un fetch
+// de feed puede tardar hasta 15 s. El lote deja de reclamar al agotar `presupuestoMs`; los feeds reclamados pero no
 // alcanzados se devuelven con `liberarFeed(..., true)` y entran en la siguiente corrida
 // (el piso de espaciamiento los retiene `intervaloMinimoSegundos`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -36,7 +36,7 @@ export interface DepsLoteSync {
 }
 
 export interface OpcionesLoteSync extends Partial<OpcionesReclamo> {
-  /** Tiempo máximo del lote antes de dejar de reclamar/procesar feeds (default 20 s). */
+  /** Tiempo máximo del lote antes de dejar de reclamar/procesar feeds (default 10 s). */
   readonly presupuestoMs?: number;
   /** Tope de feeds por invocación (default 50). */
   readonly maxFeeds?: number;
@@ -59,7 +59,9 @@ export interface ResultadoLoteSync {
   readonly devueltosPorPresupuesto: number;
 }
 
-const PRESUPUESTO_POR_DEFECTO_MS = 20_000;
+// 10 s: el fetch de un feed puede tardar hasta 15 s (timeout de fetch-ics-seguro.ts), así que
+// con la función en 30 s el peor caso es ~10 s de presupuesto + 15 s del último feed + DB.
+const PRESUPUESTO_POR_DEFECTO_MS = 10_000;
 const MAX_FEEDS_POR_DEFECTO = 50;
 
 async function procesarFeed(deps: DepsLoteSync, feed: FeedExternoRecord): Promise<{ fila: ResultadoFeedLote; ciclo: ResultadoImportarCiclo | null }> {

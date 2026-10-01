@@ -362,8 +362,8 @@ más frecuencia —
   golpea de más a los canales;
 - *backoff por feed fallido*: 30 min, 1 h, 2 h, 4 h y tope de 6 h tras 1, 2, 3, 4 y 5+
   fallos consecutivos; un éxito lo limpia y reconectar el feed lo reinicia;
-- *presupuesto de tiempo*: deja de reclamar a los 20 s (la función tiene `maxDuration` de
-  30 s) y devuelve los feeds no alcanzados al pool para la siguiente corrida;
+- *presupuesto de tiempo*: deja de reclamar a los 10 s (la función tiene `maxDuration` de
+  30 s y el fetch de un feed puede tardar hasta 15 s) y devuelve los feeds no alcanzados al pool para la siguiente corrida;
 - *bitácora/alertas* (`rentas.ical_sync_bitacora`) y *monitor de conflictos* en el panel
   (Operación → Monitor de conflictos).
 
@@ -383,7 +383,7 @@ en Hobby un schedule más frecuente hace fallar el deploy). Hace falta **Vercel 
 worker— que le haga GET con `Authorization: Bearer $CRON_SECRET`). Además cada
 invocación consume tiempo de función: 96 invocaciones/día de este endpoint (hoy 1) —
 revisa en Vercel → Usage cuánto de la cuota de Functions/Cron del plan te quedaría.
-Con el lote acotado a ~20 s y feeds que no cambian respondiendo 304 (ETag), el costo
+Con el lote acotado a ~10 s de presupuesto y feeds que no cambian respondiendo 304 (ETag), el costo
 por invocación es bajo, pero eso hay que medirlo en producción, no se asume.
 
 **Orden de despliegue de este PR (seguro en cualquier orden, ninguno es bloqueante):**
