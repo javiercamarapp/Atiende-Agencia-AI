@@ -82,7 +82,7 @@ export function siguienteDia(fecha: string): string {
 export function diaVacio(fecha: string, zonaHoraria = "America/Mexico_City"): VozKpiDia {
   return {
     fecha, zonaHoraria, llamadas: 0, llamadasCerradas: 0, duracionTotalS: 0, pedidosVoz: 0, escaladas: 0, abandonadas: 0,
-    erroresProveedor: 0, erroresElevenlabs: 0, erroresTwilio: 0, erroresOtros: 0, toolCalls: 0, toolP95Ms: null,
+    erroresProveedor: 0, erroresTwilio: 0, erroresOtros: 0, toolCalls: 0, toolP95Ms: null,
     costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoTotalCentavosMxn: 0, costoLlmOrgMicroUsd: null, costoLlmOrgCentavosMxn: null,
   };
 }

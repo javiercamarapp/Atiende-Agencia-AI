@@ -57,6 +57,21 @@ describe("computeOnboardingChecklist", () => {
     expect(c.progresoPct).toBe(78);
   });
 
+  it("C-15: el paso 'Conecta tu numero' lleva a la pantalla donde SE conecta; el de recordatorios, a los textos; un numero pausado no cuenta como conectado", async () => {
+    const f = buildCitasFixture();
+    const rutas = (c: Awaited<ReturnType<typeof computeOnboardingChecklist>>) => Object.fromEntries(c.pasos.map((p) => [p.id, p.ruta]));
+    const c = await computeOnboardingChecklist(f.repo, f.organizationId, SUC_A);
+    expect(rutas(c).whatsapp).toBe("agente-whatsapp");
+    expect(rutas(c).recordatorios).toBe("mensajes-whatsapp");
+
+    await f.repo.connectWhatsappNumber(f.organizationId, "109876543210987", false);
+    expect(estados(await computeOnboardingChecklist(f.repo, f.organizationId, SUC_A)).whatsapp).toBe("pendiente");
+    await f.repo.connectWhatsappNumber(f.organizationId, "109876543210987", true);
+    expect(estados(await computeOnboardingChecklist(f.repo, f.organizationId, SUC_A)).whatsapp).toBe("completo");
+    await f.repo.disconnectWhatsappNumber(f.organizationId);
+    expect(estados(await computeOnboardingChecklist(f.repo, f.organizationId, SUC_A)).whatsapp).toBe("pendiente");
+  });
+
   it("cancelacion y cita de prueba se completan con datos reales (config guardada y una cita existente)", async () => {
     const f = buildCitasFixture();
     await f.repo.saveWhatsappMessageConfig(f.organizationId, 0, "actualizado", { ...MENSAJES_CONFIG_POR_OMISION, cancellationEnabled: true });

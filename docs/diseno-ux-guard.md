@@ -62,5 +62,5 @@ Se evaluo moverlo a `eslint.config.js` o a `scripts/verify-ds-v2-guard.mjs` y se
 
 ## Fuera de alcance (pendiente)
 
-- El aspecto v2 sigue apagado por defecto y la bandera `?ds=v2` (`inicializarTemaV2`) NO se retira: espera la revision de Javier en el preview.
+- La bandera `?ds=v2` (`inicializarTemaV2`) se retiro en UNI-0 (spec de diseno Atiende = Likida): los tokens de Likida aplican directo en claro y oscuro.
 - No cubiertos por el guard (ver `docs/diseno-ux-inventario-restante.md` seccion 2): `<input type="radio">`, `<button>` de tarjeta, anchos `w-[Npx]`, CSS de `pages/login.css`.

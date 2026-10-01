@@ -56,6 +56,7 @@ quitó en esta pasada — ver más abajo).
 | `WHATSAPP_VERIFY_TOKEN` | lo eliges tú al configurar el webhook en Meta for Developers → tu App → WhatsApp → Configuration | Sí | Verificación (`hub.verify_token`) del webhook entrante | La API no arranca | **Sí** |
 | `WHATSAPP_APP_SECRET` | Meta for Developers → tu App → Settings → Basic | Sí | Verifica la firma HMAC (`x-hub-signature-256`) de cada webhook entrante | La API no arranca | **Sí** |
 | `WHATSAPP_ACCESS_TOKEN` | Meta for Developers → tu App → WhatsApp → API Setup | Sí | Envío SALIENTE real vía Graph API (`@atiende/whatsapp-gateway::MetaGraphWhatsAppClient`) | `deps.whatsAppDispatcher` queda `undefined`; `POST/GET /internal/whatsapp/dispatch` responde 503 explícito (`routes/internal/whatsapp-dispatch.ts`) | No |
+| `WHATSAPP_APPROVED_TEMPLATES` | Nombres de las plantillas HSM que ya aprobó Meta (Business Manager → Plantillas de mensajes), separados por comas; las de estado de pedido están en `PLANTILLAS_ESTADO_PEDIDO` (`packages/domain-restaurantes/src/order-notifications.ts`) | No | Permite enviar el aviso proactivo de estado del pedido como `type: "template"` fuera de la ventana de 24 h (R-27) | Vacía: todo sale como texto libre (fuera de la ventana de 24 h Meta lo rechaza y el mensaje queda `dead`) | No |
 | `LICITACIONES_WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers → tu App → WhatsApp → API Setup (`phone_number_id` del número remitente) | No | Remitente de los avisos y botones go/no-go de licitaciones (L-05); el webhook entrante es `/v1/licitaciones/whatsapp/webhook` | El webhook acusa recibo sin procesar y el envío de licitaciones se omite (sin error) | No |
 | `HOTELES_IDENTITY_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo | Sí | Cifrado AES-256-GCM de la bóveda de identidad de hoteles (`@atiende/domain-hoteles::identity`, migración 031): captura y revelación de documentos | `POST /hoteles/:propertyId/identidad` y `.../revelar` responden 503 explícito (nunca se guarda un documento en claro); la lista avisa `llaveConfigurada:false`. Perder la llave vuelve ilegibles las identidades ya capturadas | No |
 
@@ -175,7 +176,14 @@ OpenRouter. `OPENROUTER_MODEL` ya no se lee: el modelo sale de la tabla por rol.
 indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
-## Voz (ElevenLabs) — patrón oficial
+## Voz de restaurantes (Gemini Live + LiveKit, sin ElevenLabs)
+
+Restaurantes dejó ElevenLabs el 1-oct-2026. Variables, orden de activación, métricas y rollback están en
+`docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
+llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
+host del worker de telefonía (que aún no existe en el repo). Lo que sigue aplica a hoteles y citas.
+
+## Voz (ElevenLabs, hoteles y citas) — patrón oficial
 
 Solo existe una dirección real hoy, y **no requiere ninguna API key de
 ElevenLabs**:

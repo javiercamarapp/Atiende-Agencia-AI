@@ -2,11 +2,12 @@
 //
 // <AgenteVozPage />: pestañas, selector de voz SIN clonación, guardado, estados
 // honestos cuando el backend aún no existe (404/503), herramientas con contador real,
-// conversaciones y vista previa en modo demostración. `fetch` global mockeado por ruta
+// conversaciones y llamada de prueba real (honesta cuando falta la credencial). `fetch` global mockeado por ruta
 // real contra los endpoints que construye la otra tarea (lib/voz-client.ts).
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgenteVozPage } from "../src/verticals/restaurantes/pages/AgenteVoz.tsx";
+import type { EntornoVoz } from "../src/verticals/restaurantes/voz/adaptador-gemini-live.ts";
 import type { MuestraAudio } from "../src/verticals/restaurantes/voz/SelectorVoz.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { contarEjecuciones } from "../src/verticals/restaurantes/voz/herramientas-agente.ts";
@@ -44,8 +45,12 @@ const DETALLE_C1 = {
   ],
 };
 
+const SESION_PREVIEW = { sesionId: "s-1", proveedor: "gemini-3.8-live", modelo: "gemini-3.8-live", voiceId: "Kore", websocketUrl: "wss://gemini.test/ws", tokenProveedor: "tok", tokenPreview: "x", expiraEn: "2026-10-01T12:00:00Z" };
+
 type Respuesta = { status: number; body?: unknown };
 interface Rutas {
+  catalogo?: Respuesta;
+  preview?: Respuesta;
   config?: Respuesta;
   conversaciones?: Respuesta;
   detalle?: Respuesta;
@@ -59,6 +64,8 @@ function res(r: Respuesta): Response {
 function stub(rutas: Rutas) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/voz/catalogo") return res(rutas.catalogo ?? { status: 200, body: { proveedor: "gemini-3.8-live", salud: { ok: true, detalle: "Credencial presente." }, voces: [] } });
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/voz/preview/sesion") return res(rutas.preview ?? { status: 201, body: SESION_PREVIEW });
     if (url === "https://api.test/v1/restaurantes/prop-1/admin/voz/config") {
       if (method === "PUT") return res(rutas.put ? rutas.put(JSON.parse(init!.body as string)) : { status: 500 });
       return res(rutas.config ?? { status: 200, body: CONFIG });
@@ -78,7 +85,7 @@ async function settle() {
   }
 }
 
-async function pintar(rutas: Rutas = {}, extra: { crearAudio?: (url: string) => MuestraAudio } = {}) {
+async function pintar(rutas: Rutas = {}, extra: { crearAudio?: (url: string) => MuestraAudio; entornoVoz?: EntornoVoz } = {}) {
   stub(rutas);
   rendered = renderComponent(<AgenteVozPage {...CTX} {...extra} />);
   await settle();
@@ -367,32 +374,74 @@ describe("servicio de voz no disponible (config 404/503)", () => {
   });
 });
 
-describe("vista previa (demostración)", () => {
-  it("abre la pantalla de llamada etiquetada como simulación, usa el primer mensaje configurado y cuelga al cerrar", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"] });
-    try {
-      await pintar();
-      click(boton("Vista previa")!);
-      expect(rendered!.container.querySelector('[data-testid="aviso-simulacion"]')!.textContent).toContain("Es una simulación");
-      expect(texto()).toContain("Simulación");
-      expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("Vista previa");
+function entornoFalso() {
+  const socket = { url: "", enviados: [] as unknown[], cerrado: false, onopen: null as (() => void) | null, onmessage: null as ((ev: { data: unknown }) => void) | null, onclose: null, onerror: null, send(d: string) { this.enviados.push(JSON.parse(d)); }, close() { this.cerrado = true; } };
+  const entorno: EntornoVoz = {
+    abrirSocket: (url) => {
+      socket.url = url;
+      queueMicrotask(() => {
+        socket.onopen?.();
+        socket.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) });
+      });
+      return socket as never;
+    },
+    capturarMicrofono: async () => ({ detener: () => undefined }),
+    crearReproductor: () => ({ encolar: () => undefined, cortar: () => undefined, nivel: () => 0, cerrar: () => undefined }),
+    esperar: () => () => undefined,
+    repetir: () => () => undefined,
+    ahora: () => 1000,
+  };
+  return { entorno, socket };
+}
 
-      click(boton("Iniciar llamada de prueba")!);
-      expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("Conectando…");
-      for (let i = 0; i < 40; i++) {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(100);
-        });
-      }
-      expect(texto()).toContain("Hola, le atiende el asistente virtual de Los Taquitos.");
-      expect(rendered!.container.querySelector(".voz-orbe")!.getAttribute("data-modo")).not.toBe("reposo");
+describe("llamada de prueba (vista previa real)", () => {
+  it("sin credencial en el servidor dice 'No disponible' con el motivo, bloquea el botón y no simula nada", async () => {
+    await pintar({ catalogo: { status: 200, body: { proveedor: "gemini-3.8-live", salud: { ok: false, detalle: "Voz no configurada: falta GEMINI_API_KEY." }, voces: [] } } });
+    click(boton("Vista previa")!);
+    await settle();
+    expect(texto()).toContain("No disponible: Voz no configurada: falta GEMINI_API_KEY.");
+    expect(texto()).not.toMatch(/simulaci[oó]n|demostraci[oó]n/i);
+    const iniciar = boton("Iniciar llamada de prueba") as HTMLButtonElement | undefined;
+    if (iniciar) click(iniciar);
+    await settle();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/preview/sesion"))).toBe(false);
+    expect(rendered!.container.querySelector('[data-testid="aviso-simulacion"]')).toBeNull();
+  });
 
-      click(boton("Atrás")!);
-      expect(rendered!.container.querySelector('[data-testid="chip-estado"]')).toBeNull();
-      expect(rendered!.container.querySelector('[role="tablist"]')).not.toBeNull();
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
+  it("con credencial pide la sesión efímera con la voz guardada, conecta y queda escuchando; al salir cuelga", async () => {
+    const { entorno, socket } = entornoFalso();
+    await pintar({}, { entornoVoz: entorno });
+    click(boton("Vista previa")!);
+    await settle();
+    expect(texto()).not.toContain("No disponible");
+    expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("No consulta el menú ni registra pedidos");
+    click(boton("Iniciar llamada de prueba")!);
+    await settle();
+    const llamada = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/preview/sesion"))!;
+    expect(JSON.parse((llamada[1] as RequestInit).body as string)).toEqual({ voiceId: "Kore" });
+    expect(socket.url).toBe(`${SESION_PREVIEW.websocketUrl}?access_token=${SESION_PREVIEW.tokenProveedor}`);
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("● Escuchando");
+    click(boton("Atrás")!);
+    await settle();
+    expect(socket.cerrado).toBe(true);
+    expect(rendered!.container.querySelector('[role="tablist"]')).not.toBeNull();
+  });
+
+  it("si la API responde 503 al emitir la sesión (la credencial se perdió) muestra el error y no abre ningún socket", async () => {
+    const { entorno, socket } = entornoFalso();
+    await pintar({ preview: { status: 503, body: { message: "Voz no configurada: falta GEMINI_API_KEY." } } }, { entornoVoz: entorno });
+    click(boton("Vista previa")!);
+    await settle();
+    click(boton("Iniciar llamada de prueba")!);
+    await settle();
+    expect(rendered!.container.querySelector('[data-testid="chip-estado"]')!.textContent).toBe("Error");
+    expect(socket.url).toBe("");
+  });
+
+  it("con el servicio de voz apagado (config 503) la llamada de prueba dice que no está activo", async () => {
+    await pintar({ config: { status: 503 }, conversaciones: { status: 503 } });
+    click(boton("Vista previa")!);
+    await settle();
+    expect(texto()).toContain("No disponible: el servicio de voz todavía no está activo para este negocio.");
   });
 });

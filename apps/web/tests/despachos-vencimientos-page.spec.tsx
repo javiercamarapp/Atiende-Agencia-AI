@@ -46,6 +46,8 @@ const DEADLINE: FiscalDeadline = {
   comprobanteUrl: null,
   diasRestantes: -4,
   creadoEn: "2026-08-01T12:00:00.000Z",
+  fundamento: "LISR art. 14; art. 12 CFF",
+  validarConFiscalista: false,
 };
 
 function stubFetch(deadlines: readonly FiscalDeadline[]): void {
@@ -97,5 +99,61 @@ describe("VencimientosPage (despachos) -- fechaLimite/fechaPresentacion (columna
     const text = rendered.container.textContent!;
     expect(text).toContain("Presentado 10 ago 2026");
     expect(text).not.toContain("Presentado 9 ago 2026");
+  });
+});
+
+describe("VencimientosPage (despachos) -- calendario fiscal D-26", () => {
+  it("muestra el fundamento y la marca 'Validar con fiscalista' solo en las filas que la traen", async () => {
+    stubFetch([
+      { ...DEADLINE, id: "v1", tipo: "DIOT", fundamento: "RMF regla 4.5.1", validarConFiscalista: true, estado: "pendiente", fechaPresentacion: null },
+      { ...DEADLINE, id: "v2", tipo: "ISR", fundamento: "LISR art. 14", validarConFiscalista: false, estado: "pendiente", fechaPresentacion: null },
+    ]);
+    rendered = renderPage();
+    await esperarCarga();
+    const text = rendered.container.textContent!;
+    expect(text).toContain("RMF regla 4.5.1");
+    expect(text).toContain("LISR art. 14");
+    expect(text.match(/Validar con fiscalista/g)).toHaveLength(1);
+  });
+
+  it("'Escalar vencidos y por vencer' llama al barrido real y muestra el resultado", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/vencimientos/barrido") && init?.method === "POST") {
+        return jsonResponse({ evaluados: 1, escalados: [{ id: "v1", tipo: "ISR", periodo: "2026-07", nivel: "nivel_4", correosEncolados: 2 }], yaEscalados: 0, aunNoToca: 0, fallidos: [] });
+      }
+      if (url.includes("/vencimientos")) return jsonResponse([{ ...DEADLINE, estado: "pendiente", fechaPresentacion: null }]);
+      throw new Error(`fetch inesperado en el test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Escalar vencidos y por vencer"));
+    expect(boton).toBeDefined();
+    await act(async () => {
+      boton!.click();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith("/vencimientos/barrido") && (i as RequestInit)?.method === "POST")).toBe(true);
+    expect(rendered.container.textContent).toContain("Se escalaron 1 vencimiento(s) (2 correo(s) encolado(s)).");
+  });
+
+  it("un error del barrido se muestra, no se traga", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/vencimientos/barrido") && init?.method === "POST") return jsonResponse({ error: "boom" }, false);
+        return jsonResponse([]);
+      }),
+    );
+    rendered = renderPage();
+    await esperarCarga();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Escalar vencidos y por vencer"))!;
+    await act(async () => {
+      boton.click();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector('[role="alert"]')).not.toBeNull();
   });
 });

@@ -18,6 +18,8 @@
 import { Hono } from "hono";
 import { evaluarAlertasCfo } from "@atiende/billing";
 import type { AlertaCfo } from "@atiende/billing";
+import { emitirNotificacion } from "@atiende/db";
+import type { SeveridadNotificacion } from "@atiende/db";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
@@ -30,6 +32,8 @@ import type { AppDeps } from "../../deps.ts";
 export const SUPERADMIN_ALERTAS_CFO_CRON_PATH = "/internal/superadmin/alertas-cfo";
 
 const MAX_ORGS_EN_DETALLE = 8;
+
+const SEVERIDAD_NOTIFICACION: Record<AlertaCfo["severidad"], SeveridadNotificacion> = { critica: "critica", alta: "atencion", media: "info" };
 
 /** Una alerta de dashboard -> una alerta saliente. El `tipo` es POR REGLA (no por organizacion): el
  *  piso por hora se cuenta por tipo y destino, y un id de organizacion dentro del tipo se redactaria. */
@@ -91,6 +95,23 @@ export function superadminAlertasCfoRoutes(deps: AppDeps): Hono {
       }
       if (alertas.length > 0) logEvent(c, "warn", "superadmin_alertas_cfo_con_alertas", { mes, alertas: alertas.length });
 
+      // Notificacion in-app a los superadmins (campana): una por regla por mes (clave de dedupe), en su PROPIA
+      // transaccion para que un fallo o una base sin migrar (0039) no toque la respuesta ni las demas reglas.
+      let notificadasEnApp = 0;
+      for (const a of alertas) {
+        const r = await deps.engine.withAppSession({ userId: null }, (db) =>
+          emitirNotificacion(db, {
+            evento: "superadmin.cfo.alerta",
+            organizationId: null,
+            clave: `${mes}:${a.codigo}`,
+            parametros: { regla: a.codigo, cantidad: a.organizaciones.length },
+            severidad: SEVERIDAD_NOTIFICACION[a.severidad],
+          }),
+        ).catch((err: unknown) => ({ estado: "error" as const, destinatarios: 0, detalle: err instanceof Error ? err.message : String(err) }));
+        if (r.estado === "emitida") notificadasEnApp += 1;
+        else if (r.estado === "error" || r.estado === "invalida") logEvent(c, "warn", "superadmin_alertas_cfo_notificacion_en_app_fallida", { codigo: a.codigo, estado: r.estado });
+      }
+
       return c.json({
         ok: true,
         mes,
@@ -98,6 +119,7 @@ export function superadminAlertasCfoRoutes(deps: AppDeps): Hono {
         sinTipoDeCambio: fx === null,
         alertas: alertas.map((a) => ({ codigo: a.codigo, severidad: a.severidad, organizaciones: a.organizaciones.length })),
         notificadas,
+        notificadasEnApp,
       });
     })();
   });

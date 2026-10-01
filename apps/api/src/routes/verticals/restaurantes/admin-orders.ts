@@ -12,15 +12,16 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { enqueueComandasForPromotedOrders } from "./programados-comanda.ts";
 import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
+import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 
 /** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
  * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
@@ -188,9 +189,16 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       const r = await promoverProgramadosVencidos(repo, organizationId, { propertyIds });
       if (r.promovidos.length > 0) {
         logEvent(c, "info", "restaurantes_programados_promovidos", { organizationId, promovidos: r.promovidos.length });
-        // La comanda al POS solo puede salir en sesion de SISTEMA y DESPUES del commit de esta transaccion de staff.
+        // R-29: la comanda al POS solo la puede encolar la sesion de SISTEMA (`pos_comanda_encolar`) y el pedido
+        // recien promovido todavia no esta confirmado en esta transaccion de staff: se encola DESPUES del commit,
+        // en su propia sesion de sistema. Idempotente; nunca afecta la respuesta (best-effort).
         const promovidos = r.promovidos;
-        c.get("postCommitTasks").push(() => enqueueComandasForPromotedOrders(deps, promovidos));
+        c.get("postCommitTasks").push(async () => {
+          const resumen = await deps.engine.withAppSession({ userId: null }, (db) =>
+            encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), promovidos),
+          );
+          logEvent(c, "info", "restaurantes_programados_comanda_encolada", { organizationId, ...resumen });
+        });
       }
       return r.promovidos;
     } catch (err) {
@@ -266,6 +274,16 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // null`). Sin esto, el WhatsApp al cliente ("tu pedido va en camino") solo
       // salía con el cron diario (`vercel.json`: "55 14 * * *"), hasta ~24h tarde.
       c.get("postCommitTasks").push(() => dispatchWhatsAppVertical(deps, "restaurantes", 5).then(() => undefined));
+      // R-29: adelantar a mano un pedido programado a `pending` tambien lo manda a cocina: misma comanda al POS
+      // que la promocion automatica (sesion de sistema, post-commit, idempotente por pedido).
+      if (order.status === "programado" && updated.status === "pending") {
+        const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
+        c.get("postCommitTasks").push(async () => {
+          await deps.engine.withAppSession({ userId: null }, (db) =>
+            encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
+          );
+        });
+      }
       logEvent(c, "info", "restaurantes_admin_pedido_status_cambiado", { actorUserId: c.get("userId"), organizationId, orderId, status: raw.status });
 
       // FASE 3 (producto) — "cancelación o reembolso de pedidos" (el catálogo de

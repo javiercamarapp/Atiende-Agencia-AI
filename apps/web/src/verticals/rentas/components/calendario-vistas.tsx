@@ -192,7 +192,7 @@ export function VistaMes({ mes, hoy, elementos, canales, nombreUnidad, foco, dia
                   className={cn(
                     "flex h-full min-h-24 w-full flex-col items-stretch gap-1 p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     fuera && "bg-muted/40",
-                    diaSeleccionado === dia && "bg-accent/10",
+                    diaSeleccionado === dia && "bg-primary/10",
                   )}
                 >
                   <span className={cn("inline-flex size-6 items-center justify-center self-start rounded-full text-xs font-semibold", esHoy ? "bg-primary text-primary-foreground" : fuera ? "text-muted-foreground" : "text-foreground")}>{Number(dia.slice(8, 10))}</span>

@@ -10,6 +10,8 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { configAgenteDesdeFila, fotoConfigAgente } from "./whatsapp/agent-config.ts";
+import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import { fotoConfigMensajes } from "./whatsapp/message-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
@@ -387,6 +389,17 @@ function advertirMensajesNoDisponibles(metodo: string, err: unknown): void {
   console.warn(
     `PostgresCitasRepository.${metodo}: la configuracion de mensajes de WhatsApp (migracion 026) no esta disponible en esta base ` +
       "(SQLSTATE 42883/42P01/42703 o sin acceso) -- se usan los textos y el horario de siempre.",
+    err instanceof Error ? err.message : err,
+  );
+}
+
+const agenteAdvertidos = new Set<string>();
+function advertirAgenteNoDisponible(metodo: string, err: unknown): void {
+  if (agenteAdvertidos.has(metodo)) return;
+  agenteAdvertidos.add(metodo);
+  console.warn(
+    `PostgresCitasRepository.${metodo}: la personalidad del agente y la conexion del numero de WhatsApp (migracion 028) no estan disponibles en esta base ` +
+      "(SQLSTATE 42883/42P01/42703 o sin acceso) -- el agente habla como siempre y la pantalla lo dice.",
     err instanceof Error ? err.message : err,
   );
 }
@@ -1076,8 +1089,8 @@ export class PostgresCitasRepository implements CitasRepository {
   }
 
   async loadAppointmentsPendingReminder(organizationId: string, windowStartIso: string, windowEndIso: string): Promise<readonly ReminderCandidateRow[]> {
-    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; service_id: string | null; starts_at: string; customer_name: string | null; customer_phone: string }>(
-      `select a.id as appointment_id, a.provider_id, a.service_id, a.starts_at, c.full_name as customer_name, c.phone as customer_phone
+    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; service_id: string | null; starts_at: string; created_at: string | null; customer_name: string | null; customer_phone: string }>(
+      `select a.id as appointment_id, a.provider_id, a.service_id, a.starts_at, a.created_at, c.full_name as customer_name, c.phone as customer_phone
        from citas.appointments a
        join citas.customers c on c.id = a.customer_id
        where a.organization_id = $1 and a.status in ('pending','confirmed')
@@ -1085,7 +1098,7 @@ export class PostgresCitasRepository implements CitasRepository {
          and a.starts_at >= $2 and a.starts_at <= $3;`,
       [organizationId, windowStartIso, windowEndIso],
     );
-    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone, serviceId: r.service_id }));
+    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone, serviceId: r.service_id, createdAt: r.created_at }));
   }
 
   // ============================================================================
@@ -1178,6 +1191,117 @@ export class PostgresCitasRepository implements CitasRepository {
       fallback: (err) => {
         advertirMensajesNoDisponibles("listWhatsappMessageConfigHistory", err);
         return Promise.resolve({ disponible: false, items: [] });
+      },
+    });
+  }
+
+  // ---- C-15 -- personalidad del agente y conexion del numero (migracion 028) ----
+
+  async getWhatsappAgentConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappAgentConfigRecord | null }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean; readonly record: WhatsappAgentConfigRecord | null }>({
+      session: this.db,
+      savepointName: "sp_citas_wa_agent_config_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ agent_name: string | null; tone_style: string | null; greeting_text: string | null; rules_text: string | null; version: number; updated_by: string | null; updated_at: string }>(
+          `select agent_name, tone_style, greeting_text, rules_text, version, updated_by, updated_at::text as updated_at
+             from citas.whatsapp_agent_config where organization_id = $1;`,
+          [organizationId],
+        );
+        const row = rows[0];
+        if (!row) return { disponible: true, record: null };
+        return { disponible: true, record: { config: configAgenteDesdeFila(row), version: row.version, updatedAt: row.updated_at, updatedBy: row.updated_by } };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirAgenteNoDisponible("getWhatsappAgentConfig", err);
+        return Promise.resolve({ disponible: false, record: null });
+      },
+    });
+  }
+
+  async getWhatsappAgentConfigForTurn(organizationId: string): Promise<WhatsappAgentConfig | null> {
+    return runWithSavepointFallback<WhatsappAgentConfig | null>({
+      session: this.db,
+      savepointName: "sp_citas_wa_agent_config_turn",
+      primary: async () => {
+        const { rows } = await this.db.query<{ agent_name: string | null; tone_style: string | null; greeting_text: string | null; rules_text: string | null }>(
+          `select agent_name, tone_style, greeting_text, rules_text from citas.whatsapp_agent_config_envio($1);`,
+          [organizationId],
+        );
+        return rows[0] ? configAgenteDesdeFila(rows[0]) : null;
+      },
+      // 42501: una sesion de staff de OTRA organizacion pidio esta configuracion -- sin acceso se actua como "sin personalidad".
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.whatsapp_agent_config_envio") || sqlState(err) === "42501",
+      fallback: (err) => {
+        advertirAgenteNoDisponible("getWhatsappAgentConfigForTurn", err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async saveWhatsappAgentConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappAgentConfig): Promise<AgenteConfigGuardado> {
+    return runWithSavepointFallback<AgenteConfigGuardado>({
+      session: this.db,
+      savepointName: "sp_citas_wa_agent_config_save",
+      primary: async () => {
+        const { rows } = await this.db.query<{ version: number }>(`select citas.save_whatsapp_agent_config($1, $2, $3, $4::jsonb) as version;`, [
+          organizationId,
+          expectedVersion,
+          accion,
+          JSON.stringify(fotoConfigAgente(config)),
+        ]);
+        return { status: "saved", version: Number(rows[0]?.version) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.save_whatsapp_agent_config") || ["AT409", "42501"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        const code = sqlState(err);
+        if (code === "AT409") return Promise.resolve({ status: "conflict" });
+        if (code === "42501") return Promise.resolve({ status: "forbidden" });
+        advertirAgenteNoDisponible("saveWhatsappAgentConfig", err);
+        return Promise.resolve({ status: "unavailable" });
+      },
+    });
+  }
+
+  async getWhatsappConnection(organizationId: string): Promise<WhatsappConnection | null> {
+    // La tabla existe desde la migracion 003 y su policy de lectura (miembro de la organizacion) tambien: no necesita SAVEPOINT.
+    const { rows } = await this.db.query<{ phone_number_id: string; is_active: boolean }>(`select phone_number_id, is_active from citas.whatsapp_config where organization_id = $1;`, [organizationId]);
+    return rows[0] ? { phoneNumberId: rows[0].phone_number_id, isActive: rows[0].is_active } : null;
+  }
+
+  async connectWhatsappNumber(organizationId: string, phoneNumberId: string, isActive: boolean): Promise<ConectarNumeroResultado> {
+    return runWithSavepointFallback<ConectarNumeroResultado>({
+      session: this.db,
+      savepointName: "sp_citas_wa_connect_number",
+      primary: async () => {
+        const { rows } = await this.db.query<{ phone_number_id: string }>(`select citas.connect_whatsapp_number($1, $2, $3) as phone_number_id;`, [organizationId, phoneNumberId, isActive]);
+        return { status: "connected", phoneNumberId: String(rows[0]?.phone_number_id) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.connect_whatsapp_number") || ["AT410", "42501", "22023"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        const code = sqlState(err);
+        if (code === "AT410") return Promise.resolve({ status: "in_use" });
+        if (code === "42501") return Promise.resolve({ status: "forbidden" });
+        if (code === "22023") return Promise.resolve({ status: "invalid" });
+        advertirAgenteNoDisponible("connectWhatsappNumber", err);
+        return Promise.resolve({ status: "unavailable" });
+      },
+    });
+  }
+
+  async disconnectWhatsappNumber(organizationId: string): Promise<DesconectarNumeroResultado> {
+    return runWithSavepointFallback<DesconectarNumeroResultado>({
+      session: this.db,
+      savepointName: "sp_citas_wa_disconnect_number",
+      primary: async () => {
+        const { rows } = await this.db.query<{ removed: boolean }>(`select citas.disconnect_whatsapp_number($1) as removed;`, [organizationId]);
+        return { status: "disconnected", removed: rows[0]?.removed === true };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.disconnect_whatsapp_number") || sqlState(err) === "42501",
+      fallback: (err) => {
+        if (sqlState(err) === "42501") return Promise.resolve({ status: "forbidden" });
+        advertirAgenteNoDisponible("disconnectWhatsappNumber", err);
+        return Promise.resolve({ status: "unavailable" });
       },
     });
   }

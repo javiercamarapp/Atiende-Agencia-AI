@@ -1,8 +1,8 @@
 // Rutas públicas/de sistema de restaurantes — port de
 // restaurantes/supabase/functions/{create-order,customer-lookup}/index.ts. NINGUNA de
 // las dos usa Supabase Auth de usuario (ver diseño Fase 1 §3): create-order es
-// checkout web público (sin cuenta) + Server Tool de ElevenLabs; customer-lookup es
-// Server Tool de ElevenLabs únicamente. Por eso este grupo se monta SIN
+// checkout web público (sin cuenta) + Server Tool de voz; customer-lookup es
+// Server Tool de voz únicamente. Por eso este grupo se monta SIN
 // `authMiddleware`/`requirePropertyMembership` de core-auth, con su propia
 // verificación por ruta (CORS + rate limit para web, header
 // `x-atiende-tool-secret` para voz) — exactamente como en el origen.
@@ -127,7 +127,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     const credentialsPresent = hasVoiceCredentials(c);
 
     // Fase 1: source="voice" queda MODELADO pero INACTIVO en la práctica — el agente
-    // de voz ElevenLabs completo está fuera de alcance de esta fase (ver diseño §6).
+    // de voz por teléfono se conduce con el token por llamada (docs/VOZ-PM.md).
     // El guard se conserva por paridad de contrato: sin credenciales de voz, un
     // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
     if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
@@ -202,8 +202,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
         // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
         // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
-        // R-11: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
-        // antes). Al promoverse a `pending` aparece en el panel; la captura manual de la comanda sigue disponible.
+        // R-11/R-29: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
+        // antes). Al promoverse a `pending` (admin-orders.ts / programados-interno.ts) se encola su comanda.
         if (order.status === "programado") return c.json({ order });
         const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
         if (comanda.modo === "activo") {
