@@ -66,11 +66,12 @@ describe("SuperAdminShell — nav móvil", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(18);
+    expect(hrefs).toHaveLength(19);
     expect(hrefs).toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
     expect(hrefs).toContain("/superadmin/seguridad");
     expect(hrefs).toContain("/superadmin/cfo");
+    expect(hrefs).toContain("/superadmin/pyl");
     expect(hrefs).toContain("/superadmin/costos-margen");
     expect(hrefs).toContain("/superadmin/planes");
     expect(hrefs).toContain("/superadmin/break-glass");
