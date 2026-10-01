@@ -41,7 +41,10 @@ async function leerEnlaces(raiz: Locator): Promise<EnlaceNav[]> {
 export async function enlacesSidebar(page: Page): Promise<EnlaceNav[]> {
   const unicos = new Map<string, EnlaceNav>();
   const agregar = async (): Promise<void> => {
-    for (const e of await leerEnlaces(sidebar(page))) unicos.set(e.href, e);
+    // Las categorias mandan: el pie del Sidebar ("Costos de IA", "Ver los otros paneles") solo aporta un destino que
+    // ninguna categoria trae, y nunca renombra uno de ellas (p. ej. "Costos de IA" repite "Costos y margen").
+    for (const e of await leerEnlaces(sidebar(page).locator("nav"))) unicos.set(e.href, e);
+    for (const e of await leerEnlaces(sidebar(page))) if (!unicos.has(e.href)) unicos.set(e.href, e);
   };
   await agregar();
   const botones = botonesDeGrupo(page);
