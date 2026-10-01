@@ -347,3 +347,21 @@ export function describirPlazo(deadlineIso: string, nowIso: string, calendario: 
     nota: calendario.note,
   };
 }
+
+/**
+ * Mensaje del recordatorio de plazo de presentacion: el texto de siempre + los DIAS HABILES que
+ * quedan segun el calendario efectivo + el aviso si la fecha limite cae en dia inhabil. Si el
+ * instante no se puede interpretar devuelve el texto base (el recordatorio nunca se pierde).
+ */
+export function mensajeRecordatorioPlazo(title: string, submissionDeadline: string, nowIso: string, calendario: CalendarioPlazos): string {
+  const base = `La convocatoria "${title}" vence el ${submissionDeadline}.`;
+  try {
+    const p = describirPlazo(new Date(submissionDeadline).toISOString(), nowIso, calendario);
+    // Con 0 habiles restantes solo es "hoy" si la fecha limite ES hoy; un plazo en inhabil futuro tiene 0 habiles y no vence hoy.
+    const habiles = p.fechaLimite === p.hoy ? " Vence hoy." : p.diasHabilesRestantes > 0 ? ` Quedan ${p.diasHabilesRestantes} día(s) hábil(es).` : "";
+    const inhabil = p.caeEnInhabil ? ` La fecha límite cae en un día inhábil (${p.motivoInhabil}): confirme con la convocante.` : "";
+    return `${base}${habiles}${inhabil}`;
+  } catch {
+    return base;
+  }
+}

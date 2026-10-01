@@ -496,6 +496,7 @@ export {
   describirPlazo,
   isBusinessDay,
   isValidDateOnly,
+  mensajeRecordatorioPlazo,
   mexicoCityDateKey,
   nextBusinessDayOnOrAfter,
   officialOnlyCalendar,

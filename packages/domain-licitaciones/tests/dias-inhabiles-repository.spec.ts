@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DiaInhabilDuplicateError, DiaInhabilNotAvailableError, officialOnlyCalendar } from "../src/dias-inhabiles.ts";
 import type { DiaInhabilCreateInput } from "../src/dias-inhabiles.ts";
 import { InMemoryDiasInhabilesRepository, PostgresDiasInhabilesRepository } from "../src/dias-inhabiles-repository.ts";
+import { PostgresLicitacionesRepository } from "../src/postgres-repository.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 
 const ORG_A = "00000000-0000-0000-0000-0000000000a1";
@@ -109,5 +110,34 @@ describe("PostgresDiasInhabilesRepository -- base SIN migrar (SAVEPOINT)", () =>
     expect(cal.holidays).toContain("2026-04-02");
     expect(cal.holidays).toContain("2026-04-10");
     expect(cal.entries.filter((e) => e.alcance === "convocatoria")).toHaveLength(1);
+  });
+});
+
+describe("recordatorios de plazo con dias habiles (barrido de sistema)", () => {
+  const TENDER_ROW = { out_id: TENDER, out_title: "Suministro", out_submission_deadline: "2026-03-16T20:00:00+00:00" };
+
+  it("base SIN migrar: el barrido sigue creando el recordatorio (no 25P02) con dias habiles de los oficiales y avisa del feriado", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /system_list_tenders_with_upcoming_deadline/, respond: () => [TENDER_ROW] },
+      { match: /system_list_dias_inhabiles/, respond: () => pgError("42883", "function licitaciones.system_list_dias_inhabiles(uuid) does not exist") },
+      { match: /system_record_deadline_reminder/, respond: () => [{ out_id: "r1", out_created_at: "2026-03-10T00:00:00Z" }] },
+    ]);
+    const repo = new PostgresLicitacionesRepository(session);
+    const result = await repo.scanUpcomingDeadlineReminders(ORG_A, { nowIso: "2026-03-13T15:00:00Z", windowDays: 5 });
+    expect(result.created).toBe(1);
+    // 16-mar-2026 es el natalicio de Benito Juarez (feriado oficial): el plazo cae en inhabil y no es 'hoy' aunque queden 0 habiles
+    expect(result.reminders[0]!.message).toMatch(/cae en un día inhábil \(Natalicio de Benito Juárez/);
+    expect(result.reminders[0]!.message).not.toMatch(/Vence hoy/);
+  });
+
+  it("con dias declarados por la organizacion los usa (lectura de sistema)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /system_list_tenders_with_upcoming_deadline/, respond: () => [{ ...TENDER_ROW, out_submission_deadline: "2026-03-18T20:00:00+00:00" }] },
+      { match: /system_list_dias_inhabiles/, respond: () => [{ out_fecha: "2026-03-17", out_tender_id: null, out_nombre: "Dia declarado", out_publicado_por: null, out_fuente: null, out_verificacion: "por_validar" }] },
+      { match: /system_record_deadline_reminder/, respond: () => [{ out_id: "r1", out_created_at: "2026-03-10T00:00:00Z" }] },
+    ]);
+    const result = await new PostgresLicitacionesRepository(session).scanUpcomingDeadlineReminders(ORG_A, { nowIso: "2026-03-13T15:00:00Z", windowDays: 7 });
+    // vie 13 -> mie 18: lun 16 (feriado), mar 17 (declarado) fuera -> solo el miercoles 18 = 1 habil
+    expect(result.reminders[0]!.message).toMatch(/Quedan 1 día\(s\) hábil\(es\)\./);
   });
 });

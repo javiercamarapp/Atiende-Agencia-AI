@@ -66,7 +66,8 @@ import type { ContractStatus } from "./contract-lifecycle.ts";
 import { extractContractFields } from "./contract-extraction.ts";
 import type { ContractFieldKey } from "./contract-extraction.ts";
 import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
-import { officialOnlyCalendar } from "./dias-inhabiles.ts";
+import { mensajeRecordatorioPlazo, officialOnlyCalendar } from "./dias-inhabiles.ts";
+import { PostgresDiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
 import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
 import type { InconformidadFundamento } from "./inconformidad.ts";
 import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
@@ -1419,7 +1420,10 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       const tenderId = row.out_id;
       const deadlineDateOnly = submissionDeadline.slice(0, 10);
       const daysRemaining = Math.ceil((new Date(submissionDeadline).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-      const message = `La convocatoria "${title}" vence el ${submissionDeadline}.`;
+      // L-22: los dias habiles que quedan salen del calendario efectivo de la organizacion y de la
+      // convocatoria (lectura de sistema; base sin migrar -> solo los oficiales de plataforma).
+      const calendario = await new PostgresDiasInhabilesRepository(this.db).resolveCalendario(organizationId, { tenderId, sistema: true });
+      const message = mensajeRecordatorioPlazo(title, submissionDeadline, now.toISOString(), calendario);
       const { rows: insertedRows } = await this.db.query<{ out_id: string; out_created_at: string }>(
         `select * from licitaciones.system_record_deadline_reminder($1, $2, $3, $4::date, $5, $6);`,
         [organizationId, tenderId, submissionDeadline, deadlineDateOnly, daysRemaining, message],
