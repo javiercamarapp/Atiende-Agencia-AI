@@ -8,7 +8,7 @@ de cada decisión y acción de resolución segura).
 Se auto-descubre en CI (`scripts/verify-real-postgres-ci/run-gate.mjs`); a mano:
 `scripts/verify-rentas-conflictos-resolucion/run.sh` (requiere `initdb`/`pg_ctl`/`psql`).
 
-## Qué cubre (31 escenarios en `assertions.sql`)
+## Qué cubre (32 escenarios en `assertions.sql`)
 
 - A. positivo (1-4): ignorar con motivo, resolver cuando el solape ya no existe, resolver
   un conflicto sin segunda ocupación; cada decisión deja su fila de bitácora atribuida a
@@ -20,7 +20,7 @@ Se auto-descubre en CI (`scripts/verify-real-postgres-ci/run-gate.mjs`); a mano:
   rol de solo lectura, la sesión de sistema y anon.
 - D. GRANT/RLS (18-25): el UPDATE directo de 024 está cerrado; la bitácora es solo lectura
   para el staff de la property (sin INSERT/UPDATE/DELETE), otra organización y anon no la ven.
-- E. CHECKs y definer (26-31): abierto <=> sin resolución, ignorado con motivo, función
+- E. CHECKs y definer (26-32): una resolución implica cierre (y una fila cerrada sin resolución, de la vía de 024, sigue siendo válida), ignorado con motivo, función
   `security definer` con `search_path` fijo y EXECUTE revocado a public/anon.
 
 ## Qué NO cubre

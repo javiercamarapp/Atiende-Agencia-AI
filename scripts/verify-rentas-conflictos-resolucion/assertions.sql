@@ -14,7 +14,7 @@
 --   D. GRANT/RLS: el UPDATE directo de 024 quedó cerrado; la bitácora es solo lectura para
 --      el staff de la property (append-only, sin INSERT/UPDATE/DELETE), otra organización y
 --      anon no la ven.
---   E. CHECKs de la tabla (abierto <=> sin resolución; ignorado con motivo) y definer con
+--   E. CHECKs de la tabla (una resolución implica cierre; ignorado con motivo) y definer con
 --      search_path fijo y EXECUTE revocado a public/anon.
 --
 -- Run vía scripts/verify-real-postgres-ci/run-gate.mjs (auto-descubierto en CI) o con
@@ -286,9 +286,9 @@ rollback;
 \echo '=== E. CHECKs y definer ==='
 \echo ''
 
-\echo '--- 26. CHECK: una fila cerrada sin resolucion es incoherente -- RECHAZADO ---'
+\echo '--- 26. CHECK: una resolucion en un conflicto que sigue abierto es incoherente -- RECHAZADO ---'
 begin;
-update rentas.conflicto_calendario set resuelto_en = now() where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
+update rentas.conflicto_calendario set resolucion = 'resuelto' where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
 \echo '--- 27. CHECK: ignorado sin motivo no es posible ni siquiera para el rol dueno -- RECHAZADO ---'
@@ -311,9 +311,17 @@ begin;
 select count(*) as sin_execute_deberia_ser_0 from (select 1 where has_function_privilege('anon', 'rentas.resolver_conflicto_calendario(uuid,uuid,text,text)', 'execute') or has_function_privilege('public', 'rentas.resolver_conflicto_calendario(uuid,uuid,text,text)', 'execute')) x;
 rollback;
 
-\echo '--- 31. coherencia global: ninguna fila queda cerrada sin resolucion ni con resolucion sin cerrar ---'
+\echo '--- 31. coherencia global: ninguna fila tiene resolucion sin estar cerrada ---'
 begin;
-select count(*) as incoherentes_deberia_ser_0 from rentas.conflicto_calendario where (resuelto_en is null) <> (resolucion is null);
+select count(*) as incoherentes_deberia_ser_0 from rentas.conflicto_calendario where resolucion is not null and resuelto_en is null;
+rollback;
+
+\echo '--- 32. una fila cerrada por la via de 024 (resuelto_en sin resolucion) sigue siendo valida y NO se vuelve a decidir (P0002) ---'
+begin;
+update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = '00000000-0000-0000-0000-000000000011' where id = '00000000-0000-0000-0000-0000000000e2';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.resolver_conflicto_calendario('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e2', 'ignorado', 'ya estaba cerrado') as should_fail;
 rollback;
 
 \echo '--- fin: los escenarios should_fail deben terminar en ERROR, los deberia_ser_N en N ---'

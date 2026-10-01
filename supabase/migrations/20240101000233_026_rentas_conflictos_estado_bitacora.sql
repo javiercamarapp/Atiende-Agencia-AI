@@ -17,8 +17,10 @@
 -- 1) Estado y motivo en rentas.conflicto_calendario.
 -- ---------------------------------------------------------------------------
 -- Estado derivado: abierto = resuelto_en is null; cerrado = resuelto_en is not null y
--- `resolucion` dice cómo se cerró. Se conservan resuelto_en/resuelto_por (024) como "cuándo
--- y quién" de la decisión.
+-- `resolucion` dice cómo se cerró (una fila cerrada con `resolucion` nula se lee como
+-- 'resuelto': así siguen siendo válidas las filas cerradas por la vía de 024 o por un proceso
+-- de plataforma que no conozca la columna). Se conservan resuelto_en/resuelto_por (024) como
+-- "cuándo y quién" de la decisión.
 alter table rentas.conflicto_calendario
   add column resolucion text,
   add column motivo_resolucion text;
@@ -28,8 +30,8 @@ update rentas.conflicto_calendario set resolucion = 'resuelto' where resuelto_en
 
 alter table rentas.conflicto_calendario
   add constraint conflicto_calendario_resolucion_valida check (resolucion is null or resolucion in ('resuelto', 'ignorado')),
-  -- abierto <=> sin resolución: no hay un estado a medias.
-  add constraint conflicto_calendario_resolucion_coherente check ((resuelto_en is null) = (resolucion is null)),
+  -- una resolución implica un conflicto cerrado: un abierto nunca trae resolución.
+  add constraint conflicto_calendario_resolucion_implica_cierre check (resolucion is null or resuelto_en is not null),
   -- ignorar exige un motivo real (3 a 500 caracteres sin contar espacios de los extremos).
   add constraint conflicto_calendario_ignorado_con_motivo check (resolucion is distinct from 'ignorado' or char_length(btrim(coalesce(motivo_resolucion, ''))) between 3 and 500),
   add constraint conflicto_calendario_motivo_acotado check (motivo_resolucion is null or char_length(motivo_resolucion) <= 500);
