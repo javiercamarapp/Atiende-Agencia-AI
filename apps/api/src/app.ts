@@ -33,6 +33,8 @@ import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
 import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
 import { superadminPlanesRoutes } from "./routes/superadmin-planes.ts";
 import { superadminZonaCfoRoutes } from "./routes/superadmin-zona-cfo.ts";
+import { superadminPrivacidadRoutes } from "./routes/superadmin-privacidad.ts";
+import { privacidadOrgRoutes } from "./routes/privacidad-org.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -52,6 +54,7 @@ import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
 import { resumenDiarioRoutes } from "./routes/internal/resumen-diario.ts";
 import { superadminMantenimientoRoutes } from "./routes/internal/superadmin-mantenimiento.ts";
 import { superadminAlertasCfoRoutes } from "./routes/internal/superadmin-alertas-cfo.ts";
+import { plataformaRetencionRoutes } from "./routes/internal/plataforma-retencion.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -115,6 +118,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminPylRoutes(deps));
   app.route("/", superadminPlanesRoutes(deps));
   app.route("/", superadminZonaCfoRoutes(deps));
+  app.route("/", superadminPrivacidadRoutes(deps));
+  app.route("/", privacidadOrgRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
@@ -141,6 +146,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminMantenimientoRoutes(deps));
   // Foto mensual de ingreso + alertas proactivas del CFO -- mismo criterio.
   app.route("/", superadminAlertasCfoRoutes(deps));
+  app.route("/", plataformaRetencionRoutes(deps));
 
   return app;
 }

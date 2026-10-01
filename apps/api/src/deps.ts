@@ -9,6 +9,7 @@ import type {
   CfoRepository,
   PylRepository,
   CfoZoneRepository,
+  PlataformaPrivacidadRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
@@ -529,6 +530,12 @@ export interface AppDeps {
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
    *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
   readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
+  /** Privacidad de plataforma y por organizacion (PL-13): solicitudes ARCO unificadas, retencion, bloqueo y registro
+   *  de purgas y aviso versionado (packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql, ver
+   *  routes/superadmin-privacidad.ts, routes/privacidad-org.ts y routes/internal/plataforma-retencion.ts). Fabrica por
+   *  sesion: lecturas/escrituras con la sesion del usuario; la purga y su lista de objetivos SOLO con sesion de
+   *  sistema (`userId: null`). OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` / 503, nunca un 500. */
+  readonly privacidadPlataformaRepo?: (db: TenantDbSession) => PlataformaPrivacidadRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;
