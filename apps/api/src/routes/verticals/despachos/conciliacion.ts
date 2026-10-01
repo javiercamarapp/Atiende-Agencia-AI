@@ -11,7 +11,7 @@
 // para `aprobarSugerenciaLLM`), no bloqueante para el valor del motor de dominio.
 // Mismo criterio que declaraciones.ts/nomina.ts: es un endpoint puro/
 // calculadora — el cliente HTTP manda los movimientos bancarios ya parseados
-// (parsing de CSV/OFX/etc. queda fuera de esta fase, ver informe de auditoría) y el
+// (el parsing de CSV/OFX lo hace `POST .../importar-estado-de-cuenta`, D-03) y el
 // motor los concilia contra los CFDI YA INGERIDOS de esta property
 // (`repo.listInvoices`) sin necesitar una tabla nueva de "trabajo de conciliación" —
 // ese es el alcance explícito de esta fase; persistir el historial de conciliaciones
@@ -28,8 +28,12 @@ import {
   clasificarDeposito,
   verificarSpeiContraMovimientos,
   verificarPagoProveedor,
+  BANCOS_MX,
+  construirVistaPreviaImportacion,
+  leerFuenteOpcional,
+  parsearEstadoDeCuenta,
 } from "@atiende/domain-despachos";
-import type { MovimientoBancario, RegistroConciliable, InvoiceRecord } from "@atiende/domain-despachos";
+import type { BancoMx, FormatoEstadoCuenta, MovimientoBancario, RegistroConciliable, InvoiceRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -48,6 +52,20 @@ interface MovimientoBody {
 
 interface MatchingBody {
   readonly movimientos?: unknown;
+  readonly dateToleranceDays?: unknown;
+  readonly montoTolerancePct?: unknown;
+  readonly fuzzyThreshold?: unknown;
+}
+
+/** Tope del cuerpo JSON de la importación (CSV/OFX como texto): 2 MB cubren holgadamente
+ * MAX_RENGLONES_ESTADO renglones y quedan por debajo del límite de cuerpo de Vercel. */
+const MAX_BODY_IMPORTACION_BYTES = 2 * 1024 * 1024;
+
+interface ImportarBody {
+  readonly contenido?: unknown;
+  readonly formato?: unknown;
+  readonly banco?: unknown;
+  readonly cuenta?: unknown;
   readonly dateToleranceDays?: unknown;
   readonly montoTolerancePct?: unknown;
   readonly fuzzyThreshold?: unknown;
@@ -123,6 +141,61 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     });
 
     return c.json(resultado);
+  });
+
+  /** D-03 -- importación de un estado de cuenta (CSV u OFX) con vista previa: parsea,
+   * valida renglón por renglón (los errores se devuelven con su número de línea, no
+   * abortan el archivo), calcula el hash de idempotencia de cada movimiento y concilia
+   * contra los CFDI ya ingeridos reutilizando el motor de niveles 1-3; si hay cuentas
+   * por cobrar pendientes de los CFDI conciliados con un abono, las sugiere. SOLO lectura:
+   * no persiste nada ni marca cuentas como pagadas. El contenido llega ya decodificado
+   * como texto (el navegador decodifica UTF-8 o Windows-1252). Cobranza se lee en su propio
+   * SAVEPOINT (`leerFuenteOpcional`): contra una base sin esa tabla responde
+   * `cobranzaDisponible: false`, nunca un 500. */
+  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta", async (c) => {
+    assertVerticalRole(c, CONCILIACION_ROLES);
+    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+    if (typeof raw.contenido !== "string" || raw.contenido.trim().length === 0) throw Errors.validation("contenido: se esperaba el texto del archivo (no vacío).");
+    let formato: FormatoEstadoCuenta | undefined;
+    if (raw.formato !== undefined && raw.formato !== null) {
+      if (raw.formato !== "csv" && raw.formato !== "ofx") throw Errors.validation("formato: se esperaba 'csv' u 'ofx'.");
+      formato = raw.formato;
+    }
+    let banco: BancoMx | undefined;
+    if (raw.banco !== undefined && raw.banco !== null && raw.banco !== "") {
+      if (typeof raw.banco !== "string" || !(BANCOS_MX as readonly string[]).includes(raw.banco)) throw Errors.validation(`banco: se esperaba uno de ${BANCOS_MX.join(", ")}.`);
+      banco = raw.banco as BancoMx;
+    }
+    let cuenta: string | null | undefined;
+    if (raw.cuenta !== undefined && raw.cuenta !== null && raw.cuenta !== "") {
+      if (typeof raw.cuenta !== "string" || !/^[0-9A-Za-z-]{4,34}$/.test(raw.cuenta.trim())) throw Errors.validation("cuenta: se esperaba una CLABE o número de cuenta (4 a 34 caracteres alfanuméricos).");
+      cuenta = raw.cuenta.trim();
+    }
+
+    const parseo = parsearEstadoDeCuenta(raw.contenido, {
+      ...(formato ? { formato } : {}),
+      ...(banco ? { banco } : {}),
+      ...(cuenta ? { cuenta } : {}),
+    });
+
+    const repo = deps.despachosRepo(c.get("db"));
+    const propertyId = c.req.param("propertyId");
+    const invoices = parseo.movimientos.length > 0 ? await repo.listInvoices(propertyId) : [];
+    const registros = invoices.map(invoiceARegistroConciliable);
+    const cartera = parseo.movimientos.length > 0 && invoices.length > 0 ? await leerFuenteOpcional(repo, () => repo.listReceivables(propertyId, { pendiente: true })) : [];
+
+    return c.json(
+      construirVistaPreviaImportacion({
+        parseo,
+        registros,
+        cuentasPorCobrarPendientes: cartera === null ? null : cartera.map((r) => ({ id: r.id, invoiceId: r.invoiceId })),
+        opciones: {
+          dateToleranceDays: optionalNumber(raw.dateToleranceDays, "dateToleranceDays", 3),
+          montoTolerancePct: optionalNumber(raw.montoTolerancePct, "montoTolerancePct", 5.0),
+          fuzzyThreshold: optionalNumber(raw.fuzzyThreshold, "fuzzyThreshold", 80),
+        },
+      }),
+    );
   });
 
   /** Alertas de antigüedad/comisión/duplicados sobre un lote de movimientos ya
