@@ -119,10 +119,17 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // real. Cero-match real -> encontrada:false, NUNCA se inventa/adivina una sucursal.
   app.post("/v1/restaurantes/:orgSlug/branches/nearest", async (c) => {
     if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
-    const { colonia } = await readJsonCapped<{ colonia?: unknown }>(c.req.raw, 4 * 1024);
-    if (typeof colonia !== "string" || !colonia.trim() || colonia.length > 160) throw Errors.validation("colonia es requerido");
-    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "buscar_sucursal_cercana", accept: "legacy_ok", legacyLimit: { scope: "voice-branches-nearest", secondary: colonia, max: 60 } }, async ({ repo, toolCtx }) => {
-      const outcome = await invokeAgentTool(repo, toolCtx, "buscar_sucursal_cercana", { colonia });
+    const body = await readJsonCapped<{ colonia?: unknown; lat?: unknown; lng?: unknown; max_km?: unknown }>(c.req.raw, 4 * 1024);
+    const colonia = body.colonia;
+    const hasPoint = body.lat !== undefined || body.lng !== undefined;
+    if (colonia !== undefined && (typeof colonia !== "string" || colonia.length > 160)) throw Errors.validation("colonia inválida");
+    if (hasPoint && (typeof body.lat !== "number" || typeof body.lng !== "number" || !Number.isFinite(body.lat) || !Number.isFinite(body.lng))) {
+      throw Errors.validation("lat y lng deben venir juntas y ser números");
+    }
+    if (body.max_km !== undefined && (typeof body.max_km !== "number" || !Number.isFinite(body.max_km))) throw Errors.validation("max_km inválido");
+    if (!hasPoint && (typeof colonia !== "string" || !colonia.trim())) throw Errors.validation("colonia es requerido (o lat y lng)");
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "buscar_sucursal_cercana", accept: "legacy_ok", legacyLimit: { scope: "voice-branches-nearest", secondary: typeof colonia === "string" && colonia.trim() ? colonia : `${body.lat},${body.lng}`, max: 60 } }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "buscar_sucursal_cercana", { ...(typeof colonia === "string" ? { colonia } : {}), ...(hasPoint ? { lat: body.lat, lng: body.lng } : {}), ...(body.max_km !== undefined ? { max_km: body.max_km } : {}) });
       return c.json(outcome.result as object);
     });
   });
