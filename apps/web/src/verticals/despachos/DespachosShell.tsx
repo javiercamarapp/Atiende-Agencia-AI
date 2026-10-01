@@ -90,6 +90,7 @@ import {
 import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
+import { conexionChatDatosDespachos } from "./lib/chat-datos-client.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearDespachosSession, logout, readPersistedDespachosSession } from "./lib/auth-client.ts";
@@ -316,6 +317,11 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   const activeBranch = branches.find((b) => b.propertyId === propertyId);
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "readonly";
 
+  // "Chatea con tus datos": conexion real con el backend de despachos (motor compartido, catalogo cerrado de
+  // solo lectura). El servidor decide el alcance (organizacion, clientes, rol) a partir del token; aqui solo
+  // van el cliente activo y el texto.
+  const chatConexion = conexionChatDatosDespachos(fetch, apiBaseUrl, session.token, propertyId);
+
   // Fase 19 -- handler real del selector: actualiza el estado de React (recalcula
   // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
   // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
@@ -375,6 +381,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
             user={{ email: session.email, rol: role }}
             onLogout={handleLogout}
             loggingOut={loggingOut}
+            chat={chatConexion}
           />
         }
       />
@@ -398,7 +405,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
                 onMarkAllRead={notif.onMarkAllRead}
               />
             }
-            chatButton={<BotonChatDatos />}
+            chatButton={<BotonChatDatos chat={chatConexion} />}
           />
         </div>
         {/* DashboardHeader no tiene slot propio para este aviso -- mismo criterio que
