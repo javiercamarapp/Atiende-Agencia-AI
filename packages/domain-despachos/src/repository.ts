@@ -25,7 +25,7 @@ import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./con
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
-import type { EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
@@ -135,7 +135,7 @@ export interface DespachosRepository {
    * COMPLETO de un período (declaraciones/DIOT/devolución de IVA/conciliación) --
    * paginar esa función truncaría un cálculo fiscal real. Orden `created_at desc`
    * (más reciente primero), mismo criterio que `listInvoices`. */
-  listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage>;
+  listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage>;
 
   // ---- Cola de revisión humana (flujo 2) ----
   createReview(input: NewInvoiceReviewInput): Promise<InvoiceReviewRecord>;

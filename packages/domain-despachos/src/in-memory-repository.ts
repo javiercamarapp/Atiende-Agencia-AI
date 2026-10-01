@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { EstadoSatInvalidoError, InvoiceAlreadyExistsError, InvoiceNoEncontradoError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
 import { NOMBRE_IMPUESTO } from "./cfdi/modelo-cfdi.ts";
-import type { EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
 import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
@@ -257,10 +257,11 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
-  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage> {
     const filtered = [...this.invoices.values()]
       .filter((i) => i.propertyId === propertyId)
       .filter((i) => opts.requiresHumanReview === undefined || i.requiresHumanReview === opts.requiresHumanReview)
+      .filter((i) => opts.direccion === undefined || i.direccion === opts.direccion)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     const items = filtered.slice(opts.offset, opts.offset + opts.limit);
     const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;

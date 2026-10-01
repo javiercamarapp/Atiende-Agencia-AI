@@ -77,15 +77,49 @@ export interface MontosCfdiCentavos {
   readonly iepsCentavos: number | null;
 }
 
+/** Las columnas de impuestos/descuento en centavos solo admiten >= 0 (CHECK de la migración 018): un valor negativo
+ * (comprobante con hallazgos, p. ej. IVA < 0) no es representable ahí y se guarda como desconocido (null) -- el CFDI se
+ * ingiere igual y el hallazgo ya lo dejó `validarCfdiDespachos`; nunca se convierte en un 500 por un CHECK. */
+const noNegativo = (c: number | null): number | null => (c !== null && c < 0 ? null : c);
+
 export function montosCfdiACentavos(m: MontosCfdiEntrada): MontosCfdiCentavos {
   return {
-    subtotalCentavos: aCentavos(m.subtotal)!,
-    descuentoCentavos: aCentavos(m.descuento ?? 0)!,
+    subtotalCentavos: noNegativo(aCentavos(m.subtotal)) ?? 0,
+    descuentoCentavos: noNegativo(aCentavos(m.descuento ?? 0)) ?? 0,
     totalCentavos: aCentavos(m.total)!,
-    ivaTrasladadoCentavos: aCentavos(m.iva),
-    isrRetenidoCentavos: aCentavos(m.retencionIsr),
-    ivaRetenidoCentavos: aCentavos(m.retencionIva),
-    iepsCentavos: aCentavos(m.ieps),
+    ivaTrasladadoCentavos: noNegativo(aCentavos(m.iva)),
+    isrRetenidoCentavos: noNegativo(aCentavos(m.retencionIsr)),
+    ivaRetenidoCentavos: noNegativo(aCentavos(m.retencionIva)),
+    iepsCentavos: noNegativo(aCentavos(m.ieps)),
+  };
+}
+
+export interface CamposPagoCfdi {
+  readonly metodoPago: string | null;
+  readonly formaPago: string | null;
+  readonly usoCfdi: string | null;
+  readonly moneda: string | null;
+  readonly tipoCambio: number | null;
+}
+
+/**
+ * Los campos de pago/uso/moneda se persisten SOLO si tienen la forma que exige la base (CHECK, migración 018): PUE/PPD,
+ * 2 dígitos, 3-4 alfanuméricos en mayúsculas, ISO 4217 de 3 letras, tipo de cambio > 0 y < 1e9. Un valor que no la cumple
+ * (un CFDI con catálogo inválido sigue ingiriéndose con su hallazgo) se guarda como null en vez de provocar un 500.
+ */
+export function normalizarCamposPagoCfdi(c: { metodoPago?: string | null; formaPago?: string | null; usoCfdi?: string | null; moneda?: string | null; tipoCambio?: number | null }): CamposPagoCfdi {
+  const limpio = (v: string | null | undefined): string => (v ?? "").trim().toUpperCase();
+  const metodoPago = limpio(c.metodoPago);
+  const formaPago = limpio(c.formaPago);
+  const usoCfdi = limpio(c.usoCfdi);
+  const moneda = limpio(c.moneda);
+  const tc = c.tipoCambio;
+  return {
+    metodoPago: metodoPago === "PUE" || metodoPago === "PPD" ? metodoPago : null,
+    formaPago: /^\d{2}$/.test(formaPago) ? formaPago : null,
+    usoCfdi: /^[A-Z0-9]{3,4}$/.test(usoCfdi) ? usoCfdi : null,
+    moneda: /^[A-Z]{3}$/.test(moneda) ? moneda : null,
+    tipoCambio: typeof tc === "number" && Number.isFinite(tc) && tc > 0 && tc < 1e9 ? Math.round(tc * 1e6) / 1e6 : null,
   };
 }
 

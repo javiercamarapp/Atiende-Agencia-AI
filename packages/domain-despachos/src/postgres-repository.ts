@@ -649,22 +649,38 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows.map(mapInvoice);
   }
 
-  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage> {
     const conditions = ["property_id = $1"];
     const params: unknown[] = [propertyId];
     if (opts.requiresHumanReview !== undefined) {
       params.push(opts.requiresHumanReview);
       conditions.push(`requires_human_review = $${params.length}`);
     }
+    if (opts.direccion !== undefined) {
+      params.push(opts.direccion);
+      conditions.push(`direccion = $${params.length}`);
+    }
     params.push(opts.limit, opts.offset);
-    const { rows } = await this.db.query<InvoiceRawRow & { total: string }>(
-      `select *, count(*) over ()::text as total from despachos.invoice where ${conditions.join(" and ")} order by created_at desc limit $${params.length - 1} offset $${params.length};`,
-      params,
-    );
-    const items = rows.map(mapInvoice);
-    const total = rows[0] ? Number(rows[0].total) : 0;
-    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
-    return { items, total, nextOffset };
+    const consultar = async (): Promise<InvoicePage> => {
+      const { rows } = await this.db.query<InvoiceRawRow & { total: string }>(
+        `select *, count(*) over ()::text as total from despachos.invoice where ${conditions.join(" and ")} order by created_at desc limit $${params.length - 1} offset $${params.length};`,
+        params,
+      );
+      const items = rows.map(mapInvoice);
+      const total = rows[0] ? Number(rows[0].total) : 0;
+      const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+      return { items, total, nextOffset };
+    };
+    if (opts.direccion === undefined) return consultar();
+    // Filtrar por `direccion` solo existe tras la migración 018: contra la base sin migrar (42703) ningún CFDI está
+    // clasificado todavía -> página vacía honesta, con SAVEPOINT para no abortar la transacción compartida.
+    return runWithSavepointFallback<InvoicePage>({
+      session: this.db,
+      savepointName: "sp_despachos_invoice_direccion",
+      primary: consultar,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ items: [], total: 0, nextOffset: null }),
+    });
   }
 
   // ---- Cola de revisión humana ----

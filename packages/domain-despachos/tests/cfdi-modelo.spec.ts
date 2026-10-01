@@ -1,6 +1,6 @@
 // D-22 -- dirección emitido/recibido, centavos enteros exactos y desglose de impuestos (funciones puras).
 import { describe, expect, it } from "vitest";
-import { aCentavos, clasificarDireccionCfdi, impuestosDesdeXml, MontoInvalidoError, montosCfdiACentavos } from "../src/cfdi/modelo-cfdi.ts";
+import { aCentavos, clasificarDireccionCfdi, impuestosDesdeXml, MontoInvalidoError, montosCfdiACentavos, normalizarCamposPagoCfdi } from "../src/cfdi/modelo-cfdi.ts";
 
 describe("clasificarDireccionCfdi", () => {
   const CLIENTE = "CLI010101CL1";
@@ -90,5 +90,32 @@ describe("impuestosDesdeXml", () => {
       { naturaleza: "traslado", impuesto: "002", tipoFactor: "Tasa", tasaOCuota: "0.160000", baseCentavos: 100000, importeCentavos: 16000 },
       { naturaleza: "traslado", impuesto: "002", tipoFactor: "Exento", tasaOCuota: null, baseCentavos: 500, importeCentavos: null },
     ]);
+  });
+});
+
+describe("montosCfdiACentavos -- valores que la base no admite", () => {
+  it("IVA/retenciones/IEPS/descuento negativos se guardan como desconocidos (null/0), no rompen el insert", () => {
+    expect(montosCfdiACentavos({ subtotal: 100, total: 90, descuento: -5, iva: -16, retencionIsr: -1, retencionIva: -2, ieps: -3 })).toMatchObject({
+      descuentoCentavos: 0,
+      ivaTrasladadoCentavos: null,
+      isrRetenidoCentavos: null,
+      ivaRetenidoCentavos: null,
+      iepsCentavos: null,
+    });
+  });
+  it("un total negativo SI se conserva (la base no lo restringe)", () => {
+    expect(montosCfdiACentavos({ subtotal: 0, total: -10 }).totalCentavos).toBe(-1000);
+  });
+});
+
+describe("normalizarCamposPagoCfdi", () => {
+  it("normaliza a mayúsculas y conserva lo válido", () => {
+    expect(normalizarCamposPagoCfdi({ metodoPago: " ppd ", formaPago: "99", usoCfdi: "g03", moneda: "usd", tipoCambio: 17.5123456789 })).toEqual({ metodoPago: "PPD", formaPago: "99", usoCfdi: "G03", moneda: "USD", tipoCambio: 17.512346 });
+  });
+  it("lo que viola la forma de la base se guarda null (el CFDI se ingiere igual, con su hallazgo)", () => {
+    expect(normalizarCamposPagoCfdi({ metodoPago: "XYZ", formaPago: "3", usoCfdi: "demasiado-largo", moneda: "PESOS", tipoCambio: 0 })).toEqual({ metodoPago: null, formaPago: null, usoCfdi: null, moneda: null, tipoCambio: null });
+    expect(normalizarCamposPagoCfdi({ tipoCambio: 1e12 }).tipoCambio).toBeNull();
+    expect(normalizarCamposPagoCfdi({ tipoCambio: Number.NaN }).tipoCambio).toBeNull();
+    expect(normalizarCamposPagoCfdi({})).toEqual({ metodoPago: null, formaPago: null, usoCfdi: null, moneda: null, tipoCambio: null });
   });
 });
