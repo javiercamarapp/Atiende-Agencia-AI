@@ -19,7 +19,8 @@
 //    impugnado; frac. I exige listar razones de desechamiento.
 //  - Art. 95 LAASSP nueva (REQ-104): plazo de 6/10 días hábiles.
 // Ambos artículos son de la misma reforma (DOF 16-abr-2025).
-import { addBusinessDays, CALENDAR_LIMITATION_NOTE } from "./business-days.ts";
+import { addBusinessDays, calendarNoteOf } from "./business-days.ts";
+import type { DiasInhabilesInput } from "./business-days.ts";
 import { sha256Hex } from "./types.ts";
 
 export interface InconformidadFundamento {
@@ -48,10 +49,10 @@ export interface InconformidadDeadlineResult {
 }
 
 /** Calcula la fecha límite para presentar una inconformidad, contada en días hábiles desde la fecha de NOTIFICACIÓN del fallo (nunca desde "hoy"). `underTradeAgreements` decide 6 vs. 10 días hábiles (Art. 95). */
-export function computeInconformidadDeadline(falloNotifiedOnIsoDate: string, underTradeAgreements: boolean, holidays: readonly string[] = []): InconformidadDeadlineResult {
+export function computeInconformidadDeadline(falloNotifiedOnIsoDate: string, underTradeAgreements: boolean, holidays: DiasInhabilesInput = []): InconformidadDeadlineResult {
   const businessDays = underTradeAgreements ? LAASSP_ART_95_INCONFORMIDAD_TRATADOS_BUSINESS_DAYS : LAASSP_ART_95_INCONFORMIDAD_BUSINESS_DAYS;
   const dueDate = addBusinessDays(falloNotifiedOnIsoDate, businessDays, holidays);
-  return { dueDate, businessDays, legalReference: LAASSP_ART_95_LEGAL_REFERENCE, calendarNote: CALENDAR_LIMITATION_NOTE };
+  return { dueDate, businessDays, legalReference: LAASSP_ART_95_LEGAL_REFERENCE, calendarNote: calendarNoteOf(holidays) };
 }
 
 function buildFundamentos(deadline: InconformidadDeadlineResult, bajoTratados: boolean): InconformidadFundamento[] {
@@ -113,7 +114,7 @@ export interface InconformidadContentInput {
   readonly agravios: readonly string[];
   readonly pruebas: readonly string[];
   /** Días inhábiles oficiales adicionales a sábado/domingo, si el llamador los declara explícitamente (ver `business-days.ts`). */
-  readonly holidays?: readonly string[];
+  readonly holidays?: DiasInhabilesInput;
 }
 
 export interface InconformidadContent {

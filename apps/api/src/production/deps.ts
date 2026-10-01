@@ -67,7 +67,7 @@ import {
   crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import { PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
+import { PostgresDiasInhabilesRepository, PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import {
   CanalMensajeriaPartnerPendiente,
@@ -425,6 +425,8 @@ export function buildProductionDeps(): AppDeps {
     licitacionesWhatsAppRepo: (db) => new PostgresWhatsAppRepository(db),
     // L-08 -- KYC negativo 69-B (migracion 031; degrada a "no disponible aun" si falta).
     licitacionesKycRepo: (db) => new PostgresKyc69bRepository(db),
+    // L-22 -- dias inhabiles por organizacion/convocatoria (migracion 032; sin ella los plazos usan los oficiales).
+    licitacionesDiasInhabilesRepo: (db) => new PostgresDiasInhabilesRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/

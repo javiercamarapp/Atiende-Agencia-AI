@@ -44,11 +44,13 @@ import {
   questionDedupeKey,
   sortJuntaQuestions,
   suggestQuestionPriority,
+  describirPlazo,
 } from "@atiende/domain-licitaciones";
 import type { JuntaQuestionRecord, LicitacionesRole, SalaGuerraRepository, WarRoomItemRecord } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolveCalendarioFor } from "./calendario.ts";
 
 type Ctx = Context<CoreAuthHonoEnv>;
 
@@ -143,6 +145,9 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const requirements = await repo.listRequirementItems(organizationId, tenderId);
 
     const board = buildWarRoomBoard({ items: items.value, goNoGoDecisions: decisions, submissionDeadline: tender.submissionDeadline, nowIso });
+    // L-22: dias habiles que quedan para la presentacion segun el calendario efectivo (fecha civil de Mexico).
+    const calendario = await resolveCalendarioFor(deps, c, tenderId);
+    const plazoPresentacion = tender.submissionDeadline ? describirPlazo(tender.submissionDeadline, nowIso, calendario) : null;
     const imported = new Set(items.value.map((i) => i.requirementItemId).filter((id): id is string => id !== null));
     return c.json({
       available: items.available && entries.available,
@@ -150,6 +155,7 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       viewerUserId: c.get("userId"),
       tender: { id: tender.id, title: tender.title, submissionDeadline: tender.submissionDeadline, status: tender.status ?? null },
       board,
+      plazoPresentacion,
       entries: entries.value,
       goNoGoHistory: decisions,
       importableRequirements: requirements
@@ -265,9 +271,16 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const config = await readOrUnavailable(() => sala.getJuntaConfig(organizationId, tenderId), null);
     const questions = await readOrUnavailable(() => sala.listQuestions(organizationId, tenderId), [] as readonly JuntaQuestionRecord[]);
     const reminders = await readOrUnavailable(() => sala.listQuestionReminders(organizationId, tenderId), []);
+    // L-22: dias habiles que quedan para enviar preguntas y para la junta, segun el calendario efectivo.
+    const calendario = await resolveCalendarioFor(deps, c, tenderId);
+    const plazos = {
+      preguntas: config.value?.questionsDeadlineAt ? describirPlazo(config.value.questionsDeadlineAt, nowIso, calendario) : null,
+      junta: config.value?.meetingAt ? describirPlazo(config.value.meetingAt, nowIso, calendario) : null,
+    };
     return c.json({
       available: config.available && questions.available && reminders.available,
       now: nowIso,
+      plazos,
       config: config.value,
       questions: sortJuntaQuestions(questions.value),
       summary: buildJuntaSummary(questions.value, config.value, nowIso),
