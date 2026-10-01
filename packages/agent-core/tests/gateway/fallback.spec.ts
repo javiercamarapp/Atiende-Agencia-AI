@@ -99,3 +99,50 @@ describe('LlmGateway — escalera de fallback', () => {
     }
   });
 });
+
+describe('LlmGateway — streaming a medio camino', () => {
+  const fail502 = () => Object.assign(new Error('OpenRouter 502: upstream cayo a medio stream'), { status: 502 });
+
+  it('si el primer escalon ya entrego texto y falla, NO pasa al siguiente (no duplica la salida)', async () => {
+    const gateway = makeGateway();
+    const primary = new FakeLlmProvider({
+      id: 'primary',
+      script: (r) => {
+        r.onTextDelta?.('Las ventas de ayer fueron ');
+        throw fail502();
+      },
+    });
+    const fallback = new FakeLlmProvider({ id: 'fallback', script: (r) => { r.onTextDelta?.('texto completo del respaldo'); return { text: 'texto completo del respaldo', model: 'm', tokensIn: 1, tokensOut: 1, costUsd: 0 }; } });
+    gateway.registerLadder('chat', [primary, fallback]);
+
+    const received: string[] = [];
+    await expect(
+      gateway.complete({ tenantId: 't1', runId: 'r1', lane: 'interactive', role: 'chat', request: { ...req(), onTextDelta: (d) => received.push(d) } }),
+    ).rejects.toThrow(/502/);
+
+    expect(received).toEqual(['Las ventas de ayer fueron ']);
+    expect(fallback.callCount).toBe(0);
+  });
+
+  it('si el primer escalon falla ANTES de emitir texto, el streaming sigue cayendo al siguiente', async () => {
+    const gateway = makeGateway();
+    const primary = new FakeLlmProvider({ id: 'primary', failWith: fail502 });
+    const fallback = new FakeLlmProvider({ id: 'fallback', script: (r) => { r.onTextDelta?.('respuesta completa'); return { text: 'respuesta completa', model: 'm', tokensIn: 1, tokensOut: 1, costUsd: 0 }; } });
+    gateway.registerLadder('chat', [primary, fallback]);
+
+    const received: string[] = [];
+    const result = await gateway.complete({ tenantId: 't1', runId: 'r1', lane: 'interactive', role: 'chat', request: { ...req(), onTextDelta: (d) => received.push(d) } });
+
+    expect(result.providerId).toBe('fallback');
+    expect(received).toEqual(['respuesta completa']);
+  });
+
+  it('sin streaming (sin onTextDelta) el comportamiento de la escalera no cambia', async () => {
+    const gateway = makeGateway();
+    const primary = new FakeLlmProvider({ id: 'primary', script: () => { throw fail502(); } });
+    const fallback = new FakeLlmProvider({ id: 'fallback' });
+    gateway.registerLadder('chat', [primary, fallback]);
+    const result = await gateway.complete({ tenantId: 't1', runId: 'r1', lane: 'interactive', role: 'chat', request: req() });
+    expect(result.providerId).toBe('fallback');
+  });
+});
