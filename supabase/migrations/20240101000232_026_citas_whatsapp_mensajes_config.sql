@@ -21,11 +21,11 @@
 --    `p_organization_id` (42501 si no; el actor SIEMPRE sale de auth.uid(), nunca de un parametro). Bloquea la fila
 --    `for update` y compara la version esperada (AT409 si cambio entre tanto: nadie pisa el cambio de otra persona).
 --    Escribe la fila y su historial en la misma transaccion.
---  * citas.whatsapp_message_config_system -- lectura SOLO-SISTEMA para el cron de recordatorios y para los avisos
---    que corren sin usuario: exige `auth.uid() is null` (42501 si no) y devuelve unicamente columnas de envio (sin
---    updated_by). `security definer` con search_path fijo, `revoke ... from public, anon`; EXECUTE para
---    `authenticated` (la sesion de sistema corre con ese rol y auth.uid() null, mismo mecanismo que 021/022/025) y
---    service_role.
+--  * citas.whatsapp_message_config_envio -- lectura para ENVIAR (cron de recordatorios, avisos del agente/botones y
+--    acciones del panel). Acepta la sesion de sistema (`auth.uid()` nulo, mismo mecanismo que 021/022/025) o a un
+--    miembro de la organizacion consultada; un usuario con sesion de OTRA organizacion recibe 42501. Devuelve solo
+--    columnas de envio (sin updated_by): son los textos que el cliente final recibe, no un dato del rol de gestion.
+--    `security definer` con search_path fijo, `revoke ... from public, anon`; EXECUTE para authenticated y service_role.
 --  * citas.whatsapp_message_config_history_list -- lectura para el panel con la misma regla owner/admin que la
 --    policy; devuelve las N versiones mas recientes (tope 100). `security definer` para poder resolver el nombre de
 --    quien cambio desde core.staff_user (el rol `authenticated` no lee esa tabla de otras personas).
@@ -228,9 +228,12 @@ exception
 end;
 $$;
 
--- Lectura SOLO-SISTEMA (cron de recordatorios y avisos sin usuario). Sin fila devuelve 0 filas: el codigo usa los
+-- Lectura para ENVIAR (cron de recordatorios, avisos del agente/botones y acciones del panel). La sesion que envia
+-- puede ser de sistema (auth.uid() nulo) o de un miembro del panel: se acepta la sesion de sistema o a cualquier
+-- miembro de `p_organization_id` (los textos son lo que el cliente final recibe, no un secreto del rol de gestion), y
+-- un usuario con sesion que NO es de esa organizacion recibe 42501. Sin fila devuelve 0 filas: el codigo usa los
 -- textos y el horario de siempre.
-create or replace function citas.whatsapp_message_config_system(p_organization_id uuid)
+create or replace function citas.whatsapp_message_config_envio(p_organization_id uuid)
 returns table (
   reminder_enabled boolean, reminder_text text, reminder_lead_hours smallint,
   confirmation_enabled boolean, confirmation_text text,
@@ -241,11 +244,13 @@ returns table (
 language plpgsql
 stable
 security definer
-set search_path = citas, pg_temp
+set search_path = citas, core, pg_temp
 as $$
 begin
-  if auth.uid() is not null then
-    raise exception 'whatsapp_message_config_system es solo para la sesion de sistema' using errcode = '42501';
+  if auth.uid() is not null and not exists (
+    select 1 from core.membership m where m.organization_id = p_organization_id and m.user_id = auth.uid()
+  ) then
+    raise exception 'whatsapp_message_config_envio: sin acceso' using errcode = '42501';
   end if;
   return query
   select c.reminder_enabled, c.reminder_text, c.reminder_lead_hours, c.confirmation_enabled, c.confirmation_text,
@@ -280,8 +285,8 @@ end;
 $$;
 
 revoke all on function citas.save_whatsapp_message_config(uuid, integer, text, jsonb) from public, anon;
-revoke all on function citas.whatsapp_message_config_system(uuid) from public, anon;
+revoke all on function citas.whatsapp_message_config_envio(uuid) from public, anon;
 revoke all on function citas.whatsapp_message_config_history_list(uuid, integer) from public, anon;
 grant execute on function citas.save_whatsapp_message_config(uuid, integer, text, jsonb) to authenticated;
-grant execute on function citas.whatsapp_message_config_system(uuid) to authenticated, service_role;
+grant execute on function citas.whatsapp_message_config_envio(uuid) to authenticated, service_role;
 grant execute on function citas.whatsapp_message_config_history_list(uuid, integer) to authenticated;

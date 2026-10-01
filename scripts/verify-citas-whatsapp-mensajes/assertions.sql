@@ -90,7 +90,7 @@ rollback;
 \echo '=== 2d. (anon) sin GRANT execute y la llamada da 42501 exacto ==='
 begin;
 select (not has_function_privilege('anon', 'citas.save_whatsapp_message_config(uuid, integer, text, jsonb)', 'execute')
-  and not has_function_privilege('anon', 'citas.whatsapp_message_config_system(uuid)', 'execute')
+  and not has_function_privilege('anon', 'citas.whatsapp_message_config_envio(uuid)', 'execute')
   and not has_function_privilege('anon', 'citas.whatsapp_message_config_history_list(uuid, integer)', 'execute'))::int as anon_sin_execute_deberia_ser_1;
 rollback;
 begin;
@@ -279,33 +279,35 @@ exception when sqlstate '0A000' then null;
 end $$;
 rollback;
 
-\echo '=== 8. (solo-sistema) con auth.uid() nulo devuelve la configuracion de ESA organizacion (deberia_ser_1); un usuario real -> 42501 ==='
+\echo '=== 8. (lectura para enviar) sistema (auth.uid() nulo) y un miembro de la org leen la config de ESA organizacion (deberia_ser_1); usuario de otra org -> 42501 ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c3', true);
 select citas.save_whatsapp_message_config('00000000-0000-0000-0000-0000000000c1', 0, 'actualizado', '{"reminderLeadHours":8,"sendWindowStart":9,"sendWindowEnd":21}'::jsonb) as v1;
 select set_config('request.jwt.claim.sub', '', true);
-select count(*) as sistema_lee_su_org_deberia_ser_1 from citas.whatsapp_message_config_system('00000000-0000-0000-0000-0000000000c1')
+select count(*) as envio_sistema_lee_su_org_deberia_ser_1 from citas.whatsapp_message_config_envio('00000000-0000-0000-0000-0000000000c1')
   where reminder_lead_hours = 8 and send_window_start = 9 and send_window_end = 21;
-select count(*) as sistema_org_sin_fila_deberia_ser_0 from citas.whatsapp_message_config_system('00000000-0000-0000-0000-0000000000c2');
+select count(*) as envio_sistema_org_sin_fila_deberia_ser_0 from citas.whatsapp_message_config_envio('00000000-0000-0000-0000-0000000000c2');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c5', true);
+select count(*) as envio_staff_de_la_org_lee_deberia_ser_1 from citas.whatsapp_message_config_envio('00000000-0000-0000-0000-0000000000c1');
 rollback;
 begin;
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c3', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c6', true);
 do $$
 begin
-  perform * from citas.whatsapp_message_config_system('00000000-0000-0000-0000-0000000000c1');
-  raise exception 'BLOQUEANTE: se esperaba 42501 (usuario real en la funcion de sistema) pero tuvo exito';
+  perform * from citas.whatsapp_message_config_envio('00000000-0000-0000-0000-0000000000c1');
+  raise exception 'BLOQUEANTE: se esperaba 42501 (usuario de otra organizacion) pero tuvo exito';
 exception when sqlstate '42501' then null;
 end $$;
 rollback;
 
 \echo '=== 9. (esquema a medias) sin la funcion el SQLSTATE es 42883, el que captura runWithSavepointFallback ==='
 begin;
-drop function citas.whatsapp_message_config_system(uuid);
+drop function citas.whatsapp_message_config_envio(uuid);
 do $$
 begin
-  perform * from citas.whatsapp_message_config_system('00000000-0000-0000-0000-0000000000c1');
+  perform * from citas.whatsapp_message_config_envio('00000000-0000-0000-0000-0000000000c1');
   raise exception 'BLOQUEANTE: se esperaba 42883 (funcion inexistente) pero tuvo exito';
 exception when sqlstate '42883' then null;
 end $$;

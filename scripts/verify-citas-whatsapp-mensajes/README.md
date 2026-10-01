@@ -14,7 +14,7 @@ Qué demuestra (cada escenario en su propio `begin; ... rollback;`):
 6. Lectura: owner/admin ven su configuración e historial; `staff`, otra organización y `anon` ven 0 filas; `anon` sin GRANT.
 7. Sin escritura directa: ni el owner puede `insert/update/delete` la tabla ni el historial (42501); el historial no se
    reescribe ni se borra (trigger 0A000 incluso para el dueño de la tabla).
-8. Lectura de solo-sistema: con `auth.uid()` nulo devuelve la configuración de ESA organización; un usuario real recibe 42501.
+8. Lectura para enviar: con `auth.uid()` nulo y un miembro de la organización leen ESA configuración; un usuario de otra organización recibe 42501.
 9. Esquema a medias: sin la función, el SQLSTATE es 42883 (el que captura `runWithSavepointFallback` en el repositorio).
 
 Correr a mano: `scripts/verify-citas-whatsapp-mensajes/run.sh` (necesita `initdb`/`pg_ctl`/`psql`). El gate de CI
