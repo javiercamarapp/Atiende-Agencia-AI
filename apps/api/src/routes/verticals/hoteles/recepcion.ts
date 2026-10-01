@@ -118,7 +118,7 @@ export function hotelesRecepcionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (err instanceof ApiError) throw err;
       return {};
     });
-    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   }
 
   /** Habitacion apta para recibir a un huesped que llega: solo `disponible` (limpia e inspeccionada). */
