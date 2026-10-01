@@ -17,6 +17,7 @@ import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { citasAuditoriaRoutes } from "./auditoria.ts";
 import { citasPrivacidadRoutes } from "./privacidad.ts";
 import { citasWhatsappMensajesRoutes } from "./whatsapp-mensajes.ts";
+import { citasAdminDataChatRoutes } from "./admin-data-chat.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -46,5 +47,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasPrivacidadRoutes(deps));
   // C-04 -- mensajes de WhatsApp editables (ver packages/domain-citas/migrations/026_citas_whatsapp_mensajes_config.sql).
   app.route("/", citasWhatsappMensajesRoutes(deps));
+  // C-10 -- "Chatea con tus datos" (catalogo en packages/domain-citas/src/data-chat; ver docs/DATA-CHAT.md).
+  app.route("/", citasAdminDataChatRoutes(deps));
   return app;
 }

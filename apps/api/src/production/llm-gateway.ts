@@ -80,6 +80,8 @@ export const RENTAS_DATA_CHAT_ROLE = "rentas:data_chat";
 /** "Chatea con tus datos" de despachos y licitaciones (mismo motor y mismo tope mensual por organizacion). */
 export const DESPACHOS_DATA_CHAT_ROLE = "despachos:data_chat";
 export const LICITACIONES_DATA_CHAT_ROLE = "licitaciones:data_chat";
+/** "Chatea con tus datos" de citas (C-10; mismo motor, mismo tope mensual por organizacion, rol propio apagable). */
+export const CITAS_DATA_CHAT_ROLE = "citas:data_chat";
 export const HOTELES_WHATSAPP_AGENT_ROLE = "hoteles:whatsapp_agent";
 export const HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE = "hoteles:whatsapp_agent_escalated";
 export const CITAS_WHATSAPP_AGENT_ROLE = "citas:whatsapp_agent";
@@ -131,6 +133,7 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RENTAS_DATA_CHAT_ROLE,
   DESPACHOS_DATA_CHAT_ROLE,
   LICITACIONES_DATA_CHAT_ROLE,
+  CITAS_DATA_CHAT_ROLE,
   HOTELES_WHATSAPP_AGENT_ROLE,
   HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
