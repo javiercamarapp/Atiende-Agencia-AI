@@ -12,13 +12,16 @@ import type { LicitacionesTestContext } from "./licitaciones-fixtures.ts";
 import { buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
 
 type Role = keyof LicitacionesTestContext["staff"];
+// Respuesta JSON sin esquema (cada test afirma solo los campos que le importan).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any;
 
 async function setup(options: { sala?: SalaGuerraRepository; llmGateway?: LlmGateway } = {}) {
   const ctx = await buildLicitacionesTestContext(buildApp, { llmGateway: options.llmGateway });
   const sala = options.sala ?? new InMemorySalaGuerraRepository();
   const app = buildApp({ ...ctx.deps, licitacionesSalaGuerraRepo: () => sala });
   const base = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}`;
-  async function call(method: string, path: string, role: Role, body?: unknown): Promise<{ status: number; json: any }> {
+  async function call(method: string, path: string, role: Role, body?: unknown): Promise<{ status: number; json: Json }> {
     const headers: Record<string, string> = { authorization: `Bearer ${ctx.staff[role].token}` };
     let payload: string | undefined;
     if (body !== undefined) {
@@ -63,7 +66,7 @@ describe("sala de guerra: tablero", () => {
     expect(board.json.viewerUserId).toBe(ctx.staff.viewer.id);
     expect(board.json.board.summary.riesgosAltos).toBe(1);
     // el alta deja un evento automatico en la bitacora
-    expect(board.json.entries.some((e: any) => e.entryKind === "evento")).toBe(true);
+    expect(board.json.entries.some((e: { entryKind: string }) => e.entryKind === "evento")).toBe(true);
   });
 
   it("valida la entrada (400) y rechaza una convocatoria inexistente (404)", async () => {
@@ -87,7 +90,7 @@ describe("sala de guerra: tablero", () => {
     expect((await call("PATCH", `/sala-guerra/items/${item.id}`, "viewer", { status: "pendiente" })).status).toBe(403);
     expect((await call("PATCH", `/sala-guerra/items/${item.id}`, "writer", { status: "volando" })).status).toBe(400);
     const board = await call("GET", "/sala-guerra", "owner");
-    expect(board.json.entries.some((e: any) => String(e.body).includes("pendiente -> listo"))).toBe(true);
+    expect(board.json.entries.some((e: { body: unknown }) => String(e.body).includes("pendiente -> listo"))).toBe(true);
   });
 
   it("importa los requisitos de las bases al checklist una sola vez y omite los opcionales", async () => {
