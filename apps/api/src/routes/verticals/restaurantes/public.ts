@@ -18,7 +18,9 @@ import {
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateOrderItemBody {
@@ -135,6 +137,14 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         // order-notifications.ts); disparo inline del drenado, mismo
         // `repo`/transacción, en vez de esperar al cron diario.
         await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+        // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
+        // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
+        // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
+        const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
+        if (comanda.modo === "activo") {
+          // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
+          return c.json({ order, comanda: { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } });
+        }
         return c.json({ order });
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);

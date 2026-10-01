@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./softrestaurant": "./src/softrestaurant/index.ts",
+    "./softrestaurant/contract": "./src/softrestaurant/contract.ts"
   },
   "scripts": {
     "lint": "eslint .",

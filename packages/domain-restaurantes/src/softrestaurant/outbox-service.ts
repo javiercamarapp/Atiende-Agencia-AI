@@ -1,0 +1,323 @@
+// Servicio de comandas hacia SoftRestaurant: encolar, enviar y drenar.
+//
+// Reglas duras (cuestionario PM + arquitectura-voz-pm.md §5.1):
+//   1. Bandera por organizacion, default APAGADA: con `apagado` (o sin la migracion 024)
+//      `encolarComandaParaPedido` no hace NADA y el comportamiento actual queda intacto.
+//   2. Modo `sombra`: la comanda se encola en paralelo y NUNCA bloquea ni cambia lo que
+//      el agente le dice al cliente (`agente = null`).
+//   3. Modo `activo`: se encola y se intenta UNA vez en linea con timeout. El agente solo
+//      puede decir lo que devuelve `respuestaAgenteComanda`: folio si el POS lo devolvio;
+//      en cualquier otro caso "pendiente de confirmar" y NUNCA un folio inventado.
+//   4. Si el POS no responde o rechaza, la comanda pasa por reintento con backoff y, al
+//      agotarse, a captura manual con alerta al staff.
+//   5. Nada de esto puede romper el pedido: todo fallo aqui se traga (con log) despues de
+//      que el store recupero la sesion con SAVEPOINT.
+import type { Order } from "../types.ts";
+import type { RestaurantesRepository } from "../repository.ts";
+import type { ResolverCodigosPos } from "./catalog-map.ts";
+import {
+  POLITICA_REINTENTO_DEFAULT,
+  decidirTransicion,
+  respuestaAgenteComanda,
+  type DecisionTransicion,
+  type PoliticaReintento,
+  type RespuestaAgenteComanda,
+} from "./outbox-state.ts";
+import type { ComandaOutboxStore, FilaComandaOutbox, ModoSoftRestaurant } from "./outbox-store.ts";
+import {
+  esSucursalPos,
+  validarComandaInput,
+  type ComandaInput,
+  type ComandaResultado,
+  type FormaPagoComanda,
+  type ItemComanda,
+  type SoftRestaurantPort,
+  type SucursalPos,
+  type TipoComanda,
+} from "./types.ts";
+
+/** Resuelve la clave T1..T8 del POS a partir de la sucursal de Atiende. */
+export type ResolverSucursalPos = (sucursal: { readonly propertyId: string; readonly nombre: string | null }) => SucursalPos | null;
+
+/** Mapa explicito propertyId -> T#, con respaldo por nombre ("... T3"). Sin mapeo => null (captura manual). */
+export function crearResolverSucursalPos(mapa: Readonly<Record<string, SucursalPos>> = {}): ResolverSucursalPos {
+  return ({ propertyId, nombre }) => {
+    const directo = mapa[propertyId];
+    if (directo) return directo;
+    const m = nombre ? /\bT([1-8])\b/i.exec(nombre) : null;
+    const candidato = m ? (`T${m[1]}` as const) : null;
+    return candidato && esSucursalPos(candidato) ? candidato : null;
+  };
+}
+
+export type AlertarCapturaManual = (fila: FilaComandaOutbox, motivo: string) => Promise<void>;
+
+export interface DepsComandaPos {
+  readonly store: ComandaOutboxStore;
+  readonly port: SoftRestaurantPort;
+  readonly resolverCodigos: ResolverCodigosPos;
+  readonly resolverSucursal: ResolverSucursalPos;
+  readonly politica?: PoliticaReintento;
+  readonly ahora?: () => Date;
+  /** Tope del intento en linea (modo activo). Default 4000 ms. */
+  readonly timeoutInlineMs?: number;
+  readonly alertar?: AlertarCapturaManual;
+  /** Si el llamador puede correr trabajo despues de responder (post-commit), el envio de `sombra` se programa aqui. */
+  readonly programarEnvio?: (tarea: () => Promise<void>) => void;
+}
+
+export interface PedidoParaComanda {
+  readonly order: Pick<Order, "id" | "organizationId" | "propertyId" | "customerName" | "customerPhone" | "customerAddress" | "notes" | "paymentMethod" | "items" | "branch">;
+  /** Si no se da: con direccion => domicilio, sin direccion => recoger. */
+  readonly tipo?: TipoComanda;
+  readonly colonia?: string;
+  readonly propina?: number;
+  readonly horaCompromiso?: string;
+}
+
+export type ResultadoEncolarPedido =
+  | { readonly modo: "apagado"; readonly fila: null; readonly agente: null; readonly motivo: "bandera_apagada" | "no_disponible" }
+  | { readonly modo: "sombra"; readonly fila: FilaComandaOutbox | null; readonly agente: null; readonly motivo?: "error" }
+  | { readonly modo: "activo"; readonly fila: FilaComandaOutbox | null; readonly agente: RespuestaAgenteComanda; readonly motivo?: "error" };
+
+/** Llave estable por pedido: el POS devuelve la misma comanda si la recibe dos veces. */
+export function llaveIdempotenciaComanda(organizationId: string, orderId: string): string {
+  return `sr:${organizationId}:${orderId}`;
+}
+
+/** Arma el payload de la comanda. Un producto o sucursal sin codigo NO se inventa: queda vacio y la fila va a captura manual. */
+export function construirPayloadComanda(pedido: PedidoParaComanda, deps: Pick<DepsComandaPos, "resolverCodigos" | "resolverSucursal">): ComandaInput {
+  const { order } = pedido;
+  const sucursal = deps.resolverSucursal({ propertyId: order.propertyId, nombre: order.branch });
+  const sucursalParaCodigos: SucursalPos = sucursal ?? "T1";
+  // Un producto sin codigo POS queda con codigo vacio (nunca inventado): la fila va a captura
+  // manual y el staff ve `nombre` y `cantidad` para capturarla a mano.
+  const items: ItemComanda[] = order.items.map((i) => ({
+    codigo: deps.resolverCodigos.codigoDeProducto(i.id, sucursalParaCodigos) ?? "",
+    cantidad: i.quantity,
+    modificadores: [],
+    nombre: i.name,
+    ...(i.tortilla ? { nota: `Tortilla: ${i.tortilla === "maiz" ? "maiz" : "harina"}` } : {}),
+  }));
+  const tipo: TipoComanda = pedido.tipo ?? (order.customerAddress && order.customerAddress.trim() ? "domicilio" : "recoger");
+  const formaPago: FormaPagoComanda = order.paymentMethod ?? "efectivo";
+  return {
+    idempotencyKey: llaveIdempotenciaComanda(order.organizationId, order.id),
+    // Sucursal sin T#: marcador explicito (nunca un T# inventado); `validarComandaInput` lo rechaza.
+    sucursal: sucursal ?? ("SIN_CODIGO" as SucursalPos),
+    tipo,
+    cliente: { nombre: order.customerName, telefono: order.customerPhone },
+    ...(order.customerAddress && order.customerAddress.trim()
+      ? { direccion: { texto: order.customerAddress, ...(pedido.colonia ? { colonia: pedido.colonia } : {}) } }
+      : {}),
+    formaPago,
+    ...(pedido.propina !== undefined && pedido.propina > 0 ? { propina: pedido.propina } : {}),
+    items,
+    ...(order.notes ? { notas: order.notes } : {}),
+    ...(pedido.horaCompromiso ? { horaCompromiso: pedido.horaCompromiso } : {}),
+  };
+}
+
+/** Motivo tecnico (sin datos personales) por el que una comanda NO se puede mandar al POS, o null si es valida. */
+export function motivoComandaInvalida(input: ComandaInput): string | null {
+  if (!esSucursalPos(input.sucursal)) return "sucursal_sin_codigo_pos";
+  if (input.items.some((i) => !i.codigo || i.codigo.trim() === "")) return "producto_sin_codigo_pos";
+  return validarComandaInput(input).length > 0 ? "entrada_invalida" : null;
+}
+
+async function conTimeout(p: Promise<ComandaResultado>, ms: number): Promise<ComandaResultado> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<ComandaResultado>((resolve) => {
+    timer = setTimeout(() => resolve({ status: "no_disponible", causa: "timeout" }), ms);
+  });
+  try {
+    return await Promise.race([p, limite]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function alertarSeguro(deps: DepsComandaPos, fila: FilaComandaOutbox, motivo: string): Promise<void> {
+  if (!deps.alertar) return;
+  try {
+    await deps.alertar(fila, motivo);
+  } catch (err) {
+    console.error("softrestaurant: no se pudo alertar captura manual (la fila queda visible en el panel):", err);
+  }
+}
+
+export interface ResultadoProcesoFila {
+  readonly fila: FilaComandaOutbox;
+  readonly decision: DecisionTransicion;
+}
+
+/**
+ * Envia UNA fila ya reclamada (`enviada`) al POS y cierra el intento. Nunca lanza por
+ * fallas del POS: un adaptador que lance se trata como `no_disponible`.
+ */
+export async function procesarFilaReclamada(deps: DepsComandaPos, fila: FilaComandaOutbox): Promise<ResultadoProcesoFila> {
+  const politica = deps.politica ?? POLITICA_REINTENTO_DEFAULT;
+  const ahora = deps.ahora ?? (() => new Date());
+  const invalida = motivoComandaInvalida(fila.payload);
+
+  let decision: DecisionTransicion;
+  if (invalida) {
+    // Reintentar el mismo payload no sirve: captura manual directa, sin molestar al POS.
+    decision = { estado: "captura_manual", folio: null, ultimoError: `rechazada:${invalida}`, proximoIntentoEn: null, alertarCapturaManual: true };
+  } else {
+    let resultado: ComandaResultado;
+    try {
+      resultado = await conTimeout(deps.port.crearComanda(fila.payload), deps.timeoutInlineMs ?? 4000);
+    } catch (err) {
+      console.error("softrestaurant: el adaptador lanzo en crearComanda (se trata como no_disponible):", err instanceof Error ? err.message : err);
+      resultado = { status: "no_disponible", causa: "desconocida" };
+    }
+    decision = decidirTransicion(resultado, fila.intentos, ahora(), {
+      ...politica,
+      // `fila.maxIntentos` (persistido al encolar) manda sobre la politica por defecto.
+      maxIntentos: fila.maxIntentos,
+    });
+  }
+
+  const cerrada = await deps.store.completar(fila.id, decision);
+  const actual: FilaComandaOutbox = {
+    ...fila,
+    estado: cerrada ? decision.estado : fila.estado,
+    folio: cerrada ? decision.folio : fila.folio,
+    ultimoError: cerrada ? decision.ultimoError : fila.ultimoError,
+    proximoIntentoEn: cerrada && decision.proximoIntentoEn ? decision.proximoIntentoEn.toISOString() : fila.proximoIntentoEn,
+  };
+  if (cerrada && decision.alertarCapturaManual) {
+    console.error(`softrestaurant: comanda ${fila.id} (pedido ${fila.orderId}) requiere captura manual: ${decision.ultimoError}`);
+    await alertarSeguro(deps, actual, decision.ultimoError ?? "captura_manual");
+  }
+  return { fila: actual, decision };
+}
+
+/**
+ * Punto de enganche del pedido: llamar DESPUES de crear el pedido. Nunca lanza ni cambia
+ * el resultado del pedido. Ver reglas duras en la cabecera del archivo.
+ */
+export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: PedidoParaComanda): Promise<ResultadoEncolarPedido> {
+  let modo: ModoSoftRestaurant = "apagado";
+  try {
+    modo = await deps.store.leerModo(pedido.order.organizationId);
+  } catch (err) {
+    console.error("softrestaurant: no se pudo leer la bandera (se asume apagado):", err);
+  }
+  if (modo === "apagado") return { modo: "apagado", fila: null, agente: null, motivo: "bandera_apagada" };
+
+  const politica = deps.politica ?? POLITICA_REINTENTO_DEFAULT;
+  let fila: FilaComandaOutbox | null = null;
+  try {
+    const payload = construirPayloadComanda(pedido, deps);
+    const enc = await deps.store.encolar({
+      organizationId: pedido.order.organizationId,
+      propertyId: pedido.order.propertyId,
+      orderId: pedido.order.id,
+      idempotencyKey: payload.idempotencyKey,
+      modo,
+      payload,
+      maxIntentos: politica.maxIntentos,
+    });
+    if (!enc.disponible) return { modo: "apagado", fila: null, agente: null, motivo: "no_disponible" };
+    fila = enc.fila;
+
+    const ahora = deps.ahora ?? (() => new Date());
+    if (modo === "activo") {
+      // Un reintento del mismo pedido que ya estaba confirmado no vuelve a enviarse.
+      const reclamada = await deps.store.reclamarPorId(fila.id, ahora(), politica.leaseMs);
+      if (reclamada) fila = (await procesarFilaReclamada(deps, reclamada)).fila;
+    } else if (deps.programarEnvio) {
+      const id = fila.id;
+      deps.programarEnvio(async () => {
+        const r = await deps.store.reclamarPorId(id, ahora(), politica.leaseMs);
+        if (r) await procesarFilaReclamada(deps, r);
+      });
+    }
+  } catch (err) {
+    console.error("softrestaurant: fallo best-effort al encolar/enviar la comanda (el pedido NO se ve afectado):", err);
+    return modo === "activo"
+      ? { modo: "activo", fila, agente: respuestaAgenteComanda(fila), motivo: "error" }
+      : { modo: "sombra", fila, agente: null, motivo: "error" };
+  }
+  return modo === "activo" ? { modo: "activo", fila, agente: respuestaAgenteComanda(fila) } : { modo: "sombra", fila, agente: null };
+}
+
+export interface ContextoUnidadComanda {
+  readonly store: ComandaOutboxStore;
+  readonly alertar?: AlertarCapturaManual;
+}
+
+export interface DepsDrenaje {
+  readonly port: SoftRestaurantPort;
+  /**
+   * Abre una UNIDAD DE TRABAJO aislada (una transaccion por unidad: un envio fallido o
+   * venenoso nunca revierte a los demas). En produccion: `engine.withAppSession({ userId: null }, ...)`.
+   */
+  readonly abrirUnidad: <T>(fn: (ctx: ContextoUnidadComanda) => Promise<T>) => Promise<T>;
+  readonly resolverCodigos?: ResolverCodigosPos;
+  readonly resolverSucursal?: ResolverSucursalPos;
+  readonly politica?: PoliticaReintento;
+  readonly ahora?: () => Date;
+  readonly timeoutInlineMs?: number;
+}
+
+export interface ResumenDrenaje {
+  readonly reclamadas: number;
+  readonly confirmadas: number;
+  readonly fallidas: number;
+  readonly capturaManual: number;
+  readonly errores: number;
+}
+
+/** Drena un lote del outbox (cron). Reclama en una unidad y procesa CADA fila en su propia unidad. */
+export async function drenarComandas(deps: DepsDrenaje, limite = 10): Promise<ResumenDrenaje> {
+  const politica = deps.politica ?? POLITICA_REINTENTO_DEFAULT;
+  const ahora = deps.ahora ?? (() => new Date());
+  const reclamadas = await deps.abrirUnidad((ctx) => ctx.store.reclamarLote(limite, ahora(), politica.leaseMs));
+  const resumen = { reclamadas: reclamadas.length, confirmadas: 0, fallidas: 0, capturaManual: 0, errores: 0 };
+  for (const fila of reclamadas) {
+    try {
+      const r = await deps.abrirUnidad((ctx) =>
+        procesarFilaReclamada(
+          {
+            store: ctx.store,
+            port: deps.port,
+            resolverCodigos: deps.resolverCodigos ?? { codigoDeProducto: () => null, productoDeCodigo: () => null },
+            resolverSucursal: deps.resolverSucursal ?? crearResolverSucursalPos(),
+            politica,
+            ahora,
+            timeoutInlineMs: deps.timeoutInlineMs,
+            alertar: ctx.alertar,
+          },
+          fila,
+        ),
+      );
+      if (r.decision.estado === "confirmada") resumen.confirmadas += 1;
+      else if (r.decision.estado === "fallida") resumen.fallidas += 1;
+      else if (r.decision.estado === "captura_manual") resumen.capturaManual += 1;
+    } catch (err) {
+      // La fila queda `enviada`: el lease la hace reclamable de nuevo (idempotente en el POS).
+      resumen.errores += 1;
+      console.error(`softrestaurant: error procesando la comanda ${fila.id} (se reintenta al vencer el lease):`, err);
+    }
+  }
+  return resumen;
+}
+
+/** Alerta al staff por la bandeja existente de notificaciones (evento `order.problema`). Best-effort con SAVEPOINT. */
+export function crearAlertaCapturaManual(repo: RestaurantesRepository): AlertarCapturaManual {
+  return async (fila, motivo) => {
+    const nombre = fila.payload.cliente.nombre;
+    await repo.runWithRowSavepoint(() =>
+      repo.createStaffOrderNotification(
+        fila.organizationId,
+        fila.propertyId,
+        fila.orderId,
+        "order.problema",
+        `La comanda del pedido de ${nombre} no llego a SoftRestaurant (${motivo}): captura manual requerida.`,
+      ),
+    );
+  };
+}
