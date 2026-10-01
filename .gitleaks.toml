@@ -1,0 +1,21 @@
+# Configuracion de gitleaks (PL-11). Hereda TODAS las reglas por defecto de gitleaks.
+# Repo publico: cualquier secreto real que llegue al historial queda expuesto, asi que el
+# escaneo corre en cada PR y push a main (.github/workflows/secret-scan.yml) sobre el
+# historial completo, no solo sobre el diff.
+title = "Atiende - gitleaks"
+
+[extend]
+useDefault = true
+
+# Falsos positivos medidos el 30-sep-2026 sobre el historial completo (1345 commits): 17 hallazgos,
+# TODOS en archivos de prueba y TODOS valores de relleno obvios (por ejemplo "sk_live_ABCDEFGHIJKLMNOP1234"
+# como cadena que el test de redaccion de PII debe ocultar, "9137-PRIVADO", contrasenas de fixtures).
+# La excepcion es deliberadamente estrecha: solo dos reglas de heuristica generica (`generic-api-key`,
+# `stripe-access-token`) y solo bajo directorios `tests/`. Las demas reglas (llaves privadas, AWS, GitHub,
+# Slack, etc.) siguen activas tambien dentro de tests/, y estas dos siguen activas en todo el codigo de produccion.
+[[allowlists]]
+description = "Valores de relleno en fixtures de prueba (heuristica generica y patron sk_live_ ficticio)"
+targetRules = ["generic-api-key", "stripe-access-token"]
+paths = [
+  '''(^|/)tests?/''',
+]
