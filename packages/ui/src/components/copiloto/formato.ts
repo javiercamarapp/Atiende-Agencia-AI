@@ -49,7 +49,15 @@ export function bloqueACsv(b: CopilotoBloque, separador: "," | ";" = ","): strin
 
 /** atiende-{vertical}-{herramienta}-{AAAAMMDD-HHmm}.csv con la hora local del navegador. */
 export function nombreArchivoCsv(vertical: string | undefined, herramienta: string, fecha: Date): string {
-  const limpio = (t: string) => t.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "datos";
+  // Sin regex de recorte con `-+` (backtracking cuadratico): se recorta con un bucle lineal.
+  const limpio = (t: string) => {
+    const base = t.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    let ini = 0;
+    let fin = base.length;
+    while (ini < fin && base[ini] === "-") ini++;
+    while (fin > ini && base[fin - 1] === "-") fin--;
+    return base.slice(ini, fin).replace(/-{2,}/g, "-") || "datos";
+  };
   const dos = (n: number) => String(n).padStart(2, "0");
   const sello = `${fecha.getFullYear()}${dos(fecha.getMonth() + 1)}${dos(fecha.getDate())}-${dos(fecha.getHours())}${dos(fecha.getMinutes())}`;
   return ["atiende", vertical ? limpio(vertical) : undefined, limpio(herramienta), sello].filter(Boolean).join("-") + ".csv";
