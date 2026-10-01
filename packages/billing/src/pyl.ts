@@ -421,5 +421,5 @@ export function pylACsv(pyl: Pyl, nivel: NivelPylCsv): string {
       lineas.push([pyl.mes, f.organizationId, f.nombre, f.vertical, ...comunes(f, nota)].map(celdaCsv).join(','));
     }
   }
-  return `﻿${lineas.join('\r\n')}\r\n`;
+  return `\uFEFF${lineas.join('\r\n')}\r\n`;
 }

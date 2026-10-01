@@ -2,7 +2,7 @@
 // una sesion que reproduce el estado ABORTADO real de una transaccion (AbortAwareFakeSession), tipado
 // de errores de negocio, mapeo de filas y semantica del adaptador en memoria.
 import { describe, expect, it } from "vitest";
-import { InMemoryPylRepository, PostgresPylRepository, SuperadminSeguridadError } from "../src/index.ts";
+import { InMemoryPylRepository, PostgresCfoRepository, PostgresPylRepository, SuperadminSeguridadError } from "../src/index.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 
 function pgError(code: string, message: string): Error & { code: string } {
@@ -23,6 +23,19 @@ describe("PostgresPylRepository -- base sin migrar", () => {
     await expect(repo.setInfraCost("u1", "2026-09-01", "Vercel", 1000, null)).resolves.toEqual({ availability: "not_migrated" });
     await expect(session.query("select 1 as sigue_viva")).resolves.toEqual({ rows: [{ sigue_viva: 1 }] });
     expect(session.calls.filter((c) => c.startsWith("rollback to savepoint")).length).toBe(2);
+  });
+
+  it("MISMA transaccion que la ruta del P&L: 0030 aplicada y 0032 sin aplicar -> la lectura del CFO anterior y la posterior siguen vivas", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /list_infra_costs_for_superadmin/, respond: () => pgError("42883", "function core.list_infra_costs_for_superadmin(uuid, date, date) does not exist") },
+      { match: /list_billing_snapshots_for_superadmin/, respond: () => [] },
+    ]);
+    const cfo = new PostgresCfoRepository(session);
+    const pyl = new PostgresPylRepository(session);
+    await expect(cfo.listSnapshots("u1", "2026-08-01", "2026-09-01")).resolves.toMatchObject({ availability: "available" });
+    await expect(pyl.listInfraCosts("u1", "2026-08-01", "2026-09-01")).resolves.toEqual({ availability: "not_migrated", costs: [] });
+    // Sin SAVEPOINT esta consulta fallaria con 25P02 (transaccion abortada) y el COMMIT daria ROLLBACK.
+    await expect(cfo.listSnapshots("u1", "2026-08-01", "2026-09-01")).resolves.toMatchObject({ availability: "available" });
   });
 
   it("tabla inexistente (42P01) tambien cae a not_migrated; un 42883 de tipos NO se enmascara", async () => {
