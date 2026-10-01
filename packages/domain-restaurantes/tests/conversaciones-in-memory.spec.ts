@@ -7,10 +7,6 @@ const CONV = "00000000-0000-4000-8000-0000000000c1";
 const ANA = "00000000-0000-4000-8000-0000000000f1";
 const BETO = "00000000-0000-4000-8000-0000000000f2";
 
-function repoDe(actor: string, compartido: InMemoryConversacionesRepository, admin = false) {
-  return compartido.comoActor(actor, admin);
-}
-
 function base() {
   const r = new InMemoryConversacionesRepository({ actorUserId: ANA, nombres: { [ANA]: "Ana", [BETO]: "Beto" } });
   r.conversaciones.push({ canal: "whatsapp", id: CONV, organizationId: ORG, propertyId: PROP, telefono: "+5219990000001", mensajes: [{ rol: "cliente", texto: "Hola", createdAt: null }], actividadAt: "2026-09-30T20:00:00.000Z" });
