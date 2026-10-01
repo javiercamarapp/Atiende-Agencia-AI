@@ -1,0 +1,105 @@
+name: Prod health (sondeo programado de /health)
+
+# PL-12. Cada 15 minutos consulta el /health PUBLICO de Produccion (scripts/health-check/check.ts: 3 intentos,
+# falla si no responde 200 con {ok:true} o si tarda mas de 8 s). Si falla, el job queda en rojo (GitHub avisa por
+# correo de workflows fallidos a quien tenga esas notificaciones activas) y deja el motivo en el resumen del job.
+#
+# Configuracion (variables del repositorio, NO secretos: Settings > Secrets and variables > Actions > Variables):
+# - PROD_BASE_URL            https://<tu-dominio-de-produccion>. Sin ella el job no hace nada (sale en verde con
+#                            un aviso en el resumen), para no dar falsos rojos en forks ni antes de configurarlo.
+# - PROD_HEALTH_OPEN_ISSUE   "true" para que, ademas, abra (o comente en) un issue "Salud de produccion" mientras
+#                            dure la caida y lo cierre al recuperarse. Apagado por defecto: un issue en un repo
+#                            publico anuncia la caida a cualquiera.
+#
+# Alertas: este workflow NO envia correo, webhook ni nada con las credenciales de la app. El despachador de alertas
+# de la propia app (ALERTAS_EMAIL_DESTINATARIOS / ALERTAS_WEBHOOK_URL / ALERTAS_WEBHOOK_SECRETO / SENTRY_DSN, ver
+# docs/CREDENCIALES.md "Alertas salientes") se configura en Vercel y avisa de crons fallidos y alertas criticas
+# desde dentro; este sondeo cubre lo que ese despachador no puede: que la API entera no responda.
+#
+# Seguridad del workflow:
+# - Disparadores: schedule y workflow_dispatch (los schedule solo corren en la rama por defecto; un fork no los
+#   hereda con secretos ni con variables). Sin pull_request ni pull_request_target.
+# - Sin secretos. permissions: contents: read; el job declara ademas issues: write (token del propio repo), que solo
+#   se usa si se activo PROD_HEALTH_OPEN_ISSUE; el codigo que corre es el de la rama por defecto.
+# - Se hace checkout de la rama por defecto: el script que corre es el de main.
+# - La URL entra por variable de entorno, nunca interpolada dentro del script de shell.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: prod-health
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: GET /health de produccion
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      PROD_BASE_URL: ${{ vars.PROD_BASE_URL }}
+      OPEN_ISSUE: ${{ vars.PROD_HEALTH_OPEN_ISSUE }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout (rama por defecto)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Sondeo de /health
+        id: sondeo
+        run: |
+          set -uo pipefail
+          if [ -z "${PROD_BASE_URL:-}" ]; then
+            echo "PROD_BASE_URL no esta configurada: no se sondea nada." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "resultado=omitido" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          salida="$(node --experimental-strip-types scripts/health-check/check.ts "$PROD_BASE_URL")"
+          rc=$?
+          echo "$salida"
+          {
+            echo "### Salud de produccion"
+            echo
+            echo "$salida"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 0 ]; then echo "resultado=sano" >> "$GITHUB_OUTPUT"; else echo "resultado=caido" >> "$GITHUB_OUTPUT"; fi
+          echo "detalle=$salida" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+      - name: Issue de seguimiento (solo si PROD_HEALTH_OPEN_ISSUE=true)
+        if: always() && env.OPEN_ISSUE == 'true' && steps.sondeo.outputs.resultado != 'omitido'
+        env:
+          RESULTADO: ${{ steps.sondeo.outputs.resultado }}
+          DETALLE: ${{ steps.sondeo.outputs.detalle }}
+        run: |
+          set -euo pipefail
+          etiqueta="salud-produccion"
+          gh label create "$etiqueta" --repo "$REPO" --color B60205 --description "Sondeo de /health de produccion" 2>/dev/null || true
+          abierto="$(gh issue list --repo "$REPO" --label "$etiqueta" --state open --json number --jq '.[0].number // empty')"
+          if [ "$RESULTADO" = "caido" ]; then
+            cuerpo="$(printf '%s\n\nCorrida: %s' "$DETALLE" "$RUN_URL")"
+            if [ -z "$abierto" ]; then
+              gh issue create --repo "$REPO" --label "$etiqueta" --title "Salud de produccion: /health no responde sano" --body "$cuerpo"
+            else
+              gh issue comment "$abierto" --repo "$REPO" --body "$cuerpo"
+            fi
+          elif [ -n "$abierto" ]; then
+            gh issue comment "$abierto" --repo "$REPO" --body "Recuperado: $DETALLE ($RUN_URL)"
+            gh issue close "$abierto" --repo "$REPO"
+          fi
