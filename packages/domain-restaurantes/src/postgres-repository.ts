@@ -56,6 +56,9 @@ import type {
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
   WhatsappChannelConfig,
+  StorefrontCatalogRow,
+  StorefrontOrderTracking,
+  StorefrontTrackingResult,
 } from "./types.ts";
 import { EMPTY_BRANCH_POLICY, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
@@ -118,6 +121,31 @@ interface ProductRow {
   readonly price: string;
   readonly is_available: boolean;
   readonly no_domicilio?: boolean;
+}
+
+interface StorefrontCatalogDbRow {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly price: string;
+  readonly image_url: string | null;
+  readonly is_popular: boolean;
+  readonly is_available: boolean;
+  readonly category_id: string | null;
+  readonly category_name: string | null;
+  readonly category_display_order: number | string;
+  readonly display_order: number | string;
+  readonly no_domicilio?: boolean;
+}
+
+interface StorefrontTrackingDbPayload {
+  readonly status: string;
+  readonly branch: string | null;
+  readonly total: string | number;
+  readonly payment_method: string | null;
+  readonly canal: string;
+  readonly created_at: string;
+  readonly items: ReadonlyArray<{ readonly name?: string; readonly quantity?: number | string; readonly tortilla?: string | null }>;
 }
 
 interface CustomerRow {
@@ -544,6 +572,95 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       isAvailable: row.is_available,
       noDomicilio: row.no_domicilio === true,
     }));
+  }
+
+  async listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]> {
+    // Mismo criterio que listAvailableProductsForBranch: `no_domicilio` (migracion 023) puede no
+    // existir todavia; el respaldo EXIGE SAVEPOINT porque corre dentro de la transaccion del request.
+    const rows = await runWithSavepointFallback<readonly StorefrontCatalogDbRow[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_catalogo",
+      primary: async () => {
+        const { rows: result } = await this.db.query<StorefrontCatalogDbRow>(
+          `select pr.id, pr.name, pr.description, bp.price, pr.image_url, pr.is_popular, bp.is_available,
+                  pr.category_id, c.name as category_name, coalesce(c.display_order, 0) as category_display_order,
+                  pr.display_order, (pr.no_domicilio or coalesce(c.no_domicilio, false)) as no_domicilio
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1
+           order by coalesce(c.display_order, 0), c.name nulls last, pr.display_order, pr.name
+           limit 500;`,
+          [propertyId],
+        );
+        return result;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => {
+        const { rows: result } = await this.db.query<StorefrontCatalogDbRow>(
+          `select pr.id, pr.name, pr.description, bp.price, pr.image_url, pr.is_popular, bp.is_available,
+                  pr.category_id, c.name as category_name, coalesce(c.display_order, 0) as category_display_order,
+                  pr.display_order
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1
+           order by coalesce(c.display_order, 0), c.name nulls last, pr.display_order, pr.name
+           limit 500;`,
+          [propertyId],
+        );
+        return result;
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      price: Number(row.price),
+      imageUrl: row.image_url,
+      isPopular: row.is_popular === true,
+      isAvailable: row.is_available === true,
+      categoryId: row.category_id,
+      categoryName: row.category_name,
+      categoryDisplayOrder: Number(row.category_display_order),
+      displayOrder: Number(row.display_order),
+      noDomicilio: row.no_domicilio === true,
+    }));
+  }
+
+  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
+    // Funcion de migracion 032: base sin migrar -> 42883. SAVEPOINT porque la sesion es la transaccion
+    // unica del request (un try/catch simple la dejaria abortada, 25P02).
+    return runWithSavepointFallback<StorefrontTrackingResult>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_rastreo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ tracking: StorefrontTrackingDbPayload | null }>(
+          `select restaurantes.storefront_order_tracking($1::uuid, $2::uuid) as tracking;`,
+          [organizationId, orderId],
+        );
+        const t = rows[0]?.tracking ?? null;
+        if (!t) return { disponible: true, pedido: null };
+        return {
+          disponible: true,
+          pedido: {
+            status: t.status as StorefrontOrderTracking["status"],
+            branch: t.branch ?? null,
+            total: Number(t.total),
+            paymentMethod: t.payment_method === "efectivo" || t.payment_method === "tarjeta" ? t.payment_method : null,
+            canal: t.canal === "recoger" ? "recoger" : "domicilio",
+            createdAt: String(t.created_at),
+            items: (Array.isArray(t.items) ? t.items : []).map((i) => ({
+              name: String(i.name ?? ""),
+              quantity: Number(i.quantity ?? 0),
+              tortilla: i.tortilla === "maiz" || i.tortilla === "harina" || i.tortilla === "mixta" ? i.tortilla : null,
+            })),
+          },
+        };
+      },
+      isRecoverable: esErrorBaseSinMigrar026,
+      fallback: async () => ({ disponible: false, pedido: null }),
+    });
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
