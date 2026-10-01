@@ -6,7 +6,28 @@ export {
   verifyRefreshToken,
   TokenInvalidError,
   TokenExpiredError,
+  STEPUP_TTL_SECONDS,
+  accessTokenHash,
+  signStepUpToken,
+  verifyStepUpToken,
 } from "./jwt.ts";
+export type { StepUpTokenClaims } from "./jwt.ts";
+
+export {
+  TOTP_DEFAULT_WINDOW,
+  TOTP_DIGITS,
+  TOTP_PERIOD_SECONDS,
+  base32Decode,
+  base32Encode,
+  buildOtpauthUri,
+  decryptTotpSecret,
+  encryptTotpSecret,
+  generateTotpSecret,
+  hotp,
+  totpAt,
+  totpStep,
+  verifyTotp,
+} from "./totp.ts";
 
 export { ApiError, Errors } from "./errors.ts";
 
