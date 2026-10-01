@@ -142,8 +142,10 @@ Modelo en `packages/domain-hoteles/migrations/031_hoteles_boveda_identidad.sql`;
   obligatorio, huella en la bitácora, `Cache-Control: no-store`), `GET .../accesos` (owner/gm),
   `POST .../solicitar-purga`, `GET /identidad-purgas`, `POST /identidad-purgas/:id/decidir`
   (doble control: decide otra persona), y `GET/POST /registro-migratorio` + `.../reportar`.
-- `identidad-purga-cron.ts` — `GET|POST /internal/hoteles/identidad-purga`: purga por retención,
-  una transacción por property con su fecha de negocio. Protegido con el secreto interno (401 sin
+- `identidad-purga-cron.ts` — `GET|POST /internal/hoteles/identidad-purga`: barrido de retención,
+  una transacción por property con su fecha de negocio. **Desde H-02 BLOQUEA lo vencido y solo purga
+  al vencer la ventana de bloqueo y sin retención legal** (`bloqueadas_total`/`purgadas_total`);
+  contra una base sin 032 cae a la purga directa de 031 (`via_bloqueo:false`). Protegido con el secreto interno (401 sin
   él; Vercel lo manda como `Authorization: Bearer $CRON_SECRET`). Programado en `vercel.json`
   una vez al día a las `0 8 * * *` (08:00 UTC = 02:00 CDMX); ya son 21 crons. Con la base sin la
   migración 031 la property se omite (`omitida: migracion_pendiente`) y el cron responde 200.
@@ -156,3 +158,27 @@ Modelo en `packages/domain-hoteles/migrations/031_hoteles_boveda_identidad.sql`;
   **365 días** desde la salida (`retencionRegistroHasta` en `GET/POST /registro-migratorio`) y la
   purga de la imagen NO lo toca.
 - Base sin la migración 031: lecturas `disponible:false`, escrituras 503, el cron omite la property.
+
+## H-02 — privacidad: consentimiento, ARCO, bloqueo, retención legal, incidentes
+
+Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_incidentes.sql`; dominio en
+`@atiende/domain-hoteles::privacy`; verificación contra Postgres real en
+`scripts/verify-hoteles-privacidad-arco/`. **No es asesoría legal** (ver
+`packages/domain-hoteles/README.md` §H-02, con la lista "un abogado debe confirmar").
+
+- `privacidad.ts` — todo bajo `/hoteles/:propertyId/privacidad/`: `GET info` (aviso de no-asesoría-legal,
+  lista para el abogado y plazos), `GET/PUT configuracion` (ventana de bloqueo 3-30, owner/gm),
+  `GET/POST avisos`, `GET/POST consentimientos` y `POST consentimientos/:id/revocar` (front-of-house),
+  `GET/POST arco`, `POST arco/:id/avanzar` y `.../prorroga` (owner/gm), `GET/POST incidentes` (reportar:
+  front-of-house; leer y gestionar: owner/gm), `POST incidentes/:id/accion` (contener, registrar la
+  notificación al titular, cerrar), `GET retenciones`, `POST identidades/:id/{bloquear,retencion,acceso-excepcional}`,
+  `POST retenciones/:id/liberar`, `GET accesos-excepcionales`, `POST accesos-excepcionales/:id/{decidir,revelar}`
+  y `GET bitacora`.
+- `identidad.ts` — `POST /hoteles/:propertyId/identidad` acepta un `consentimiento` opcional (aviso, finalidades,
+  canal, método, datos sensibles) que se valida contra el aviso ANTES de capturar y se registra en la misma
+  transacción; la respuesta trae `consentimiento` (`registrado` | `no_disponible` | `null`). Aprobar una purga
+  responde `en_bloqueo` (la identidad queda `bloqueada`; la purga llega al vencer la ventana). Una identidad
+  bloqueada no se revela ni verifica (409).
+- El sistema **no envía ninguna notificación** a titulares ni autoridades: el recordatorio del art. 19 es un
+  campo calculado (`recordatorio`) de `GET incidentes`.
+- Base sin la migración 032: lecturas `disponible:false`, escrituras 503, la captura de identidad sigue sin ledger.

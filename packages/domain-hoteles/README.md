@@ -318,17 +318,18 @@ federal verificada que obligue a conservar la **imagen** del documento.
 | Imagen/documento cifrado (`identity_vault`) | **30 días después del check-out** de la reserva ligada; sin reserva, 30 días desde la captura | **0 a 365** días por captura (`retentionDays`, fuera de rango -> error "entre 0 y 365") | Minimización: LFPDPPP (DOF 20-mar-2025) arts. 10-12; art. 9 fr. IV; art. 18 |
 | Registro de huéspedes/migratorio **sin imagen** (`migratory_registration`: nacionalidad, llegada, salida, constancia) | **365 días** desde la salida (`MIGRATORY_RETENTION_DAYS_DEFAULT`) | `resolveMigratoryRetentionDays({ stateCode, overrideDays })`: piso 365 en CDMX, máx. 1825 | CDMX, Ley de Establecimientos Mercantiles art. 23 fr. II (control de llegadas y salidas; texto verificado, sin plazo) |
 
-- La purga por retención (`purge_expired_identities`, cron diario) **solo anula el sobre cifrado,
-  los últimos 4 y la nacionalidad de `identity_vault`**; el registro migratorio textual y la
-  bitácora de accesos/purgas se conservan (el test `service.spec.ts` lo verifica con el repositorio
-  en memoria; la función SQL ya actuaba así desde 031).
+- La purga por retención **solo anula el sobre cifrado, los últimos 4 y la nacionalidad de
+  `identity_vault`**; el registro migratorio textual y la bitácora de accesos/purgas se conservan (el
+  test `service.spec.ts` lo verifica con el repositorio en memoria; la función SQL ya actuaba así
+  desde 031). **Desde H-02 (migración 032) la purga ya no es directa: pasa por un estado `bloqueada`
+  (ver la sección H-02 de abajo).**
 - `retention_until` se compara con `<`: la imagen se purga en el primer barrido posterior a esa
   fecha (con 0 días, el día siguiente al check-out a las 02:00 CDMX).
 - Un decreto CDMX del 19-dic-2025 que fijaría 1 año de conservación **NO está verificado en
   fuente primaria** (solo análisis de despachos); por eso 365 es el default del registro, no una
   afirmación legal.
-- El aviso de privacidad y el consentimiento deben registrarse: la pantalla de captura lo advierte
-  pero **aún no lo registra** (el consentimiento formal es la tarea H-02).
+- El aviso de privacidad y el consentimiento se registran desde H-02 (ledger de consentimientos
+  ligado a la captura; ver abajo).
 
 ### Un abogado debe confirmar
 
@@ -343,3 +344,57 @@ federal verificada que obligue a conservar la **imagen** del documento.
 - Si un rostro/huella o la imagen del documento es dato sensible bajo la nueva ley.
 - Plazos de prescripción mercantiles (Código de Comercio) y penales estatales aplicables.
 - Calificación fiscal del registro (CFF art. 30) y del CFDI.
+
+## H-02 — Privacidad: consentimiento, ARCO, bloqueo previo a la purga, retención legal e incidentes
+
+Código en `src/privacy/` (+ `src/identity/` extendido); modelo SQL en
+`migrations/032_hoteles_consentimiento_arco_incidentes.sql` (espejo byte-idéntico
+`supabase/migrations/20240101000201_032_hoteles_consentimiento_arco_incidentes.sql`); verificación
+contra Postgres real en `scripts/verify-hoteles-privacidad-arco/` (103 chequeos) y el verify de
+031 actualizado (62). Rutas HTTP: `apps/api/src/routes/verticals/hoteles/privacidad.ts`.
+
+> **No es asesoría legal.** Es una implementación técnica de decisiones de producto tomadas de un
+> informe documental no vinculante (`atiende-loop/expertos/retencion-identidad-hoteles-mx.md`,
+> 30-sep-2026). `GET /hoteles/:propertyId/privacidad/info` y la pestaña Privacidad lo repiten junto
+> con la lista de abajo. Ningún plazo debe presentarse al hotel como cumplimiento sin que un abogado lo
+> confirme.
+
+| Pieza | Qué hace | Decisión de producto (no mandato legal) |
+|---|---|---|
+| Aviso versionado (`privacy_notice`) | Versión, aviso simplificado, enlace al integral (https), finalidades obligatorias vs opcionales; una sola vigente; un aviso publicado es inmutable | Informe §5: aviso integral y simplificado; finalidades separadas, opcionales sin marcar |
+| Ledger de consentimientos (`identity_consent`) | Fecha-hora, **versión del aviso aceptado** (la copia la base), finalidades obligatorias (deben aceptarse TODAS) y opcionales (subconjunto), canal, evidencia, quién capturó, ligado a la identidad; append-only; revocable una sola vez | Informe §5: registro con fecha, hora, versión e ID. Datos sensibles: solo firma o mecanismo de autenticación (art. 8) |
+| Ventana de bloqueo (`privacy_settings`) | Default **7 días**, editable **3 a 30** por property; el cambio queda en la bitácora | Informe §4: ventana de bloqueo 7 días (3-30); el doble control es práctica de seguridad, no requisito legal |
+| Estado `bloqueada` (`identity_vault`) | Una identidad vencida, con purga aprobada o con ARCO de cancelación procedente **no se purga de golpe**: pasa a `bloqueada` (conserva el sobre cifrado, sin acceso operativo: no se revela ni verifica) y se purga al vencer la ventana y solo sin retención legal. A nivel de datos (trigger) solo se puede pasar a `purgado` desde `bloqueada` con la ventana vencida y sin retención legal activa | Informe: art. 2 fr. III y art. 24 (bloqueo antes de supresión) |
+| Acceso excepcional (`identity_blocked_access_request`) | Para leer una identidad bloqueada: pide owner/gm con motivo; **otra persona** aprueba (doble control, también por CHECK); la aprobación caduca a las 2 horas, se usa una sola vez y solo por quien la pidió; deja huella | Práctica de seguridad |
+| ARCO (`arco_request`) | Folio, derecho, canal, plazos **20 días** de respuesta + **15** de ejecución (desde la decisión de procedencia), prórroga **una sola vez** por igual plazo con motivo, estados `recibida → en_revisión → procedente/improcedente → ejecutada`, nota obligatoria en cada decisión, bitácora (`privacy_event_log`). Una **cancelación procedente bloquea** la identidad ligada (o las activas del huésped) | Informe §2: art. 31 (20+15, prorrogable una vez). **Días naturales** (cómputo más conservador) |
+| Retención legal (`legal_hold`) | Folio del caso + motivo + quién autoriza (obligatorios); impide purgar mientras dure; opcionalmente ligada a un incidente; revisión anual; liberar exige nota | Informe §4: legal hold con folio y autorización; revisión anual |
+| Incidentes (`privacy_incident`) | Folio, tipo, severidad, riesgo significativo, estados `detectada → contenida → cerrada`, registro de la notificación al titular (canal + constancia) o del motivo de no notificar para poder cerrar; **recordatorio** "notifica de inmediato" mientras haya riesgo significativo sin notificación. **El sistema NO envía nada**: solo registra | Informe §2: art. 19 (notificar de forma inmediata) |
+
+Roles: front-of-house (owner/gm/frontdesk/reservations) captura/lee consentimientos, lee el aviso y
+**reporta** incidentes; todo lo demás (ARCO, retención legal, bloqueo, acceso excepcional, ajustes,
+bitácora, gestión de incidentes) es owner/gm. La base lo hace cumplir (RLS + funciones `security definer`
+con `search_path` fijo + GRANT por columna); la API es la segunda capa.
+
+Compatibilidad con la base sin migrar (regla dura): todo el TypeScript captura 42883/42P01/42703 con
+`runWithSavepointFallback` (una sola transacción por request). Lecturas de privacidad → `disponible:false`;
+escrituras → 503; la captura de identidad con consentimiento sigue valiendo sin ledger
+(`consentimiento: {estado: "no_disponible"}`); el barrido de retención cae a la purga directa de 031
+(`viaBloqueo:false`); las lecturas de la bóveda repiten con las columnas de 031 si faltan las de bloqueo.
+Tests con `AbortAwareFakeSession` en `tests/identity/postgres-repository-032-compat.spec.ts` y
+`tests/privacy/postgres-repository-savepoint.spec.ts`.
+
+### Un abogado debe confirmar (H-02, además de lo de H-01)
+
+- Si los plazos ARCO (20 y 15 días) se cuentan en días **naturales o hábiles** (aquí, naturales).
+- Cómo se aplica la prórroga "por igual plazo" (aquí: +20 días en la fase de respuesta o +15 en la de
+  ejecución, una sola vez).
+- Plazo, forma y destinatarios de la notificación de vulneraciones (art. 19) y cuándo una vulneración
+  "afecta de forma significativa derechos patrimoniales o morales" (la bandera la decide el hotel).
+- Si la imagen del documento, el rostro o la huella son datos sensibles (consentimiento expreso y por
+  escrito) bajo la ley de 2025.
+- Contenido mínimo del aviso integral/simplificado (arts. 15-16) y la redacción de las finalidades
+  obligatorias frente a las opcionales; consentimiento de menores y tutores.
+- Si la ventana de bloqueo debe igualar el plazo de prescripción de las acciones de la relación jurídica
+  (art. 24) en lugar de los 7 días por defecto, y cuándo un legal hold es obligatorio y cada cuánto revisarlo.
+- Que la base legal del registro de huéspedes (art. 9 fr. I y IV) dispense o no el consentimiento para la
+  finalidad de identificación (por eso el consentimiento ligado a la captura es **opcional**).
