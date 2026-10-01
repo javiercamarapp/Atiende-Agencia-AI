@@ -1133,7 +1133,8 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async disconnectWhatsappNumber(organizationId: string): Promise<DesconectarNumeroResultado> {
     if (!this.whatsappAgentConfigDisponible) return { status: "unavailable" };
-    const removed = this.whatsappPhoneNumberIdByOrg.delete(organizationId);
+    const removed = Boolean(this.whatsappPhoneNumberIdByOrg.get(organizationId));
+    this.whatsappPhoneNumberIdByOrg.delete(organizationId);
     this.whatsappInactiveOrgs.delete(organizationId);
     return { status: "disconnected", removed };
   }
