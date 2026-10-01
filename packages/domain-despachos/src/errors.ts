@@ -16,6 +16,29 @@ export class InvoiceAlreadyExistsError extends Error {
   }
 }
 
+/** D-22: la migración 018 (columnas/funciones del CFDI completo) aún no está en esta base. */
+export class EstadoSatNoDisponibleError extends Error {
+  constructor() {
+    super("El estado SAT del CFDI todavía no está disponible en esta base (migración pendiente).");
+    this.name = "EstadoSatNoDisponibleError";
+  }
+}
+
+/** D-22: transición de estado SAT no permitida (p. ej. un CFDI cancelado no regresa a otro estado). */
+export class EstadoSatInvalidoError extends Error {
+  constructor(message = "Estado SAT no permitido para este CFDI.") {
+    super(message);
+    this.name = "EstadoSatInvalidoError";
+  }
+}
+
+export class InvoiceNoEncontradoError extends Error {
+  constructor() {
+    super("CFDI no encontrado.");
+    this.name = "InvoiceNoEncontradoError";
+  }
+}
+
 export class InvoiceReviewAlreadyResolvedError extends Error {
   constructor(message = "Esta revisión ya fue resuelta anteriormente.") {
     super(message);

@@ -143,32 +143,36 @@ falso).
 Las rutas internas del registrador de conversaciones (`/internal/restaurantes/voz/...`) usan el
 secreto ya existente `INTERNAL_SECRET` (header `x-atiende-internal-secret`).
 
-## Proveedores de LLM (Anthropic / OpenAI / OpenRouter)
+## Proveedores de LLM (OpenRouter primario)
 
-Alimentan `LlmGateway` (compartido por los turn handlers de WhatsApp de
-citas/hoteles/restaurantes y por la extracción de requisitos de licitaciones,
-`apps/api/src/production/llm-gateway.ts`). Cada proveedor entra a la escalera
-**solo si API key Y modelo están ambos configurados** — nunca se inventa un
-modelo por defecto. Sin ningún proveedor configurado, los 3 turn handlers quedan
-`notProductionReady` (503 honesto) y la extracción de licitaciones cae a solo
-reglas deterministas.
+Alimentan `LlmGateway` (data-chat de las 6 verticales, turn handlers de WhatsApp,
+extractores y borradores de licitaciones, conciliación de despachos,
+`apps/api/src/production/llm-gateway.ts`). **OpenRouter es el proveedor primario y
+único por defecto**: basta `OPENROUTER_API_KEY`; los modelos por rol salen de la
+tabla versionada `apps/api/src/production/llm-models.ts` y `LLM_MODELS_JSON` los
+sobreescribe sin redeploy de código. Arquitectura, tabla rol -> modelos, privacidad
+y costos: `docs/LLM-GATEWAY.md`. Sin llave, los 3 turn handlers quedan
+`notProductionReady` (503 honesto), el data-chat responde en modo sin IA y la
+extracción de licitaciones cae a solo reglas deterministas.
 
 | Variable | Dónde se obtiene | Secreta |
 |---|---|:-:|
-| `ANTHROPIC_API_KEY` | console.anthropic.com | Sí |
-| `ANTHROPIC_MODEL` | id del modelo, p.ej. el que uses en producción | No |
-| `OPENAI_API_KEY` | platform.openai.com | Sí |
-| `OPENAI_MODEL` | id del modelo | No |
-| `OPENROUTER_API_KEY` | openrouter.ai | Sí |
-| `OPENROUTER_MODEL` | id del modelo enrutado | No |
-| `OPENROUTER_COUNTRY_OF_RESIDENCE` | ISO 3166-1 alpha-2 del país de residencia legal del modelo pineado | No |
+| `OPENROUTER_API_KEY` | openrouter.ai (fijar un límite de gasto y la política de datos en el panel al crearla) | Sí |
+| `LLM_MODELS_JSON` | opcional: JSON `{"roles": {...}}` para cambiar modelos por rol (ver docs/LLM-GATEWAY.md) | No |
+| `OPENROUTER_ZDR` | opcional: `1` exige endpoints Zero Data Retention (habilitarlo antes en la cuenta de OpenRouter) | No |
+| `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
+| `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
 
-`OPENROUTER_COUNTRY_OF_RESIDENCE` alimentaría un **gate de residencia de datos**
+El proveedor directo de Anthropic (`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`) se
+**retiró**: ignoraba las herramientas (`tools`) y no soportaba mensajes `role:tool`.
+Los modelos Anthropic (Claude Sonnet 5.5 del copiloto de superadmin) pasan ahora por
+OpenRouter. `OPENROUTER_MODEL` ya no se lee: el modelo sale de la tabla por rol.
+
+`OPENROUTER_COUNTRY_OF_RESIDENCE` alimenta el **gate de residencia de datos**
 (`packages/agent-core/src/gateway/residency.ts`, `DEFAULT_RESIDENCY_POLICY.enabled
 = false`) pensado para requisitos de licitación de gobierno mexicano —
-**verificado: ningún caller real de este repo lo activa hoy** (ni los turn
-handlers de WhatsApp ni `LlmRequirementExtractor` de licitaciones). Configurarla o
-no es indistinto para el comportamiento actual; no cuenta como "faltante" en
+**verificado: ningún caller real de este repo lo activa hoy**. Configurarla o no es
+indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
 ## Voz (ElevenLabs) — patrón oficial

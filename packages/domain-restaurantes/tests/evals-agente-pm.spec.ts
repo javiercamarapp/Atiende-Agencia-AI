@@ -199,9 +199,46 @@ describe("modo LLM real (opt-in, nunca en CI)", () => {
   it("se niega a correr sin la variable explicita, la llave, el modelo o con topes invalidos (antes de cualquier red)", async () => {
     const { opcionesRealDesdeEntorno } = await import("../src/evals/agente-pm/real.ts");
     expect(() => opcionesRealDesdeEntorno({})).toThrow(/PM_EVALS_REAL=1/);
-    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1" })).toThrow(/ANTHROPIC_API_KEY/);
-    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k" })).toThrow(/PM_EVALS_MODEL/);
-    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k", PM_EVALS_MODEL: "m", PM_EVALS_MAX_USD: "0" })).toThrow(/MAX_USD/);
-    expect(opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k", PM_EVALS_MODEL: "m" })).toMatchObject({ maxUsd: 2, k: 1 });
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1" })).toThrow(/OPENROUTER_API_KEY/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", OPENROUTER_API_KEY: "k" })).toThrow(/PM_EVALS_MODEL/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", OPENROUTER_API_KEY: "k", PM_EVALS_MODEL: "m", PM_EVALS_MAX_USD: "0" })).toThrow(/MAX_USD/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", OPENROUTER_API_KEY: "k", PM_EVALS_MODEL: "m", PM_EVALS_TEMPERATURE: "9" })).toThrow(/TEMPERATURE/);
+    expect(opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", OPENROUTER_API_KEY: "k", PM_EVALS_MODEL: "m" })).toMatchObject({ maxUsd: 2, k: 1, params: { temperature: "omit" } });
+    expect(opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", OPENROUTER_API_KEY: "k", PM_EVALS_MODEL: "m", PM_EVALS_TEMPERATURE: "0", PM_EVALS_REASONING: "low" })).toMatchObject({ params: { temperature: 0, reasoningEffort: "low" } });
+  });
+
+  it("el arnes pasa por OpenRouterProvider: manda `tools` del registro, usa la llave del entorno y suma el costo REAL (servidor falso en loopback, sin red)", async () => {
+    const { createServer } = await import("node:http");
+    const { randomBytes } = await import("node:crypto");
+    const { ejecutarSuiteReal } = await import("../src/evals/agente-pm/real.ts");
+    const key = `test-${randomBytes(8).toString("hex")}`;
+    const bodies: Record<string, unknown>[] = [];
+    const auth: (string | undefined)[] = [];
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        auth.push(req.headers.authorization);
+        bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ model: "m", choices: [{ message: { content: "hola" } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.01 } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as { port: number }).port;
+      const r = await ejecutarSuiteReal({ apiKey: key, model: "openai/gpt-6-luna", maxUsd: 0.05, k: 1, casos: ["L01"], params: { temperature: "omit", minMaxTokens: 1500 }, baseUrl: `http://127.0.0.1:${port}/api/v1/chat/completions` });
+      expect(bodies.length).toBeGreaterThan(0);
+      expect(auth.every((a) => a === `Bearer ${key}`)).toBe(true);
+      const withTools = bodies.filter((b) => Array.isArray(b.tools) && (b.tools as unknown[]).length > 0);
+      expect(withTools.length).toBeGreaterThan(0);
+      expect(bodies.every((b) => b.temperature === undefined && b.usage !== undefined)).toBe(true);
+      // Costo real del usage accounting: 0.01 por llamada, cortado por el tope de 0.05.
+      expect(r.gastoUsd).toBeGreaterThanOrEqual(0.05);
+      expect(r.cortadoPorTope).toBe(true);
+    } finally {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

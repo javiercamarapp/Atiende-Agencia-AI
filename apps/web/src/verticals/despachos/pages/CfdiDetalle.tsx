@@ -4,18 +4,23 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, X } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
-import { fetchInvoice } from "../lib/cfdi-client.ts";
-import type { InvoiceSummary } from "../lib/cfdi-client.ts";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
+import { fetchInvoice, registrarEstadoSat } from "../lib/cfdi-client.ts";
+import type { EstadoSatCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
-import { formatDate, formatMoney } from "../lib/format.ts";
+import { formatCentavos, formatDate, formatDireccionCfdi, formatEstadoSat, formatFormaPago, formatMetodoPago, formatMoney, formatTasaImpuesto, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo criterio que en Cfdi.tsx: espejo cosmético de RESOLVER_REVISION_ROLES
 // (@atiende/domain-despachos/src/roles.ts) -- el enforcement real vive en
 // revisiones.ts (assertVerticalRole), server-side.
 const RESOLVER_ROLES = new Set(["admin", "contador"]);
+
+// Espejo cosmetico de GESTIONAR_CARTERA_ROLES: quien puede capturar el estado SAT del CFDI (el servidor decide).
+const ESTADO_SAT_ROLES = new Set(["admin", "contador"]);
+
+const ESTADOS_SAT: readonly EstadoSatCfdi[] = ["pendiente", "vigente", "cancelado", "no_encontrado"];
 
 const CATEGORIA_LABELS: Record<InvoiceSummary["categoria"], string> = {
   gasto_operativo: "Gasto operativo",
@@ -52,6 +57,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
   const [revisionError, setRevisionError] = useState<string | null>(null);
   const [nota, setNota] = useState("");
   const [resolviendo, setResolviendo] = useState(false);
+  const [guardandoSat, setGuardandoSat] = useState(false);
+  const [errorSat, setErrorSat] = useState<string | null>(null);
 
   useEffect(() => {
     if (!invoiceId) return;
@@ -105,6 +112,20 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       setRevisionError(err instanceof Error ? err.message : "No se pudo resolver la revisión.");
     } finally {
       setResolviendo(false);
+    }
+  }
+
+  async function handleEstadoSat(estado: EstadoSatCfdi) {
+    if (!invoiceId) return;
+    setGuardandoSat(true);
+    setErrorSat(null);
+    try {
+      const actualizado = await registrarEstadoSat(fetch, apiBaseUrl, token, propertyId, invoiceId, estado);
+      setInvoice((prev) => (prev ? { ...prev, estadoSat: actualizado.estadoSat, estadoSatVerificadoEn: actualizado.estadoSatVerificadoEn } : prev));
+    } catch (err) {
+      setErrorSat(err instanceof Error ? err.message : "No se pudo registrar el estado SAT.");
+    } finally {
+      setGuardandoSat(false);
     }
   }
 
@@ -203,6 +224,94 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
           <Field label="Total" value={formatMoney(invoice.total)} />
           <Field label="Categoría" value={CATEGORIA_LABELS[invoice.categoria] ?? invoice.categoria} />
           <Field label="Ingestado" value={formatDate(invoice.creadoEn)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Datos fiscales del comprobante</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
+          <Field label="Sentido" value={formatDireccionCfdi(invoice.direccion)} />
+          <Field label="Método de pago" value={formatMetodoPago(invoice.metodoPago)} />
+          <Field label="Forma de pago" value={formatFormaPago(invoice.formaPago)} />
+          <Field label="Uso del CFDI" value={invoice.usoCfdi ?? "—"} />
+          <Field label="Moneda" value={invoice.moneda ?? "—"} />
+          <Field label="Tipo de cambio" value={invoice.tipoCambio === null || invoice.tipoCambio === undefined ? "—" : String(invoice.tipoCambio)} />
+          <Field label="ISR retenido" value={formatCentavos(invoice.montosCentavos?.isrRetenido)} />
+          <Field label="IVA retenido" value={formatCentavos(invoice.montosCentavos?.ivaRetenido)} />
+          <Field label="IEPS" value={formatCentavos(invoice.montosCentavos?.ieps)} />
+        </CardContent>
+      </Card>
+
+      {invoice.impuestos && invoice.impuestos.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Impuestos desglosados</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Impuesto</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Tasa o cuota</TableHead>
+                  <TableHead>Base</TableHead>
+                  <TableHead>Importe</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoice.impuestos.map((i, idx) => (
+                  <TableRow key={`${i.naturaleza}-${i.impuesto}-${i.tasaOCuota ?? "exento"}-${idx}`}>
+                    <TableCell>{i.nombre}</TableCell>
+                    <TableCell>{i.naturaleza === "traslado" ? "Trasladado" : "Retenido"}</TableCell>
+                    <TableCell>{i.tipoFactor === "Exento" ? "Exento" : i.tipoFactor === "Cuota" ? i.tasaOCuota ?? "—" : formatTasaImpuesto(i.tasaOCuota)}</TableCell>
+                    <TableCell className="tabular-nums">{formatCentavos(i.baseCentavos)}</TableCell>
+                    <TableCell className="tabular-nums">{formatCentavos(i.importeCentavos)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
+          <CardTitle className="text-sm">Estado ante el SAT</CardTitle>
+          <StatusBadge tone={tonoEstadoSat(invoice.estadoSat)}>{formatEstadoSat(invoice.estadoSat)}</StatusBadge>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            {invoice.estadoSatVerificadoEn ? `Última verificación: ${formatDate(invoice.estadoSatVerificadoEn)}.` : "Todavía no se ha verificado ante el SAT; este sistema no consulta al SAT automáticamente, el estado lo captura el despacho."}
+          </p>
+          {ESTADO_SAT_ROLES.has(role) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="cfdi-estado-sat" className="text-xs text-muted-foreground">
+                Registrar estado
+              </Label>
+              <NativeSelect
+                id="cfdi-estado-sat"
+                size="sm"
+                value={invoice.estadoSat ?? "pendiente"}
+                disabled={guardandoSat || invoice.estadoSat === "cancelado"}
+                onChange={(e) => void handleEstadoSat(e.target.value as EstadoSatCfdi)}
+                wrapperClassName="w-auto"
+              >
+                {ESTADOS_SAT.map((e) => (
+                  <option key={e} value={e}>
+                    {formatEstadoSat(e)}
+                  </option>
+                ))}
+              </NativeSelect>
+              {invoice.estadoSat === "cancelado" && <span className="text-xs text-muted-foreground">Un CFDI cancelado ya no cambia de estado.</span>}
+            </div>
+          )}
+          {errorSat && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorSat}
+            </p>
+          )}
         </CardContent>
       </Card>
 
