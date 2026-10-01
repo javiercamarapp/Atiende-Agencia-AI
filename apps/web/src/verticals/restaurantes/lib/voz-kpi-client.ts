@@ -15,7 +15,6 @@ export interface VozKpiTotales {
   readonly tasaHandoffPct: number | null;
   readonly tasaAbandonoPct: number | null;
   readonly erroresProveedor: number;
-  readonly erroresElevenlabs: number;
   readonly erroresTwilio: number;
   readonly erroresOtros: number;
   readonly tasaErrorPct: number | null;
