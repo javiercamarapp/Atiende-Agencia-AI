@@ -73,12 +73,12 @@ export function privacidadOrgRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (retencion.availability === "not_migrated") return c.json({ disponible: false, mensaje: PRIVACIDAD_NO_DISPONIBLE });
     // El catalogo nunca esta vacio para un owner/admin: una lista vacia significa que NO lo es.
     if (retencion.items.length === 0) throw Errors.forbidden("Solo el owner o un admin de la organización puede administrar la privacidad.");
-    const [arco, bloqueos, purgas, avisos] = await Promise.all([
-      repo.orgListArco(org, { onlyOpen: false, limit: RESUMEN_ARCO, offset: 0 }),
-      repo.orgListHolds(org),
-      repo.orgListPurgeRuns(org, RESUMEN_PURGAS, null),
-      repo.orgListNotices(org, 20),
-    ]);
+    // SECUENCIAL a proposito: cada metodo corre bajo SAVEPOINT en la MISMA sesion de request; en paralelo el
+    // cliente pg encola SAVEPOINT a,b,c,d y luego RELEASE a,b,... y RELEASE a destruye los anidados b,c,d (3B001).
+    const arco = await repo.orgListArco(org, { onlyOpen: false, limit: RESUMEN_ARCO, offset: 0 });
+    const bloqueos = await repo.orgListHolds(org);
+    const purgas = await repo.orgListPurgeRuns(org, RESUMEN_PURGAS, null);
+    const avisos = await repo.orgListNotices(org, 20);
     const ahora = Date.now();
     return c.json({
       disponible: true,
