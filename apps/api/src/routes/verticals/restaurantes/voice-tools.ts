@@ -1,4 +1,4 @@
-// Fase 2 §1 — Server Tools HTTP reales para el agente de voz de ElevenLabs
+// Fase 2 §1 — Server Tools HTTP reales para el agente de voz de restaurantes (Gemini Live; ya sin ElevenLabs, ver docs/VOZ-PM.md)
 // (`buscar_sucursal_cercana`/`buscar_producto`/`cotizar_pedido`). Port del
 // envoltorio HTTP delgado de
 // restaurantes/supabase/functions/{buscar-sucursal-cercana,buscar-producto,cotizar-pedido}/index.ts
@@ -6,12 +6,10 @@
 // (Fase 1 + Fase 2 §1.1.1/§1.3), este archivo solo la expone por HTTP.
 //
 // Mismo patrón de auth que create-order/customer-lookup (public.ts): NI
-// `authMiddleware` NI `originAllowed` — ElevenLabs no manda `Origin` ni
-// `Authorization`, solo el secreto dedicado `x-atiende-tool-secret`. La nota
-// real de `verify_jwt=false` del origen es un detalle de plataforma de
-// Supabase Edge Functions sin equivalente aquí, pero el principio que
-// documenta (ElevenLabs no manda Authorization) es exactamente lo que
-// `x-atiende-tool-secret` ya resuelve.
+// `authMiddleware` NI `originAllowed` — el servicio de voz (servidor de confianza) no manda `Origin` ni
+// `Authorization`: presenta el token por llamada (`x-atiende-call-token`) o, en el camino de compatibilidad,
+// el secreto `x-atiende-tool-secret`. La nota real de `verify_jwt=false` del origen es un detalle de plataforma
+// de Supabase Edge Functions sin equivalente aquí.
 //
 // Se monta como su propio sub-Hono (en vez de extender public.ts) para que
 // el árbol de archivos deje claro qué endpoints son Server Tools de voz.
