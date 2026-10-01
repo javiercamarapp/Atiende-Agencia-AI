@@ -38,7 +38,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -48,6 +48,7 @@ import type {
   CanalMensajeriaCodigo,
   RentasCalendarSyncRepository,
   RentasAccesoRepository,
+  RentasCatalogoRepository,
   RentasReportesRepository,
   RentasMensajeriaRepository,
   RentasOnboardingRepository,
@@ -281,6 +282,8 @@ export interface AppDeps {
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
+  /** D-21 -- cartera de clientes (ficha fiscal por property, migracion 018). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresCarteraRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
@@ -320,6 +323,10 @@ export interface AppDeps {
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
   readonly rentasAccesoRepo?: (db: TenantDbSession) => RentasAccesoRepository;
+  /** Rn-18 / Rn-19 -- reglas de comisión de canal y catálogo (propiedades, unidades, propietarios; migración 027).
+   * OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasCatalogoRepository` y los
+   * tests inyectan el doble en memoria. */
+  readonly rentasCatalogoRepo?: (db: TenantDbSession) => RentasCatalogoRepository;
   /** Fase 5 -- obtiene el contenido de un feed iCal externo (Airbnb/Booking/VRBO/...).
    * A diferencia de `citasGoogleCalendarPortResolver` (por-proveedor, requiere OAuth),
    * este puerto es ÚNICO para toda la plataforma: un feed iCal de canal es una URL

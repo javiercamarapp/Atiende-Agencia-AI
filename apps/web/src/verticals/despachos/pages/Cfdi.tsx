@@ -22,16 +22,17 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
   PageContainer,
   StatusBadge,
 } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
-import type { InvoiceSummary } from "../lib/cfdi-client.ts";
+import type { DireccionCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
 import type { EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
-import { formatDate, formatMoney } from "../lib/format.ts";
+import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const TIPO_LABELS: Record<InvoiceSummary["tipo"], string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
@@ -56,6 +57,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [soloRevision, setSoloRevision] = useState(false);
+  // D-22: emitidos vs recibidos segun el RFC de la ficha del cliente ("" = todos).
+  const [direccion, setDireccion] = useState<"" | DireccionCfdi>("");
 
   const [revisiones, setRevisiones] = useState<readonly RevisionCfdi[] | null>(null);
   const [revisionesLoading, setRevisionesLoading] = useState(false);
@@ -77,7 +80,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
     setLoading(true);
     setError(null);
     try {
-      setInvoices(await fetchInvoices(fetch, apiBaseUrl, token, propertyId, soloRevision ? { requiereRevisionHumana: true } : undefined));
+      setInvoices(await fetchInvoices(fetch, apiBaseUrl, token, propertyId, { ...(soloRevision ? { requiereRevisionHumana: true } : {}), ...(direccion !== "" ? { direccion } : {}) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar los CFDI.");
     } finally {
@@ -105,7 +108,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
     void load();
     // eslint: mismo criterio que el resto del panel -- este proyecto no tiene
     // eslint-plugin-react-hooks configurado.
-  }, [apiBaseUrl, token, propertyId, soloRevision]);
+  }, [apiBaseUrl, token, propertyId, soloRevision, direccion]);
 
   useEffect(() => {
     void loadRevisiones();
@@ -168,6 +171,17 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           <p className="mt-1 text-sm text-muted-foreground">Comprobantes ingestados y validados contra las reglas fiscales del SAT.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="cfdi-filtro-direccion" className="text-xs text-muted-foreground">
+              Sentido
+            </Label>
+            <NativeSelect id="cfdi-filtro-direccion" size="sm" value={direccion} onChange={(e) => setDireccion(e.target.value as "" | DireccionCfdi)} wrapperClassName="w-auto">
+              <option value="">Todos</option>
+              <option value="emitido">Emitidos</option>
+              <option value="recibido">Recibidos</option>
+              <option value="indeterminado">Sin clasificar</option>
+            </NativeSelect>
+          </div>
           <Checkbox checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} label="Solo con revisión humana pendiente" />
           {INGESTA_ROLES.has(role) && (
             <>
@@ -319,7 +333,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
       {loading && !invoices && <EstadoCargando etiqueta="Cargando CFDI…" />}
 
       {invoices && invoices.length === 0 && !loading && (
-        <EstadoVacio mensaje={soloRevision ? "No hay CFDI pendientes de revisión humana." : "Todavía no hay ningún CFDI ingestado."} />
+        <EstadoVacio mensaje={soloRevision ? "No hay CFDI pendientes de revisión humana." : direccion !== "" ? "No hay CFDI con ese sentido. Los CFDI sin ficha de cliente en la cartera quedan «sin clasificar»." : "Todavía no hay ningún CFDI ingestado."} />
       )}
 
       {invoices && invoices.length > 0 && (
@@ -345,7 +359,10 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
             { id: "tipo", encabezado: "Tipo", celda: (inv) => <span className="text-muted-foreground">{TIPO_LABELS[inv.tipo] ?? inv.tipo}</span> },
             { id: "emisor", encabezado: "Emisor", celda: (inv) => <span className="text-muted-foreground">{inv.emisorNombre ?? inv.rfcEmisor}</span> },
             { id: "total", encabezado: "Total", celda: (inv) => <span className="tabular-nums text-muted-foreground">{formatMoney(inv.total)}</span> },
+            { id: "sentido", encabezado: "Sentido", celda: (inv) => <span className="text-muted-foreground">{formatDireccionCfdi(inv.direccion)}</span> },
+            { id: "moneda", encabezado: "Moneda", celda: (inv) => <span className="font-mono text-xs text-muted-foreground">{inv.moneda ?? "—"}</span> },
             { id: "estatus", encabezado: "Estatus", celda: (inv) => <ValidoBadge valido={inv.valido} /> },
+            { id: "sat", encabezado: "SAT", celda: (inv) => <StatusBadge tone={tonoEstadoSat(inv.estadoSat)}>{formatEstadoSat(inv.estadoSat)}</StatusBadge> },
             {
               id: "revision",
               encabezado: "Revisión",

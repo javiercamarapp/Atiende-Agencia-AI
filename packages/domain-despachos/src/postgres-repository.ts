@@ -5,7 +5,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, isNoUniqueOrExclusionConstraintError, runWithSavepointFallback } from "@atiende/db";
 import type { HallazgoCfdi } from "@atiende/billing";
-import { DespachosConfigUnavailableError, EfosUnavailableError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
+import { DespachosConfigUnavailableError, EfosUnavailableError, EstadoSatInvalidoError, EstadoSatNoDisponibleError, InvoiceAlreadyExistsError, InvoiceNoEncontradoError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
 import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EfosInvoiceAfectado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
@@ -32,6 +32,8 @@ import type {
   TipoComprobante,
 } from "./types.ts";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
+import { NOMBRE_IMPUESTO } from "./cfdi/modelo-cfdi.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord, NaturalezaImpuesto, TipoFactorImpuesto } from "./cfdi/modelo-cfdi.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
@@ -168,7 +170,25 @@ interface InvoiceRawRow {
   diot: DiotResult;
   fecha: string;
   created_at: string;
+  // D-22 (migración 018): ausentes (undefined) en una base sin migrar; bigint/numeric llegan como texto.
+  direccion?: DireccionCfdi | null;
+  metodo_pago?: string | null;
+  forma_pago?: string | null;
+  uso_cfdi?: string | null;
+  moneda?: string | null;
+  tipo_cambio?: string | null;
+  subtotal_centavos?: string | null;
+  descuento_centavos?: string | null;
+  total_centavos?: string | null;
+  iva_trasladado_centavos?: string | null;
+  isr_retenido_centavos?: string | null;
+  iva_retenido_centavos?: string | null;
+  ieps_centavos?: string | null;
+  estado_sat?: EstadoSatCfdi;
+  estado_sat_verificado_en?: string | Date | null;
 }
+
+const numOrNull = (v: string | number | null | undefined): number | null => (v === null || v === undefined ? null : Number(v));
 
 function mapInvoice(row: InvoiceRawRow): InvoiceRecord {
   return {
@@ -193,6 +213,21 @@ function mapInvoice(row: InvoiceRawRow): InvoiceRecord {
     diot: row.diot,
     fecha: row.fecha,
     createdAt: row.created_at,
+    direccion: row.direccion ?? null,
+    metodoPago: row.metodo_pago ?? null,
+    formaPago: row.forma_pago ?? null,
+    usoCfdi: row.uso_cfdi ?? null,
+    moneda: row.moneda ?? null,
+    tipoCambio: numOrNull(row.tipo_cambio),
+    subtotalCentavos: numOrNull(row.subtotal_centavos),
+    descuentoCentavos: numOrNull(row.descuento_centavos),
+    totalCentavos: numOrNull(row.total_centavos),
+    ivaTrasladadoCentavos: numOrNull(row.iva_trasladado_centavos),
+    isrRetenidoCentavos: numOrNull(row.isr_retenido_centavos),
+    ivaRetenidoCentavos: numOrNull(row.iva_retenido_centavos),
+    iepsCentavos: numOrNull(row.ieps_centavos),
+    estadoSat: row.estado_sat ?? "pendiente",
+    estadoSatVerificadoEn: row.estado_sat_verificado_en === null || row.estado_sat_verificado_en === undefined ? null : String(row.estado_sat_verificado_en instanceof Date ? row.estado_sat_verificado_en.toISOString() : row.estado_sat_verificado_en),
   };
 }
 
@@ -425,7 +460,8 @@ export class PostgresDespachosRepository implements DespachosRepository {
   // ---- CFDI ----
 
   async insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord> {
-    try {
+    // Camino anterior (columnas históricas): es el que sigue funcionando contra la base SIN la migración 018.
+    const insertarHistorico = async (): Promise<InvoiceRecord> => {
       const { rows } = await this.db.query<InvoiceRawRow>(
         `insert into despachos.invoice
            (organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, emisor_nombre,
@@ -454,8 +490,124 @@ export class PostgresDespachosRepository implements DespachosRepository {
         ],
       );
       return mapInvoice(rows[0]!);
+    };
+
+    // D-22 (migración 018): mismas columnas + modelo completo + desglose de impuestos, en la MISMA operación. Corre dentro
+    // de la transacción compartida del request: un 42703/42P01 (columna/tabla de la migración que aún no existe) sin
+    // SAVEPOINT la dejaría abortada (25P02) y la ingesta -- que hoy funciona -- terminaría en ROLLBACK. Con el SAVEPOINT
+    // se descarta el intento y se cae al insert histórico. Un 23505 (folio duplicado) NO es recuperable: se repropaga.
+    const insertarCompleto = async (): Promise<InvoiceRecord> => {
+      const { rows } = await this.db.query<InvoiceRawRow>(
+        `insert into despachos.invoice
+           (organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, emisor_nombre,
+            subtotal, total, iva, descuento, categoria, valido, issues, warnings, requires_human_review, diot, fecha,
+            direccion, metodo_pago, forma_pago, uso_cfdi, moneda, tipo_cambio,
+            subtotal_centavos, descuento_centavos, total_centavos, iva_trasladado_centavos, isr_retenido_centavos, iva_retenido_centavos, ieps_centavos)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18,
+                 $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+         returning *;`,
+        [
+          input.organizationId,
+          input.propertyId,
+          input.folioFiscal,
+          input.tipo,
+          input.rfcEmisor,
+          input.rfcReceptor,
+          input.emisorNombre,
+          input.subtotal,
+          input.total,
+          input.iva,
+          input.descuento,
+          input.categoria,
+          input.valido,
+          JSON.stringify(input.issues),
+          JSON.stringify(input.warnings),
+          input.requiresHumanReview,
+          JSON.stringify(input.diot),
+          input.fecha,
+          input.direccion ?? null,
+          input.metodoPago ?? null,
+          input.formaPago ?? null,
+          input.usoCfdi ?? null,
+          input.moneda ?? null,
+          input.tipoCambio ?? null,
+          input.subtotalCentavos ?? null,
+          input.descuentoCentavos ?? null,
+          input.totalCentavos ?? null,
+          input.ivaTrasladadoCentavos ?? null,
+          input.isrRetenidoCentavos ?? null,
+          input.ivaRetenidoCentavos ?? null,
+          input.iepsCentavos ?? null,
+        ],
+      );
+      const invoice = mapInvoice(rows[0]!);
+      for (const i of input.impuestos ?? []) {
+        await this.db.query(
+          `insert into despachos.invoice_impuesto (invoice_id, organization_id, property_id, naturaleza, impuesto, tipo_factor, tasa_o_cuota, base_centavos, importe_centavos)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+          [invoice.id, input.organizationId, input.propertyId, i.naturaleza, i.impuesto, i.tipoFactor, i.tasaOCuota, i.baseCentavos, i.importeCentavos],
+        );
+      }
+      return invoice;
+    };
+
+    try {
+      return await runWithSavepointFallback<InvoiceRecord>({
+        session: this.db,
+        savepointName: "sp_despachos_invoice_modelo_cfdi",
+        primary: insertarCompleto,
+        isRecoverable: (err) => isMigrationPendingError(err),
+        fallback: insertarHistorico,
+      });
     } catch (err) {
       if (isUniqueViolation(err)) throw new InvoiceAlreadyExistsError(input.folioFiscal);
+      throw err;
+    }
+  }
+
+  async listarImpuestosInvoice(propertyId: string, invoiceId: string): Promise<readonly ImpuestoCfdiRecord[]> {
+    return runWithSavepointFallback<readonly ImpuestoCfdiRecord[]>({
+      session: this.db,
+      savepointName: "sp_despachos_invoice_impuestos",
+      primary: async () => {
+        const { rows } = await this.db.query<{ naturaleza: NaturalezaImpuesto; impuesto: string; tipo_factor: TipoFactorImpuesto; tasa_o_cuota: string | null; base_centavos: string | null; importe_centavos: string | null }>(
+          `select naturaleza, impuesto, tipo_factor, tasa_o_cuota, base_centavos, importe_centavos
+           from despachos.invoice_impuesto where property_id = $1 and invoice_id = $2
+           order by naturaleza desc, impuesto, tasa_o_cuota nulls first;`,
+          [propertyId, invoiceId],
+        );
+        return rows.map((r) => ({
+          naturaleza: r.naturaleza,
+          impuesto: r.impuesto,
+          nombre: NOMBRE_IMPUESTO[r.impuesto] ?? r.impuesto,
+          tipoFactor: r.tipo_factor,
+          tasaOCuota: r.tasa_o_cuota === null ? null : Number(r.tasa_o_cuota).toFixed(6),
+          baseCentavos: numOrNull(r.base_centavos),
+          importeCentavos: numOrNull(r.importe_centavos),
+        }));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => [],
+    });
+  }
+
+  async registrarEstadoSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<void> {
+    try {
+      await runWithSavepointFallback<void>({
+        session: this.db,
+        savepointName: "sp_despachos_invoice_estado_sat",
+        primary: async () => {
+          await this.db.query("select despachos.invoice_estado_sat_registrar($1, $2, $3);", [propertyId, invoiceId, estado]);
+        },
+        isRecoverable: (err) => isMigrationPendingError(err, "despachos.invoice_estado_sat_registrar"),
+        fallback: async () => {
+          throw new EstadoSatNoDisponibleError();
+        },
+      });
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "P0002") throw new InvoiceNoEncontradoError();
+      if (code === "22023") throw new EstadoSatInvalidoError(err instanceof Error ? err.message.replace(/^invoice_estado_sat_registrar:\s*/, "") : undefined);
       throw err;
     }
   }
@@ -497,22 +649,38 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows.map(mapInvoice);
   }
 
-  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage> {
     const conditions = ["property_id = $1"];
     const params: unknown[] = [propertyId];
     if (opts.requiresHumanReview !== undefined) {
       params.push(opts.requiresHumanReview);
       conditions.push(`requires_human_review = $${params.length}`);
     }
+    if (opts.direccion !== undefined) {
+      params.push(opts.direccion);
+      conditions.push(`direccion = $${params.length}`);
+    }
     params.push(opts.limit, opts.offset);
-    const { rows } = await this.db.query<InvoiceRawRow & { total: string }>(
-      `select *, count(*) over ()::text as total from despachos.invoice where ${conditions.join(" and ")} order by created_at desc limit $${params.length - 1} offset $${params.length};`,
-      params,
-    );
-    const items = rows.map(mapInvoice);
-    const total = rows[0] ? Number(rows[0].total) : 0;
-    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
-    return { items, total, nextOffset };
+    const consultar = async (): Promise<InvoicePage> => {
+      const { rows } = await this.db.query<InvoiceRawRow & { total: string }>(
+        `select *, count(*) over ()::text as total from despachos.invoice where ${conditions.join(" and ")} order by created_at desc limit $${params.length - 1} offset $${params.length};`,
+        params,
+      );
+      const items = rows.map(mapInvoice);
+      const total = rows[0] ? Number(rows[0].total) : 0;
+      const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+      return { items, total, nextOffset };
+    };
+    if (opts.direccion === undefined) return consultar();
+    // Filtrar por `direccion` solo existe tras la migración 018: contra la base sin migrar (42703) ningún CFDI está
+    // clasificado todavía -> página vacía honesta, con SAVEPOINT para no abortar la transacción compartida.
+    return runWithSavepointFallback<InvoicePage>({
+      session: this.db,
+      savepointName: "sp_despachos_invoice_direccion",
+      primary: consultar,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ items: [], total: 0, nextOffset: null }),
+    });
   }
 
   // ---- Cola de revisión humana ----

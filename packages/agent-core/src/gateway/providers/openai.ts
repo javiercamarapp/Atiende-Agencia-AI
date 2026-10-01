@@ -1,9 +1,10 @@
 // Adaptador OpenAI DIRECTO (no vía OpenRouter) — implementa `LlmProvider`
 // contra https://api.openai.com/v1/chat/completions. Igual que
-// `AnthropicProvider`: integración directa, `countryOfResidence` fijo a 'US'
+// el antiguo proveedor directo de Anthropic (retirado): integración directa, `countryOfResidence` fijo a 'US'
 // (jurisdicción declarada de la API pública de OpenAI), sin parámetro de
 // constructor — no hay agregación upstream que la haga variar.
 
+import { costFromPriceTable } from '../prices.js';
 import type { LlmCompletionRequest, LlmCompletionResult, LlmProvider } from '../types.js';
 import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireToolChoice, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
 
@@ -22,8 +23,8 @@ interface OpenAiChatResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
-/** Precio de lista [in, out] por 1M tokens — safety net cuando el proveedor
- *  no reporta costo en la respuesta. */
+/** Precio de lista [in, out] por 1M tokens para un modelo SIN fila en la tabla (prices.ts) — safety
+ *  net cuando el proveedor no reporta costo en la respuesta (OpenAI directo nunca lo reporta). */
 const FALLBACK_PRICE_PER_1M: [number, number] = [1, 6];
 
 export class OpenAiProvider implements LlmProvider {
@@ -73,7 +74,8 @@ export class OpenAiProvider implements LlmProvider {
       model: data.model ?? this.opts.model,
       tokensIn,
       tokensOut,
-      costUsd: (tokensIn * FALLBACK_PRICE_PER_1M[0] + tokensOut * FALLBACK_PRICE_PER_1M[1]) / 1_000_000,
+      // Tabla por modelo (id con prefijo de laboratorio) y, si no hay fila, el tope generico anterior.
+      costUsd: costFromPriceTable(`openai/${this.opts.model}`, { tokensIn, tokensOut }) ?? (tokensIn * FALLBACK_PRICE_PER_1M[0] + tokensOut * FALLBACK_PRICE_PER_1M[1]) / 1_000_000,
     };
   }
 }

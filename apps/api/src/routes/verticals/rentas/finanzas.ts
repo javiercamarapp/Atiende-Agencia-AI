@@ -8,11 +8,12 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { calcularMovimientoReserva, FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES } from "@atiende/domain-rentas";
+import { calcularMovimientoReserva, FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES, RentasDomainError } from "@atiende/domain-rentas";
 import type { LineaGastoEntrada, LineaImpuestoEntrada } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { mapRentasDomainError } from "./reservas.ts";
 
 function requireNonNegativeInteger(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
@@ -111,9 +112,17 @@ export function rentasFinanzasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const impuestos = requireImpuestos(raw.impuestos);
 
     // Resuelve la regla vigente: property específica primero, regla global del
-    // tenant si no hay una específica (fail-closed si no hay ninguna configurada —
-    // nunca asume una comisión de 0%).
-    const comisionCanal = await repo.findReglaComisionCanal(propertyId, ocupacion.canalId);
+    // tenant si no hay una específica. Sin ninguna regla (Rn-18): una reserva sin canal
+    // externo usa el default seguro de 0 pb; un canal externo responde 409
+    // `comision_canal_sin_regla` (error de negocio con la acción a seguir), nunca asume
+    // una comisión de 0%.
+    let comisionCanal;
+    try {
+      comisionCanal = await repo.findReglaComisionCanal(propertyId, ocupacion.canalId);
+    } catch (err) {
+      if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
+      throw err;
+    }
 
     const movimiento = calcularMovimientoReserva({
       ocupacionUnidadId: ocupacionId,

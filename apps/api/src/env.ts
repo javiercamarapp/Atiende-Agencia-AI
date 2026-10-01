@@ -142,16 +142,24 @@ export interface ApiEnv {
   readonly geminiApiKey?: string | null;
   readonly voicePreviewTokenSecret?: string | null;
   readonly llmProviders: {
-    /** Integración directa con la API de Anthropic (`providers/anthropic.ts`). */
-    readonly anthropic: { readonly apiKey: string; readonly model: string } | null;
-    /** Integración directa con la API de OpenAI (`providers/openai.ts`). */
+    /** PROVEEDOR PRIMARIO Y UNICO POR DEFECTO: OpenRouter (`providers/openrouter.ts`). Basta la llave:
+     * los modelos por rol salen de la tabla versionada de `production/llm-models.ts` (defaults
+     * seguros) y `modelsJson` (variable LLM_MODELS_JSON) los sobreescribe sin redeploy de codigo.
+     * `countryOfResidence` es `null` salvo que el operador confirme la ruta real (ver nota de
+     * RESIDENCIA en el proveedor); `zdr` activa `provider.zdr` en todas las rutas (requiere habilitar
+     * Zero Data Retention en la cuenta de OpenRouter). `sharedBreaker` es el Redis de Upstash para
+     * compartir el circuit breaker entre instancias (null = breaker en memoria por instancia). */
+    readonly openrouter: {
+      readonly apiKey: string;
+      readonly countryOfResidence: string | null;
+      readonly modelsJson: string | null;
+      readonly zdr: boolean;
+      readonly sharedBreaker: { readonly url: string; readonly token: string } | null;
+    } | null;
+    /** LEGADO: integracion directa con OpenAI (`providers/openai.ts`). Solo se usa si NO hay llave de
+     * OpenRouter. El proveedor directo de Anthropic se retiro: los modelos Anthropic pasan por
+     * OpenRouter (docs/LLM-GATEWAY.md). */
     readonly openai: { readonly apiKey: string; readonly model: string } | null;
-    /** Vía el agregador OpenRouter (`providers/openrouter.ts`) -- `countryOfResidence`
-     * es `null` salvo que el operador confirme la ruta real del modelo pineado (ver
-     * nota de RESIDENCIA en ese archivo); un `null` dejaría a OpenRouter fuera de
-     * cualquier escalera con el gate de residencia activo, que es el comportamiento
-     * seguro por defecto. */
-    readonly openrouter: { readonly apiKey: string; readonly model: string; readonly countryOfResidence: string | null } | null;
   };
 }
 
@@ -197,17 +205,21 @@ export function loadApiEnv(): ApiEnv {
     geminiApiKey: process.env.GEMINI_API_KEY || null,
     voicePreviewTokenSecret: process.env.VOICE_PREVIEW_TOKEN_SECRET || null,
     llmProviders: {
-      anthropic:
-        process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_MODEL
-          ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL }
-          : null,
+      openrouter: process.env.OPENROUTER_API_KEY
+        ? {
+            apiKey: process.env.OPENROUTER_API_KEY,
+            countryOfResidence: process.env.OPENROUTER_COUNTRY_OF_RESIDENCE ?? null,
+            modelsJson: process.env.LLM_MODELS_JSON || null,
+            zdr: ["1", "true"].includes((process.env.OPENROUTER_ZDR ?? "").toLowerCase()),
+            sharedBreaker:
+              process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+                ? { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }
+                : null,
+          }
+        : null,
       openai:
         process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL
           ? { apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL }
-          : null,
-      openrouter:
-        process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODEL
-          ? { apiKey: process.env.OPENROUTER_API_KEY, model: process.env.OPENROUTER_MODEL, countryOfResidence: process.env.OPENROUTER_COUNTRY_OF_RESIDENCE ?? null }
           : null,
     },
   };

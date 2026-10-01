@@ -9,6 +9,7 @@
 //  - Tablas y cifras que ve el usuario salen de los RESULTADOS, no del texto del modelo; el
 //    texto del modelo solo se muestra si todos sus números existen en los resultados.
 import { isBudgetExceededError, isMonthlyBudgetExceededError } from "../gateway/errors.js";
+import { isKillSwitchEngagedError } from "../gateway/kill-switch.js";
 import type { LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
 import { toJsonSchema, parseArgs, type ParsedArgs } from "./params.js";
 import { allowedNumbers, unsupportedNumbers } from "./numbers-guard.js";
@@ -22,6 +23,7 @@ import {
   type DataChatCatalog,
   type DataChatCompletion,
   type DataChatHistoryTurn,
+  type DataChatNoAi,
   type DataChatLimits,
   type DataChatRateLimiter,
   type DataChatScope,
@@ -124,7 +126,21 @@ async function withTimeout<T>(work: (signal: AbortSignal) => Promise<T>, ms: num
 }
 
 function answer(status: DataChatAnswer["status"], text: string, extra: Partial<Omit<DataChatAnswer, "status" | "text">> = {}): DataChatAnswer {
-  return { status, text, blocks: extra.blocks ?? [], sources: extra.sources ?? [], toolsUsed: extra.toolsUsed ?? [] };
+  return { status, text, blocks: extra.blocks ?? [], sources: extra.sources ?? [], toolsUsed: extra.toolsUsed ?? [], ...(extra.noAi ? { noAi: extra.noAi } : {}) };
+}
+
+/** Respuesta del MODO SIN IA: dice con claridad que la IA no esta disponible y por que, y devuelve el
+ *  catalogo de consultas deterministas (nombre y descripcion) para ofrecerlo como botones. */
+function noAiAnswer(status: "budget_exceeded" | "unavailable", reason: DataChatNoAi["reason"], catalog: DataChatCatalog): DataChatAnswer {
+  const why =
+    reason === "budget"
+      ? "Se alcanzó el tope de uso de la asistencia con IA de tu cuenta."
+      : reason === "kill_switch"
+        ? "La asistencia con IA está pausada por el momento."
+        : "La asistencia con IA no está disponible en este momento.";
+  const list = catalog.tools.map((t) => t.label).join(", ");
+  const options = catalog.tools.map((t) => ({ tool: t.name, label: t.label, description: t.description }));
+  return answer(status, `${why} Tus tableros siguen disponibles y puedes elegir una de las consultas directas: ${list}.`, { noAi: { reason, options } });
 }
 
 export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<DataChatAnswer> {
@@ -270,10 +286,10 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   } catch (err) {
     if (isMonthlyBudgetExceededError(err) || isBudgetExceededError(err)) {
       await audit({ tool: null, params: {}, outcome: "budget_exceeded", rowCount: 0, durationMs: Date.now() - started });
-      return answer("budget_exceeded", "Se alcanzó el tope de uso de la asistencia con IA de tu cuenta. Tus tableros siguen disponibles; contacta a soporte para ampliar el tope.");
+      return noAiAnswer("budget_exceeded", "budget", catalog);
     }
     onError("llm", err);
-    return answer("unavailable", "El asistente no está disponible en este momento. Inténtalo de nuevo en unos minutos.");
+    return noAiAnswer("unavailable", isKillSwitchEngagedError(err) ? "kill_switch" : "provider_down", catalog);
   }
 
   // ---- armado de la respuesta ----

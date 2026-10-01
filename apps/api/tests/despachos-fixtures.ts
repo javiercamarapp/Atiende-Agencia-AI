@@ -9,7 +9,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryCarteraRepository, InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -41,6 +41,8 @@ export interface DespachosTestContext {
    * una ruta HTTP (`deps.despachosRepo` ahora es una fábrica `(db) =>
    * DespachosRepository`). */
   readonly despachosRepo: InMemoryDespachosRepository;
+  /** D-21 -- doble en memoria de la cartera (misma instancia que resuelve `deps.carteraRepo(...)`). */
+  readonly carteraRepo: InMemoryCarteraRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly staff: {
@@ -66,6 +68,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const coreRepo = new InMemoryCoreRepository();
   const engine = new InMemoryTenancyEngine();
   const despachosRepo = new InMemoryDespachosRepository();
+  const carteraRepo = new InMemoryCarteraRepository();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -77,6 +80,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   // InMemoryDespachosRepository.findOrganizationBySlug).
   despachosRepo.seedOrganization({ id: organizationId, slug: "despacho-de-prueba", name: "Despacho de Prueba SC" });
   despachosRepo.seedDespachosProperty({ id: propertyId, organizationId, name: "Sede principal" });
+  carteraRepo.sembrarCliente(organizationId, "Sede principal", undefined, propertyId);
 
   async function seedStaff(role: DespachosRole, label: string) {
     const id = randomUUID();
@@ -105,6 +109,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     despachosRepo: (_db) => despachosRepo,
+    carteraRepo: (_db) => carteraRepo,
     despachosAuditSink: new InMemoryAuditSink(),
     hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
@@ -161,6 +166,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   return {
     deps,
     despachosRepo,
+    carteraRepo,
     organizationId,
     propertyId,
     staff: {

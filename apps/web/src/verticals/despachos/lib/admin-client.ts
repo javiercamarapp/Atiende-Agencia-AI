@@ -118,6 +118,28 @@ export async function patchJson<T>(
   return (await res.json()) as T;
 }
 
+/** PUT con el mismo `withAuthRefresh` que `postJson`/`patchJson` (D-21: `PUT .../cartera/ficha`, `PUT .../cfdi/:id/estado-sat`). */
+export async function putJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  payload: unknown = {},
+  extraHeaders: Record<string, string> = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json", ...extraHeaders },
+      body: JSON.stringify(payload),
+    }),
+  );
+  if (!res.ok) {
+    throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
+  }
+  return (await res.json()) as T;
+}
+
 /** Mismo wrapper `withAuthRefresh` que `postJson`, pero para un body de texto
  * crudo (p. ej. un XML de CFDI) en vez de JSON -- `POST
  * /despachos/:propertyId/cfdi/importar-xml` (apps/api/.../despachos/cfdi.ts)
