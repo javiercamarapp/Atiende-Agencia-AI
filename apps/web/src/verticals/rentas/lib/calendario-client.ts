@@ -74,6 +74,38 @@ export async function fetchOcupaciones(
   return body.ocupaciones;
 }
 
+/** Rn-06 -- ocupación del calendario visual (sin contacto del huésped: el servidor no lo manda en este listado). */
+export type OcupacionVisual = Omit<OcupacionCalendario, "huespedContacto" | "createdAt">;
+
+export interface VentanaCalendario {
+  /** Zona IANA de la property: el día "hoy" del calendario se decide con ella, nunca con el reloj del navegador. */
+  readonly zonaHoraria: string;
+  /** "Hoy" (`YYYY-MM-DD`) en esa zona, según el servidor. */
+  readonly hoy: string;
+  /** Ocupaciones activas (no canceladas) que tocan `[desde, hasta)`. */
+  readonly ocupaciones: readonly OcupacionVisual[];
+  /** Total real que tocan la ventana; mayor que `ocupaciones.length` cuando `truncado`. */
+  readonly total: number;
+  readonly truncado: boolean;
+}
+
+/** `GET /rentas/:propertyId/calendario?desde&hasta` -- lectura por ventana de TODA la property (el mes en pantalla). */
+export async function fetchCalendarioVentana(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  ventana: RangoFechas,
+): Promise<VentanaCalendario> {
+  const qs = new URLSearchParams({ desde: ventana.inicio, hasta: ventana.fin });
+  const body = await fetchJson<{ zona_horaria: string; hoy: string; total: number; truncado: boolean; ocupaciones: readonly OcupacionVisual[] }>(
+    fetchImpl,
+    `${apiBaseUrl}/rentas/${propertyId}/calendario?${qs.toString()}`,
+    token,
+  );
+  return { zonaHoraria: body.zona_horaria, hoy: body.hoy, ocupaciones: body.ocupaciones, total: body.total, truncado: body.truncado };
+}
+
 export interface CrearReservaInput {
   readonly rango: RangoFechas;
   readonly huespedNombre?: string;
