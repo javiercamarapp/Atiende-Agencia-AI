@@ -161,4 +161,5 @@ y las sesiones nuevas dejan de emitirse con 503 honesto); (4) revertir el despli
   teléfono hablado con confirmación, que hoy el servidor no admite porque el teléfono solo sale del token).
 - Una llamada queda fijada a la sucursal que marcó el cliente: si su colonia es de otra sucursal, las herramientas no operan en la otra (el agente
   pasa a una persona con `zona_ambigua`). Lo cierra la decisión de producto sobre el número único o el traspaso entre sucursales.
-- Tope mensual sin almacenamiento; notificaciones in-app del ciclo de voz pendientes de conectar (ver el cuerpo del PR).
+- Tope mensual sin almacenamiento. Notificaciones in-app: conectadas "llamada pasó a una persona" y "el proveedor de voz registra errores"
+  (`docs/NOTIFICACIONES.md`); siguen pendientes el umbral de costo de voz (80 y 100 % del tope), los callbacks pendientes y el handoff de WhatsApp.
