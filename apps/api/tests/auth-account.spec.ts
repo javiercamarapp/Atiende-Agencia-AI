@@ -76,6 +76,10 @@ describe("POST /auth/change-password", () => {
     security.available = false;
     const res = await app.request("/auth/change-password", authedJson(ctx.staff.owner.token, { currentPassword: ctx.staff.owner.password, newPassword: "nueva-clave-segura-1" }));
     expect(res.status).toBe(503);
+    // mensaje neutral: estas rutas no son del segundo factor
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe("service_unavailable");
+    expect(body.message).not.toMatch(/dos pasos/i);
   });
 });
 
