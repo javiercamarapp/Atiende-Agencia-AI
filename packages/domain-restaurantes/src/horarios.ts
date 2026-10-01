@@ -156,7 +156,7 @@ export function mensajeSucursalCerrada(nombreSucursal: string, estado: EstadoApe
 }
 
 // ---------------------------------------------------------------------------
-// Puentes: excepciones de horario por FECHA (migracion 029) y dia de negocio.
+// Puentes: excepciones de horario por FECHA (migracion 031) y dia de negocio.
 // ---------------------------------------------------------------------------
 
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;

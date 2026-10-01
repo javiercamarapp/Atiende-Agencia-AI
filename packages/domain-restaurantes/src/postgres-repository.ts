@@ -157,7 +157,7 @@ interface OrderRow {
   readonly assigned_repartidor_id: string | null;
   readonly estimated_delivery_at: string | null;
   readonly incident_note: string | null;
-  /** Migracion 029 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
+  /** Migracion 031 -- solo vienen en la fila de `create_order_idempotent` con la base migrada. */
   readonly canal?: CanalPedido | null;
   readonly propina?: string | null;
   readonly hora_recogida?: string | null;
@@ -268,7 +268,7 @@ interface PromotionRow {
   /** Migracion 027 -- ausentes (undefined) cuando la base todavia no la tiene. */
   readonly channels?: readonly CanalPedido[] | null;
   readonly product_ids?: readonly string[] | null;
-  /** Migracion 029 -- ausentes (undefined) cuando la base todavia no la tiene. */
+  /** Migracion 031 -- ausentes (undefined) cuando la base todavia no la tiene. */
   readonly auto_apply?: boolean;
   readonly courtesy_product_ids?: readonly string[] | null;
   readonly courtesy_quantity?: number | null;
@@ -315,7 +315,7 @@ const PROMOTION_COLUMNS =
   "id, organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, times_used, is_active, created_at, updated_at";
 /** Con las columnas de la migracion 027 (canales y productos elegibles). */
 const PROMOTION_COLUMNS_V2 = `${PROMOTION_COLUMNS}, channels, product_ids`;
-/** Con las columnas de la migracion 029 (auto_apply y combo de cortesia). */
+/** Con las columnas de la migracion 031 (auto_apply y combo de cortesia). */
 const PROMOTION_COLUMNS_V3 = `${PROMOTION_COLUMNS_V2}, auto_apply, courtesy_product_ids, courtesy_quantity`;
 
 interface BranchHoursExceptionRow {
@@ -727,7 +727,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
             payment_method: order.paymentMethod,
             call_transcript: order.callTranscript,
             call_recording_url: order.callRecordingUrl,
-            // Migracion 029: el create_order_idempotent VIEJO ignora estas llaves del jsonb.
+            // Migracion 031: el create_order_idempotent VIEJO ignora estas llaves del jsonb.
             canal: order.canal ?? null,
             propina: order.propina ?? null,
             hora_recogida: order.horaRecogida ?? null,
@@ -1390,7 +1390,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   private async queryPromotions(where: string, params: readonly unknown[], suffix = ""): Promise<readonly Promotion[]> {
     const select = (columns: string) => `select ${columns} from restaurantes.promotions where ${where}${suffix};`;
     // Dos escalones de compatibilidad (cada uno con su SAVEPOINT, porque corren dentro de la transaccion
-    // unica del request): migracion 029 (auto_apply/cortesia) -> 027 (canales/productos) -> columnas base.
+    // unica del request): migracion 031 (auto_apply/cortesia) -> 027 (canales/productos) -> columnas base.
     const rows = await runWithSavepointFallback<readonly PromotionRow[]>({
       session: this.db,
       savepointName: "sp_restaurantes_promociones_028_lectura",
@@ -1456,7 +1456,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     ];
     const usaMigracion028 = input.type === "cortesia" || input.autoApply !== undefined || input.courtesyProductIds !== undefined || input.courtesyQuantity !== undefined;
     if (usaMigracion028) {
-      // Escribe columnas de la migracion 029 (y las de la 027): contra una base SIN migrar falla con
+      // Escribe columnas de la migracion 031 (y las de la 027): contra una base SIN migrar falla con
       // 42703 y se traduce a "config no disponible" con SAVEPOINT, nunca a una promocion a medias.
       return runWithSavepointFallback<Promotion>({
         session: this.db,
@@ -1481,7 +1481,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         },
         isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
         fallback: (err) => {
-          advertirModeloPmNoDisponible("promotions", err, "029_recoger_promociones_automaticas_puentes.sql");
+          advertirModeloPmNoDisponible("promotions", err, "031_recoger_promociones_automaticas_puentes.sql");
           throw new RestaurantesConfigUnavailableError();
         },
       });
@@ -1594,7 +1594,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         },
         isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
         fallback: (err) => {
-          advertirModeloPmNoDisponible("promotions", err, "029_recoger_promociones_automaticas_puentes.sql");
+          advertirModeloPmNoDisponible("promotions", err, "031_recoger_promociones_automaticas_puentes.sql");
           throw new RestaurantesConfigUnavailableError();
         },
       });
@@ -1759,7 +1759,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       );
       return rows[0] ? mapOrder(rows[0]) : null;
     };
-    // Los estados de recoger (`listo_para_recoger`/`no_recogido`) los acepta el CHECK de la migracion 029:
+    // Los estados de recoger (`listo_para_recoger`/`no_recogido`) los acepta el CHECK de la migracion 031:
     // contra la base SIN migrar el UPDATE falla con 23514 (check_violation). Este UPDATE corre dentro de la
     // transaccion unica del request, asi que el respaldo EXIGE SAVEPOINT; sin el, la transaccion quedaria
     // abortada (25P02) y el COMMIT perderia el resto del request.
@@ -1770,7 +1770,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         primary: run,
         isRecoverable: (err) => (err as { code?: string } | null)?.code === "23514",
         fallback: (err) => {
-          advertirModeloPmNoDisponible("orders", err, "029_recoger_promociones_automaticas_puentes.sql");
+          advertirModeloPmNoDisponible("orders", err, "031_recoger_promociones_automaticas_puentes.sql");
           throw new RestaurantesConfigUnavailableError();
         },
       });
@@ -2151,7 +2151,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
-  // ---- Puentes (migracion 029): horario por fecha ----
+  // ---- Puentes (migracion 031): horario por fecha ----
 
   async listBranchHoursExceptions(propertyId: string, fechaDesde: string, fechaHasta: string): Promise<readonly BranchHoursException[]> {
     return runWithSavepointFallback<readonly BranchHoursException[]>({
@@ -2207,7 +2207,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: (err) => {
-        advertirModeloPmNoDisponible("branch_hours_exception", err, "029_recoger_promociones_automaticas_puentes.sql");
+        advertirModeloPmNoDisponible("branch_hours_exception", err, "031_recoger_promociones_automaticas_puentes.sql");
         throw new RestaurantesConfigUnavailableError();
       },
     });
@@ -2223,7 +2223,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: (err) => {
-        advertirModeloPmNoDisponible("branch_hours_exception", err, "029_recoger_promociones_automaticas_puentes.sql");
+        advertirModeloPmNoDisponible("branch_hours_exception", err, "031_recoger_promociones_automaticas_puentes.sql");
         throw new RestaurantesConfigUnavailableError();
       },
     });

@@ -77,7 +77,7 @@ function serializePolitica(p: BranchPolicy) {
   return { horario: p.horario, pedidoMinimoDomicilio: p.pedidoMinimoDomicilio, pedidoMinimoRecoger: p.pedidoMinimoRecoger, propinaPolitica: p.propinaPolitica };
 }
 
-// ---- puentes (migracion 029): excepciones de horario por fecha ----
+// ---- puentes (migracion 031): excepciones de horario por fecha ----
 
 interface PuenteBody {
   readonly branchIds?: unknown;

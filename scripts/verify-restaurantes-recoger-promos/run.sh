@@ -2,7 +2,7 @@
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón EXACTO
 # que scripts/verify-restaurantes-audit-log/run.sh (ver ese archivo para el
 # porqué de cada paso). Se agrega junto con
-# packages/domain-restaurantes/migrations/029_recoger_promociones_automaticas_puentes.sql para dejar,
+# packages/domain-restaurantes/migrations/031_recoger_promociones_automaticas_puentes.sql para dejar,
 # en el repo, la prueba reproducible de que orders (canal/propina/hora_recogida/estados de recoger),
 # promotions (auto_apply/cortesia), branch_hours_exception y create_order_idempotent funcionan contra
 # RLS/GRANT/auth.uid() reales -- el repositorio en memoria de domain-restaurantes nunca aplica nada
@@ -49,7 +49,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 029_recoger_promociones_automaticas_puentes.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 031_recoger_promociones_automaticas_puentes.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

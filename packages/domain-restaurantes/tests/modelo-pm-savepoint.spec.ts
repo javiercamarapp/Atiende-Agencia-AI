@@ -148,7 +148,7 @@ describe("catalogo con no_domicilio", () => {
       { match: /from restaurantes\.branch_products bp/i, respond: () => [{ ...PRODUCT_ROW, id: "00000000-0000-4000-8000-0000000000c1", name: "Coca-Cola", category_name: "Bebidas", price: "45" }] },
       { match: /from restaurantes\.branch_policy where property_id/i, respond: () => sinTabla("branch_policy") },
       { match: /from restaurantes\.branch_delivery_zone/i, respond: () => sinTabla("branch_delivery_zone") },
-      // Migracion 029 (puentes y promociones automaticas): tampoco existen en la base sin migrar.
+      // Migracion 031 (puentes y promociones automaticas): tampoco existen en la base sin migrar.
       { match: /from restaurantes\.branch_hours_exception/i, respond: () => sinTabla("branch_hours_exception") },
       { match: /auto_apply/i, respond: () => sinColumna("auto_apply") },
       { match: /from restaurantes\.branch_detail|core\.property|join core\.property/i, respond: () => [branchRow] },
@@ -161,7 +161,7 @@ describe("catalogo con no_domicilio", () => {
     expect(quote.total).toBe(90);
     expect(quote.pedidoMinimo).toBeNull();
     expect(quote.abiertoAhora).toBeNull();
-    // Sin la migracion 029: ninguna promocion automatica, sin descuento, y el total no cambia.
+    // Sin la migracion 031: ninguna promocion automatica, sin descuento, y el total no cambia.
     expect(quote.promocionAplicada).toBeNull();
     expect(quote.promocionesSugeridas).toEqual([]);
     expect(quote.descuento).toBe(0);

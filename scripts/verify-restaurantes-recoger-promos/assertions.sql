@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT por columna reales) de
--- packages/domain-restaurantes/migrations/029_recoger_promociones_automaticas_puentes.sql:
+-- packages/domain-restaurantes/migrations/031_recoger_promociones_automaticas_puentes.sql:
 --
 --   A. restaurantes.orders: canal/propina/hora_recogida (CHECKs), estados nuevos de recoger,
 --      create_order_idempotent (persiste lo nuevo, compatible con payload viejo, solo sistema),

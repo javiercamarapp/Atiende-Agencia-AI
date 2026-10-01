@@ -79,7 +79,7 @@ export interface OrderSummary {
   readonly assignedRepartidorId: string | null;
   readonly estimatedDeliveryAt: string | null;
   readonly incidentNote: string | null;
-  /** PM PR-3 (migración 029): canal, propina y hora prometida de recogida. `null` en pedidos anteriores o
+  /** PM PR-3 (migración 031): canal, propina y hora prometida de recogida. `null` en pedidos anteriores o
    * contra una base sin migrar; ausentes en respuestas de versiones viejas del API. */
   readonly canal?: OrderCanal | null;
   readonly propina?: number | null;

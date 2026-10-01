@@ -274,7 +274,7 @@ export interface AutomaticPromotionResult {
  * Promociones AUTOMATICAS (sin codigo): de las `autoApply` activas elige la que aplica a ESTE pedido segun
  * dia de negocio, hora, canal y renglones. UNA sola por pedido (la de mayor descuento). Reglas duras:
  *  - una promocion automatica SIN canales explicitos nunca aplica (defensa en profundidad, ademas del CHECK
- *    de la migracion 029): las de PM valen solo para recoger, JAMAS a domicilio;
+ *    de la migracion 031): las de PM valen solo para recoger, JAMAS a domicilio;
  *  - una promocion que no vale hoy/en este canal se ignora en silencio (no es un error);
  *  - una que vale hoy pero a la que el pedido no llega queda como sugerencia, no como descuento.
  * No toca precios de linea: solo calcula el monto a restar, igual que el resto del motor.

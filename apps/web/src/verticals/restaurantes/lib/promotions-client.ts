@@ -27,7 +27,7 @@ export interface Promotion {
   readonly maxUses: number | null;
   readonly timesUsed: number;
   readonly isActive: boolean;
-  /** Migraciones 027/029; ausentes si el API es anterior. */
+  /** Migraciones 027/031; ausentes si el API es anterior. */
   readonly channels?: readonly PromotionCanal[] | null;
   readonly productIds?: readonly string[] | null;
   readonly autoApply?: boolean;

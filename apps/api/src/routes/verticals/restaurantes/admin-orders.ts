@@ -20,7 +20,7 @@ import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } f
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
-/** Canal, propina y hora de recogida (migracion 029). `null` en los tres cuando la base aun no esta migrada o
+/** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
  * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
 async function pickupInfoByOrder(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[]): Promise<ReadonlyMap<string, OrderPickupInfo>> {
   const rows = await repo.listOrderPickupInfo(organizationId, orders.map((o) => o.id));
@@ -44,7 +44,7 @@ function serializeOrder(o: Order, pickup?: OrderPickupInfo) {
     notes: o.notes,
     paymentMethod: o.paymentMethod,
     createdAt: o.createdAt,
-    // PM PR-3: canal / propina / hora prometida de recogida (columnas de la migracion 029).
+    // PM PR-3: canal / propina / hora prometida de recogida (columnas de la migracion 031).
     canal: pickup?.canal ?? null,
     propina: pickup?.propina ?? null,
     horaRecogida: pickup?.horaRecogida ?? null,
@@ -224,7 +224,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       return c.json({ order: serializeOrder(updated, (await pickupInfoByOrder(repo, organizationId, [updated])).get(updated.id)) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
-      if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 029).");
+      if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 031).");
       throw err;
     }
   });

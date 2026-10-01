@@ -86,7 +86,7 @@ export interface NewOrderRecord {
   readonly paymentMethod: "efectivo" | "tarjeta" | null;
   readonly callTranscript: string | null;
   readonly callRecordingUrl: string | null;
-  /** Migracion 029: canal, propina y hora prometida de recogida. `create_order_idempotent` viejo
+  /** Migracion 031: canal, propina y hora prometida de recogida. `create_order_idempotent` viejo
    * ignora estas llaves del jsonb, asi que mandarlas es seguro contra la base sin migrar. */
   readonly canal?: CanalPedido | null;
   readonly propina?: number | null;
@@ -449,7 +449,7 @@ export interface RestaurantesRepository {
    * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
    * decide reglas de negocio). */
   findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
-  /** Promociones ACTIVAS con `auto_apply` (migracion 029) para aplicarlas sin codigo. `[]` contra la base
+  /** Promociones ACTIVAS con `auto_apply` (migracion 031) para aplicarlas sin codigo. `[]` contra la base
    * sin migrar (SAVEPOINT): nunca lanza ni deja la transaccion abortada. */
   listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]>;
   createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion>;
@@ -529,7 +529,7 @@ export interface RestaurantesRepository {
   /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
   findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
 
-  // ---- Puentes (migracion 029): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
+  // ---- Puentes (migracion 031): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
   // (SAVEPOINT); la ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
 
   /** Excepciones de la sucursal que se traslapan con [fechaDesde, fechaHasta] (YYYY-MM-DD, inclusive). */
@@ -539,7 +539,7 @@ export interface RestaurantesRepository {
   createBranchHoursException(organizationId: string, input: NewBranchHoursExceptionInput): Promise<BranchHoursException>;
   deleteBranchHoursException(organizationId: string, exceptionId: string): Promise<boolean>;
 
-  /** Canal, propina y hora de recogida (migracion 029) de varios pedidos. `[]` contra la base sin migrar:
+  /** Canal, propina y hora de recogida (migracion 031) de varios pedidos. `[]` contra la base sin migrar:
    * los listados de pedidos NO seleccionan esas columnas para no romperse sin migrar. */
   listOrderPickupInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderPickupInfo[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
