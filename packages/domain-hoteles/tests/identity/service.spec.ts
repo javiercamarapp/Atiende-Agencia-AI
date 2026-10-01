@@ -11,7 +11,20 @@ import {
   IdentityUnavailableError,
 } from "../../src/identity/errors.ts";
 import { InMemoryIdentityRepository } from "../../src/identity/in-memory-repository.ts";
-import { IdentityVaultService, addDaysYmd, documentLast4, parseCaptureIdentityInput, parseReason } from "../../src/identity/service.ts";
+import {
+  IDENTITY_IMAGE_RETENTION_DAYS_DEFAULT,
+  IDENTITY_IMAGE_RETENTION_DAYS_MAX,
+  IDENTITY_IMAGE_RETENTION_DAYS_MIN,
+  IdentityVaultService,
+  MIGRATORY_RETENTION_DAYS_DEFAULT,
+  addDaysYmd,
+  computeImageRetentionUntil,
+  computeMigratoryRetentionUntil,
+  documentLast4,
+  parseCaptureIdentityInput,
+  parseReason,
+  resolveMigratoryRetentionDays,
+} from "../../src/identity/service.ts";
 
 const PROPERTY = randomUUID();
 const OTHER_PROPERTY = randomUUID();
@@ -42,7 +55,7 @@ describe("parseCaptureIdentityInput", () => {
     const parsed = parseCaptureIdentityInput(rawInput());
     expect(parsed.payload.fullName).toBe("Ana Torres");
     expect(parsed.nationality).toBe("USA");
-    expect(parsed.retentionDays).toBe(365);
+    expect(parsed.retentionDays).toBeNull(); // sin override: el servicio aplica el default (30 dias tras el check-out)
     expect(parsed.reservationId).toBeNull();
   });
 
@@ -54,7 +67,8 @@ describe("parseCaptureIdentityInput", () => {
     ["documento con caracteres raros", { documentNumber: "<script>" }],
     ["nacionalidad no ISO3", { nationality: "Mexico" }],
     ["fecha imposible", { birthDate: "1990-02-31" }],
-    ["retencion fuera de rango", { retentionDays: 5 }],
+    ["retencion negativa", { retentionDays: -1 }],
+    ["retencion sobre el tope (365)", { retentionDays: 366 }],
     ["retencion no entera", { retentionDays: 40.5 }],
     ["mrz con minusculas", { mrz: "abc" }],
   ])("rechaza %s", (_name, patch) => {
@@ -88,10 +102,10 @@ describe("utilidades", () => {
 });
 
 describe("IdentityVaultService", () => {
-  it("captura: guarda SOLO el sobre cifrado (nunca el texto plano), last4 y retencion = hoy + dias", async () => {
+  it("captura: guarda SOLO el sobre cifrado (nunca el texto plano), last4 y retencion = hoy + 30 dias (sin reserva)", async () => {
     const { repo, service } = setup();
     const record = await service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-01", input: parseCaptureIdentityInput(rawInput()) });
-    expect(record).toMatchObject({ propertyId: PROPERTY, guestId: GUEST, documentType: "pasaporte", nationality: "USA", documentLast4: "5678", status: "activo", retentionUntil: "2027-03-01", keyVersion: 1 });
+    expect(record).toMatchObject({ propertyId: PROPERTY, guestId: GUEST, documentType: "pasaporte", nationality: "USA", documentLast4: "5678", status: "activo", retentionUntil: "2026-03-31", keyVersion: 1 });
     const stored = repo.storedEnvelope(record.id)!;
     expect(stored).toMatch(/^v1\./);
     expect(stored).not.toContain("Torres");
@@ -170,9 +184,9 @@ describe("purga con doble control (adaptador en memoria)", () => {
   it("purgeExpired purga solo lo vencido de esa property, cierra solicitudes pendientes y deja huella con actor null", async () => {
     const { repo, rec } = await captured();
     const requestId = await repo.requestPurge(rec.id, "Solicitud pendiente de prueba", OWNER);
-    expect(await repo.purgeExpired(PROPERTY, "2027-03-01")).toBe(0); // retention_until = 2027-03-01 NO es < hoy
+    expect(await repo.purgeExpired(PROPERTY, "2026-03-31")).toBe(0); // retention_until = 2026-03-31 NO es < hoy
     expect(await repo.purgeExpired(OTHER_PROPERTY, "2030-01-01")).toBe(0);
-    expect(await repo.purgeExpired(PROPERTY, "2027-03-02")).toBe(1);
+    expect(await repo.purgeExpired(PROPERTY, "2026-04-01")).toBe(1);
     expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("purgado");
     expect((await repo.findPurgeRequest(PROPERTY, requestId))?.status).toBe("ejecutada");
     const log = await repo.listAccessLog(PROPERTY, { vaultId: rec.id, limit: 10 });
@@ -212,5 +226,71 @@ describe("base sin migrar (adaptador en memoria con unavailable=true)", () => {
     expect(await repo.listIdentities(PROPERTY, { limit: 10 })).toEqual({ available: false, items: [] });
     expect(await repo.listMigratoryRegistrations(PROPERTY, { limit: 10 })).toEqual({ available: false, items: [] });
     await expect(service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-01", input: parseCaptureIdentityInput(rawInput()) })).rejects.toBeInstanceOf(IdentityUnavailableError);
+  });
+});
+
+describe("politica de retencion (informe MX: decision de producto, no mandato legal)", () => {
+  it("constantes: imagen 30 dias por defecto, tope editable 0..365; registro 365", () => {
+    expect([IDENTITY_IMAGE_RETENTION_DAYS_DEFAULT, IDENTITY_IMAGE_RETENTION_DAYS_MIN, IDENTITY_IMAGE_RETENTION_DAYS_MAX]).toEqual([30, 0, 365]);
+    expect(MIGRATORY_RETENTION_DAYS_DEFAULT).toBe(365);
+  });
+
+  it("parseCaptureIdentityInput acepta los extremos 0 y 365 y rechaza -1, 366, texto y decimales con mensaje claro", () => {
+    expect(parseCaptureIdentityInput({ ...rawInput(), retentionDays: 0 }).retentionDays).toBe(0);
+    expect(parseCaptureIdentityInput({ ...rawInput(), retentionDays: 365 }).retentionDays).toBe(365);
+    for (const bad of [-1, 366, "30", 1.5]) {
+      expect(() => parseCaptureIdentityInput({ ...rawInput(), retentionDays: bad })).toThrow(/entre 0 y 365/);
+    }
+  });
+
+  it("default: 30 dias despues del check-out de la reserva", () => {
+    expect(computeImageRetentionUntil({ today: "2026-03-01", checkOutDate: "2026-03-10", retentionDays: null })).toBe("2026-04-09");
+  });
+
+  it("sin fecha de salida: 30 dias desde la captura", () => {
+    expect(computeImageRetentionUntil({ today: "2026-03-01", checkOutDate: null, retentionDays: null })).toBe("2026-03-31");
+  });
+
+  it("override explicito (0 y 365) se cuenta desde el check-out", () => {
+    expect(computeImageRetentionUntil({ today: "2026-03-01", checkOutDate: "2026-03-10", retentionDays: 0 })).toBe("2026-03-10");
+    expect(computeImageRetentionUntil({ today: "2026-03-01", checkOutDate: "2026-03-10", retentionDays: 365 })).toBe("2027-03-10");
+    expect(() => computeImageRetentionUntil({ today: "2026-03-01", checkOutDate: null, retentionDays: 400 })).toThrow(IdentityInvalidInputError);
+  });
+
+  it("el servicio ancla el plazo al check-out de la reserva (y a la captura si no hay)", async () => {
+    const { service } = setup();
+    const withStay = await service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-01", checkOutDate: "2026-03-10", input: parseCaptureIdentityInput(rawInput()) });
+    expect(withStay.retentionUntil).toBe("2026-04-09");
+    const zero = await service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-01", checkOutDate: "2026-03-10", input: parseCaptureIdentityInput({ ...rawInput(), retentionDays: 0 }) });
+    expect(zero.retentionUntil).toBe("2026-03-10");
+  });
+
+  it("registro migratorio: 365 dias desde la salida por defecto; piso CDMX 365; override por debajo del piso se rechaza", () => {
+    expect(resolveMigratoryRetentionDays()).toBe(365);
+    expect(resolveMigratoryRetentionDays({ stateCode: "cdmx" })).toBe(365);
+    expect(resolveMigratoryRetentionDays({ stateCode: "YUC", overrideDays: 90 })).toBe(90);
+    expect(resolveMigratoryRetentionDays({ stateCode: "CDMX", overrideDays: 1825 })).toBe(1825);
+    expect(() => resolveMigratoryRetentionDays({ stateCode: "CDMX", overrideDays: 90 })).toThrow(IdentityInvalidInputError);
+    expect(() => resolveMigratoryRetentionDays({ overrideDays: 1826 })).toThrow(IdentityInvalidInputError);
+    expect(computeMigratoryRetentionUntil("2026-03-10")).toBe("2027-03-10");
+  });
+
+  it("la purga por retencion NO toca el registro migratorio ni la bitacora (solo la imagen)", async () => {
+    const repo = new InMemoryIdentityRepository();
+    repo.seedGuest(PROPERTY, GUEST);
+    const cipher = createIdentityCipher(randomBytes(32), 1);
+    const service = new IdentityVaultService(repo, cipher);
+    const reservationId = randomUUID();
+    repo.seedReservation(PROPERTY, reservationId, "2026-03-05", "2026-03-10");
+    const rec = await service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-05", checkOutDate: "2026-03-10", input: parseCaptureIdentityInput({ ...rawInput(), reservationId }) });
+    const reg = await repo.createMigratoryRegistration({ propertyId: PROPERTY, reservationId, guestId: GUEST, vaultId: rec.id, actorUserId: FRONTDESK });
+    expect(await repo.purgeExpired(PROPERTY, "2026-04-09")).toBe(0); // retention_until = 2026-04-09 NO es < hoy
+    expect(await repo.purgeExpired(PROPERTY, "2026-04-10")).toBe(1);
+    expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("purgado");
+    const regs = await repo.listMigratoryRegistrations(PROPERTY, { limit: 10 });
+    expect(regs.items).toHaveLength(1);
+    expect(regs.items[0]).toMatchObject({ id: reg.id, nationality: "USA", arrivalDate: "2026-03-05", departureDate: "2026-03-10" });
+    const log = await repo.listAccessLog(PROPERTY, { vaultId: rec.id, limit: 10 });
+    expect(log.items.map((l) => l.action)).toContain("purga_por_retencion");
   });
 });

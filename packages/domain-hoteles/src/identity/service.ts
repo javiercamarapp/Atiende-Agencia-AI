@@ -7,19 +7,39 @@ import { IdentityAccessDeniedError, IdentityInvalidInputError, IdentityPurgedErr
 import type { IdentityRepository } from "./repository.ts";
 import { IDENTITY_DOCUMENT_TYPES, type IdentityDocumentType, type IdentityPayload, type IdentityVaultRecord } from "./types.ts";
 
-/** Retencion por defecto del documento. DECISION DE PRODUCTO/LEGAL PENDIENTE DE CONFIRMAR
- *  (plazo exigible al hotel por la normativa migratoria y de datos personales): es solo el
- *  default editable por captura (30..3650 dias), no una afirmacion legal. */
-export const IDENTITY_RETENTION_DAYS_DEFAULT = 365;
-export const IDENTITY_RETENTION_DAYS_MIN = 30;
-export const IDENTITY_RETENTION_DAYS_MAX = 3650;
+// POLITICA DE RETENCION (ajuste segun Mexico). DECISIONES DE PRODUCTO, NO MANDATO LEGAL:
+// el informe de investigacion (atiende-loop/expertos/retencion-identidad-hoteles-mx.md, 30-sep-2026,
+// borrador SIN valor de asesoria legal) no encontro una norma federal verificada que obligue a
+// conservar la IMAGEN del documento; por minimizacion (LFPDPPP arts. 10-12) se purga pronto. Un
+// abogado debe confirmar estos plazos antes de presentarlos al hotel como cumplimiento.
+
+/** Dias DESPUES DEL CHECK-OUT que se conserva la imagen/documento cifrado (informe, seccion 4).
+ *  Sin reserva o sin fecha de salida, se cuentan desde la captura. Default editable por captura. */
+export const IDENTITY_IMAGE_RETENTION_DAYS_DEFAULT = 30;
+/** 0 = la imagen vence el mismo dia del check-out (la purga corre en el primer barrido posterior). */
+export const IDENTITY_IMAGE_RETENTION_DAYS_MIN = 0;
+export const IDENTITY_IMAGE_RETENTION_DAYS_MAX = 365;
+
+/** Registro de huespedes / registro migratorio SIN imagen (`migratory_registration`): solo datos
+ *  textuales minimos (nacionalidad, fechas de llegada y salida, constancia). La purga de la
+ *  imagen NO lo toca (purge_expired_identities solo anula el sobre en `identity_vault`).
+ *  Default de 365 dias desde la fecha de salida: CDMX, Ley de Establecimientos Mercantiles art. 23
+ *  fr. II, pide llevar control de llegadas y salidas (texto verificado, sin plazo). Un decreto
+ *  CDMX de dic-2025 que fijaria 1 ano NO esta verificado en fuente primaria (solo despachos). */
+export const MIGRATORY_RETENTION_DAYS_DEFAULT = 365;
+/** Maximo parametrizable (informe: 5 anos con justificacion, CFF art. 30 si se integra a contabilidad). */
+export const MIGRATORY_RETENTION_DAYS_MAX = 1825;
+/** Minimo por entidad federativa (clave de estado en mayusculas). Solo CDMX tiene piso sugerido por
+ *  el informe; el resto no tiene minimo verificado. */
+export const MIGRATORY_RETENTION_MIN_DAYS_BY_STATE: Readonly<Record<string, number>> = { CDMX: 365 };
 
 export interface CaptureIdentityInput {
   readonly guestId: string;
   readonly reservationId: string | null;
   readonly documentType: IdentityDocumentType;
   readonly nationality: string | null;
-  readonly retentionDays: number;
+  /** Dias tras el check-out indicados por el usuario; `null` = usar el default (30). */
+  readonly retentionDays: number | null;
   readonly payload: IdentityPayload;
 }
 
@@ -76,10 +96,10 @@ export function parseCaptureIdentityInput(raw: unknown): CaptureIdentityInput {
   if (!/^[A-Za-z0-9][A-Za-z0-9 ./-]*$/.test(documentNumber)) throw new IdentityInvalidInputError("documentNumber: solo letras, numeros, espacios y . / -");
   const mrz = optionalText(b.mrz, "mrz", 200);
   if (mrz !== null && !/^[A-Z0-9<\n ]+$/.test(mrz)) throw new IdentityInvalidInputError("mrz: solo A-Z, 0-9, < y saltos de linea.");
-  let retentionDays = IDENTITY_RETENTION_DAYS_DEFAULT;
+  let retentionDays: number | null = null;
   if (b.retentionDays !== undefined && b.retentionDays !== null) {
-    if (typeof b.retentionDays !== "number" || !Number.isInteger(b.retentionDays) || b.retentionDays < IDENTITY_RETENTION_DAYS_MIN || b.retentionDays > IDENTITY_RETENTION_DAYS_MAX) {
-      throw new IdentityInvalidInputError(`retentionDays: entero entre ${IDENTITY_RETENTION_DAYS_MIN} y ${IDENTITY_RETENTION_DAYS_MAX}.`);
+    if (typeof b.retentionDays !== "number" || !Number.isInteger(b.retentionDays) || b.retentionDays < IDENTITY_IMAGE_RETENTION_DAYS_MIN || b.retentionDays > IDENTITY_IMAGE_RETENTION_DAYS_MAX) {
+      throw new IdentityInvalidInputError(`retentionDays: entero entre ${IDENTITY_IMAGE_RETENTION_DAYS_MIN} y ${IDENTITY_IMAGE_RETENTION_DAYS_MAX} dias despues del check-out.`);
     }
     retentionDays = b.retentionDays;
   }
@@ -123,6 +143,34 @@ export function documentLast4(documentNumber: string): string | null {
   return alnum.length === 0 ? null : alnum.slice(-4);
 }
 
+/** Fecha limite de la imagen cifrada: `retentionDays` (default 30) despues del check-out; sin
+ *  fecha de salida, despues de la captura (`today`). `retention_until` se compara con `<` en la
+ *  purga, asi que la imagen se purga el primer barrido posterior a esa fecha. */
+export function computeImageRetentionUntil(args: { readonly today: string; readonly checkOutDate: string | null; readonly retentionDays: number | null }): string {
+  const days = args.retentionDays ?? IDENTITY_IMAGE_RETENTION_DAYS_DEFAULT;
+  if (!Number.isInteger(days) || days < IDENTITY_IMAGE_RETENTION_DAYS_MIN || days > IDENTITY_IMAGE_RETENTION_DAYS_MAX) {
+    throw new IdentityInvalidInputError(`retentionDays: entero entre ${IDENTITY_IMAGE_RETENTION_DAYS_MIN} y ${IDENTITY_IMAGE_RETENTION_DAYS_MAX} dias despues del check-out.`);
+  }
+  const base = args.checkOutDate !== null && isRealDate(args.checkOutDate) ? args.checkOutDate : args.today;
+  return addDaysYmd(base, days);
+}
+
+/** Dias de retencion del registro migratorio/de huespedes (sin imagen). `stateCode` (ej. "CDMX")
+ *  aplica el piso de la entidad; un `overrideDays` por debajo del piso se rechaza. */
+export function resolveMigratoryRetentionDays(opts: { readonly stateCode?: string | null; readonly overrideDays?: number | null } = {}): number {
+  const floor = MIGRATORY_RETENTION_MIN_DAYS_BY_STATE[(opts.stateCode ?? "").trim().toUpperCase()] ?? 0;
+  const days = opts.overrideDays ?? Math.max(MIGRATORY_RETENTION_DAYS_DEFAULT, floor);
+  if (!Number.isInteger(days) || days < floor || days > MIGRATORY_RETENTION_DAYS_MAX) {
+    throw new IdentityInvalidInputError(`retencion del registro: entero entre ${floor} y ${MIGRATORY_RETENTION_DAYS_MAX} dias.`);
+  }
+  return days;
+}
+
+/** Fecha hasta la que se conserva el registro migratorio: salida + dias de retencion. */
+export function computeMigratoryRetentionUntil(departureDate: string, days: number = MIGRATORY_RETENTION_DAYS_DEFAULT): string {
+  return addDaysYmd(departureDate, days);
+}
+
 export class IdentityVaultService {
   constructor(
     private readonly repo: IdentityRepository,
@@ -130,10 +178,12 @@ export class IdentityVaultService {
     private readonly cipher: IdentityCipher | null,
   ) {}
 
-  /** `today` = fecha de negocio (YYYY-MM-DD) calculada por el llamador con la zona de la property. */
-  async capture(args: { propertyId: string; actorUserId: string; today: string; input: CaptureIdentityInput }): Promise<IdentityVaultRecord> {
+  /** `today` = fecha de negocio (YYYY-MM-DD) calculada por el llamador con la zona de la property.
+   *  `checkOutDate` = salida de la reserva ligada (o `null`: el plazo cuenta desde `today`). */
+  async capture(args: { propertyId: string; actorUserId: string; today: string; checkOutDate?: string | null; input: CaptureIdentityInput }): Promise<IdentityVaultRecord> {
     if (!this.cipher) throw new IdentityUnavailableError("llave_no_configurada", "capture");
     const { propertyId, actorUserId, today, input } = args;
+    const checkOutDate = args.checkOutDate ?? null;
     const id = randomUUID();
     const payloadEnc = this.cipher.encrypt(JSON.stringify(input.payload), identityAad(id, propertyId));
     return this.repo.captureIdentity({
@@ -146,7 +196,7 @@ export class IdentityVaultService {
       documentLast4: documentLast4(input.payload.documentNumber),
       payloadEnc,
       keyVersion: this.cipher.keyVersion,
-      retentionUntil: addDaysYmd(today, input.retentionDays),
+      retentionUntil: computeImageRetentionUntil({ today, checkOutDate, retentionDays: input.retentionDays }),
       actorUserId,
     });
   }

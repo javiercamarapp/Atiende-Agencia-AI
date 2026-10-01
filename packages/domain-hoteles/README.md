@@ -302,3 +302,44 @@ estuviera en Cancún, Los Cabos, Tijuana o Puerto Vallarta.
 
 Migración nueva: `migrations/030_zona_horaria_property.sql`. Verificación contra
 Postgres real: `scripts/verify-hoteles-zona-horaria/`.
+
+## H-01 — bóveda de identidad: política de retención (ajuste según México)
+
+Código en `src/identity/service.ts`; modelo SQL en `migrations/031_hoteles_boveda_identidad.sql`
+(sin cambios en este ajuste: el plazo se calcula por fila en código, `retention_until`).
+
+**Aviso:** los plazos de abajo son **decisiones de producto, NO un mandato legal ni asesoría
+legal**. Salen de una investigación documental a 30-sep-2026
+(`atiende-loop/expertos/retencion-identidad-hoteles-mx.md`, borrador) que NO encontró una norma
+federal verificada que obligue a conservar la **imagen** del documento.
+
+| Elemento | Default | Tope editable | Base (según el informe) |
+|---|---|---|---|
+| Imagen/documento cifrado (`identity_vault`) | **30 días después del check-out** de la reserva ligada; sin reserva, 30 días desde la captura | **0 a 365** días por captura (`retentionDays`, fuera de rango -> error "entre 0 y 365") | Minimización: LFPDPPP (DOF 20-mar-2025) arts. 10-12; art. 9 fr. IV; art. 18 |
+| Registro de huéspedes/migratorio **sin imagen** (`migratory_registration`: nacionalidad, llegada, salida, constancia) | **365 días** desde la salida (`MIGRATORY_RETENTION_DAYS_DEFAULT`) | `resolveMigratoryRetentionDays({ stateCode, overrideDays })`: piso 365 en CDMX, máx. 1825 | CDMX, Ley de Establecimientos Mercantiles art. 23 fr. II (control de llegadas y salidas; texto verificado, sin plazo) |
+
+- La purga por retención (`purge_expired_identities`, cron diario) **solo anula el sobre cifrado,
+  los últimos 4 y la nacionalidad de `identity_vault`**; el registro migratorio textual y la
+  bitácora de accesos/purgas se conservan (el test `service.spec.ts` lo verifica con el repositorio
+  en memoria; la función SQL ya actuaba así desde 031).
+- `retention_until` se compara con `<`: la imagen se purga en el primer barrido posterior a esa
+  fecha (con 0 días, el día siguiente al check-out a las 02:00 CDMX).
+- Un decreto CDMX del 19-dic-2025 que fijaría 1 año de conservación **NO está verificado en
+  fuente primaria** (solo análisis de despachos); por eso 365 es el default del registro, no una
+  afirmación legal.
+- El aviso de privacidad y el consentimiento deben registrarse: la pantalla de captura lo advierte
+  pero **aún no lo registra** (el consentimiento formal es la tarea H-02).
+
+### Un abogado debe confirmar
+
+- Texto íntegro y artículos del decreto CDMX del 19-dic-2025 (plazo de 1 año, alcance de
+  "identificación", si exige copia o solo exhibir).
+- Si hay normas estatales análogas (Yucatán, Quintana Roo, Jalisco y otras) y reglamentos municipales.
+- Vigencia del Reglamento de la LFPDPPP de 2011 y de los Lineamientos del aviso, plazo de
+  notificación de vulneraciones y si hay aviso a la Secretaría.
+- Si la imagen de pasaporte/ID de extranjero tiene obligación ante el INM bajo lineamientos internos
+  (no se encontró; el INM no regula hoteles en los textos leídos).
+- Alcance de LGP art. 91 Sexies (obligación de solicitar CURP) para hoteles.
+- Si un rostro/huella o la imagen del documento es dato sensible bajo la nueva ley.
+- Plazos de prescripción mercantiles (Código de Comercio) y penales estatales aplicables.
+- Calificación fiscal del registro (CFF art. 30) y del CFDI.

@@ -143,6 +143,18 @@ describe("IdentidadPage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("Todavía no hay identidades capturadas");
   });
 
+  it("el formulario de captura muestra el plazo que aplicara y el aviso de privacidad/consentimiento", async () => {
+    stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] } });
+    rendered = renderPage();
+    await esperar();
+    const plazo = rendered.container.querySelector('[data-testid="plazo-retencion"]')!;
+    expect(plazo.textContent).toContain("30 día(s)");
+    const nota = rendered.container.querySelector('[role="note"]')!.textContent!;
+    expect(nota).toContain("aviso de privacidad");
+    expect(nota).toContain("consentimiento");
+    expect(nota).toContain("365 días");
+  });
+
   it("cancelar el prompt del motivo NUNCA llama a revelar", async () => {
     stubFetch();
     vi.spyOn(window, "prompt").mockReturnValue(null);

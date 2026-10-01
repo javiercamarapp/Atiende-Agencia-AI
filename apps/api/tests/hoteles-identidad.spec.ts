@@ -53,6 +53,57 @@ describe("POST/GET /hoteles/:propertyId/identidad", () => {
     expect(stored).not.toContain("Torres");
   });
 
+  describe("plazo de retencion de la imagen (30 dias tras el check-out)", () => {
+    function seedStay(ctx: HotelesTestContext) {
+      ctx.hotelesRepo.seedReservation({
+        id: ctx.reservationId,
+        organizationId: ctx.organizationId,
+        propertyId: ctx.propertyId,
+        roomTypeId: randomUUID(),
+        guestId: ctx.guestId,
+        checkInDate: "2026-03-10",
+        checkOutDate: "2026-03-12",
+        status: "confirmada",
+        totalAmount: 0,
+        cancellationPenaltyAmount: null,
+        canceledAt: null,
+        createdAt: "2026-03-01T00:00:00Z",
+      });
+    }
+
+    it("por defecto: check-out + 30 dias; con retentionDays explicito (0) vence el dia del check-out", async () => {
+      const { ctx, app } = await setup();
+      seedStay(ctx);
+      const def = await app.request(`/hoteles/${ctx.propertyId}/identidad`, post(ctx.staff.frontdesk.token, captureBody(ctx)));
+      expect(def.status).toBe(201);
+      expect(((await def.json()) as { identidad: { retencionHasta: string } }).identidad.retencionHasta).toBe("2026-04-11");
+      const zero = await app.request(`/hoteles/${ctx.propertyId}/identidad`, post(ctx.staff.frontdesk.token, captureBody(ctx, { retentionDays: 0 })));
+      expect(zero.status).toBe(201);
+      expect(((await zero.json()) as { identidad: { retencionHasta: string } }).identidad.retencionHasta).toBe("2026-03-12");
+    });
+
+    it("sin reserva ligada: 30 dias desde la captura (hoy de negocio)", async () => {
+      const { ctx, app } = await setup();
+      const res = await app.request(`/hoteles/${ctx.propertyId}/identidad`, post(ctx.staff.frontdesk.token, captureBody(ctx, { reservationId: undefined })));
+      expect(res.status).toBe(201);
+      const hasta = ((await res.json()) as { identidad: { retencionHasta: string } }).identidad.retencionHasta;
+      const dias = (Date.parse(`${hasta}T00:00:00Z`) - Date.now()) / 86_400_000;
+      expect(dias).toBeGreaterThan(28.5);
+      expect(dias).toBeLessThan(31.5);
+    });
+
+    it("tope editable 0..365: 365 se acepta; 366 se rechaza con mensaje claro", async () => {
+      const { ctx, app } = await setup();
+      seedStay(ctx);
+      const ok = await app.request(`/hoteles/${ctx.propertyId}/identidad`, post(ctx.staff.frontdesk.token, captureBody(ctx, { retentionDays: 365 })));
+      expect(ok.status).toBe(201);
+      expect(((await ok.json()) as { identidad: { retencionHasta: string } }).identidad.retencionHasta).toBe("2027-03-12");
+      const bad = await app.request(`/hoteles/${ctx.propertyId}/identidad`, post(ctx.staff.frontdesk.token, captureBody(ctx, { retentionDays: 366 })));
+      expect(bad.status).toBe(400);
+      expect(((await bad.json()) as { message: string }).message).toMatch(/entre 0 y 365/);
+    });
+  });
+
   it("lista metadatos sin documento; filtra por huesped y estado", async () => {
     const { ctx, app } = await setup();
     await capture(app, ctx);
@@ -85,7 +136,8 @@ describe("POST/GET /hoteles/:propertyId/identidad", () => {
     ["nombre vacio", { fullName: "" }],
     ["nacionalidad no ISO3", { nationality: "Mexico" }],
     ["fecha imposible", { birthDate: "1990-02-31" }],
-    ["retencion fuera de rango", { retentionDays: 3 }],
+    ["retencion negativa", { retentionDays: -1 }],
+    ["retencion sobre el tope de 365", { retentionDays: 366 }],
     ["huesped no UUID", { guestId: "x" }],
   ])("validacion: %s -> 400", async (_n, patch) => {
     const { ctx, app } = await setup();
@@ -238,7 +290,7 @@ describe("registro migratorio", () => {
     const created = await app.request(`/hoteles/${ctx.propertyId}/registro-migratorio`, post(ctx.staff.frontdesk.token, { reservaId: ctx.reservationId, huespedId: ctx.guestId, identidadId: id }));
     expect(created.status).toBe(201);
     const reg = ((await created.json()) as { registro: { id: string; llegada: string; salida: string; nacionalidad: string; estado: string } }).registro;
-    expect(reg).toMatchObject({ llegada: "2026-03-10", salida: "2026-03-12", nacionalidad: "USA", estado: "pendiente" });
+    expect(reg).toMatchObject({ llegada: "2026-03-10", salida: "2026-03-12", nacionalidad: "USA", estado: "pendiente", retencionRegistroHasta: "2027-03-12" });
     expect((await app.request(`/hoteles/${ctx.propertyId}/registro-migratorio`, post(ctx.staff.frontdesk.token, { reservaId: ctx.reservationId, huespedId: ctx.guestId }))).status).toBe(409);
 
     const pend = await app.request(`/hoteles/${ctx.propertyId}/registro-migratorio?estado=pendiente`, authedJson(ctx.staff.reservations.token));

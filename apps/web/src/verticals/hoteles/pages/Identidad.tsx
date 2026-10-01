@@ -15,6 +15,9 @@ import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVa
 import {
   ADMIN_ROLES,
   DOCUMENT_TYPE_LABELS,
+  IMAGEN_RETENCION_DIAS_DEFECTO,
+  IMAGEN_RETENCION_DIAS_MAX,
+  IMAGEN_RETENCION_DIAS_MIN,
   MIGRATORIO_ESTADO_LABELS,
   PURGA_ESTADO_LABELS,
   REVEAL_ROLES,
@@ -24,6 +27,7 @@ import {
   fetchIdentidades,
   fetchMigratorios,
   fetchPurgas,
+  planRetencionImagen,
   reportMigratorio,
   requestPurga,
   revealIdentidad,
@@ -237,6 +241,7 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
   const [fullName, setFullName] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
   const [birthDate, setBirthDate] = useState("");
+  const [retentionDays, setRetentionDays] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -259,9 +264,15 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
   }, [apiBaseUrl, token, propertyId]);
 
   const guestReservations = useMemo(() => reservations.filter((r) => r.guestId === guestId), [reservations, guestId]);
+  const checkOutDate = guestReservations.find((r) => r.id === reservationId)?.checkOutDate ?? null;
+  const plan = planRetencionImagen(retentionDays, checkOutDate);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!plan.valido) {
+      setError(plan.mensaje);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -273,6 +284,7 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
         fullName,
         documentNumber,
         birthDate: birthDate || undefined,
+        retentionDays: retentionDays.trim() === "" ? undefined : Number(retentionDays),
       });
       toast.success("Identidad capturada y cifrada.");
       setFullName("");
@@ -338,8 +350,37 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
             <Label htmlFor="ident-nacimiento">Fecha de nacimiento</Label>
             <Input id="ident-nacimiento" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
           </div>
+          <div>
+            <Label htmlFor="ident-retencion">Días de conservación tras el check-out (opcional)</Label>
+            <Input
+              id="ident-retencion"
+              type="number"
+              inputMode="numeric"
+              min={IMAGEN_RETENCION_DIAS_MIN}
+              max={IMAGEN_RETENCION_DIAS_MAX}
+              step={1}
+              placeholder={String(IMAGEN_RETENCION_DIAS_DEFECTO)}
+              value={retentionDays}
+              onChange={(e) => setRetentionDays(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground" role="note" aria-label="Plazo de conservación y aviso de privacidad">
+            <p className="font-medium text-foreground" data-testid="plazo-retencion">
+              {plan.valido
+                ? plan.hasta
+                  ? `El documento cifrado se conservará ${plan.dias} día(s) después del check-out y se purgará después del ${plan.hasta}.`
+                  : `Sin reserva ligada: el documento cifrado se conservará ${plan.dias} día(s) contados desde hoy y se purgará después.`
+                : plan.mensaje}
+            </p>
+            <p className="mt-1">
+              El registro de huéspedes sin imagen (nacionalidad, fechas de llegada y salida) se conserva por separado, 365 días por defecto, y no se purga junto con el documento.
+            </p>
+            <p className="mt-1">
+              Antes de capturar, el huésped debe haber recibido el aviso de privacidad y su consentimiento debe quedar registrado. Esta pantalla aún no lo registra: el consentimiento formal está pendiente (H-02). Estos plazos son una decisión de producto, no una asesoría legal: confírmalos con tu abogado.
+            </p>
+          </div>
           <div className="flex items-end">
-            <Button type="submit" disabled={saving || !guestId}>
+            <Button type="submit" disabled={saving || !guestId || !plan.valido}>
               {saving ? "Cifrando…" : "Capturar identidad"}
             </Button>
           </div>
@@ -519,7 +560,7 @@ function MigratorioTab({ apiBaseUrl, token, propertyId }: TabProps) {
                 <p className="font-medium text-foreground">
                   {r.nacionalidad ?? "—"} · {r.llegada} → {r.salida}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Reserva {r.reservaId} · Huésped {r.huespedId}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Reserva {r.reservaId} · Huésped {r.huespedId}{r.retencionRegistroHasta ? ` · Registro conservado hasta ${r.retencionRegistroHasta}` : ""}</p>
               </div>
               <Badge variant={r.estado === "pendiente" ? "default" : "secondary"} className="self-start">
                 {MIGRATORIO_ESTADO_LABELS[r.estado]}
