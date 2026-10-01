@@ -210,3 +210,27 @@ describe("base sin migrar (migracion 020 pendiente)", () => {
     expect((await app.request(`${base()}/catalogo/sembrar`, req(ctx.staff.admin.token, "POST", {}))).status).toBe(503);
   });
 });
+
+describe("CFDI del periodo con su poliza", () => {
+  it("lista los CFDI del periodo: armable, con poliza, y el motivo cuando no se puede armar sola", async () => {
+    const app = buildApp(ctx.deps);
+    const listo = await sembrarCfdi();
+    const yaContabilizado = await sembrarCfdi({ fecha: "2026-07-11" });
+    const sinSentido = await sembrarCfdi({ fecha: "2026-07-12", direccion: "indeterminado" });
+    await sembrarCfdi({ fecha: "2026-08-01" }); // otro periodo
+    await app.request(`${base()}/polizas/desde-cfdi`, req(ctx.staff.contador.token, "POST", { invoiceId: yaContabilizado.id }));
+    const res = await app.request(`${base()}/cfdi?periodo=2026-07`, req(ctx.staff.auditor.token, "GET"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cfdi: { id: string; armable: boolean; motivo: string | null; poliza: { folio: number } | null }[]; truncado: boolean };
+    expect(body.truncado).toBe(false);
+    expect(body.cfdi).toHaveLength(3);
+    expect(body.cfdi.find((x) => x.id === listo.id)).toMatchObject({ armable: true, motivo: null, poliza: null });
+    expect(body.cfdi.find((x) => x.id === yaContabilizado.id)).toMatchObject({ armable: false, poliza: { folio: 1 } });
+    expect(body.cfdi.find((x) => x.id === sinSentido.id)?.motivo).toMatch(/emitido o recibido/);
+  });
+  it("periodo mal formado -> 400; sin token -> 401", async () => {
+    const app = buildApp(ctx.deps);
+    expect((await app.request(`${base()}/cfdi?periodo=julio`, req(ctx.staff.admin.token, "GET"))).status).toBe(400);
+    expect((await app.request(`${base()}/cfdi?periodo=2026-07`)).status).toBe(401);
+  });
+});

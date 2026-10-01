@@ -9,6 +9,7 @@
 //  POST /despachos/:propertyId/libro/polizas                       registra una póliza (cuadrada, en centavos)
 //  POST /despachos/:propertyId/libro/polizas/desde-cfdi            póliza de un CFDI persistido
 //  POST /despachos/:propertyId/libro/polizas/:polizaId/reversar    póliza de reversa
+//  GET  /despachos/:propertyId/libro/cfdi?periodo=YYYY-MM         CFDI del periodo con su poliza (o por que no se puede armar sola)
 //  GET  /despachos/:propertyId/libro/balanza?periodo=YYYY-MM       balanza derivada
 //  GET  /despachos/:propertyId/libro/contabilidad-electronica?periodo=YYYY-MM   catálogo + balanza XML con SHA-1
 //
@@ -37,6 +38,7 @@ import {
   construirPolizaDesdeCfdi,
   esFechaValida,
   generarPaqueteDesdeLibro,
+  leerFuenteOpcional,
   naturalezaPorDefecto,
   totalesBalanza,
   validarPolizaEntrada,
@@ -212,6 +214,42 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     } catch (err) {
       return traducirLibro(err);
     }
+  });
+
+  const MAX_CFDI_LISTADO = 500;
+
+  app.get("/despachos/:propertyId/libro/cfdi", async (c) => {
+    assertVerticalRole(c, VER_LIBRO_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const db = c.get("db");
+    const despachos = deps.despachosRepo(db);
+    const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(despachos, propertyId));
+    const { periodo } = periodoDe(c.req.query("periodo"), hoy.slice(0, 7));
+    // El filtro por periodo usa `invoice.fecha` (migracion 006): contra una base que no la tiene, 503 honesto (nunca un 500).
+    const facturas = await leerFuenteOpcional(despachos, () => despachos.listInvoices(propertyId, { periodo }));
+    if (facturas === null) throw Errors.serviceUnavailable("Los CFDI por periodo aún no están disponibles en esta base de datos: falta aplicar la migración 006.");
+    const visibles = facturas.slice(0, MAX_CFDI_LISTADO);
+    const polizas = await libroDe(db).polizasDeCfdi(propertyId, visibles.map((f) => f.id));
+    return c.json({
+      periodo,
+      truncado: facturas.length > MAX_CFDI_LISTADO,
+      cfdi: visibles.map((f) => {
+        const poliza = polizas.get(f.id) ?? null;
+        const armada = construirPolizaDesdeCfdi(f);
+        return {
+          id: f.id,
+          folioFiscal: f.folioFiscal,
+          tipo: f.tipo,
+          direccion: f.direccion ?? null,
+          fecha: f.fecha,
+          totalCentavos: f.totalCentavos ?? Math.round(f.total * 100),
+          estadoSat: f.estadoSat ?? "pendiente",
+          poliza: poliza ? { id: poliza.id, folio: poliza.folio, tipo: poliza.tipo } : null,
+          armable: poliza === null && armada.ok,
+          motivo: poliza === null && !armada.ok ? armada.motivo : null,
+        };
+      }),
+    });
   });
 
   app.get("/despachos/:propertyId/libro/balanza", async (c) => {
