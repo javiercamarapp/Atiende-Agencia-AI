@@ -190,6 +190,7 @@ export {
   getSalesTrendKpis,
   getChannelKpis,
   computeChannelKpis,
+  channelPeriodLabel,
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";

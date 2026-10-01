@@ -147,7 +147,7 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
               />
               <StatCard
                 icon={ClipboardList}
-                label="Número de órdenes"
+                label="Órdenes (sin canceladas)"
                 value={formatInt(data.sales.orders)}
                 nota={period === "historico" ? data.sales.periodLabel : `${formatSignedPct(data.sales.ordersChangePct)} ${data.sales.periodLabel}`}
               />
@@ -180,9 +180,10 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
 
           <section className="flex flex-col gap-3">
             <TituloSeccion>Impacto de tus agentes</TituloSeccion>
+            <p className="m-0 text-xs text-muted-foreground">Periodo: {data.channels.periodo.etiqueta}</p>
             <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-              <StatCard icon={Bot} label="Pedidos por agentes IA" value={formatPct(data.channels.aiAdoptionPct)} />
-              <StatCard icon={Sparkles} label="Ingresos por agentes IA" value={formatPct(data.channels.aiRevenuePct)} />
+              <StatCard icon={Bot} label="Pedidos por agentes IA" value={formatPct(data.channels.aiAdoptionPct)} nota="% de los pedidos del periodo (voz y WhatsApp)" />
+              <StatCard icon={Sparkles} label="Ventas por agentes IA" value={formatPct(data.channels.aiRevenuePct)} nota="% de las ventas netas, sin pedidos cancelados" />
               <StatCard
                 icon={Clock}
                 label="Horas de atención ahorradas"
@@ -191,7 +192,12 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
               />
               <StatCard icon={Mic} label="Pedidos por voz" value={formatInt(data.channels.voice.orders)} />
               <StatCard icon={MessageCircle} label="Pedidos por WhatsApp" value={formatInt(data.channels.whatsapp.orders)} />
-              <StatCard icon={DollarSign} label="Ingresos generados por IA" value={formatMoney(data.channels.voice.revenue + data.channels.whatsapp.revenue)} />
+              <StatCard
+                icon={DollarSign}
+                label="Ventas por voz y WhatsApp"
+                value={formatMoney(data.channels.voice.revenue + data.channels.whatsapp.revenue)}
+                nota="Sin pedidos cancelados"
+              />
             </div>
           </section>
 
