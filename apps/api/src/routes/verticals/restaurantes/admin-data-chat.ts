@@ -12,10 +12,11 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
 import { MANAGER_ROLES, buildRestaurantesDataChatCatalog } from "@atiende/domain-restaurantes";
-import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
-import { parseDataChatBody } from "../../../data-chat/body.ts";
+import { parseDataChatRequest } from "../../../data-chat/body.ts";
+import { buildDataChatEstado } from "../../../data-chat/estado.ts";
+import { respondDataChat } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 
 export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -26,17 +27,15 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
   }
 
   // La UI lo consulta para mostrar "Pronto" mientras no haya proveedor de IA configurado.
-  app.get(`${base}/estado`, (c) => {
+  app.get(`${base}/estado`, async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
-    return c.json({ available: Boolean(deps.dataChat?.completion) });
+    const available = Boolean(deps.dataChat?.completion);
+    return c.json(await buildDataChatEstado(deps, c.get("db"), { organizationId: c.get("organizationId"), userId: c.get("userId") }, available));
   });
 
   app.post(base, async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
-    const raw: unknown = await c.req.json().catch(() => {
-      throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
-    });
-    const { question, history, tool } = parseDataChatBody(raw);
+    const { question, history, tool } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -49,26 +48,31 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
     const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
 
-    const answer = await runDataChatTurn({
-      catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db)),
-      scope: {
-        organizationId,
-        userId: c.get("userId"),
-        vertical: "restaurantes",
-        verticalRole: c.get("verticalRole") ?? "",
-        allowedPropertyIds,
-        timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
-      },
-      question,
-      history,
-      ...(tool ? { directTool: tool } : {}),
-      complete: completion(organizationId),
-      completeRetry: completion(organizationId, `restaurantes:${DATA_CHAT_RETRY_SUFFIX}`),
-      rateLimiter: dataChat.rateLimiter,
-      audit: dataChat.audit(db),
-      onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-    });
-    return c.json(answer);
+    const userId = c.get("userId");
+    const verticalRole = c.get("verticalRole") ?? "";
+    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
+      runDataChatTurn({
+        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(turnDb)),
+        scope: {
+          organizationId,
+          userId,
+          vertical: "restaurantes",
+          verticalRole,
+          allowedPropertyIds,
+          timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
+        },
+        question,
+        history,
+        ...(tool ? { directTool: tool } : {}),
+        complete: completion(organizationId),
+        completeRetry: completion(organizationId, `restaurantes:${DATA_CHAT_RETRY_SUFFIX}`),
+        rateLimiter: dataChat.rateLimiter,
+        audit: dataChat.audit(turnDb),
+        onEvento,
+        signal,
+        onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+      }),
+    );
   });
 
   return app;

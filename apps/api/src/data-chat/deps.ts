@@ -30,6 +30,9 @@ export interface DataChatDeps {
   /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". `role` es el rol del gateway
    *  de la vertical (`<vertical>:data_chat`: apagable y con registro de uso aparte, ver platform-switches.ts); sin el
    *  cae al de restaurantes (el piloto). */
+  /** Uso de hoy del usuario frente al tope diario (0..100), para `/estado`. OPCIONAL: sin el, `/estado` responde
+   *  `usoHoyPct: null` ("sin medir"), nunca una cifra inventada. Corre en SAVEPOINT sobre la sesion RLS del request. */
+  readonly usageTodayPct?: (db: TenantDbSession, organizationId: string, userId: string) => Promise<number | null>;
   readonly completion: ((organizationId: string, role?: string) => DataChatCompletion) | undefined;
 }
 
