@@ -1,9 +1,8 @@
 import { useState, type ComponentType, type ReactNode } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { LogOut, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
-import { Button } from "./ui/button";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { ChevronDown, ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { ThemeSelector } from "./ThemeSelector";
-import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
+import { AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
@@ -18,13 +17,42 @@ export interface SidebarItem {
 
 export interface SidebarSection {
   title: string;
+  /**
+   * Seccion raiz: se pinta SIN titulo y a todo el ancho (como "Resumen" en
+   * Likida), nunca es una categoria del acordeon.
+   */
   siempreAbierto?: boolean;
   items: SidebarItem[];
 }
 
+/**
+ * Pildora compacta del pie ("Costos de IA ->", "Ver los otros paneles").
+ * Cada una necesita un destino REAL: `to` (ruta del SPA), `href` (enlace
+ * externo) u `onClick` (p. ej. abrir un dialogo). Sin ninguno de los tres no
+ * se pinta (no hay controles maqueta).
+ */
+export interface SidebarPiePildora {
+  label: string;
+  to?: string;
+  href?: string;
+  onClick?: () => void;
+  /** Con icono se pinta a la izquierda (sin flecha); sin icono el texto lleva la flecha "->". */
+  icon?: IconType;
+}
+
+export interface SidebarUser {
+  email: string;
+  /** Rol tal cual lo da la sesion; se usa si no hay `rolEtiqueta`. */
+  rol?: string;
+  /** Nombre completo; si falta se muestra el correo. */
+  nombre?: string;
+  /** Rol legible para mostrar (se pinta en mayusculas). */
+  rolEtiqueta?: string;
+}
+
 export interface SidebarProps {
   sections: SidebarSection[];
-  user: { email: string; rol?: string } | null;
+  user: SidebarUser | null;
   onLogout: () => void;
   /** Selector de hotel (multi-hotel), renderizado bajo el logo. */
   hotelSelector?: ReactNode;
@@ -35,6 +63,8 @@ export interface SidebarProps {
    * comportamiento de las verticales que aún no migran al shell único.
    */
   storageScope?: string;
+  /** Pildoras del pie, sobre el selector de tema. Sin ellas el pie solo lleva tema y usuario. */
+  pie?: SidebarPiePildora[];
 }
 
 const CLAVE_GRUPO_ABIERTO = "atiende-hoteles-sidebar-grupo-abierto";
@@ -62,153 +92,251 @@ function escribirAlmacen(clave: string, valor: string): void {
   }
 }
 
+/** Una ruta pertenece a un item si es igual o cuelga de el ("/x/a" no es hija de "/x/ab"). */
+function rutaEnItem(pathname: string, to: string): boolean {
+  const base = to.length > 1 && to.endsWith("/") ? to.slice(0, -1) : to;
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
 /**
- * Sidebar hotelero — misma anatomía visual que AdminSidebar de
- * atiende-restaurantes (docs/referencia/05-frontend-restaurantes.md §2.2):
- * acordeón por grupo (uno abierto a la vez, recordado en localStorage),
- * colapso de ancho, bloque de cuenta con ThemeSelector, chip de usuario.
- * Navegación real vía react-router `NavLink` (la fuente usaba un callback
- * de sección porque era un SPA de una sola ruta; aquí cada ítem es una
- * ruta real, lo que además hace cada pantalla capturable/enlazable).
+ * Categoria (seccion no raiz) de la ruta activa: la de la coincidencia de
+ * prefijo mas largo. Las secciones raiz ("Resumen") no cuentan, o toda ruta
+ * hija de la raiz abriria siempre la misma categoria.
  */
-export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope }: SidebarProps) {
+export function categoriaDeRuta(sections: readonly SidebarSection[], pathname: string): string | null {
+  let mejor: { titulo: string; largo: number } | null = null;
+  for (const s of sections) {
+    if (s.siempreAbierto) continue;
+    for (const it of s.items) {
+      if (rutaEnItem(pathname, it.to) && (!mejor || it.to.length > mejor.largo)) mejor = { titulo: s.title, largo: it.to.length };
+    }
+  }
+  return mejor?.titulo ?? null;
+}
+
+function idSeccion(titulo: string): string {
+  const slug = titulo
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `nav-seccion-${slug || "grupo"}`;
+}
+
+const CLASE_ITEM = "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-ui transition-colors";
+const CLASE_PILDORA =
+  "flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full border border-border bg-card text-pill font-medium text-foreground-2 transition-colors hover:bg-canvas";
+
+function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      title={item.label}
+      aria-label={item.label}
+      className={({ isActive }) =>
+        cn(
+          CLASE_ITEM,
+          colapsado && "justify-center",
+          isActive ? "bg-primary text-primary-foreground font-medium" : "text-foreground hover:bg-muted-foreground/10",
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <item.icon className={cn("size-4 shrink-0", !isActive && "text-muted-foreground")} strokeWidth={1.75} />
+          <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
+  const { label, to, href, onClick, icon: Icono } = pildora;
+  const contenido = (
+    <>
+      {Icono ? <Icono className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
+      <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
+      {Icono ? null : <span aria-hidden="true">→</span>}
+    </>
+  );
+  const comunes = {
+    title: label,
+    "aria-label": label,
+    className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
+  };
+  if (to) return <Link to={to} {...comunes}>{contenido}</Link>;
+  if (href) return <a href={href} {...comunes}>{contenido}</a>;
+  if (onClick) return <button type="button" onClick={onClick} {...comunes} className={cn(comunes.className, "w-full text-left")}>{contenido}</button>;
+  return null;
+}
+
+/**
+ * Sidebar de escritorio, identico al de Likida (admin/chrome.tsx +
+ * admin/sidebar-nav.tsx): 232 px expandido / 72 px colapsado (y por debajo de
+ * `lg`), acordeon EXCLUSIVO de categorias (abrir una cierra la otra), items
+ * finos de 31.5 px con la pildora activa en el azul de marca, y el pie con
+ * pildoras compactas, selector de tema de 24 px y tarjeta de usuario. La
+ * unica excepcion tipografica es el titulo de categoria (mono de Atiende).
+ *
+ * Navegacion real via react-router (`NavLink`): cada item es una ruta.
+ * Solo contiene controles con destino o accion real.
+ */
+export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope, pie }: SidebarProps) {
   const location = useLocation();
   const claves = clavesSidebar(storageScope);
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    return leerAlmacen(claves.colapsado) === "1";
-  });
+  const [collapsed, setCollapsed] = useState<boolean>(() => leerAlmacen(claves.colapsado) === "1");
 
-  const grupoDeRuta = (pathname: string) =>
-    sections.find((s) => s.items.some((it) => pathname.startsWith(it.to)))?.title ?? null;
+  const categorias = sections.filter((s) => !s.siempreAbierto && s.items.length > 0);
+  const activa = categoriaDeRuta(sections, location.pathname);
 
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
+    if (activa) return activa;
+    // Las claves de localStorage pueden venir de otra vertical (p. ej. "Operación"
+    // de hoteles dentro de citas): solo se respeta si existe en ESTAS categorias.
+    // Cadena vacia = el usuario cerro la categoria abierta a proposito.
     const guardado = leerAlmacen(claves.grupo);
-    // La clave de localStorage la comparten todas las verticales: un grupo
-    // guardado que no existe en ESTA vertical (p. ej. "Operación" de hoteles
-    // dentro de citas) dejaba todos los acordeones cerrados. Solo se respeta si
-    // existe en las secciones actuales.
-    if (guardado && sections.some((s) => s.title === guardado)) return guardado;
-    const activo = grupoDeRuta(location.pathname);
-    return activo && !sections.find((s) => s.title === activo)?.siempreAbierto ? activo : sections[1]?.title ?? null;
+    if (guardado === "") return null;
+    if (guardado && categorias.some((s) => s.title === guardado)) return guardado;
+    return categorias[0]?.title ?? null;
   });
 
+  // Al navegar se abre la categoria de la nueva ruta (patron "derivar estado de
+  // props durante el render"; evita un efecto con el arreglo de secciones, que
+  // los shells recrean en cada render, como dependencia).
+  const [rutaPrevia, setRutaPrevia] = useState(location.pathname);
+  if (rutaPrevia !== location.pathname) {
+    setRutaPrevia(location.pathname);
+    if (activa && activa !== grupoAbierto) setGrupoAbierto(activa);
+  }
+
   const alternarGrupo = (titulo: string) => {
-    setGrupoAbierto((actual) => {
-      const nuevo = actual === titulo ? null : titulo;
-      escribirAlmacen(claves.grupo, nuevo ?? "");
-      return nuevo;
-    });
+    const nuevo = grupoAbierto === titulo ? null : titulo;
+    setGrupoAbierto(nuevo);
+    escribirAlmacen(claves.grupo, nuevo ?? "");
   };
 
   const alternarColapso = () => {
-    setCollapsed((v) => {
-      escribirAlmacen(claves.colapsado, !v ? "1" : "0");
-      return !v;
-    });
+    const nuevo = !collapsed;
+    setCollapsed(nuevo);
+    escribirAlmacen(claves.colapsado, nuevo ? "1" : "0");
   };
+
+  const pildoras = (pie ?? []).filter((p) => p.to || p.href || p.onClick);
+  const nombre = user?.nombre?.trim() || user?.email || "";
+  const rolEtiqueta = user?.rolEtiqueta ?? user?.rol;
+  const visibles = sections.filter((s) => s.items.length > 0);
 
   return (
     <aside
       aria-label="Navegación principal"
       className={cn(
-        "hidden md:flex flex-col bg-card border border-border rounded-2xl sticky top-3 h-[calc(100vh-1.5rem)] overflow-hidden transition-all duration-300",
-        collapsed ? "w-16" : "w-64",
+        "hidden md:flex flex-col rounded-lg border border-border bg-card shadow-card sticky top-4 h-[calc(100dvh-2rem)] overflow-hidden transition-[width] duration-base ease-brand",
+        collapsed ? "w-[72px]" : "w-[72px] lg:w-[232px]",
       )}
     >
-      <div className="px-3 py-3 flex items-center justify-between shrink-0">
-        {!collapsed ? <AtiendeWordmark className="h-[18px] w-auto origin-left" /> : <AtiendeMark className="h-[18px] w-auto" />}
+      <div className={cn("shrink-0 px-3 py-3 flex items-center gap-1.5", collapsed ? "justify-center" : "justify-center lg:justify-start")}>
+        {!collapsed && (
+          <span className="hidden lg:block min-w-0">
+            <AtiendeWordmark tamano="sidebar" />
+          </span>
+        )}
         <button
+          type="button"
           onClick={alternarColapso}
           aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
-          className="w-7 h-7 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+          title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+          className={cn(
+            "size-7 rounded-lg flex items-center justify-center shrink-0 text-muted-foreground transition-colors hover:bg-canvas",
+            !collapsed && "lg:ml-auto",
+          )}
         >
-          {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" strokeWidth={1.75} /> : <PanelLeftClose className="w-3.5 h-3.5" strokeWidth={1.75} />}
+          {collapsed ? <PanelLeftOpen className="size-[15px]" strokeWidth={1.75} /> : <PanelLeftClose className="size-[15px]" strokeWidth={1.75} />}
         </button>
       </div>
 
-      {!collapsed && hotelSelector && <div className="px-2 pb-2">{hotelSelector}</div>}
+      {!collapsed && hotelSelector && <div className="hidden lg:block px-2 pb-2">{hotelSelector}</div>}
 
-      <nav className="flex-1 px-2 space-y-2 overflow-y-auto pb-3">
-        {sections.map((section) => {
-          const abierta = section.siempreAbierto || grupoAbierto === section.title;
-          return (
-            <div key={section.title}>
-              {!collapsed &&
-                (section.siempreAbierto ? (
-                  <p className="px-2.5 mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{section.title}</p>
-                ) : (
-                  <button
-                    onClick={() => alternarGrupo(section.title)}
-                    aria-expanded={abierta}
-                    className="w-full flex items-center justify-between px-2.5 mb-1.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {section.title}
-                    <ChevronDown className={cn("w-3 h-3 transition-transform", abierta && "rotate-180")} />
-                  </button>
+      <nav className="flex-1 overflow-y-auto px-2 space-y-2 pb-3">
+        {visibles.map((section, indice) => {
+          // Raiz ("Resumen"): items a todo el ancho, sin cabecera ni acordeon.
+          if (section.siempreAbierto) {
+            return (
+              <div key={section.title} className="space-y-0.5">
+                {section.items.map((item) => (
+                  <FilaItem key={item.to} item={item} colapsado={collapsed} />
                 ))}
-              {(abierta || collapsed) && (
-                <div className="space-y-0.5">
-                  {section.items.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        cn(
-                          "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",
-                          isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted",
-                        )
-                      }
-                    >
-                      <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                      {!collapsed && (
-                        <span className="flex-1 min-w-0 truncate">{item.label}</span>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
+              </div>
+            );
+          }
+          const abierta = grupoAbierto === section.title;
+          const id = idSeccion(section.title);
+          return (
+            <div key={section.title} id={id}>
+              {collapsed && indice > 0 && <div role="separator" className="mx-2 mb-2 border-t border-border" />}
+              {!collapsed && (
+                <button
+                  type="button"
+                  onClick={() => alternarGrupo(section.title)}
+                  aria-expanded={abierta}
+                  aria-controls={`${id}-items`}
+                  className="hidden lg:flex w-full items-center justify-between px-2.5 mb-1.5 py-1 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {section.title}
+                  {abierta ? <ChevronDown className="size-[13px]" strokeWidth={2} aria-hidden="true" /> : <ChevronRight className="size-[13px]" strokeWidth={2} aria-hidden="true" />}
+                </button>
               )}
+              <div id={`${id}-items`} className="space-y-0.5">
+                {(abierta || collapsed) && section.items.map((item) => <FilaItem key={item.to} item={item} colapsado={collapsed} />)}
+              </div>
             </div>
           );
         })}
       </nav>
 
-      {/* Bloque de cuenta — mismo patrón EXACTO (medidas incluidas) que
-          admin/chrome.tsx de Likida: zona plana con fondo propio + separador
-          de 1px, tarjeta de usuario simple abajo (sin el hack de superponer
-          con margen negativo que tenía la versión anterior). Solo contiene
-          controles con destino real: ya no hay "Centro de ayuda", "Notificaciones",
-          "Mi perfil" ni "Plan y facturación" (eran maquetas sin acción; la campana
-          vive en el header) ni el enlace fijo a /configuracion (ruta inexistente:
-          cada vertical con pantalla de configuración ya la trae en sus secciones). */}
-      <div className="shrink-0 border-t border-border">
-        {!collapsed && (
-          <div className="bg-muted px-2 pt-2 pb-1.5 space-y-0.5">
-            <div className="pt-1.5 pb-0.5 flex justify-center">
-              <ThemeSelector />
+      {/* Pie — mismas medidas que admin/chrome.tsx de Likida: zona A (gris
+          sumido, pildoras + tema) y zona B (tarjeta de usuario), cada una con
+          su separador de 1px. Solo controles con destino o accion real. */}
+      {(pildoras.length > 0 || !collapsed) && (
+        <div className="shrink-0 border-t border-border bg-canvas px-2 pt-2 pb-1.5 space-y-0.5">
+          {pildoras.map((p) => (
+            <PildoraPie key={p.label} pildora={p} colapsado={collapsed} />
+          ))}
+          {!collapsed && (
+            <div className="hidden lg:flex px-2.5 pt-1.5 justify-center">
+              <ThemeSelector tamano="compacto" />
             </div>
-          </div>
-        )}
-
-        <div className="px-2 pt-2 pb-2">
-          {!collapsed ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2">
-              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[11px] font-semibold shrink-0">
-                {user?.email?.charAt(0).toUpperCase() || "A"}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-foreground truncate leading-tight">{user?.email ?? "Sin sesión"}</p>
-                <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">{user?.rol ?? "—"}</p>
-              </div>
-              <button onClick={onLogout} aria-label="Cerrar sesión" className="text-destructive hover:opacity-70 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors">
-                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />
-              </button>
-            </div>
-          ) : (
-            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full rounded-xl border border-border bg-card" aria-label="Cerrar sesión">
-              <LogOut className="w-4 h-4" strokeWidth={1.75} />
-            </Button>
           )}
+        </div>
+      )}
+
+      <div className="shrink-0 border-t border-border px-2 pt-2 pb-2">
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-2 rounded-xl border border-border bg-card p-2",
+            collapsed ? "flex-col justify-center" : "flex-col justify-center lg:flex-row lg:justify-start",
+          )}
+        >
+          <div className="size-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-eyebrow font-semibold" aria-hidden="true">
+            {(nombre.charAt(0) || "A").toUpperCase()}
+          </div>
+          <div className={cn("min-w-0 flex-1", collapsed ? "hidden" : "hidden lg:block")}>
+            <p className="text-ui font-medium leading-tight truncate" title={user?.email}>
+              {nombre || "Sin sesión"}
+            </p>
+            <p className="text-2xs uppercase text-faint truncate">{rolEtiqueta ?? "—"}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="size-7 rounded-lg flex items-center justify-center shrink-0 text-destructive transition-colors hover:bg-destructive-tint"
+          >
+            <LogOut className="size-3.5" strokeWidth={1.75} />
+          </button>
         </div>
       </div>
     </aside>
