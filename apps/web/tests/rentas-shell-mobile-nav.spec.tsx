@@ -95,8 +95,8 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
       "/rentas/demo",
       "/rentas/demo/calendario",
-      "/rentas/demo/aprobaciones",
       "/rentas/demo/mis-tareas",
+      "/rentas/demo/finanzas",
     ]);
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });

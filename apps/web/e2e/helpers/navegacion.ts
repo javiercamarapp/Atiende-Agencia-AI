@@ -95,7 +95,8 @@ export async function seccionesDelPanel(page: Page): Promise<EnlaceNav[]> {
 export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
   if (esMovil(page)) {
     const hoja = await abrirMasMovil(page);
-    await hoja.locator(`a[href="${enlace.href}"]`).click();
+    // `.first()`: el pie de superadmin ("Costos de IA") repite el destino de "Costos y margen" en la seccion "Cuenta".
+    await hoja.locator(`a[href="${enlace.href}"]`).first().click();
     await expect(hoja).toBeHidden();
   } else {
     await (await abrirGrupoDe(page, enlace.href)).click();

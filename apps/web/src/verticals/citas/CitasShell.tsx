@@ -136,14 +136,14 @@ function buildSections(orgSlug: string): SidebarSection[] {
   ];
 }
 
-/** Barra inferior móvil: Resumen y los 3 destinos operativos más usados; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y
- * lista TODAS las secciones, así Servicios, Disponibilidad, Configuración, Staff, Auditoría y Privacidad también se alcanzan en móvil. */
+/** Barra inferior móvil: Resumen y los 3 destinos operativos más usados (etiquetas que caben en 1/5 de 375 px sin recortarse); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y
+ * lista TODAS las secciones, así Proveedores, Disponibilidad, Configuración, Staff, Auditoría y Privacidad también se alcanzan en móvil. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/citas/${orgSlug}`;
   return [
     { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
     { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
-    { to: `${base}/proveedores`, label: "Proveedores", icon: UserRound },
+    { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
     { to: `${base}/clientes`, label: "Clientes", icon: Users },
   ];
 }

@@ -91,7 +91,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect([...bottomNav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
       "/licitaciones/demo/panel",
       "/licitaciones/demo/convocatorias",
-      "/licitaciones/demo/seguimiento",
+      "/licitaciones/demo/radar-renovaciones",
       "/licitaciones/demo/datos-empresa",
     ]);
   });

@@ -120,8 +120,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
-    { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
-    { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
+    { to: `${base}/convocatorias`, label: "Licitaciones", icon: Gavel },
+    { to: `${base}/radar-renovaciones`, label: "Radar", icon: Radar },
     { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
   ];
 }

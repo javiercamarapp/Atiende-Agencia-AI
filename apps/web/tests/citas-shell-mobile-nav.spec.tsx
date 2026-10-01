@@ -5,7 +5,7 @@
 // el <Sidebar> compartido de @atiende/ui es `hidden md:flex`, y en viewport
 // móvil el usuario depende de <MobileHeader> + <BottomNav> (4 destinos
 // curados + "Más", ver buildMobileItems en CitasShell.tsx). Protege que el fix se
-// mantenga y que la curación siga siendo Resumen/Agenda/Proveedores/Clientes.
+// mantenga y que la curación siga siendo Resumen/Agenda/Servicios/Clientes.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -88,7 +88,7 @@ describe("CitasShell — nav móvil", () => {
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Resumen", "Agenda", "Proveedores", "Clientes"]);
+    expect(labels).toEqual(["Resumen", "Agenda", "Servicios", "Clientes"]);
     const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
     expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
     click(mas);

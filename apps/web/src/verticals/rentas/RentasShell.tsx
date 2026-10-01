@@ -130,8 +130,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
   return [
     { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
     { to: `${base}/calendario`, label: "Calendario", icon: CalendarDays },
-    { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: Inbox },
     { to: `${base}/mis-tareas`, label: "Mis tareas", icon: ClipboardList },
+    { to: `${base}/finanzas`, label: "Finanzas", icon: Wallet },
   ];
 }
 
