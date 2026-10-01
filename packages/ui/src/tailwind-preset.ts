@@ -102,6 +102,11 @@ const preset: Omit<Config, "content"> = {
         canvas: "hsl(var(--canvas))",
         line2: "hsl(var(--line2))",
         faint: "hsl(var(--faint))",
+        // Acento del Copiloto (alcance .copiloto de index.css, D0 de la spec de chat).
+        copiloto: {
+          DEFAULT: "hsl(var(--copiloto-acento))",
+          foreground: "hsl(var(--copiloto-acento-fg))",
+        },
         "foreground-2": "hsl(var(--foreground-2))",
         // Rampa neutra de gráficas (--g1..--g5 de Likida).
         chart: {

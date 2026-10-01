@@ -452,6 +452,43 @@
   .atiende-glifo-animado .atiende-linea { animation: none; }
 }
 
+/* copiloto */
+/* Copiloto "Chatea con tus datos" (components/copiloto/*). El acento azul de
+   atiende-restaurantes (D0 de la spec) vive SOLO dentro de .copiloto: si se decide
+   pasarlo a tinta, basta cambiar estas dos lineas, sin tocar componentes. */
+.copiloto {
+  --copiloto-acento: 224 76% 48%;
+  --copiloto-acento-fg: 0 0% 100%;
+}
+.dark .copiloto {
+  --copiloto-acento: 213 82% 62%;
+  --copiloto-acento-fg: 222 47% 11%;
+}
+/* Panel de historial: entra con translateX(16px)->0 y opacidad en 480 ms con la
+   curva de Likida; sale en sentido inverso. */
+@keyframes copiloto-panel-entra {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes copiloto-panel-sale {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(16px); }
+}
+.copiloto-panel-entra { animation: copiloto-panel-entra 480ms var(--ease-out) both; }
+.copiloto-panel-sale { animation: copiloto-panel-sale 480ms var(--ease-out) both; }
+/* Categorias y mensajes nuevos: opacidad 0->1 y translateY(10px)->0 en 250 ms (el
+   framer-motion de atiende-restaurantes, sin dependencia). */
+@keyframes copiloto-categorias-entra {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.copiloto-categorias-entra { animation: copiloto-categorias-entra 250ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .copiloto-panel-entra,
+  .copiloto-panel-sale,
+  .copiloto-categorias-entra { animation: none; }
+}
+
 /* ---------------------------------------------------------------------------
    Experiencia de voz (components/voz/*). Reemplaza las 3 animaciones que el
    panel original hacía con framer-motion (fade de pantalla, burbuja que sube,

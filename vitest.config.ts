@@ -22,6 +22,7 @@ export default defineConfig({
     setupFiles: ["./test-setup/reset-rate-limiter.ts"],
     include: [
       "packages/*/tests/**/*.spec.ts",
+      "packages/*/tests/**/*.spec.tsx",
       "packages/mcp-servers/*/tests/**/*.spec.ts",
       "apps/*/tests/**/*.spec.ts",
       "apps/*/tests/**/*.spec.tsx",
