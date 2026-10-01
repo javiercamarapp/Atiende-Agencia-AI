@@ -31,7 +31,7 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
       const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
       if (!Array.isArray(messages)) continue;
       for (const candidate of messages) {
-        const message = candidate as Partial<MetaTextMessage>;
+        const message = (candidate ?? {}) as Partial<MetaTextMessage>;
         if (
           message.type === "text" &&
           typeof message.id === "string" &&
@@ -85,6 +85,8 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
       const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
       if (!Array.isArray(messages)) continue;
       for (const candidate of messages) {
+        // Un elemento null o primitivo en `messages` no debe lanzar (500 y reintento infinito de Meta).
+        if (candidate === null || typeof candidate !== "object") continue;
         const text = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
         if (text[0]) {
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });

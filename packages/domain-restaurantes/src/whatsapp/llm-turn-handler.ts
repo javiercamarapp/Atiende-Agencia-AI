@@ -25,6 +25,7 @@
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
+import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
@@ -93,26 +94,26 @@ function customerContextBlock(customer: CustomerLookupResult): string {
     return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra.";
   }
   const lines: string[] = [];
-  lines.push(`Cliente conocido${customer.name ? `: ${customer.name}` : " (sin nombre guardado todavía — pídeselo)"}.`);
+  lines.push(`Cliente conocido${customer.name ? `: ${sanitizeInlineText(customer.name, 80)}` : " (sin nombre guardado todavía — pídeselo)"}.`);
   lines.push(`Ha pedido ${customer.orderCount} ${customer.orderCount === 1 ? "vez" : "veces"} antes.`);
   const nota = vipNote(customer.tier);
   if (nota) lines.push(nota);
   if (customer.addresses.length > 0) {
     const def = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0]!;
-    lines.push(`Dirección guardada por defecto: "${def.address}".`);
+    lines.push(`Dirección guardada por defecto (solo referencia parcial, NUNCA la uses como customer_address): "${maskAddressForPrompt(def.address)}". Pregunta si el pedido es para esa zona o para otro lugar. Para crear_pedido necesitas la dirección completa: si el cliente confirma que es la misma, llama buscar_cliente y usa la dirección guardada completa que devuelve; si es otro lugar, pídesela completa.`);
     const others = customer.addresses.filter((a) => a !== def);
     if (others.length > 0) {
-      lines.push(`También tiene otras direcciones guardadas: ${others.map((a) => `"${a.address}"`).join(", ")}.`);
+      lines.push(`También tiene otras direcciones guardadas: ${others.map((a) => `"${maskAddressForPrompt(a.address)}"`).join(", ")}.`);
     }
   } else {
     lines.push("No tiene dirección guardada todavía — pídesela.");
   }
   if (customer.lastOrderItems && customer.lastOrderItems.length > 0) {
-    const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${i.name}`).join(", ");
+    const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${sanitizeInlineText(i.name, 80)}`).join(", ");
     lines.push(`Su último pedido fue: ${items}.`);
   }
   if (customer.frequentItems.length > 0) {
-    const items = customer.frequentItems.map((i) => i.name).join(", ");
+    const items = customer.frequentItems.map((i) => sanitizeInlineText(i.name, 80)).join(", ");
     lines.push(
       `Lo que más pide (across todo su historial real, no solo el último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
     );

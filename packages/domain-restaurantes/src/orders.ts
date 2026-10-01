@@ -8,6 +8,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
+import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
@@ -131,8 +132,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
   }
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
-  // Para recoger no hay direccion de entrega que exigir.
-  if (agentOrder && canal === "domicilio" && (typeof raw.customerAddress !== "string" || !raw.customerAddress.trim())) {
+  // Para recoger no hay direccion de entrega que exigir (la validacion de vacio va tras sanear, abajo).
+  if (agentOrder && canal === "domicilio" && typeof raw.customerAddress !== "string") {
     throw new OrderValidationError("La dirección completa de entrega es requerida");
   }
   if (
@@ -168,14 +169,25 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     }
   }
 
+  // Saneo (defensa en profundidad): el nombre es una sola linea limpia; si queda vacio tras sanear, se rechaza.
+  const cleanName = sanitizeInlineText(raw.customerName, 160);
+  if (!cleanName) throw new OrderValidationError("branchSlug (o branchName), customerName y customerPhone son requeridos");
+  const cleanAddress = raw.customerAddress === undefined ? undefined : sanitizeInlineText(raw.customerAddress);
+  if (agentOrder && canal === "domicilio" && !cleanAddress) throw new OrderValidationError("La dirección completa de entrega es requerida");
+  // La referencia parcial del prompt no es una direccion de entrega: si el modelo la copia tal cual, se rechaza.
+  if (cleanAddress && (cleanAddress.includes(ADDRESS_MASK_MARKER) || cleanAddress.includes(ADDRESS_OMITTED_MARKER))) {
+    throw new OrderValidationError("La dirección guardada solo es una referencia parcial: pide al cliente la dirección completa (o consúltala con buscar_cliente) y vuelve a intentar.");
+  }
+
   return {
     ...raw,
     branchSlug: raw.branchSlug?.trim() || undefined,
     branchName: raw.branchName?.trim() || undefined,
-    customerName: raw.customerName.trim(),
+    customerName: cleanName,
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
-    customerAddress: raw.customerAddress?.trim(),
-    colonia: raw.colonia?.trim() || undefined,
+    customerAddress: cleanAddress,
+    notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
+    colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
   };

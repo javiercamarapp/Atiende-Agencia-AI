@@ -109,9 +109,14 @@ export async function readTextCapped(req: Request, maxBytes: number): Promise<st
 /** Lee y parsea JSON con un límite explícito de bytes — port literal de readJson. */
 export async function readJsonCapped<T = unknown>(req: Request, maxBytes = 64 * 1024): Promise<T> {
   const raw = await readTextCapped(req, maxBytes);
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as T;
+    parsed = JSON.parse(raw);
   } catch {
     throw Errors.validation("JSON inválido");
   }
+  // `null` es JSON valido pero cualquier handler que lea una propiedad del cuerpo lanzaria TypeError
+  // (500, y el proveedor reintenta). Un cuerpo `null` nunca es una entrada valida de ninguna ruta.
+  if (parsed === null) throw Errors.validation("El cuerpo JSON no puede ser null");
+  return parsed as T;
 }
