@@ -2,7 +2,7 @@
 // responder), devolucion al agente, notas internas, cobertura de turno (quien esta de guardia) y registro de
 // callbacks. Contrato: lib/conversaciones-client.ts. Tres estados honestos: cargando, `disponible: false` (la
 // migracion 027 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import {
@@ -53,9 +53,17 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
 
   const recargar = useCallback(() => setReintento((n) => n + 1), []);
 
+  // Al cambiar un filtro se muestra el esqueleto; al RECARGAR tras una accion (tomar/devolver...) se conserva la lista
+  // para no desmontar el detalle abierto (perderia su aviso y el texto en curso).
+  const filtroActual = `${estado}|${canal}`;
+  const ultimoFiltro = useRef(filtroActual);
+
   useEffect(() => {
     let cancelado = false;
-    setData(null);
+    if (ultimoFiltro.current !== filtroActual) {
+      ultimoFiltro.current = filtroActual;
+      setData(null);
+    }
     setError(null);
     (async () => {
       try {
@@ -68,7 +76,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, estado, canal, reintento]);
+  }, [apiBaseUrl, token, propertyId, estado, canal, reintento, filtroActual]);
 
   return (
     <div className="flex flex-col gap-5 max-w-[1100px]">
