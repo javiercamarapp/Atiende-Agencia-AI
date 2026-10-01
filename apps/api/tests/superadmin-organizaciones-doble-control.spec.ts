@@ -247,7 +247,7 @@ describe("step-up y base sin migrar", () => {
     const sin = await accion(s, a.id, "aprobar", bearer(beto.token));
     expect(sin.status).toBe(403);
     expect(await sin.json()).toMatchObject({ code: "stepup_required" });
-    const lista = () => s.app.request("/superadmin/organizaciones/acciones", { headers: bearer(ana.token) }).then((r) => r.json() as Promise<{ acciones: Accion[] }>);
+    const lista = async () => (await (await s.app.request("/superadmin/organizaciones/acciones", { headers: bearer(ana.token) })).json()) as { acciones: Accion[] };
     expect((await lista()).acciones[0]).toMatchObject({ aprobadoPor: null });
 
     const con = await accion(s, a.id, "aprobar", bearer(beto.token, { "x-stepup-token": ver.stepUpToken }));
