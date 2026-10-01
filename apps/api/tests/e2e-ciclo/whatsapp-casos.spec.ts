@@ -8,7 +8,6 @@ import { authedJson } from "../restaurantes-admin-kpis-fixtures.ts";
 import { MARTES_CERRADO, call, callObserving, say, sayObserving, startCicloStack } from "../support/e2e-ciclo-restaurantes.ts";
 import type { CicloStack } from "../support/e2e-ciclo-restaurantes.ts";
 
-type Json = Record<string, unknown>;
 const bistec = (s: CicloStack, qty = 3) => ({ product_id: s.products.bistec3, product_name: "Tacos de Bistec de Res (orden de 3)", requested_quantity: qty, tortilla: "maiz" });
 const pastor = (s: CicloStack, qty = 3) => ({ product_id: s.products.pastor, product_name: "Tacos al Pastor (orden de 3)", requested_quantity: qty, tortilla: "maiz" });
 const coca = (s: CicloStack, qty = 1) => ({ product_id: s.products.coca, product_name: "Coca-Cola", requested_quantity: qty });

@@ -68,13 +68,11 @@ describe("e2e programado + POS", () => {
   it("POS caido: el pedido existe, la comanda queda fallida y el gerente la captura a mano; al volver el POS el dispatcher no duplica", async () => {
     stack = await startCicloStack();
     stack.pos.inyectarFalla("crearComanda", { tipo: "timeout" });
-    const raw = JSON.stringify({ session_id: "sesion-e2e-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger", customer_name: "Pos Caido", customer_phone: "9991230061", payment_method: "efectivo" });
     // storefront: cotizar -> confirmar -> crear
     const post = (p: string, body: unknown) => {
       const r = JSON.stringify(body);
       return fetch(stack.url(`/v1/restaurantes/${ORG_SLUG}/storefront${p}`), { method: "POST", headers: { "content-type": "application/json", "content-length": String(new TextEncoder().encode(r).byteLength), origin: "http://localhost:5173" }, body: r });
     };
-    void raw;
     const base = { session_id: "sesion-e2e-0123456789abcdef", items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
     const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
     await post("/fco-montejo/confirm", { session_id: base.session_id, quote_hash: q.quote_hash });
