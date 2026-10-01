@@ -28,6 +28,7 @@ const MENSAJES_GOOGLE_ERROR: Record<string, string> = {
   state_expirado: "Tu sesión de Google venció antes de completarse. Vuelve a intentarlo.",
   nonce_invalido: "No pudimos confirmar tu identidad de Google de forma segura. Vuelve a intentarlo.",
   correo_no_verificado: "Tu cuenta de Google no tiene el correo verificado. Verifícalo en Google e inténtalo de nuevo.",
+  google_ya_vinculada: "Esa cuenta de Google ya está vinculada a otra cuenta de Atiende.",
   cuenta_no_invitada: "No existe ninguna cuenta de staff con ese correo de Google. Pide que te inviten primero.",
   codigo_invalido: "Google rechazó el intento de inicio de sesión. Vuelve a intentarlo.",
   id_token_invalido: "No se pudo verificar tu identidad de Google. Vuelve a intentarlo.",
