@@ -174,6 +174,8 @@ export * from "./voz/index.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,
+  MOTIVOS_ESCALACION,
+  normalizarMotivoEscalacion,
   VOICE_TOOL_HTTP_PATHS,
   exportVoiceToolManifest,
   executeAgentToolSafely,
@@ -181,6 +183,7 @@ export {
   mapCreateOrderToolInput,
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
+export type { MotivoEscalacion } from "./agent-tools/registry.ts";
 export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
 export {
   CLAIM_STALE_MS,

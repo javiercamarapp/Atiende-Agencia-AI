@@ -97,6 +97,35 @@ export interface AgentToolOutcome {
 // Definiciones (una sola fuente)
 // ─────────────────────────────────────────────────────────────────────────
 
+/** Motivos con los que el agente pasa una conversacion a una persona. Los cinco primeros son los
+ * historicos (genericos); el resto son los de la matriz de escalacion de Los Taquitos de PM (quejas,
+ * modificacion de platillos, pago por transferencia, tiempos de entrega, etc.). Un valor fuera de la
+ * lista se guarda como `otro`: el motivo viaja a la bandeja del gerente y no puede ser texto libre. */
+export const MOTIVOS_ESCALACION = [
+  "cliente_lo_pide",
+  "queja",
+  "no_puedo_resolver",
+  "pedido_especial",
+  "otro",
+  "modificacion_platillo",
+  "transferencia",
+  "tiempos_entrega",
+  "pedido_grande",
+  "cancelacion_modificacion",
+  "reposicion_descuento",
+  "alergia_salud",
+  "zona_no_reconocida",
+  "zona_ambigua",
+  "producto_agotado",
+  "no_entiende",
+  "falla_sistema",
+] as const;
+export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
+
+export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
+  return typeof raw === "string" && (MOTIVOS_ESCALACION as readonly string[]).includes(raw) ? (raw as MotivoEscalacion) : "otro";
+}
+
 const ITEM_SCHEMA = {
   type: "object",
   properties: {
@@ -219,7 +248,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       type: "object",
       properties: {
         customer_name: { type: "string" },
-        motivo: { type: "string", enum: ["cliente_lo_pide", "queja", "no_puedo_resolver", "pedido_especial", "otro"] },
+        motivo: { type: "string", enum: [...MOTIVOS_ESCALACION], description: "Por que se escala. Llamala UNA sola vez por conversacion y motivo." },
         resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente." },
       },
       required: ["motivo"],
@@ -605,7 +634,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
         propertyId: ctx.lockedPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
-        reason: esEscalada ? `escalada:${typeof input.motivo === "string" ? input.motivo : "otro"}` : typeof input.reason === "string" ? input.reason : undefined,
+        reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
         message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });
