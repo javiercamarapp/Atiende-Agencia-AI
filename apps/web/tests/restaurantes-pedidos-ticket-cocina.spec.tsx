@@ -75,8 +75,12 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: string) => {
       if (url.includes("/admin/staff/repartidores")) return { ok: true, status: 200, json: async () => ({ repartidores: [] }) } as unknown as Response;
-      const status = new URL(url).searchParams.get("status");
-      return { ok: true, status: 200, json: async () => ({ orders: status === "pending" ? pendientes : [], nextCursor: null }) } as unknown as Response;
+      const params = new URL(url).searchParams;
+      const status = params.get("status");
+      // Como el API real: sin branchId devuelve todo el alcance de la membresia (owner/admin).
+      const branchId = params.get("branchId");
+      const visibles = pendientes.filter((o) => !branchId || o.propertyId === branchId);
+      return { ok: true, status: 200, json: async () => ({ orders: status === "pending" ? visibles : [], nextCursor: null }) } as unknown as Response;
     }),
   );
 });
@@ -162,5 +166,35 @@ describe("PedidosPage -- ticket de cocina", () => {
     });
     await flush();
     expect(imprimir).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-impresion solo de esta sucursal: pedidos de otra sucursal no se imprimen ni al activar ni en el ciclo", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    pendientes = [pedido("ord-aaaaaa1"), pedido("ord-otra001", { propertyId: "prop-2", branch: "Norte" })];
+    rendered = renderComponent(<PedidosPage {...CTX} />);
+    await flush();
+    await act(async () => {
+      (document.getElementById("auto-imprimir-cocina") as HTMLInputElement).click();
+      await flushMicrotasks();
+    });
+    await flush();
+    const urls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((u) => u.includes("status=pending"));
+    expect(urls.length).toBeGreaterThan(0);
+    // la linea base consulta con branchId de esta sucursal
+    expect(urls.at(-1)).toContain("branchId=prop-1");
+
+    pendientes = [
+      ...pendientes,
+      pedido("ord-bbbbbb2", { createdAt: "2026-09-19T10:05:00.000Z" }),
+      pedido("ord-otra002", { propertyId: "prop-2", branch: "Norte", createdAt: "2026-09-19T10:06:00.000Z" }),
+    ];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    await flush();
+    expect(imprimir).toHaveBeenCalledTimes(1);
+    const folios = (imprimir.mock.calls[0]![0] as TicketCocina[]).map((t) => t.folio);
+    expect(folios).toEqual(["BBBBB2"]);
+    expect(window.localStorage.getItem("atiende.restaurantes.ticketCocina.demo.prop-1")).not.toContain("ord-otra");
   });
 });
