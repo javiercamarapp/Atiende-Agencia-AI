@@ -523,7 +523,8 @@ rollback;
 
 \echo '=== E2. BASE SIN MIGRAR: con voice_conversation eliminada, el listado del repositorio falla con 42P01 y el camino anterior sigue leyendo pedidos ==='
 begin;
-drop table restaurantes.voice_turn; drop table restaurantes.voice_conversation;
+-- voice_event (035) tiene FK a voice_conversation, igual que voice_turn: se elimina primero.
+drop table restaurantes.voice_event; drop table restaurantes.voice_turn; drop table restaurantes.voice_conversation;
 savepoint sp_verify_voz_conversaciones_read;
 do $$
 declare

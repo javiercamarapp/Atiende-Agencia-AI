@@ -73,11 +73,11 @@ function esNoDisponible(status: number): boolean {
   return status === 404 || status === 503;
 }
 
-function base(apiBaseUrl: string, propertyId: string): string {
+export function base(apiBaseUrl: string, propertyId: string): string {
   return `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/voz`;
 }
 
-async function pedir<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT" | "POST"; body?: unknown }): Promise<T> {
+export async function pedir<T>(fetchImpl: typeof fetch, url: string, token: string, init: { method: "GET" | "PUT" | "POST"; body?: unknown }): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) =>
     fetchImpl(url, {
       method: init.method,
