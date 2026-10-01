@@ -106,6 +106,7 @@ import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-re
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
+import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -463,6 +464,8 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     platformSwitchGuard,
+    // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
+    alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

@@ -50,6 +50,7 @@ import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
+import type { DespachadorAlertas } from "./alertas/tipos.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -470,4 +471,7 @@ export interface AppDeps {
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;
+  /** Alertas salientes (correo/webhook/Sentry, piso por hora, datos redactados). Ausente = no se
+   *  envia nada; `salud/with-heartbeat.ts` y el resumen diario lo usan de forma best-effort. */
+  readonly alertas?: DespachadorAlertas;
 }
