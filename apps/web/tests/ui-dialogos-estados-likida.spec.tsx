@@ -288,7 +288,7 @@ describe("medidas de los demas pop-ups y estados", () => {
   it("EstadoVacio: tarjeta p-4, chip de 36 px (radio 12, canvas + hairline), icono de 17 px y texto de 14 px", () => {
     montar(<EstadoVacio titulo="Sin citas" mensaje="Crea la primera" />);
     const raiz = rendered!.container.firstElementChild as HTMLElement;
-    tiene(raiz, "card", "flex", "items-start", "gap-3", "p-4");
+    tiene(raiz, "card", "rounded-lg", "border", "border-border", "bg-card", "shadow-card", "flex", "items-start", "gap-3", "p-4");
     expect(raiz.className).not.toContain("border-dashed");
     const chip = raiz.firstElementChild!;
     tiene(chip, "size-9", "rounded-lg", "bg-canvas", "border", "border-border");
@@ -302,7 +302,7 @@ describe("medidas de los demas pop-ups y estados", () => {
     const onReintentar = vi.fn();
     montar(<EstadoError mensaje="Fallo la lectura" onReintentar={onReintentar} />);
     const raiz = rendered!.container.firstElementChild as HTMLElement;
-    tiene(raiz, "card", "p-4", "gap-3");
+    tiene(raiz, "card", "rounded-lg", "border-border", "bg-card", "shadow-card", "p-4", "gap-3");
     tiene(raiz.firstElementChild, "size-9", "rounded-lg", "bg-destructive-tint");
     tiene(raiz.querySelector("svg"), "size-[17px]", "text-destructive");
     const b = raiz.querySelector("button")!;
