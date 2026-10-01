@@ -99,8 +99,10 @@ create trigger dia_inhabil_sello before update on licitaciones.dia_inhabil
 revoke all on licitaciones.dia_inhabil from public, anon;
 grant select on licitaciones.dia_inhabil to authenticated;
 -- GRANT por COLUMNA: el cliente declara fecha/nombre/fuente y NUNCA escribe los sellos
--- (`id`, `created_at`, `eliminado_por`); al actualizar solo puede tocar `eliminado_en` (quitar).
-grant insert (organization_id, tender_id, fecha, nombre, publicado_por, fuente, verificacion, created_by) on licitaciones.dia_inhabil to authenticated;
+-- (`id`, `created_at`, `eliminado_por`) ni `verificacion` (siempre nace `por_validar` por default: solo
+-- un rol de plataforma/service_role confirma un dia con fiscalista, el cliente no se autoverifica);
+-- al actualizar solo puede tocar `eliminado_en` (quitar).
+grant insert (organization_id, tender_id, fecha, nombre, publicado_por, fuente, created_by) on licitaciones.dia_inhabil to authenticated;
 grant update (eliminado_en) on licitaciones.dia_inhabil to authenticated;
 grant select, insert, update, delete on licitaciones.dia_inhabil to service_role;
 

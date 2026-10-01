@@ -222,6 +222,7 @@ describe("parseDiaInhabilCreate", () => {
     [{ fecha: "2026-04-02", nombre: "ab" }],
     [{ fecha: "2026-04-02", nombre: "Dia", tenderId: "no-uuid" }],
     [{ fecha: "2026-04-02", nombre: "Dia valido", verificacion: "quizas" }],
+    [{ fecha: "2026-04-02", nombre: "Dia valido", verificacion: "verificada" }],
     [{ fecha: "2026-04-02", nombre: "Dia valido", publicadoPor: "x".repeat(201) }],
   ])("rechaza entrada invalida %#", (raw) => {
     expect(() => parseDiaInhabilCreate(raw as Record<string, unknown>)).toThrow(DiaInhabilValidationError);

@@ -76,8 +76,8 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c1', true);
-insert into licitaciones.dia_inhabil (organization_id, fecha, nombre, publicado_por, fuente, verificacion, created_by)
-  values ('00000000-0000-0000-0000-0000000000d1', '2026-04-03', 'Viernes Santo', 'SHCP', 'DOF 2026-01-10', 'verificada', '00000000-0000-0000-0000-0000000000c1');
+insert into licitaciones.dia_inhabil (organization_id, fecha, nombre, publicado_por, fuente, created_by)
+  values ('00000000-0000-0000-0000-0000000000d1', '2026-04-03', 'Viernes Santo', 'SHCP', 'DOF 2026-01-10', '00000000-0000-0000-0000-0000000000c1');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c5', true);
 insert into licitaciones.dia_inhabil (organization_id, tender_id, fecha, nombre, created_by)
   values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1', '2026-04-14', 'Dia de la convocante', '00000000-0000-0000-0000-0000000000c5');
@@ -154,7 +154,7 @@ insert into licitaciones.dia_inhabil (organization_id, fecha, nombre, created_by
   values ('00000000-0000-0000-0000-0000000000d1', '2026-06-01', 'Nace quitado', '00000000-0000-0000-0000-0000000000c1', now());
 rollback;
 
-\echo '--- 8. VALIDACION: fecha fuera de rango, nombre corto y verificacion invalida (CHECK 23514) ---'
+\echo '--- 8. VALIDACION: fecha fuera de rango y nombre corto (CHECK 23514); verificacion no escribible por el cliente (42501) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c1', true);
@@ -173,8 +173,8 @@ end $$;
 do $$ begin
   insert into licitaciones.dia_inhabil (organization_id, fecha, nombre, verificacion, created_by)
     values ('00000000-0000-0000-0000-0000000000d1', '2026-06-01', 'Verificacion rara', 'quizas', '00000000-0000-0000-0000-0000000000c1');
-  raise exception 'verificacion invalida debia rechazarse';
-exception when sqlstate '23514' then null;
+  raise exception 'el cliente no debia poder fijar verificacion (se autoverificaria)';
+exception when sqlstate '42501' then null;
 end $$;
 rollback;
 

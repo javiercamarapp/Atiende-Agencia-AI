@@ -288,11 +288,10 @@ export function parseDiaInhabilCreate(raw: Record<string, unknown>): DiaInhabilC
     if (typeof raw.tenderId !== "string" || !UUID_RE.test(raw.tenderId)) throw new DiaInhabilValidationError("tenderId: se esperaba un UUID.");
     tenderId = raw.tenderId;
   }
-  let verificacion: DiaInhabilVerificacion = "por_validar";
-  if (raw.verificacion !== undefined) {
-    if (raw.verificacion !== "verificada" && raw.verificacion !== "por_validar") throw new DiaInhabilValidationError('verificacion: "verificada" o "por_validar".');
-    verificacion = raw.verificacion;
-  }
+  // Un dia declarado por la organizacion siempre nace "por_validar": la etiqueta "verificada" solo la
+  // pone quien lo confirmo con fiscalista (la columna no tiene GRANT para el cliente).
+  if (raw.verificacion !== undefined && raw.verificacion !== "por_validar") throw new DiaInhabilValidationError('verificacion: un dia declarado nace "por_validar".');
+  const verificacion: DiaInhabilVerificacion = "por_validar";
   return { fecha: raw.fecha, nombre, tenderId, publicadoPor: parseOptionalText(raw.publicadoPor, "publicadoPor", 200), fuente: parseOptionalText(raw.fuente, "fuente", 300), verificacion };
 }
 

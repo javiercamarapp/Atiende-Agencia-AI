@@ -102,10 +102,10 @@ export class PostgresDiasInhabilesRepository implements DiasInhabilesRepository 
     try {
       return await this.guarded(async () => {
         const { rows } = await this.db.query<DiaRow>(
-          `insert into licitaciones.dia_inhabil (organization_id, tender_id, fecha, nombre, publicado_por, fuente, verificacion, created_by)
-           values ($1, $2, $3::date, $4, $5, $6, $7, $8)
+          `insert into licitaciones.dia_inhabil (organization_id, tender_id, fecha, nombre, publicado_por, fuente, created_by)
+           values ($1, $2, $3::date, $4, $5, $6, $7)
            returning ${COLUMNS};`,
-          [organizationId, input.tenderId, input.fecha, input.nombre, input.publicadoPor, input.fuente, input.verificacion, actorId],
+          [organizationId, input.tenderId, input.fecha, input.nombre, input.publicadoPor, input.fuente, actorId],
         );
         return mapRow(rows[0]!);
       });
