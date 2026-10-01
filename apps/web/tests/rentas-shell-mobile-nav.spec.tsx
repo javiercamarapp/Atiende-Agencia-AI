@@ -22,6 +22,7 @@ import type { PropertyOption } from "../src/verticals/rentas/lib/discovery-clien
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
 
@@ -110,6 +111,25 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(hrefs).toEqual(
       expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
     );
+  });
+
+  // UNI-6: marco de Likida -- Resumen y Calendario raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
+  it("el Sidebar agrupa los 13 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Operación", "Canales", "Finanzas", "Configuración", "Control"]);
+    expect(categoriasAbiertas(root)).toEqual(["Operación"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Aprobaciones", "Mis tareas", "Acceso al huésped"]);
+    abrirCategoria(root, "Canales");
+    expect(categoriasAbiertas(root)).toEqual(["Canales"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Sincronización iCal", "Monitor de conflictos"]);
+    abrirCategoria(root, "Finanzas");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Precios", "Finanzas", "Reportes"]);
+    abrirCategoria(root, "Configuración");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Catálogo", "Equipo"]);
+    abrirCategoria(root, "Control");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Auditoría"]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Gestora Demo", rol: "Administrador gestora" });
   });
 
   it("expone skip link, un único <main> enfocable y el nombre de la propiedad activa", async () => {
