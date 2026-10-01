@@ -1,0 +1,71 @@
+name: Cobertura (informativo)
+
+# PL-11. Corre `npm run test:coverage` (la misma suite que test:unit, instrumentada con v8) y publica el
+# resumen en el job y el reporte lcov/json como artefacto. Es un workflow APARTE de ci-checks.yml a
+# proposito: la cobertura duplica el costo de la suite, y asi ci-checks.yml (typecheck + lint + tests +
+# build) sigue siendo rapido y es el que debe pedirse como check obligatorio. Este SI falla si baja del
+# umbral (trinquete anti-regresion) configurado en vitest.config.ts::coverage.thresholds; ver docs/COBERTURA.md.
+# Sin secretos, sin despliegue, contents: read, sin pull_request_target.
+on:
+  pull_request:
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "apps/**"
+      - "packages/**"
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: test:coverage (v8) + umbral
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Tests con cobertura (falla si baja del umbral)
+        run: npm run test:coverage
+
+      - name: Resumen en el job
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e '
+              const t = JSON.parse(require("fs").readFileSync("coverage/coverage-summary.json","utf8")).total;
+              const f = (k) => `${t[k].pct}% (${t[k].covered}/${t[k].total})`;
+              console.log(`### Cobertura total\n\n| Metrica | Valor |\n|---|---|\n| Lineas | ${f("lines")} |\n| Sentencias | ${f("statements")} |\n| Ramas | ${f("branches")} |\n| Funciones | ${f("functions")} |`);
+            ' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Subir reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage/coverage-summary.json
+            coverage/lcov.info
+          if-no-files-found: ignore
+          retention-days: 14
