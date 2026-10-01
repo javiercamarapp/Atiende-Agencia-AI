@@ -120,6 +120,8 @@ export {
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
   VER_CONFIGURACION_ROLES,
   GESTIONAR_CONFIGURACION_ROLES,
+  VER_DASHBOARD_ROLES,
+  VER_REPORTES_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -466,3 +468,21 @@ export type {
   CobranzaReminderStage,
 } from "./cobranza/engine.ts";
 export { formatMontoCobranza, renderRecordatorioCobranza, renderAsuntoRecordatorioCobranza } from "./cobranza/templates.ts";
+
+// ---- D-01: dashboard gerencial y reportes de cliente (balanza/DIOT/nómina/impuestos) ----
+export { calcularKpisCliente, consolidarKpisDespacho, DIAS_REVISION_ANTIGUA, DIAS_VENCIMIENTO_PROXIMO, SCORE_COBRANZA_BAJO } from "./dashboard/kpis.ts";
+export type {
+  AnomaliaDashboard,
+  CarteraEntrada,
+  CierreEntrada,
+  EntradaKpisCliente,
+  FuenteDashboard,
+  KpisCartera,
+  KpisCargaTrabajo,
+  KpisCfdiMes,
+  KpisCierres,
+  KpisCliente,
+  KpisDespacho,
+  NivelAtencion,
+  SeveridadAnomalia,
+} from "./dashboard/kpis.ts";
