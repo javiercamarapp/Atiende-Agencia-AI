@@ -4,8 +4,8 @@
 //
 // Aislamiento: el codigo de login (`/auth/exchange-code`) lleva el escenario ("<escenario>~<persona>") y los
 // tokens que emite lo repiten ("mock.<escenario>.<persona>.<n>"), de modo que toda peticion autenticada se
-// atribuye a su escenario sin cabeceras especiales. Las peticiones sin sesion (login, magic link) caen en el
-// escenario "anon".
+// atribuye a su escenario sin cabeceras especiales (refresh/logout, que llevan el refreshToken en el cuerpo, tambien).
+// Las peticiones sin sesion (login, magic link) caen en el escenario "anon".
 //
 // Canal de control (solo 127.0.0.1): GET /__mock/salud, GET|DELETE /__mock/escenarios/:id/peticiones,
 // POST /__mock/escenarios/:id/config ({ latenciaMs, fallas }), POST /__mock/escenarios/:id/reiniciar.
@@ -182,7 +182,10 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     const auth = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     const sesion = token ? leerToken(token) : null;
-    const e = escenario(sesion?.escenario ?? ANON);
+    // Las rutas publicas con sesion en el cuerpo (refresh, logout) se atribuyen al escenario de su refreshToken.
+    const refresco = (cuerpo as { refreshToken?: unknown } | undefined)?.refreshToken;
+    const escenarioId = sesion?.escenario ?? (typeof refresco === "string" ? leerToken(refresco)?.escenario : undefined) ?? ANON;
+    const e = escenario(escenarioId);
     const persona = sesion?.persona ?? null;
 
     const registrar = (status: number, extra: { sinFixture?: boolean; inyectada?: boolean }): void => {
