@@ -384,6 +384,10 @@ function mapDespachosAuditLogRow(row: DespachosAuditLogRawRow) {
   };
 }
 
+// Un 42883 solo es "migración pendiente" si nombra una función despachos.efos_*; uno dentro del cuerpo
+// (p. ej. core.has_property_access ausente) es un bug real y se repropaga.
+const EFOS_FN_PREFIX = "despachos.efos_";
+
 export class PostgresDespachosRepository implements DespachosRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -1133,7 +1137,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
         const estado = await this.db.query<{ out_periodo: string }>(`select out_periodo from despachos.efos_estado();`);
         return estado.rows[0] ? { estado: "disponible", periodoLista: estado.rows[0].out_periodo, coincidencias: [] } : EFOS_NO_DISPONIBLE;
       },
-      isRecoverable: (err) => isMigrationPendingError(err),
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
       fallback: async () => EFOS_NO_DISPONIBLE,
     });
   }
@@ -1147,7 +1151,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
         const r = rows[0];
         return r ? { estado: "disponible", periodo: r.out_periodo, filas: Number(r.out_filas), ingestadoEn: r.out_ingestado_en } : { estado: "no_disponible", periodo: null, filas: null, ingestadoEn: null };
       },
-      isRecoverable: (err) => isMigrationPendingError(err),
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
       fallback: async () => ({ estado: "no_disponible", periodo: null, filas: null, ingestadoEn: null }),
     });
   }
@@ -1162,7 +1166,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
         const estado = await this.db.query<{ out_periodo: string }>(`select out_periodo from despachos.efos_estado();`);
         return { estado: estado.rows[0] ? "disponible" : "no_disponible", items: [] };
       },
-      isRecoverable: (err) => isMigrationPendingError(err),
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
       fallback: async () => ({ estado: "no_disponible", items: [] }),
     });
   }
@@ -1185,7 +1189,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
         const { rows } = await this.db.query<{ r: EfosIngestaResultado }>(`select despachos.efos_ingestar_periodo($1, $2, $3::jsonb) as r;`, [periodo, fuenteSha256, JSON.stringify(payload)]);
         return rows[0]!.r;
       },
-      isRecoverable: (err) => isMigrationPendingError(err),
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
       fallback: () => {
         throw new EfosUnavailableError();
       },

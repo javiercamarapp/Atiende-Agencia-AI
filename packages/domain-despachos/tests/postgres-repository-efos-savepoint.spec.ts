@@ -21,6 +21,7 @@ function pgError(code: string, message: string): Error & { code: string } {
   return e;
 }
 const undefinedFunction = () => pgError("42883", "function despachos.efos_consultar(text[]) does not exist");
+const undefinedInnerFunction = () => pgError("42883", "function core.has_property_access(uuid) does not exist");
 const undefinedTable = () => pgError("42P01", 'relation "despachos.efos_contribuyente" does not exist');
 
 const FILA = { out_periodo: "2026-06", out_rfc: "AAA010101AA1", out_nombre: "X", out_situacion: "definitivo", out_oficio_presuncion: null, out_fecha_presuncion_sat: null, out_fecha_desvirtuado_sat: null, out_fecha_definitivo_sat: "2026-06-15", out_fecha_sentencia_favorable_sat: null };
@@ -53,6 +54,11 @@ describe("PostgresDespachosRepository.consultarEfos", () => {
   it("un error NO recuperable (42501) se repropaga, no se enmascara como lista no disponible", async () => {
     const repo = new PostgresDespachosRepository(new AbortAwareFakeSession([{ match: CONSULTAR_RE, respond: () => pgError("42501", "efos_consultar: requiere staff de despachos") }]));
     await expect(repo.consultarEfos(["AAA010101AA1"])).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("un 42883 de una funcion INTERNA (no despachos.efos_*) se repropaga, no se enmascara", async () => {
+    const repo = new PostgresDespachosRepository(new AbortAwareFakeSession([{ match: CONSULTAR_RE, respond: undefinedInnerFunction }]));
+    await expect(repo.consultarEfos(["AAA010101AA1"])).rejects.toMatchObject({ code: "42883" });
   });
 
   it("lista de RFC vacia no toca la base", async () => {
