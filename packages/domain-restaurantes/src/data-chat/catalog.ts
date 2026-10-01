@@ -115,6 +115,12 @@ function base(p: Prepared, source: string): Pick<DataChatToolResult, "source" | 
   return { source, periodLabel: p.period.label, scopeLabel: p.scopeLabel };
 }
 
+/** `bogo` (2x1) guarda value = 1: se muestra "2x1", nunca "$1.00 MXN". */
+function formatPromotionValue(type: string, value: number): string {
+  if (type === "bogo") return "2x1";
+  return type === "percentage" ? `${value}%` : formatMxn(value);
+}
+
 const pct = (part: number, total: number): number => (total > 0 ? Math.round((part / total) * 1000) / 10 : 0);
 
 function pickGranularity(period: ResolvedPeriod): SalesGranularity {
@@ -321,7 +327,7 @@ export function buildRestaurantesDataChatTools(reader: RestaurantesDataChatReade
             { key: "activa", label: "Activa", kind: "text" },
             { key: "usos", label: "Usos", kind: "integer" },
           ],
-          rows: rows.map((r) => ({ codigo: r.code, nombre: r.name, valor: r.type === "percentage" ? `${r.value}%` : formatMxn(r.value), activa: r.isActive ? "Sí" : "No", usos: r.timesUsed })),
+          rows: rows.map((r) => ({ codigo: r.code, nombre: r.name, valor: formatPromotionValue(r.type, r.value), activa: r.isActive ? "Sí" : "No", usos: r.timesUsed })),
           summary: `Promociones configuradas: ${rows.filter((r) => r.isActive).length} activas de ${rows.length}.`,
         };
       } catch (err) {

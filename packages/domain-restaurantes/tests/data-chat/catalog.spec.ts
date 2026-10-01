@@ -206,6 +206,9 @@ describe("otras herramientas", () => {
     const r = await toolOf(reader, "promociones").run(ctx(), {});
     expect(r.rows[0]).toMatchObject({ codigo: "BIENVENIDA10", valor: "10%", activa: "Sí", usos: 33 });
     expect(r.rows[1]).toMatchObject({ valor: "$50.00 MXN", activa: "No" });
+    reader.promos = [{ code: "DOSXUNO", name: "2x1", type: "bogo", value: 1, isActive: true, timesUsed: 2, maxUses: null }];
+    const bogo = await toolOf(reader, "promociones").run(ctx(), {});
+    expect(bogo.rows[0]).toMatchObject({ valor: "2x1" });
     expect(reader.calls.find((c) => c.method === "promotions")!.extra).toMatchObject({ organizationId: ORG_A });
   });
 
