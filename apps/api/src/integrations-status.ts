@@ -133,6 +133,29 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["RESEND_API_KEY"],
   },
 
+  // ---- Alertas salientes (PL-04) ----
+  {
+    id: "alertas-correo",
+    nombre: "Alertas salientes por correo (Resend)",
+    habilita:
+      "Aviso por correo a los destinatarios de ALERTAS_EMAIL_DESTINATARIOS (lista separada por comas) cuando un cron falla o el resumen diario detecta una alerta critica de salud. Reusa RESEND_API_KEY. Piso por hora por tipo y destino (ALERTAS_LIMITE_POR_HORA, default 2) y datos sensibles redactados. Sin estas variables no se envia nada.",
+    variables: ["RESEND_API_KEY", "ALERTAS_EMAIL_DESTINATARIOS"],
+  },
+  {
+    id: "alertas-webhook",
+    nombre: "Alertas salientes por webhook generico",
+    habilita:
+      "POST JSON a ALERTAS_WEBHOOK_URL (solo https, nunca hacia hosts privados), firmado con HMAC-SHA256 en X-Atiende-Signature si hay ALERTAS_WEBHOOK_SECRETO. Mismo piso por hora y redaccion que el canal de correo. Sin la URL no se envia nada.",
+    variables: ["ALERTAS_WEBHOOK_URL"],
+  },
+  {
+    id: "sentry",
+    nombre: "Sentry (alertas, opcional)",
+    habilita:
+      "Evento a Sentry via su API HTTP de envelopes -- sin SDK ni dependencia nueva. Solo si SENTRY_DSN esta definido y es un DSN https valido; con piso por hora y datos sensibles redactados. Sin DSN queda apagado.",
+    variables: ["SENTRY_DSN"],
+  },
+
   // ---- Stripe ----
   {
     id: "stripe",
@@ -272,6 +295,10 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS",
   "RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS",
   "RESEND_FROM_EMAIL",
+  // PL-04 alertas salientes: opcionales, nunca bloquean el arranque (ver integraciones
+  // "alertas-correo", "alertas-webhook" y "sentry" arriba).
+  "ALERTAS_WEBHOOK_SECRETO",
+  "ALERTAS_LIMITE_POR_HORA",
   // H-01 -- version de la llave de la boveda de identidad (default 1): metadato que se
   // escribe en cada sobre para la rotacion futura, nunca bloquea nada.
   "HOTELES_IDENTITY_KEY_VERSION",
