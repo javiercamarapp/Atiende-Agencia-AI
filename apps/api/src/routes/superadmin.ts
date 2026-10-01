@@ -24,6 +24,7 @@ import {
   requireAdminAccess,
 } from "@atiende/core-authz";
 import { Errors } from "../errors.ts";
+import { stepUpMiddleware } from "../superadmin-seguridad/step-up.ts";
 import type { AppDeps } from "../deps.ts";
 
 // Rate-limiter por-proceso, compartido por TODA la superficie `/superadmin/*`
@@ -230,6 +231,11 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
   };
   app.use("/superadmin/*", impersonationWriteGuardMiddleware);
+  // Step-up MFA (ver superadmin-seguridad/step-up.ts): las acciones sensibles
+  // declaradas ahi exigen un token de step-up reciente CUANDO el superadmin ya
+  // tiene un factor activo (o SUPERADMIN_MFA_REQUIRED=1). Montado aqui, una sola
+  // vez, por el mismo motivo que el resto de middlewares de `/superadmin/*`.
+  app.use("/superadmin/*", stepUpMiddleware(deps));
 
   app.get("/superadmin/organizations", async (c) => {
     const callerId = c.get("userId");

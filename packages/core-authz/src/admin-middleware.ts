@@ -13,7 +13,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import type { Context, MiddlewareHandler, Next } from "hono";
 import type { PlatformRole } from "@atiende/core-tenancy";
-import { ApiError, Errors, type CoreAuthHonoEnv } from "@atiende/core-auth";
+import { ApiError, Errors, organizationSuspendedError, type CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hasAnyPlatformRole } from "./roles.ts";
 import type { RateLimiter } from "./rate-limiter.ts";
 import type { AuditSink, AuthzAuditEntry, DenialReason } from "./audit.ts";
@@ -33,6 +33,7 @@ interface MembershipRow {
   readonly organization_id: string;
   readonly platform_role: PlatformRole;
   readonly vertical_role: string;
+  readonly organization_status?: string;
 }
 
 /**
@@ -53,10 +54,11 @@ export function requireOrganizationMembership(): MiddlewareHandler<CoreAuthHonoE
 
     const db = c.get("db");
     const { rows } = await db.query<MembershipRow>(
-      `select organization_id, platform_role, vertical_role
-       from core.membership
-       where organization_id = $1
-         and user_id = auth.uid();`,
+      `select m.organization_id, m.platform_role, m.vertical_role, o.status as organization_status
+       from core.membership m
+       join core.organization o on o.id = m.organization_id
+       where m.organization_id = $1
+         and m.user_id = auth.uid();`,
       [organizationId],
     );
 
@@ -68,6 +70,7 @@ export function requireOrganizationMembership(): MiddlewareHandler<CoreAuthHonoE
       return;
     }
     const row = rows[0]!;
+    if (row.organization_status === "suspended") throw organizationSuspendedError();
     c.set("organizationId", row.organization_id);
     c.set("platformRole", row.platform_role);
     c.set("verticalRole", row.vertical_role);

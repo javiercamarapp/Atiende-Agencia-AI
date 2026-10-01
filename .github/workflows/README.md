@@ -85,6 +85,9 @@ aplica RLS ni GRANT. Este job:
      GRANT/policy que esta verificación encontró).
    - `scripts/verify-superadmin-salud/` (latidos de crons, salud de colas
      `messaging_outbox`, última corrida por fuente de licitaciones).
+   - `scripts/verify-superadmin-mfa-switches-orgs/` (MFA TOTP del superadmin con
+     funciones solo-sistema, interruptores de plataforma y gestión de organizaciones
+     en dos pasos; ver `docs/SUPERADMIN_SEGURIDAD.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada

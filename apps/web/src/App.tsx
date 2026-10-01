@@ -37,6 +37,9 @@ import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
 import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
+import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
+import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
+import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -299,6 +302,33 @@ function SuperAdminAccionesRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminAccionesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminSeguridadRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminSeguridadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminInterruptoresRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminInterruptoresPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminGestionOrganizacionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminGestionOrganizacionesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -706,6 +736,9 @@ export function App() {
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/resumen" element={<SuperAdminResumenRoute />} />
         <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
+        <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
+        <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
+        <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
         <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
