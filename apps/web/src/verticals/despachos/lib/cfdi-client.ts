@@ -5,7 +5,7 @@
 // `serializeInvoice`) — la validación fiscal real (billing + reglas SAT avanzadas)
 // vive por completo en @atiende/domain-despachos; este cliente solo transporta lo
 // que la ruta ya serializa.
-import { fetchJson, postXml } from "./admin-client.ts";
+import { fetchJson, postXml, putJson } from "./admin-client.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 export type CategoriaContable = "gasto_operativo" | "activo_fijo" | "inversion" | "honorarios" | "nomina" | "sin_clasificar";
@@ -27,6 +27,30 @@ export interface DiotResult {
   readonly reportable: boolean;
 }
 
+/** Sentido del CFDI respecto del RFC del cliente (ficha de cartera). `indeterminado` = sin ficha o sin relacion con el cliente. */
+export type DireccionCfdi = "emitido" | "recibido" | "indeterminado";
+export type EstadoSatCfdi = "pendiente" | "vigente" | "cancelado" | "no_encontrado";
+
+export interface MontosCentavos {
+  readonly subtotal: number | null;
+  readonly descuento: number | null;
+  readonly total: number | null;
+  readonly ivaTrasladado: number | null;
+  readonly isrRetenido: number | null;
+  readonly ivaRetenido: number | null;
+  readonly ieps: number | null;
+}
+
+export interface ImpuestoDesglosado {
+  readonly naturaleza: "traslado" | "retencion";
+  readonly impuesto: string;
+  readonly nombre: string;
+  readonly tipoFactor: "Tasa" | "Cuota" | "Exento";
+  readonly tasaOCuota: string | null;
+  readonly baseCentavos: number | null;
+  readonly importeCentavos: number | null;
+}
+
 export interface InvoiceSummary {
   readonly id: string;
   readonly folioFiscal: string;
@@ -44,11 +68,33 @@ export interface InvoiceSummary {
   readonly warnings: readonly string[];
   readonly requiereRevisionHumana: boolean;
   readonly diot: DiotResult;
+  readonly fecha?: string;
   readonly creadoEn: string;
+  // D-22: `null`/ausente = dato que el CFDI no trajo o que se ingirio antes de la migracion (jamas un 0 inventado).
+  readonly direccion?: DireccionCfdi | null;
+  readonly metodoPago?: string | null;
+  readonly formaPago?: string | null;
+  readonly usoCfdi?: string | null;
+  readonly moneda?: string | null;
+  readonly tipoCambio?: number | null;
+  readonly montosCentavos?: MontosCentavos;
+  readonly estadoSat?: EstadoSatCfdi;
+  readonly estadoSatVerificadoEn?: string | null;
+  /** Solo en el detalle (`GET .../cfdi/:invoiceId`). */
+  readonly impuestos?: readonly ImpuestoDesglosado[];
 }
 
-export async function fetchInvoices(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, filter?: { readonly requiereRevisionHumana?: boolean }): Promise<readonly InvoiceSummary[]> {
-  const qs = filter?.requiereRevisionHumana !== undefined ? `?requiereRevisionHumana=${filter.requiereRevisionHumana}` : "";
+export async function fetchInvoices(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  filter?: { readonly requiereRevisionHumana?: boolean; readonly direccion?: DireccionCfdi },
+): Promise<readonly InvoiceSummary[]> {
+  const params = new URLSearchParams();
+  if (filter?.requiereRevisionHumana !== undefined) params.set("requiereRevisionHumana", String(filter.requiereRevisionHumana));
+  if (filter?.direccion !== undefined) params.set("direccion", filter.direccion);
+  const qs = params.toString() === "" ? "" : `?${params.toString()}`;
   return fetchJson<readonly InvoiceSummary[]>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi${qs}`, token);
 }
 
@@ -62,4 +108,9 @@ export async function fetchInvoice(fetchImpl: typeof fetch, apiBaseUrl: string, 
  * esa ruta); este cliente solo transporta el texto del XML tal cual, sin tocarlo. */
 export async function importarCfdiXml(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, xml: string): Promise<InvoiceSummary> {
   return postXml<InvoiceSummary>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/importar-xml`, token, xml, "application/xml");
+}
+
+/** `PUT /despachos/:propertyId/cfdi/:invoiceId/estado-sat` -- captura el estado del CFDI ante el SAT (un cancelado no cambia). */
+export async function registrarEstadoSat(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<InvoiceSummary> {
+  return putJson<InvoiceSummary>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/${invoiceId}/estado-sat`, token, { estado });
 }

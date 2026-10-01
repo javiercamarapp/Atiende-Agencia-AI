@@ -30,6 +30,7 @@ const canales = {
   aiAdoptionPct: 76,
   aiRevenuePct: 82,
   estimatedHoursSaved: 31,
+  periodo: { acotado: true, etiqueta: "Últimos 30 días" },
 };
 const clientesKpis = {
   totalCustomers: 61,

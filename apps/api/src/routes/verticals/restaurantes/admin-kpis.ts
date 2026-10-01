@@ -91,8 +91,12 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const organizationId = c.get("organizationId");
     const branchId = parseBranchId(c.req.query("branchId"));
     const propertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, branchId);
+    // R-30: los canales respetan el periodo del panel (antes eran siempre "todo el historico").
+    // Sin `period` (clientes anteriores): todo el historico, declarado en `periodo.etiqueta`.
+    const rawPeriod = c.req.query("period");
+    const period = rawPeriod === undefined ? "historico" : parsePeriod(rawPeriod);
 
-    const kpis = await getChannelKpis(repo, organizationId, propertyIds);
+    const kpis = await getChannelKpis(repo, organizationId, propertyIds, period, new Date());
     return c.json(kpis);
   });
 

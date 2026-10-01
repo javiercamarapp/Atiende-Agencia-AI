@@ -27,6 +27,7 @@
 import { Hono } from "hono";
 import { runDeadlineReminderSweep, runDiscoverTendersSweep, runJuntaQuestionReminderSweep } from "@atiende/worker";
 import type { LicitacionesRepository, SalaGuerraRepository } from "@atiende/domain-licitaciones";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -98,6 +99,18 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
     return withHeartbeat(deps, "/internal/licitaciones/deadline-reminders", async () => {
       const withRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db)));
       const sweep = await runDeadlineReminderSweep(withRepo);
+      // Aviso in-app (campana): una por organizacion por dia cuando el barrido creo recordatorios NUEVOS (el
+      // dedupe real de los recordatorios ya evita repetirlos). UNA transaccion por organizacion; una emision
+      // fallida (o la base sin 0039) nunca cambia el barrido ni la respuesta.
+      const hoy = new Date().toISOString().slice(0, 10);
+      for (const r of sweep) {
+        if (r.created === 0) continue;
+        await deps.engine
+          .withAppSession({ userId: null }, (db) =>
+            emitirNotificacion(db, { evento: "licitaciones.plazo.por_vencer", organizationId: r.organizationId, clave: `${r.organizationId}:${hoy}`, parametros: { cantidad: r.created } }),
+          )
+          .catch(() => undefined);
+      }
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const scanned = sweep.reduce((sum, r) => sum + r.scanned, 0);
       const created = sweep.reduce((sum, r) => sum + r.created, 0);

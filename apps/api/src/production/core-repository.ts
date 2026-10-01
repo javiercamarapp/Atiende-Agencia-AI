@@ -38,6 +38,7 @@ import type {
   BillingWebhookLogPage,
   CoreRepository,
   CreateProspectoInput,
+  ListNotificationsOptions,
   MembershipRow,
   NotificationRow,
   OrganizationBillingRow,
@@ -168,8 +169,8 @@ export class ProductionCoreRepository implements CoreRepository {
   // ya pasa SIEMPRE `c.get("userId")` propio (nunca un id arbitrario), así que la
   // sesión se abre COMO ese caller, mismo criterio que `isPlatformSuperadmin`. ----
 
-  listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
-    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).listNotificationsForStaff(staffId));
+  listNotificationsForStaff(staffId: string, options?: ListNotificationsOptions): Promise<readonly NotificationRow[]> {
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).listNotificationsForStaff(staffId, options));
   }
 
   countUnreadNotificationsForStaff(staffId: string): Promise<number> {

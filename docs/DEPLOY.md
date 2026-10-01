@@ -57,7 +57,7 @@ falsos) hasta que se configure:
 | Puerto | Bloqueado por | Dónde |
 |---|---|---|
 | `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` (agente LLM de WhatsApp) | Ninguna API key de proveedor LLM configurada | `OPENROUTER_API_KEY` (proveedor primario; los modelos por rol salen de `apps/api/src/production/llm-models.ts` y de `LLM_MODELS_JSON`) o, solo como legado, `OPENAI_API_KEY`+`OPENAI_MODEL`; ver `docs/LLM-GATEWAY.md` y `apps/api/src/production/llm-gateway.ts` |
-| `whatsAppDispatcher` (envío saliente real de WhatsApp) | Sin `WHATSAPP_ACCESS_TOKEN` | `.env.example`, `apps/api/src/production/deps.ts` |
+| `whatsAppDispatcher` (envío saliente real de WhatsApp) | Sin `WHATSAPP_ACCESS_TOKEN` | `.env.example`, `apps/api/src/production/deps.ts`; los avisos proactivos fuera de la ventana de 24 h solo se envian como plantilla HSM si ademas se declaran aprobadas en `WHATSAPP_APPROVED_TEMPLATES` |
 | `citasGoogleCalendarPortResolver` | Sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_BASE_URL` | ídem — devuelve "sin conectar" honesto, nunca error, mientras falten |
 | `hotelesCfdiPort` (timbrar/cancelar CFDI de hospedaje) | Sin credenciales/CSD reales de Finkok NI de SW Sapien | `.env.example` (`FINKOK_*`/`SW_*`), `packages/mcp-servers/cfdi/README.md` |
 | `hotelesPaymentsPort` (cobro con tarjeta al huésped de un folio) | Sin `STRIPE_SECRET_KEY` — el adaptador real (PaymentIntents) ya existe | `.env.example`, `apps/api/src/production/hoteles-payments-port.ts` |

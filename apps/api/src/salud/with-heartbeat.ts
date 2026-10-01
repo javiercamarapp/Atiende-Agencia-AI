@@ -36,6 +36,7 @@
 // nunca un 500: Vercel Cron no debe reintentar un barrido que ya corrió (las
 // unidades que sí funcionaron ya persistieron, aislado por unidad), solo el
 // latido debe dejar de mentir.
+import { emitirNotificacion } from "@atiende/db";
 import type { AppDeps } from "../deps.ts";
 
 const MAX_ERROR_LENGTH = 500;
@@ -94,6 +95,20 @@ async function notificarFalloCronBestEffort(deps: AppDeps, cronName: string, err
   }
 }
 
+/** Aviso in-app (campana de superadmin) de un cron que fallo: una por cron por dia (clave de dedupe), asi que
+ *  un cron que falla cada minuto no inunda. Best-effort: NUNCA lanza ni altera la respuesta del cron, y
+ *  contra la base sin la 0039 degrada en silencio. El texto solo lleva el nombre del cron (sin el error). */
+async function notificarFalloCronEnAppBestEffort(deps: AppDeps, cronName: string): Promise<void> {
+  try {
+    const ruta = cronName.replace(/^\/(internal\/)?/, "").replace(/\//g, ".").replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40);
+    await deps.engine.withAppSession({ userId: null }, (db) =>
+      emitirNotificacion(db, { evento: "superadmin.cron.fallo", organizationId: null, clave: `${ruta}:${new Date().toISOString().slice(0, 10)}`, parametros: { ruta } }),
+    );
+  } catch {
+    // best-effort
+  }
+}
+
 /**
  * `cronName` debe ser el path EXACTO tal como aparece en
  * `vercel.json::crons` (mismo criterio que
@@ -134,6 +149,7 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
     } catch (err) {
       await registrarLatidoBestEffort(deps, cronName, "error", truncarError(err), startedAt, new Date());
       await notificarFalloCronBestEffort(deps, cronName, err);
+      await notificarFalloCronEnAppBestEffort(deps, cronName);
       // `CronPartialFailureError`: el handler YA construyó la Response real (200
       // + detalle de failures[]) -- se devuelve tal cual al caller HTTP, el
       // latido ya quedó registrado como "error" arriba (ver comentario de

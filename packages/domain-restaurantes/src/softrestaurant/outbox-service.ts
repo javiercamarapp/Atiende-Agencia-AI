@@ -73,6 +73,10 @@ export interface PedidoParaComanda {
   readonly colonia?: string;
   readonly propina?: number;
   readonly horaCompromiso?: string;
+  /** Intentar el envio al POS dentro de la misma llamada (modo `activo`) o programarlo (`sombra`). Default `true`.
+   * `false` = solo encolar: la fila queda `pendiente` y la drena el despachador (`drenarComandas`). Lo usa la
+   * promocion de pedidos programados, que corre fuera de un turno de agente y no debe bloquearse en el POS. */
+  readonly envioEnLinea?: boolean;
 }
 
 export type ResultadoEncolarPedido =
@@ -224,7 +228,9 @@ export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: Ped
     fila = enc.fila;
 
     const ahora = deps.ahora ?? (() => new Date());
-    if (modo === "activo") {
+    if (pedido.envioEnLinea === false) {
+      // Solo encolar (ver `PedidoParaComanda.envioEnLinea`): el despachador la envia con su backoff.
+    } else if (modo === "activo") {
       // Un reintento del mismo pedido que ya estaba confirmado no vuelve a enviarse.
       const reclamada = await deps.store.reclamarPorId(fila.id, ahora(), politica.leaseMs);
       if (reclamada) fila = (await procesarFilaReclamada(deps, reclamada)).fila;
@@ -242,6 +248,42 @@ export async function encolarComandaParaPedido(deps: DepsComandaPos, pedido: Ped
       : { modo: "sombra", fila, agente: null, motivo: "error" };
   }
   return modo === "activo" ? { modo: "activo", fila, agente: respuestaAgenteComanda(fila) } : { modo: "sombra", fila, agente: null };
+}
+
+export interface ResumenComandasPromovidos {
+  /** Pedidos para los que se intento encolar (`pending` recien promovidos). */
+  readonly intentados: number;
+  /** Filas realmente creadas/recuperadas en el outbox (idempotente: reencolar devuelve la existente). */
+  readonly encoladas: number;
+  /** Bandera apagada o base sin la migracion 024: no se encolo nada (comportamiento anterior intacto). */
+  readonly omitidas: number;
+  readonly errores: number;
+}
+
+/**
+ * R-29: al PROMOVER un pedido programado a `pending` (entra a cocina) se encola su comanda al POS, igual que un
+ * pedido inmediato. Antes se omitia y quedaba a captura manual. Reglas:
+ *  - Idempotente: la llave (`sr:<org>:<pedido>`) y el unique (organizacion, pedido) hacen que reintentar, o que
+ *    dos promociones concurrentes entreguen el mismo pedido, deje UNA sola fila.
+ *  - Nunca envia en linea (`envioEnLinea: false`): la fila queda `pendiente` y la drena el despachador.
+ *  - La hora programada viaja como `horaCompromiso` (ISO UTC); el POS la muestra en la zona de la sucursal.
+ *  - Solo pedidos en `pending` (un cancelado u otro estado nunca se encola).
+ *  - Nunca lanza: `encolarComandaParaPedido` traga y registra sus errores (el store recupera la sesion con SAVEPOINT).
+ */
+export async function encolarComandasDePromovidos(deps: DepsComandaPos, promovidos: readonly Order[]): Promise<ResumenComandasPromovidos> {
+  let intentados = 0;
+  let encoladas = 0;
+  let omitidas = 0;
+  let errores = 0;
+  for (const order of promovidos) {
+    if (order.status !== "pending") continue;
+    intentados += 1;
+    const r = await encolarComandaParaPedido(deps, { order, ...(order.programadoPara ? { horaCompromiso: order.programadoPara } : {}), envioEnLinea: false });
+    if (r.modo === "apagado") omitidas += 1;
+    else if (r.motivo === "error" || r.fila === null) errores += 1;
+    else encoladas += 1;
+  }
+  return { intentados, encoladas, omitidas, errores };
 }
 
 export interface ContextoUnidadComanda {

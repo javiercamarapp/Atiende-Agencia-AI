@@ -1,14 +1,5 @@
 export { cn } from "./lib/utils.js";
 export { formatMoney } from "./lib/formatMoney.js";
-export {
-  ATRIBUTO_TEMA,
-  CLAVE_TEMA_V2,
-  VALOR_TEMA_V2,
-  activarTemaV2,
-  desactivarTemaV2,
-  inicializarTemaV2,
-  temaV2Activo,
-} from "./lib/tema-v2.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 
 // Ticket de cocina imprimible (restaurantes, PM PR-7).

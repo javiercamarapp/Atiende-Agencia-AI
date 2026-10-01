@@ -126,6 +126,13 @@ export function ConfirmDialog({
     }
   };
 
+  // Salir del campo hacia "Cancelar" no cuenta como tocarlo: el error que aparece al
+  // perder el foco agranda el dialogo, este se recentra y el clic en Cancelar caeria fuera del boton.
+  const alSalirDelCampo = (e: React.FocusEvent) => {
+    if ((e.relatedTarget as HTMLElement | null)?.hasAttribute("data-confirm-cancelar")) return;
+    setTocado(true);
+  };
+
   return (
     <AlertDialog open={open} onOpenChange={cerrar}>
       <AlertDialogContent
@@ -166,7 +173,7 @@ export function ConfirmDialog({
                     placeholder={campo.placeholder}
                     maxLength={campo.maxLength}
                     onChange={(e) => setValor(e.target.value)}
-                    onBlur={() => setTocado(true)}
+                    onBlur={alSalirDelCampo}
                   />
                 ) : (
                   <Input
@@ -176,7 +183,7 @@ export function ConfirmDialog({
                     placeholder={campo.placeholder}
                     maxLength={campo.maxLength}
                     onChange={(e) => setValor(e.target.value)}
-                    onBlur={() => setTocado(true)}
+                    onBlur={alSalirDelCampo}
                   />
                 )
               }
@@ -185,7 +192,7 @@ export function ConfirmDialog({
 
           <AlertDialogFooter className={cn("gap-2 sm:space-x-0")}>
             {/* AlertDialogCancel recibe el foco inicial de Radix (opcion segura) y cierra via onOpenChange. */}
-            <AlertDialogCancel type="button" disabled={enCurso} className="mt-0">
+            <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso} className="mt-0">
               {cancelar}
             </AlertDialogCancel>
             <Button type="submit" variant={tono === "danger" ? "destructive" : "default"} disabled={bloqueado} aria-busy={enCurso || undefined}>

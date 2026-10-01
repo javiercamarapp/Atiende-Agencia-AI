@@ -33,7 +33,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-despachos";
 import type { DespachosRepository, EmailDispatchSummary as DespachosEmailDispatchSummary } from "@atiende/domain-despachos";
-import { runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
@@ -167,6 +167,18 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
       // pasando `db` (además de `repo`) porque `triggerDespachosEmailDispatchInline`
       // envuelve el drenado en su propio SAVEPOINT (hotfix auditoría a2).
       await deps.engine.withAppSession({ userId: null }, (db) => triggerDespachosEmailDispatchInline(deps, db, deps.despachosRepo(db)));
+      // Aviso in-app (campana) al despacho: una por organizacion por dia con cuentas que hoy tienen recordatorio.
+      // UNA transaccion por organizacion; una emision fallida (o la base sin 0039) nunca cambia la respuesta.
+      const hoy = new Date().toISOString().slice(0, 10);
+      for (const r of sweep) {
+        const cuentas = r.properties.reduce((n, p) => n + p.remindersDue, 0);
+        if (cuentas === 0) continue;
+        await deps.engine
+          .withAppSession({ userId: null }, (db) =>
+            emitirNotificacion(db, { evento: "despachos.cobranza.recordatorios", organizationId: r.organizationId, clave: `${r.organizationId}:${hoy}`, parametros: { cantidad: cuentas } }),
+          )
+          .catch(() => undefined);
+      }
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => {

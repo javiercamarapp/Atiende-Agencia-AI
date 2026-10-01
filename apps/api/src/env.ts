@@ -23,6 +23,10 @@ export interface ApiEnv {
    *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
    *  un envío sin ella. */
   readonly whatsappAccessToken: string | null;
+  /** R-27: nombres de las plantillas HSM de WhatsApp que el operador declaro APROBADAS por Meta
+   *  (`WHATSAPP_APPROVED_TEMPLATES`, lista separada por comas). Solo esas se envian como `type: "template"`;
+   *  vacia/ausente = todo sale como texto libre (comportamiento anterior). OPCIONAL: ningun fixture la exige. */
+  readonly whatsappApprovedTemplates?: readonly string[];
   /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
   readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
@@ -191,6 +195,7 @@ export function loadApiEnv(): ApiEnv {
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
+    whatsappApprovedTemplates: (process.env.WHATSAPP_APPROVED_TEMPLATES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),

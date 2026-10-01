@@ -56,6 +56,8 @@ export interface ChannelKpis {
   readonly aiAdoptionPct: number | null;
   readonly aiRevenuePct: number | null;
   readonly estimatedHoursSaved: number;
+  /** R-30: periodo real de las cifras de canales (la API lo declara; `acotado:false` = todo el histórico). */
+  readonly periodo: { readonly acotado: boolean; readonly etiqueta: string };
 }
 
 export interface CustomerKpis {
@@ -166,7 +168,7 @@ export async function fetchDashboardData(
   const [sales, trendBody, channels, customers] = await Promise.all([
     fetchJson<SalesKpis>(fetchImpl, `${base}/sales?period=${period}`, token),
     fetchJson<{ buckets: readonly SalesTrendPoint[] }>(fetchImpl, `${base}/sales/trend?period=${period}`, token),
-    fetchJson<ChannelKpis>(fetchImpl, `${base}/channels`, token),
+    fetchJson<ChannelKpis>(fetchImpl, `${base}/channels?period=${period}`, token),
     fetchJson<CustomerKpis>(fetchImpl, `${base}/customers`, token),
   ]);
   return { sales, trend: trendBody.buckets, channels, customers };
