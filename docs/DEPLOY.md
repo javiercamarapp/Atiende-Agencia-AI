@@ -295,7 +295,7 @@ Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local
 que pegarlas a mano o con `vercel env add`.
 
 **Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
-`vercel.json::crons` (18 crons diarios a la fecha, uno por cada dispatcher/reminder
+`vercel.json::crons` (21 crons diarios a la fecha, uno por cada dispatcher/reminder
 interno de cada vertical — citas, hoteles, restaurantes, despachos, rentas,
 licitaciones, más el dispatcher de WhatsApp de plataforma; corre
 `python3 -c "import json;print(len(json.load(open('vercel.json'))['crons']))"` para
@@ -305,7 +305,7 @@ sin esa variable configurada, el cron sigue disparándose pero la ruta responde 
 (fail-closed, nunca despacha nada sin autenticarse).
 
 **ADVERTENCIA sin verificar desde este repo — revisar en el dashboard antes de
-confiar en que estos 18 crons realmente corran:** la documentación pública de
+confiar en que estos 21 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
 (máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un
 horario fijo diario) sino también el **número total de cron jobs por proyecto**
@@ -331,6 +331,23 @@ por sí solo.
    — no es un bug de este deploy, es el estado real documentado arriba.
 
 ---
+
+## Voz de restaurantes — secreto por sucursal y token por llamada (migración 026)
+
+Mergear el código NO exige aplicar la migración `026_voz_secretos_sucursal_y_estado_pedido.sql`
+(espejo `supabase/migrations/20240101000199_026_*`): sin ella el código cae al secreto global
+`VOICE_TOOL_SECRET`, sin estado de pedido en servidor y sin bitácora de voz (registra un aviso en
+logs). Orden recomendado:
+
+1. Desplegar el código (funciona contra la base sin migrar).
+2. Aplicar la migración 026 (la aplica Javier; es solo aditiva).
+3. Rotar el secreto de cada sucursal:
+   `POST /v1/restaurantes/:propertyId/admin/config/sucursales/:branchId/voz/secreto` (owner/admin; el
+   secreto se muestra una sola vez). El secreto anterior sigue válido durante la ventana de gracia.
+4. Configurar la herramienta de voz para pedir un token por llamada
+   (`POST /v1/restaurantes/:org/voice/call-token` con el secreto) y enviarlo en `x-atiende-call-token`.
+5. Solo entonces, poner `VOICE_REQUIRE_CALL_TOKEN=true` en Vercel. Antes de ese paso el camino legado
+   (secreto global sin token) sigue funcionando, sin estado por llamada ni teléfono ligado al token.
 
 ## Resumen de costo por plataforma (tier free)
 

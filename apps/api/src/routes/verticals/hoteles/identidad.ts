@@ -32,6 +32,7 @@ import {
   IdentityUnavailableError,
   IdentityVaultService,
   PostgresIdentityRepository,
+  computeMigratoryRetentionUntil,
   createIdentityCipher,
   parseCaptureIdentityInput,
   parseIdentityKey,
@@ -149,6 +150,9 @@ function serializeMigratory(r: MigratoryRegistrationRecord) {
     reportadoEn: r.reportedAt,
     reportadoPor: r.reportedBy,
     creadoEn: r.createdAt,
+    // Conservacion del registro textual (sin imagen): salida + 365 dias por defecto. NO la purga la
+    // retencion de la imagen (ver MIGRATORY_RETENTION_DAYS_DEFAULT en domain-hoteles).
+    retencionRegistroHasta: computeMigratoryRetentionUntil(r.departureDate),
   };
 }
 
@@ -181,8 +185,12 @@ export function hotelesIdentidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const input = await guarded(async () => parseCaptureIdentityInput(await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES)));
     const hotelesRepo = deps.hotelesRepo(c.get("db"));
     const today = hoyFechaNegocio(resolverZonaHorariaNegocio(await hotelesRepo.findPropertyTimezone(propertyId)));
+    // El plazo de la imagen cuenta desde el check-out de la reserva ligada (si no hay, desde hoy).
+    // La reserva es de la tabla base (existe en toda base); una reserva ajena/inexistente la
+    // rechaza la base al insertar, igual que antes.
+    const checkOutDate = input.reservationId ? ((await hotelesRepo.findReservation(propertyId, input.reservationId))?.checkOutDate ?? null) : null;
     const service = new IdentityVaultService(identityRepo(deps, c), resolveCipher(deps));
-    const record = await guarded(() => service.capture({ propertyId, actorUserId: c.get("userId"), today, input }));
+    const record = await guarded(() => service.capture({ propertyId, actorUserId: c.get("userId"), today, checkOutDate, input }));
     c.header("Cache-Control", "no-store");
     return c.json({ identidad: serializeIdentity(record) }, 201);
   });

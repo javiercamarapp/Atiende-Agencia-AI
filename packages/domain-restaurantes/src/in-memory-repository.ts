@@ -5,8 +5,11 @@
 // conversación). Sirve como fixture de seed para tests determinísticos y como
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
+import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
@@ -900,6 +903,70 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // `runWithRowSavepoint` en `repository.ts`. `fn` corre directo y su error (si lo
   // hay) se repropaga tal cual, mismo comportamiento observable que tendría un
   // SAVEPOINT+ROLLBACK TO SAVEPOINT real desde el punto de vista del caller.
+  private readonly voiceSecrets = new Map<string, { organizationId: string; propertyId: string; hash: string; hint: string; previousHash: string | null; previousUntilMs: number; rotatedAt: string }>();
+  /** Solo pruebas: bitacora de voz en memoria. */
+  readonly voiceToolAudit: VoiceToolAuditInput[] = [];
+  /** Solo pruebas: simula la base sin migrar para secretos por sucursal. */
+  voiceSecretsUnavailable = false;
+
+  async verifyVoiceBranchSecret(organizationId: string, secretHash: string): Promise<VoiceSecretMatch> {
+    if (this.voiceSecretsUnavailable) return { status: "unavailable" };
+    for (const row of this.voiceSecrets.values()) {
+      if (row.organizationId !== organizationId) continue;
+      if (row.hash === secretHash) return { status: "match", propertyId: row.propertyId };
+      if (row.previousHash === secretHash && row.previousUntilMs > Date.now()) return { status: "match", propertyId: row.propertyId };
+    }
+    return { status: "no_match" };
+  }
+
+  async rotateVoiceBranchSecret(organizationId: string, propertyId: string, secretHash: string, secretHint: string, graceSeconds: number): Promise<{ readonly rotatedAt: string }> {
+    if (this.voiceSecretsUnavailable) throw new RestaurantesConfigUnavailableError();
+    const key = `${organizationId}:${propertyId}`;
+    const previous = this.voiceSecrets.get(key);
+    const rotatedAt = new Date().toISOString();
+    this.voiceSecrets.set(key, {
+      organizationId,
+      propertyId,
+      hash: secretHash,
+      hint: secretHint,
+      previousHash: previous ? previous.hash : null,
+      previousUntilMs: previous ? Date.now() + graceSeconds * 1000 : 0,
+      rotatedAt,
+    });
+    return { rotatedAt };
+  }
+
+  async recordVoiceToolAudit(input: VoiceToolAuditInput): Promise<void> {
+    this.voiceToolAudit.push(input);
+  }
+
+  private readonly orderFlows = new Map<string, { state: OrderFlowState; context: OrderFlowContext; version: number; expiresAtMs: number }>();
+  /** Solo pruebas: simula una base sin migrar (`readOrderFlow` -> null, `writeOrderFlow` -> "unavailable"). */
+  orderFlowUnavailable = false;
+
+  async readOrderFlow(organizationId: string, flowKey: string): Promise<OrderFlowSnapshot | null> {
+    if (this.orderFlowUnavailable) return null;
+    const row = this.orderFlows.get(`${organizationId}:${flowKey}`);
+    if (!row || row.expiresAtMs <= Date.now()) return { state: null, context: null, version: row && row.expiresAtMs <= Date.now() ? row.version : 0 };
+    return { state: row.state, context: row.context, version: row.version };
+  }
+
+  async writeOrderFlow(
+    organizationId: string,
+    flowKey: string,
+    expectedVersion: number,
+    next: { readonly state: OrderFlowState; readonly context: OrderFlowContext },
+    ttlSeconds: number,
+  ): Promise<OrderFlowWriteResult> {
+    if (this.orderFlowUnavailable) return "unavailable";
+    const key = `${organizationId}:${flowKey}`;
+    const row = this.orderFlows.get(key);
+    const currentVersion = row?.version ?? 0;
+    if (currentVersion !== expectedVersion) return "conflict";
+    this.orderFlows.set(key, { state: next.state, context: next.context, version: currentVersion + 1, expiresAtMs: Date.now() + ttlSeconds * 1000 });
+    return "written";
+  }
+
   async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
   }

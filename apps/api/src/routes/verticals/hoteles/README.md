@@ -143,7 +143,16 @@ Modelo en `packages/domain-hoteles/migrations/031_hoteles_boveda_identidad.sql`;
   `POST .../solicitar-purga`, `GET /identidad-purgas`, `POST /identidad-purgas/:id/decidir`
   (doble control: decide otra persona), y `GET/POST /registro-migratorio` + `.../reportar`.
 - `identidad-purga-cron.ts` — `GET|POST /internal/hoteles/identidad-purga`: purga por retención,
-  una transacción por property con su fecha de negocio. NO está en `vercel.json`: programarlo es una
-  decisión de despliegue (ya hay 20 crons).
+  una transacción por property con su fecha de negocio. Protegido con el secreto interno (401 sin
+  él; Vercel lo manda como `Authorization: Bearer $CRON_SECRET`). Programado en `vercel.json`
+  una vez al día a las `0 8 * * *` (08:00 UTC = 02:00 CDMX); ya son 21 crons. Con la base sin la
+  migración 031 la property se omite (`omitida: migracion_pendiente`) y el cron responde 200.
 - Llave: `HOTELES_IDENTITY_KEY` (base64, 32 bytes). Sin ella captura/revelación responden 503.
+- **Plazos de retención (decisión de producto, NO mandato legal)** — ver
+  `packages/domain-hoteles/README.md` §H-01 para la justificación y la lista "un abogado debe
+  confirmar". Imagen/documento cifrado: **30 días después del check-out** de la reserva ligada
+  (sin reserva, 30 días desde la captura), editable por captura de **0 a 365** (`retentionDays`;
+  fuera de rango -> 400 "entre 0 y 365"). Registro migratorio/de huéspedes sin imagen: se conserva
+  **365 días** desde la salida (`retencionRegistroHasta` en `GET/POST /registro-migratorio`) y la
+  purga de la imagen NO lo toca.
 - Base sin la migración 031: lecturas `disponible:false`, escrituras 503, el cron omite la property.

@@ -33,11 +33,14 @@
 // de colgar), los 3 vía x-atiende-tool-secret, está probado explícitamente en
 // apps/api/tests/voice-order-closed-loop.spec.ts.
 import { Hono } from "hono";
-import { consumeRateLimit, findNearestBranch, OrderValidationError, quoteOrder, searchProducts } from "@atiende/domain-restaurantes";
-import type { RequestedOrderItemInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
+import type { Context } from "hono";
+import { canonicalizeMexicanPhone, consumeRateLimit, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
+import type { AgentToolContext, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
-import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { CALL_ID_RE, signVoiceCallToken, VOICE_CALL_TOKEN_DEFAULT_TTL_SECONDS, VOICE_CALL_TOKEN_MAX_TTL_SECONDS, voiceCallTokenKey } from "../../../voice-call-token.ts";
+import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials, type VoiceCaller } from "./voice-auth.ts";
 
 async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSlug: string) {
   const org = await repo.findOrganizationBySlug(orgSlug);
@@ -45,27 +48,66 @@ async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSl
   return org;
 }
 
-function requireVoiceToolSecret(deps: AppDeps, req: Request): void {
-  if (!secretMatches(req, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
+/** Contexto del registro unico para una llamada de voz: telefono y sucursal salen del TOKEN. */
+export function voiceToolContext(orgId: string, caller: VoiceCaller): AgentToolContext {
+  return {
+    organizationId: orgId,
+    channel: "voz",
+    phone: caller.phone,
+    lockedPropertyId: caller.propertyId,
+    // Maquina de estados del pedido: solo con llamada identificada (token). Sin token (camino legado)
+    // no hay callId confiable sobre el que llevar estado.
+    ...(caller.callId ? { flow: { key: `call:${caller.callId}`, turn: null } } : {}),
+  };
 }
 
-interface QuoteItemBody {
-  readonly product_id?: unknown;
-  readonly product_name?: unknown;
-  readonly requested_quantity?: unknown;
-  readonly tortilla?: unknown;
+export interface VoiceToolRouteOptions {
+  readonly tool: string;
+  readonly accept: "required" | "legacy_ok";
+  /** Limite por IP del camino legado (la IP es la del proveedor, por eso solo aplica sin token/sucursal). */
+  readonly legacyLimit?: { readonly scope: string; readonly secondary: string; readonly max: number };
 }
 
-function mapQuoteItems(raw: unknown): RequestedOrderItemInput[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((entry) => {
-    const item = (entry ?? {}) as QuoteItemBody;
-    return {
-      productId: typeof item.product_id === "string" ? item.product_id : undefined,
-      productName: typeof item.product_name === "string" ? item.product_name : undefined,
-      requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity),
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? item.tortilla : undefined,
-    };
+/**
+ * Esqueleto comun de una herramienta de voz: sesion de sistema -> organizacion -> autenticacion
+ * (token / secreto de sucursal / secreto legado) -> limites por llamada y sucursal -> ejecucion en un
+ * SAVEPOINT (un rechazo de negocio revierte solo los efectos de la herramienta, y su bitacora si se
+ * confirma) -> bitacora.
+ */
+export async function runVoiceToolRoute(
+  deps: AppDeps,
+  c: Context,
+  orgSlug: string,
+  options: VoiceToolRouteOptions,
+  exec: (args: { repo: RestaurantesRepository; org: { id: string }; caller: VoiceCaller; toolCtx: AgentToolContext }) => Promise<Response>,
+): Promise<Response> {
+  return deps.engine.withAppSession({ userId: null }, async (db) => {
+    const repo = deps.restaurantesRepo(db);
+    const org = await resolveOrganizationOrNotFound(repo, orgSlug);
+    const auth = await authenticateVoiceTool(deps, c, repo, org, { tool: options.tool, accept: options.accept });
+    if (!auth.ok) return auth.response;
+    const { caller } = auth;
+
+    if (caller.kind === "legacy_secret" && options.legacyLimit) {
+      const limited = await consumeRateLimit(repo, options.legacyLimit.scope, requestActor(c.req.raw, options.legacyLimit.secondary), options.legacyLimit.max, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+    } else {
+      const limitedResponse = await enforceVoiceLimits(c, repo, org, caller, options.tool);
+      if (limitedResponse) return limitedResponse;
+    }
+
+    try {
+      const response = await repo.runWithRowSavepoint(() => exec({ repo, org, caller, toolCtx: voiceToolContext(org.id, caller) }));
+      await auditVoice(repo, org, caller, options.tool, "ok", null);
+      return response;
+    } catch (err) {
+      if (err instanceof OrderValidationError) {
+        const code = (err as { code?: unknown }).code;
+        await auditVoice(repo, org, caller, options.tool, "denied", typeof code === "string" ? code : "validacion");
+        return c.json({ code: "validation_error", message: err.message }, 400);
+      }
+      throw err;
+    }
   });
 }
 
@@ -73,97 +115,144 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
   // §1.1 — POST /v1/restaurantes/:orgSlug/branches/nearest (buscar_sucursal_cercana).
-  // Única de las 3 con negocio genuinamente nuevo (nearest-branch.ts, §1.1.1):
-  // matching de colonia contra `restaurantes.known_zone` de ESTA organización
-  // + distancia Haversine real. Cero-match real -> encontrada:false, NUNCA se
-  // inventa/adivina una sucursal.
+  // matching de colonia contra `restaurantes.known_zone` de ESTA organización + distancia Haversine
+  // real. Cero-match real -> encontrada:false, NUNCA se inventa/adivina una sucursal.
   app.post("/v1/restaurantes/:orgSlug/branches/nearest", async (c) => {
-    requireVoiceToolSecret(deps, c.req.raw);
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
     const { colonia } = await readJsonCapped<{ colonia?: unknown }>(c.req.raw, 4 * 1024);
     if (typeof colonia !== "string" || !colonia.trim() || colonia.length > 160) throw Errors.validation("colonia es requerido");
-
-    // Sub-Hono propio sin authMiddleware/dbSession -- abre su propia sesión de
-    // sistema (`userId: null`), igual que public.ts.
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.restaurantesRepo(db);
-      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
-
-      const limited = await consumeRateLimit(repo, "voice-branches-nearest", requestActor(c.req.raw, colonia), 60, 60);
-      if (!limited.allowed) throw Errors.tooManyRequests();
-
-      const match = await findNearestBranch(repo, { organizationId: org.id, colonia });
-      if (!match.found) return c.json({ encontrada: false, mensaje: match.message });
-      return c.json({ encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName });
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "buscar_sucursal_cercana", accept: "legacy_ok", legacyLimit: { scope: "voice-branches-nearest", secondary: colonia, max: 60 } }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "buscar_sucursal_cercana", { colonia });
+      return c.json(outcome.result as object);
     });
   });
 
-  // §1.2 — POST /v1/restaurantes/:orgSlug/products/search (buscar_producto).
-  // Reutiliza 100% `searchProducts` (Fase 1) — branch_slug sigue siendo
-  // obligatorio: si falta o no existe, error explícito 400, nunca cae en
-  // silencio a una sucursal default (bug real corregido 3-sep-2026 en el
-  // origen: hardcode silencioso a `fco-montejo`).
+  // POST /v1/restaurantes/:orgSlug/branches/info (consultar_sucursal): direccion, horario, si abre ahora.
+  app.post("/v1/restaurantes/:orgSlug/branches/info", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const { branch_slug: branchSlug } = await readJsonCapped<{ branch_slug?: unknown }>(c.req.raw, 4 * 1024);
+    if (typeof branchSlug !== "string" || !branchSlug.trim() || branchSlug.length > 100) throw Errors.validation("branch_slug es requerido");
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "consultar_sucursal", accept: "legacy_ok", legacyLimit: { scope: "voice-branches-info", secondary: branchSlug, max: 120 } }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "consultar_sucursal", { branch_slug: branchSlug });
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // §1.2 — POST /v1/restaurantes/:orgSlug/products/search (buscar_producto). branch_slug sigue siendo
+  // obligatorio: si falta o no existe, error explícito 400, nunca cae en silencio a una sucursal default.
   app.post("/v1/restaurantes/:orgSlug/products/search", async (c) => {
-    requireVoiceToolSecret(deps, c.req.raw);
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
     const { query, branch_slug: branchSlug } = await readJsonCapped<{ query?: unknown; branch_slug?: unknown }>(c.req.raw, 8 * 1024);
     if (typeof query !== "string" || !query.trim() || query.length > 160) throw Errors.validation("query es requerido");
     if (typeof branchSlug !== "string" || !branchSlug.trim() || branchSlug.length > 100) {
       throw Errors.validation("branch_slug es requerido — confirma la sucursal antes de buscar productos");
     }
-
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.restaurantesRepo(db);
-      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
-
-      const limited = await consumeRateLimit(repo, "voice-products-search", requestActor(c.req.raw, branchSlug), 120, 60);
-      if (!limited.allowed) throw Errors.tooManyRequests();
-
-      const branch = await repo.findBranch(org.id, { slug: branchSlug });
-      if (!branch) throw Errors.validation(`Sucursal '${branchSlug}' no encontrada`);
-
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query });
-      return c.json({
-        productos: productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation })),
-      });
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "buscar_producto", accept: "legacy_ok", legacyLimit: { scope: "voice-products-search", secondary: branchSlug, max: 120 } }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "buscar_producto", { query, branch_slug: branchSlug });
+      return c.json({ productos: outcome.result });
     });
   });
 
-  // §1.3 — POST /v1/restaurantes/:orgSlug/orders/quote (cotizar_pedido).
-  // Reutiliza en su mayoría `buildOrderQuoteFromProducts` (Fase 1) vía el
-  // wrapper `quoteOrder` (Fase 2, orders.ts) — la guardia anti-alucinación de
-  // precio/pack_size/tortilla/mayoría-de-edad vive ahí completa y no cambia
-  // una línea. Respuesta: el `OrderQuote` real tal cual (lines/total/
-  // containsAlcohol) — el LLM debe leer este resultado y repetirlo, nunca
-  // calcular él mismo.
+  // §1.3 — POST /v1/restaurantes/:orgSlug/orders/quote (cotizar_pedido). La guardia anti-alucinación de
+  // precio/pack_size/tortilla/mayoría-de-edad vive en `quoteOrder`. Respuesta: el `OrderQuote` real tal
+  // cual; con llamada identificada (token) agrega `quote_hash` y avanza la máquina de estados.
   app.post("/v1/restaurantes/:orgSlug/orders/quote", async (c) => {
-    requireVoiceToolSecret(deps, c.req.raw);
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
     const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown }>(c.req.raw, 24 * 1024);
     const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
     if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "cotizar_pedido", accept: "legacy_ok", legacyLimit: { scope: "voice-orders-quote", secondary: branchSlug, max: 120 } }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "cotizar_pedido", {
+        branch_slug: branchSlug,
+        items: body.items,
+        adult_confirmed: body.adult_confirmed,
+        // Modelo PM: canal (default domicilio), colonia de entrega y forma de pago (solo para saber si
+        // corresponde preguntar propina). Las reglas las aplica quoteOrder.
+        canal: body.canal,
+        colonia_entrega: body.colonia_entrega,
+        payment_method: body.payment_method,
+      });
+      // Contrato historico de voz: `quote` es el OrderQuote de dominio sin transformar (+ quote_hash aditivo).
+      return c.json({ quote: outcome.raw, ...(outcome.quoteHash ? { quote_hash: outcome.quoteHash } : {}) });
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/orders/confirm (confirmar_resumen): registra que el cliente dijo si al
+  // resumen. Exige token de llamada: el estado vive por llamada.
+  app.post("/v1/restaurantes/:orgSlug/orders/confirm", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<{ quote_hash?: unknown }>(c.req.raw, 2 * 1024);
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: "confirmar_resumen", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, "confirmar_resumen", { quote_hash: typeof body.quote_hash === "string" ? body.quote_hash : undefined });
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/callbacks (escalar_a_humano / registrar_contacto): deja un aviso para
+  // una persona del restaurante. El telefono sale del token de llamada.
+  app.post("/v1/restaurantes/:orgSlug/callbacks", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<{ customer_name?: unknown; motivo?: unknown; resumen?: unknown; reason?: unknown; message?: unknown }>(c.req.raw, 4 * 1024);
+    const escalada = typeof body.motivo === "string";
+    return runVoiceToolRoute(deps, c, c.req.param("orgSlug"), { tool: escalada ? "escalar_a_humano" : "registrar_contacto", accept: "required" }, async ({ repo, toolCtx }) => {
+      const outcome = await invokeAgentTool(repo, toolCtx, escalada ? "escalar_a_humano" : "registrar_contacto", {
+        customer_name: body.customer_name,
+        motivo: body.motivo,
+        resumen: body.resumen,
+        reason: body.reason,
+        message: body.message,
+      });
+      return c.json(outcome.result as object);
+    });
+  });
+
+  // POST /v1/restaurantes/:orgSlug/voice/call-token — alta de llamada. Lo invoca la telefonia/puente de voz
+  // (servidor de confianza) con el secreto de la sucursal y el telefono que reporta la linea (caller ID);
+  // devuelve el token por llamada que las herramientas presentan despues. El telefono NUNCA lo decide el modelo.
+  app.post("/v1/restaurantes/:orgSlug/voice/call-token", async (c) => {
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
+    const body = await readJsonCapped<{ call_id?: unknown; caller_phone?: unknown; branch_slug?: unknown; ttl_seconds?: unknown }>(c.req.raw, 2 * 1024);
+    if (typeof body.call_id !== "string" || !CALL_ID_RE.test(body.call_id)) throw Errors.validation("call_id es requerido (1-128 caracteres: letras, números, . _ : -)");
+    const phone = typeof body.caller_phone === "string" ? canonicalizeMexicanPhone(body.caller_phone) : null;
+    if (!phone) throw Errors.validation("caller_phone inválido: se esperan 10 dígitos (con o sin +52/521)");
+    const ttl = Math.min(
+      VOICE_CALL_TOKEN_MAX_TTL_SECONDS,
+      Math.max(60, typeof body.ttl_seconds === "number" && Number.isFinite(body.ttl_seconds) ? Math.floor(body.ttl_seconds) : VOICE_CALL_TOKEN_DEFAULT_TTL_SECONDS),
+    );
+    const callId = body.call_id;
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
+      const auth = await authenticateVoiceTool(deps, c, repo, org, { tool: "emitir_token_de_llamada", accept: "legacy_ok", secretOnly: true });
+      if (!auth.ok) return auth.response;
+      const { caller } = auth;
 
-      const limited = await consumeRateLimit(repo, "voice-orders-quote", requestActor(c.req.raw, branchSlug), 120, 60);
-      if (!limited.allowed) throw Errors.tooManyRequests();
-
-      try {
-        const quote = await quoteOrder(repo, {
-          organizationId: org.id,
-          branchSlug,
-          items: mapQuoteItems(body.items),
-          adultConfirmed: body.adult_confirmed === true,
-          // Modelo PM: canal (default domicilio), colonia de entrega y forma de pago (solo para
-          // saber si corresponde preguntar propina). Las reglas las aplica quoteOrder.
-          canal: typeof body.canal === "string" ? (body.canal as "domicilio" | "recoger") : undefined,
-          colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
-          paymentMethod: body.payment_method === "efectivo" || body.payment_method === "tarjeta" ? body.payment_method : undefined,
-        });
-        return c.json({ quote });
-      } catch (err) {
-        if (err instanceof OrderValidationError) throw Errors.validation(err.message);
-        throw err;
+      if (caller.kind === "legacy_secret") {
+        const limited = await consumeRateLimit(repo, "voice-call-token", requestActor(c.req.raw, callId), 60, 60);
+        if (!limited.allowed) throw Errors.tooManyRequests();
+      } else {
+        const limitedResponse = await enforceVoiceLimits(c, repo, org, { ...caller, callId: null }, "emitir_token_de_llamada");
+        if (limitedResponse) return limitedResponse;
       }
+
+      // Sucursal de la llamada: la del secreto de sucursal; con el secreto legado (sin sucursal) debe venir en el body.
+      const requestedSlug = typeof body.branch_slug === "string" ? body.branch_slug : null;
+      const branch = requestedSlug ? await repo.findBranch(org.id, { slug: requestedSlug }) : caller.propertyId ? await repo.findBranchById(org.id, caller.propertyId) : null;
+      if (!branch || branch.status !== "active") {
+        await auditVoice(repo, org, { propertyId: caller.propertyId, callId, phone }, "emitir_token_de_llamada", "denied", "sucursal_no_encontrada");
+        return c.json({ code: "validation_error", message: "branch_slug es requerido y debe ser una sucursal activa de este restaurante" }, 400);
+      }
+      // Un secreto de OTRA sucursal no emite tokens para esta (aislamiento entre sucursales).
+      if (caller.propertyId && caller.propertyId !== branch.propertyId) {
+        await auditVoice(repo, org, { propertyId: caller.propertyId, callId, phone }, "emitir_token_de_llamada", "denied", "secreto_de_otra_sucursal");
+        return c.json({ code: "forbidden", message: "El secreto presentado no pertenece a esa sucursal." }, 403);
+      }
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const token = signVoiceCallToken(voiceCallTokenKey(deps.env.internalSecret), { org: org.id, prop: branch.propertyId, call: callId, ph: phone, iat: nowSec, exp: nowSec + ttl });
+      await auditVoice(repo, org, { propertyId: branch.propertyId, callId, phone }, "emitir_token_de_llamada", "token_issued", null);
+      return c.json({ call_token: token, expires_at: new Date((nowSec + ttl) * 1000).toISOString(), branch_slug: branch.slug, call_id: callId });
     });
   });
 

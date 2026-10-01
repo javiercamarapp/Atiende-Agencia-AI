@@ -77,6 +77,8 @@ export interface MigratorioSummary {
   readonly reportadoEn: string | null;
   readonly reportadoPor: string | null;
   readonly creadoEn: string;
+  /** Hasta cuando se conserva el registro textual (sin imagen). Opcional: una API anterior no lo envia. */
+  readonly retencionRegistroHasta?: string;
 }
 
 export interface CaptureIdentidadInput {
@@ -89,6 +91,42 @@ export interface CaptureIdentidadInput {
   readonly birthDate?: string;
   readonly expiryDate?: string;
   readonly retentionDays?: number;
+}
+
+// Politica de retencion de la IMAGEN cifrada. REDECLARADA a proposito (apps/web no depende de
+// @atiende/domain-hoteles): debe coincidir con IDENTITY_IMAGE_RETENTION_DAYS_* de
+// packages/domain-hoteles/src/identity/service.ts. Es una DECISION DE PRODUCTO (informe
+// atiende-loop/expertos/retencion-identidad-hoteles-mx.md), NO un mandato legal.
+export const IMAGEN_RETENCION_DIAS_DEFECTO = 30;
+export const IMAGEN_RETENCION_DIAS_MIN = 0;
+export const IMAGEN_RETENCION_DIAS_MAX = 365;
+/** Conservacion del registro textual (sin imagen): MIGRATORY_RETENTION_DAYS_DEFAULT del dominio. */
+export const REGISTRO_RETENCION_DIAS_DEFECTO = 365;
+
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export type PlanRetencion =
+  | { readonly valido: false; readonly mensaje: string }
+  | { readonly valido: true; readonly dias: number; readonly hasta: string | null };
+
+/** Plazo que aplicara la captura. `diasTexto` vacio = default (30). Con fecha de salida de la
+ *  reserva se calcula la fecha exacta; sin reserva solo se informa "N dias desde la captura"
+ *  (la fecha la fija el servidor con la zona horaria del hotel). */
+export function planRetencionImagen(diasTexto: string, checkOutDate: string | null): PlanRetencion {
+  const t = diasTexto.trim();
+  let dias = IMAGEN_RETENCION_DIAS_DEFECTO;
+  if (t !== "") {
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < IMAGEN_RETENCION_DIAS_MIN || n > IMAGEN_RETENCION_DIAS_MAX) {
+      return { valido: false, mensaje: `Los días de conservación deben ser un entero entre ${IMAGEN_RETENCION_DIAS_MIN} y ${IMAGEN_RETENCION_DIAS_MAX}.` };
+    }
+    dias = n;
+  }
+  return { valido: true, dias, hasta: checkOutDate ? addDaysYmd(checkOutDate, dias) : null };
 }
 
 const base = (apiBaseUrl: string, propertyId: string) => `${apiBaseUrl}/hoteles/${propertyId}`;

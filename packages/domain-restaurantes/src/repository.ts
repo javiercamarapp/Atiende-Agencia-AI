@@ -7,6 +7,8 @@
 // función de negocio de customers.ts/orders.ts/whatsapp/* toca SQL directamente —
 // todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
 // en producción.
+import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
+import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   Branch,
   BranchPolicy,
@@ -229,6 +231,32 @@ export interface RestaurantesRepository {
    * cliente -- nunca enmascara el fallo, solo evita que tumbe el resto del turno.
    * No-op en `InMemoryRestaurantesRepository` (sin transacción real que aislar). */
   runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+
+  // ---- Voz: secretos por sucursal y bitacora (migracion 026) ----
+  /** Busca el secreto presentado (ya hasheado con sha256) entre los secretos vigentes por sucursal de
+   * ESTA organizacion (el anterior sigue valido durante la ventana de gracia de una rotacion). */
+  verifyVoiceBranchSecret(organizationId: string, secretHash: string): Promise<VoiceSecretMatch>;
+  /** Rota el secreto de voz de una sucursal (solo staff owner/admin: lo aplica la funcion SQL). Lanza
+   * `RestaurantesConfigUnavailableError` en una base sin migrar. */
+  rotateVoiceBranchSecret(organizationId: string, propertyId: string, secretHash: string, secretHint: string, graceSeconds: number): Promise<{ readonly rotatedAt: string }>;
+  /** Bitacora de herramientas de voz. Best-effort: nunca lanza ni deja abortada la transaccion. */
+  recordVoiceToolAudit(input: VoiceToolAuditInput): Promise<void>;
+
+  // ---- Estado del pedido en el servidor (agent-tools/order-flow.ts, migracion 026) ----
+  /** Lee el estado de la maquina de estados del pedido. `null` = no disponible todavia (la
+   * base no tiene `restaurantes.order_flow_state`: SQLSTATE 42883/42P01/42703, atrapado con
+   * SAVEPOINT) -- el llamador cae al camino anterior (sin exigir cotizacion/confirmacion).
+   * Fila inexistente o vencida = `{ state: null, context: null, version: 0 }`. */
+  readOrderFlow(organizationId: string, flowKey: string): Promise<OrderFlowSnapshot | null>;
+  /** Escritura compare-and-swap por `expectedVersion` (0 = crear). `conflict` = otro proceso
+   * escribio primero (no se aplico nada); `unavailable` = base sin migrar. */
+  writeOrderFlow(
+    organizationId: string,
+    flowKey: string,
+    expectedVersion: number,
+    next: { readonly state: OrderFlowState; readonly context: OrderFlowContext },
+    ttlSeconds: number,
+  ): Promise<OrderFlowWriteResult>;
 
   // ---- KPIs de admin (Fase 3 — ver diseño §2, únicas rutas de staff autenticado de
   // este vertical hasta ahora). `propertyIds`: null = sin restricción (agrega TODA la
