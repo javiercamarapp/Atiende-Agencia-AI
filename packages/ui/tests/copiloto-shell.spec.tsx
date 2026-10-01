@@ -238,7 +238,7 @@ describe("hilo, burbujas y accesibilidad", () => {
 
   it("al responder, la siguiente pregunta manda el conversacionId que dio el servidor", async () => {
     const cambia = vi.fn();
-    const { t, enviar } = transporteFalso({
+    const { t } = transporteFalso({
       enviar: vi.fn(async (p) => {
         p.onEvento({ t: "fin", respuesta: RESPUESTA_OK, conversacionId: "conv-1" });
         return RESPUESTA_OK;
@@ -249,7 +249,7 @@ describe("hilo, burbujas y accesibilidad", () => {
     await preguntar(c, "uno");
     expect(cambia).toHaveBeenCalledWith("conv-1");
     await preguntar(c, "dos");
-    const llamadas = (t.enviar as typeof enviar).mock.calls;
+    const llamadas = vi.mocked(t.enviar).mock.calls;
     expect(llamadas[1]?.[0].conversacionId).toBe("conv-1");
   });
 });

@@ -6,7 +6,6 @@ import type { Root } from "react-dom/client";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
-import { ChatDatosShell } from "../src/components/copiloto/ChatDatosShell";
 import type {
   ChatDatosShellProps,
   CopilotoEvento,
