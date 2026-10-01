@@ -60,7 +60,7 @@ export function cleanText(value: unknown, maxLength: number): string | null {
   return cleaned.slice(0, maxLength);
 }
 
-const PAN_RE = /(?:\d[ -]?){13,19}/;
+const PAN_RE = /\d(?:[ -]?\d){12,18}/;
 const CURP_RE = /\b[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d\b/i;
 const RFC_RE = /\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/i;
 const PASSPORT_HINT_RE = /\b(pasaporte|passport|curp|ine|ife|licencia de conducir|cvv|cvc|nip|tarjeta)\b/i;
@@ -73,7 +73,7 @@ export function looksSensitive(text: string): boolean {
 /** Sustituye formas sensibles por [REDACTADO] (para el resumen de un handoff: queda registro sin el dato). */
 export function redactSensitive(text: string): string {
   return text
-    .replace(/(?:\d[ -]?){13,19}/g, "[REDACTADO]")
+    .replace(/\d(?:[ -]?\d){12,18}/g, "[REDACTADO]")
     .replace(new RegExp(CURP_RE.source, "gi"), "[REDACTADO]")
     .replace(new RegExp(RFC_RE.source, "gi"), "[REDACTADO]");
 }
@@ -109,7 +109,7 @@ export function isUuid(value: unknown): value is string {
 /** "$1,234.56", "1234 pesos", "MXN 1,234": devuelve los importes mencionados en centavos. */
 export function extractMoneyCents(text: string): number[] {
   const out: number[] = [];
-  const re = /(?:\$|mxn|usd|us\$)\s*([\d]{1,3}(?:[,.\s]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)|(\d{1,3}(?:[,.\s]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:pesos|mxn|usd|dolares|dólares)/gi;
+  const re = /(?:\$|\bmxn\b|\busd\b|us\$)\s*(\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)|(\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:pesos|mxn|usd|d[oó]lares)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const raw = (m[1] ?? m[2] ?? "").replace(/\s/g, "");
