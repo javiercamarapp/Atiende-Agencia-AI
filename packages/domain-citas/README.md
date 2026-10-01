@@ -583,3 +583,42 @@ por falta de USAGE en el schema).
 y `postgres-repository-whatsapp-config-system-savepoint.spec.ts` cubren el
 fallback de compatibilidad con `AbortAwareFakeSession`.
 `reminders-waitlist-orden-total.spec.ts` cubre el desempate por `id`.
+
+## C-02 -- derechos ARCO por WhatsApp (migración 024)
+
+Documentación operativa, **no es asesoría legal**: los plazos son una referencia
+conservadora (días de calendario) y cada responsable debe validar su aviso de
+privacidad y su procedimiento con su asesor jurídico.
+
+Qué hay:
+
+- `migrations/024_citas_data_rights.sql` (espejo `supabase/migrations/20240101000205_024_citas_data_rights.sql`):
+  `citas.data_rights_requests` (estados `pendiente_confirmacion`, `recibida`,
+  `en_proceso`, `bloqueada`, `resuelta`, `rechazada`, `cancelada_titular`,
+  `expirada`) y `citas.data_rights_events` (bitácora append-only). Lectura solo
+  owner/admin (RLS + GRANT de SELECT por columna); sin GRANT de escritura: todo
+  pasa por tres funciones `security definer` con `search_path` fijo — dos de
+  solo-sistema (`auth.uid() is null`) para el webhook y una de staff owner/admin.
+- Plazos de referencia: al confirmar el titular corre `response_due_at` (20 días)
+  y `execution_due_at` (35 días desde la confirmación = 15 días más).
+- `src/arco-intent.ts`: fast-path determinista en `whatsapp/inbound.ts`, **después**
+  del guardrail de crisis y **antes** del LLM. Detecta acceso, rectificación,
+  cancelación y oposición; pide al titular escribir `CONFIRMO` desde el mismo
+  número (vigente 24 h) o `CANCELAR SOLICITUD`. Solo actúa sobre el teléfono que
+  autentica Meta, jamás sobre uno citado en el texto; un mensaje que pide datos de
+  otra persona recibe una negativa guiada y no registra nada. El agente nunca
+  devuelve datos personales por chat: el acceso lo entrega el staff tras verificar
+  la identidad. Cancelación pasa por `bloqueada` (bloqueo antes de supresión).
+- API: `GET/PATCH .../admin/privacidad/solicitudes` (owner/admin); panel:
+  página Privacidad de `apps/web` con `SolicitudesArcoPanel` de `@atiende/ui`.
+- Verificación contra Postgres real: `scripts/verify-citas-data-rights/`.
+
+Base sin migrar: sin la 024 aplicada, el fast-path devuelve `null` y el mensaje
+sigue al agente LLM como antes; las lecturas del panel responden `disponible:false`
+y el PATCH un 503 explícito. Cada método usa `runWithSavepointFallback`, así que la
+transacción compartida del webhook no queda abortada (25P02).
+
+Fuera de alcance de este cambio (ver el PR): la supresión/anonimización real de
+los datos del cliente al resolver una cancelación se ejecuta a mano por el staff;
+no hay aviso proactivo al dueño cuando entra una solicitud nueva ni recordatorios
+automáticos de vencimiento; el canal de voz no tiene este fast-path.
