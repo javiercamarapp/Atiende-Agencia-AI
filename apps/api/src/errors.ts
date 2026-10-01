@@ -13,6 +13,18 @@ export const Errors = {
   tooManyRequests: (message = "Demasiadas solicitudes.") => new ApiError(429, "too_many_requests", message, { "Retry-After": "60" }),
   payloadTooLarge: (message = "Payload demasiado grande.") => new ApiError(413, "payload_too_large", message),
   serviceUnavailable: (message = "Servicio no configurado.") => new ApiError(503, "service_unavailable", message),
+  // ---- segundo factor / step-up / contrasena (L-01, L-02) ----
+  // 422/403/429/503 a proposito, NUNCA 401: el cliente trata 401 como "sesion vencida" y
+  // cerraria la sesion del usuario por escribir mal un codigo.
+  secondFactorInvalid: () => new ApiError(422, "second_factor_invalid", "El código es incorrecto o ya se usó."),
+  secondFactorLocked: (hasta: string) =>
+    new ApiError(429, "second_factor_locked", `Demasiados intentos fallidos. La verificación en dos pasos está bloqueada hasta ${hasta}.`, { "Retry-After": "900" }),
+  stepUpRequired: (message = "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.") => new ApiError(403, "step_up_required", message),
+  stepUpEnrollmentRequired: () =>
+    new ApiError(403, "step_up_enrollment_required", "Esta acción exige verificación en dos pasos y todavía no la activaste. Actívala en Seguridad de tu cuenta y vuelve a intentar."),
+  twoFactorUnavailable: () =>
+    new ApiError(503, "two_factor_unavailable", "La verificación en dos pasos todavía no está disponible en este ambiente (migración pendiente)."),
+  currentPasswordInvalid: () => new ApiError(422, "current_password_invalid", "La contraseña actual no es correcta."),
   // ---- hoteles (folios/cargos, ver diseño Fase 1 §4.1) ----
   idempotencyRequired: () => new ApiError(400, "idempotency_required", "Falta el header Idempotency-Key, obligatorio para esta operación de dinero."),
   idempotencyConflict: () => new ApiError(422, "idempotency_conflict", "El Idempotency-Key ya fue usado con un cuerpo de solicitud distinto."),
