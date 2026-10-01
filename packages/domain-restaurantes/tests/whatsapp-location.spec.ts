@@ -23,7 +23,9 @@ describe("extractMetaInboundMessages", () => {
     );
     expect(out.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
     expect(out[0]).toEqual({ id: "m1", from: FROM, body: "hola" });
-    expect(out[1]!.body).toBe(formatLocationMessage({ latitude: 21.0165, longitude: -89.596, name: "Mi casa", address: "Calle 5 x 6" }));
+    expect(out[1]!.body).toBe(formatLocationMessage({ latitude: 21.0165, longitude: -89.596 }));
+    // Minimizacion: el nombre y la direccion que manda Meta no se guardan en el historial.
+    expect(out[1]!.body).not.toMatch(/Mi casa|Calle 5/);
     expect(parseSharedLocation(out[1]!.body)).toEqual({ lat: 21.0165, lng: -89.596 });
     expect(out[2]!.body).toMatch(/archivo \(image\)/);
   });
@@ -63,8 +65,8 @@ describe("extractMetaInboundMessages", () => {
 
 describe("marcador de ubicacion en el historial", () => {
   it("ida y vuelta: lo que se formatea se vuelve a parsear", () => {
-    const text = formatLocationMessage({ latitude: 21.016512, longitude: -89.596034, name: "Casa\nde Ana", address: "Calle 5" });
-    expect(text).not.toMatch(/\n/);
+    const text = formatLocationMessage({ latitude: 21.016512, longitude: -89.596034 });
+    expect(text).toBe("[Ubicación compartida por WhatsApp] lat=21.016512 lng=-89.596034");
     expect(parseSharedLocation(text)).toEqual({ lat: 21.016512, lng: -89.596034 });
   });
 

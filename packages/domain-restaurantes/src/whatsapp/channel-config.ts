@@ -92,17 +92,13 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown; name?: unknown; address?: unknown } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
         if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
         // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
         if (message.type === "location" && isValidCoordinate(message.location?.latitude, message.location?.longitude)) {
-          const { latitude, longitude, name, address } = message.location ?? {};
-          result.push({
-            id: message.id,
-            from: message.from,
-            body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number, ...(typeof name === "string" ? { name } : {}), ...(typeof address === "string" ? { address } : {}) }),
-          });
+          const { latitude, longitude } = message.location ?? {};
+          result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
         } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
           result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type, message) });
         }
