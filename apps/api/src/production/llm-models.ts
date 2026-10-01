@@ -10,10 +10,11 @@
 //   * NINGUN modelo de laboratorios chinos en produccion: ni en los defaults ni vía
 //     LLM_MODELS_JSON (se rechazan al validar). Los retadores viven en `EVAL_CHALLENGERS`, apagados,
 //     y solo los lee el arnes de evals.
-//   * Parametros por modelo: GPT-6 Luna, Claude Sonnet 5.5 y Gemini 3.5 Flash-Lite NO listan
-//     `temperature` entre los parametros soportados en OpenRouter (verificado en
-//     /api/v1/models/<id>/endpoints el 2026-10-01). Con `require_parameters: true` mandarla deja la
-//     ruta sin endpoints, asi que se omite ('omit').
+//   * Parametros por modelo: los endpoints de GPT-6 Luna y Claude Sonnet 5.5 (y los de Gemini 3.5
+//     Flash-Lite en Vertex) NO listan `temperature` entre los parametros soportados en OpenRouter
+//     (verificado en /api/v1/models/<id>/endpoints el 2026-10-01; con Luna y Sonnet 5.5 se confirmo con
+//     una llamada real: `temperature: 0` -> 404 sin endpoints). Con `require_parameters: true` mandarla
+//     deja la ruta sin endpoints, asi que se omite ('omit') en todos los defaults.
 //   * El gateway NUNCA cae a un modelo no listado: una variable mal formada se ignora (con un
 //     error estructurado en logs) y se usan los defaults.
 import type { OpenRouterModelParams, OpenRouterRouting } from "@atiende/agent-core";

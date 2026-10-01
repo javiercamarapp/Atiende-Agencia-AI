@@ -42,9 +42,11 @@ rol (p.ej. restaurantes:data_chat)
 
 Parámetros por modelo en los defaults:
 
-- `temperature: "omit"`. GPT-6 Luna, Claude Sonnet 5.5 y Gemini 3.5 Flash-Lite **no listan `temperature`**
-  entre los parámetros soportados de OpenRouter (verificado en `/api/v1/models/<id>/endpoints`). Con
-  `require_parameters: true`, mandarla deja la ruta sin endpoints.
+- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 (y los de Gemini 3.5 Flash-Lite en
+  Vertex) **no listan `temperature`** entre los parámetros soportados de OpenRouter (verificado en
+  `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se confirmó con una llamada real: `temperature: 0`
+  devuelve 404 "No endpoints found that can handle the requested parameters"). Con `require_parameters: true`,
+  mandarla deja la ruta sin endpoints; por eso se omite en todos los defaults.
 - `minMaxTokens`: piso del tope de salida (1500 a 4000 según el rol). Los tokens de razonamiento consumen
   el tope: con 500 la respuesta podía quedar vacía.
 - Preferencias de proveedor por laboratorio (`provider.only`): `openai/*` -> `openai`, `azure`;
