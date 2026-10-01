@@ -3,15 +3,15 @@
 // revisa la VISTA PREVIA -- movimientos normalizados (fecha, concepto, cargo/abono, saldo,
 // referencia), errores por renglón, avisos de posibles duplicados y la conciliación contra
 // los CFDI ya ingeridos (con la cuenta por cobrar pendiente sugerida) -- y corrige el
-// archivo si hace falta. Es de solo lectura: este flujo todavía NO guarda los movimientos
-// (la persistencia con control de duplicados por hash llega con su migración), y la pantalla
-// lo dice con todas sus letras en vez de aparentar un "Importar" que no existe.
+// archivo si hace falta. Solo entonces pulsa "Guardar en el libro": el servidor vuelve a
+// parsear el archivo y guarda de forma idempotente por huella (re-subir el mismo archivo o
+// uno traslapado no duplica). Guardar NO marca cuentas por cobrar como pagadas ni concilia.
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, FileUp, Search } from "lucide-react";
 import { Badge, Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoVacio, Input, Label, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
-import { BANCOS_ESTADO_CUENTA, decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, previsualizarEstadoCuenta } from "../lib/estado-cuenta-client.ts";
-import type { BancoEstadoCuenta, CoincidenciaImportacion, VistaPreviaImportacion } from "../lib/estado-cuenta-client.ts";
+import { BANCOS_ESTADO_CUENTA, decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, guardarEstadoCuenta, previsualizarEstadoCuenta } from "../lib/estado-cuenta-client.ts";
+import type { BancoEstadoCuenta, CoincidenciaImportacion, EntradaImportacion, ResultadoGuardadoEstadoCuenta, VistaPreviaImportacion } from "../lib/estado-cuenta-client.ts";
 import { formatMoney } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
@@ -39,10 +39,16 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<VistaPreviaImportacion | null>(null);
+  // Lo que se mandó a la vista previa: "Guardar" reenvía EXACTAMENTE el mismo archivo.
+  const [entrada, setEntrada] = useState<EntradaImportacion | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [guardado, setGuardado] = useState<ResultadoGuardadoEstadoCuenta | null>(null);
 
   async function handleArchivo(file: File) {
     setError(null);
     setVista(null);
+    setEntrada(null);
+    setGuardado(null);
     setNombreArchivo(file.name);
     if (file.size > MAX_BYTES_ARCHIVO) {
       setError("El archivo pesa más de 1.5 MB. Descarga el estado de cuenta por periodos más cortos (p. ej. un mes) y vuelve a intentar.");
@@ -52,17 +58,32 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
     try {
       const contenido = decodificarArchivoEstadoCuenta(await file.arrayBuffer());
       const formato = formatoPorNombreArchivo(file.name);
-      const resultado = await previsualizarEstadoCuenta(fetch, apiBaseUrl, token, propertyId, {
+      const nueva: EntradaImportacion = {
         contenido,
         ...(formato ? { formato } : {}),
         ...(banco ? { banco } : {}),
         ...(cuenta.trim() ? { cuenta: cuenta.trim() } : {}),
-      });
+      };
+      const resultado = await previsualizarEstadoCuenta(fetch, apiBaseUrl, token, propertyId, nueva);
+      setEntrada(nueva);
       setVista(resultado);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo leer el estado de cuenta.");
     } finally {
       setCargando(false);
+    }
+  }
+
+  async function handleGuardar() {
+    if (!entrada) return;
+    setError(null);
+    setGuardando(true);
+    try {
+      setGuardado(await guardarEstadoCuenta(fetch, apiBaseUrl, token, propertyId, entrada));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el estado de cuenta.");
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -87,7 +108,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Sube el archivo CSV u OFX que descargas de tu banco. Revisas la vista previa y los errores por renglón antes de usarlo; nada se guarda todavía.
+            Sube el archivo CSV u OFX que descargas de tu banco. Revisas la vista previa y los errores por renglón; solo se guarda cuando tú lo confirmas.
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
@@ -197,9 +218,25 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                   Se reconocen por su huella (cuenta, fecha, importe y concepto), así que no se duplican aunque los periodos se traslapen.
                 </Callout>
               )}
-              <Callout tone="neutral" titulo="Vista previa de solo lectura">
-                Esta pantalla valida y concilia el archivo, pero todavía no guarda los movimientos ni marca cuentas por cobrar como pagadas.
-              </Callout>
+              {guardado ? (
+                <Callout tone="success" titulo={guardado.insertados > 0 ? `${guardado.insertados} movimiento(s) guardados` : "Nada nuevo que guardar"}>
+                  {guardado.yaExistentes > 0 ? `${guardado.yaExistentes} ya estaban guardados y no se duplicaron. ` : ""}
+                  Guardar no marca cuentas por cobrar como pagadas ni concilia por sí solo.
+                </Callout>
+              ) : !vista.libroDisponible ? (
+                <Callout tone="warning" titulo="Guardar aún no está disponible en esta base">
+                  Falta aplicar la migración 013 (libro de movimientos importados). Mientras tanto la pantalla solo valida y concilia; no se puede saber qué ya se importó.
+                </Callout>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" size="sm" onClick={() => void handleGuardar()} disabled={guardando || parseo.errores.length > 0 || vista.nuevos === 0}>
+                    {guardando ? "Guardando…" : `Guardar ${vista.nuevos} movimiento(s) nuevos en el libro`}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    {parseo.errores.length > 0 ? "Corrige los renglones con error para poder guardar (se guarda todo o nada)." : vista.nuevos === 0 ? "Todo el archivo ya estaba guardado." : "Guardar no marca cuentas por cobrar como pagadas ni concilia por sí solo."}
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 

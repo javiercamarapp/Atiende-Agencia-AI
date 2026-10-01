@@ -82,6 +82,14 @@ export interface VistaPreviaImportacion {
   readonly conciliacionOmitida: string | null;
   readonly coincidencias: readonly CoincidenciaImportacion[];
   readonly cobranzaDisponible: boolean;
+  readonly libroDisponible: boolean;
+}
+
+export interface ResultadoGuardadoEstadoCuenta {
+  readonly loteId: string;
+  readonly insertados: number;
+  readonly yaExistentes: number;
+  readonly totalMovimientos: number;
 }
 
 export interface EntradaImportacion {
@@ -114,4 +122,10 @@ export function formatoPorNombreArchivo(nombre: string): "csv" | "ofx" | undefin
 
 export async function previsualizarEstadoCuenta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, entrada: EntradaImportacion): Promise<VistaPreviaImportacion> {
   return postJson<VistaPreviaImportacion>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/conciliacion/importar-estado-de-cuenta`, token, entrada);
+}
+
+/** Guarda en el libro los movimientos del archivo, idempotente por hash: el servidor vuelve a
+ * parsear el contenido (nunca confía en movimientos que mande el cliente) y descarta lo ya importado. */
+export async function guardarEstadoCuenta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, entrada: EntradaImportacion): Promise<ResultadoGuardadoEstadoCuenta> {
+  return postJson<ResultadoGuardadoEstadoCuenta>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/conciliacion/importar-estado-de-cuenta/guardar`, token, entrada);
 }

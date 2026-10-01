@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, previsualizarEstadoCuenta } from "../src/verticals/despachos/lib/estado-cuenta-client.ts";
+import { decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, guardarEstadoCuenta, previsualizarEstadoCuenta } from "../src/verticals/despachos/lib/estado-cuenta-client.ts";
 
 describe("decodificarArchivoEstadoCuenta", () => {
   it("UTF-8 válido conserva acentos", () => {
@@ -43,5 +43,18 @@ describe("previsualizarEstadoCuenta", () => {
   it("un error del servidor se propaga con su mensaje", async () => {
     const fetchMock = vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: { message: "banco: se esperaba uno de ..." } }), text: async () => "" }) as unknown as Response);
     await expect(previsualizarEstadoCuenta(fetchMock as unknown as typeof fetch, "https://api.test", "tok", "prop-1", { contenido: "x" })).rejects.toThrow();
+  });
+});
+
+describe("guardarEstadoCuenta", () => {
+  it("manda POST .../importar-estado-de-cuenta/guardar con el mismo cuerpo de la vista previa", async () => {
+    const respuesta = { loteId: "l1", insertados: 2, yaExistentes: 0, totalMovimientos: 2 };
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 201, json: async () => respuesta }) as unknown as Response);
+    const r = await guardarEstadoCuenta(fetchMock as unknown as typeof fetch, "https://api.test", "tok", "prop-1", { contenido: "a;b", formato: "csv" });
+    expect(r).toEqual(respuesta);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.test/despachos/prop-1/conciliacion/importar-estado-de-cuenta/guardar");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ contenido: "a;b", formato: "csv" });
   });
 });

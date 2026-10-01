@@ -47,7 +47,10 @@ const VISTA: VistaPreviaImportacion = {
   conciliacionOmitida: null,
   coincidencias: [{ hash: "h1", renglon: 3, nivel: "exacto", score: 100, detalle: "ok", registroIds: ["inv-1"], folioFiscal: ["uuid-1"], cobranzaPendienteIds: ["cxc-1"] }],
   cobranzaDisponible: true,
+  libroDisponible: true,
 };
+
+const VISTA_SIN_ERRORES: VistaPreviaImportacion = { ...VISTA, parseo: { ...VISTA.parseo, errores: [] } };
 
 function renderPage(ctx: DespachosShellContext = CTX): RenderedComponent {
   return renderComponent(
@@ -72,7 +75,7 @@ describe("ImportarEstadoCuentaPage (despachos)", () => {
   it("estado vacío inicial: pide un archivo, no inventa datos", () => {
     rendered = renderPage();
     expect(rendered.container.textContent).toContain("Sin archivo todavía");
-    expect(rendered.container.textContent).toContain("nada se guarda todavía");
+    expect(rendered.container.textContent).toContain("solo se guarda cuando tú lo confirmas");
   });
 
   it("sube un CSV, manda banco/cuenta/formato y pinta resumen, errores por renglón, avisos y movimientos con su conciliación", async () => {
@@ -100,6 +103,52 @@ describe("ImportarEstadoCuentaPage (despachos)", () => {
     expect(texto).toContain("Cuenta por cobrar pendiente");
     expect(texto).toContain("Sin conciliar");
     expect(texto).toContain("Conciliados con CFDI: 1 de 2");
+  });
+
+  function botonGuardar(): HTMLButtonElement | undefined {
+    return [...rendered!.container.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.startsWith("Guardar"));
+  }
+
+  it("con renglones con error el botón Guardar está deshabilitado (todo o nada)", async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => VISTA }) as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await subirArchivo("Fecha;Concepto\n", "estado.csv");
+    expect(botonGuardar()?.disabled).toBe(true);
+    expect(rendered.container.textContent).toContain("se guarda todo o nada");
+  });
+
+  it("Guardar reenvía el MISMO archivo a /guardar y muestra lo insertado y lo ya existente", async () => {
+    fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/guardar")) return { ok: true, status: 201, json: async () => ({ loteId: "l1", insertados: 2, yaExistentes: 1, totalMovimientos: 3 }) } as unknown as Response;
+      return { ok: true, status: 200, json: async () => VISTA_SIN_ERRORES } as unknown as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await subirArchivo("Fecha;Concepto\n", "estado.csv");
+    const boton = botonGuardar()!;
+    expect(boton.disabled).toBe(false);
+    expect(boton.textContent).toContain("Guardar 2 movimiento(s) nuevos");
+    await act(async () => {
+      boton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 6; i++) await flushMicrotasks();
+    });
+    const [urlGuardar, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(urlGuardar).toBe("https://api.test/despachos/prop-1/conciliacion/importar-estado-de-cuenta/guardar");
+    expect(JSON.parse(init.body as string)).toEqual({ contenido: "Fecha;Concepto\n", formato: "csv" });
+    const texto = rendered.container.textContent!;
+    expect(texto).toContain("2 movimiento(s) guardados");
+    expect(texto).toContain("1 ya estaban guardados y no se duplicaron");
+    expect(botonGuardar()).toBeUndefined();
+  });
+
+  it("base sin la migración 013 (libroDisponible=false): avisa y no ofrece Guardar", async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ...VISTA_SIN_ERRORES, libroDisponible: false }) }) as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await subirArchivo("Fecha;Concepto\n", "estado.csv");
+    expect(rendered.container.textContent).toContain("migración 013");
+    expect(botonGuardar()).toBeUndefined();
   });
 
   it("un archivo mayor al tope no se sube (aviso inmediato)", async () => {
