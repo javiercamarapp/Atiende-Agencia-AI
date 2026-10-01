@@ -3,6 +3,7 @@
 // UNI-4: contrato de pagina. La barra superior (BarraPagina) pinta el ICONO y el NOMBRE de la
 // pagina activa (derivados de la etiqueta del item del Sidebar), el Resumen conserva el titulo de
 // la consola, una pagina puede sobrescribirlo (useTituloBarra) y el nombre nunca es un <h1>.
+import { act, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Building2, LayoutDashboard, ListChecks } from "lucide-react";
@@ -116,6 +117,26 @@ describe("VerticalShell — nombre de la pagina en la barra", () => {
     rendered = renderShell("/c/panel");
     expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
     expect(rendered.container.querySelector("h1")!.textContent).toBe("Pagina");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.hasAttribute("role")).toBe(false);
+  });
+
+  it("una pagina sin h1 propio no deja la pantalla sin encabezado: la barra hace de nivel 1 y cede cuando aparece el de la pagina", async () => {
+    let mostrar: (v: boolean) => void = () => {};
+    function Tardia() {
+      const [ya, setYa] = useState(false);
+      mostrar = setYa;
+      return ya ? <h1>Pagina</h1> : <p>cargando</p>;
+    }
+    rendered = renderShell("/c/panel", <Tardia />);
+    const barra = () => rendered!.container.querySelector('[data-testid="barra-pagina-titulo"]')!;
+    await act(async () => {});
+    expect(barra().getAttribute("role")).toBe("heading");
+    expect(barra().getAttribute("aria-level")).toBe("1");
+    await act(async () => {
+      mostrar(true);
+    });
+    expect(barra().hasAttribute("role")).toBe(false);
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
   });
 
   it("marco de Likida: columna gris tenue con hairline y esquinas redondeadas; sin max-w ni doble animacion", () => {

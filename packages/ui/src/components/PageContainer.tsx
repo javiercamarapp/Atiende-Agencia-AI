@@ -19,6 +19,12 @@ const pageContainerVariants = cva("grid w-full min-w-0 gap-2.5", {
 export interface PageContainerProps extends React.HTMLAttributes<HTMLElement>, VariantProps<typeof pageContainerVariants> {
   /** Elemento a renderizar. El `<main>` lo pone el shell; usar "main" solo fuera de un shell. @default "div" */
   readonly as?: "div" | "section" | "main";
+  /**
+   * @deprecated Sin efecto: el contrato de pagina no limita el ancho (Likida no usa `max-w`). Se acepta
+   * solo para no tocar de golpe las paginas que aun lo pasan; la migracion por zona (UNI-8) lo retira.
+   * Una pagina fuera de un shell que quiera columna acotada lo pide con `className="mx-auto max-w-..."`.
+   */
+  readonly size?: "sm" | "md" | "lg" | "xl";
 }
 
 /**
@@ -26,7 +32,7 @@ export interface PageContainerProps extends React.HTMLAttributes<HTMLElement>, V
  * relleno lo pone el `<main>` (`padding="none"`, el valor por defecto); fuera de un shell
  * pasa `padding="default"`. No anima: la entrada la pone el shell.
  */
-export const PageContainer = React.forwardRef<HTMLElement, PageContainerProps>(({ as = "div", padding, className, ...props }, ref) => {
+export const PageContainer = React.forwardRef<HTMLElement, PageContainerProps>(({ as = "div", size: _size, padding, className, ...props }, ref) => {
   const Tag = as as React.ElementType;
   return <Tag ref={ref} className={cn(pageContainerVariants({ padding }), className)} {...props} />;
 });

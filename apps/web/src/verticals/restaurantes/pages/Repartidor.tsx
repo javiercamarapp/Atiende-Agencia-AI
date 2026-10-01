@@ -159,7 +159,7 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
 
   return (
     <div className="min-h-screen bg-background">
-      <PageContainer size="sm" className="gap-4">
+      <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -340,7 +340,7 @@ export function RepartidorPedidosPage() {
 
   if (error) {
     return (
-      <PageContainer as="main" size="sm" className="min-h-screen bg-background">
+      <PageContainer as="main" padding="default" className="mx-auto max-w-2xl gap-6 min-h-screen bg-background">
         <EstadoError mensaje={error} />
       </PageContainer>
     );
@@ -348,7 +348,7 @@ export function RepartidorPedidosPage() {
 
   if (!propertyId) {
     return (
-      <PageContainer as="main" size="sm" className="min-h-screen bg-background">
+      <PageContainer as="main" padding="default" className="mx-auto max-w-2xl gap-6 min-h-screen bg-background">
         <EstadoCargando etiqueta="Cargando…" />
       </PageContainer>
     );

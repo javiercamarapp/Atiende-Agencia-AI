@@ -254,6 +254,18 @@ export function VerticalShell({
 }: VerticalShellProps) {
   const { pathname } = useLocation();
   const migas = construirMigas(sections, pathname, { etiqueta: header.title });
+  const mainRef = React.useRef<HTMLElement>(null);
+  const [sinH1, setSinH1] = React.useState(false);
+  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra hace de nivel 1 hasta que la pagina pinte el suyo.
+  React.useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return undefined;
+    const medir = () => setSinH1(main.querySelector('h1, [role="heading"][aria-level="1"]') === null);
+    medir();
+    const observador = new MutationObserver(medir);
+    observador.observe(main, { childList: true, subtree: true });
+    return () => observador.disconnect();
+  }, [pathname, contentKey]);
   const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
   const activo = itemActivo(sections, pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -299,11 +311,11 @@ export function VerticalShell({
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
       <div className="flex-1 flex flex-col min-w-0 bg-sunken md:m-4 md:ml-0 md:h-[calc(100dvh-2rem)] md:sticky md:top-4 md:rounded-2xl md:border md:border-border md:overflow-hidden">
         <div className="hidden md:block shrink-0">
-          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} />
+          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} comoH1={sinH1} />
           <Migas migas={migas} />
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
-        <main id={VERTICAL_SHELL_MAIN_ID} tabIndex={-1} key={contentKey} className="flex-1 min-h-0 px-4 py-4 pt-20 pb-24 md:pt-3.5 md:pb-5 md:px-5 overflow-y-auto focus:outline-none">
+        <main ref={mainRef} id={VERTICAL_SHELL_MAIN_ID} tabIndex={-1} key={contentKey} className="flex-1 min-h-0 px-4 py-4 pt-20 pb-24 md:pt-3.5 md:pb-5 md:px-5 overflow-y-auto focus:outline-none">
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>

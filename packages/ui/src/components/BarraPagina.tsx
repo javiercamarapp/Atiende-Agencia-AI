@@ -5,7 +5,8 @@
 // la campana y el chip de fecha con icono de calendario.
 //
 // El nombre es un `<p>`, NO un `<h1>`: el unico `<h1>` de cada pantalla es el de la pagina
-// (`PageHeader`/su cabecera propia). Quien monta la barra decide el texto y el icono (el
+// (`PageHeader`/su cabecera propia); solo si la pagina no tiene ninguno, `comoH1` deja que el
+// nombre haga de encabezado de nivel 1 (el shell lo detecta). Quien monta la barra decide el texto y el icono (el
 // `VerticalShell` los deriva de la ruta activa); aqui no se conoce la ruta.
 //
 // Deliberadamente "tonta" como el resto de @atiende/ui: recibe `notificationBell`/`chatButton`
@@ -25,15 +26,20 @@ export interface BarraPaginaProps {
   readonly notificationBell: ReactNode;
   /** Tipicamente `<BotonChatDatos />` de apps/web; las consolas que no lo tienen lo omiten. */
   readonly chatButton?: ReactNode;
+  /**
+   * Solo cuando la pagina activa no pinta ningun `<h1>` (el shell lo detecta): el nombre hace de
+   * encabezado de nivel 1 para que la pantalla no se quede sin ninguno. Nunca coexiste con el de la pagina.
+   */
+  readonly comoH1?: boolean;
   readonly className?: string;
 }
 
-export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, className }: BarraPaginaProps) {
+export function BarraPagina({ icon, title, fecha, notificationBell, chatButton, comoH1 = false, className }: BarraPaginaProps) {
   return (
     <header data-testid="barra-pagina" className={cn("flex items-center justify-between h-11 px-5 gap-3 shrink-0 border-b border-border bg-card", className)}>
       <div className="flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
         {icon}
-        <p data-testid="barra-pagina-titulo" className="truncate">
+        <p data-testid="barra-pagina-titulo" role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className="truncate">
           {title}
         </p>
       </div>
