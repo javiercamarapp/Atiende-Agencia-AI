@@ -34,13 +34,13 @@ import {
   TabsTrigger,
 } from "@atiende/ui";
 import { AlertTriangle, Clock } from "lucide-react";
-import { assignRepartidor, fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import { assignRepartidor, fetchOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "problema"];
+const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "listo_para_recoger", "no_recogido", "problema"];
 
 const SELECT_CLASES =
   "h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
@@ -67,6 +67,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   // `null` mientras no haya ninguna en curso, que es lo que mantiene cerrado el
   // <AlertDialog> del final del archivo.
   const [pedidoACancelar, setPedidoACancelar] = useState<OrderSummary | null>(null);
+  // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
+  // por pedido, p. ej. si el cliente ya está en mostrador).
+  const [sinAvisoPorPedido, setSinAvisoPorPedido] = useState<ReadonlySet<string>>(new Set());
 
   async function load() {
     setError(null);
@@ -106,7 +109,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
     setChangingId(order.id);
     setError(null);
     try {
-      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus);
+      const sinAviso = nextStatus === "listo_para_recoger" && sinAvisoPorPedido.has(order.id);
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus, sinAviso ? { notifyCustomer: false } : {});
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.");
@@ -195,12 +199,25 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
                     {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
                   </p>
                 </div>
-                <Badge variant={o.status === "problema" ? "destructive" : "secondary"} className="self-start">
-                  {ORDER_STATUS_LABELS[o.status]}
-                </Badge>
+                <div className="flex flex-wrap items-start gap-1.5 self-start">
+                  {o.canal && (
+                    <Badge variant="outline" data-testid={`canal-${o.id}`}>
+                      {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+                    </Badge>
+                  )}
+                  <Badge variant={o.status === "problema" || o.status === "no_recogido" ? "destructive" : "secondary"}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                </div>
               </div>
+              {(o.horaRecogida || (o.propina !== null && o.propina !== undefined)) && (
+                <p className="mt-1 text-xs text-muted-foreground" data-testid={`recoger-${o.id}`}>
+                  {o.horaRecogida ? `Recoge a las ${new Date(o.horaRecogida).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : null}
+                  {o.horaRecogida && o.propina !== null && o.propina !== undefined ? " · " : null}
+                  {o.propina !== null && o.propina !== undefined ? `Propina ${formatMoney(o.propina)} (no incluida en el total)` : null}
+                </p>
+              )}
               <p className="mt-2 text-[13px] text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
 
+              {o.canal !== "recoger" && (
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <Label htmlFor={`repartidor-${o.id}`} className="text-xs font-normal text-foreground">
                   Repartidor:
@@ -228,6 +245,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
                 )}
                 {repartidores && repartidores.length === 0 && <span className="text-xs text-muted-foreground">Sin repartidores dados de alta en esta organización.</span>}
               </div>
+              )}
               {o.incidentNote && (
                 <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-destructive">
                   <AlertTriangle className="h-3 w-3" strokeWidth={1.75} />
@@ -235,9 +253,26 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
                 </p>
               )}
 
-              {NEXT_STATUSES[o.status].length > 0 && (
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {NEXT_STATUSES[o.status].map((next) => (
+              {nextStatusesForCanal(o.status, o.canal).length > 0 && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {nextStatusesForCanal(o.status, o.canal).includes("listo_para_recoger") && (
+                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={!sinAvisoPorPedido.has(o.id)}
+                        onChange={(e) =>
+                          setSinAvisoPorPedido((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.delete(o.id);
+                            else next.add(o.id);
+                            return next;
+                          })
+                        }
+                      />
+                      Avisar al cliente por WhatsApp cuando esté listo
+                    </label>
+                  )}
+                  {nextStatusesForCanal(o.status, o.canal).map((next) => (
                     <Button
                       key={next}
                       type="button"

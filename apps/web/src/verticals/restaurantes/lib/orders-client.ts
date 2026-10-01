@@ -4,7 +4,9 @@
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido";
+
+export type OrderCanal = "domicilio" | "recoger";
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: "Recibido",
@@ -14,7 +16,19 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   completado: "Completado",
   cancelado: "Cancelado",
   problema: "Incidencia",
+  listo_para_recoger: "Listo para recoger",
+  no_recogido: "No recogido",
 };
+
+/** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
+ * de recoger no aplican a domicilio. Canal desconocido (pedido histórico) ofrece todos; el servidor valida igual. */
+export function nextStatusesForCanal(status: OrderStatus, canal: OrderCanal | null | undefined): readonly OrderStatus[] {
+  return NEXT_STATUSES[status].filter((next) => {
+    if (canal === "recoger") return next !== "en_camino";
+    if (canal === "domicilio") return next !== "listo_para_recoger" && next !== "no_recogido";
+    return true;
+  });
+}
 
 /** Próximos estados válidos por estado actual — mismo grafo real que
  * `@atiende/domain-restaurantes::order-lifecycle.ts` (duplicado aquí a propósito:
@@ -24,8 +38,11 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
  * real, esto solo evita ofrecer un botón que el servidor rechazaría. */
 export const NEXT_STATUSES: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["preparando", "cancelado", "problema"],
-  preparando: ["en_camino", "cancelado", "problema"],
+  preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
+  // Recoger (PM): el cliente lo recoge ("entregado") o no llega ("no_recogido", que vuelve a cocina).
+  listo_para_recoger: ["entregado", "no_recogido", "cancelado", "problema"],
+  no_recogido: ["preparando", "cancelado"],
   entregado: ["completado", "problema"],
   problema: ["preparando", "cancelado"],
   cancelado: [],
@@ -62,6 +79,11 @@ export interface OrderSummary {
   readonly assignedRepartidorId: string | null;
   readonly estimatedDeliveryAt: string | null;
   readonly incidentNote: string | null;
+  /** PM PR-3 (migración 028): canal, propina y hora prometida de recogida. `null` en pedidos anteriores o
+   * contra una base sin migrar; ausentes en respuestas de versiones viejas del API. */
+  readonly canal?: OrderCanal | null;
+  readonly propina?: number | null;
+  readonly horaRecogida?: string | null;
 }
 
 export interface OrderListFilter {
@@ -90,8 +112,18 @@ export async function fetchOrders(fetchImpl: typeof fetch, apiBaseUrl: string, t
   return fetchJson<OrderListPage>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders${qs ? `?${qs}` : ""}`, token);
 }
 
-export async function updateOrderStatus(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, status: OrderStatus): Promise<OrderSummary> {
-  const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", { status });
+export async function updateOrderStatus(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  orderId: string,
+  status: OrderStatus,
+  /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). Omitido = comportamiento de siempre. */
+  options: { readonly notifyCustomer?: boolean } = {},
+): Promise<OrderSummary> {
+  const payload = options.notifyCustomer === false ? { status, notifyCustomer: false } : { status };
+  const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", payload);
   return body.order;
 }
 
