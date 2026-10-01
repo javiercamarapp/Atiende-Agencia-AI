@@ -11,7 +11,7 @@
 --   1. restaurantes.data_rights_requests / data_rights_events -- solicitudes ARCO (acceso,
 --      rectificacion, cancelacion, oposicion) por WhatsApp o voz, con plazos (20 + 15 dias desde
 --      que el titular confirma) y bitacora append-only.
---   2. restaurantes.privacy_config -- parametros por organizacion: URL del aviso integral, version
+--   2. restaurantes.privacy_config -- parametros por organizacion: responsable, URL del aviso integral, version
 --      del aviso, dias de retencion de conversaciones de WhatsApp, dias de retencion de
 --      transcripciones de voz y si la grabacion exige consentimiento.
 --   3. restaurantes.privacy_notice_deliveries -- evidencia de que el aviso simplificado se entrego
@@ -382,6 +382,9 @@ grant execute on function restaurantes.update_data_rights_request_status(uuid, u
 -- ---------------------------------------------------------------------------
 create table restaurantes.privacy_config (
   organization_id uuid primary key references core.organization(id) on delete cascade,
+  -- Nombre del responsable del tratamiento que se nombra en el aviso simplificado (razon social o
+  -- nombre comercial); NULL = el aviso dice "el restaurante".
+  responsible_name text check (responsible_name is null or char_length(responsible_name) between 1 and 200),
   -- URL del aviso de privacidad integral que se enlaza en el aviso simplificado.
   notice_url text check (notice_url is null or (notice_url ~ '^https://[^[:space:]]+$' and char_length(notice_url) <= 500)),
   -- Subir la version vuelve a mostrar el aviso simplificado a cada titular una vez mas.
@@ -409,12 +412,13 @@ create policy "owner/admin o sistema lee la config de privacidad" on restaurante
 
 -- Sin GRANT ni policy de escritura: solo `update_privacy_config` (definer) escribe.
 revoke all on restaurantes.privacy_config from public, anon, authenticated, service_role;
-grant select (organization_id, notice_url, notice_version, conversation_retention_days, voice_retention_days, recording_consent_required, updated_by, updated_at)
+grant select (organization_id, responsible_name, notice_url, notice_version, conversation_retention_days, voice_retention_days, recording_consent_required, updated_by, updated_at)
   on restaurantes.privacy_config to authenticated;
 
 -- 4b) restaurantes.update_privacy_config -- STAFF owner/admin. Upsert; el actor sale de auth.uid().
 create or replace function restaurantes.update_privacy_config(
   p_organization_id uuid,
+  p_responsible_name text,
   p_notice_url text,
   p_notice_version text,
   p_conversation_retention_days integer,
@@ -441,13 +445,14 @@ begin
   end if;
 
   insert into restaurantes.privacy_config as c (
-    organization_id, notice_url, notice_version, conversation_retention_days, voice_retention_days, recording_consent_required, updated_by, updated_at
+    organization_id, responsible_name, notice_url, notice_version, conversation_retention_days, voice_retention_days, recording_consent_required, updated_by, updated_at
   ) values (
-    p_organization_id, nullif(btrim(p_notice_url), ''), coalesce(p_notice_version, 'v1'),
+    p_organization_id, nullif(btrim(p_responsible_name), ''), nullif(btrim(p_notice_url), ''), coalesce(p_notice_version, 'v1'),
     coalesce(p_conversation_retention_days, 180), coalesce(p_voice_retention_days, 30),
     coalesce(p_recording_consent_required, true), v_actor, now()
   )
   on conflict (organization_id) do update set
+    responsible_name = excluded.responsible_name,
     notice_url = excluded.notice_url,
     notice_version = excluded.notice_version,
     conversation_retention_days = excluded.conversation_retention_days,
@@ -460,8 +465,8 @@ begin
 end;
 $$;
 
-revoke all on function restaurantes.update_privacy_config(uuid, text, text, integer, integer, boolean) from public, anon;
-grant execute on function restaurantes.update_privacy_config(uuid, text, text, integer, integer, boolean) to authenticated;
+revoke all on function restaurantes.update_privacy_config(uuid, text, text, text, integer, integer, boolean) from public, anon;
+grant execute on function restaurantes.update_privacy_config(uuid, text, text, text, integer, integer, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 5) Aviso simplificado: evidencia de entrega

@@ -426,16 +426,16 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', 'https://ejemplo.mx/aviso', 'v2', 90, 15, true);
-select (notice_url = 'https://ejemplo.mx/aviso' and notice_version = 'v2' and conversation_retention_days = 90 and voice_retention_days = 15 and updated_by = auth.uid())::int as config_deberia_ser_1 from restaurantes.privacy_config where organization_id = '00000000-0000-0000-0000-0000000000e1';
+select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', 'Taquitos SA de CV', 'https://ejemplo.mx/aviso', 'v2', 90, 15, true);
+select (responsible_name = 'Taquitos SA de CV' and notice_url = 'https://ejemplo.mx/aviso' and notice_version = 'v2' and conversation_retention_days = 90 and voice_retention_days = 15 and updated_by = auth.uid())::int as config_deberia_ser_1 from restaurantes.privacy_config where organization_id = '00000000-0000-0000-0000-0000000000e1';
 rollback;
 
 \echo '--- 49. segundo guardado actualiza (upsert), sigue una sola fila ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', 'https://ejemplo.mx/aviso', 'v1', 90, 15, true);
-select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 120, 0, false);
+select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'https://ejemplo.mx/aviso', 'v1', 90, 15, true);
+select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 120, 0, false);
 select count(*) as una_fila_deberia_ser_1 from restaurantes.privacy_config where organization_id = '00000000-0000-0000-0000-0000000000e1' and conversation_retention_days = 120 and voice_retention_days = 0;
 rollback;
 
@@ -443,65 +443,72 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e53', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
 rollback;
 
 \echo '--- 51. owner de otra organizacion no puede guardar la ajena: 42501 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e54', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
 rollback;
 
 \echo '--- 52. sistema sin usuario no puede guardar: 28000 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 90, 15, true)$q$, '28000') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 90, 15, true)$q$, '28000') as expect_ok;
 rollback;
 
 \echo '--- 53. anon no puede guardar: 42501 ---'
 begin;
 set local role anon;
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 90, 15, true)$q$, '42501') as expect_ok;
 rollback;
 
 \echo '--- 54. retencion de conversaciones menor a 30 dias: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 7, 15, true)$q$, '23514') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 7, 15, true)$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 55. retencion de voz mayor a 365 dias: CHECK 23514 ---'
+\echo '--- 55. nombre del responsable de mas de 200 caracteres: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v1', 90, 400, true)$q$, '23514') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', null, 'v1', 90, 15, true)$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 56. URL del aviso sin https: CHECK 23514 ---'
+\echo '--- 56. retencion de voz mayor a 365 dias: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', 'http://inseguro.mx/aviso', 'v1', 90, 15, true)$q$, '23514') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v1', 90, 400, true)$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 57. version del aviso con caracteres raros: CHECK 23514 ---'
+\echo '--- 57. URL del aviso sin https: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
-select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'v 1; drop', 90, 15, true)$q$, '23514') as expect_ok;
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, 'http://inseguro.mx/aviso', 'v1', 90, 15, true)$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 58. escritura directa denegada: 42501 ---'
+\echo '--- 58. version del aviso con caracteres raros: CHECK 23514 ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
+select verify_support.expect_sqlstate($q$select * from restaurantes.update_privacy_config('00000000-0000-0000-0000-0000000000e1', null, null, 'v 1; drop', 90, 15, true)$q$, '23514') as expect_ok;
+rollback;
+
+\echo '--- 59. escritura directa denegada: 42501 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
 select verify_support.expect_sqlstate($q$insert into restaurantes.privacy_config (organization_id) values ('00000000-0000-0000-0000-0000000000e1')$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 59. el sistema (sin usuario) puede leer la config ---'
+\echo '--- 60. el sistema (sin usuario) puede leer la config ---'
 begin;
 insert into restaurantes.privacy_config (organization_id, conversation_retention_days) values ('00000000-0000-0000-0000-0000000000e1', 45);
 set local role authenticated;
@@ -509,7 +516,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select conversation_retention_days as sistema_lee_deberia_ser_45 from restaurantes.privacy_config;
 rollback;
 
-\echo '--- 60. el owner ajeno no ve la config de otra organizacion ---'
+\echo '--- 61. el owner ajeno no ve la config de otra organizacion ---'
 begin;
 insert into restaurantes.privacy_config (organization_id) values ('00000000-0000-0000-0000-0000000000e1');
 set local role authenticated;
@@ -517,7 +524,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e54
 select count(*) as config_ajena_deberia_ser_0 from restaurantes.privacy_config;
 rollback;
 
-\echo '--- 61. el rol staff no ve la config ---'
+\echo '--- 62. el rol staff no ve la config ---'
 begin;
 insert into restaurantes.privacy_config (organization_id) values ('00000000-0000-0000-0000-0000000000e1');
 set local role authenticated;
@@ -525,7 +532,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e53
 select count(*) as staff_config_deberia_ser_0 from restaurantes.privacy_config;
 rollback;
 
-\echo '--- 62. anon no tiene SELECT sobre la config: 42501 ---'
+\echo '--- 63. anon no tiene SELECT sobre la config: 42501 ---'
 begin;
 set local role anon;
 select verify_support.expect_sqlstate($q$select count(*) from restaurantes.privacy_config$q$, '42501') as expect_ok;
@@ -536,14 +543,14 @@ rollback;
 \echo '=== E) aviso simplificado: evidencia de entrega ==='
 \echo ''
 
-\echo '--- 63. primera entrega: TRUE ---'
+\echo '--- 64. primera entrega: TRUE ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select (restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1'))::int as primera_deberia_ser_1;
 rollback;
 
-\echo '--- 64. segunda entrega de la MISMA version: FALSE ---'
+\echo '--- 65. segunda entrega de la MISMA version: FALSE ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
@@ -551,7 +558,7 @@ select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000
 select (restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1'))::int as segunda_deberia_ser_0;
 rollback;
 
-\echo '--- 65. una version nueva del aviso se entrega otra vez ---'
+\echo '--- 66. una version nueva del aviso se entrega otra vez ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
@@ -559,7 +566,7 @@ select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000
 select (restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v2'))::int as version_nueva_deberia_ser_1;
 rollback;
 
-\echo '--- 66. otro canal (voz) cuenta aparte ---'
+\echo '--- 67. otro canal (voz) cuenta aparte ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
@@ -567,7 +574,7 @@ select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000
 select (restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'voice', 'v1'))::int as canal_voz_deberia_ser_1;
 rollback;
 
-\echo '--- 67. queda UNA fila de evidencia por telefono-hash/canal/version ---'
+\echo '--- 68. queda UNA fila de evidencia por telefono-hash/canal/version ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
@@ -577,34 +584,34 @@ reset role;
 select count(*) as evidencia_deberia_ser_1 from restaurantes.privacy_notice_deliveries;
 rollback;
 
-\echo '--- 68. hash de telefono con formato invalido: CHECK 23514 ---'
+\echo '--- 69. hash de telefono con formato invalido: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select verify_support.expect_sqlstate($q$select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', '+5219990000001', 'whatsapp', 'v1')$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 69. canal fuera del catalogo: CHECK 23514 ---'
+\echo '--- 70. canal fuera del catalogo: CHECK 23514 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select verify_support.expect_sqlstate($q$select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'sms', 'v1')$q$, '23514') as expect_ok;
 rollback;
 
-\echo '--- 70. usuario autenticado no puede usar la funcion de sistema: 42501 ---'
+\echo '--- 71. usuario autenticado no puede usar la funcion de sistema: 42501 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
 select verify_support.expect_sqlstate($q$select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1')$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 71. anon no puede: 42501 ---'
+\echo '--- 72. anon no puede: 42501 ---'
 begin;
 set local role anon;
 select verify_support.expect_sqlstate($q$select restaurantes.system_claim_privacy_notice('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1')$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 72. el owner lee la evidencia de SU organizacion ---'
+\echo '--- 73. el owner lee la evidencia de SU organizacion ---'
 begin;
 insert into restaurantes.privacy_notice_deliveries (organization_id, phone_hash, channel, notice_version) values ('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1');
 set local role authenticated;
@@ -612,7 +619,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51
 select count(*) as evidencia_owner_deberia_ser_1 from restaurantes.privacy_notice_deliveries;
 rollback;
 
-\echo '--- 73. el owner ajeno NO lee la evidencia ---'
+\echo '--- 74. el owner ajeno NO lee la evidencia ---'
 begin;
 insert into restaurantes.privacy_notice_deliveries (organization_id, phone_hash, channel, notice_version) values ('00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1');
 set local role authenticated;
@@ -620,7 +627,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e54
 select count(*) as evidencia_ajena_deberia_ser_0 from restaurantes.privacy_notice_deliveries;
 rollback;
 
-\echo '--- 74. el owner no puede borrar la evidencia: 42501 ---'
+\echo '--- 75. el owner no puede borrar la evidencia: 42501 ---'
 begin;
 insert into restaurantes.privacy_notice_deliveries (id, organization_id, phone_hash, channel, notice_version) values ('00000000-0000-0000-0000-0000000000e8', '00000000-0000-0000-0000-0000000000e1', repeat('a', 64), 'whatsapp', 'v1');
 set local role authenticated;
@@ -633,7 +640,7 @@ rollback;
 \echo '=== F) consentimiento de grabacion de la llamada ==='
 \echo ''
 
-\echo '--- 75. sin consentimiento (pendiente) y config por defecto NO se persiste el turno ---'
+\echo '--- 76. sin consentimiento (pendiente) y config por defecto NO se persiste el turno ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -641,7 +648,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select (restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0))::int as sin_consentimiento_deberia_ser_0;
 rollback;
 
-\echo '--- 76. con consentimiento otorgado SI se persiste el turno ---'
+\echo '--- 77. con consentimiento otorgado SI se persiste el turno ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -652,7 +659,7 @@ reset role;
 select count(*) as turnos_deberia_ser_1 from restaurantes.voice_turn where conversation_id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
-\echo '--- 77. con consentimiento, un turno repetido es idempotente ---'
+\echo '--- 78. con consentimiento, un turno repetido es idempotente ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -662,7 +669,7 @@ select restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', 
 select (restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0))::int as repetido_deberia_ser_0;
 rollback;
 
-\echo '--- 78. negar el consentimiento borra los turnos ya guardados ---'
+\echo '--- 79. negar el consentimiento borra los turnos ya guardados ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -675,7 +682,7 @@ reset role;
 select count(*) as turnos_borrados_deberia_ser_0 from restaurantes.voice_turn where conversation_id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
-\echo '--- 79. tras negar, no se puede volver a otorgar en la misma llamada ---'
+\echo '--- 80. tras negar, no se puede volver a otorgar en la misma llamada ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -686,7 +693,7 @@ reset role;
 select (recording_consent = 'negado')::int as sigue_negado_deberia_ser_1 from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
-\echo '--- 80. tras negar, voz_registrar_turno no persiste ---'
+\echo '--- 81. tras negar, voz_registrar_turno no persiste ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -695,7 +702,7 @@ select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-
 select (restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0))::int as negado_no_persiste_deberia_ser_0;
 rollback;
 
-\echo '--- 81. con consent_required=false se persiste aun sin respuesta ---'
+\echo '--- 82. con consent_required=false se persiste aun sin respuesta ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 insert into restaurantes.privacy_config (organization_id, recording_consent_required) values ('00000000-0000-0000-0000-0000000000e1', false);
@@ -704,7 +711,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select (restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0))::int as no_requerido_deberia_ser_1;
 rollback;
 
-\echo '--- 82. con retencion de voz 0 NO se persiste ni con consentimiento ---'
+\echo '--- 83. con retencion de voz 0 NO se persiste ni con consentimiento ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 insert into restaurantes.privacy_config (organization_id, voice_retention_days) values ('00000000-0000-0000-0000-0000000000e1', 0);
@@ -714,7 +721,7 @@ select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-
 select (restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0))::int as retencion_cero_deberia_ser_0;
 rollback;
 
-\echo '--- 83. conversacion de OTRA organizacion: 42501 ---'
+\echo '--- 84. conversacion de OTRA organizacion: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -722,7 +729,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select verify_support.expect_sqlstate($q$select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000c1', true)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 84. usuario autenticado no puede registrar consentimiento: 42501 ---'
+\echo '--- 85. usuario autenticado no puede registrar consentimiento: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -730,14 +737,14 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51
 select verify_support.expect_sqlstate($q$select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', true)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 85. anon no puede registrar consentimiento: 42501 ---'
+\echo '--- 86. anon no puede registrar consentimiento: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role anon;
 select verify_support.expect_sqlstate($q$select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', true)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 86. conversacion ya cerrada: 42501 ---'
+\echo '--- 87. conversacion ya cerrada: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 update restaurantes.voice_conversation set ended_at = now() where id = '00000000-0000-0000-0000-0000000000c1';
@@ -746,7 +753,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select verify_support.expect_sqlstate($q$select restaurantes.system_set_voice_recording_consent('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', true)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 87. voz_registrar_turno sigue siendo solo de sistema: 42501 ---'
+\echo '--- 88. voz_registrar_turno sigue siendo solo de sistema: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -754,7 +761,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51
 select verify_support.expect_sqlstate($q$select restaurantes.voz_registrar_turno('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 1, 'cliente', 'hola', 100, 50, 0)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 88. voz_registrar_turno de una conversacion ajena: 42501 ---'
+\echo '--- 89. voz_registrar_turno de una conversacion ajena: 42501 ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-1', 'llamada', 'gemini-3.8-live');
 set local role authenticated;
@@ -767,7 +774,7 @@ rollback;
 \echo '=== G) retencion y minimizacion ==='
 \echo ''
 
-\echo '--- 89. conversacion vencida (200 dias, retencion por defecto 180) se vacia ---'
+\echo '--- 90. conversacion vencida (200 dias, retencion por defecto 180) se vacia ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000100', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '200 days');
 set local role authenticated;
@@ -775,7 +782,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_conversations_cleared as vaciadas_deberia_ser_1 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 90. conversacion reciente NO se toca ---'
+\echo '--- 91. conversacion reciente NO se toca ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000101', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '10 days');
 set local role authenticated;
@@ -783,7 +790,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_conversations_cleared as vaciadas_deberia_ser_0 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 91. el mensaje queda vacio pero la fila se conserva ---'
+\echo '--- 92. el mensaje queda vacio pero la fila se conserva ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000100', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '200 days');
 set local role authenticated;
@@ -793,7 +800,7 @@ reset role;
 select count(*) as fila_conservada_vacia_deberia_ser_1 from restaurantes.whatsapp_conversations where phone = '+5219990000100' and messages = '[]'::jsonb;
 rollback;
 
-\echo '--- 92. la retencion se respeta POR organizacion (30 dias en B) ---'
+\echo '--- 93. la retencion se respeta POR organizacion (30 dias en B) ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e2', '+5219990000103', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '40 days');
 insert into restaurantes.privacy_config (organization_id, conversation_retention_days) values ('00000000-0000-0000-0000-0000000000e2', 30);
@@ -804,7 +811,7 @@ reset role;
 select count(*) as b_vaciada_deberia_ser_1 from restaurantes.whatsapp_conversations where messages = '[]'::jsonb and organization_id = '00000000-0000-0000-0000-0000000000e2' and phone = '+5219990000103';
 rollback;
 
-\echo '--- 93. la conversacion de A con 40 dias sigue intacta (retencion 180) ---'
+\echo '--- 94. la conversacion de A con 40 dias sigue intacta (retencion 180) ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000102', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '40 days');
 insert into restaurantes.privacy_config (organization_id, conversation_retention_days) values ('00000000-0000-0000-0000-0000000000e2', 30);
@@ -815,7 +822,7 @@ reset role;
 select count(*) as a_intacta_deberia_ser_1 from restaurantes.whatsapp_conversations where phone = '+5219990000102' and messages <> '[]'::jsonb;
 rollback;
 
-\echo '--- 94. una solicitud ARCO abierta del titular bloquea la purga de su conversacion ---'
+\echo '--- 95. una solicitud ARCO abierta del titular bloquea la purga de su conversacion ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000002', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '200 days');
 set local role authenticated;
@@ -823,7 +830,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_conversations_cleared as vaciadas_deberia_ser_0 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 95. una solicitud ARCO ya resuelta NO bloquea la purga ---'
+\echo '--- 96. una solicitud ARCO ya resuelta NO bloquea la purga ---'
 begin;
 insert into restaurantes.whatsapp_conversations (organization_id, phone, messages, updated_at) values ('00000000-0000-0000-0000-0000000000e1', '+5219990000003', '[{"role":"user","content":"hola"}]'::jsonb, now() - interval '200 days');
 set local role authenticated;
@@ -831,7 +838,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_conversations_cleared as vaciadas_deberia_ser_1 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 96. transcripcion de voz vencida (40 dias, retencion 30): se borran los turnos ---'
+\echo '--- 97. transcripcion de voz vencida (40 dias, retencion 30): se borran los turnos ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-old', 'llamada', 'gemini-3.8-live', repeat('c', 64), now() - interval '40 days', now() - interval '40 days');
 insert into restaurantes.voice_turn (conversation_id, organization_id, seq, rol, texto) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', 1, 'cliente', 'hola');
@@ -840,7 +847,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_voice_turns_deleted as turnos_deberia_ser_1 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 97. la llamada vencida queda anonimizada (caller_hash nulo) ---'
+\echo '--- 98. la llamada vencida queda anonimizada (caller_hash nulo) ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-old', 'llamada', 'gemini-3.8-live', repeat('c', 64), now() - interval '40 days', now() - interval '40 days');
 insert into restaurantes.voice_turn (conversation_id, organization_id, seq, rol, texto) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', 1, 'cliente', 'hola');
@@ -851,7 +858,7 @@ reset role;
 select (caller_hash is null)::int as anonimizada_deberia_ser_1 from restaurantes.voice_conversation where id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
-\echo '--- 98. una llamada reciente NO se purga ---'
+\echo '--- 99. una llamada reciente NO se purga ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-old', 'llamada', 'gemini-3.8-live', repeat('c', 64), now() - interval '2 days', now() - interval '2 days');
 insert into restaurantes.voice_turn (conversation_id, organization_id, seq, rol, texto) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', 1, 'cliente', 'hola');
@@ -860,7 +867,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_voice_turns_deleted as turnos_deberia_ser_0 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 99. la llamada de un titular con ARCO abierto (mismo telefono) no se purga ---'
+\echo '--- 100. la llamada de un titular con ARCO abierto (mismo telefono) no se purga ---'
 begin;
 insert into restaurantes.voice_conversation (id, organization_id, property_id, external_id, canal, proveedor, caller_hash, started_at, ended_at) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1', 'call-old', 'llamada', 'gemini-3.8-live', encode(sha256(convert_to('5219990000002', 'UTF8')), 'hex'), now() - interval '40 days', now() - interval '40 days');
 insert into restaurantes.voice_turn (conversation_id, organization_id, seq, rol, texto) values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000e1', 1, 'cliente', 'hola');
@@ -869,14 +876,14 @@ select set_config('request.jwt.claim.sub', '', true);
 select out_voice_turns_deleted as turnos_deberia_ser_0 from restaurantes.system_purge_expired_privacy_data(500);
 rollback;
 
-\echo '--- 100. la purga es solo de sistema: usuario autenticado 42501 ---'
+\echo '--- 101. la purga es solo de sistema: usuario autenticado 42501 ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000e51', true);
 select verify_support.expect_sqlstate($q$select * from restaurantes.system_purge_expired_privacy_data(10)$q$, '42501') as expect_ok;
 rollback;
 
-\echo '--- 101. la purga no la puede ejecutar anon: 42501 ---'
+\echo '--- 102. la purga no la puede ejecutar anon: 42501 ---'
 begin;
 set local role anon;
 select verify_support.expect_sqlstate($q$select * from restaurantes.system_purge_expired_privacy_data(10)$q$, '42501') as expect_ok;
@@ -887,7 +894,7 @@ rollback;
 \echo '=== H) base de PRODUCCION a medio migrar (030 no aplicada) ==='
 \echo ''
 
-\echo '--- 102. funcion de registro ELIMINADA: 42883 y el SAVEPOINT deja la transaccion utilizable ---'
+\echo '--- 103. funcion de registro ELIMINADA: 42883 y el SAVEPOINT deja la transaccion utilizable ---'
 begin;
 drop function restaurantes.system_register_data_rights_request(uuid, text, text, text, text);
 set local role authenticated;
@@ -912,7 +919,7 @@ release savepoint sp_verify;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
 
-\echo '--- 103. funcion de reclamo del aviso ELIMINADA: 42883 recuperable ---'
+\echo '--- 104. funcion de reclamo del aviso ELIMINADA: 42883 recuperable ---'
 begin;
 drop function restaurantes.system_claim_privacy_notice(uuid, text, text, text);
 set local role authenticated;
@@ -937,7 +944,7 @@ release savepoint sp_verify;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
 
-\echo '--- 104. funcion de purga ELIMINADA: 42883 recuperable ---'
+\echo '--- 105. funcion de purga ELIMINADA: 42883 recuperable ---'
 begin;
 drop function restaurantes.system_purge_expired_privacy_data(integer);
 set local role authenticated;
@@ -962,7 +969,7 @@ release savepoint sp_verify;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
 
-\echo '--- 105. tabla de configuracion ELIMINADA: 42P01 recuperable con SAVEPOINT ---'
+\echo '--- 106. tabla de configuracion ELIMINADA: 42P01 recuperable con SAVEPOINT ---'
 begin;
 drop function restaurantes.voz_registrar_turno(uuid, uuid, integer, text, text, integer, integer, bigint);
 drop table restaurantes.privacy_config;
