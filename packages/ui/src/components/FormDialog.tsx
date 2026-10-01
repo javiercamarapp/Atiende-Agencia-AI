@@ -147,7 +147,7 @@ export function FormDialog({
 
           {onGuardar ? (
             <form
-              className="flex min-h-0 flex-col p-4 max-md:pb-[calc(1rem+var(--safe-area-bottom))]"
+              className="flex min-h-0 flex-col p-4 md:pt-11 max-md:pb-[calc(1rem+var(--safe-area-bottom))]"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!guardando && !guardarDeshabilitado) onGuardar();
@@ -156,7 +156,7 @@ export function FormDialog({
               {cuerpo}
             </form>
           ) : (
-            <div className="flex min-h-0 flex-col p-4 max-md:pb-[calc(1rem+var(--safe-area-bottom))]">{cuerpo}</div>
+            <div className="flex min-h-0 flex-col p-4 md:pt-11 max-md:pb-[calc(1rem+var(--safe-area-bottom))]">{cuerpo}</div>
           )}
         </div>
       </DialogContent>
