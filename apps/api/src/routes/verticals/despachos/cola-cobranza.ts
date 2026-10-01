@@ -7,7 +7,7 @@
 //   GET  .../cola                                     gestiones pendientes de cuentas vivas, por urgencia
 //   GET  .../reporte-cartera?formato=json|pdf         cartera y antiguedad de saldos por cliente (corte = hoy)
 //   GET  .../whatsapp/consentimientos                 consentimiento opt-in/opt-out por cliente (RFC), telefono enmascarado
-//   PUT  .../whatsapp/consentimientos                 { rfcReceptor, telefono, estado, evidencia? }
+//   POST .../whatsapp/consentimientos                 { rfcReceptor, telefono, estado, evidencia? } (upsert por cliente)
 //   POST .../cuentas/:receivableId/whatsapp           ENCOLA un recordatorio (nunca envia) si hay opt-in
 //   GET  .../whatsapp/outbox                          mensajes en cola
 //
@@ -250,7 +250,7 @@ export function despachosColaCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     });
   });
 
-  app.put("/despachos/:propertyId/cola-cobranza/whatsapp/consentimientos", async (c) => {
+  app.post("/despachos/:propertyId/cola-cobranza/whatsapp/consentimientos", async (c) => {
     assertVerticalRole(c, GESTIONAR_COLA_COBRANZA_ROLES);
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<Record<string, unknown>>(c.req.raw, 4 * 1024);

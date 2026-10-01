@@ -37,7 +37,7 @@ async function nuevaCuenta(opts: { rfc?: string; total?: number; venceEnDias?: n
 
 const base = () => `/despachos/${ctx.propertyId}/cola-cobranza`;
 const post = (token: string, ruta: string, body: unknown) => app.request(`${base()}${ruta}`, authedJson(token, body));
-const put = (token: string, ruta: string, body: unknown) => app.request(`${base()}${ruta}`, { ...authedJson(token, body), method: "PUT" });
+const put = post; // el consentimiento es un upsert por cliente expuesto como POST
 const get = (token: string, ruta: string) => app.request(`${base()}${ruta}`, { headers: { authorization: `Bearer ${token}` } });
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
 
