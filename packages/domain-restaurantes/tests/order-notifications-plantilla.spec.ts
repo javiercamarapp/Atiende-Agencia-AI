@@ -52,7 +52,7 @@ describe("notifyCustomerOnOrderStatusChangeCore: payload con plantilla", () => {
     const enCamino = { ...order, status: "en_camino" as const };
     expect(await notifyCustomerOnOrderStatusChangeCore(fx.repo, enCamino)).toEqual({ enqueued: true });
     const payload = fx.repo.getOutbox()[0]?.payload as { to: string; phone_number_id: string; body: string; template: { name: string; language: string; params: string[] } };
-    expect(payload.to).toBe("9990001111");
+    expect(payload.to).toBe("+529990001111");
     expect(payload.phone_number_id).toBe("PHONE_NUMBER_ID_123");
     expect(payload.body).toMatch(/va en camino/);
     expect(payload.template).toMatchObject({ name: "pedido_en_camino", language: "es_MX" });

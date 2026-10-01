@@ -57,7 +57,7 @@ describe("PATCH .../admin/orders/:orderId/status — drenado real vía postCommi
     // La prueba real de que el drenado post-commit funcionó: el WhatsApp
     // realmente salió por el Graph API (fake), sin esperar el cron diario.
     expect(graphClient.sent).toHaveLength(1);
-    expect(graphClient.sent[0]).toMatchObject({ to: "9990001111", phoneNumberId: "PHONE_NUMBER_ID_TEST" });
+    expect(graphClient.sent[0]).toMatchObject({ to: "+529990001111", phoneNumberId: "PHONE_NUMBER_ID_TEST" });
   });
 
   it("mismo drenado post-commit desde repartidor-orders.ts (changeAssignedOrderStatus)", async () => {
@@ -88,6 +88,6 @@ describe("PATCH .../admin/orders/:orderId/status — drenado real vía postCommi
     expect(res.status).toBe(200);
     expect(claimSpy).toHaveBeenCalledTimes(2);
     expect(graphClient.sent).toHaveLength(1);
-    expect(graphClient.sent[0]).toMatchObject({ to: "9990002222", phoneNumberId: "PHONE_NUMBER_ID_TEST" });
+    expect(graphClient.sent[0]).toMatchObject({ to: "+529990002222", phoneNumberId: "PHONE_NUMBER_ID_TEST" });
   });
 });

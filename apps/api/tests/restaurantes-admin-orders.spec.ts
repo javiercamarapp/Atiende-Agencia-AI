@@ -146,7 +146,7 @@ describe("PATCH /v1/restaurantes/:propertyId/admin/orders/:orderId/status", () =
     const outbox = ctx.restaurantesRepo.getOutbox();
     expect(outbox).toHaveLength(1);
     expect(outbox[0]?.eventType).toBe("order.status.preparando");
-    expect((outbox[0]?.payload as { to: string }).to).toBe("9991112222");
+    expect((outbox[0]?.payload as { to: string }).to).toBe("+529991112222");
   });
 
   it("sin WhatsApp conectado, el cambio de estado se persiste igual y nunca lanza -- simplemente no hay nada que encolar", async () => {

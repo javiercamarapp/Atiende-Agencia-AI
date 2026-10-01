@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalizeMexicanPhone, normalizePhone } from "../src/phone.ts";
+import { canonicalizeMexicanPhone, normalizePhone, toWhatsAppRecipient } from "../src/phone.ts";
 
 describe("normalizePhone", () => {
   it("normaliza a los últimos 10 dígitos, absorbiendo +52/521/espacios/guiones", () => {
@@ -38,5 +38,20 @@ describe("canonicalizeMexicanPhone", () => {
   it("rechaza cualquier otra longitud en vez de recortar dígitos arbitrarios", () => {
     expect(canonicalizeMexicanPhone("99912345")).toBeNull();
     expect(canonicalizeMexicanPhone("99991234567890")).toBeNull();
+  });
+});
+
+describe("toWhatsAppRecipient (regresion e2e R-23: el aviso de estado se mandaba a 10 digitos pelones)", () => {
+  it("10 digitos nacionales -> E.164 mexicano", () => {
+    expect(toWhatsAppRecipient("9991234567")).toBe("+529991234567");
+  });
+  it("con codigo de pais se respeta (con o sin '+', espacios o guiones)", () => {
+    expect(toWhatsAppRecipient("+52 999 123 4567")).toBe("+529991234567");
+    expect(toWhatsAppRecipient("5219991234567")).toBe("+5219991234567");
+  });
+  it("un valor sin digitos suficientes o de mas no es destinatario", () => {
+    expect(toWhatsAppRecipient("widget")).toBeNull();
+    expect(toWhatsAppRecipient("12345")).toBeNull();
+    expect(toWhatsAppRecipient("1234567890123456")).toBeNull();
   });
 });
