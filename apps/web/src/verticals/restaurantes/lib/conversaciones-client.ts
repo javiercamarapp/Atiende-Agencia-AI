@@ -96,6 +96,34 @@ export interface TurnosWire {
   readonly cobertura: CoberturaWire;
 }
 
+export type CallbackEstado = "nuevo" | "en_curso" | "resuelto";
+export type CallbackAccion = "tomar" | "asignar" | "liberar" | "resolver" | "reabrir";
+export type SlaCallbackEstado = "en_plazo" | "por_vencer" | "vencido" | "cumplido" | "incumplido" | "sin_dato";
+
+export const CALLBACK_ESTADO_LABEL: Readonly<Record<CallbackEstado, string>> = { nuevo: "Nuevo", en_curso: "En curso", resuelto: "Resuelto" };
+
+export const SLA_LABEL: Readonly<Record<SlaCallbackEstado, string>> = {
+  en_plazo: "En plazo",
+  por_vencer: "Por vencer",
+  vencido: "Vencido",
+  cumplido: "Atendido a tiempo",
+  incumplido: "Atendido fuera de plazo",
+  sin_dato: "Sin dato",
+};
+
+export interface SlaCallbackWire {
+  readonly objetivoMin: number;
+  readonly venceAt: string;
+  readonly estado: SlaCallbackEstado;
+  readonly minutosRestantes: number | null;
+}
+
+/** Motivo legible: `escalada:queja` (lo que deja escalar_a_humano) -> "Escalada: queja". */
+export function textoMotivoCallback(motivo: string | null): string | null {
+  if (!motivo) return null;
+  return motivo.startsWith("escalada:") ? `Escalada: ${motivo.slice("escalada:".length).replace(/_/g, " ")}` : motivo;
+}
+
 export interface CallbackWire {
   readonly id: string;
   readonly nombre: string;
@@ -105,6 +133,18 @@ export interface CallbackWire {
   readonly origen: string;
   readonly resuelto: boolean;
   readonly creadoEn: string;
+  /** R-12 (migracion 033). `gestionable: false` = base sin 033: solo abierto/resuelto, sin asignacion. */
+  readonly sucursalId: string | null;
+  readonly estado: CallbackEstado;
+  readonly gestionable: boolean;
+  readonly asignadoA: string | null;
+  readonly asignadoNombre: string | null;
+  readonly asignadoEn: string | null;
+  readonly tomadoEn: string | null;
+  readonly resueltoEn: string | null;
+  readonly resueltoPor: string | null;
+  readonly notaResolucion: string | null;
+  readonly sla: SlaCallbackWire;
   readonly intentos: readonly { readonly id: string; readonly resultado: CallbackResultado; readonly nota: string | null; readonly proximoIntentoEn: string | null; readonly autor: string | null; readonly creadoEn: string }[];
 }
 
@@ -152,8 +192,28 @@ export function guardarTurnos(fetchImpl: typeof fetch, apiBaseUrl: string, token
   return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/turnos`, token, "PUT", { turnos: cuerpo });
 }
 
-export function fetchCallbacks(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, soloAbiertos: boolean): Promise<{ disponible: boolean; items: readonly CallbackWire[] }> {
-  return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/callbacks${soloAbiertos ? "?soloAbiertos=1" : ""}`, token);
+export function fetchCallbacks(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  filtro: { readonly soloAbiertos?: boolean; readonly estado?: CallbackEstado | "" } = {},
+): Promise<{ disponible: boolean; items: readonly CallbackWire[] }> {
+  const q = new URLSearchParams();
+  if (filtro.soloAbiertos) q.set("soloAbiertos", "1");
+  if (filtro.estado) q.set("estado", filtro.estado);
+  return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/callbacks${q.size > 0 ? `?${q}` : ""}`, token);
+}
+
+export function actualizarCallback(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  callbackId: string,
+  cuerpo: { readonly accion: CallbackAccion; readonly asignadoA?: string; readonly nota?: string },
+): Promise<{ estado: CallbackEstado }> {
+  return sendJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/callbacks/${encodeURIComponent(callbackId)}/estado`, token, "POST", cuerpo);
 }
 
 export function registrarIntento(

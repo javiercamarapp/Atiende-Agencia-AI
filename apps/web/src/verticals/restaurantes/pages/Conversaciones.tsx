@@ -6,20 +6,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import {
-  CALLBACK_RESULTADO_LABEL,
   CANAL_LABEL,
   ESTADO_LABEL,
   agregarNota,
   fetchBandeja,
-  fetchCallbacks,
   fetchDetalle,
   liberarHandoff,
-  registrarIntento,
   responderWhatsapp,
   textoEscalacion,
   tomarConversacion,
 } from "../lib/conversaciones-client.ts";
-import type { BandejaWire, BandejaItemWire, CallbackResultado, CallbackWire, ConversacionCanal, DetalleWire, HandoffEstado } from "../lib/conversaciones-client.ts";
+import type { BandejaWire, BandejaItemWire, ConversacionCanal, DetalleWire, HandoffEstado } from "../lib/conversaciones-client.ts";
+import { CallbacksPanel } from "./CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const SELECT = "flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground";
@@ -321,91 +319,5 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
-  const { apiBaseUrl, token, propertyId } = ctx;
-  const [soloAbiertos, setSoloAbiertos] = useState(true);
-  const [items, setItems] = useState<readonly CallbackWire[] | null>(null);
-  const [disponible, setDisponible] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [version, setVersion] = useState(0);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelado = false;
-    setItems(null);
-    (async () => {
-      try {
-        const r = await fetchCallbacks(fetch, apiBaseUrl, token, propertyId, soloAbiertos);
-        if (cancelado) return;
-        setDisponible(r.disponible);
-        setItems(r.items);
-        setError(null);
-      } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudieron cargar los callbacks."));
-      }
-    })();
-    return () => {
-      cancelado = true;
-    };
-  }, [apiBaseUrl, token, propertyId, soloAbiertos, version]);
-
-  async function intento(cb: CallbackWire, resultado: CallbackResultado) {
-    setAviso(null);
-    try {
-      await registrarIntento(fetch, apiBaseUrl, token, propertyId, cb.id, { resultado });
-      setVersion((n) => n + 1);
-    } catch (err) {
-      setAviso(mensaje(err, "No se pudo registrar el intento."));
-    }
-  }
-
-  if (error) return <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />;
-  if (items === null) return <EstadoCargando lineas={3} />;
-  if (!disponible) return <EstadoVacio icon={MessageSquare} titulo="Callbacks no disponibles aún" mensaje="El registro de callbacks todavía no está habilitado en esta base de datos." />;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <label className="flex items-center gap-2 text-[13px]">
-        <input type="checkbox" checked={soloAbiertos} onChange={(e) => setSoloAbiertos(e.target.checked)} /> Solo pendientes
-      </label>
-      {aviso && <p role="alert" className="m-0 text-[13px] text-destructive">{aviso}</p>}
-      {items.length === 0 && <EstadoVacio icon={MessageSquare} titulo="Sin callbacks" mensaje="No hay llamadas por devolver." />}
-      {items.map((cb) => (
-        <Card key={cb.id}>
-          <CardContent className="flex flex-col gap-2 pt-4 text-[13px]">
-            <div className="flex items-center justify-between gap-2">
-              <strong>
-                {cb.nombre} · {cb.telefono}
-              </strong>
-              <Badge variant={cb.resuelto ? "outline" : "destructive"}>{cb.resuelto ? "Resuelto" : "Pendiente"}</Badge>
-            </div>
-            <p className="m-0 text-muted-foreground">
-              {hora(cb.creadoEn)} · {cb.origen}
-              {cb.motivo ? ` · ${cb.motivo}` : ""}
-            </p>
-            {cb.mensaje && <p className="m-0">{cb.mensaje}</p>}
-            {cb.intentos.map((i) => (
-              <p key={i.id} className="m-0 text-muted-foreground">
-                {hora(i.creadoEn)} · {CALLBACK_RESULTADO_LABEL[i.resultado]}
-                {i.autor ? ` · ${i.autor}` : ""}
-                {i.nota ? ` — ${i.nota}` : ""}
-              </p>
-            ))}
-            {!cb.resuelto && (
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(CALLBACK_RESULTADO_LABEL) as CallbackResultado[]).map((r) => (
-                  <Button key={r} size="sm" variant="outline" onClick={() => intento(cb, r)}>
-                    {CALLBACK_RESULTADO_LABEL[r]}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
   );
 }
