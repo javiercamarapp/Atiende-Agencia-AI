@@ -233,6 +233,18 @@ sistema) y una ruta interna invocable a mano: este PR NO la programa en `vercel.
 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas nuevas. No hay variables de
 entorno nuevas. Los anticipos solo se REGISTRAN: no hay cobro ni pasarela.
 
+**Hoteles H-25 (migración 037, agente de reservas por WhatsApp y voz) — orden de despliegue.** Mergear NO aplica
+`20240101000250_037_hoteles_agente_reservas.sql` a la base real. El código nuevo funciona contra la base vieja: el agente de WhatsApp consulta
+`hoteles.agent_booking_policy` al inicio de cada turno dentro de un SAVEPOINT; sin la 037 (42883/42P01) NO expone ninguna herramienta de reservas
+y se comporta exactamente como antes; las rutas de voz `/v1/hoteles/:propertyId/voz/reservas/*` responden 200 con `requiere_humano:true` y las rutas
+de staff `/hoteles/:propertyId/reservas-agente/*` degradan (`disponible:false`) o responden 503 en escrituras, nunca 500. Orden: (1) despliega el
+código; (2) aplica la 037 (`supabase db push`; requiere 001, 003, 005, 029, 030, 035 y 036 ya aplicadas); (3) con la 037 aplicada el agente SIGUE sin
+reservar: cada hotel debe habilitar la política (`PUT /hoteles/:propertyId/reservas-agente/politica`, owner/gm) — sin fila los holds están
+deshabilitados; (4) en ElevenLabs, dar de alta las 6 herramientas de voz apuntando a `/v1/hoteles/:propertyId/voz/reservas/<herramienta>` con el
+secreto de la property (acción externa fuera de este PR). Con la 037 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa
+las tablas nuevas. No hay variables de entorno nuevas ni cron nuevo: los holds vencen al consultar (y `hoteles.booking_hold_expire_due`, solo sesión
+de sistema, queda disponible para un barrido manual). Los links de pago solo se REGISTRAN: no hay cobro ni pasarela.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
