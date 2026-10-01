@@ -220,6 +220,8 @@ export {
 } from "./whatsapp/agent-config-editor.ts";
 export type { DiferenciaCampo, LineaDiff, ResultadoValidacion } from "./whatsapp/agent-config-editor.ts";
 export * from "./conversaciones/index.ts";
+// R-19/R-20: organizacion demo (marca, widget publico de chat sin Meta, telefonos ficticios).
+export * from "./demo/index.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,
