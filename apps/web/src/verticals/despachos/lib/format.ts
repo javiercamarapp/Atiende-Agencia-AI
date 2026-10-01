@@ -6,6 +6,7 @@ import type { ClosePeriodStatus, TaskCategory, TaskStatus } from "./cierre-mensu
 import type { EstadoVencimiento, PrioridadVencimiento } from "./vencimientos-client.ts";
 import type { DiotTipoOperacion, TablaAplicadaIsr } from "./declaraciones-client.ts";
 import type { EstadoMapeoMigracion, TipoMatchMigracion } from "./migracion-catalogo-client.ts";
+import type { DireccionCfdi, EstadoSatCfdi } from "./cfdi-client.ts";
 
 /** Monto en pesos (`$1,160.00`); `null` -> guion largo, nunca `$0`. El formato numérico vive en `formatMoney` de @atiende/ui. */
 export function formatMoney(value: number | null): string {
@@ -113,4 +114,62 @@ export function formatDateTime(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString("es-MX", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Monto en CENTAVOS enteros -> pesos (`$1,160.00`); `null` -> guion largo, nunca `$0`. Sin pasar por flotantes. */
+export function formatCentavos(centavos: number | null | undefined): string {
+  if (centavos === null || centavos === undefined || !Number.isFinite(centavos)) return "—";
+  const abs = Math.abs(centavos);
+  const pesos = Math.trunc(abs / 100);
+  const resto = String(abs % 100).padStart(2, "0");
+  return `${centavos < 0 ? "-" : ""}$${formatMoneyUi(pesos).replace(/\.\d+$/, "")}.${resto}`;
+}
+
+const DIRECCION_CFDI_LABELS: Record<DireccionCfdi, string> = { emitido: "Emitido", recibido: "Recibido", indeterminado: "Sin clasificar" };
+
+export function formatDireccionCfdi(direccion: DireccionCfdi | null | undefined): string {
+  return direccion ? (DIRECCION_CFDI_LABELS[direccion] ?? direccion) : "Sin clasificar";
+}
+
+const ESTADO_SAT_LABELS: Record<EstadoSatCfdi, string> = { pendiente: "Sin verificar", vigente: "Vigente", cancelado: "Cancelado", no_encontrado: "No encontrado" };
+
+export function formatEstadoSat(estado: EstadoSatCfdi | null | undefined): string {
+  return estado ? (ESTADO_SAT_LABELS[estado] ?? estado) : "Sin verificar";
+}
+
+export function tonoEstadoSat(estado: EstadoSatCfdi | null | undefined): "success" | "danger" | "warning" | "neutral" {
+  if (estado === "vigente") return "success";
+  if (estado === "cancelado") return "danger";
+  if (estado === "no_encontrado") return "warning";
+  return "neutral";
+}
+
+/** Metodo de pago del CFDI (c_MetodoPago): PUE = pago en una sola exhibicion, PPD = pago en parcialidades o diferido. */
+export function formatMetodoPago(codigo: string | null | undefined): string {
+  if (!codigo) return "—";
+  if (codigo === "PUE") return "PUE · Una sola exhibición";
+  if (codigo === "PPD") return "PPD · Parcialidades o diferido";
+  return codigo;
+}
+
+const FORMAS_PAGO: Record<string, string> = {
+  "01": "Efectivo",
+  "02": "Cheque nominativo",
+  "03": "Transferencia electrónica de fondos",
+  "04": "Tarjeta de crédito",
+  "28": "Tarjeta de débito",
+  "99": "Por definir",
+};
+
+export function formatFormaPago(codigo: string | null | undefined): string {
+  if (!codigo) return "—";
+  return FORMAS_PAGO[codigo] ? `${codigo} · ${FORMAS_PAGO[codigo]}` : codigo;
+}
+
+/** Tasa decimal del SAT ("0.160000") -> porcentaje ("16%"). */
+export function formatTasaImpuesto(tasa: string | null | undefined): string {
+  if (tasa === null || tasa === undefined) return "—";
+  const n = Number(tasa);
+  if (!Number.isFinite(n)) return tasa;
+  return `${Number((n * 100).toFixed(4))}%`;
 }
