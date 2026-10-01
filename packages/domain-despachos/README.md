@@ -216,3 +216,17 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
 - **Base sin migrar**: el adaptador Postgres corre cada operación bajo `runWithSavepointFallback`; sin la 017 las lecturas devuelven
   `disponible: false` y las escrituras responden 503, nunca un 500.
 - **Verificación**: `scripts/verify-despachos-cola-cobranza/` (Postgres real, 79 escenarios, integrado al gate de CI).
+
+## Calendario fiscal (D-26) y complemento de pago 2.0 (D-23)
+
+- `src/vencimientos/calendario-fiscal.ts`: fechas límite en **día hábil** (art. 12 CFF) por obligación y régimen
+  (ISR/IVA/Nómina día 17, DIOT último día del mes siguiente, balanza día 3 PM / 5 PF del segundo mes, anual 31-mar PM /
+  30-abr PF). Feriados por regla de la LFT art. 74 (2026-2027 verificados en `tests/calendario-fiscal.spec.ts`); Semana
+  Santa, ventanas vacacionales del SAT y los plazos de DIOT y balanza llevan `validarConFiscalista`. **Pendiente de
+  confirmar con fiscalista**: la resolución anual de días inhábiles del SAT no está modelada.
+- `src/vencimientos/procesos.ts`: persistencia compatible con la base sin migrar (SAVEPOINT ante 23514 en
+  `Balanza`/`Anual`) y barrido idempotente de escalamiento (`POST .../vencimientos/barrido`, sesión de staff).
+  Migración `019_despachos_calendario_fiscal_tipos.sql` (espejo `20240101000262`); verificación en
+  `scripts/verify-despachos-calendario-fiscal/`.
+- `src/cfdi/rep.ts`: análisis del REP 2.0 (`POST .../cfdi/rep/analizar`, solo lectura): saldo insoluto e IVA efectivamente
+  pagado por mes de pago, en centavos. No persiste ni alimenta DIOT/pagos provisionales todavía (depende de D-22, PR #290).
