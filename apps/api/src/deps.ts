@@ -15,6 +15,7 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
+import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, HandoffAgentGate, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
@@ -130,6 +131,11 @@ export interface AppDeps {
    * las comandas van a captura manual (nunca se inventan codigos). */
   readonly softRestaurantMapeo?: { readonly resolverCodigos: ResolverCodigosPos; readonly resolverSucursal: ResolverSucursalPos };
   readonly turnHandler: WhatsAppTurnHandler;
+  /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
+   * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
+   * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con
+   * su tope mensual por organizacion); los tests inyectan un guion sin red. Ver docs/DATA-CHAT.md. */
+  readonly dataChat?: DataChatDeps;
   /** Backend propio de voz de restaurantes (migración 025). OPCIONALES: si faltan, las rutas de
    * voz responden 503 honesto en vez de fingir. En producción `vozRepo` es
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live

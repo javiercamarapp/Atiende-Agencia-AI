@@ -44,6 +44,16 @@ export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } fro
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
 export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export {
+  ChatDatosDialog,
+  formatChatCell,
+  type ChatDatosDialogProps,
+  type ChatDatosMensaje,
+  type ChatDatosBloque,
+  type ChatDatosColumna,
+  type ChatDatosFuente,
+  type ChatDatosCell,
+} from "./components/ChatDatosDialog.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
