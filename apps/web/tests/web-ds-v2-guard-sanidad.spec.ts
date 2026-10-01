@@ -1,0 +1,106 @@
+// Sanidad del guard global del DS v2: demuestra que CADA regla falla de verdad ante una violacion
+// (un guard que nunca falla es peor que no tenerlo). Dos niveles: (1) por regla, un fixture que la
+// viola debe ser detectado y su version corregida no; (2) de punta a punta, un arbol temporal con
+// violaciones se escanea con el mismo cargador que usa el guard real.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { REGLAS, REGLAS_DELEGACION, cargarFuentes, infractores, sinComentarios, violacionesDelegacion, type Fuente } from "./test-utils/ds-v2-guard-reglas";
+
+/** Por regla (clave = prefijo del nombre): codigo que la viola y codigo limpio equivalente. */
+const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?: string }> = [
+  { regla: "window.confirm", viola: 'if (window.confirm("Borrar?")) borrar();', limpio: "const confirmar = useConfirm();" },
+  { regla: "window.confirm", viola: 'if (confirm("Borrar?")) borrar();', limpio: "await confirmar({ titulo: 'x' });" },
+  { regla: "tamano de texto arbitrario", viola: '<p className="text-[13px]">x</p>', limpio: '<p className="text-sm">x</p>' },
+  { regla: "paleta cruda", viola: '<p className="text-green-600">x</p>', limpio: '<p className="text-success">x</p>' },
+  { regla: "paleta cruda", viola: '<div className="bg-white/80" />', limpio: '<div className="bg-card" />' },
+  { regla: "color hexadecimal", viola: 'const c = "#ff00aa";', limpio: 'const c = "hsl(var(--primary))";' },
+  { regla: "estilo inline", viola: "<div style={{ width: 3 }} />", limpio: '<div className="w-3" />' },
+  { regla: "<select>", viola: "<select><option>a</option></select>", limpio: "<NativeSelect />" },
+  { regla: "<textarea>", viola: "<textarea />", limpio: "<Textarea />" },
+  { regla: "checkbox crudo", viola: '<input type="checkbox" />', limpio: "<Checkbox />" },
+  { regla: "formatMoney local", viola: "function formatMoney(n: number) { return String(n); }", limpio: 'import { formatMoney } from "@atiende/ui";', ruta: "verticals/x/pages/Y.tsx" },
+  { regla: "fmtMoney local", viola: "function fmtMoney(n: number) { return String(n); }", limpio: 'import { formatMoney } from "@atiende/ui";', ruta: "pages/Y.tsx" },
+  { regla: "fmtMoney local", viola: 'n.toLocaleString("es-MX", { minimumFractionDigits: 2 })', limpio: "formatMoney(n)", ruta: "pages/Y.tsx" },
+  { regla: "ModalFormularioLateral", viola: "<ModalFormularioLateral />", limpio: "<FormDialog />" },
+  { regla: "<table>", viola: "<table><tr /></table>", limpio: "<DataTable />" },
+  { regla: "<Badge>", viola: '<Badge className="x">a</Badge>', limpio: "<StatusBadge tone=\"success\">a</StatusBadge>" },
+  { regla: "relleno interno p-6", viola: '<div className="flex p-6">x</div>', limpio: '<PageContainer className="flex">x</PageContainer>' },
+  { regla: "tokens heredados", viola: '<div className="bg-gold" />', limpio: '<div className="bg-primary" />' },
+  { regla: "tokens heredados", viola: '<div className="text-terracotta/80" />', limpio: '<div className="text-muted-foreground" />' },
+  { regla: "tokens heredados", viola: '<div className="shadow-glow" />', limpio: '<div className="shadow-card" />' },
+  { regla: "variantes de Button", viola: '<Button variant="hero">a</Button>', limpio: '<Button variant="default">a</Button>' },
+  { regla: "variantes de Button", viola: "<Button variant={'gold'}>a</Button>", limpio: '<Button variant="outline">a</Button>' },
+];
+
+const porRegla = (prefijo: string) => {
+  const r = REGLAS.find((x) => x.nombre.startsWith(prefijo));
+  if (!r) throw new Error(`no existe la regla ${prefijo}`);
+  return r;
+};
+const fuente = (codigo: string, ruta = "verticals/x/Archivo.tsx"): Fuente => ({ ruta, codigo: sinComentarios(codigo) });
+
+describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)", () => {
+  it("todas las reglas tienen al menos un caso de sanidad", () => {
+    const cubiertas = new Set(CASOS.map((c) => REGLAS.find((r) => r.nombre.startsWith(c.regla))?.nombre));
+    expect(REGLAS.filter((r) => !cubiertas.has(r.nombre)).map((r) => r.nombre)).toEqual([]);
+  });
+
+  for (const c of CASOS) {
+    it(`${c.regla}: detecta ${JSON.stringify(c.viola).slice(0, 50)} y deja pasar el codigo limpio`, () => {
+      const regla = porRegla(c.regla);
+      expect(infractores([fuente(c.viola, c.ruta)], regla)).toHaveLength(1);
+      expect(infractores([fuente(c.limpio, c.ruta)], regla)).toEqual([]);
+    });
+  }
+
+  it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {
+    const regla = porRegla("formatMoney local");
+    expect(infractores([fuente("function formatMoney() {}", "lib/format.ts")], regla)).toEqual([]);
+  });
+
+  it("una violacion dentro de un comentario no cuenta (el guard escanea codigo, no prosa)", () => {
+    const codigo = '// no usar window.confirm("x") ni bg-green-500\n/* <select> y #ff0000 */\nconst a = 1;';
+    for (const regla of REGLAS) expect(infractores([fuente(codigo)], regla)).toEqual([]);
+  });
+});
+
+describe("guard DS v2 — sanidad de delegacion de formato", () => {
+  it("falla si el modulo no delega o reimplementa el formato, y pasa si delega", () => {
+    for (const regla of REGLAS_DELEGACION) {
+      const limpio = [{ ruta: regla.ruta, codigo: 'import { formatMoney } from "@atiende/ui";\nexport const f = formatMoney;' }];
+      expect(violacionesDelegacion(limpio, regla)).toEqual([]);
+      const sinImport = [{ ruta: regla.ruta, codigo: "export const f = 1;" }];
+      expect(violacionesDelegacion(sinImport, regla)).toContain("no importa de @atiende/ui");
+      const reimplementa = [{ ruta: regla.ruta, codigo: 'import { x } from "@atiende/ui";\nnew Intl.NumberFormat("es-MX"); n.toLocaleString("es-MX", { minimumFractionDigits: 2 });' }];
+      expect(violacionesDelegacion(reimplementa, regla).length).toBeGreaterThan(0);
+      expect(violacionesDelegacion([], regla)).toHaveLength(1);
+    }
+  });
+});
+
+describe("guard DS v2 — sanidad de punta a punta sobre un arbol temporal", () => {
+  const raiz = mkdtempSync(join(tmpdir(), "ds-v2-guard-"));
+  afterAll(() => rmSync(raiz, { recursive: true, force: true }));
+
+  const escribir = (rel: string, contenido: string) => {
+    const ruta = join(raiz, rel);
+    mkdirSync(dirname(ruta), { recursive: true });
+    writeFileSync(ruta, contenido);
+  };
+
+  it("el cargador encuentra los .ts/.tsx anidados y cada regla senala solo el archivo infractor", () => {
+    escribir("verticals/v/pages/Limpia.tsx", 'export const A = () => <p className="text-sm">ok</p>;');
+    escribir("verticals/v/pages/Sucia.tsx", 'export const B = () => <p className="text-[11px] bg-red-500" style={{ top: 0 }}>x</p>;');
+    escribir("components/Hex.tsx", 'export const C = "#abc123";');
+    escribir("notas.md", "window.confirm('x') en un .md no se escanea");
+    const fuentes = cargarFuentes(raiz);
+    expect(fuentes.map((f) => f.ruta).sort()).toEqual(["components/Hex.tsx", "verticals/v/pages/Limpia.tsx", "verticals/v/pages/Sucia.tsx"]);
+    expect(infractores(fuentes, porRegla("tamano de texto arbitrario"))).toEqual(["verticals/v/pages/Sucia.tsx"]);
+    expect(infractores(fuentes, porRegla("paleta cruda"))).toEqual(["verticals/v/pages/Sucia.tsx"]);
+    expect(infractores(fuentes, porRegla("estilo inline"))).toEqual(["verticals/v/pages/Sucia.tsx"]);
+    expect(infractores(fuentes, porRegla("color hexadecimal"))).toEqual(["components/Hex.tsx"]);
+    expect(infractores(fuentes, porRegla("window.confirm"))).toEqual([]);
+  });
+});
