@@ -163,7 +163,18 @@ describe("PM reglas duras: pedido minimo, alcohol a domicilio y recoger (P01-P03
     await expect(createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 4, tortilla: "maiz" }], { promoCode: "MITAD" }))).rejects.toThrow(/faltan \$32/);
   });
 
-  it.todo("T-RD06 [P0] BRECHA: lunes, recoger, 4 pastor -> promo 2x1 aplicada por el servidor (hoy el motor solo tiene promociones porcentaje/fijo por codigo; no hay 2x1 ni regla por dia/canal en el agente)");
+  it("T-RD06 / P04 [P0] lunes, recoger, 4 pastor con la promo 2x1: el servidor la calcula ($168 - $84 = $84) y la MISMA promo a domicilio se rechaza", async () => {
+    const f = pmFixture();
+    await f.repo.createPromotion(f.organizationId, { code: "LUNES2X1", name: "Lunes 2x1 pastor", type: "bogo", value: 0, daysOfWeek: [1], channels: ["recoger"], productIds: [f.p.pastor] });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-14T20:00:00Z")); // lunes 14:00 hora de Merida
+    const recoger = await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 4, tortilla: "maiz" }], { canal: "recoger", promoCode: "LUNES2X1" }));
+    expect(recoger.total).toBe(84);
+    expect(recoger.notes).toContain("Promoción aplicada: LUNES2X1");
+    await expect(createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 8, tortilla: "maiz" }], { canal: "domicilio", promoCode: "LUNES2X1", customerPhone: "9990000003" }))).rejects.toThrow(/no aplica a pedidos a domicilio/);
+  });
+
+  it.todo("T-RD06b / P04 [P0] BRECHA: el agente no aplica la promo sola; las tools de cotizar/crear no tienen parametro de promocion (solo el checkout con promo_code), asi que el cliente de WhatsApp o voz no recibe el 2x1 del lunes");
   it.todo("T-RD08 [P1] BRECHA: martes, recoger, nachos de pastor -> 2 aguas de cortesia a $0 (no existe promo de regalo de producto)");
   it.todo("T-RD09 / P05 [P1] DECISION ABIERTA: promo del lunes con pedido creado el martes 00:05 (fecha de promo = creacion o recogida)");
 
@@ -489,7 +500,6 @@ describe("PM zonas y sucursal (X41-X43, P10-P12)", () => {
   });
 
   it.todo("T-ZS05 / P12 [P1] DECISION ABIERTA (sucursal elegida a domicilio): si el cliente insiste en otra sucursal, no hay 'zona_ambigua' ni regla que fije la asignada");
-  it.todo("T-ZS07 / P33 [P1] BRECHA: mensajes 'location' de WhatsApp (pin de ubicacion) no se aceptan; el parser solo lee texto");
   it.todo("T-ZS09 / X42 [P2] BRECHA: reporte de colonias cuyas 2 sucursales mas cercanas quedan a menos de 1 km");
 });
 

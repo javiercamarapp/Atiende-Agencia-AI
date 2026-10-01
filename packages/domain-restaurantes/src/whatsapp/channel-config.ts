@@ -65,7 +65,7 @@ function unsupportedBody(type: string, message: { location?: { latitude?: unknow
     const lat = message.location?.latitude;
     const lng = message.location?.longitude;
     const coords = typeof lat === "number" && typeof lng === "number" ? ` (${lat}, ${lng})` : "";
-    return `[El cliente compartió su ubicación${coords}, pero este asistente aún no puede usarla. Pídale su colonia o una referencia cercana por texto.]`;
+    return `[El cliente compartió su ubicación${coords}. ${coords ? "Úsela con buscar_sucursal_cercana (lat y lng) para asignar la sucursal." : "No trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto."}]`;
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
 }
