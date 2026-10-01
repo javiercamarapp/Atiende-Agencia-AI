@@ -11,7 +11,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -103,6 +103,10 @@ export interface AppDeps {
   readonly restaurantesRepo: (db: TenantDbSession) => RestaurantesRepository;
   readonly turnHandler: WhatsAppTurnHandler;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
+  /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
+   *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
+   *  tests lo sobreescriben con `InMemoryIdentityRepository`. */
+  readonly hotelesIdentidadRepo?: (db: TenantDbSession) => IdentityRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de

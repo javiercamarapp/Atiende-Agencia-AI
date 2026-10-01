@@ -53,6 +53,7 @@ quitó en esta pasada — ver más abajo).
 | `WHATSAPP_VERIFY_TOKEN` | lo eliges tú al configurar el webhook en Meta for Developers → tu App → WhatsApp → Configuration | Sí | Verificación (`hub.verify_token`) del webhook entrante | La API no arranca | **Sí** |
 | `WHATSAPP_APP_SECRET` | Meta for Developers → tu App → Settings → Basic | Sí | Verifica la firma HMAC (`x-hub-signature-256`) de cada webhook entrante | La API no arranca | **Sí** |
 | `WHATSAPP_ACCESS_TOKEN` | Meta for Developers → tu App → WhatsApp → API Setup | Sí | Envío SALIENTE real vía Graph API (`@atiende/whatsapp-gateway::MetaGraphWhatsAppClient`) | `deps.whatsAppDispatcher` queda `undefined`; `POST/GET /internal/whatsapp/dispatch` responde 503 explícito (`routes/internal/whatsapp-dispatch.ts`) | No |
+| `HOTELES_IDENTITY_KEY` | La generas tú: `openssl rand -base64 32` (32 bytes en base64) y la guardas en un gestor de secretos con respaldo | Sí | Cifrado AES-256-GCM de la bóveda de identidad de hoteles (`@atiende/domain-hoteles::identity`, migración 031): captura y revelación de documentos | `POST /hoteles/:propertyId/identidad` y `.../revelar` responden 503 explícito (nunca se guarda un documento en claro); la lista avisa `llaveConfigurada:false`. Perder la llave vuelve ilegibles las identidades ya capturadas | No |
 
 Nota: `WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` son obligatorias para
 **arrancar la API entera**, aunque solo gatean el webhook ENTRANTE de 3 verticales
