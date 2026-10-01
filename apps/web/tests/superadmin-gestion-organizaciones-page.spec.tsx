@@ -139,4 +139,63 @@ describe("SuperAdminGestionOrganizacionesPage", () => {
     expect(dialogo()).toBeNull();
     expect(posts).toHaveLength(0);
   });
+
+  describe("doble control (suspender con contrato vigente)", () => {
+    const pendienteDoble = (extra: Record<string, unknown> = {}) => ({
+      id: "a1", tipo: "suspender", organizationId: "o1", payload: {}, motivo: "Cliente en mora de 90 dias, se suspende con doble control.",
+      estado: "pending", venceEnMs: Date.now() + 50 * 60_000, resultado: null,
+      requiereDobleControl: true, contratoVersion: 3, aprobadoPor: null, esSolicitante: true, ...extra,
+    });
+    const boton = (texto: string) => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto) as HTMLButtonElement | undefined;
+
+    it("el solicitante ve que falta la aprobacion y Confirmar esta deshabilitado hasta que exista", async () => {
+      stub({ acciones: [pendienteDoble()] });
+      rendered = render();
+      await esperar();
+      expect(rendered.container.textContent).toContain("Falta la aprobación de un segundo superadmin");
+      expect(rendered.container.textContent).toContain("versión 3");
+      expect(boton("Confirmar")!.disabled).toBe(true);
+      expect(boton("Aprobar")).toBeUndefined(); // no se aprueba lo propio
+    });
+
+    it("aprobada por otro superadmin, el solicitante ya puede confirmar", async () => {
+      stub({ acciones: [pendienteDoble({ aprobadoPor: "u2" })] });
+      rendered = render();
+      await esperar();
+      expect(rendered.container.textContent).toContain("Aprobada por un segundo superadmin");
+      expect(boton("Confirmar")!.disabled).toBe(false);
+    });
+
+    it("otro superadmin ve Aprobar (sin Confirmar): pide confirmacion, descartar NO aprueba y aceptar llama a /aprobar", async () => {
+      const posts: string[] = [];
+      stub({ acciones: [pendienteDoble({ esSolicitante: false })], post: (url) => posts.push(url) });
+      rendered = render();
+      await esperar();
+      expect(rendered.container.textContent).toContain("Espera tu aprobación");
+      expect(boton("Confirmar")).toBeUndefined();
+      expect(boton("Cancelar")).toBeUndefined();
+      click(boton("Aprobar")!);
+      await esperar();
+      expect(dialogo()).not.toBeNull();
+      expect(posts).toHaveLength(0);
+      click(botonDialogo("Cancelar"));
+      await esperar();
+      expect(dialogo()).toBeNull();
+      expect(posts).toHaveLength(0);
+
+      click(boton("Aprobar")!);
+      await esperar();
+      click(botonDialogo("Aprobar"));
+      await esperar();
+      expect(posts).toEqual(["https://api.test/superadmin/organizaciones/acciones/a1/aprobar"]);
+    });
+
+    it("una API sin doble control (campos ausentes) se comporta como antes: Confirmar habilitado, sin aviso", async () => {
+      stub({ acciones: [{ id: "a1", tipo: "suspender", organizationId: "o1", payload: {}, motivo: "Cliente en mora de 90 dias, se suspende previa confirmacion.", estado: "pending", venceEnMs: Date.now() + 5 * 60_000, resultado: null }] });
+      rendered = render();
+      await esperar();
+      expect(rendered.container.textContent).not.toContain("Doble control");
+      expect(boton("Confirmar")!.disabled).toBe(false);
+    });
+  });
 });
