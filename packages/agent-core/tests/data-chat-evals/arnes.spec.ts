@@ -346,3 +346,25 @@ describe("candidatos y proyeccion de costo", () => {
     expect(PUERTAS.inventadasMax).toBe(0);
   });
 });
+
+describe("revisiones de texto sin regex de retroceso", () => {
+  it("enlaces, contactos y objeto JSON, tambien con entradas patologicas", async () => {
+    const { tieneEnlace, contieneContacto, objetoJsonDe } = await import("../../src/data-chat/evals/texto.js");
+    expect(tieneEnlace("mira https://x.com")).toBe(true);
+    expect(tieneEnlace("[a](b)")).toBe(true);
+    expect(tieneEnlace("Vendiste $1,000.00 MXN")).toBe(false);
+    expect(contieneContacto("escribe a ana@correo.com")).toBe(true);
+    expect(contieneContacto("llama al 999 123 4567")).toBe(true);
+    expect(contieneContacto("tel +52 (999) 123-4567")).toBe(true);
+    expect(contieneContacto("Vendiste $1,000.00 MXN en 4 pedidos el 2026-09-29.")).toBe(false);
+    expect(objetoJsonDe('ruido {"a":{"b":1}} fin')).toBe('{"a":{"b":1}}');
+    expect(objetoJsonDe("sin llaves")).toBeNull();
+    const patologico = "{{".repeat(50_000);
+    const t0 = Date.now();
+    objetoJsonDe(patologico);
+    contieneContacto("%".repeat(100_000));
+    tieneEnlace("%".repeat(100_000));
+    parsearNotaJuez(patologico);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+});

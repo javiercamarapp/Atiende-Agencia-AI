@@ -8,7 +8,7 @@
 // reglas, grafica y SVG validos. La calidad del analisis la califica un juez barato (Qwen 3.7 Flash; NUNCA Sonnet) con rubrica.
 // Costo real por reporte desde usage.cost. Sin Sonnet como juez.
 import { allowedNumbers, extractNumbers, unsupportedNumbers } from "../numbers-guard.js";
-import { containsLink } from "../sanitize.js";
+import { tieneEnlace } from "./texto.js";
 import type { DataChatCompletion, DataChatToolResult } from "../types.js";
 import { OpenRouterError } from "../../gateway/providers/openrouter.js";
 import { candidatoPorId, type ModeloCandidato } from "./candidatos.js";
@@ -236,7 +236,7 @@ export function evaluarReporte(tarea: TareaBakeoff, crudo: unknown): EvaluacionB
   ok("cifras_clave", cobertura >= COBERTURA_MIN, `cita ${cubiertas.length} de ${tarea.cifrasClave.length} cifras clave`);
   const fallas: string[] = [];
   if (PENINSULAR.test(texto)) fallas.push("peninsular");
-  if (containsLink(texto)) fallas.push("enlace");
+  if (tieneEnlace(texto)) fallas.push("enlace");
   if (/\*\*|^#+\s|`/m.test(texto)) fallas.push("markdown");
   if (/[€]|\beuros?\b|\busd\b/i.test(texto)) fallas.push("moneda distinta de MXN");
   ok("espanol_reglas", fallas.length === 0, fallas.join("; "));

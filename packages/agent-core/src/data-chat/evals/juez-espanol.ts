@@ -5,6 +5,7 @@ import { OpenRouterError, OpenRouterProvider } from "../../gateway/providers/ope
 import type { LlmCompletionResult } from "../../gateway/types.js";
 import { JUEZ_ESPANOL_CADENA } from "./candidatos.js";
 import type { PresupuestoDuro } from "./presupuesto.js";
+import { objetoJsonDe } from "./texto.js";
 
 export interface NotaJuez {
   /** 1 a 5; null = el juez no pudo calificar (error de ruta/formato). */
@@ -27,10 +28,10 @@ export const RUBRICA_JUEZ = [
 ].join("\n");
 
 export function parsearNotaJuez(texto: string): { nota: number | null; razon: string } {
-  const m = texto.match(/\{[\s\S]*\}/);
-  if (!m) return { nota: null, razon: "sin JSON" };
+  const crudo = objetoJsonDe(texto);
+  if (!crudo) return { nota: null, razon: "sin JSON" };
   try {
-    const o = JSON.parse(m[0]) as { nota?: unknown; razon?: unknown };
+    const o = JSON.parse(crudo) as { nota?: unknown; razon?: unknown };
     const n = typeof o.nota === "number" ? o.nota : Number(o.nota);
     if (!Number.isInteger(n) || n < 1 || n > 5) return { nota: null, razon: "nota fuera de 1-5" };
     return { nota: n, razon: typeof o.razon === "string" ? o.razon.slice(0, 160) : "" };
