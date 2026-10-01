@@ -27,7 +27,8 @@ import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@at
 import { vipNote } from "../customers.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
-import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
+import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order } from "../types.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -266,6 +267,33 @@ export interface WhatsAppLlmAgentOptions {
   readonly turnBudgetMs?: number;
   /** Inyectable solo para tests deterministas del saludo por hora. */
   readonly now?: () => Date;
+  /** SoftRestaurant: encola la comanda del pedido recien creado por WhatsApp (mismo helper que voz y
+   * web: `encolarComandaParaPedido`). Ausente = comportamiento anterior. La comanda va ANTES de cobrar
+   * y el agente solo puede decir lo que devuelve esta funcion (nunca un folio inventado). */
+  readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
+}
+
+/** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
+ * ocultarle al cliente un pedido que si quedo creado. Devuelve el bloque que ve el modelo (solo en modo
+ * `activo`; con la bandera apagada o en sombra el resultado de `crear_pedido` queda identico). */
+async function encolarComandaDelTurno(
+  encolar: NonNullable<WhatsAppLlmAgentOptions["encolarComanda"]>,
+  order: Order,
+  input: Record<string, unknown>,
+): Promise<{ readonly estado: string; readonly folio: string | null; readonly mensaje: string } | null> {
+  try {
+    const canal: CanalPedido | undefined = input.canal === "recoger" || input.canal === "domicilio" ? input.canal : undefined;
+    const outcome = await encolar({
+      order,
+      tipo: canal,
+      colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
+      propina: typeof input.propina === "number" ? input.propina : undefined,
+    });
+    return outcome.modo === "activo" ? { estado: outcome.agente.estado, folio: outcome.agente.folio, mensaje: outcome.agente.mensaje } : null;
+  } catch (err) {
+    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
@@ -348,6 +376,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
+              if (call.name === "crear_pedido" && options.encolarComanda && executed.raw) {
+                const comanda = await encolarComandaDelTurno(options.encolarComanda, executed.raw as Order, input);
+                if (comanda) result = { ...(result as object), comanda };
+              }
             }
           }
           if (call.name === "crear_pedido" && isToolErrorResult(result)) {
