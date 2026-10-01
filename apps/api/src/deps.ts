@@ -16,7 +16,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -139,6 +139,10 @@ export interface AppDeps {
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
    *  tests lo sobreescriben con `InMemoryIdentityRepository`. */
   readonly hotelesIdentidadRepo?: (db: TenantDbSession) => IdentityRepository;
+  /** H-04 -- housekeeping completo de hoteles (tareas, tablero, fuera de servicio). OPCIONAL: en
+   *  produccion no se define y las rutas usan `PostgresHousekeepingRepository` (RLS real,
+   *  SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesHousekeepingRepo?: (db: TenantDbSession) => HousekeepingRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de
