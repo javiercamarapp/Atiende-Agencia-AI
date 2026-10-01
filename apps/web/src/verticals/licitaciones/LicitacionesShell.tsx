@@ -14,7 +14,7 @@
 // diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
-import { BellRing, Building2, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldAlert, ShieldCheck, Target, Users } from "lucide-react";
+import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldAlert, ShieldCheck, Target, Users } from "lucide-react";
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
@@ -95,6 +95,7 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarS
       items: [
         { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
         { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
+        { to: `${base}/dias-inhabiles`, label: "Días inhábiles", icon: CalendarOff },
         { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
         { to: `${base}/whatsapp`, label: "WhatsApp", icon: MessageCircle },
