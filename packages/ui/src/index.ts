@@ -38,6 +38,11 @@ export {
   TableCaption,
 } from "./components/ui/table.js";
 export { Input } from "./components/ui/input.js";
+export { Textarea, type TextareaProps } from "./components/ui/textarea.js";
+export { NativeSelect, nativeSelectVariants, type NativeSelectProps } from "./components/ui/native-select.js";
+export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
+export { Switch, type SwitchProps } from "./components/ui/switch.js";
+export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";
 export { Label } from "./components/ui/label.js";
 export { Separator } from "./components/ui/separator.js";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs.js";
