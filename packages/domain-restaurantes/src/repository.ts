@@ -18,6 +18,7 @@ import type {
   WhatsAppAgentConfigHistorialEntry,
   NewBranchHoursExceptionInput,
   OrderPickupInfo,
+  OrderScheduleInfo,
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
   BranchProductState,
@@ -97,6 +98,10 @@ export interface NewOrderRecord {
   readonly canal?: CanalPedido | null;
   readonly propina?: number | null;
   readonly horaRecogida?: string | null;
+  /** Migracion 034: hora (ISO 8601) para la que se programo el pedido. Con valor, `create_order_idempotent`
+   * lo crea en estado `programado`. El create_order_idempotent VIEJO ignora la llave y lo crearia inmediato:
+   * `createOrder` por eso verifica `supportsScheduledOrders()` antes de mandarla. */
+  readonly programadoPara?: string | null;
 }
 
 export interface ConversationMessage {
@@ -578,6 +583,24 @@ export interface RestaurantesRepository {
   /** Canal, propina y hora de recogida (migracion 031) de varios pedidos. `[]` contra la base sin migrar:
    * los listados de pedidos NO seleccionan esas columnas para no romperse sin migrar. */
   listOrderPickupInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderPickupInfo[]>;
+
+  // ---- Pedidos programados (migracion 034). Toda LECTURA degrada contra la base sin migrar (SAVEPOINT) a
+  // "no disponible aun" sin lanzar; nunca se crea un pedido programado contra una base vieja. ----
+
+  /** `true` si la base ya tiene la migracion 034 (columna `orders.programado_para`). */
+  supportsScheduledOrders(): Promise<boolean>;
+  /** Programacion de varios pedidos. `[]` contra la base sin migrar. */
+  listOrderScheduleInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderScheduleInfo[]>;
+  /** Pedidos en estado `programado`, el mas proximo primero. `disponible:false` contra la base sin migrar. */
+  listScheduledOrders(organizationId: string, filter: { readonly propertyIds: readonly string[] | null; readonly limit: number }): Promise<ScheduledOrdersResult>;
+  /** Promueve a `pending` los programados cuya hora cae dentro de `anticipacionMin` minutos (o ya paso).
+   * Idempotente: solo toca filas en `programado` (un pedido cancelado nunca se promueve) y cada pedido se
+   * promueve UNA vez. `organizationId: null` = barrido de TODAS las organizaciones (solo sesion de sistema).
+   * `disponible:false` contra la base sin migrar. */
+  promoteDueScheduledOrders(
+    organizationId: string | null,
+    options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
+  ): Promise<PromotedScheduledOrdersResult>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
   upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
   /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura
@@ -597,6 +620,16 @@ export interface RestaurantesRepository {
   /** `false` si el producto/categoria no existe en la organizacion. */
   setProductNoDomicilio(organizationId: string, productId: string, noDomicilio: boolean): Promise<boolean>;
   setCategoryNoDomicilio(organizationId: string, categoryId: string, noDomicilio: boolean): Promise<boolean>;
+}
+
+export interface ScheduledOrdersResult {
+  readonly disponible: boolean;
+  readonly orders: readonly Order[];
+}
+
+export interface PromotedScheduledOrdersResult {
+  readonly disponible: boolean;
+  readonly promoted: readonly Order[];
 }
 
 /** Lanzado por `upsertWhatsappChannelConfig`/`createKnownZone`/`deleteKnownZone`

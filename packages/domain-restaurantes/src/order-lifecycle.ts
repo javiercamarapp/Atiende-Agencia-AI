@@ -15,7 +15,7 @@ import type { Order, OrderPickupInfo, OrderStatus } from "./types.ts";
 
 export class OrderStatusTransitionError extends Error {}
 
-export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido"];
+export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido", "programado"];
 
 /** Estados exclusivos del canal recoger (migracion 031). */
 export const PICKUP_ONLY_STATUSES: readonly OrderStatus[] = ["listo_para_recoger", "no_recogido"];
@@ -35,6 +35,9 @@ export function isOrderStatus(value: string): value is OrderStatus {
  * ya cerrado.
  */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  // R-11: un pedido programado espera fuera de cocina; pasa a `pending` (promocion automatica o a mano para
+  // adelantarlo) o se cancela. Nunca salta directo a preparacion/entrega.
+  programado: ["pending", "cancelado"],
   pending: ["preparando", "cancelado", "problema"],
   // Un pedido para recoger sale de cocina como `listo_para_recoger` (no `en_camino`): la regla de canal
   // se aplica en `changeOrderStatus`, que conoce el canal del pedido.

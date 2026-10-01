@@ -25,7 +25,9 @@
 // pedido — best-effort real, nunca deben tumbar la operación principal (crear el
 // pedido, mover el estado) solo porque el AVISO falló. Mismo patrón exacto que
 // `@atiende/domain-citas::appointment-email-notifications.ts::tryEnqueueAppointmentEmail`.
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { etiquetaHoraLocal } from "./horarios.ts";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
@@ -200,6 +202,18 @@ async function enqueueStaffNotification(repo: RestaurantesRepository, order: Ord
  * §2): hasta esta fase, un pedido nuevo (source web/voice/whatsapp/admin) nunca
  * generaba NINGÚN aviso al staff, solo aparecía si alguien refrescaba el panel. */
 export async function notifyStaffNewOrderCore(repo: RestaurantesRepository, order: Order): Promise<void> {
+  // R-11: un pedido PROGRAMADO avisa que entra mas tarde (hora en la zona de la sucursal), no que hay que
+  // prepararlo ya. El aviso reutiliza el evento `order.created` (el CHECK de la bandeja no admite otros).
+  if (order.status === "programado" && order.programadoPara) {
+    const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(order.propertyId)).zonaHoraria);
+    await enqueueStaffNotification(
+      repo,
+      order,
+      "order.created",
+      `Nuevo pedido PROGRAMADO de ${order.customerName}${branchSuffix(order)} para ${etiquetaHoraLocal(new Date(order.programadoPara), zona)} — ${formatMxn(order.total)}.`,
+    );
+    return;
+  }
   await enqueueStaffNotification(repo, order, "order.created", `Nuevo pedido de ${order.customerName}${branchSuffix(order)} — ${formatMxn(order.total)}.`);
 }
 
