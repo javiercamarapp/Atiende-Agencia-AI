@@ -140,7 +140,10 @@ export function hotelesRecepcionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const dia = clasificarRecepcion(await guarded(() => repo.listarReservasDelDia(propertyId, fecha)), fecha);
     const guestIds = [...new Set([...dia.llegadas, ...dia.enCasa].map((m) => m.guestId).filter((g): g is string => g !== null))];
     const identidad = await guarded(() => repo.huespedesConIdentidad(propertyId, guestIds));
-    const [board, rooms] = await Promise.all([guarded(() => hkRepo(c).getBoard(propertyId, fecha)), deps.hotelesRepo(c.get("db")).listRooms(propertyId)]);
+    // En SECUENCIA, nunca con Promise.all: ambas lecturas comparten la MISMA sesion transaccional y `getBoard` degrada con
+    // SAVEPOINT/ROLLBACK TO ante una base sin migrar (033); un `listRooms` en vuelo se intercalaria y daria 25P02/500.
+    const board = await guarded(() => hkRepo(c).getBoard(propertyId, fecha));
+    const rooms = await deps.hotelesRepo(c.get("db")).listRooms(propertyId);
     const roomTypeById = new Map(rooms.map((r) => [r.id, r.roomTypeId]));
 
     const rack = board.rows.map((row) => {
