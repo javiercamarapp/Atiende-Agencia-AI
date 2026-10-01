@@ -1,6 +1,6 @@
 -- Fixtures + escenarios contra Postgres REAL (RLS + GRANT por columna + funciones definer reales --
 -- nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/027_conversaciones_handoff_turnos.sql:
+-- packages/domain-restaurantes/migrations/028_conversaciones_handoff_turnos.sql:
 --
 --   A. Turnos (branch_shift / branch_shift_member): positivo, rol insuficiente, cross-tenant,
 --      alcance por sucursal (property_ids), GRANT por columna, FK compuesta, CHECK, anon.

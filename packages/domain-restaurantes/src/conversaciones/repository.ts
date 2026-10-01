@@ -10,7 +10,7 @@ import type {
   TurnoPersonal,
 } from "./types.ts";
 
-/** Puerto de persistencia de la bandeja de conversaciones / handoff / turnos / callbacks (migracion 027),
+/** Puerto de persistencia de la bandeja de conversaciones / handoff / turnos / callbacks (migracion 028),
  * separado de `RestaurantesRepository` a proposito: todo degrada de forma uniforme cuando la base no esta
  * migrada (lecturas -> `disponible: false`; escrituras -> `ConversacionesNoDisponibleError`, que las rutas
  * traducen a 503) y nunca toca el resto del dominio. */

@@ -1,4 +1,4 @@
-// Implementacion en memoria (tests y modo sin base). Reproduce las reglas de la migracion 027 que importan al
+// Implementacion en memoria (tests y modo sin base). Reproduce las reglas de la migracion 028 que importan al
 // comportamiento: una sola toma abierta por conversacion, la segunda toma falla (`HandoffYaTomadoError`), solo
 // quien tomo (o un administrador) devuelve/cierra, solo quien tomo responde. NO modela RLS (eso lo verifica
 // scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real).

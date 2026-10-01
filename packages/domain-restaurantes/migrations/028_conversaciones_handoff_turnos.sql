@@ -1,7 +1,7 @@
 -- R-21 (restaurantes): bandeja de conversaciones por sucursal (WhatsApp y voz), toma de la
 -- conversacion por un humano (el agente deja de responder), devolucion al agente, cobertura por
 -- TURNOS de personal por sucursal (PM trabaja 12 pm-1 am con doble turno), notas internas y
--- registro de intentos de callback. Prefijo de supabase/migrations 20240101000212 (interno 027).
+-- registro de intentos de callback. Prefijo de supabase/migrations 20240101000212 (interno 028).
 --
 --   1. `restaurantes.branch_shift` / `restaurantes.branch_shift_member` -- turnos de personal por
 --      sucursal y quien cubre cada turno (orden 1 = principal, 2+ = respaldo).

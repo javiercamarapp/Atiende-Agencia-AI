@@ -1,5 +1,5 @@
 // Adaptador Postgres de `ConversacionesRepository` y de `HandoffAgentGate`. REGLA DURA de compatibilidad con
-// la base SIN migrar: mergear despliega el codigo al instante y la migracion 027 no se aplica sola. Toda
+// la base SIN migrar: mergear despliega el codigo al instante y la migracion 028 no se aplica sola. Toda
 // consulta corre dentro de la transaccion UNICA de un request (`withAppSession`), donde un error de Postgres
 // la deja abortada (25P02) y el COMMIT seria un ROLLBACK silencioso; por eso TODA operacion usa
 // `runWithSavepointFallback` (SAVEPOINT / ROLLBACK TO SAVEPOINT) antes de degradar: lecturas ->
@@ -39,7 +39,7 @@ function code(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
 
-/** Objeto de la migracion 027 inexistente: tabla, columna o funcion. */
+/** Objeto de la migracion 028 inexistente: tabla, columna o funcion. */
 export function esBaseSinMigrar(err: unknown): boolean {
   const c = code(err);
   return c === "42P01" || c === "42703" || c === "42883";
@@ -57,7 +57,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresConversacionesRepository: las tablas/funciones de handoff todavía no existen en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/027_conversaciones_handoff_turnos.sql (o su espejo en supabase/migrations/).",
+      "aplica packages/domain-restaurantes/migrations/028_conversaciones_handoff_turnos.sql (o su espejo en supabase/migrations/).",
     err,
   );
 }

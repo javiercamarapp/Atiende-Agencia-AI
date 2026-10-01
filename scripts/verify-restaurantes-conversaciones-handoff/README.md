@@ -1,7 +1,7 @@
 # verify-restaurantes-conversaciones-handoff
 
-Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/027_conversaciones_handoff_turnos.sql`
-(espejo: `supabase/migrations/20240101000212_027_*.sql`): turnos de personal por sucursal (`branch_shift`,
+Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/028_conversaciones_handoff_turnos.sql`
+(espejo: `supabase/migrations/20240101000212_028_*.sql`): turnos de personal por sucursal (`branch_shift`,
 `branch_shift_member`), `conversation_handoff`, `conversation_note`, `callback_attempt`, la bandeja unificada
 `bandeja_conversaciones` y las funciones de staff (`handoff_tomar/devolver/cerrar/agregar_nota/responder_whatsapp`,
 `callback_registrar_intento`) y de solo-sistema (`handoff_solicitar`, `handoff_whatsapp_estado`).

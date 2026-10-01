@@ -1,7 +1,7 @@
 // R-21: bandeja de conversaciones por sucursal (WhatsApp y llamadas), toma por una persona (el agente deja de
 // responder), devolucion al agente, notas internas, cobertura de turno (quien esta de guardia) y registro de
 // callbacks. Contrato: lib/conversaciones-client.ts. Tres estados honestos: cargando, `disponible: false` (la
-// migracion 027 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
+// migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";

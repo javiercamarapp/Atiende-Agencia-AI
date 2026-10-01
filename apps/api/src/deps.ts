@@ -134,7 +134,7 @@ export interface AppDeps {
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
   readonly voiceProvider?: VoiceAgentProvider;
-  /** R-21 (migración 027): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
+  /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
   readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;

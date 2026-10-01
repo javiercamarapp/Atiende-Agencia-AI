@@ -1,5 +1,5 @@
 // R-21: bandeja de conversaciones por sucursal (WhatsApp y voz), handoff a humano, turnos de personal,
-// notas internas y registro de callbacks (migracion 027). Por sucursal (`:propertyId`):
+// notas internas y registro de callbacks (migracion 028). Por sucursal (`:propertyId`):
 //   GET  .../admin/conversaciones                              bandeja + cobertura de turno + escalacion
 //   GET  .../admin/conversaciones/:canal/:conversationId       detalle (mensajes/transcripcion, toma, notas)
 //   POST .../admin/conversaciones/:canal/:conversationId/tomar el humano toma la conversacion (el agente calla)
@@ -10,7 +10,7 @@
 //   GET  .../admin/callbacks   POST .../admin/callbacks/:callbackId/intentos   registro de callbacks
 //
 // Autorizacion: owner/admin/staff (`MANAGER_ROLES`; el repartidor nunca) en todo; los turnos solo se
-// escriben como owner/admin (`STAFF_INVITE_ROLES`). RLS y las funciones SQL de la migracion 027 son la
+// escriben como owner/admin (`STAFF_INVITE_ROLES`). RLS y las funciones SQL de la migracion 028 son la
 // autoridad (alcance por `membership.property_ids`); esta capa da defensa en profundidad y mejores mensajes.
 // Base SIN migrar: lecturas -> `disponible: false` con listas vacias; escrituras -> 503.
 import { Hono } from "hono";

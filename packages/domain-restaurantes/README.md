@@ -51,7 +51,7 @@ la migración 023, se comporta como antes):
   `RestaurantesConfigUnavailableError` (503), nunca deja la transacción abortada. Cubierto en
   `tests/modelo-pm-savepoint.spec.ts` y en `scripts/verify-restaurantes-modelo-pm/`.
 
-## Conversaciones, handoff a humano y turnos (R-21, migración 027)
+## Conversaciones, handoff a humano y turnos (R-21, migración 028)
 
 `src/conversaciones/`: bandeja por sucursal (WhatsApp y llamadas), toma de la conversación por una persona (mientras
 la tiene, el agente de WhatsApp no responde; `whatsapp/inbound.ts` consulta el `HandoffAgentGate` después de guardar el
@@ -62,7 +62,7 @@ escalación por minutos de espera) y registro de intentos de callback.
 - Base sin migrar: lecturas -> `disponible: false` con vacío honesto; escrituras -> `ConversacionesNoDisponibleError`
   (503); el gate del agente -> sin toma (el agente responde como antes). Todo con SAVEPOINT (`runWithSavepointFallback`);
   cubierto en `tests/conversaciones-repository-savepoint.spec.ts`.
-- SQL y permisos: `migrations/027_conversaciones_handoff_turnos.sql`, verificado contra Postgres real en
+- SQL y permisos: `migrations/028_conversaciones_handoff_turnos.sql`, verificado contra Postgres real en
   `scripts/verify-restaurantes-conversaciones-handoff/`.
 - Alcance conocido: la escalación se calcula al leer (no hay cron ni aviso saliente al personal); el agente de voz aún no
   abre tomas por sí mismo (no existe el worker de voz): las llamadas aparecen en la bandeja y el staff puede tomarlas.

@@ -49,7 +49,7 @@ export async function handleInboundWhatsAppMessage(
     /** Sucursal resuelta desde el numero que recibio el mensaje (`resolveWhatsAppChannel`). */
     readonly propertyId?: string | null;
     /** R-21: handoff a humano. Con una toma abierta para este telefono el agente NO responde (el mensaje se guarda
-     * para la persona que atiende); sin la migracion 027 el gate devuelve `null` y todo sigue como antes. */
+     * para la persona que atiende); sin la migracion 028 el gate devuelve `null` y todo sigue como antes. */
     readonly handoffGate?: HandoffAgentGate;
   },
 ): Promise<InboundMessageOutcome> {

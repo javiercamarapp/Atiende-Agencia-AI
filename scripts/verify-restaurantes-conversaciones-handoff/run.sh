@@ -2,7 +2,7 @@
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón EXACTO
 # que scripts/verify-restaurantes-audit-log/run.sh (ver ese archivo para el
 # porqué de cada paso). Se agrega junto con
-# packages/domain-restaurantes/migrations/027_conversaciones_handoff_turnos.sql para dejar,
+# packages/domain-restaurantes/migrations/028_conversaciones_handoff_turnos.sql para dejar,
 # en el repo, la prueba reproducible de que las tablas de voz (config por sucursal, previews,
 # conversaciones y turnos), sus GRANT por columna y las funciones de solo-sistema funcionan contra RLS/GRANT/auth.uid() reales -- el
 # repositorio en memoria de domain-restaurantes nunca aplica ninguno de los tres,
@@ -49,7 +49,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 027_conversaciones_handoff_turnos.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 028_conversaciones_handoff_turnos.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

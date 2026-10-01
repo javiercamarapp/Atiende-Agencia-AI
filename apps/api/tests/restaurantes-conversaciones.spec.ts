@@ -1,4 +1,4 @@
-// R-21 (migracion 027): rutas del panel de conversaciones, handoff, turnos y callbacks. Cada caso afirma el EFECTO
+// R-21 (migracion 028): rutas del panel de conversaciones, handoff, turnos y callbacks. Cada caso afirma el EFECTO
 // (que se guardo, que NO se escribio, quien puede), no solo el status. Repositorio en memoria del dominio: las reglas
 // de RLS/GRANT las verifica scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real.
 import { randomUUID } from "node:crypto";

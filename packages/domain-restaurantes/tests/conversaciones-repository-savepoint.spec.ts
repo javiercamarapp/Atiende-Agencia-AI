@@ -1,4 +1,4 @@
-// REGLA DURA de compatibilidad con la base SIN migrar (migracion 027): el repositorio corre dentro de la
+// REGLA DURA de compatibilidad con la base SIN migrar (migracion 028): el repositorio corre dentro de la
 // transaccion unica del request. `AbortAwareFakeSession` reproduce el estado abortado de Postgres (25P02):
 // cada caso verifica (1) el vacio honesto / error 503-409-403 correcto y (2) que la MISMA sesion sigue viva.
 import { describe, expect, it } from "vitest";

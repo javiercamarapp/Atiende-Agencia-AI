@@ -1,4 +1,4 @@
-// Tipos de la bandeja de conversaciones + handoff a humano + turnos por sucursal (migracion 027).
+// Tipos de la bandeja de conversaciones + handoff a humano + turnos por sucursal (migracion 028).
 export type ConversacionCanal = "whatsapp" | "voz";
 export const CONVERSACION_CANALES: readonly ConversacionCanal[] = ["whatsapp", "voz"];
 
@@ -7,7 +7,7 @@ export const CONVERSACION_CANALES: readonly ConversacionCanal[] = ["whatsapp", "
 export type HandoffEstado = "agente" | "pendiente" | "tomada" | "devuelta" | "cerrada";
 export const HANDOFF_ESTADOS: readonly HandoffEstado[] = ["agente", "pendiente", "tomada", "devuelta", "cerrada"];
 
-/** Lectura con estado honesto: `disponible: false` = la base todavia no tiene la migracion 027
+/** Lectura con estado honesto: `disponible: false` = la base todavia no tiene la migracion 028
  * (nunca se confunde con "no hay datos"). */
 export interface ConversacionesLectura<T> {
   readonly disponible: boolean;

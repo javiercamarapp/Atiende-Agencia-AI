@@ -56,7 +56,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
-  // R-21 (migración 027): bandeja de conversaciones por sucursal, handoff a humano, turnos de personal y callbacks.
+  // R-21 (migración 028): bandeja de conversaciones por sucursal, handoff a humano, turnos de personal y callbacks.
   app.route("/", restaurantesConversacionesAdminRoutes(deps));
   // Secreto de voz por sucursal (hash + rotación con ventana de gracia, migración 026).
   app.route("/", restaurantesAdminVoiceSecretRoutes(deps));

@@ -1,4 +1,4 @@
-// Cliente HTTP tipado de la bandeja de conversaciones, handoff, turnos y callbacks (R-21, migracion 027).
+// Cliente HTTP tipado de la bandeja de conversaciones, handoff, turnos y callbacks (R-21, migracion 028).
 // Contrato real: apps/api/src/routes/verticals/restaurantes/conversaciones-admin.ts. Mismo criterio que el resto de
 // lib/*.ts: `fetchImpl` inyectado y renovacion de sesion via `fetchJson`/`sendJson` (withAuthRefresh).
 import { fetchJson, sendJson } from "./admin-client.ts";
