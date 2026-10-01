@@ -83,6 +83,7 @@ import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
+import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
@@ -613,6 +614,7 @@ const CitasConfiguracionRoute = shellRoute(CitasShell, "/citas/login", (ctx) => 
 // aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
 const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasStaffPage {...ctx} />);
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
+const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
@@ -798,6 +800,7 @@ export function App() {
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
+        <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
