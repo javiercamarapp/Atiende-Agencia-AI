@@ -27,6 +27,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import { NIGHT_AUDIT_ROLES, type HotelesRepository, type NightAuditSummary } from "@atiende/domain-hoteles";
 import { runNightAuditForProperty, runNightAuditSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
@@ -89,6 +90,18 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const withRepo = <T>(fn: (repo: HotelesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.hotelesRepo(db)));
       const results = await runNightAuditSweep(withRepo);
       const failures = results.filter((r) => r.error != null);
+      // Aviso in-app (campana) a gerencia/contabilidad: el cierre nocturno de una property fallo. La transaccion de esa property ya se
+      // revirtio, asi que el aviso va en su PROPIA sesion de sistema (una por property fallida, clave = property + noche) y es
+      // best-effort: un fallo al emitir nunca cambia el resultado del barrido ni el latido.
+      for (const f of failures) {
+        try {
+          await deps.engine.withAppSession({ userId: null }, (db) =>
+            emitirNotificacion(db, { evento: "hoteles.night_audit.fallo", organizationId: f.organizationId, propertyId: f.propertyId, clave: `${f.propertyId}:${f.businessDate ?? new Date().toISOString().slice(0, 10)}` }),
+          );
+        } catch {
+          // best-effort: el barrido y el latido no dependen del aviso
+        }
+      }
       const body = {
         ok: failures.length === 0,
         properties_revisadas: results.length,

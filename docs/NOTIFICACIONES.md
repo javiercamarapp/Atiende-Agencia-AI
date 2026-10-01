@@ -58,9 +58,10 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 |---|---|---|---|---|---|---|---|---|
 | `hoteles.ticket.sla_vencido` | operacion | atencion | owner/admin, gm, frontdesk | Clock | `/hoteles/{orgSlug}/tickets` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/tickets-sla-cron.ts` |
 | `hoteles.aprobacion.expirada` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldAlert | `/hoteles/{orgSlug}/aprobaciones` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/agentes-expiracion-cron.ts` |
-| `hoteles.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldCheck | `/hoteles/{orgSlug}/aprobaciones` | una por solicitud | 3 d | pendiente: cola de aprobaciones del agente de reservas: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `hoteles.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldCheck | `/hoteles/{orgSlug}/aprobaciones` | una por solicitud | 3 d | conectado: `packages/domain-hoteles/src/agentes/postgres-repository.ts` |
 | `hoteles.grupo.por_liberar` | cierres | atencion | owner/admin, gm, reservations | Users | `/hoteles/{orgSlug}/grupos` | una por propiedad por dia | 5 d | pendiente: cron grupos-liberacion: falta decidir el umbral de aviso con producto |
-| `hoteles.night_audit.fallo` | cierres | critica | owner/admin, gm, accountant | MoonStar | `/hoteles/{orgSlug}/reservas` | una por propiedad por noche | 7 d | pendiente: night-audit corre en el worker: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `hoteles.night_audit.fallo` | cierres | critica | owner/admin, gm, accountant | MoonStar | `/hoteles/{orgSlug}/reservas` | una por propiedad por noche | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/night-audit.ts` |
+| `hoteles.grupo.liberado` | cierres | atencion | owner/admin, gm, reservations | Users | `/hoteles/{orgSlug}/grupos` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/grupos-liberacion-cron.ts` |
 
 ### rentas
 
