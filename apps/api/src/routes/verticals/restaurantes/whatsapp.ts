@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -95,7 +95,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       const channelCache = new Map<string, Awaited<ReturnType<typeof repo.resolveWhatsAppChannel>>>();
       for (const batch of splitMetaPayloadByChannel(payload)) {
         if (!batch.phoneNumberId) continue;
-        const incomingMessages = extractMetaTextMessages(batch.payload);
+        const incomingMessages = extractMetaInboundMessages(batch.payload);
         if (incomingMessages.length === 0) continue;
         if (!channelCache.has(batch.phoneNumberId)) channelCache.set(batch.phoneNumberId, await repo.resolveWhatsAppChannel(batch.phoneNumberId));
         const channel = channelCache.get(batch.phoneNumberId) ?? null;
@@ -110,7 +110,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             organizationId,
             messageId: message.id,
             phone: `+${message.from}`,
-            body: message.text.body,
+            body: message.body,
             phoneNumberId: phoneNumberIdOfBatch,
             propertyId: channel?.propertyId ?? null,
             // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.

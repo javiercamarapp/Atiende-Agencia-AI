@@ -76,7 +76,7 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
           productName: typeof item.product_name === "string" ? item.product_name : undefined,
           quantity: typeof item.quantity === "number" ? item.quantity : undefined,
           requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : undefined,
-          tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? item.tortilla : undefined,
+          tortilla: item.tortilla === "maiz" || item.tortilla === "harina" || item.tortilla === "mixta" ? item.tortilla : undefined,
         }))
       : [],
     source,

@@ -27,8 +27,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, agregarDiot, DECLARACIONES_ROLES, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
-import type { RegistroDiotCandidato } from "@atiende/domain-despachos";
+import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, construirDiotDesdeInvoices, DECLARACIONES_ROLES, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -110,50 +109,12 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const periodo = c.req.param("periodo");
     if (!/^\d{4}-\d{2}$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
 
+    // La reconstrucción DIOT desde los invoices persistidos (reglas de `proveedoresReportables`,
+    // ivaTrasladado = ivaAcreditable = invoice.iva, fecha real de emisión, RFC del contribuyente
+    // = receptor del primer invoice reportable) vive en `construirDiotDesdeInvoices`, compartida
+    // con los reportes de cliente (`reportes/`) para que ambas superficies no puedan divergir.
     const invoices = await repo.listInvoices(propertyId, { periodo });
-    const reportables = invoices.filter((inv) => inv.diot.reportable && inv.diot.proveedoresReportables.length > 0);
-    if (reportables.length === 0) {
-      return c.json({ registros: [], totalMontoNeto: 0, totalIvaTrasladado: 0, totalIvaAcreditable: 0, periodo, rfcContribuyente: null });
-    }
-
-    // Un mismo invoice tipo "I" con subtotal>0 produce exactamente un
-    // `proveedoresReportables[0]` (ver reglas-fiscales-avanzadas.ts) — se usa ese
-    // único elemento junto con `invoice.subtotal`/`invoice.iva` (la fuente de verdad
-    // numérica ya persistida) para construir el candidato DIOT. `ivaTrasladado` =
-    // `ivaAcreditable` = `invoice.iva`: desde la perspectiva del receptor (este
-    // contribuyente), lo que el emisor le trasladó es exactamente lo que puede
-    // acreditar en una factura totalmente deducible — el propio
-    // `ProveedorReportableDiot.ivaAcreditable` ya se construyó así en Fase 2 (`iva`
-    // sin distinguir traslado/acreditamiento, ver línea `ivaAcreditable: iva ? ... `).
-    const candidatos: RegistroDiotCandidato[] = reportables.map((inv) => {
-      const p = inv.diot.proveedoresReportables[0]!;
-      return {
-        rfcEmisor: inv.rfcEmisor,
-        nombreEmisor: inv.emisorNombre ?? p.nombreProveedor,
-        subtotal: inv.subtotal,
-        ivaTrasladado: inv.iva ?? 0,
-        ivaAcreditable: inv.iva ?? 0,
-        tasaIva: p.tasaIva ?? (inv.iva != null && inv.subtotal > 0 ? inv.iva / inv.subtotal : 0),
-        // Naturaleza real de la operación, NUNCA derivada de la tasa de IVA (ver
-        // DiotTipoOperacion / corrección hallazgo "DIOT con tasa mal codificada") —
-        // ausente -> agregarDiot() usa "85" (Otros).
-        tipoOperacion: p.tipoOperacion ?? null,
-        tipoCambio: p.tipoCambio ?? 1,
-        moneda: p.moneda ?? "MXN",
-        // `invoice.fecha` (migración 006) es la fecha REAL de emisión del CFDI, NOT
-        // NULL — ya no depende de `p.fecha` (el mismo dato, pero solo presente
-        // dentro del jsonb de DIOT) con fallback a `inv.createdAt` (fecha de
-        // INGESTA, nunca la fecha correcta para una declaración).
-        fecha: inv.fecha,
-      };
-    });
-
-    // El RFC del contribuyente que presenta la DIOT es el receptor de sus propios
-    // CFDIs de gasto — todos los invoices de una property deben compartir el mismo
-    // `rfcReceptor` (es el mismo cliente del despacho); se toma el primero.
-    const rfcContribuyente = reportables[0]!.rfcReceptor;
-    const agregado = agregarDiot(candidatos, rfcContribuyente, periodo);
-    return c.json(agregado);
+    return c.json(construirDiotDesdeInvoices(invoices, periodo));
   });
 
   return app;

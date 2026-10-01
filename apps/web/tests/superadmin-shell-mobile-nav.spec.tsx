@@ -61,15 +61,17 @@ describe("SuperAdminShell — nav móvil", () => {
     ]);
   });
 
-  it('"Más" abre los 15 destinos de la consola (incluye gestión de organizaciones, interruptores y seguridad MFA)', async () => {
+  it('"Más" abre los 17 destinos de la consola (incluye gestión de organizaciones, interruptores, seguridad MFA, costos y margen, y planes)', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(15);
+    expect(hrefs).toHaveLength(17);
     expect(hrefs).toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
     expect(hrefs).toContain("/superadmin/seguridad");
+    expect(hrefs).toContain("/superadmin/costos-margen");
+    expect(hrefs).toContain("/superadmin/planes");
     expect(hrefs).toContain("/superadmin/break-glass");
     expect(hrefs).toContain("/superadmin/integraciones");
   });

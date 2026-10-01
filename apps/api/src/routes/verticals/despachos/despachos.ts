@@ -21,6 +21,8 @@ import { despachosAdminStaffRoutes } from "./admin-staff.ts";
 import { despachosNotificationsRoutes } from "./notifications.ts";
 import { despachosCobranzaRoutes } from "./cobranza.ts";
 import { despachosConfiguracionRoutes } from "./configuracion.ts";
+import { despachosDashboardRoutes } from "./dashboard.ts";
+import { despachosReportesRoutes } from "./reportes.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -57,5 +59,10 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — zona horaria por negocio (migración 012), ver
   // configuracion.ts.
   app.route("/", despachosConfiguracionRoutes(deps));
+  // D-01 — dashboard gerencial (KPIs por cliente y consolidado del despacho) y
+  // reportes de cliente (balanza/DIOT/nómina/impuestos) con exportación PDF/Excel;
+  // ver dashboard.ts y reportes.ts. Solo lectura, sin migración nueva.
+  app.route("/", despachosDashboardRoutes(deps));
+  app.route("/", despachosReportesRoutes(deps));
   return app;
 }

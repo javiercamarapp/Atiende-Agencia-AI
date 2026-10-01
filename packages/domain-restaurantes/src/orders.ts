@@ -143,7 +143,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
       (item.productId !== undefined && (typeof item.productId !== "string" || item.productId.length > 64)) ||
       (item.productName !== undefined && (typeof item.productName !== "string" || item.productName.length > 240)) ||
       (!(typeof item.productId === "string" && UUID_PATTERN.test(item.productId)) && !(typeof item.productName === "string" && item.productName.trim())) ||
-      (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina")
+      (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina" && item.tortilla !== "mixta")
     ) {
       throw new OrderValidationError("Productos o cantidades inválidos");
     }

@@ -6,6 +6,7 @@ import type {
   ImpersonationRepository,
   LlmUsageRepository,
   MfaRepository,
+  CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
   ResumenDiarioRepository,
@@ -16,7 +17,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { ConversacionesRepository, HandoffAgentGate, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -144,6 +145,10 @@ export interface AppDeps {
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
    *  tests lo sobreescriben con `InMemoryIdentityRepository`. */
   readonly hotelesIdentidadRepo?: (db: TenantDbSession) => IdentityRepository;
+  /** H-04 -- housekeeping completo de hoteles (tareas, tablero, fuera de servicio). OPCIONAL: en
+   *  produccion no se define y las rutas usan `PostgresHousekeepingRepository` (RLS real,
+   *  SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesHousekeepingRepo?: (db: TenantDbSession) => HousekeepingRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
@@ -468,6 +473,12 @@ export interface AppDeps {
   readonly platformSwitchRepo?: (db: TenantDbSession) => PlatformSwitchRepository;
   /** Gestion de organizaciones con solicitar -> confirmar (routes/superadmin-organizaciones.ts). */
   readonly orgAdminRepo?: (db: TenantDbSession) => OrgAdminRepository;
+  /** Costo por evento por organizacion, margen, tipo de cambio y catalogo de planes
+   *  (packages/db/migrations/0028_superadmin_costos_planes.sql, ver
+   *  routes/superadmin-costos.ts y routes/superadmin-planes.ts). Fabrica por sesion:
+   *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
+   *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
+  readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;
