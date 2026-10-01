@@ -135,6 +135,7 @@ describe("gestion de organizaciones -- ciclo de vida", () => {
     const notMigrated: OrgAdminRepository = {
       request: async () => ({ availability: "not_migrated", action: null }),
       confirm: async () => ({ availability: "not_migrated", action: null }),
+      approve: async () => ({ availability: "not_migrated", action: null }),
       cancel: async () => ({ availability: "not_migrated", action: null }),
       list: async () => ({ availability: "not_migrated", actions: [] }),
     };
@@ -145,6 +146,7 @@ describe("gestion de organizaciones -- ciclo de vida", () => {
     expect((await solicitar(s.app, { tipo: "suspender", organizationId: s.base.organizationId, motivo: MOTIVO }, h)).status).toBe(503);
     expect((await confirmar(s.app, "x", h)).status).toBe(503);
     expect((await cancelar(s.app, "x", h)).status).toBe(503);
+    expect((await s.app.request("/superadmin/organizaciones/acciones/x/aprobar", jsonRequestInit({}, h))).status).toBe(503);
   });
 
   it("confirmar es sensible: con MFA activa exige step-up; sin el, 403 y la organizacion NO cambia", async () => {

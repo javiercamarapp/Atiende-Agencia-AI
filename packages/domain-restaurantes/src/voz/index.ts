@@ -13,3 +13,7 @@ export { GeminiLiveProvider, GEMINI_LIVE_MODELO } from "./gemini-live-provider.t
 export type { GeminiLiveProviderOptions } from "./gemini-live-provider.ts";
 export { FakeVoiceProvider } from "./fake-voice-provider.ts";
 export type { FakeVoiceProviderOptions } from "./fake-voice-provider.ts";
+export * from "./kpi.ts";
+export type { VozKpiRepository } from "./kpi-repository.ts";
+export { PostgresVozKpiRepository } from "./postgres-kpi-repository.ts";
+export { InMemoryVozKpiRepository, diaVacio, siguienteDia } from "./in-memory-kpi-repository.ts";

@@ -22,12 +22,13 @@ import type { Carga } from "../voz/carga.ts";
 import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agente.ts";
 import { formatoCostoUsd, formatoDuracion } from "../voz/formato-voz.ts";
 import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
+import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-type PestanaId = "resumen" | "voz" | "conocimiento" | "comportamiento" | "mensaje" | "herramientas" | "conversaciones";
+type PestanaId = "resumen" | "voz" | "conocimiento" | "comportamiento" | "mensaje" | "herramientas" | "conversaciones" | "indicadores";
 
 const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[] = [
   { id: "resumen", etiqueta: "Resumen" },
@@ -37,6 +38,7 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
   { id: "mensaje", etiqueta: "Mensaje inicial" },
   { id: "herramientas", etiqueta: "Herramientas" },
   { id: "conversaciones", etiqueta: "Conversaciones" },
+  { id: "indicadores", etiqueta: "Indicadores" },
 ];
 
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
@@ -284,6 +286,9 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
           ) : null}
 
           {pestana === "conversaciones" ? <PestanaConversaciones conversaciones={conversaciones} onReintentar={reintentar} cargarDetalle={(id) => fetchConversacionVoz(fetch, apiBaseUrl, token, propertyId, id)} /> : null}
+
+          {/* R-13: se monta solo al abrir la pestaña (carga KPI, evalúa alertas del día y lee umbrales). */}
+          {pestana === "indicadores" ? <PestanaIndicadores apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} /> : null}
         </div>
 
         {PESTANAS_EDITABLES.has(pestana) && config.estado !== "cargando" ? (

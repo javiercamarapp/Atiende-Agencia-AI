@@ -21,6 +21,7 @@ import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
+import { restaurantesVozKpiRoutes } from "./voz-kpi.ts";
 import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
 import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
@@ -64,6 +65,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).
+  app.route("/", restaurantesVozKpiRoutes(deps));
   // PM PR-9 -- privacidad: solicitudes ARCO + configuración (panel, owner/admin) y lado sistema
   // (purga por retención, apertura/consentimiento/ARCO de voz). Migración 030.
   app.route("/", restaurantesPrivacidadRoutes(deps));
