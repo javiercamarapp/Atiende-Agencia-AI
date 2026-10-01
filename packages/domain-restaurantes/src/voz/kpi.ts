@@ -219,3 +219,28 @@ export function validarUmbrales(entrada: { umbralCostoDiaCentavosMxn: unknown; u
   if (typeof m !== "number" || !Number.isInteger(m) || m < 1 || m > 1000) errores.push("minLlamadasTasaError: entero de 1 a 1000.");
   return errores;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Eventos que reporta el servicio de voz
+// ---------------------------------------------------------------------------------------------------
+
+export type VozEventoTipo = "tool_call" | "error_proveedor";
+export const VOZ_EVENTO_TIPOS: readonly VozEventoTipo[] = ["tool_call", "error_proveedor"];
+export type VozProveedorFallo = "elevenlabs" | "twilio" | "gemini" | "otro";
+export const VOZ_PROVEEDORES_FALLO: readonly VozProveedorFallo[] = ["elevenlabs", "twilio", "gemini", "otro"];
+
+export interface VozEventoEntrada {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly conversationId: string | null;
+  readonly tipo: VozEventoTipo;
+  /** Obligatorio en `error_proveedor`. */
+  readonly proveedor: VozProveedorFallo | null;
+  /** Obligatorio en `tool_call`. */
+  readonly herramienta: string | null;
+  /** Obligatorio en `tool_call`. */
+  readonly latenciaMs: number | null;
+  /** Codigo corto del proveedor (HTTP, Twilio...), nunca el mensaje completo. */
+  readonly codigo: string | null;
+  readonly ocurridoAt: string | null;
+}

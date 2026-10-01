@@ -3,7 +3,7 @@
 // scripts/verify-restaurantes-voz-kpi/ contra Postgres real.
 import type { VozKpiRepository } from "./kpi-repository.ts";
 import { VOZ_UMBRALES_POR_DEFECTO, evaluarAlertasDia } from "./kpi.ts";
-import type { VozAlerta, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
+import type { VozAlerta, VozEventoEntrada, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
 import { VozNoDisponibleError } from "./types.ts";
 import type { VozLectura } from "./types.ts";
 
@@ -57,6 +57,13 @@ export class InMemoryVozKpiRepository implements VozKpiRepository {
     }
     this.alertas.set(this.clave(organizationId, propertyId), previas);
     return { disponible: true, valor: previas.filter((a) => a.fecha === this.hoy).map((a) => ({ ...a, nueva: nuevas.has(a.tipo) })) };
+  }
+
+  readonly eventos: VozEventoEntrada[] = [];
+
+  async registrarEvento(input: VozEventoEntrada): Promise<void> {
+    if (!this.disponible) throw new VozNoDisponibleError();
+    this.eventos.push(input);
   }
 
   async listAlertas(organizationId: string, propertyId: string, limite: number): Promise<VozLectura<readonly VozAlerta[]>> {

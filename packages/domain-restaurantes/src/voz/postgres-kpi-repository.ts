@@ -7,7 +7,7 @@ import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { VozKpiRepository } from "./kpi-repository.ts";
 import { VOZ_UMBRALES_POR_DEFECTO } from "./kpi.ts";
-import type { VozAlerta, VozAlertaTipo, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
+import type { VozAlerta, VozAlertaTipo, VozEventoEntrada, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
 import { VozNoDisponibleError, VozRechazadaError } from "./types.ts";
 import type { VozLectura } from "./types.ts";
 
@@ -228,6 +228,21 @@ export class PostgresVozKpiRepository implements VozKpiRepository {
         advertirNoDisponible(err);
         return { disponible: false, valor: [] };
       },
+    });
+  }
+
+  async registrarEvento(input: VozEventoEntrada): Promise<void> {
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_voz_evento_write",
+      primary: async () => {
+        await this.db.query(
+          `select restaurantes.voz_registrar_evento($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz);`,
+          [input.organizationId, input.propertyId, input.conversationId, input.tipo, input.proveedor, input.herramienta, input.latenciaMs, input.codigo, input.ocurridoAt],
+        );
+      },
+      isRecoverable: esErrorEscrituraConocido,
+      fallback: aErrorDeEscritura,
     });
   }
 }

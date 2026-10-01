@@ -1,4 +1,4 @@
-import type { VozAlerta, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
+import type { VozAlerta, VozEventoEntrada, VozKpiDia, VozUmbrales, VozUmbralesEntrada } from "./kpi.ts";
 import type { VozLectura } from "./types.ts";
 
 /** Puerto de persistencia de KPI/alertas de voz (migracion 035). Separado de `VozRepository` a proposito: degrada
@@ -15,4 +15,8 @@ export interface VozKpiRepository {
   evaluarAlertas(organizationId: string, propertyId: string): Promise<VozLectura<readonly VozAlerta[]>>;
   /** Alertas ya disparadas, mas recientes primero. */
   listAlertas(organizationId: string, propertyId: string, limite: number): Promise<VozLectura<readonly VozAlerta[]>>;
+
+  // ---- solo sistema (sesion sin usuario; la funcion SQL exige `auth.uid() is null`) ----
+  /** El servicio de voz reporta una llamada a herramienta (con latencia) o un error de proveedor. */
+  registrarEvento(input: VozEventoEntrada): Promise<void>;
 }
