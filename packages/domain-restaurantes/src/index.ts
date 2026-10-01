@@ -215,3 +215,4 @@ export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } fro
 
 export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
+export * from "./data-chat/index.ts";

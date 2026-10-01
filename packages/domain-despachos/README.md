@@ -169,3 +169,30 @@ correo), y agregarlo hubiera sido alcance no pedido. `cliente_nombre`/
 `cliente_email` se capturan hoy solo vía el repositorio directo (tests /
 futura pantalla de captura); sin ellos, el recordatorio de esa cuenta
 simplemente no se envía por correo (comportamiento honesto, no un error).
+
+## D-01 — Dashboard gerencial y reportes de cliente
+
+Sin migración: todo se calcula desde tablas que ya existen (CFDI 4.0 en `invoice`,
+`receivable` + `collection_event`, `invoice_review`, `fiscal_deadline`,
+`periodo_cierre`/`periodo_cierre_tarea`).
+
+- `src/dashboard/kpis.ts` — motor puro (sin I/O ni reloj): `calcularKpisCliente`
+  (cartera y cobranza, carga de trabajo, cierres, CFDI del mes, anomalías, nivel de
+  atención) y `consolidarKpisDespacho` (suma y ranking de clientes). Cada fuente llega
+  como `T | null`: `null` = no disponible aún (base sin migrar) y su bloque sale `null`,
+  nunca cero.
+- `src/dashboard/lectura.ts` — `leerKpisCliente` lee cada fuente en su propio SAVEPOINT
+  (`runWithRowSavepoint`) y degrada a `null` ante SQLSTATE 42P01/42703/42883; cualquier
+  otro error se repropaga.
+- `src/reportes/` — `construirReporteDiot|Impuestos|Nomina|Balanza` (modelo neutro
+  `ReporteCliente`) y `reporteAXlsx` (.xlsx sin dependencias: ZIP "stored" +
+  SpreadsheetML). El PDF vive en `apps/api` (`reporte-pdf.ts`, pdf-lib).
+- `src/declaraciones/diot-desde-invoices.ts` — la reconstrucción de la DIOT desde CFDI,
+  compartida por `GET .../declaraciones/diot/:periodo` y el reporte DIOT.
+
+**Lo que el modelo NO persiste y por lo tanto aparece como «sin datos» (no se inventa):**
+asientos/pólizas (la balanza de comprobación solo se ofrece como resumen de CFDI por
+categoría, rotulado como insumo), nómina procesada (ISR retenido/IMSS por empleado; solo
+los recibos CFDI tipo N ingeridos), CFDI emitidos por el contribuyente (IVA trasladado,
+saldo de IVA e ISR del período) y la asignación de trabajo por miembro del staff (la carga
+de trabajo es por cliente).

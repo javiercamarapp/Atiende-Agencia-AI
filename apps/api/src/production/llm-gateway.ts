@@ -69,6 +69,10 @@ import type { ApiEnv } from "../env.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
+/** "Chatea con tus datos" de restaurantes (ver apps/api/src/data-chat/deps.ts). Un rol por vertical:
+ *  cada vertical que enchufe su catalogo registra el suyo (docs/DATA-CHAT.md). Sin *_escalated: un turno
+ *  del chat es una conversacion corta con tope de rondas propio. */
+export const RESTAURANTES_DATA_CHAT_ROLE = "restaurantes:data_chat";
 export const HOTELES_WHATSAPP_AGENT_ROLE = "hoteles:whatsapp_agent";
 export const HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE = "hoteles:whatsapp_agent_escalated";
 export const CITAS_WHATSAPP_AGENT_ROLE = "citas:whatsapp_agent";
@@ -110,6 +114,7 @@ export const DESPACHOS_CONCILIACION_LLM_ROLE = "despachos:conciliacion_llm_agent
 export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
   RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
+  RESTAURANTES_DATA_CHAT_ROLE,
   HOTELES_WHATSAPP_AGENT_ROLE,
   HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,

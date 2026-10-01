@@ -5,7 +5,7 @@
 // `BotonChatDatos` (no aplica a un panel de plataforma, no de negocio).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, KeyRound, LayoutGrid, ListChecks, Newspaper, Plug, Power, Receipt, ShieldAlert, ShieldOff, TrendingUp } from "lucide-react";
+import { Activity, AlertOctagon, Building2, CalendarDays, Coins, DollarSign, ExternalLink, KeyRound, LayoutGrid, ListChecks, Newspaper, Plug, Power, Receipt, ShieldAlert, ShieldOff, Tags, TrendingUp } from "lucide-react";
 import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
@@ -37,6 +37,8 @@ const SECTIONS = [
       { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
       { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
       { to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign },
+      { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
+      { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
       { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
       { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
       { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
@@ -116,7 +118,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
         {children({ apiBaseUrl, token: session.token })}
       </main>
 
-      {/* 15 destinos: la barra trae los 4 de uso diario y "Más" abre todos. */}
+      {/* 17 destinos: la barra trae los 4 de uso diario y "Más" abre todos. */}
       <BottomNav
         items={[
           { to: "/superadmin", label: "Orgs", icon: Building2, end: true },

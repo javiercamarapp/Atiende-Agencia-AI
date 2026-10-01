@@ -84,6 +84,7 @@ import {
   PostgresCoreRepository,
   PostgresImpersonationRepository,
   PostgresMfaRepository,
+  PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
@@ -108,6 +109,7 @@ import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
+import { buildProductionDataChat } from "../data-chat/deps.ts";
 import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
@@ -287,6 +289,7 @@ export function buildProductionDeps(): AppDeps {
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
+    dataChat: buildProductionDataChat(llmGateway),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
@@ -463,6 +466,7 @@ export function buildProductionDeps(): AppDeps {
     mfaRepo: (db) => new PostgresMfaRepository(db),
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
+    costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
     alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),

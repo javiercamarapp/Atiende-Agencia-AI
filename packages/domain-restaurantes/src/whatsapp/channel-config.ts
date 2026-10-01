@@ -8,7 +8,7 @@
 // firmas (ver restaurantes.whatsapp_channel_config en migrations/001).
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
-import { isValidCoordinate, type MetaLocationMessage } from "./location.ts";
+import { formatLocationMessage, isValidCoordinate } from "./location.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -51,21 +51,33 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
   return result;
 }
 
-export type MetaInboundMessage = MetaTextMessage | MetaLocationMessage;
+/** Mensaje entrante ya listo para el turno: texto del cliente, o (P33/P34) una nota que le dice al
+ * modelo que llego un audio/ubicacion/archivo que NO se puede leer, para que lo pida por escrito
+ * en vez de ignorar al cliente en silencio. */
+export type MetaInboundMessage = { readonly id: string; readonly from: string; readonly body: string };
 
-const MESSAGE_ID_OK = (id: unknown): id is string => typeof id === "string" && id.length >= 1 && id.length <= 255;
-const SENDER_OK = (from: unknown): from is string => typeof from === "string" && /^\d{7,20}$/.test(from);
+const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
 
-/**
- * Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de UBICACION (`type: "location"`
- * con latitude/longitude numericas validas). Mantiene el orden del payload. Un mensaje de ubicacion
- * con coordenadas fuera de rango se descarta (nunca se adivina). Los demas tipos (imagen, audio...)
- * siguen ignorandose.
- */
+function unsupportedBody(type: string, message: { location?: { latitude?: unknown; longitude?: unknown } }): string {
+  if (type === "audio" || type === "voice") {
+    return "[El cliente envió una nota de voz que este asistente no puede escuchar. Pídale amablemente que escriba su mensaje por texto.]";
+  }
+  if (type === "location") {
+    const lat = message.location?.latitude;
+    const lng = message.location?.longitude;
+    const coords = typeof lat === "number" && typeof lng === "number" ? ` (${lat}, ${lng})` : "";
+    return `[El cliente compartió su ubicación${coords}. ${coords ? "Úsela con buscar_sucursal_cercana (lat y lng) para asignar la sucursal." : "No trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto."}]`;
+  }
+  return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
+}
+
+/** Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de audio, ubicacion e imagen/
+ * archivo como una nota honesta (nunca se ignoran en silencio). Reacciones, estados y mensajes de
+ * sistema siguen ignorandose. Conserva el orden del payload. */
 export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage[] {
-  const root = payload as { entry?: unknown };
-  if (!Array.isArray(root?.entry)) return [];
   const result: MetaInboundMessage[] = [];
+  const root = payload as { entry?: unknown };
+  if (!Array.isArray(root?.entry)) return result;
   for (const entry of root.entry) {
     const changes = (entry as { changes?: unknown })?.changes;
     if (!Array.isArray(changes)) continue;
@@ -73,20 +85,24 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
       const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
       if (!Array.isArray(messages)) continue;
       for (const candidate of messages) {
+        const text = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
+        if (text[0]) {
+          result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
+          continue;
+        }
         const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown; name?: unknown; address?: unknown } };
-        if (!MESSAGE_ID_OK(message.id) || !SENDER_OK(message.from)) continue;
-        if (message.type === "location") {
+        if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
+        // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
+        // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
+        if (message.type === "location" && isValidCoordinate(message.location?.latitude, message.location?.longitude)) {
           const { latitude, longitude, name, address } = message.location ?? {};
-          if (!isValidCoordinate(latitude, longitude)) continue;
           result.push({
             id: message.id,
             from: message.from,
-            type: "location",
-            location: { latitude: latitude as number, longitude: longitude as number, ...(typeof name === "string" ? { name } : {}), ...(typeof address === "string" ? { address } : {}) },
+            body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number, ...(typeof name === "string" ? { name } : {}), ...(typeof address === "string" ? { address } : {}) }),
           });
-        } else {
-          const [text] = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
-          if (text) result.push(text);
+        } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type, message) });
         }
       }
     }

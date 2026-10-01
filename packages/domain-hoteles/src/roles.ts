@@ -103,6 +103,19 @@ export const MAINTENANCE_TICKET_MANAGE_ROLES: readonly HotelRole[] = ["owner", "
 // cumplimiento (transparencia hacia la propia camarista sobre su propio horario).
 export const HOUSEKEEPING_SHIFT_PUBLISH_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
 
+// H-04 (migracion 033) -- housekeeping completo. Espejo, a nivel de aplicacion, de los helpers
+// SQL hoteles.can_work_housekeeping / can_set_room_out_of_service / can_update_room_status
+// (la autoridad final SIGUE SIENDO la RLS: si este espejo se desincroniza, la peor consecuencia
+// es un 403 de mas, nunca un acceso de mas).
+/** Crear/asignar/iniciar/terminar/inspeccionar tareas de limpieza y marcar una habitacion sucia.
+ *  La camarista (`housekeeping`) solo opera tareas propias o sin asignar (ver
+ *  `actorMayOperateTask`) y NUNCA inspecciona su propio trabajo (`inspectorIsAllowed`). */
+export const HOUSEKEEPING_TASK_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "housekeeping"];
+/** Ver el tablero/reporte de limpieza: operadores de limpieza + mantenimiento (que inhabilita/rehabilita). */
+export const HOUSEKEEPING_BOARD_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "housekeeping", "maintenance"];
+/** Inhabilitar / rehabilitar una habitacion (fuera de servicio / fuera de orden): housekeeping NO decide inhabilitar. */
+export const ROOM_OUT_OF_SERVICE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "maintenance"];
+
 // Fase 8 (REQ-BO-024, LFT art.132 fr.XXXIV) — checador de asistencia inalterable.
 // Fichar (POST /asistencia/checar) NO tiene lista de roles: CUALQUIER miembro del
 // staff de la property registra su propio fichaje (checador de autoservicio, mismo
