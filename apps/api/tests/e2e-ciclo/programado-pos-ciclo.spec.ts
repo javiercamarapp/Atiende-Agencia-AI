@@ -44,10 +44,14 @@ describe("e2e programado + POS", () => {
     vi.setSystemTime(new Date("2026-10-06T21:40:00.000Z"));
     const promoted = (await (await cron()).json()) as Json;
     expect(promoted.promoted).toBe(1);
+    // R-29: el cron ENCOLA la comanda (envio diferido); el dispatcher la manda al POS.
+    expect(promoted.comandas).toMatchObject({ intentados: 1, encoladas: 1, errores: 0 });
+    await stack.dispatchPos();
     expect(stack.pos.comandas).toHaveLength(1);
     expect(stack.pos.llamadasCrear[0]).toMatchObject({ tipo: "recoger" });
-    // El cron otra vez no duplica nada.
+    // El cron otra vez no duplica nada, ni el dispatcher reenvia.
     expect(((await (await cron()).json()) as Json).promoted).toBe(0);
+    await stack.dispatchPos();
     expect(stack.pos.comandas).toHaveLength(1);
   });
 
@@ -61,8 +65,11 @@ describe("e2e programado + POS", () => {
     const res = await fetch(stack.url(`/v1/restaurantes/${stack.propertyId}/admin/orders?status=pending`), authedGet(token));
     expect(res.status).toBe(200);
     expect(((await res.json()) as Json).orders).toHaveLength(1);
-    // La tarea post-commit corre despues de responder: se espera un instante.
-    await vi.waitFor(() => expect(stack.pos.comandas).toHaveLength(1));
+    // La tarea post-commit encola la comanda despues de responder (R-29) y el dispatcher la manda al POS.
+    await vi.waitFor(async () => {
+      await stack.dispatchPos();
+      expect(stack.pos.comandas).toHaveLength(1);
+    });
   });
 
   it("POS caido: el pedido existe, la comanda queda fallida y el gerente la captura a mano; al volver el POS el dispatcher no duplica", async () => {
