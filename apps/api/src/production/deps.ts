@@ -318,12 +318,12 @@ export function buildProductionDeps(): AppDeps {
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     dataChat: buildProductionDataChat(llmGateway),
-    turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
+    turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
       ? new StripeHotelesPaymentsPort(fetch, { secretKey: env.stripe.secretKey })
       : notProductionReady<PaymentsPort>("hotelesPaymentsPort (falta configurar STRIPE_SECRET_KEY)"),
-    hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
+    hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar OPENROUTER_API_KEY)"),
     // Fase 5 (H5/REQ-BO-001/002) — Fix hallazgo auditoría (este comentario ANTES
     // afirmaba incorrectamente que "SÍ se conecta un CfdiPort real de punta a
     // punta"; es falso en este monorepo, se corrige aquí). `FinkokAdapter`/
@@ -392,7 +392,7 @@ export function buildProductionDeps(): AppDeps {
     // SÍ pueden disparar 2 llamadas al LLM en paralelo (costo doble, respuesta
     // duplicada) aunque el traslape de horario nunca ocurra (el cliente solo está
     // platicando, cancelando, o preguntando disponibilidad).
-    citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
+    citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar OPENROUTER_API_KEY)"),
     citasConversationGuard: createDefaultConversationGuard(),
     // Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
     // notProductionReady (muerto)") -- ver buildRealGoogleCalendarPortResolver más
