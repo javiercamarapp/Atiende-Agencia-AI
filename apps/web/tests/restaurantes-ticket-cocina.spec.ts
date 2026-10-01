@@ -9,6 +9,8 @@ import {
   renderDocumentoTicketsCocina,
   renderTicketCocinaHtml,
   separarNotas,
+  TICKET_COCINA_CSS,
+  TICKET_COCINA_CSS_DOCUMENTO,
   type TicketPedidoFuente,
 } from "@atiende/ui";
 
@@ -175,5 +177,13 @@ describe("pedidosPorImprimir", () => {
       new Set(["d"]),
     );
     expect(r.map((x) => x.id)).toEqual(["a", "c"]);
+  });
+
+  it("el CSS de la vista previa esta acotado a .tk; las reglas globales solo van en el documento de impresion", () => {
+    expect(TICKET_COCINA_CSS).not.toMatch(/@page|html,|body/);
+    const reglas = TICKET_COCINA_CSS.split("\n").filter((l) => /\{/.test(l) && !l.startsWith("@media"));
+    expect(reglas.every((l) => l.startsWith(".tk"))).toBe(true);
+    expect(TICKET_COCINA_CSS_DOCUMENTO).toContain("@page { size: 80mm auto; margin: 0; }");
+    expect(TICKET_COCINA_CSS_DOCUMENTO).toContain("html, body");
   });
 });

@@ -210,12 +210,10 @@ export function construirTicketCocina(pedido: TicketPedidoFuente, opciones: Opci
   };
 }
 
-/** Hoja de estilos de impresión: rollo térmico de 80 mm (≈72 mm imprimibles). Se usa tanto
- * en el documento de impresión como en la vista previa de pantalla. */
+/** Estilos del ticket, TODOS acotados a `.tk`: es la hoja que también usa la vista previa de
+ * pantalla, así que no puede tocar html/body ni @page (rompería el tema de la app). */
 export const TICKET_COCINA_CSS = `
-@page { size: 80mm auto; margin: 0; }
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+.tk, .tk * { box-sizing: border-box; }
 .tk { width: 72mm; max-width: 100%; margin: 0 auto; padding: 3mm 0; font: 12px/1.35 "Courier New", Courier, monospace; color: #000; background: #fff; overflow-wrap: anywhere; word-break: break-word; }
 .tk + .tk { page-break-before: always; break-before: page; }
 .tk h1 { margin: 0; font-size: 15px; text-align: center; text-transform: uppercase; }
@@ -232,6 +230,12 @@ html, body { margin: 0; padding: 0; background: #fff; color: #000; }
 .tk .etq { font-weight: 700; }
 @media print { .tk { padding: 0; } }
 `;
+
+/** Reglas globales que solo valen dentro del documento de impresión (iframe propio). */
+export const TICKET_COCINA_CSS_DOCUMENTO = `
+@page { size: 80mm auto; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+${TICKET_COCINA_CSS}`;
 
 function seccion(titulo: string, cuerpo: string): string {
   return `<hr class="sep"><div class="etq">${escaparHtml(titulo)}</div>${cuerpo}`;
@@ -274,7 +278,7 @@ export function renderTicketCocinaHtml(t: TicketCocina): string {
 
 /** Documento HTML completo (uno o varios tickets, un salto de página entre cada uno). */
 export function renderDocumentoTicketsCocina(tickets: readonly TicketCocina[]): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Tickets de cocina</title><style>${TICKET_COCINA_CSS}</style></head><body>${tickets.map(renderTicketCocinaHtml).join("")}</body></html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Tickets de cocina</title><style>${TICKET_COCINA_CSS_DOCUMENTO}</style></head><body>${tickets.map(renderTicketCocinaHtml).join("")}</body></html>`;
 }
 
 /** Imprime desde el navegador usando un iframe oculto (no abre ventanas ni envía nada a

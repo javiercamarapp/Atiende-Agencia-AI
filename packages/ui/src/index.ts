@@ -12,6 +12,7 @@ export {
   renderTicketCocinaHtml,
   separarNotas,
   TICKET_COCINA_CSS,
+  TICKET_COCINA_CSS_DOCUMENTO,
   type OpcionesTicketCocina,
   type TicketCanal,
   type TicketCocina,
