@@ -32,7 +32,10 @@ const PREVIA = {
   diferenciasPrompt: [{ tipo: "igual", texto: "a" }, { tipo: "quitada", texto: "viejo" }, { tipo: "agregada", texto: "nuevo" }],
   version: 2,
 };
-const HISTORIAL = [{ version: 2, accion: "actualizado", anterior: { agentName: "Lu" }, nuevo: { agentName: "Lupita", perfil: "taqueria_pm" }, actorUserId: "u1", actorNombre: "Jefa", creadoEn: "2026-10-01T12:00:00.000Z" }];
+const HISTORIAL = [
+  { version: 2, accion: "actualizado", anterior: { agentName: "Lu" }, nuevo: { agentName: "Lupita", perfil: "taqueria_pm" }, actorUserId: "u1", actorNombre: "Jefa", creadoEn: "2026-10-01T12:00:00.000Z" },
+  { version: 1, accion: "actualizado", anterior: null, nuevo: { agentName: "Lu", perfil: "taqueria_pm" }, actorUserId: "u9", actorNombre: null, creadoEn: "2026-09-30T12:00:00.000Z" },
+];
 
 async function esperar(): Promise<void> {
   await act(async () => {
@@ -54,6 +57,7 @@ function montar(opts: { organizacion?: unknown; sucursal?: unknown; escritura?: 
     const u = String(url);
     const r = opts.escritura?.(u, init);
     if (r) return r;
+    if (u.endsWith("/staff/miembros")) return json({ miembros: [{ id: "u9", email: "m@x.com", fullName: "Marta", verticalRole: "admin", propertyIds: null }] });
     if (u.endsWith("/opciones")) return json(OPCIONES);
     if (u.includes("/historial")) return json({ entradas: opts.historial ?? HISTORIAL });
     if (u.endsWith("/vista-previa")) return json(PREVIA);
@@ -81,6 +85,9 @@ describe("AgenteWhatsappSeccion", () => {
     expect((campo("Promociones") as HTMLTextAreaElement).value).toBe("lunes 2x1");
     expect(rendered!.container.textContent).toContain("Versión 2");
     expect(rendered!.container.textContent).toContain("Cambió: Perfil, Nombre del agente");
+    // el nombre del actor sale de la base cuando es uno mismo y, si no, de la lista del equipo
+    expect(rendered!.container.textContent).toContain("· Jefa");
+    expect(rendered!.container.textContent).toContain("· Marta");
     expect(rendered!.container.textContent).not.toContain("Edición limitada");
   });
 

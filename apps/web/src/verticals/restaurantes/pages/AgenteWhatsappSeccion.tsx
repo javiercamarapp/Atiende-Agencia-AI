@@ -20,6 +20,7 @@ import {
   restablecerAgente,
   vistaPreviaAgente,
 } from "../lib/agente-whatsapp-client.ts";
+import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { AgenteWhatsappWire, AlcanceAgente, ConfigAgenteForm, HistorialEntradaWire, OpcionesAgenteWire, PerfilAgente, TonoAgente, VistaPreviaWire } from "../lib/agente-whatsapp-client.ts";
 
 interface Props {
@@ -47,6 +48,8 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
   const [alcance, setAlcance] = useState<AlcanceAgente>("organizacion");
   const [form, setForm] = useState<ConfigAgenteForm>(() => formDesdeWire(null));
   const [historial, setHistorial] = useState<readonly HistorialEntradaWire[]>([]);
+  // La base solo deja ver el nombre de uno mismo (RLS de core.staff_user): el de las demas personas sale de la lista del equipo.
+  const [nombresEquipo, setNombresEquipo] = useState<Readonly<Record<string, string>>>({});
   const [previa, setPrevia] = useState<VistaPreviaWire | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -103,6 +106,20 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
       cancelado = true;
     };
   }, [datos, alcance, sin033, apiBaseUrl, token, propertyId]);
+
+  useEffect(() => {
+    let cancelado = false;
+    fetchOrgMembers(fetch, apiBaseUrl, token, propertyId)
+      .then((m) => {
+        if (!cancelado) setNombresEquipo(Object.fromEntries((Array.isArray(m) ? m : []).map((x) => [x.id, x.fullName])));
+      })
+      .catch(() => {
+        if (!cancelado) setNombresEquipo({});
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId]);
 
   const defaults = useMemo(() => opciones?.perfiles.find((p) => p.perfil === form.perfil) ?? null, [opciones, form.perfil]);
 
@@ -337,7 +354,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                       </p>
                       <p className="m-0 text-xs text-muted-foreground">
                         {fecha(h.creadoEn)}
-                        {h.actorNombre ? ` · ${h.actorNombre}` : ""}
+                        {(h.actorNombre ?? (h.actorUserId ? nombresEquipo[h.actorUserId] : null)) ? ` · ${h.actorNombre ?? nombresEquipo[h.actorUserId ?? ""]}` : ""}
                         {camposCambiados(h.anterior, h.nuevo).length > 0 ? ` · Cambió: ${camposCambiados(h.anterior, h.nuevo).join(", ")}` : ""}
                       </p>
                     </div>
