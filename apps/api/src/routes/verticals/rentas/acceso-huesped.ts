@@ -10,7 +10,7 @@
 //   POST    /rentas/:propertyId/reservas/:ocupacionId/pago-confirmado   { confirmado: boolean }
 // Cron (guard de secreto interno/Vercel Cron, igual que checkin-recordatorio.ts):
 //   GET|POST /internal/rentas/acceso-huesped
-// El cron NO está en vercel.json: agendarlo es decisión de Javier (ver docs/DEPLOY.md).
+// Cron en vercel.json (cada hora, minuto 10; ver docs/CRONS.md).
 //
 // Compatibilidad con la base sin migrar (migración 025 pendiente): las lecturas responden
 // `disponible: false` y las escrituras 409 "aún no disponible"; el cron responde ok con

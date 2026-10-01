@@ -41,6 +41,7 @@
 // locales, mismas ramas de render, mismos gates de rol, mismos payloads.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { ReglasComisionSection } from "../components/ReglasComision.tsx";
 import { FileSpreadsheet, Mail, Plus, Search, Wallet } from "lucide-react";
 import {
   Button,
@@ -138,7 +139,7 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Finanzas</h1>
         <p className="m-0 text-sm text-muted-foreground">
-          Movimiento financiero por reserva, owner statements y payouts de canal.
+          Comisiones de canal, movimiento financiero por reserva, owner statements y payouts de canal.
           {!puedeEscribir && (
             <>
               {" "}
@@ -149,6 +150,7 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
         </p>
       </header>
 
+      <ReglasComisionSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <MovimientoSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <OwnerStatementsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <PayoutsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />

@@ -79,6 +79,9 @@ export function mapRentasDomainError(err: RentasDomainError): ApiError {
       return Errors.validation(err.message);
     case "onboarding_organizacion_duplicada":
       return Errors.conflict(err.message);
+    // ---- finanzas (Rn-18, ver ../../../../packages/domain-rentas/src/finanzas/regla-comision-por-defecto.ts) ----
+    case "regla_comision_no_configurada":
+      return Errors.rentasComisionCanalSinRegla(err.message);
     default: {
       // Exhaustividad: si RentasErrorCode gana un valor nuevo sin actualizar este
       // mapeo, TypeScript marca `err.code` aquí como no asignable a `never`.

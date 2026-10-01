@@ -1,15 +1,18 @@
 // MODO LLM REAL del arnes (manual; NUNCA corre en CI ni en `npm test`). Un LLM hace de agente con el prompt de PM
 // y las herramientas del registro sobre el mundo simulado; otro LLM hace de cliente (`simulador_cliente`). Se
 // aplican los mismos graders deterministas. Protecciones:
-//   * exige PM_EVALS_REAL=1, ANTHROPIC_API_KEY y PM_EVALS_MODEL (sin ellas, lanza antes de cualquier red);
+//   * exige PM_EVALS_REAL=1, OPENROUTER_API_KEY y PM_EVALS_MODEL (id de OpenRouter, p.ej. openai/gpt-6-luna;
+//     sin ellas, lanza antes de cualquier red). Pasa por el MISMO OpenRouterProvider que produccion
+//     (tool calling real, costo real del usage accounting, privacidad data_collection=deny), asi que los
+//     evals ejercitan herramientas de verdad y se puede barrer cualquier modelo con una sola llave;
 //   * tope de gasto PM_EVALS_MAX_USD (default 2): se acumula el costo de cada llamada y la corrida se corta
 //     al alcanzarlo, reportando los casos no corridos;
 //   * k repeticiones por caso (PM_EVALS_K, default 1); el caso pasa solo si pasa las k;
 //   * tope de 30 turnos por caso (bucle = fallo).
-// Uso: PM_EVALS_REAL=1 ANTHROPIC_API_KEY=... PM_EVALS_MODEL=... npm run evals:pm:real -w @atiende/domain-restaurantes
+// Uso: PM_EVALS_REAL=1 OPENROUTER_API_KEY=... PM_EVALS_MODEL=... npm run evals:pm:real -w @atiende/domain-restaurantes
 import { randomUUID } from "node:crypto";
-import { AnthropicProvider, CircuitBreaker, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
-import type { LlmMessage, LlmToolDefinition } from "@atiende/agent-core";
+import { CircuitBreaker, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway, OpenRouterProvider, isBudgetExceededError } from "@atiende/agent-core";
+import type { LlmMessage, LlmToolDefinition, OpenRouterModelParams } from "@atiende/agent-core";
 import { AGENT_TOOL_DEFINITIONS } from "../../agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../../whatsapp/llm-turn-handler.ts";
 import { buildPmSystemPrompt } from "../../whatsapp/perfil-pm.ts";
@@ -23,17 +26,31 @@ export interface OpcionesReal {
   readonly maxUsd: number;
   readonly k: number;
   readonly casos?: readonly string[];
+  /** Parametros del modelo evaluado (PM_EVALS_TEMPERATURE / PM_EVALS_REASONING). Por omision NO se manda
+   *  temperature: GPT-6, Claude 5.x y Gemini Flash-Lite la rechazan o no la soportan. */
+  readonly params?: OpenRouterModelParams;
+  /** URL de chat/completions (solo pruebas con un servidor falso). */
+  readonly baseUrl?: string;
 }
 
 export function opcionesRealDesdeEntorno(env: Readonly<Record<string, string | undefined>> = process.env): OpcionesReal {
   if (env.PM_EVALS_REAL !== "1") throw new Error("Modo LLM real apagado: define PM_EVALS_REAL=1 (cuesta dinero; nunca corre en CI).");
-  if (!env.ANTHROPIC_API_KEY) throw new Error("Falta ANTHROPIC_API_KEY.");
+  if (!env.OPENROUTER_API_KEY) throw new Error("Falta OPENROUTER_API_KEY.");
   if (!env.PM_EVALS_MODEL) throw new Error("Falta PM_EVALS_MODEL (modelo explicito; no se elige uno por omision).");
   const maxUsd = Number(env.PM_EVALS_MAX_USD ?? "2");
   if (!Number.isFinite(maxUsd) || maxUsd <= 0) throw new Error("PM_EVALS_MAX_USD debe ser un numero positivo.");
   const k = Number(env.PM_EVALS_K ?? "1");
   if (!Number.isInteger(k) || k < 1 || k > 5) throw new Error("PM_EVALS_K debe ser un entero de 1 a 5.");
-  return { apiKey: env.ANTHROPIC_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean) };
+  const temperature = env.PM_EVALS_TEMPERATURE === undefined || env.PM_EVALS_TEMPERATURE === "" ? undefined : Number(env.PM_EVALS_TEMPERATURE);
+  if (temperature !== undefined && (!Number.isFinite(temperature) || temperature < 0 || temperature > 2)) throw new Error("PM_EVALS_TEMPERATURE debe ser un numero entre 0 y 2.");
+  const effort = env.PM_EVALS_REASONING;
+  if (effort && !["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)) throw new Error("PM_EVALS_REASONING invalido (none|minimal|low|medium|high|xhigh).");
+  const params: OpenRouterModelParams = {
+    temperature: temperature ?? "omit",
+    ...(effort ? { reasoningEffort: effort as OpenRouterModelParams["reasoningEffort"] } : {}),
+    minMaxTokens: 1500,
+  };
+  return { apiKey: env.OPENROUTER_API_KEY, model: env.PM_EVALS_MODEL, maxUsd, k, params, casos: env.PM_EVALS_CASOS?.split(",").map((s) => s.trim()).filter(Boolean) };
 }
 
 export interface ResultadoReal {
@@ -51,11 +68,22 @@ export async function ejecutarSuiteReal(opts: OpcionesReal): Promise<ResultadoRe
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: { maxRunUsd: opts.maxUsd, maxTenantDailyUsd: opts.maxUsd },
   });
-  gateway.registerLadder("pm-evals", [new AnthropicProvider({ apiKey: opts.apiKey, model: opts.model })]);
+  gateway.registerLadder("pm-evals", [
+    new OpenRouterProvider({ id: `openrouter:${opts.model}`, apiKey: opts.apiKey, model: opts.model, params: opts.params ?? { temperature: "omit", minMaxTokens: 1500 }, appName: "Atiende evals", ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}) }),
+  ]);
   let gasto = 0;
   const llamar = async (system: string, messages: LlmMessage[], tools?: LlmToolDefinition[]) => {
     if (gasto >= opts.maxUsd) throw new TopeDeGasto();
-    const r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "batch", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
+    let r;
+    try {
+      r = await gateway.complete({ tenantId: "pm-evals", runId: randomUUID(), lane: "interactive", role: "pm-evals", request: { system, messages, tools, temperature: 0, maxOutputTokens: 800 } });
+    } catch (err) {
+      // Si el presupuesto del gateway se agota antes que `gasto >= maxUsd` (la reserva previa se estima con
+      // el tope de tokens), se trata igual que el tope propio: corte limpio con casos no corridos, no un
+      // fallo de la corrida. Carril 'interactive': el carril batch solo dejaba gastar ~60% del tope.
+      if (isBudgetExceededError(err)) throw new TopeDeGasto();
+      throw err;
+    }
     gasto += r.costUsd ?? 0;
     return r;
   };

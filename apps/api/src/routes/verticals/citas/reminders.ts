@@ -5,9 +5,8 @@
 // anterior lo construyó, ver diseño Fase 1 citas §0.4).
 //
 // Wiring real del scheduler (cierra el hallazgo "nunca se disparan" del
-// auditor): `vercel.json::crons` invoca este mismo path por GET una vez al día
-// (plan Hobby de Vercel solo permite frecuencia diaria — cadencia razonable de
-// por sí para un recordatorio "24h antes") con `Authorization: Bearer
+// auditor): `vercel.json::crons` invoca este mismo path por GET cada 30 minutos
+// (requiere plan Pro; la ventana de ±30 min de `runConfirmacionCitaCore` solo se cubre con esta cadencia) con `Authorization: Bearer
 // <CRON_SECRET>`. `internalOrCronSecretMatches` acepta esa forma además del header
 // manual `x-atiende-internal-secret` que ya usaban los tests/invocaciones
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.

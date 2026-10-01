@@ -30,6 +30,7 @@ import { type OrgMonthlyBudgetStore, nextOrgMonthlyReservationId } from './org-m
 import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRecorder } from './usage.js';
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
+import { lookupModelPrice } from './prices.js';
 import { AllProvidersFailedError, GatewayError } from './errors.js';
 import { KillSwitchEngagedError, type GatewayKillSwitch } from './kill-switch.js';
 import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLane, LlmProvider } from './types.js';
@@ -40,10 +41,15 @@ import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLa
  *  el proyecto origen: sobre-reservar es seguro, sub-reservar no. Un gateway real de
  *  producción pasaría un `LlmCostEstimator` propio por proveedor (con la
  *  tabla de precios real de cada modelo, como `PRICES` en el original). */
-export const defaultCostEstimator: LlmCostEstimator = (_provider, req) => {
-  const inputChars = req.system.length + req.messages.reduce((n, m) => n + m.content.length, 0);
+export const defaultCostEstimator: LlmCostEstimator = (provider, req) => {
+  const toolsChars = req.tools ? JSON.stringify(req.tools).length : 0;
+  const inputChars = req.system.length + toolsChars + req.messages.reduce((n, m) => n + m.content.length, 0);
   const estimatedTokensIn = Math.max(1, Math.ceil(inputChars / 4));
   const estimatedTokensOut = req.maxOutputTokens ?? 500;
+  // Con el precio real del modelo (tabla de respaldo, ver prices.ts) la reserva es ajustada; un
+  // modelo sin fila cae al tope caro generico de abajo (sobre-reservar es seguro).
+  const price = lookupModelPrice(provider.model);
+  if (price) return (estimatedTokensIn * price.inPerM + estimatedTokensOut * price.outPerM) / 1_000_000;
   const CARO_IN = 10 / 1_000_000;
   const CARO_OUT = 30 / 1_000_000;
   return estimatedTokensIn * CARO_IN + estimatedTokensOut * CARO_OUT;

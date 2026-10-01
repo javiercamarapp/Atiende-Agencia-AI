@@ -5,8 +5,8 @@
 //
 // SIEMPRE sesion de sistema y UNA transaccion POR property (una property con datos raros nunca revierte las demas; mismo
 // patron que agentes-expiracion-cron.ts). Base sin la 036: la property se reporta `omitida: migracion_pendiente`.
-// NO esta registrado en vercel.json: programarlo es una decision de producto/despliegue (ver el cuerpo del PR) -- la ruta
-// acepta GET/POST con el secreto interno y se invoca a mano.
+// Cron diario en vercel.json (ver docs/CRONS.md); la ruta
+// acepta GET/POST con el secreto interno.
 import { Hono } from "hono";
 import { GruposUnavailableError, PostgresGruposRepository, type GruposRepository } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
