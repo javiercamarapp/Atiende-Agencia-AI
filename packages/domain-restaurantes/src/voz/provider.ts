@@ -4,6 +4,7 @@
 // preview, exponer el catalogo de voces y reportar salud. El servicio de llamadas (`startSession`
 // con audio SIP) es otra tarea y ampliara este contrato sin romper estos tres metodos.
 import type { VozCatalogoItem } from "./catalogo-voces.ts";
+import type { AbrirSesionLlamada } from "./llamada/sesion.ts";
 import type { VozProveedorId } from "./types.ts";
 
 export interface VozSesionPreviewEntrada {
@@ -42,6 +43,9 @@ export interface VoiceAgentProvider {
   /** Lanza `VozNoConfiguradaError` si falta la credencial (la ruta responde 503 honesto, jamas un
    * falso exito) y `VozProveedorError` si el proveedor rechaza o falla. */
   emitirSesionPreview(entrada: VozSesionPreviewEntrada): Promise<VozSesionPreviewProveedor>;
+  /** Sesion de LLAMADA (servidor, con herramientas): la usa el worker de voz y el simulador. Opcional: un adaptador que
+   * solo emite previews no la implementa. Lanza `VozNoConfiguradaError` sin credencial y `VozProveedorError` si falla. */
+  abrirLlamada?: AbrirSesionLlamada;
 }
 
 /** El adaptador no tiene credencial: "voz no configurada". */
