@@ -313,3 +313,42 @@ describe("compatibilidad con la base SIN MIGRAR (migracion 029 pendiente)", () =
     expect((await call("PUT", "/junta/config", "writer", { questionsDeadlineAt: new Date(Date.now() + 3600_000).toISOString() })).status).toBe(503);
   });
 });
+
+describe("cron /internal/licitaciones/deadline-reminders: recordatorio de la fecha limite de preguntas de junta", () => {
+  it("con el secreto real crea el recordatorio de junta y lo reporta sin alterar el barrido de plazo de presentacion", async () => {
+    const { ctx, app, call } = await setup();
+    await call("PUT", "/junta/config", "writer", { questionsDeadlineAt: new Date(Date.now() + 48 * 3600_000).toISOString() });
+    await call("POST", "/junta/questions", "writer", { questionText: "Cual es el plazo de entrega de los bienes licitados?" });
+    const res = await app.request("/internal/licitaciones/deadline-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: unknown[]; junta_question_reminders: { created: number; unavailable: number } };
+    expect(body.ok).toBe(true);
+    expect(body.failures).toEqual([]);
+    expect(body.junta_question_reminders).toEqual({ created: 1, unavailable: 0 });
+    expect((await call("GET", "/junta", "viewer")).json.reminders).toHaveLength(1);
+  });
+
+  it("base sin migrar: el cron sigue en 200/ok y reporta unavailable (no es un fallo)", async () => {
+    const unavailable = new Proxy({} as SalaGuerraRepository, {
+      get: () => async () => {
+        throw new SalaGuerraNotAvailableError();
+      },
+    });
+    const { ctx, app } = await setup({ sala: unavailable });
+    const res = await app.request("/internal/licitaciones/deadline-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; junta_question_reminders: { created: number; unavailable: number } };
+    expect(body.ok).toBe(true);
+    expect(body.junta_question_reminders).toEqual({ created: 0, unavailable: 1 });
+  });
+
+  it("sin factoria configurada (fixtures de otras verticales) el cron omite la junta y las rutas responden 503, nunca 500", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const cron = await app.request("/internal/licitaciones/deadline-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(cron.status).toBe(200);
+    expect(((await cron.json()) as { junta_question_reminders: unknown }).junta_question_reminders).toEqual({ created: 0, unavailable: 0 });
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/junta`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(503);
+  });
+});
