@@ -52,10 +52,12 @@ describe("GET /rentas/:propertyId/reportes/ocupacion-ingresos", () => {
     expect(body.totales.noches_ocupadas).toBe(8);
     expect(body.totales.ingreso_bruto_centavos).toBe(100003);
     expect(body.totales.llegadas).toBe(2);
-    const meses = Object.fromEntries(body.por_mes.map((m: GrupoJson) => [m.clave, m]));
-    expect(meses["2026-03"].noches_ocupadas).toBe(6); // 4 de r1 + 2 de r2
-    expect(meses["2026-04"].noches_ocupadas).toBe(2);
-    expect(meses["2026-03"].ingreso_bruto_centavos + meses["2026-04"].ingreso_bruto_centavos).toBe(100003);
+    const meses = new Map(body.por_mes.map((m: GrupoJson) => [m.clave, m] as const));
+    const mar = meses.get("2026-03")!;
+    const abr = meses.get("2026-04")!;
+    expect(mar.noches_ocupadas).toBe(6); // 4 de r1 + 2 de r2
+    expect(abr.noches_ocupadas).toBe(2);
+    expect(mar.ingreso_bruto_centavos + abr.ingreso_bruto_centavos).toBe(100003);
     expect(body.por_canal.map((c: GrupoJson) => c.clave).sort()).toEqual(["airbnb", "manual"]);
     expect(body.por_propietario.map((p: GrupoJson) => p.etiqueta).sort()).toEqual(["Ana", "Sin propietario"]);
     expect(body.advertencias.reservas_sin_movimiento_financiero).toBe(1);
