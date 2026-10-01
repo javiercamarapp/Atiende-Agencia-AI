@@ -100,6 +100,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_ACCESS_TOKEN"],
   },
 
+  // ---- Licitaciones: WhatsApp (L-05) ----
+  {
+    id: "whatsapp-licitaciones",
+    nombre: "WhatsApp de licitaciones",
+    habilita:
+      "Avisos de plazos y decisión go/no-go por botón de licitaciones (L-05): número remitente (`phone_number_id` de Meta) del webhook /v1/licitaciones/whatsapp/webhook y del envío por /internal/whatsapp/dispatch. Opcional: sin ella el webhook acusa recibo sin procesar y el envío de licitaciones se omite (sin error). Usa también WHATSAPP_VERIFY_TOKEN/WHATSAPP_APP_SECRET/WHATSAPP_ACCESS_TOKEN de arriba.",
+    variables: ["LICITACIONES_WHATSAPP_PHONE_NUMBER_ID"],
+  },
+
   // ---- Hoteles: bóveda de identidad (H-01) ----
   {
     id: "hoteles-boveda-identidad",
