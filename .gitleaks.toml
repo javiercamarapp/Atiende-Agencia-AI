@@ -28,3 +28,14 @@ targetRules = ["jwt"]
 paths = [
   '''(^|/)scripts/respaldo/tests/''',
 ]
+
+# assertions.sql del verify del volumen de la demo (R-20): archivo GENERADO (generar-assertions.ts) que embebe lotes de pedidos
+# sinteticos. Cada pedido lleva `"idempotencyKey":"<sha256 hex>"`, el hash de su clave de deduplicacion: son 64 caracteres
+# hexadecimales de alta entropia que la heuristica generica confunde con una llave de API, pero NO son un secreto (derivan de la
+# organizacion de prueba y de un contador). Excepcion deliberadamente estrecha: una sola regla heuristica y un solo archivo.
+[[allowlists]]
+description = "Hashes sha256 de claves de idempotencia de pedidos sinteticos en el assertions.sql generado del verify de volumen"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)scripts/verify-restaurantes-demo-volumen/assertions\.sql$''',
+]
