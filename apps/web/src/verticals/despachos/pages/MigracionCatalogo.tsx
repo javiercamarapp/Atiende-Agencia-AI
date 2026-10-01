@@ -19,23 +19,28 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Check, CheckCircle2, FolderInput, Pencil, X } from "lucide-react";
 import {
-  Badge,
   Button,
+  Callout,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
 } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   aprobarMapeoMigracion,
   clasificarCatalogo,
@@ -45,30 +50,10 @@ import {
 } from "../lib/migracion-catalogo-client.ts";
 import type { CuentaCatalogoInput, EstadoMapeoMigracion, MapeoMigracionCuenta } from "../lib/migracion-catalogo-client.ts";
 import { formatDateTime, formatEstadoMapeoMigracion, formatTipoMatchMigracion } from "../lib/format.ts";
+import { MIGRACION_ESTADO_TONES, MIGRACION_MATCH_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
-
-// Misma carga semántica exacta que las píldoras inline originales, ahora sobre
-// el `Badge` real de @atiende/ui.
-type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
-
-const VERDE = "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400";
-const AMBAR = "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400";
-
-const ESTADO_BADGE: Record<EstadoMapeoMigracion, BadgeSpec> = {
-  pendiente: { variant: "outline", className: AMBAR },
-  aprobado: { variant: "outline", className: VERDE },
-  rechazado: { variant: "destructive" },
-  editado: { variant: "secondary" },
-};
-
-const TIPO_MATCH_BADGE: Record<MapeoMigracionCuenta["tipoMatch"], BadgeSpec> = {
-  exacto: { variant: "outline", className: VERDE },
-  alerta_riesgo: { variant: "destructive" },
-  fuzzy: { variant: "outline", className: AMBAR },
-  sin_match: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
-};
 
 const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoMapeoMigracion | ""; label: string }> = [
   { value: "", label: "Todos los estados" },
@@ -83,21 +68,11 @@ const EJEMPLO_CATALOGO = `[
 ]`;
 
 function EstadoBadge({ estado }: { estado: EstadoMapeoMigracion }) {
-  const { variant, className } = ESTADO_BADGE[estado];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatEstadoMapeoMigracion(estado)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(MIGRACION_ESTADO_TONES, estado)}>{formatEstadoMapeoMigracion(estado)}</StatusBadge>;
 }
 
 function TipoMatchBadge({ tipoMatch }: { tipoMatch: MapeoMigracionCuenta["tipoMatch"] }) {
-  const { variant, className } = TIPO_MATCH_BADGE[tipoMatch];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatTipoMatchMigracion(tipoMatch)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(MIGRACION_MATCH_TONES, tipoMatch)}>{formatTipoMatchMigracion(tipoMatch)}</StatusBadge>;
 }
 
 interface RowActionState {
@@ -275,11 +250,11 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Migración de catálogo contable</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Clasifica el catálogo origen contra el destino (match exacto/alerta de riesgo/aproximado) y decide cada mapeo propuesto -- el match exacto queda auto-aprobado, el resto espera revisión humana.
           </p>
         </div>
@@ -292,12 +267,12 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
       </header>
 
       {/* El formulario de clasificación (dos JSON grandes pegados a mano) pasó al
-          `ModalFormularioLateral` compartido: es exactamente la forma
+          `FormDialog` compartido: es exactamente la forma
           "formulario ancho en riel lateral" para la que existe ese shell, y
           además deja de empujar la tabla de mapeos hacia abajo. El estado
           `showClasificarForm` y `handleClasificar` son los mismos de antes. */}
       {showClasificarForm && (
-        <ModalFormularioLateral
+        <FormDialog
           open
           onOpenChange={(abierto) => {
             if (!abierto) setShowClasificarForm(false);
@@ -314,25 +289,21 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
             <div className="grid gap-3 md:grid-cols-2">
               <div className="flex min-w-0 flex-col gap-1.5">
                 <Label htmlFor="catalogo-origen">Catálogo origen (JSON) *</Label>
-                <textarea
+                <Textarea
                   id="catalogo-origen"
                   value={catalogoOrigenText}
                   onChange={(e) => setCatalogoOrigenText(e.target.value)}
                   rows={8}
-                  required
-                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
+                  required className="font-mono text-xs" />
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
                 <Label htmlFor="catalogo-destino">Catálogo destino (JSON) *</Label>
-                <textarea
+                <Textarea
                   id="catalogo-destino"
                   value={catalogoDestinoText}
                   onChange={(e) => setCatalogoDestinoText(e.target.value)}
                   rows={8}
-                  required
-                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
+                  required className="font-mono text-xs" />
               </div>
             </div>
             {clasificarError && (
@@ -341,35 +312,35 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
               </p>
             )}
           </form>
-        </ModalFormularioLateral>
+        </FormDialog>
       )}
 
       {clasificarResultado && (
-        <p className="flex items-start gap-2 rounded-lg bg-green-100 px-3 py-2 text-[13px] text-green-800 dark:bg-green-500/15 dark:text-green-400">
+        <Callout tone="success">
           <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
           {clasificarResultado}
-        </p>
+        </Callout>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <Label htmlFor="migracion-filtro-estado" className="text-[13px] text-foreground">
+          <Label htmlFor="migracion-filtro-estado" className="text-sm text-foreground">
             Filtrar por estado
           </Label>
-          <select
+          <NativeSelect
             id="migracion-filtro-estado"
             value={filtroEstado}
             onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")}
-            className="h-9 rounded-md border border-input bg-background px-2 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {ESTADO_FILTROS.map((f) => (
               <option key={f.value} value={f.value}>
                 {f.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       </div>
 
@@ -409,13 +380,13 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
                       <TableCell>
                         <EstadoBadge estado={m.estado} />
                         {m.aprobadoPor && (
-                          <div className="mt-1 text-[11px] text-muted-foreground">
+                          <div className="mt-1 text-xs text-muted-foreground">
                             {m.estado === "rechazado" ? "Rechazado" : m.estado === "editado" ? "Editado" : "Aprobado"} por {m.aprobadoPor}
                             {m.aprobadoEn ? ` · ${formatDateTime(m.aprobadoEn)}` : ""}
                           </div>
                         )}
-                        {m.nota && <div className="mt-0.5 text-[11px] text-muted-foreground">{m.nota}</div>}
-                        {m.estrategiaConciliacionSaldos && <div className="mt-0.5 text-[11px] text-muted-foreground">Conciliación: {m.estrategiaConciliacionSaldos}</div>}
+                        {m.nota && <div className="mt-0.5 text-xs text-muted-foreground">{m.nota}</div>}
+                        {m.estrategiaConciliacionSaldos && <div className="mt-0.5 text-xs text-muted-foreground">Conciliación: {m.estrategiaConciliacionSaldos}</div>}
                       </TableCell>
                       {puedeGestionar && (
                         <TableCell>
@@ -469,7 +440,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
                                 </Button>
                               </div>
                               {rowState?.message && (
-                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
                                   {rowState.message}
                                 </span>
                               )}
@@ -487,6 +458,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

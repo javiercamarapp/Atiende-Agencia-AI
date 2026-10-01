@@ -5,7 +5,22 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  Label,
+  NativeSelect,
+  PageContainer,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import { ETIQUETAS_TIPO_REPORTE, TIPOS_REPORTE, descargarReporte, fetchReporte, formatearCeldaReporte } from "../lib/reportes-client.ts";
 import type { FormatoReporte, ReporteCliente, SeccionReporte, TipoReporte } from "../lib/reportes-client.ts";
@@ -37,7 +52,7 @@ function SeccionTabla({ seccion }: { seccion: SeccionReporte }) {
     <section className="flex flex-col gap-2">
       <h3 className="font-display text-sm font-semibold text-foreground">{seccion.titulo}</h3>
       {seccion.sinDatosMotivo !== null ? (
-        <div role="status" className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-3 text-[13px]">
+        <div role="status" className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-3 text-sm">
           <p className="font-medium text-foreground">Sin datos</p>
           <p className="mt-0.5 text-muted-foreground">{seccion.sinDatosMotivo}</p>
         </div>
@@ -131,16 +146,16 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
   }
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Reportes de cliente</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">Balanza, DIOT, nómina e impuestos del contribuyente activo, listos para revisar, descargar en PDF o en Excel. Solo con datos reales: lo que aún no existe en el sistema se marca «Sin datos».</p>
+        <p className="mt-1 text-sm text-muted-foreground">Balanza, DIOT, nómina e impuestos del contribuyente activo, listos para revisar, descargar en PDF o en Excel. Solo con datos reales: lo que aún no existe en el sistema se marca «Sin datos».</p>
       </header>
 
       <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="reporte-tipo">Reporte</Label>
-          <select
+          <NativeSelect
             id="reporte-tipo"
             value={tipo}
             onChange={(e) => setTipo(e.target.value as TipoReporte)}
@@ -151,7 +166,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
                 {ETIQUETAS_TIPO_REPORTE[t]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="reporte-periodo">Período (AAAA-MM)</Label>
@@ -178,7 +193,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-display text-lg font-semibold text-foreground">{reporte.titulo}</h2>
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {reporte.contribuyente.nombre} · RFC {reporte.contribuyente.rfc ?? "sin datos"} · Período {reporte.periodo} · Generado el {reporte.generadoEn}
               </p>
             </div>
@@ -195,7 +210,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
           </div>
 
           {reporte.sinDatos && (
-            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
               No hay datos para este reporte en el período indicado.
             </p>
           )}
@@ -205,7 +220,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
           ))}
 
           {reporte.notas.length > 0 && (
-            <ul className="flex list-disc flex-col gap-1 pl-5 text-[12px] text-muted-foreground">
+            <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
               {reporte.notas.map((n) => (
                 <li key={n}>{n}</li>
               ))}
@@ -213,6 +228,6 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
           )}
         </article>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -14,18 +14,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { MailPlus, Trash2 } from "lucide-react";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-} from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -133,13 +122,13 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-5 px-1">
+    <PageContainer padding="none" size="md" className="gap-5">
       <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <p className="rounded-xl border border-border bg-muted px-3 py-3 text-[13px] text-muted-foreground">
+        <p className="rounded-xl border border-border bg-muted px-3 py-3 text-sm text-muted-foreground">
           Invitar o revocar staff está reservado al administrador del despacho. Tu rol actual ({role}) no tiene acceso a esta página.
         </p>
       )}
@@ -161,23 +150,23 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="min-w-56 flex-1 text-[13px]"
+                className="min-w-56 flex-1 text-sm"
               />
               <Label htmlFor="staff-rol" className="sr-only">
                 Rol del staff
               </Label>
-              <select
+              <NativeSelect
                 id="staff-rol"
                 value={verticalRole}
                 onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}
-                className="h-10 rounded-md border border-input bg-background px-3 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>
                     {ROLE_LABELS[r]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <Button type="submit" size="sm" disabled={creating}>
                 <MailPlus />
                 {creating ? "Invitando…" : "Invitar"}
@@ -189,7 +178,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
 
             {lastCreated && (
               <div className="mt-3.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="text-[13px] font-semibold text-foreground">
+                <p className="text-sm font-semibold text-foreground">
                   Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
                 </p>
                 <p className="mt-1.5 text-xs text-muted-foreground">
@@ -213,7 +202,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
                 <Card key={inv.id}>
                   <CardContent className="flex items-center justify-between gap-3 p-3">
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{inv.email}</p>
+                      <p className="text-sm font-semibold text-foreground">{inv.email}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {new Date(inv.expiresAt).toLocaleString("es-MX")}
                       </p>
@@ -245,25 +234,25 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
                 <Card key={m.id}>
                   <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{m.fullName}</p>
+                      <p className="text-sm font-semibold text-foreground">{m.fullName}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
                     </div>
                     <Label htmlFor={`staff-rol-${m.id}`} className="sr-only">
                       Rol de {m.fullName}
                     </Label>
-                    <select
+                    <NativeSelect
                       id={`staff-rol-${m.id}`}
                       value={m.verticalRole}
                       disabled={savingRoleId === m.id}
                       onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                      className="h-10 rounded-md border border-input bg-background px-3 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r}>
                           {ROLE_LABELS[r]}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </CardContent>
                 </Card>
               ))}
@@ -271,6 +260,6 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
           )}
         </section>
       )}
-    </div>
+    </PageContainer>
   );
 }

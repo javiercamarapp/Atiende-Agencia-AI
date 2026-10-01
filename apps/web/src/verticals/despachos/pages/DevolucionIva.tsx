@@ -24,14 +24,19 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Calculator, CalendarClock, CheckCircle2, ClipboardList, Download, FileSpreadsheet, ListChecks, Plus, Send, Trash2 } from "lucide-react";
 import {
-  Badge,
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
@@ -64,17 +69,13 @@ import type {
   TipoFacturaIva,
 } from "../lib/devolucion-iva-client.ts";
 import { formatMoney } from "../lib/format.ts";
+import { ESTATUS_VERIFICACION_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que DEVOLUCION_IVA_ROLES (@atiende/domain-despachos/roles.ts)
 // -- las 8 rutas de devolucion-iva.ts exigen este rol en CADA llamada, mismo
 // criterio que Conciliacion.tsx: cosmético, el servidor rechazaría igual.
 const DEVOLUCION_IVA_ROLES = new Set(["admin", "contador"]);
-
-// Clases compartidas por los `<select>` nativos que se quedan nativos (el
-// design system no exporta un Select propio): misma anatomía que `Input`.
-const SELECT_CELL_CLASS =
-  "h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const TIPO_FACTURA_OPTIONS: readonly TipoFacturaIva[] = ["Ingreso", "Egreso", "Traslado", "Nómina", "Pago"];
 const CATEGORIA_OPTIONS: readonly ClasificacionIva[] = ["acreditable_100", "acreditable_proporcional", "no_acreditable"];
@@ -270,25 +271,25 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
                   <Label htmlFor={`fac-tipo-${f.key}`} className="sr-only">
                     Tipo
                   </Label>
-                  <select id={`fac-tipo-${f.key}`} value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} className={`${SELECT_CELL_CLASS} w-28`}>
+                  <NativeSelect id={`fac-tipo-${f.key}`} value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} size="sm" wrapperClassName="w-28">
                     {TIPO_FACTURA_OPTIONS.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-categoria-${f.key}`} className="sr-only">
                     Categoría
                   </Label>
-                  <select id={`fac-categoria-${f.key}`} value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} className={`${SELECT_CELL_CLASS} w-40`}>
+                  <NativeSelect id={`fac-categoria-${f.key}`} value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} size="sm" wrapperClassName="w-40">
                     {CATEGORIA_OPTIONS.map((c) => (
                       <option key={c} value={c}>
                         {CATEGORIA_LABELS[c]}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </TableCell>
                 <TableCell className="p-1.5">
                   <Label htmlFor={`fac-proporc-${f.key}`} className="sr-only">
@@ -341,7 +342,7 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
           Agregar factura
         </Button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Sin UUID REP (complemento de pago), el IVA de esa factura no cuenta como efectivamente pagado (LIVA Art. 5 fracc. III). Este lote alimenta DIOT, conciliación, congruencia y el papel de trabajo de abajo.
       </p>
     </div>
@@ -433,21 +434,9 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
   );
 }
 
-// Mismo semáforo que las píldoras inline originales (verde = match, rojo =
-// mismatch/missing, gris = cualquier otro estatus que devuelva el motor).
-const ESTATUS_BADGE: Record<string, { variant: "destructive" | "outline"; className?: string }> = {
-  match: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  mismatch: { variant: "destructive" },
-  missing: { variant: "destructive" },
-};
-
+// Mismo semáforo de siempre (verde = match, rojo = mismatch/missing, gris = cualquier otro estatus que devuelva el motor).
 function EstatusBadge({ status }: { status: string }) {
-  const { variant, className } = ESTATUS_BADGE[status] ?? { variant: "outline" as const, className: "border-transparent bg-muted text-muted-foreground" };
-  return (
-    <Badge variant={variant} className={className}>
-      {status}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(ESTATUS_VERIFICACION_TONES, status)}>{status}</StatusBadge>;
 }
 
 export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
@@ -690,27 +679,27 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
   if (!puedeGestionar) {
     return (
-      <div className="flex flex-col gap-2 px-1">
+      <PageContainer padding="none" className="gap-2">
         <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr el flujo de devolución de IVA -- el servidor lo rechazaría igual.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 px-1">
+    <PageContainer padding="none" className="gap-5">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Flujo guiado del papel de trabajo de devolución de IVA: facturas del periodo → DIOT → conciliación → saldo a favor → congruencia (REQ-IVA-010) → solicitud → plazo de resolución (Art. 22 CFF) → papel de trabajo.
         </p>
       </header>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Periodo</CardTitle>
+          <CardTitle className="text-base">Periodo</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex w-44 flex-col gap-1.5">
@@ -722,7 +711,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">1. Facturas del periodo</CardTitle>
+          <CardTitle className="text-base">1. Facturas del periodo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {errorFacturas && (
@@ -737,7 +726,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </Button>
           </div>
           {clasificacionResumen && (
-            <div className="flex gap-5 text-[13px] text-foreground">
+            <div className="flex gap-5 text-sm text-foreground">
               <span>
                 <strong>Acreditable 100%:</strong> {clasificacionResumen.acreditable100}
               </span>
@@ -755,7 +744,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">2. DIOT</CardTitle>
+          <CardTitle className="text-base">2. DIOT</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {diotError && (
@@ -811,7 +800,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Declaraciones mensuales</CardTitle>
+          <CardTitle className="text-base">Declaraciones mensuales</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Captura las declaraciones mensuales de IVA ya presentadas -- alimentan conciliación, saldo a favor, congruencia y solicitud.</p>
@@ -821,7 +810,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">3. Conciliación (facturas ↔ DIOT ↔ declaración)</CardTitle>
+          <CardTitle className="text-base">3. Conciliación (facturas ↔ DIOT ↔ declaración)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {conciliacionError && (
@@ -850,7 +839,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                   <TableBody>
                     {facturasVsDiot.map((r, i) => (
                       <TableRow key={i}>
-                        <TableCell className="p-2 font-mono text-[11px]">{r.facturaUuid}</TableCell>
+                        <TableCell className="p-2 font-mono text-xs">{r.facturaUuid}</TableCell>
                         <TableCell className="p-2">
                           <EstatusBadge status={r.status} />
                         </TableCell>
@@ -896,7 +885,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">4. Saldo a favor / monto de devolución</CardTitle>
+          <CardTitle className="text-base">4. Saldo a favor / monto de devolución</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {saldoError && (
@@ -911,7 +900,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </Button>
           </div>
           {montoDevolucion && (
-            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <div className="flex flex-col gap-1.5 text-sm text-foreground">
               <div className="flex flex-wrap gap-5">
                 <span>
                   <strong>Saldo a favor:</strong> {formatMoney(saldoFavor ?? 0)}
@@ -930,7 +919,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                   <span className="text-muted-foreground">diferencia {formatMoney(saldoVerificacion.diferencia)}</span>
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 El factor de actualización (INPC) y la verificación de prescripción de 5 años son placeholders documentados del motor -- no sustituyen la actualización fiscal real.
               </p>
             </div>
@@ -940,7 +929,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</CardTitle>
+          <CardTitle className="text-base">5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex w-44 flex-col gap-1.5">
@@ -959,7 +948,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </Button>
           </div>
           {congruencia && (
-            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <div className="flex flex-col gap-1.5 text-sm text-foreground">
               <div className="flex items-center gap-2">
                 <strong>{congruencia.congruente ? "Congruente" : "No congruente"}</strong>
                 <EstatusBadge status={congruencia.congruente ? "match" : "mismatch"} />
@@ -978,7 +967,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">6. Solicitud de devolución</CardTitle>
+          <CardTitle className="text-base">6. Solicitud de devolución</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -1015,7 +1004,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </div>
           </form>
           {solicitud && (
-            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+            <div className="flex flex-col gap-1.5 text-sm text-foreground">
               <div className="flex flex-wrap gap-5">
                 <span>
                   <strong>Folio:</strong> <span className="font-mono">{solicitud.solicitudId}</span>
@@ -1028,11 +1017,11 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                 </span>
               </div>
               {solicitud.estado === "lista_para_envio" ? (
-                <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">Lista para envío.</p>
+                <Callout tone="success">Lista para envío.</Callout>
               ) : (
-                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                <Callout tone="warning" role="alert">
                   Requiere aclaración: {solicitud.motivoAclaracion}
-                </p>
+                </Callout>
               )}
             </div>
           )}
@@ -1041,7 +1030,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">7. Plazo de resolución (Art. 22 CFF)</CardTitle>
+          <CardTitle className="text-base">7. Plazo de resolución (Art. 22 CFF)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <form onSubmit={handleCalcularPlazo} className="flex max-w-sm flex-col gap-3">
@@ -1049,15 +1038,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
               <Label htmlFor="plazo-fecha">Fecha de presentación *</Label>
               <Input id="plazo-fecha" type="date" value={fechaPresentacion} onChange={(e) => setFechaPresentacion(e.target.value)} required />
             </div>
-            <label className="flex items-start gap-2 text-[13px] text-foreground">
-              <input
-                type="checkbox"
-                checked={hayDictamenOGarantia}
-                onChange={(e) => setHayDictamenOGarantia(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
-              />
-              Hay dictamen de contador público registrado o garantía del interés fiscal (plazo de 20 días hábiles en vez de 40)
-            </label>
+            <Checkbox checked={hayDictamenOGarantia} onChange={(e) => setHayDictamenOGarantia(e.target.checked)} label="Hay dictamen de contador público registrado o garantía del interés fiscal (plazo de 20 días hábiles en vez de 40)" />
             {plazoError && (
               <p role="alert" className="text-destructive text-sm">
                 {plazoError}
@@ -1071,7 +1052,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </div>
           </form>
           {fechaLimite && (
-            <p className="text-[13px] text-foreground">
+            <p className="text-sm text-foreground">
               <strong>Fecha límite de resolución:</strong> {fechaLimite}
             </p>
           )}
@@ -1080,7 +1061,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">8. Papel de trabajo</CardTitle>
+          <CardTitle className="text-base">8. Papel de trabajo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex max-w-md flex-col gap-1.5">
@@ -1105,7 +1086,7 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
             </Button>
           </div>
           {papel && (
-            <div className="flex flex-col gap-3 text-[13px] text-foreground">
+            <div className="flex flex-col gap-3 text-sm text-foreground">
               <div className="flex flex-wrap gap-5">
                 <span>
                   <strong>Facturas:</strong> {papel.metadata.totalFacturas}
@@ -1147,11 +1128,11 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
                   <span>Balanza: {papel.secciones["6_documentos_soporte"].checklist.balanza ? "✓" : "✗"}</span>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground">{papel.secciones["7_no_discrepancia_fiscal_depositos"].advertenciaFiscal}</p>
+              <p className="text-xs text-muted-foreground">{papel.secciones["7_no_discrepancia_fiscal_depositos"].advertenciaFiscal}</p>
             </div>
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

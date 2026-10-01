@@ -28,14 +28,17 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ListChecks, Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
 import {
-  Badge,
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   Input,
   Label,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
@@ -60,6 +63,7 @@ import type {
   SeveridadAlerta,
 } from "../lib/conciliacion-client.ts";
 import { formatMoney } from "../lib/format.ts";
+import { NIVEL_COINCIDENCIA_TONES, SEVERIDAD_ALERTA_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que CONCILIACION_ROLES (@atiende/domain-despachos/roles.ts) --
@@ -103,24 +107,6 @@ function filaAInput(f: MovimientoFila): MovimientoBancarioInput | null {
 
 const NIVEL_LABELS: Record<NivelCoincidencia, string> = { exacto: "Exacto", fuzzy: "Fuzzy", multi_linea: "Multi-línea", llm: "Asistido por IA", manual: "Manual" };
 
-// Misma carga semántica que las píldoras inline originales, ahora sobre el
-// `Badge` real de @atiende/ui.
-type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
-
-const NIVEL_BADGE: Record<NivelCoincidencia, BadgeSpec> = {
-  exacto: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  fuzzy: { variant: "secondary" },
-  multi_linea: { variant: "outline", className: "border-transparent bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-400" },
-  llm: { variant: "outline", className: "border-transparent bg-purple-100 text-purple-800 dark:bg-purple-500/15 dark:text-purple-400" },
-  manual: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
-};
-
-const SEVERIDAD_BADGE: Record<SeveridadAlerta, BadgeSpec> = {
-  info: { variant: "secondary" },
-  warning: { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
-  critical: { variant: "destructive" },
-};
-
 const CLASIFICACION_LABELS: Record<ClasificacionDeposito, string> = {
   ingreso: "Ingreso gravable",
   financiamiento: "Financiamiento",
@@ -130,22 +116,12 @@ const CLASIFICACION_LABELS: Record<ClasificacionDeposito, string> = {
 };
 
 function NivelBadge({ level }: { level: NivelCoincidencia }) {
-  const { variant, className } = NIVEL_BADGE[level];
-  return (
-    <Badge variant={variant} className={className}>
-      {NIVEL_LABELS[level]}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(NIVEL_COINCIDENCIA_TONES, level)}>{NIVEL_LABELS[level]}</StatusBadge>;
 }
 
 function SeveridadBadge({ severity }: { severity: SeveridadAlerta }) {
-  const { variant, className } = SEVERIDAD_BADGE[severity];
   const label = severity === "info" ? "Info" : severity === "warning" ? "Atención" : "Crítica";
-  return (
-    <Badge variant={variant} className={className}>
-      {label}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(SEVERIDAD_ALERTA_TONES, severity)}>{label}</StatusBadge>;
 }
 
 function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila[]; setFilas: (f: readonly MovimientoFila[]) => void }) {
@@ -233,7 +209,7 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
           Agregar movimiento
         </Button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Captura los movimientos del estado de cuenta ya identificados (cargo = salida, abono = entrada). Este lote se usa para las 3 acciones de abajo (matching, alertas y verificación SPEI/proveedor).
       </p>
     </div>
@@ -243,7 +219,7 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
 function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
+      <div className="flex flex-wrap gap-6 text-sm text-foreground">
         <span>
           <strong>Confianza:</strong> {(resultado.confidence * 100).toFixed(0)}%
         </span>
@@ -341,7 +317,7 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
                   <TableRow key={i}>
                     <TableCell className="p-2">{r.fecha}</TableCell>
                     <TableCell className="p-2">{r.descripcion ?? "—"}</TableCell>
-                    <TableCell className="p-2 font-mono text-[11px]">{r.folioFiscal ?? "—"}</TableCell>
+                    <TableCell className="p-2 font-mono text-xs">{r.folioFiscal ?? "—"}</TableCell>
                     <TableCell className="p-2 tabular-nums">{typeof r.total === "number" ? formatMoney(r.total) : (r.total ?? "—")}</TableCell>
                   </TableRow>
                 ))}
@@ -477,21 +453,21 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   if (!puedeGestionar) {
     return (
-      <div className="flex flex-col gap-2 px-1">
+      <PageContainer padding="none" className="gap-2">
         <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr matching, alertas ni verificaciones -- el servidor las rechazaría igual.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 px-1">
+    <PageContainer padding="none" className="gap-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Corre el matching determinista contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor.
           </p>
         </div>
@@ -502,7 +478,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">1. Movimientos bancarios</CardTitle>
+          <CardTitle className="text-base">1. Movimientos bancarios</CardTitle>
         </CardHeader>
         <CardContent>
           <MovimientosEditor filas={filas} setFilas={setFilas} />
@@ -511,7 +487,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">2. Matching contra CFDI</CardTitle>
+          <CardTitle className="text-base">2. Matching contra CFDI</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-3">
@@ -545,7 +521,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">3. Alertas</CardTitle>
+          <CardTitle className="text-base">3. Alertas</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex w-60 flex-col gap-1.5">
@@ -573,9 +549,9 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
               {alertas.map((a, i) => (
                 <div key={i} className="flex items-start gap-2 border-b border-border pb-1.5">
                   <SeveridadBadge severity={a.severity} />
-                  <div className="text-[13px] text-foreground">
+                  <div className="text-sm text-foreground">
                     <div>{a.message}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                       regla: {a.rule} {a.fecha && `· ${a.fecha}`} {a.daysUnreconciled > 0 && `· ${a.daysUnreconciled}d sin conciliar`}
                     </div>
                   </div>
@@ -588,7 +564,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Clasificar depósito (CFF Art. 59 fr. III)</CardTitle>
+          <CardTitle className="text-base">Clasificar depósito (CFF Art. 59 fr. III)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <form onSubmit={handleClasificar} className="flex max-w-md flex-col gap-3">
@@ -620,15 +596,15 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             </div>
           </form>
           {clasifResultado && (
-            <div className="flex flex-col gap-1 text-[13px] text-foreground">
+            <div className="flex flex-col gap-1 text-sm text-foreground">
               <div>
                 <strong>Clasificación:</strong> {CLASIFICACION_LABELS[clasifResultado.clasificacion]} ({(clasifResultado.confidence * 100).toFixed(0)}% confianza)
               </div>
               {clasifResultado.articuloCff && <div className="text-muted-foreground">{clasifResultado.articuloCff}</div>}
               {clasifResultado.requiresHumanReview && (
-                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                <Callout tone="warning" role="alert">
                   Requiere revisión humana antes de persistirse -- confianza baja o clasificación no trivial.
-                </p>
+                </Callout>
               )}
             </div>
           )}
@@ -637,12 +613,12 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Verificar pago SPEI / proveedor</CardTitle>
+          <CardTitle className="text-base">Verificar pago SPEI / proveedor</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Busca, dentro del lote de movimientos capturado arriba, el que mejor coincida con la clave de rastreo (o el RFC del proveedor) más monto y fecha.</p>
           <form onSubmit={handleVerificarSpei} className="flex max-w-md flex-col gap-3">
-            <div className="flex gap-4 text-[13px] text-foreground">
+            <div className="flex gap-4 text-sm text-foreground">
               <label className="flex items-center gap-1.5">
                 <input type="radio" checked={speiModo === "clave"} onChange={() => setSpeiModo("clave")} className="h-4 w-4 accent-primary" /> Clave de rastreo SPEI
               </label>
@@ -686,7 +662,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
             </div>
           </form>
           {speiResultado && (
-            <div className="flex flex-col gap-1 text-[13px] text-foreground">
+            <div className="flex flex-col gap-1 text-sm text-foreground">
               <div>
                 <strong>{speiResultado.verified ? "Verificado" : "No verificado"}</strong> -- score {speiResultado.bestScore.toFixed(0)}
               </div>
@@ -699,6 +675,6 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

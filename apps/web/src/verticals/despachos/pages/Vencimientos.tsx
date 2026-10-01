@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -27,6 +26,10 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
@@ -42,30 +45,11 @@ import {
 } from "../lib/vencimientos-client.ts";
 import type { EstadoVencimiento, FiscalDeadline } from "../lib/vencimientos-client.ts";
 import { formatEstadoVencimiento, formatPrioridadVencimiento } from "../lib/format.ts";
+import { VENCIMIENTO_PRIORIDAD_TONES, VENCIMIENTO_ESTADO_TONES } from "../lib/status-tones.ts";
 import { formatFechaSolo, hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
-
-// Misma carga semántica exacta que las píldoras inline originales, ahora sobre
-// el `Badge` real de @atiende/ui (`variant` donde hay token semántico; escala
-// neutra de Tailwind para verde/ámbar/naranja, igual que StatCard).
-type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
-
-const PRIORIDAD_BADGE: Record<FiscalDeadline["prioridad"], BadgeSpec> = {
-  critica: { variant: "destructive" },
-  alta: { variant: "outline", className: "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-400" },
-  media: { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
-  baja: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-};
-
-const ESTADO_BADGE: Record<EstadoVencimiento, BadgeSpec> = {
-  pendiente: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
-  en_proceso: { variant: "secondary" },
-  completado: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  vencido: { variant: "destructive" },
-  escalado: { variant: "outline", className: "border-transparent bg-amber-200 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300" },
-};
 
 const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoVencimiento | ""; label: string }> = [
   { value: "", label: "Todos los estados" },
@@ -77,21 +61,11 @@ const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoVencimiento | ""; label: stri
 ];
 
 function PrioridadBadge({ prioridad }: { prioridad: FiscalDeadline["prioridad"] }) {
-  const { variant, className } = PRIORIDAD_BADGE[prioridad];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatPrioridadVencimiento(prioridad)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(VENCIMIENTO_PRIORIDAD_TONES, prioridad)}>{formatPrioridadVencimiento(prioridad)}</StatusBadge>;
 }
 
 function EstadoBadge({ estado }: { estado: EstadoVencimiento }) {
-  const { variant, className } = ESTADO_BADGE[estado];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatEstadoVencimiento(estado)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(VENCIMIENTO_ESTADO_TONES, estado)}>{formatEstadoVencimiento(estado)}</StatusBadge>;
 }
 
 interface RowActionState {
@@ -200,11 +174,11 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   }
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Vencimientos fiscales</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">ISR, IVA, DIOT y Nómina -- fecha límite día 17 del mes siguiente, prioridad y escalamiento automáticos.</p>
+          <p className="mt-1 text-sm text-muted-foreground">ISR, IVA, DIOT y Nómina -- fecha límite día 17 del mes siguiente, prioridad y escalamiento automáticos.</p>
         </div>
         {puedeGestionar && (
           <Button variant={showCalcularForm ? "outline" : "default"} size="sm" onClick={() => setShowCalcularForm((v) => !v)}>
@@ -230,7 +204,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="venc-mes">Mes *</Label>
-                <select
+                <NativeSelect
                   id="venc-mes"
                   value={calcMes}
                   onChange={(e) => setCalcMes(Number(e.target.value))}
@@ -241,7 +215,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                       {nombre}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               {calcError && (
                 <p role="alert" className="text-destructive text-sm">
@@ -259,21 +233,21 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <div className="flex items-center gap-2">
-        <Label htmlFor="venc-filtro-estado" className="text-[13px] text-foreground">
+        <Label htmlFor="venc-filtro-estado" className="text-sm text-foreground">
           Filtrar por estado
         </Label>
-        <select
+        <NativeSelect
           id="venc-filtro-estado"
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")}
-          className="h-9 rounded-md border border-input bg-background px-2 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {ESTADO_FILTROS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {loading && !vencimientos && <EstadoCargando etiqueta="Cargando vencimientos…" />}
@@ -310,16 +284,16 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                             pinten un día antes en America/Mexico_City (mismo bug real
                             corregido en Cobranza.tsx, ver apps/web/src/lib/formato-fecha.ts). */}
                         {formatFechaSolo(d.fechaLimite)}
-                        <div className="text-[11px] text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
+                        <div className="text-xs text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
                       </TableCell>
                       <TableCell>
                         <PrioridadBadge prioridad={d.prioridad} />
                       </TableCell>
                       <TableCell>
                         <EstadoBadge estado={d.estado} />
-                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-[11px] text-muted-foreground">Presentado {formatFechaSolo(d.fechaPresentacion)}</div>}
+                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-xs text-muted-foreground">Presentado {formatFechaSolo(d.fechaPresentacion)}</div>}
                         {finalizado && d.comprobanteUrl && (
-                          <div className="mt-0.5 text-[11px]">
+                          <div className="mt-0.5 text-xs">
                             <a href={d.comprobanteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">
                               Ver comprobante
                               <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
@@ -355,7 +329,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                                 )}
                               </div>
                               {rowState?.message && (
-                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
                                   {rowState.message}
                                 </span>
                               )}
@@ -371,6 +345,6 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

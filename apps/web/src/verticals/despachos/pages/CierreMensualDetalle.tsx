@@ -9,52 +9,21 @@
 // página.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  EstadoCargando,
-  EstadoError,
-  Input,
-  Label,
-  Separator,
-} from "@atiende/ui";
+import { ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
+import { Button, Card, CardContent, ConfirmDialog, EstadoCargando, EstadoError, PageContainer, Separator, StatusBadge, statusTone } from "@atiende/ui";
 import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchReporteCierre } from "../lib/cierre-mensual-client.ts";
 import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
+import { TAREA_STATUS_TONES } from "../lib/status-tones.ts";
+import { BarraProgreso } from "../components/BarraProgreso.tsx";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 const CERRAR_ROLES = new Set(["admin"]);
 
-// Misma carga semántica que las píldoras inline originales (gris = pendiente,
-// azul = en curso, rojo = bloqueada, verde = hecha, gris tenue = omitida), ahora
-// sobre el `Badge` real de @atiende/ui.
-const TASK_STATUS_BADGE: Record<CloseTask["status"], { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  pending: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
-  in_progress: { variant: "secondary" },
-  blocked: { variant: "destructive" },
-  done: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  skipped: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground/70" },
-};
-
+// Misma carga semántica de siempre (gris = pendiente, azul = en curso, rojo = bloqueada, verde = hecha, gris tenue = omitida).
 function TaskStatusBadge({ status }: { status: CloseTask["status"] }) {
-  const { variant, className } = TASK_STATUS_BADGE[status];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatTaskStatus(status)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(TAREA_STATUS_TONES, status)}>{formatTaskStatus(status)}</StatusBadge>;
 }
 
 export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
@@ -74,7 +43,6 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   // todas formas, así que esto no es solo cosmético del lado del cliente: sin
   // él, cada intento devolvería 400.
   const [confirmando, setConfirmando] = useState(false);
-  const [textoConfirmacion, setTextoConfirmacion] = useState("");
 
   async function load() {
     if (!periodoId) return;
@@ -109,17 +77,19 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     }
   }
 
-  async function handleCerrar() {
+  // `texto` es el período que el staff tecleó en el diálogo (ya recortado). Si el servidor rechaza el cierre se
+  // relanza el error: `ConfirmDialog` deja el diálogo abierto (mostrando `actionError`) en vez de cerrarlo solo.
+  async function handleCerrar(texto: string) {
     if (!periodoId) return;
     setActionError(null);
     setCerrando(true);
     try {
-      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, textoConfirmacion.trim());
+      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, texto);
       setConfirmando(false);
-      setTextoConfirmacion("");
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "No se pudo cerrar el período.");
+      throw err;
     } finally {
       setCerrando(false);
     }
@@ -147,9 +117,9 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
 
   return (
-    <div className="flex max-w-4xl flex-col gap-4 px-1">
+    <PageContainer padding="none" size="md" className="gap-4">
       <div>
-        <Link to={`/despachos/${orgSlug}/cierre-mensual`} className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground">
+        <Link to={`/despachos/${orgSlug}/cierre-mensual`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
           Cierre mensual
         </Link>
@@ -158,7 +128,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">{formatPeriodo(periodo.year, periodo.month)}</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {formatPeriodStatus(periodo.status)} · Abierto {formatDate(periodo.openedAt)}
             {periodo.closedAt && ` · Cerrado ${formatDate(periodo.closedAt)}`}
           </p>
@@ -170,7 +140,6 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
             className="border-destructive/40 text-destructive hover:border-destructive"
             onClick={() => {
               setActionError(null);
-              setTextoConfirmacion("");
               setConfirmando(true);
             }}
           >
@@ -185,85 +154,45 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           cierra nada -- hay que teclear el período exacto que se ve en pantalla y
           dar un segundo clic. El servidor exige el mismo texto de todas formas
           (cierre-mensual.ts), así que esto no es solo un candado cosmético.
-          Presentación: el panel inline pasó a `AlertDialog` real (no `Dialog`/
-          `ModalFormularioLateral` -- mismo criterio que la referencia real,
-          atiende-restaurantes/PedidosSection.tsx: una confirmación no es un
-          formulario); el estado `confirmando` y las mismas condiciones de render
-          no cambian. */}
-      {periodo.status !== "closed" && CERRAR_ROLES.has(role) && confirmando && (
-        <AlertDialog
-          open
+          Presentación: `ConfirmDialog` de @atiende/ui (DS v2) con campo de texto validado. */}
+      {periodo.status !== "closed" && CERRAR_ROLES.has(role) && (
+        <ConfirmDialog
+          open={confirmando}
           onOpenChange={(abierto) => {
-            if (abierto || cerrando) return;
-            setConfirmando(false);
-            setTextoConfirmacion("");
+            if (!abierto && !cerrando) setConfirmando(false);
           }}
-        >
-          <AlertDialogContent className="max-w-md">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-                Confirmar cierre de {formatPeriodo(periodo.year, periodo.month)}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción es <strong className="text-destructive">irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
-                {formatPeriodo(periodo.year, periodo.month)}.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirmar-cierre">
-                Escribe exactamente <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{periodoTexto}</code> para confirmar
-              </Label>
-              <Input
-                id="confirmar-cierre"
-                autoFocus
-                value={textoConfirmacion}
-                onChange={(e) => setTextoConfirmacion(e.target.value)}
-                placeholder={periodoTexto}
-                className="max-w-56"
-              />
-            </div>
-
-            <AlertDialogFooter>
-              <AlertDialogCancel
-                onClick={() => {
-                  setConfirmando(false);
-                  setTextoConfirmacion("");
-                }}
-                disabled={cerrando}
-              >
-                Cancelar
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                // preventDefault: solo cierra en éxito (setConfirmando(false) dentro del
-                // try de handleCerrar) -- en error el modal debe seguir abierto mostrando
-                // actionError, nunca cerrarse solo porque se hizo clic.
-                onClick={(e) => {
-                  e.preventDefault();
-                  void handleCerrar();
-                }}
-                disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}
-              >
-                {cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          titulo={`Confirmar cierre de ${formatPeriodo(periodo.year, periodo.month)}`}
+          tono="danger"
+          confirmar={cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
+          descripcion={
+            <>
+              Esta acción es <strong className="text-destructive">irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
+              {formatPeriodo(periodo.year, periodo.month)}.
+              {actionError && (
+                <span role="alert" className="mt-2 block text-destructive">
+                  {actionError}
+                </span>
+              )}
+            </>
+          }
+          campo={{
+            etiqueta: `Escribe exactamente ${periodoTexto} para confirmar`,
+            placeholder: periodoTexto,
+            validar: (v) => (v === periodoTexto ? null : `Escribe exactamente ${periodoTexto}.`),
+          }}
+          onConfirm={(texto) => handleCerrar(texto ?? "")}
+        />
       )}
 
       <Card>
         <CardContent className="p-4">
-          <div className="mb-1.5 flex justify-between text-[13px] text-foreground">
+          <div className="mb-1.5 flex justify-between text-sm text-foreground">
             <span>
               Avance: {estado.done + estado.skipped} de {estado.totalTasks} tareas
             </span>
             <strong className="tabular-nums">{estado.progressPercent}%</strong>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={estado.progressPercent} aria-valuemin={0} aria-valuemax={100}>
-            <div className={`h-full ${periodo.status === "overdue" ? "bg-destructive" : "bg-primary"}`} style={{ width: `${estado.progressPercent}%` }} />
-          </div>
+          <BarraProgreso valor={estado.progressPercent} tono={periodo.status === "overdue" ? "danger" : "primary"} aria-label="Avance del cierre" />
           {estado.overdue.length > 0 && <p className="mt-2 text-xs text-destructive">{estado.overdue.length} tarea(s) vencida(s).</p>}
           {estado.blocked.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{estado.blocked.length} tarea(s) bloqueada(s) por dependencias.</p>}
         </CardContent>
@@ -283,9 +212,9 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
               <CardContent className="flex items-start justify-between gap-3 p-3">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <strong className="text-[13px] text-foreground">{t.title}</strong>
+                    <strong className="text-sm text-foreground">{t.title}</strong>
                     <TaskStatusBadge status={t.status} />
-                    <span className="text-[11px] text-muted-foreground">{formatTaskCategory(t.category)}</span>
+                    <span className="text-xs text-muted-foreground">{formatTaskCategory(t.category)}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
                   {t.category === "electronica" && (
@@ -294,7 +223,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
                       <ArrowRight className="h-3 w-3" strokeWidth={1.75} />
                     </Link>
                   )}
-                  {t.completedAt && <p className="mt-1 text-[11px] text-muted-foreground">Completada {formatDate(t.completedAt)}</p>}
+                  {t.completedAt && <p className="mt-1 text-xs text-muted-foreground">Completada {formatDate(t.completedAt)}</p>}
                 </div>
                 {puedeCompletar && (
                   <Button size="sm" className="h-9 shrink-0" onClick={() => handleCompletar(t.id)} disabled={busyTaskId === t.id}>
@@ -315,7 +244,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           {cargandoReporte ? "Generando…" : reporte ? "Actualizar reporte" : "Ver reporte de cierre"}
         </Button>
         {reporte && (
-          <div className="mt-3 flex flex-col gap-1.5 text-[13px] text-foreground">
+          <div className="mt-3 flex flex-col gap-1.5 text-sm text-foreground">
             <p>
               {reporte.done} completadas, {reporte.skipped} omitidas, {reporte.pending} pendientes ({reporte.progressPercent}%) · {reporte.estimatedHours.toFixed(1)}h estimadas
             </p>
@@ -331,6 +260,6 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

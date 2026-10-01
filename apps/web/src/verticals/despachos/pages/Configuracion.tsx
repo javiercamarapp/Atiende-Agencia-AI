@@ -12,7 +12,7 @@
 // `despachos.property_config` (migración 012).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
 import { Clock, Info } from "lucide-react";
 import { fetchConfiguracion, updateConfiguracion } from "../lib/configuracion-client.ts";
 import type { DespachosConfiguracion } from "../lib/configuracion-client.ts";
@@ -38,12 +38,6 @@ const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: s
 ];
 
 const SIN_CONFIGURAR = "";
-
-/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para el
- * `<select>` que se queda nativo (el design system no exporta un Select) --
- * mismo criterio EXACTO que `citas/pages/Configuracion.tsx::SELECT_CLASS`. */
-const SELECT_CLASS =
-  "h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
   const canManage = GESTIONAR_CONFIGURACION_ROLES.has(role);
@@ -88,20 +82,20 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Despa
 
   if (!canManage) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5 p-6">
+      <PageContainer padding="none" size="sm" className="gap-5">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
         <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-[13px] text-muted-foreground">
+          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
             <span>Editar la zona horaria de este despacho está reservado al administrador. Tu rol actual es «{role}».</span>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5 p-6">
+    <PageContainer padding="none" size="sm" className="gap-5">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -123,30 +117,35 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Despa
           {!configuracion && !error && <EstadoCargando etiqueta="Cargando…" />}
           {configuracion && (
             <form onSubmit={handleSave} className="flex flex-wrap items-end gap-2">
-              <select
-                id="despachos-config-zona-horaria"
-                value={zonaHorariaSelect}
-                onChange={(e) => {
-                  setZonaHorariaSelect(e.target.value);
-                  setSaved(false);
-                }}
-                className={`${SELECT_CLASS} w-auto min-w-[280px]`}
-              >
-                <option value={SIN_CONFIGURAR}>Usar el default de la plataforma (Ciudad de México)</option>
-                {ZONA_HORARIA_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="despachos-config-zona-horaria" className="text-xs text-muted-foreground">
+                  Zona horaria del despacho
+                </Label>
+                <NativeSelect
+                  id="despachos-config-zona-horaria"
+                  value={zonaHorariaSelect}
+                  onChange={(e) => {
+                    setZonaHorariaSelect(e.target.value);
+                    setSaved(false);
+                  }}
+                  wrapperClassName="w-auto min-w-72"
+                >
+                  <option value={SIN_CONFIGURAR}>Usar el default de la plataforma (Ciudad de México)</option>
+                  {ZONA_HORARIA_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
               <Button type="submit" disabled={saving}>
                 {saving ? "Guardando…" : "Guardar"}
               </Button>
-              {saved && <Badge variant="secondary">Guardado</Badge>}
+              {saved && <StatusBadge tone="success">Guardado</StatusBadge>}
             </form>
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

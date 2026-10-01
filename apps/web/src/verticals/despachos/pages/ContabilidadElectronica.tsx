@@ -23,15 +23,17 @@
 import { useEffect, useState } from "react";
 import { Download, FileCog, Plus, Trash2 } from "lucide-react";
 import {
-  Badge,
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   Input,
   Label,
+  PageContainer,
   Skeleton,
+  StatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -246,20 +248,20 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
   if (!puedeGestionar) {
     return (
-      <div className="flex flex-col gap-2 px-1">
+      <PageContainer padding="none" className="gap-2">
         <h1 className="font-display text-xl font-semibold text-foreground">Contabilidad electrónica</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede generar la contabilidad electrónica -- el servidor lo rechazaría igual.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 px-1">
+    <PageContainer padding="none" className="gap-5">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Contabilidad electrónica (Anexo 24)</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Genera el catálogo de cuentas XML, la balanza de comprobación XML y el paquete completo (con hash SHA-1) exigidos por el SAT cada mes. El catálogo usa el default Anexo 24 del SAT
           {catalogoBase ? ` (${catalogoBase.length} cuentas)` : ""}.
         </p>
@@ -280,7 +282,7 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Periodo</CardTitle>
+          <CardTitle className="text-base">Periodo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <div className="flex w-32 flex-col gap-1.5">
@@ -304,7 +306,7 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Asientos contables del mes</CardTitle>
+          <CardTitle className="text-base">Asientos contables del mes</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -316,7 +318,7 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Generar paquete completo</CardTitle>
+          <CardTitle className="text-base">Generar paquete completo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {generarError && (
@@ -333,13 +335,13 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
           {paquete && (
             <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-5 text-[13px] text-foreground">
+              <div className="flex flex-wrap items-center gap-5 text-sm text-foreground">
                 <span>
                   <strong>Periodo:</strong> {paquete.periodo}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <strong>Estado:</strong>
-                  <Badge variant="secondary">{ESTADO_LABELS[paquete.estado] ?? paquete.estado}</Badge>
+                  <StatusBadge tone="info">{ESTADO_LABELS[paquete.estado] ?? paquete.estado}</StatusBadge>
                 </span>
                 <span>
                   <strong>Balanza cuadrada:</strong> {paquete.balanza.cuadrada ? "Sí" : "No"}
@@ -350,19 +352,19 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
               </div>
 
               {!paquete.balanza.cuadrada && (
-                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] text-destructive">
+                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                   La balanza no cuadra (total debe ≠ total haber). Revisa los asientos antes de timbrar.
                 </p>
               )}
               {paquete.resumenBalanza.saldosAnomalos.length > 0 && (
-                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                <Callout tone="warning" role="alert">
                   Cuentas con saldo anómalo: {paquete.resumenBalanza.saldosAnomalos.join(", ")}.
-                </p>
+                </Callout>
               )}
 
               <div className="flex flex-wrap gap-5">
                 <div className="flex flex-col items-start gap-1.5">
-                  <p className="text-[13px] font-semibold text-foreground">Catálogo de cuentas</p>
+                  <p className="text-sm font-semibold text-foreground">Catálogo de cuentas</p>
                   <span className="text-xs text-muted-foreground">
                     {paquete.catalogo.cuentas} cuentas · SHA-1 <span className="font-mono">{paquete.catalogo.sha1}</span>
                   </span>
@@ -372,7 +374,7 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
                   </Button>
                 </div>
                 <div className="flex flex-col items-start gap-1.5">
-                  <p className="text-[13px] font-semibold text-foreground">Balanza de comprobación</p>
+                  <p className="text-sm font-semibold text-foreground">Balanza de comprobación</p>
                   <span className="text-xs text-muted-foreground">
                     {paquete.balanza.cuentas} cuentas · SHA-1 <span className="font-mono">{paquete.balanza.sha1}</span>
                   </span>
@@ -434,6 +436,6 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
