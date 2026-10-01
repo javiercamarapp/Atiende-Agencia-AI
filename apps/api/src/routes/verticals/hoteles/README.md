@@ -195,3 +195,17 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
   `vercel.json`**: programarlo es una decisión de despliegue (ver `docs/DEPLOY.md`).
 - Base sin la migración 034: lecturas `disponible:false`, escrituras 503, el cron omite la property
   (`omitida: migracion_pendiente`).
+- `agentes.ts` (H-03, migración 035) — `GET /hoteles/:propertyId/agentes` (catálogo con estado, presupuesto y
+  costo del mes), `PUT .../agentes/:agentKey` (kill switch con motivo y presupuesto en USD; owner/gm),
+  `GET/PUT .../agentes/guardrails`, `GET .../agentes/politicas` + `PUT .../agentes/politicas/:accion`,
+  `GET/POST .../agentes/plantillas` + `POST .../plantillas/:id/enviar|aprobar|rechazar|archivar` (versionadas;
+  quien la envió no la aprueba salvo el dueño) y la cola `GET/POST .../aprobaciones`, `GET .../aprobaciones/:id`,
+  `POST .../aprobaciones/:id/aprobar|rechazar|cancelar` (motivo obligatorio; roles según la política de la
+  acción; quien propone no decide lo suyo) y `POST .../aprobaciones/:id/ejecutar` (owner/gm: consume una
+  aprobación UNA vez; `respuesta_resena` aplica el efecto en la misma transacción, el resto exige referencia).
+- `agentes-expiracion-cron.ts` — `GET|POST /internal/hoteles/aprobaciones-expiracion`: expira las solicitudes
+  abiertas vencidas, sesión de sistema y una transacción por property. Protegido con el secreto interno. **No
+  está en `vercel.json`** (ver `docs/DEPLOY.md`).
+- Gobierno de agentes: el turno de WhatsApp (`production/hoteles-agentes-gobierno.ts`) y el barrido de revenue
+  consultan el kill switch y el presupuesto de su agente por property; pausado o sin presupuesto, el mensaje
+  se deriva a una persona. Base sin la 035: lecturas `disponible:false`, escrituras 503, comportamiento previo.

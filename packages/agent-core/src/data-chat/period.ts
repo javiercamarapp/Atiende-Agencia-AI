@@ -198,3 +198,128 @@ export function resolvePeriod(args: ParsedArgs, now: Date, timezone: string = DE
   if (dayDiff(today, from) > 0) return { ok: false, kind: "invalid", message: "Ese periodo empieza en el futuro: todavía no hay datos." };
   return { ok: true, period: build(from, to, tz, "periodo indicado") };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Periodos HACIA ADELANTE (llegadas/salidas de un hotel, tareas programadas, etc.): a diferencia de
+// `resolvePeriod` (que mira al pasado y rechaza fechas futuras porque "todavia no hay datos"), aqui el
+// futuro es lo normal ("llegadas de manana"). Misma zona del negocio, mismo tope de 366 dias y mismas
+// reglas: sin periodo => pide aclaracion, nunca se adivina.
+// ---------------------------------------------------------------------------------------------
+export const FORWARD_PERIOD_TOKENS = ["hoy", "manana", "proximos_7_dias", "proximos_30_dias", "esta_semana", "semana_proxima", "este_mes"] as const;
+export type ForwardPeriodToken = (typeof FORWARD_PERIOD_TOKENS)[number];
+
+export const FORWARD_PERIOD_PARAMS: ParamsSpec = {
+  periodo: {
+    type: "enum",
+    values: FORWARD_PERIOD_TOKENS,
+    optional: true,
+    description:
+      "Periodo en la zona horaria del negocio. 'proximos_7_dias' incluye hoy y los 6 días siguientes. 'esta_semana' va de lunes a domingo. Omítelo si usas desde/hasta; si la pregunta del usuario no dice el periodo, NO lo inventes: pregunta.",
+  },
+  desde: { type: "date", optional: true, description: "Primer día (inclusive) AAAA-MM-DD, solo si el usuario dio fechas exactas (pueden ser futuras)." },
+  hasta: { type: "date", optional: true, description: "Último día (inclusive) AAAA-MM-DD, solo con 'desde'." },
+};
+
+/** Como `resolvePeriod`, pero acepta (y prefiere) periodos futuros. */
+export function resolveForwardPeriod(args: ParsedArgs, now: Date, timezone: string = DEFAULT_DATA_CHAT_TIMEZONE): ResolvePeriodResult {
+  const tz = validTimezone(timezone);
+  const lp = localDateParts(now, tz);
+  const today: Ymd = { y: lp.y, m: lp.m, d: lp.d };
+  const periodo = args["periodo"] as string | undefined;
+  const desde = args["desde"] as string | undefined;
+  const hasta = args["hasta"] as string | undefined;
+
+  if (periodo !== undefined && (desde !== undefined || hasta !== undefined)) {
+    return { ok: false, kind: "invalid", message: "Usa 'periodo' o 'desde'/'hasta', no ambos." };
+  }
+  if (periodo === undefined && desde === undefined && hasta === undefined) {
+    return { ok: false, kind: "needs_clarification", message: "No me dijiste de qué periodo quieres los datos. ¿Hoy, mañana, los próximos 7 días, esta semana o unas fechas exactas?" };
+  }
+
+  if (periodo !== undefined) {
+    switch (periodo as ForwardPeriodToken) {
+      case "hoy":
+        return { ok: true, period: build(today, today, tz, "hoy") };
+      case "manana": {
+        const t = addDaysYmd(today, 1);
+        return { ok: true, period: build(t, t, tz, "mañana") };
+      }
+      case "proximos_7_dias":
+        return { ok: true, period: build(today, addDaysYmd(today, 6), tz, "próximos 7 días") };
+      case "proximos_30_dias":
+        return { ok: true, period: build(today, addDaysYmd(today, 29), tz, "próximos 30 días") };
+      case "esta_semana": {
+        const back = (weekday(today) + 6) % 7; // lunes = 0
+        const monday = addDaysYmd(today, -back);
+        return { ok: true, period: build(monday, addDaysYmd(monday, 6), tz, "esta semana (lunes a domingo)") };
+      }
+      case "semana_proxima": {
+        const back = (weekday(today) + 6) % 7;
+        const monday = addDaysYmd(today, -back + 7);
+        return { ok: true, period: build(monday, addDaysYmd(monday, 6), tz, "semana próxima (lunes a domingo)") };
+      }
+      case "este_mes": {
+        const first = { y: today.y, m: today.m, d: 1 };
+        const lastDay = addDaysYmd({ y: today.m === 12 ? today.y + 1 : today.y, m: today.m === 12 ? 1 : today.m + 1, d: 1 }, -1);
+        return { ok: true, period: build(first, lastDay, tz, "este mes") };
+      }
+      default:
+        return { ok: false, kind: "invalid", message: "Periodo desconocido." };
+    }
+  }
+
+  if (desde === undefined || hasta === undefined) {
+    return { ok: false, kind: "needs_clarification", message: "Para fechas exactas necesito el día de inicio y el de fin." };
+  }
+  if (!isRealIsoDate(desde) || !isRealIsoDate(hasta)) return { ok: false, kind: "invalid", message: "Las fechas deben ser reales (AAAA-MM-DD)." };
+  const from = parseIso(desde);
+  const to = parseIso(hasta);
+  if (dayDiff(from, to) < 0) return { ok: false, kind: "invalid", message: "La fecha de inicio es posterior a la de fin." };
+  if (dayDiff(from, to) + 1 > MAX_PERIOD_DAYS) return { ok: false, kind: "invalid", message: `El periodo máximo es de ${MAX_PERIOD_DAYS} días.` };
+  return { ok: true, period: build(from, to, tz, "periodo indicado") };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Periodos MIXTOS (pasado y futuro): para calendarios donde preguntar por el mes pasado y por "los
+// proximos 30 dias" es igual de normal (ocupacion de unidades de renta, tareas programadas). Aqui
+// "esta semana" y "este mes" son COMPLETOS (lunes a domingo / dia 1 al ultimo), a diferencia de
+// `resolvePeriod` ("lunes a hoy" / "dia 1 a hoy"). Mismas reglas: zona del negocio, tope de 366 dias,
+// periodo ambiguo => aclaracion.
+// ---------------------------------------------------------------------------------------------
+export const MIXED_PERIOD_TOKENS = [
+  "hoy",
+  "ayer",
+  "manana",
+  "ultimos_7_dias",
+  "ultimos_30_dias",
+  "proximos_7_dias",
+  "proximos_30_dias",
+  "esta_semana",
+  "semana_pasada",
+  "semana_proxima",
+  "este_mes",
+  "mes_pasado",
+] as const;
+export type MixedPeriodToken = (typeof MIXED_PERIOD_TOKENS)[number];
+
+export const MIXED_PERIOD_PARAMS: ParamsSpec = {
+  periodo: {
+    type: "enum",
+    values: MIXED_PERIOD_TOKENS,
+    optional: true,
+    description:
+      "Periodo en la zona horaria del negocio. 'ultimos_N_dias' incluye hoy y los días anteriores; 'proximos_N_dias' incluye hoy y los siguientes. 'esta_semana' va de lunes a domingo y 'este_mes' del día 1 al último (completos, con lo ya reservado a futuro). Omítelo si usas desde/hasta; si la pregunta del usuario no dice el periodo, NO lo inventes: pregunta.",
+  },
+  desde: { type: "date", optional: true, description: "Primer día (inclusive) AAAA-MM-DD, solo si el usuario dio fechas exactas (pasadas o futuras)." },
+  hasta: { type: "date", optional: true, description: "Último día (inclusive) AAAA-MM-DD, solo con 'desde'." },
+};
+
+const BACKWARD_ONLY: ReadonlySet<string> = new Set(["ayer", "ultimos_7_dias", "ultimos_30_dias", "semana_pasada", "mes_pasado"]);
+
+/** Resuelve un periodo mixto reutilizando `resolvePeriod` (pasado) y `resolveForwardPeriod` (presente/futuro). */
+export function resolveMixedPeriod(args: ParsedArgs, now: Date, timezone: string = DEFAULT_DATA_CHAT_TIMEZONE): ResolvePeriodResult {
+  const periodo = args["periodo"] as string | undefined;
+  if (periodo !== undefined && BACKWARD_ONLY.has(periodo)) return resolvePeriod(args, now, timezone);
+  if (periodo !== undefined && !(MIXED_PERIOD_TOKENS as readonly string[]).includes(periodo)) return { ok: false, kind: "invalid", message: "Periodo desconocido." };
+  return resolveForwardPeriod(args, now, timezone);
+}

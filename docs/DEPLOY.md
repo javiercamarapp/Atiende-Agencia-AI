@@ -198,6 +198,19 @@ Orden: (1) despliega el código; (2) aplica la 034 (`supabase db push`; requiere
 Con la 034 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas
 nuevas. No hay variables de entorno nuevas.
 
+**Hoteles H-03 (migración 035, catálogo de agentes, aprobaciones humanas, plantillas y guardrails) — orden de
+despliegue.** Mergear NO aplica `20240101000229_035_hoteles_agentes_aprobaciones.sql` a la base real. El código
+nuevo funciona contra la base vieja: las pantallas Agentes y Aprobaciones avisan que aún no están activas, las
+lecturas responden `disponible:false`, las escrituras 503, el cron `/internal/hoteles/aprobaciones-expiracion`
+omite las properties (`migracion_pendiente`), el turno de WhatsApp corre como siempre (la compuerta devuelve
+"activo" sin la 035) y el barrido de revenue no omite ninguna property. Orden: (1) despliega el código; (2) aplica
+la 035 (`supabase db push`; requiere 001 y 030 ya aplicadas); (3) verifica `GET /internal/hoteles/aprobaciones-expiracion`
+con el secreto interno (debe reportar `omitida:null`); (4) cuando se decida, programa ese cron en `vercel.json`
+(p. ej. cada hora) — este PR NO lo programa. Con la 035 aplicada y el código viejo en producción no se rompe nada:
+ningún código viejo usa las tablas nuevas. No hay variables de entorno nuevas. Hoy el agente de WhatsApp no
+propone acciones sensibles por sí mismo (sus 3 herramientas no mueven dinero ni tarifas): la cola de aprobaciones
+recibe propuestas de personas y está lista para las del agente (`PostgresAgentesRepository.proposeAction`).
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
@@ -451,6 +464,26 @@ registran como una línea de log estructurada (sin resultados ni PII) en vez de 
    y su modelo). El gasto del chat cuenta contra `core.llm_org_budget` (tope mensual por organización) y
    queda en `core.llm_usage_daily` con el rol `restaurantes:data_chat`.
 4. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `restaurantes:data_chat`.
+
+### Chatea con tus datos — hoteles y rentas vacacionales (sin migración nueva)
+
+Este PR NO agrega SQL: usa solo tablas que ya existen (`hoteles.*`, `rentas.*`) y la bitácora genérica
+`core.record_data_chat_query` (0029). Mergear el código no cambia nada para quien no tenga el asistente activo.
+Orden recomendado:
+
+1. Desplegar el código. Funciona contra la base sin migrar: si falta una tabla/columna de una consulta
+   (p. ej. `hoteles.guest_ticket` o `rentas.owner_statement`), esa herramienta responde "esa información todavía no
+   está disponible" y la transacción de la request sigue sana (cada consulta va en SAVEPOINT).
+2. (Opcional) Aplicar la migración 0029 si aún no está (bitácora en `core.data_chat_query_log`; sin ella queda
+   una línea de log estructurada sin resultados ni PII).
+3. Tener un proveedor LLM configurado (los mismos `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`).
+   Los roles nuevos `hoteles:data_chat` y `rentas:data_chat` cuentan contra `core.llm_org_budget` y quedan en
+   `core.llm_usage_daily`.
+4. Quién lo ve: hoteles solo `owner`/`gm`; rentas solo `admin_gestora`/`contador`. Para el resto de roles
+   `GET /hoteles/:propertyId/chat-datos/estado` (o `/rentas/...`) responde 403 y el botón sigue diciendo "Pronto".
+5. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `hoteles:data_chat` / `rentas:data_chat`.
+6. Verificación contra Postgres real (la corre el gate de CI): `node scripts/verify-real-postgres-ci/run-gate.mjs
+   scripts/verify-data-chat-hoteles` y `.../verify-data-chat-rentas`.
 
 ## Resumen de costo por plataforma (tier free)
 

@@ -9,19 +9,25 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError, runWithSavepointFallback } from "@atiende/db";
 import { RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
 import { PostgresRestaurantesDataChatReader, type RestaurantesDataChatReader } from "@atiende/domain-restaurantes";
+import { PostgresHotelesDataChatReader, type HotelesDataChatReader } from "@atiende/domain-hoteles";
+import { PostgresRentasDataChatReader, type RentasDataChatReader } from "@atiende/domain-rentas";
 import { PostgresDespachosDataChatReader, type DespachosDataChatReader } from "@atiende/domain-despachos";
 import { PostgresLicitacionesDataChatReader, type LicitacionesDataChatReader } from "@atiende/domain-licitaciones";
 
 
 export interface DataChatDeps {
   readonly restaurantesReader: (db: TenantDbSession) => RestaurantesDataChatReader;
-  /** Lectores de despachos y licitaciones. OPCIONALES: sin ellos sus rutas responden "no disponible" (nunca 500). */
+  /** Lectores por vertical. OPCIONALES: sin ellos su ruta responde "no disponible" (nunca 500). Cada uno corre de solo
+   *  lectura sobre la sesion RLS del usuario. */
+  readonly hotelesReader?: (db: TenantDbSession) => HotelesDataChatReader;
+  readonly rentasReader?: (db: TenantDbSession) => RentasDataChatReader;
   readonly despachosReader?: (db: TenantDbSession) => DespachosDataChatReader;
   readonly licitacionesReader?: (db: TenantDbSession) => LicitacionesDataChatReader;
   readonly audit: (db: TenantDbSession) => DataChatAuditSink;
   readonly rateLimiter: DataChatRateLimiter;
   /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". `role` es el rol del gateway
-   *  de la vertical (`<vertical>:data_chat`); sin el cae al de restaurantes (el piloto). */
+   *  de la vertical (`<vertical>:data_chat`: apagable y con registro de uso aparte, ver platform-switches.ts); sin el
+   *  cae al de restaurantes (el piloto). */
   readonly completion: ((organizationId: string, role?: string) => DataChatCompletion) | undefined;
 }
 
@@ -78,6 +84,8 @@ export class PostgresDataChatAuditSink implements DataChatAuditSink {
 export function buildProductionDataChat(gateway: LlmGateway | undefined): DataChatDeps {
   return {
     restaurantesReader: (db) => new PostgresRestaurantesDataChatReader(db),
+    hotelesReader: (db) => new PostgresHotelesDataChatReader(db),
+    rentasReader: (db) => new PostgresRentasDataChatReader(db),
     despachosReader: (db) => new PostgresDespachosDataChatReader(db),
     licitacionesReader: (db) => new PostgresLicitacionesDataChatReader(db),
     audit: (db) => new PostgresDataChatAuditSink(db),

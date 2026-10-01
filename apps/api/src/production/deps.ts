@@ -50,7 +50,8 @@
 // `routes/verticals/{restaurantes,hoteles,citas}/whatsapp.ts`), nunca comparte
 // una sesión entre requests.
 import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
-import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
+import { PostgresAgentesRepository, PostgresHotelesRepository } from "@atiende/domain-hoteles";
+import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -160,9 +161,14 @@ function buildRealHotelesTurnHandler(engine: TenancyEngine, gateway: NonNullable
   return {
     handleInboundMessage: (args) =>
       engine.withAppSession({ userId: null }, (db) =>
-        createLlmHotelesWhatsAppTurnHandler(new PostgresHotelesRepository(db), gateway, {
+        // H-03: kill switch por property + presupuesto mensual propio + costo por agente (compatible con la base sin migrar).
+        buildGovernedHotelesTurnHandler({
+          hoteles: new PostgresHotelesRepository(db),
+          agentes: new PostgresAgentesRepository(db),
+          gateway,
           defaultRole: HOTELES_WHATSAPP_AGENT_ROLE,
           escalatedRole: HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
+          onError: (err) => console.warn("hoteles whatsapp: compuerta/costo del agente (H-03) fallo -- el turno continua:", err instanceof Error ? err.message : err),
         }).handleInboundMessage(args),
       ),
   };

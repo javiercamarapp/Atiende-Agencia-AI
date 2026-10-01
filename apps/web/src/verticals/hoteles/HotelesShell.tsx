@@ -46,8 +46,10 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BedDouble,
+  Bot,
   CalendarCheck,
   ClipboardCheck,
+  ClipboardList,
   Fingerprint,
   Gauge,
   LayoutDashboard,
@@ -68,6 +70,7 @@ import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
+import { crearChatConexionHoteles } from "./lib/data-chat-client.ts";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
@@ -145,6 +148,8 @@ const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "front
 // arriba) — solo oculta el link "Identidad" del nav para quien el servidor rechazaría de
 // todas formas (403 en identidad.ts); housekeeping/maintenance/fnb/accountant nunca lo ven.
 const IDENTIDAD_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
+// H-03 -- catalogo de agentes y cola de aprobaciones humanas: mismo conjunto que AGENT_VIEW_ROLES (cosmetico; la RLS manda).
+const AGENTES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
 
 // H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
@@ -295,6 +300,10 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   // de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "housekeeping";
 
+  // "Chatea con tus datos": conexion real con el backend de hoteles (catalogo cerrado, solo owner/gm en el servidor).
+  // El servidor decide el alcance a partir del token; aqui solo van el hotel activo y el texto.
+  const chatConexion = crearChatConexionHoteles(apiBaseUrl, session.token, propertyId);
+
   // Handler real del selector: actualiza el estado de React (recalcula
   // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
   // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
@@ -332,6 +341,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
         ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
         ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
       ],
     },
     {
@@ -340,6 +350,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
         ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: "Revenue", icon: Gauge }] : []),
         ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: "Agentes", icon: Bot }] : []),
       ],
     },
     // "Administración" se omite por completo si el rol activo no puede ver P&L ni
@@ -376,7 +387,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={<MobileHeaderActions selector={hotelSelector} notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} />}
+        action={<MobileHeaderActions selector={hotelSelector} notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} chat={chatConexion} />}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -398,7 +409,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
                 onMarkAllRead={notif.onMarkAllRead}
               />
             }
-            chatButton={<BotonChatDatos />}
+            chatButton={<BotonChatDatos chat={chatConexion} />}
           />
         </div>
         <main className="flex-1 overflow-auto px-4 pt-20 pb-24 md:pt-4 md:pb-6 md:px-6">
