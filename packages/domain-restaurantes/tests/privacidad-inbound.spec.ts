@@ -145,3 +145,31 @@ describe("fast-path ARCO dentro del webhook", () => {
     expect(JSON.stringify(messages)).not.toContain("4111");
   });
 });
+
+describe("convivencia con el handoff a humano (R-21)", () => {
+  const gate = { estadoParaAgente: async () => "tomada" as const, solicitarHumano: async () => null };
+
+  it("con una toma de handoff abierta el agente calla ante un mensaje normal (sin aviso ni respuesta)", async () => {
+    const { repo, organizationId, handle, privacy } = setup();
+    const outcome = await handleInboundWhatsAppMessage(
+      repo,
+      { handleInboundMessage: handle },
+      { organizationId, messageId: randomUUID(), phone: PHONE, body: "hola, sigo esperando", phoneNumberId: "pn-1", handoffGate: gate, privacy },
+    );
+    expect(outcome).toEqual({ ok: true, retryable: false });
+    expect(handle).not.toHaveBeenCalled();
+    expect(privacy.notices.size).toBe(0);
+  });
+
+  it("aun con handoff abierto, una solicitud ARCO explicita SI se atiende (obligacion legal, no pasa por el agente)", async () => {
+    const { repo, organizationId, handle, privacy } = setup();
+    const outcome = await handleInboundWhatsAppMessage(
+      repo,
+      { handleInboundMessage: handle },
+      { organizationId, messageId: randomUUID(), phone: PHONE, body: "quiero acceso a mis datos personales", phoneNumberId: "pn-1", handoffGate: gate, privacy },
+    );
+    expect(outcome.reply).toContain("CONFIRMO");
+    expect(handle).not.toHaveBeenCalled();
+    expect(privacy.requests).toHaveLength(1);
+  });
+});
