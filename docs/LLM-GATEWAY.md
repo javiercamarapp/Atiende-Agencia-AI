@@ -143,13 +143,16 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 | 408, 429, 5xx, red, timeout, 200 con error del proveedor | Sí, 1 reintento con backoff exponencial + jitter (respeta `Retry-After` hasta 2 s) | Sí |
 | 400, 404, 422 (rechazo específico del modelo: parámetro no soportado, sin endpoint que cumpla la política) | No | Sí |
 | 401, 402, 403 (llave inválida, sin crédito, bloqueo) | No | No (se detiene: el siguiente modelo fallaría igual) |
-| Fallo a medio streaming | No (ya se emitió texto) | No |
+| Fallo a medio streaming | No (ya se emitió texto) | No: el gateway detiene la escalera si el escalón ya entregó texto al llamador (`onTextDelta`), para no mezclar dos respuestas. Un fallo ANTES del primer trozo sí pasa al siguiente modelo. |
 
 - Timeout por intento: 30 s (60 s en streaming).
 - **Circuit breaker por modelo** (`openrouter:<modelo>`), 5 fallas en 60 s lo abren 30 s. Es **compartido entre
   instancias** si `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` están configuradas (las mismas del rate
   limit; sin SQL). Sin Upstash, el breaker es **en memoria por instancia**: cada instancia de Vercel descubre
-  por su cuenta que un modelo cayó. Si Upstash falla, el breaker es fail-open (nunca tumba una llamada).
+  por su cuenta que un modelo cayó. Si Upstash falla, el breaker es fail-open (nunca tumba una llamada). Las claves
+  llevan el entorno (`cb:<entorno>:openrouter:<modelo>`, con `VERCEL_ENV` o `NODE_ENV`): preview y desarrollo no abren
+  el breaker de producción cuando comparten el mismo Redis. Al desplegar, los contadores anteriores (`cb:<modelo>`) se
+  abandonan y caducan solos.
 - Los topes de presupuesto (por corrida y diario) siguen **en memoria por instancia**; el tope mensual por
   organización y el de plataforma sí son persistentes (`core.llm_org_budget`). Límite conocido, sin cambios.
 
@@ -158,8 +161,23 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 Si el modelo no puede responder (toda la escalera falla, tope de gasto agotado o interruptor de plataforma
 del rol apagado), `runDataChatTurn` responde con `noAi: { reason, options }` (`provider_down`, `budget`,
 `kill_switch`): el texto dice con claridad que la IA no está disponible y por qué, y `options` lista el
-catálogo de consultas deterministas (nombre y descripción) para ofrecerlas como botones. Nunca incluye cifras.
-El kill switch por rol sigue siendo `core.platform_switch` (`agente:<rol>`).
+catálogo de consultas deterministas (nombre y descripción). Nunca incluye cifras. El kill switch por rol sigue
+siendo `core.platform_switch` (`agente:<rol>`).
+
+Los clientes web (restaurantes, hoteles/rentas y la conexión genérica de despachos/licitaciones/citas) muestran
+`options` como botones. Cada botón llama al MISMO endpoint del chat con `{ "tool": "<nombre>" }` en lugar de
+`{ "question": ... }` (no ambos): el motor ejecuta esa herramienta del catálogo sin llamar al modelo, con su periodo
+por defecto (`ultimos_30_dias` o el primero disponible; el periodo resuelto aparece siempre en la fuente), con el
+mismo alcance, límites, tiempo máximo, rate limit y bitácora que un turno normal. Una herramienta con parámetros
+obligatorios que no sean de periodo responde `clarify`. Un nombre que no está en el catálogo responde
+`invalid_input` sin ejecutar nada.
+
+## Reintento por guardia de cifras
+
+La narrativa del modelo solo se muestra si todas sus cifras existen en los resultados de las consultas. Si no, el
+motor hace UN reintento con el rol `<vertical>:data_chat_retry` (por defecto DeepSeek V4 Pro, EE.UU., luego Luna
+`high`) y, si tampoco pasa la guardia o el reintento falla, muestra el resumen determinista. El interruptor de
+plataforma del rol base (`agente:<vertical>:data_chat`) también detiene el rol de reintento.
 
 ## Salida estructurada y streaming
 
@@ -179,8 +197,11 @@ precio MÁS CARO de sus proveedores de EE.UU., para no sub-reservar). La investi
 (`investigacion-modelos-copiloto`) estima ~10 centavos MXN por conversación de data-chat con Luna `low`
 (estimación sin medir; se reemplaza con lo medido en evals). El costo **registrado** es el real de OpenRouter.
 
-Pendiente: guardar `tokens_cached`/`tokens_reasoning` en `core.llm_usage_daily` requiere una migración (este
-cambio no toca SQL); el proveedor ya los lee (`tokensCached`, `tokensReasoning` en el resultado).
+`tokens_cached` y `tokens_reasoning` se guardan en `core.llm_usage_daily` (migración `0040`, espejo
+`20240101000260`; `core.record_llm_usage` pasa a 12 parámetros con `default 0`). Contra una base sin migrar,
+`recordUsage` cae a la función de 10 argumentos dentro de un SAVEPOINT (SQLSTATE 42883). La misma migración amplía
+el CHECK de `vertical` con `superadmin`, `plataforma` y `reportes` (roles `superadmin:copiloto`, `plataforma:*` y
+`reportes:*`).
 
 ## Evals en modo real
 
