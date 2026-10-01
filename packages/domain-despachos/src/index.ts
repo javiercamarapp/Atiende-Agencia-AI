@@ -191,6 +191,9 @@ export type {
   CoincidenciaImportacion,
   EntradaVistaPrevia,
   CuentaPorCobrarPendiente,
+  NuevoLoteEstadoCuenta,
+  NuevoMovimientoEstadoCuenta,
+  ResultadoGuardadoEstadoCuenta,
 } from "./conciliacion/estado-de-cuenta/index.ts";
 
 // ---- Conciliación bancaria — nivel 4 asistido por LLM (Fase 11) ----

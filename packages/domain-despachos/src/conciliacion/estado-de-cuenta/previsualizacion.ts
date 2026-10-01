@@ -40,6 +40,9 @@ export interface VistaPreviaImportacion {
   readonly coincidencias: readonly CoincidenciaImportacion[];
   /** Cobranza consultada: false = la base aún no tiene esa tabla o no hay datos accesibles. */
   readonly cobranzaDisponible: boolean;
+  /** Libro de importaciones consultado: false = la base aún no tiene la migración 013, así que no se
+   * puede saber qué ya se importó (ni guardar) y la vista previa lo dice en vez de aparentar "todo nuevo". */
+  readonly libroDisponible: boolean;
 }
 
 export interface EntradaVistaPrevia {
@@ -47,7 +50,8 @@ export interface EntradaVistaPrevia {
   readonly registros: readonly RegistroConciliable[];
   /** null = cobranza no disponible todavía en esta base (honesto, no vacío engañoso). */
   readonly cuentasPorCobrarPendientes: readonly CuentaPorCobrarPendiente[] | null;
-  readonly hashesYaImportados?: ReadonlySet<string>;
+  /** Huellas ya guardadas en el libro; `null` = el libro no está disponible en esta base todavía. */
+  readonly hashesYaImportados?: ReadonlySet<string> | null;
   readonly opciones?: OpcionesMatchingEngine;
 }
 
@@ -98,5 +102,6 @@ export function construirVistaPreviaImportacion(entrada: EntradaVistaPrevia): Vi
     conciliacionOmitida,
     coincidencias,
     cobranzaDisponible: entrada.cuentasPorCobrarPendientes !== null,
+    libroDisponible: entrada.hashesYaImportados !== null && entrada.hashesYaImportados !== undefined,
   };
 }

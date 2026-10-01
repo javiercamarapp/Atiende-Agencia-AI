@@ -36,6 +36,7 @@ describe("construirVistaPreviaImportacion", () => {
     // Un cargo (salida de dinero) nunca sugiere cobrar una factura emitida.
     expect(cargo.cobranzaPendienteIds).toEqual([]);
     expect(v.cobranzaDisponible).toBe(true);
+    expect(v.libroDisponible).toBe(false); // sin información del libro
   });
 
   it("nivel 3: un abono que cubre varias facturas lista todos los CFDI y sus cuentas", () => {
@@ -49,10 +50,19 @@ describe("construirVistaPreviaImportacion", () => {
   it("movimientos ya importados (hash conocido) no se vuelven a conciliar ni cuentan como nuevos", () => {
     const parseo = parsearEstadoDeCuenta(ENC + "05/01/2026,SPEI ACME,,1160.00\n06/01/2026,PAGO PROVEEDOR OTRO,500.00,\n", { cuenta: "C" });
     const v = construirVistaPreviaImportacion({ parseo, registros, cuentasPorCobrarPendientes: [], hashesYaImportados: new Set([parseo.movimientos[0]!.hash]) });
+    expect(v.libroDisponible).toBe(true);
     expect(v.yaImportados).toEqual([parseo.movimientos[0]!.hash]);
     expect(v.nuevos).toBe(1);
     expect(v.conciliacion?.totalMovements).toBe(1);
     expect(v.coincidencias.map((c) => c.registroIds[0])).toEqual(["inv-2"]);
+  });
+
+  it("libro no disponible (null): se declara y se trata todo como nuevo, sin inventar duplicados", () => {
+    const parseo = parsearEstadoDeCuenta(ENC + "05/01/2026,SPEI ACME,,1160.00\n", { cuenta: "C" });
+    const v = construirVistaPreviaImportacion({ parseo, registros, cuentasPorCobrarPendientes: [], hashesYaImportados: null });
+    expect(v.libroDisponible).toBe(false);
+    expect(v.nuevos).toBe(1);
+    expect(v.yaImportados).toEqual([]);
   });
 
   it("todo ya importado: se explica, no se corre el motor", () => {

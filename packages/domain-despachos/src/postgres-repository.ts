@@ -32,6 +32,7 @@ import type {
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
 import { construirTareasDesdePlantilla } from "./cierre-mensual/engine.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
@@ -1006,6 +1007,29 @@ export class PostgresDespachosRepository implements DespachosRepository {
         throw err;
       },
     });
+  }
+
+  // ---- Libro de estados de cuenta importados (D-03, migración 013) ----
+  async listEstadoCuentaHashesExistentes(propertyId: string, hashes: readonly string[]): Promise<ReadonlySet<string>> {
+    if (hashes.length === 0) return new Set();
+    const { rows } = await this.db.query<{ hash: string }>(`select hash from despachos.estado_cuenta_movimiento where property_id = $1 and hash = any($2::text[]);`, [propertyId, hashes]);
+    return new Set(rows.map((r) => r.hash));
+  }
+
+  async insertEstadoCuentaMovimientos(lote: NuevoLoteEstadoCuenta): Promise<ResultadoGuardadoEstadoCuenta> {
+    if (lote.movimientos.length === 0) return { loteId: lote.loteId, insertados: 0, yaExistentes: 0 };
+    // Idempotente por (property_id, hash): `on conflict do nothing` descarta lo ya importado sin lanzar
+    // (un INSERT plano abortaría la transacción compartida del request con 23505).
+    const { rows } = await this.db.query<{ hash: string }>(
+      `insert into despachos.estado_cuenta_movimiento
+         (organization_id, property_id, hash, cuenta, banco, formato, fecha, descripcion, referencia, cargo, abono, monto, saldo, lote_id, renglon)
+       select $1::uuid, $2::uuid, m.hash, m.cuenta, m.banco, m.formato, m.fecha::date, m.descripcion, m.referencia, m.cargo, m.abono, m.monto, m.saldo, $3::uuid, m.renglon
+         from jsonb_to_recordset($4::jsonb) as m(hash text, cuenta text, banco text, formato text, fecha text, descripcion text, referencia text, cargo numeric, abono numeric, monto numeric, saldo numeric, renglon int)
+       on conflict (property_id, hash) do nothing
+       returning hash;`,
+      [lote.organizationId, lote.propertyId, lote.loteId, JSON.stringify(lote.movimientos)],
+    );
+    return { loteId: lote.loteId, insertados: rows.length, yaExistentes: lote.movimientos.length - rows.length };
   }
 
   // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----

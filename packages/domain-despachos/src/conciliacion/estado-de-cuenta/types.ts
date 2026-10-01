@@ -56,3 +56,33 @@ export interface ResultadoParseoEstado {
   readonly totalAbonos: number;
   readonly saldoFinal: number | null;
 }
+
+/** Movimiento listo para el libro `despachos.estado_cuenta_movimiento` (migración 013). */
+export interface NuevoMovimientoEstadoCuenta {
+  readonly hash: string;
+  readonly cuenta: string | null;
+  readonly banco: BancoMx;
+  readonly formato: FormatoEstadoCuenta;
+  readonly fecha: string;
+  readonly descripcion: string;
+  readonly referencia: string | null;
+  readonly cargo: number | null;
+  readonly abono: number | null;
+  readonly monto: number;
+  readonly saldo: number | null;
+  readonly renglon: number;
+}
+
+export interface NuevoLoteEstadoCuenta {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly loteId: string;
+  readonly movimientos: readonly NuevoMovimientoEstadoCuenta[];
+}
+
+export interface ResultadoGuardadoEstadoCuenta {
+  readonly loteId: string;
+  readonly insertados: number;
+  /** Movimientos cuya huella ya estaba en el libro (descartados por idempotencia, no son error). */
+  readonly yaExistentes: number;
+}

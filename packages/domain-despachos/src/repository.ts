@@ -21,6 +21,7 @@ import type {
   ReceivableRecord,
   ReceivableReminderRow,
 } from "./types.ts";
+import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
@@ -256,6 +257,16 @@ export interface DespachosRepository {
    * todavía no tiene la migración 012 aplicada -- la ruta HTTP lo traduce a un 503
    * honesto, nunca un 500 crudo ni un upsert silenciosamente perdido. */
   upsertPropertyConfigZonaHoraria(propertyId: string, organizationId: string, zonaHoraria: string | null): Promise<DespachosPropertyConfigRecord>;
+
+  // ---- Libro de movimientos importados de estados de cuenta (D-03, migración 013) ----
+  /** Cuáles de estas huellas (`hash`) ya están en el libro de ESTA property. Lanza el
+   * error de Postgres tal cual (42P01 si la base todavía no tiene la migración 013); el
+   * llamador la lee con `leerFuenteOpcional` (SAVEPOINT) para degradar a "no disponible". */
+  listEstadoCuentaHashesExistentes(propertyId: string, hashes: readonly string[]): Promise<ReadonlySet<string>>;
+  /** Guarda el lote de forma IDEMPOTENTE (`insert ... on conflict (property_id, hash) do
+   * nothing`): re-importar el mismo archivo, o dos archivos traslapados, no duplica nada.
+   * Mismo criterio de errores que `listEstadoCuentaHashesExistentes`. */
+  insertEstadoCuentaMovimientos(lote: NuevoLoteEstadoCuenta): Promise<ResultadoGuardadoEstadoCuenta>;
 
   // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----
   /** Lectura PAGINADA de `despachos.audit_log` (008_despachos_audit_log.sql), más

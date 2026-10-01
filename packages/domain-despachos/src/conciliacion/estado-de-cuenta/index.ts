@@ -11,7 +11,7 @@ export { parsearFechaMx, parsearFechaOfx } from "./fechas.ts";
 export { clabeValida, bancoPorClabe, PERFILES_BANCO } from "./layouts.ts";
 export { hashMovimiento, conceptoCanonico } from "./normalizacion.ts";
 export { BANCOS_MX } from "./types.ts";
-export type { BancoMx, FormatoEstadoCuenta, ResultadoParseoEstado, MovimientoImportado, ErrorRenglonEstado, AdvertenciaEstado } from "./types.ts";
+export type { BancoMx, FormatoEstadoCuenta, ResultadoParseoEstado, MovimientoImportado, ErrorRenglonEstado, AdvertenciaEstado, NuevoLoteEstadoCuenta, NuevoMovimientoEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./types.ts";
 
 export interface OpcionesParseoEstado {
   readonly formato?: FormatoEstadoCuenta;
