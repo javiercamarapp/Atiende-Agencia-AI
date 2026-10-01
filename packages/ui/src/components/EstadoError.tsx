@@ -39,7 +39,7 @@ export function EstadoError({
       : "Ocurrió un problema al conectar con el servidor. Verifica la conexión e inténtalo de nuevo.");
 
   return (
-    <div role="alert" className={cn("card flex min-w-0 items-start gap-3", compacto ? "p-3" : "p-4", className)}>
+    <div role="alert" className={cn("card flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card shadow-card", compacto ? "p-3" : "p-4", className)}>
       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive-tint">
         <AlertTriangle aria-hidden="true" className="size-[17px] text-destructive" strokeWidth={1.75} />
       </div>

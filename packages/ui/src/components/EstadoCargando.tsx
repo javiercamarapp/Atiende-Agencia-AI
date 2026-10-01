@@ -56,7 +56,7 @@ export function EstadoCargando({
 
   if (variante === "tarjeta") {
     return (
-      <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("card space-y-2 p-4", className)}>
+      <div role="status" aria-busy="true" aria-label={etiqueta} className={cn("card space-y-2 rounded-lg border border-border bg-card p-4 shadow-card", className)}>
         <span className="sr-only">{etiqueta}</span>
         <Skeleton className="h-3.5 w-1/3" />
         {Array.from({ length: lineas }).map((_, i) => (

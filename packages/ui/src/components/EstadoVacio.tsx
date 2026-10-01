@@ -29,7 +29,7 @@ export function EstadoVacio({
   className?: string;
 }) {
   return (
-    <div role="status" className={cn("card flex min-w-0 items-start gap-3", compacto ? "p-3" : "p-4", className)}>
+    <div role="status" className={cn("card flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card shadow-card", compacto ? "p-3" : "p-4", className)}>
       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-canvas">
         <Icon className="size-[17px] text-primary" strokeWidth={1.75} />
       </div>
