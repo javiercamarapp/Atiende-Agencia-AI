@@ -6,7 +6,7 @@
 // margen. Un precio vacio significa "por configurar" (se muestra «—», nunca 0).
 import { useEffect, useState, type FormEvent } from "react";
 import { Tags } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, formatMoney, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, formatMoney, statusTone, useConfirm } from "@atiende/ui";
 import { ACCION_ESTADO_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
@@ -90,6 +90,7 @@ function parsePrecio(raw: string): number | null | undefined {
 }
 
 export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const { confirmar, dialogo } = useConfirm();
   const [planes, setPlanes] = useState<readonly Plan[] | null>(null);
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [disponible, setDisponible] = useState(true);
@@ -209,6 +210,14 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
   }
 
   async function quitarLimite(planId: string, metrica: string) {
+    // Quitar un límite cambia el tope de TODAS las organizaciones con ese plan: Cancelar / cerrar el diálogo NO ejecuta nada.
+    const ok = await confirmar({
+      titulo: `Quitar el límite «${ETIQUETA_METRICA[metrica] ?? metrica}»`,
+      descripcion: "Las organizaciones con este plan dejarán de tener este tope. Para volver a ponerlo tendrás que capturarlo de nuevo.",
+      tono: "danger",
+      confirmar: "Quitar límite",
+    });
+    if (!ok) return;
     setTrabajando(`${planId}|${metrica}`);
     setLError(null);
     try {
@@ -241,6 +250,15 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
   }
 
   async function resolver(a: Asignacion, que: "confirmar" | "cancelar") {
+    if (que === "confirmar") {
+      // Confirmar aplica el cambio de plan (y su facturación) a la organización: Cancelar / cerrar el diálogo NO ejecuta nada.
+      const ok = await confirmar({
+        titulo: `Asignar el plan «${planes?.find((p) => p.id === a.planId)?.nombre ?? a.planId}» a ${a.organizacion ?? a.organizationId}`,
+        descripcion: `Motivo registrado: ${a.motivo}`,
+        confirmar: "Asignar plan",
+      });
+      if (!ok) return;
+    }
     setTrabajando(a.id);
     setAviso(null);
     try {
@@ -639,6 +657,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
           )}
         </form>
       </FormDialog>
+      {dialogo}
     </PageContainer>
   );
 }

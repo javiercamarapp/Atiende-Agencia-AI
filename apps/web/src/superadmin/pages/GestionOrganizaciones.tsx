@@ -5,7 +5,7 @@
 // "Plan de cuenta" NO es el plan de cobro: no toca Stripe ni la facturacion.
 import { useEffect, useState, type FormEvent } from "react";
 import { Building2, Plus } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone, useConfirm } from "@atiende/ui";
 import { ACCION_ESTADO_TONES, ORG_STATUS_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
@@ -59,6 +59,7 @@ function badgeDeEstado(status: Organizacion["status"]) {
 }
 
 export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const { confirmar, dialogo } = useConfirm();
   const [organizaciones, setOrganizaciones] = useState<readonly Organizacion[] | null>(null);
   const [acciones, setAcciones] = useState<readonly Accion[]>([]);
   const [disponible, setDisponible] = useState(true);
@@ -137,6 +138,17 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
   }
 
   async function resolver(accion: Accion, que: "confirmar" | "cancelar") {
+    if (que === "confirmar") {
+      // Confirmar ejecuta el alta / suspensión / reactivación / cambio de cuenta de una organización: Cancelar / cerrar el diálogo NO ejecuta nada.
+      const nombre = accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : String(accion.payload.name ?? "organización nueva");
+      const ok = await confirmar({
+        titulo: `${ETIQUETA_TIPO[accion.tipo]}: ${nombre}`,
+        descripcion: `Motivo registrado: ${accion.motivo}`,
+        tono: accion.tipo === "suspender" ? "danger" : "default",
+        confirmar: "Ejecutar acción",
+      });
+      if (!ok) return;
+    }
     setTrabajando(accion.id);
     setAviso(null);
     setError(null);
@@ -371,6 +383,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
           )}
         </form>
       </FormDialog>
+      {dialogo}
     </PageContainer>
   );
 }

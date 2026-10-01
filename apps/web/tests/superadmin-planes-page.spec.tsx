@@ -15,6 +15,9 @@ async function esperar(): Promise<void> {
 }
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body, clone() { return this; }, status: ok ? 200 : 400 }) as unknown as Response;
 
+const dialogo = () => document.body.querySelector('[role="alertdialog"]');
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
+
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
@@ -152,9 +155,50 @@ describe("SuperAdminPlanesPage", () => {
     expect(rendered.container.textContent).toContain("Pendientes de confirmar");
     click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Confirmar")!);
     await esperar();
+    // Confirmar aplica el plan: primero pide confirmacion y no llama al servidor.
+    expect(dialogo()).not.toBeNull();
+    expect(writes).toHaveLength(0);
+    click(botonDialogo("Asignar plan"));
+    await esperar();
     expect(writes.map((w) => w.url)).toContain("https://api.test/superadmin/planes/asignaciones/a1/confirmar");
     click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cancelar")!);
     await esperar();
     expect(writes.map((w) => w.url)).toContain("https://api.test/superadmin/planes/asignaciones/a1/cancelar");
+  });
+
+  it("Cancelar el dialogo de confirmar asignacion (o cerrarlo) NUNCA aplica el plan", async () => {
+    const writes: Array<{ method: string; url: string }> = [];
+    stub({
+      asignaciones: [{ id: "a1", organizationId: "o1", organizacion: "Los Taquitos de PM", planId: "restaurantes-estandar", motivo: "Cliente firmo contrato anual del plan estandar.", estado: "pending", venceEnMs: Date.now() + 5 * 60_000 }],
+      onWrite: (method, url) => writes.push({ method, url }),
+    });
+    rendered = render();
+    await esperar();
+    click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Confirmar")!);
+    await esperar();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await esperar();
+    expect(dialogo()).toBeNull();
+    expect(writes).toHaveLength(0);
+  });
+
+  it("quitar un limite pide confirmacion: Cancelar no llama al DELETE y confirmar si", async () => {
+    const writes: Array<{ method: string; url: string }> = [];
+    stub({ onWrite: (method, url) => writes.push({ method, url }) });
+    rendered = render();
+    await esperar();
+    click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Límites")!);
+    click([...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Quitar")!);
+    await esperar();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await esperar();
+    expect(writes).toHaveLength(0);
+    click([...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Quitar")!);
+    await esperar();
+    click(botonDialogo("Quitar límite"));
+    await esperar();
+    expect(writes).toEqual([{ method: "DELETE", url: "https://api.test/superadmin/planes/restaurantes-estandar/limites/llm_costo_micro_usd_mes" }]);
   });
 });
