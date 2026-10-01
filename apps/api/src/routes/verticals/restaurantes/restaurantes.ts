@@ -19,6 +19,8 @@ import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
+import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
+import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -52,5 +54,9 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // SoftRestaurant (POS de PM) -- bandera por organizacion, comandas pendientes/fallidas y
+  // captura manual (staff) + dispatcher del outbox (cron). Ver softrestaurant/README.md.
+  app.route("/", restaurantesAdminSoftRestauranteRoutes(deps));
+  app.route("/", restaurantesSoftRestauranteDispatchRoutes(deps));
   return app;
 }

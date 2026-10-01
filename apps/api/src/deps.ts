@@ -11,6 +11,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
@@ -101,6 +102,17 @@ export interface AppDeps {
   readonly coreStaffRepo: (db: TenantDbSession) => CoreStaffRepository;
   readonly engine: TenancyEngine;
   readonly restaurantesRepo: (db: TenantDbSession) => RestaurantesRepository;
+  /** SoftRestaurant (POS de PM): adaptador hacia el POS. OPCIONAL y sin default de
+   * produccion: mientras el distribuidor no entregue la API real, no se inyecta y las
+   * rutas usan `SoftRestaurantNoConfiguradoPort` (nunca un folio, y la bandera no se
+   * puede prender). Ver packages/domain-restaurantes/src/softrestaurant/README.md. */
+  readonly softRestaurantPort?: SoftRestaurantPort;
+  /** Fabrica por-request del outbox/bandera de SoftRestaurant. Sin ella se usa
+   * `PostgresComandaOutboxStore(db)`; los tests inyectan el store en memoria. */
+  readonly softRestaurantStore?: (db: TenantDbSession) => ComandaOutboxStore;
+  /** Mapeo producto->codigo del POS y sucursal->T1..T8. Sin el, ningun producto tiene codigo:
+   * las comandas van a captura manual (nunca se inventan codigos). */
+  readonly softRestaurantMapeo?: { readonly resolverCodigos: ResolverCodigosPos; readonly resolverSucursal: ResolverSucursalPos };
   readonly turnHandler: WhatsAppTurnHandler;
   /** Backend propio de voz de restaurantes (migración 025). OPCIONALES: si faltan, las rutas de
    * voz responden 503 honesto en vez de fingir. En producción `vozRepo` es
