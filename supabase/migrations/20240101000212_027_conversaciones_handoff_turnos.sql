@@ -73,7 +73,7 @@
 --    ejecutar quien tomo la conversacion o un owner/admin. `handoff_tomar` concurrente: la
 --    segunda toma recibe 55006 (ya tomada) en vez de pisar la primera.
 --
---  * Funciones de solo-sistema (`handoff_solicitar`, `handoff_whatsapp_estado`) -- el agente (sin
+--  * Funciones de solo-sistema (`handoff_solicitar`, `handoff_solicitar_whatsapp`, `handoff_whatsapp_estado`) -- el agente (sin
 --    usuario) pide un humano o consulta si debe callar. Exigen `auth.uid() is null` (un staff
 --    autenticado recibe 42501), definer con search_path fijo, `revoke from public, anon`,
 --    GRANT a `authenticated` porque la sesion de sistema del motor corre con ese rol, y validan
@@ -658,6 +658,38 @@ begin
 end;
 $$;
 
+-- Variante para el agente de WhatsApp, que solo conoce el telefono: resuelve la conversacion por
+-- (organizacion, telefono) y la sucursal (la del numero que recibio el mensaje, o la ya registrada en la
+-- conversacion). Si no hay conversacion o no se puede determinar una sucursal (numero de la organizacion
+-- sin sucursal elegida) devuelve null: el agente sigue su camino normal (el aviso de callback ya existe).
+create or replace function restaurantes.handoff_solicitar_whatsapp(
+  p_organization_id uuid,
+  p_property_id uuid,
+  p_phone text,
+  p_motivo text
+) returns uuid
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+declare
+  v_conv_id uuid;
+  v_conv_prop uuid;
+  v_prop uuid;
+begin
+  if auth.uid() is not null then
+    raise exception 'handoff_solicitar_whatsapp es solo de sistema' using errcode = '42501';
+  end if;
+  select c.id, c.property_id into v_conv_id, v_conv_prop from restaurantes.whatsapp_conversations c
+    where c.organization_id = p_organization_id and c.phone = p_phone;
+  v_prop := coalesce(p_property_id, v_conv_prop);
+  if v_conv_id is null or v_prop is null then
+    return null;
+  end if;
+  return restaurantes.handoff_solicitar(p_organization_id, v_prop, 'whatsapp', v_conv_id, p_motivo);
+end;
+$$;
+
 -- Consulta del agente de WhatsApp antes de responder: devuelve 'pendiente' | 'tomada' si hay una toma
 -- abierta para ese telefono (el agente debe callar) o null. Si la hay, registra el ping del cliente
 -- (`ultimo_cliente_at`), que alimenta la escalacion.
@@ -698,6 +730,7 @@ revoke all on function restaurantes.callback_registrar_intento(uuid, uuid, text,
 revoke all on function restaurantes.bandeja_conversaciones(uuid, uuid, text, text, integer, integer) from public, anon;
 revoke all on function restaurantes.handoff_solicitar(uuid, uuid, text, uuid, text) from public, anon;
 revoke all on function restaurantes.handoff_whatsapp_estado(uuid, text) from public, anon;
+revoke all on function restaurantes.handoff_solicitar_whatsapp(uuid, uuid, text, text) from public, anon;
 grant execute on function restaurantes.handoff_tomar(uuid, uuid, text, uuid) to authenticated, service_role;
 grant execute on function restaurantes.handoff_liberar(uuid, uuid, uuid, text) to authenticated, service_role;
 grant execute on function restaurantes.handoff_devolver(uuid, uuid, uuid) to authenticated, service_role;
@@ -708,3 +741,4 @@ grant execute on function restaurantes.callback_registrar_intento(uuid, uuid, te
 grant execute on function restaurantes.bandeja_conversaciones(uuid, uuid, text, text, integer, integer) to authenticated, service_role;
 grant execute on function restaurantes.handoff_solicitar(uuid, uuid, text, uuid, text) to authenticated, service_role;
 grant execute on function restaurantes.handoff_whatsapp_estado(uuid, text) to authenticated, service_role;
+grant execute on function restaurantes.handoff_solicitar_whatsapp(uuid, uuid, text, text) to authenticated, service_role;

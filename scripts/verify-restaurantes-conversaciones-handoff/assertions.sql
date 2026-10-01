@@ -710,6 +710,38 @@ do $$ begin
 exception when sqlstate '42501' then null; end $$;
 rollback;
 
+\echo '=== E15. POSITIVO: el sistema solicita un humano por telefono (resuelve la conversacion y la sucursal) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', 'cliente_lo_pide') as handoff_id;
+rollback;
+
+\echo '=== E16. IDEMPOTENTE: solicitar por telefono dos veces devuelve la misma toma; sin conversacion devuelve nulo ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', 'a') = restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', null, '5551000001', 'b') and restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5559999999', 'x') is null)::int as idempotente_y_nulo_deberia_ser_1;
+rollback;
+
+\echo '=== E17. RECHAZADO: un staff autenticado no usa handoff_solicitar_whatsapp (solo sistema) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', 'x');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== E18. CROSS-TENANT: el mismo telefono en la organizacion B no activa la toma de A (la conversacion de B es otra) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_whatsapp('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '5551000001', 'x');
+select (restaurantes.handoff_whatsapp_estado('00000000-0000-0000-0000-0000000e0001', '5551000004') is null)::int as telefono_de_b_sin_toma_en_a_deberia_ser_1;
+rollback;
+
 \echo '=== F1. BANDEJA: staff A1 ve WhatsApp de A1 + sin sucursal + llamada de A1 (3 filas) ==='
 begin;
 set local role authenticated;
