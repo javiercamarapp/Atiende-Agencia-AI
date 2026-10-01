@@ -35,6 +35,11 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/mfa\/reset$/, label: "resetear MFA de otro superadmin" },
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
+  { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
+  { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
+  { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
+  { method: "DELETE", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "quitar un limite de plan" },
+  { method: "POST", pattern: /^\/superadmin\/planes\/asignaciones\/[^/]+\/confirmar$/, label: "confirmar asignacion de plan a una organizacion" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {
