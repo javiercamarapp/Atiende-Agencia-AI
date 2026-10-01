@@ -45,6 +45,13 @@ transacciones de Postgres (COMMIT sobre una transacción abortada devuelve
 ROLLBACK sin lanzar) detrás del fix "una transacción por unidad" en los crons
 de barrido (night-audit/cobranza-reminders/alert-notifications/etc.).
 
+## `verify-outbox-backoff-equidad/`
+
+Postgres real, mismo contrato de 3 archivos que los demás `verify-*/` (lo corre el gate de
+CI): backoff exponencial del correo del outbox y equidad por tenant de los
+`claim_*_outbox_batch` de las 6 verticales (PL-07, migración
+`packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql`). Ver su `README.md`.
+
 ## `verify-real-postgres-ci/`
 
 Convierte cualquier `verify-*/` de arriba (y cualquier `verify-*/` que se agregue
