@@ -125,6 +125,7 @@ import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.ts
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
 import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
+import { Kyc69bPage as LicitacionesKyc69bPage } from "./verticals/licitaciones/pages/Kyc69b.tsx";
 import { RestablecerContrasenaPage as LicitacionesRestablecerContrasenaPage, VerificarCorreoPage as LicitacionesVerificarCorreoPage } from "./verticals/licitaciones/pages/CuentaEnlaces.tsx";
 import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
 import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
@@ -811,6 +812,8 @@ const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 // L-05: configuración de WhatsApp (opt-in, temas de aviso, decisión go/no-go por botón).
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
+// L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
+const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
 // restaurantes permite gestionar roles desde el producto"): licitaciones tenía
@@ -1011,6 +1014,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
+        <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
         <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />

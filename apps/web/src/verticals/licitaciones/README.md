@@ -402,3 +402,5 @@ aclaraciones" (fechas, captura con aviso de duplicados, borrador asistido, aprob
 enviada / registrar respuesta del acta / descartar, recordatorios). No envía nada a ningún portal.
 Con la migración 029 pendiente la pantalla lo dice y no ofrece guardar. Pendiente: asignar
 responsables a otras personas (hoy solo "Asignarme"; no hay directorio de staff para no-admins).
+
+`/kyc-69b` (`pages/Kyc69b.tsx`, "KYC proveedores (69-B)" en el menú): consulta de un RFC o lote (hasta 50), semáforo por situación del SAT (definitivo = rojo, presunto = ámbar, desvirtuado / sentencia favorable / no aparece = verde con nota, sin lista = neutro) con la fecha de publicación, cartera de proveedores y competidores y alerta cuando un proveedor propio figura como presunto o definitivo. "No aparece" nunca se presenta como constancia oficial. Con la migración 031 pendiente la pantalla lo dice y no ofrece consultar. Pendiente: la alerta se ve al abrir la pantalla; no hay aviso por correo ni WhatsApp cuando una nueva edición de la lista incluye a un proveedor.
