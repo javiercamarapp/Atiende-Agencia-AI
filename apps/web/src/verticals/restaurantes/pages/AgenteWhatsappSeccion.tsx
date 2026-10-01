@@ -5,7 +5,7 @@
 // textos en blanco. Contrato: lib/agente-whatsapp-client.ts.
 import { useEffect, useMemo, useState } from "react";
 import { Bot } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, FormField, Input, NativeSelect, StatusBadge, Textarea, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, FormField, Input, NativeSelect, StatusBadge, Textarea, useConfirm } from "@atiende/ui";
 import {
   MOTIVO_LABEL,
   PERFIL_LABEL,
@@ -261,17 +261,15 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                   <Textarea rows={2} value={form.promosText} maxLength={lim?.promosText} placeholder={defaults?.promosText ?? ""} onChange={(e) => cambiar("promosText", e.target.value)} />
                 </FormField>
                 <fieldset className="flex flex-col gap-2 rounded-card border border-border p-3">
-                  <legend className="px-1 text-[13px] font-medium">Motivos por los que el agente avisa a una persona</legend>
+                  <legend className="px-1 text-sm font-medium">Motivos por los que el agente avisa a una persona</legend>
                   <p className="m-0 text-xs text-muted-foreground">Estos se pueden apagar. Los demás (quejas, alergias, cliente que pide a una persona, fallas, transferencias, cancelaciones y reposiciones) siempre escalan.</p>
                   {opciones.motivosDesactivables.map((m) => (
-                    <label key={m} className="flex items-center gap-2 text-[13px]">
-                      <input
-                        type="checkbox"
-                        checked={!form.escalationReasonsOff.includes(m)}
-                        onChange={(e) => cambiar("escalationReasonsOff", e.target.checked ? form.escalationReasonsOff.filter((x) => x !== m) : [...form.escalationReasonsOff, m])}
-                      />
-                      {MOTIVO_LABEL[m] ?? m}
-                    </label>
+                    <Checkbox
+                      key={m}
+                      label={MOTIVO_LABEL[m] ?? m}
+                      checked={!form.escalationReasonsOff.includes(m)}
+                      onChange={(e) => cambiar("escalationReasonsOff", e.target.checked ? form.escalationReasonsOff.filter((x) => x !== m) : [...form.escalationReasonsOff, m])}
+                    />
                   ))}
                 </fieldset>
               </>
@@ -303,9 +301,9 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
               <section aria-label="Vista previa de los cambios" className="flex flex-col gap-3 rounded-card border border-border p-3">
                 <h3 className="m-0 text-sm font-semibold">Qué cambia</h3>
                 {previa.diferenciasCampos.length === 0 ? (
-                  <p className="m-0 text-[13px] text-muted-foreground">No hay cambios respecto a lo vigente.</p>
+                  <p className="m-0 text-sm text-muted-foreground">No hay cambios respecto a lo vigente.</p>
                 ) : (
-                  <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+                  <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
                     {previa.diferenciasCampos.map((d) => (
                       <li key={d.campo}>
                         <strong>{d.campo}:</strong> <span className="text-muted-foreground line-through">{d.antes || "(del perfil)"}</span> → <span>{d.despues || "(del perfil)"}</span>
@@ -314,7 +312,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                   </ul>
                 )}
                 <details>
-                  <summary className="cursor-pointer text-[13px] font-medium">Líneas del prompt que cambian (solo lectura)</summary>
+                  <summary className="cursor-pointer text-sm font-medium">Líneas del prompt que cambian (solo lectura)</summary>
                   <div className="mt-2 flex flex-col gap-1 font-mono text-xs">
                     {previa.diferenciasPrompt.filter((l) => l.tipo !== "igual").length === 0 && <span className="text-muted-foreground">El prompt queda igual.</span>}
                     {previa.diferenciasPrompt
@@ -328,7 +326,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                   </div>
                 </details>
                 <details>
-                  <summary className="cursor-pointer text-[13px] font-medium">Prompt completo que usaría el agente (solo lectura)</summary>
+                  <summary className="cursor-pointer text-sm font-medium">Prompt completo que usaría el agente (solo lectura)</summary>
                   <Textarea readOnly rows={14} className="mt-2 font-mono text-xs" value={previa.prompt} aria-label="Prompt resultante" />
                 </details>
                 <div className="flex flex-wrap gap-2">
@@ -345,9 +343,9 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
             {!sin033 && (
               <section aria-label="Historial de cambios" className="flex flex-col gap-2">
                 <h3 className="m-0 text-sm font-semibold">Historial</h3>
-                {historial.length === 0 && <p className="m-0 text-[13px] text-muted-foreground">Todavía no hay cambios guardados en este alcance.</p>}
+                {historial.length === 0 && <p className="m-0 text-sm text-muted-foreground">Todavía no hay cambios guardados en este alcance.</p>}
                 {historial.map((h) => (
-                  <div key={h.version} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5 text-[13px]">
+                  <div key={h.version} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-2.5 text-sm">
                     <div>
                       <p className="m-0 font-semibold">
                         Versión {h.version} <StatusBadge tone={h.accion === "restablecido" ? "warning" : "info"}>{h.accion === "restablecido" ? "Restablecido" : "Actualizado"}</StatusBadge>

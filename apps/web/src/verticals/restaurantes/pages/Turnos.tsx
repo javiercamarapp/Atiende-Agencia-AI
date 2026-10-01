@@ -3,7 +3,7 @@
 // Quien cubre cada turno sale del staff de la organizacion (`fetchOrgMembers`, owner/admin) con acceso a esta sucursal.
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer } from "@atiende/ui";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { OrgMember } from "../lib/staff-client.ts";
 import { fetchTurnos, guardarTurnos } from "../lib/conversaciones-client.ts";
@@ -90,10 +90,10 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[900px]">
+    <PageContainer padding="none" size="md" className="gap-5">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Turnos</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
+        <p className="m-0 text-sm text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
@@ -107,7 +107,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
               <CardHeader>
                 <CardTitle className="text-sm">De guardia ahora</CardTitle>
               </CardHeader>
-              <CardContent className="text-[13px]">
+              <CardContent className="text-sm">
                 {cobertura.sinCobertura ? (
                   <p className="m-0 text-destructive">Nadie está de guardia en este momento.</p>
                 ) : (
@@ -129,7 +129,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
 
           {turnos.map((t, i) => (
             <Card key={t.id ?? `nuevo-${i}`}>
-              <CardContent className="flex flex-col gap-3 pt-4 text-[13px]">
+              <CardContent className="flex flex-col gap-3 pt-4 text-sm">
                 <div className="flex flex-wrap gap-3 items-end">
                   <label className="flex flex-col gap-1">
                     Nombre
@@ -151,15 +151,13 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
                 </div>
                 <div className="flex flex-wrap gap-2" role="group" aria-label={`Días del turno ${i + 1}`}>
                   {DIAS.map((d, n) => (
-                    <label key={d} className="flex items-center gap-1">
-                      <input
-                        type="checkbox"
-                        disabled={!puedeEditar}
-                        checked={t.dias.includes(n)}
-                        onChange={() => cambiar(i, { dias: t.dias.includes(n) ? t.dias.filter((x) => x !== n) : [...t.dias, n].sort((a, b) => a - b) })}
-                      />
-                      {d}
-                    </label>
+                    <Checkbox
+                      key={d}
+                      label={d}
+                      disabled={!puedeEditar}
+                      checked={t.dias.includes(n)}
+                      onChange={() => cambiar(i, { dias: t.dias.includes(n) ? t.dias.filter((x) => x !== n) : [...t.dias, n].sort((a, b) => a - b) })}
+                    />
                   ))}
                 </div>
                 <div>
@@ -170,11 +168,17 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
                     ) : (
                       <div className="flex flex-col gap-1">
                         {personal.map((p) => (
-                          <label key={p.id} className="flex items-center gap-2">
-                            <input type="checkbox" checked={t.miembros.some((m) => m.userId === p.id)} onChange={() => alternarMiembro(i, p.id)} />
-                            {p.fullName || p.email}
-                            {t.miembros.find((m) => m.userId === p.id) && <span className="text-muted-foreground">#{t.miembros.find((m) => m.userId === p.id)!.orden}</span>}
-                          </label>
+                          <Checkbox
+                            key={p.id}
+                            checked={t.miembros.some((m) => m.userId === p.id)}
+                            onChange={() => alternarMiembro(i, p.id)}
+                            label={
+                              <>
+                                {p.fullName || p.email}
+                                {t.miembros.find((m) => m.userId === p.id) && <span className="ml-1 text-muted-foreground">#{t.miembros.find((m) => m.userId === p.id)!.orden}</span>}
+                              </>
+                            }
+                          />
                         ))}
                       </div>
                     )
@@ -203,9 +207,9 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
               </Button>
             </div>
           )}
-          {aviso && <p role="status" className="m-0 text-[13px] text-foreground">{aviso}</p>}
+          {aviso && <p role="status" className="m-0 text-sm text-foreground">{aviso}</p>}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
