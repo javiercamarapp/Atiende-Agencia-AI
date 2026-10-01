@@ -38,7 +38,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShe
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="font-display text-xl font-semibold text-foreground">Resumen</h1>
-        {resumen && <p className="text-[13px] text-muted-foreground">{formatDiaNegocio(resumen.today.date)}</p>}
+        {resumen && <p className="text-sm text-muted-foreground">{formatDiaNegocio(resumen.today.date)}</p>}
       </header>
 
       {error && <EstadoError mensaje={error} />}
@@ -64,7 +64,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShe
             <DesglosePorEstado titulo="Esta semana por estado" byStatus={resumen.week.byStatus} />
           </div>
 
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Fechas en la zona horaria del negocio ({resumen.timezone}).{" "}
             <Link to={`/citas/${orgSlug}/agenda`} className="font-semibold text-foreground hover:underline">
               Ir a la agenda
@@ -83,7 +83,7 @@ function DesglosePorEstado({ titulo, byStatus }: { readonly titulo: string; read
         <CardTitle>{titulo}</CardTitle>
       </CardHeader>
       <CardContent>
-        <dl className="flex flex-col gap-1.5 text-[13px]">
+        <dl className="flex flex-col gap-1.5 text-sm">
           {ORDEN_ESTADOS.map((estado) => (
             <div key={estado} className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">{ETIQUETA_ESTADO[estado]}</dt>

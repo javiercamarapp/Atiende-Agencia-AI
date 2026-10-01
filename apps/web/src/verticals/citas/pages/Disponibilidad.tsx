@@ -32,6 +32,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  NativeSelect,
+  Checkbox,
 } from "@atiende/ui";
 import {
   createAvailabilityRule,
@@ -46,11 +48,6 @@ import {
 import type { AvailabilityOverrideSummary, AvailabilityRuleSummary, ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
-
-/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para los
- * `<select>` que se quedan nativos (el design system no exporta un Select). */
-const SELECT_CLASS =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const DAY_OPTIONS = Array.from({ length: 7 }, (_, i) => i);
 
@@ -239,13 +236,13 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       {providers && providers.length > 0 && (
         <div className="flex max-w-xs flex-col gap-1.5">
           <Label htmlFor="citas-disponibilidad-proveedor">Proveedor</Label>
-          <select id="citas-disponibilidad-proveedor" value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} className={SELECT_CLASS}>
+          <NativeSelect id="citas-disponibilidad-proveedor" value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)}>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
 
@@ -254,7 +251,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       {detail && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
+            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Table>
@@ -291,15 +288,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                                 Hora de fin
                               </Label>
                               <Input id={`citas-regla-fin-${r.id}`} type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="h-9 w-auto" required />
-                              <label className="flex items-center gap-1.5 text-[12px] text-foreground">
-                                <input
-                                  type="checkbox"
-                                  checked={editIsActive}
-                                  onChange={(e) => setEditIsActive(e.target.checked)}
-                                  className="size-4 rounded border-border accent-primary"
-                                />
-                                Activo
-                              </label>
+                              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label="Activo" />
                               <Button type="submit" size="sm" className="h-9" disabled={savingRule}>
                                 {savingRule ? "Guardando…" : "Guardar"}
                               </Button>
@@ -313,14 +302,14 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                                 {formatHHMM(r.startTime)} – {formatHHMM(r.endTime)}
                               </span>
                               {!r.isActive && <StatusBadge tone="neutral">inactivo</StatusBadge>}
-                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-[12px]" onClick={() => startEditingRule(r)}>
+                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => startEditingRule(r)}>
                                 Editar
                               </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 px-2 text-[12px] text-destructive hover:text-destructive"
+                                className="h-8 px-2 text-xs text-destructive hover:text-destructive"
                                 onClick={() => void handleDeleteRule(r.id)}
                                 disabled={deletingRuleId === r.id}
                               >
@@ -340,13 +329,13 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
             <form onSubmit={handleCreateRule} className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-nuevo-horario-dia">Día</Label>
-                <select id="citas-nuevo-horario-dia" value={newDayOfWeek} onChange={(e) => setNewDayOfWeek(Number(e.target.value))} className={SELECT_CLASS}>
+                <NativeSelect id="citas-nuevo-horario-dia" value={newDayOfWeek} onChange={(e) => setNewDayOfWeek(Number(e.target.value))}>
                   {DAY_OPTIONS.map((d) => (
                     <option key={d} value={d}>
                       {formatDayOfWeek(d)}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-nuevo-horario-inicio">Desde</Label>
@@ -371,7 +360,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       {detail && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Excepciones (días específicos)</CardTitle>
+            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Excepciones (días específicos)</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {!overrides && <EstadoCargando lineas={2} etiqueta="Cargando excepciones…" />}
@@ -393,7 +382,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-[12px] text-destructive hover:text-destructive"
+                      className="h-8 px-2 text-xs text-destructive hover:text-destructive"
                       onClick={() => void handleDeleteOverride(o.overrideDate)}
                       disabled={deletingOverrideDate === o.overrideDate}
                     >
@@ -411,15 +400,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                   <Label htmlFor="citas-excepcion-fecha">Fecha</Label>
                   <Input id="citas-excepcion-fecha" type="date" value={newOverrideDate} onChange={(e) => setNewOverrideDate(e.target.value)} className="w-auto" required />
                 </div>
-                <label className="flex h-11 items-center gap-2 text-[13px] text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={newOverrideClosed}
-                    onChange={(e) => setNewOverrideClosed(e.target.checked)}
-                    className="size-4 rounded border-border accent-primary"
-                  />
-                  Cerrado todo el día
-                </label>
+                <Checkbox checked={newOverrideClosed} onChange={(e) => setNewOverrideClosed(e.target.checked)} label="Cerrado todo el día" wrapperClassName="h-11 items-center" />
                 {!newOverrideClosed && (
                   <>
                     <div className="flex flex-col gap-1.5">

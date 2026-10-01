@@ -28,8 +28,7 @@ import {
   EstadoError,
   EstadoVacio,
   Input,
-  Label,
-} from "@atiende/ui";
+  Label, NativeSelect } from "@atiende/ui";
 import { syncTone } from "../lib/status-tones.ts";
 import { fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl } from "../lib/providers-client.ts";
 import type { GoogleCalendarStatus, ProviderSummary } from "../lib/providers-client.ts";
@@ -41,11 +40,6 @@ interface ProviderRow {
   readonly provider: ProviderSummary;
   readonly googleCalendar: GoogleCalendarStatus | null;
 }
-
-/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para los
- * `<select>` que se quedan nativos (el design system no exporta un Select). */
-const SELECT_CLASS =
-  "h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [rows, setRows] = useState<readonly ProviderRow[] | null>(null);
@@ -129,7 +123,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
     <div className="flex max-w-2xl flex-col gap-4">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Configuración</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Negocio: <strong className="font-semibold text-foreground">{orgSlug}</strong>
         </p>
       </header>
@@ -150,14 +144,14 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
             <form onSubmit={handleSaveTenantConfig} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-config-rubro">Rubro</Label>
-                <select id="citas-config-rubro" value={rubro} onChange={(e) => setRubro(e.target.value)} className={SELECT_CLASS}>
+                <NativeSelect id="citas-config-rubro" value={rubro} onChange={(e) => setRubro(e.target.value)}>
                   {RUBRO_OPTIONS.map((v) => (
                     <option key={v.value} value={v.value}>
                       {v.label}
                     </option>
                   ))}
-                </select>
-                <p className="text-[11px] text-muted-foreground">Determina qué FAQs y, en rubros de salud, qué guardia de crisis aplica el agente — no cambia el motor.</p>
+                </NativeSelect>
+                <p className="text-xs text-muted-foreground">Determina qué FAQs y, en rubros de salud, qué guardia de crisis aplica el agente — no cambia el motor.</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -168,7 +162,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-config-telefono">Teléfono de aviso urgente (opcional)</Label>
                 <Input id="citas-config-telefono" value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} placeholder="Ej. 5599998888" />
-                <p className="text-[11px] text-muted-foreground">Se avisa por WhatsApp si la guardia de crisis detecta un mensaje real de emergencia.</p>
+                <p className="text-xs text-muted-foreground">Se avisa por WhatsApp si la guardia de crisis detecta un mensaje real de emergencia.</p>
               </div>
 
               <div className="flex items-center gap-3">
@@ -204,7 +198,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
                   <Link to={`/citas/${orgSlug}/proveedores/${provider.id}`} className="font-medium text-foreground hover:underline">
                     {provider.displayName}
                   </Link>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">{provider.roleLabel}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{provider.roleLabel}</p>
                 </div>
                 {googleCalendar?.connected ? (
                   <StatusBadge tone={syncTone(googleCalendar.syncStatus)}>
@@ -227,7 +221,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
           <CardTitle className="text-base text-muted-foreground">Próximamente</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             Horarios globales del negocio, plantillas de recordatorios y configuración del canal de WhatsApp todavía no tienen lectura/escritura expuesta en el backend de citas — se agregarán cuando el dominio las calcule. El nombre/slug/estado del negocio (`core.organization`) tampoco se edita aquí: ese schema es compartido por las 6 verticales de la plataforma.
           </p>
         </CardContent>

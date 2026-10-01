@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { CalendarClock, FileUp, MessageSquare, ShieldCheck } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoVacio, StatusBadge, Textarea } from "@atiende/ui";
-import { BarraProgreso } from "../components/BarraProgreso.tsx";
+import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import {
   avanceCierre,
   enviarMensajePortal,

@@ -15,7 +15,7 @@ import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchRe
 import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
 import { TAREA_STATUS_TONES } from "../lib/status-tones.ts";
-import { BarraProgreso } from "../components/BarraProgreso.tsx";
+import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);

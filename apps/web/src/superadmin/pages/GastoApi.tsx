@@ -13,7 +13,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, DollarSign, Gauge, Hash, Pencil } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
-import { BarraProgreso } from "../components/BarraProgreso.tsx";
+import { BarraProgreso } from "../../components/BarraProgreso.tsx";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface RangoFechas {

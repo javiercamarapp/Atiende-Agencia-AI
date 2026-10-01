@@ -105,7 +105,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
                         {c.fullName}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-right text-[13px] text-muted-foreground">
+                    <TableCell className="text-right text-sm text-muted-foreground">
                       {c.phone}
                       {c.email ? ` · ${c.email}` : ""}
                     </TableCell>
@@ -118,7 +118,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
       )}
 
       {customers && customers.length > 0 && (
-        <footer className="flex items-center justify-between gap-3 text-[13px] text-muted-foreground">
+        <footer className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
           <span>
             {offset + 1}–{offset + customers.length} de {total}
           </span>
@@ -202,7 +202,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
         <>
           <header>
             <h1 className="font-display text-xl font-semibold text-foreground">{detail.customer.fullName}</h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">{detail.customer.phone}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{detail.customer.phone}</p>
             {editingEmail ? (
               <form onSubmit={handleSaveEmail} className="mt-2 flex flex-wrap items-center gap-2">
                 <Label htmlFor="citas-cliente-correo" className="sr-only">
@@ -228,7 +228,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
               <button
                 type="button"
                 onClick={startEditingEmail}
-                className="mt-1 flex items-center gap-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
                 <Mail aria-hidden className="size-3.5" />
                 {detail.customer.email ?? "Agregar correo (para sincronizar con Cal.com)"}
@@ -236,14 +236,14 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
               </button>
             )}
             {emailError && (
-              <p role="alert" className="mt-1 text-[13px] text-destructive">
+              <p role="alert" className="mt-1 text-sm text-destructive">
                 {emailError}
               </p>
             )}
           </header>
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Próximas citas</CardTitle>
+              <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Próximas citas</CardTitle>
             </CardHeader>
             <CardContent>
               {detail.upcomingAppointments.length === 0 ? (
@@ -253,7 +253,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
                   {detail.upcomingAppointments.map((apt) => (
                     <div key={apt.id} className="rounded-lg border border-border bg-card p-3">
                       <p className="text-sm font-semibold text-foreground">{apt.serviceName ?? "Servicio desconocido"}</p>
-                      <p className="mt-0.5 text-[13px] text-muted-foreground">
+                      <p className="mt-0.5 text-sm text-muted-foreground">
                         {formatDateTime(apt.startsAt)} · {apt.providerName ?? "Proveedor desconocido"}
                       </p>
                     </div>

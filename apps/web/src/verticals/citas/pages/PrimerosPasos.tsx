@@ -21,6 +21,7 @@ import {
   DIAS_POSPONER,
 } from "../lib/onboarding-client.ts";
 import type { ChecklistOnboarding, PasoOnboarding, PreferenciasOnboarding } from "../lib/onboarding-client.ts";
+import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 const ROLES = new Set(["owner", "admin"]);
@@ -77,7 +78,7 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
       </header>
 
       {!puede && (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> ven esta guía — tu rol actual es <strong className="text-foreground">{role}</strong>.
         </p>
       )}
@@ -90,22 +91,13 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
           <PanelListo checklist={checklist} orgSlug={orgSlug} />
 
           <section aria-label="Progreso" className="flex flex-col gap-1.5">
-            <div className="flex items-baseline justify-between gap-2 text-[13px]">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
               <span className="font-semibold text-foreground">
                 {checklist.completados} de {checklist.total} pasos
               </span>
               <span className="tabular-nums text-muted-foreground">{checklist.progresoPct}%</span>
             </div>
-            <div
-              role="progressbar"
-              aria-label="Progreso de los primeros pasos"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={checklist.progresoPct}
-              className="h-2 w-full overflow-hidden rounded-full bg-muted"
-            >
-              <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${checklist.progresoPct}%` }} />
-            </div>
+            <BarraProgreso valor={checklist.progresoPct} aria-label="Progreso de los primeros pasos" />
           </section>
 
           <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Pasos">
@@ -128,7 +120,7 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
               </CardHeader>
               <CardContent className="flex flex-col gap-2 p-4 pt-0">
                 {ocultos.map((p) => (
-                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span className="text-muted-foreground">
                       {p.titulo} · {ocultoComo(prefs, p, new Date()) === "descartado" ? "descartado" : "pospuesto"}
                     </span>
@@ -186,8 +178,8 @@ function Paso({ paso, orgSlug, onPosponer, onDescartar }: { readonly paso: PasoO
             {paso.estado === "no_disponible" && <StatusBadge tone="neutral">No disponible aún</StatusBadge>}
             {paso.requeridoParaPublicar && !completo && <StatusBadge tone="warning">Requerido</StatusBadge>}
           </div>
-          <p className="m-0 mt-0.5 text-[13px] text-muted-foreground">{paso.descripcion}</p>
-          {paso.detalle && <p className="m-0 mt-0.5 text-[13px] text-foreground/80">{paso.detalle}</p>}
+          <p className="m-0 mt-0.5 text-sm text-muted-foreground">{paso.descripcion}</p>
+          {paso.detalle && <p className="m-0 mt-0.5 text-sm text-foreground/80">{paso.detalle}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {paso.estado !== "no_disponible" && (

@@ -34,8 +34,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow,
-} from "@atiende/ui";
+  TableRow, NativeSelect } from "@atiende/ui";
 import { INVITE_STATUS_TONES } from "../lib/status-tones.ts";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
@@ -50,11 +49,6 @@ const ROLE_LABELS: Record<StaffVerticalRole, string> = {
 };
 
 const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "owner"];
-
-/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para los
- * `<select>` que se quedan nativos (el design system no exporta un Select). */
-const SELECT_CLASS =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function statusLabel(status: string): string {
   if (status === "pending") return "Pendiente";
@@ -151,7 +145,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
         <Card className="bg-muted/40">
           <CardContent className="flex items-start gap-3 p-4">
             <Lock aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <p className="text-[13px] leading-relaxed text-muted-foreground">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de este negocio.
             </p>
           </CardContent>
@@ -171,32 +165,32 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="citas-staff-rol">Rol</Label>
-                <select id="citas-staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} className={SELECT_CLASS}>
+                <NativeSelect id="citas-staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <Button type="submit" disabled={creating}>
                 <Send aria-hidden />
                 {creating ? "Invitando…" : "Invitar"}
               </Button>
             </form>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
             </p>
 
             {lastCreated && (
               <div className="rounded-lg border border-border bg-muted/50 p-3">
-                <p className="text-[13px] font-semibold text-foreground">
+                <p className="text-sm font-semibold text-foreground">
                   Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
                 </p>
-                <p className="mt-1.5 text-[12px] text-muted-foreground">
+                <p className="mt-1.5 text-xs text-muted-foreground">
                   Se le mandó un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
                 </p>
-                <code className="mt-1.5 block break-all rounded-md border border-border bg-background px-2.5 py-2 font-mono text-[12px] text-foreground">{lastCreated.inviteToken}</code>
+                <code className="mt-1.5 block break-all rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
               </div>
             )}
           </CardContent>
@@ -226,9 +220,9 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                     <TableRow key={inv.id}>
                       <TableCell className="font-semibold text-foreground">
                         {inv.email}
-                        <span className="block text-[12px] font-normal text-muted-foreground">expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
+                        <span className="block text-xs font-normal text-muted-foreground">expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
                       </TableCell>
-                      <TableCell className="text-[13px] text-muted-foreground">{ROLE_LABELS[inv.verticalRole]}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{ROLE_LABELS[inv.verticalRole]}</TableCell>
                       <TableCell>
                         <StatusBadge tone={statusTone(INVITE_STATUS_TONES, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
                       </TableCell>
@@ -278,25 +272,24 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                     <TableRow key={m.id}>
                       <TableCell className="font-semibold text-foreground">
                         {m.fullName}
-                        <span className="block text-[12px] font-normal text-muted-foreground">{m.email}</span>
+                        <span className="block text-xs font-normal text-muted-foreground">{m.email}</span>
                       </TableCell>
                       <TableCell className="text-right">
                         <Label htmlFor={`citas-staff-rol-${m.id}`} className="sr-only">
                           Rol de {m.fullName}
                         </Label>
-                        <select
+                        <NativeSelect
                           id={`citas-staff-rol-${m.id}`}
                           value={m.verticalRole}
                           disabled={savingRoleId === m.id}
                           onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                          className={SELECT_CLASS}
                         >
                           {ROLE_OPTIONS.map((r) => (
                             <option key={r} value={r}>
                               {ROLE_LABELS[r]}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </TableCell>
                     </TableRow>
                   ))}

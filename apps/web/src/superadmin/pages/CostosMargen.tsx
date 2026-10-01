@@ -9,7 +9,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, Coins, Percent, TrendingUp, Wallet } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney, statusTone } from "@atiende/ui";
 import { RIESGO_MARGEN_TONES } from "../lib/status-tones.ts";
-import { BarraProgreso } from "../components/BarraProgreso.tsx";
+import { BarraProgreso } from "../../components/BarraProgreso.tsx";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type Riesgo = "alto" | "medio" | "bajo" | "desconocido";

@@ -54,9 +54,10 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  NativeSelect,
+  FormDialog,
 } from "@atiende/ui";
 import { CITA_STATUS_TONES } from "../lib/status-tones.ts";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
@@ -136,12 +137,6 @@ const COMPLETABLE_STATUSES = new Set(["pending", "confirmed"]);
 const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sync";
-
-/** Clase compartida para los `<select>` nativos que se quedan nativos (el design
- * system no exporta un Select propio): mismo alto/radio/anillo de foco que el
- * `Input` real de @atiende/ui, con tokens en vez de hex. */
-const SELECT_CLASS =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
   // Confirmaciones destructivas con el diálogo de @atiende/ui (antes `window.confirm`, que el navegador puede bloquear).
@@ -379,20 +374,20 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
         <div>
           <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="font-display text-xl font-semibold text-foreground">Agenda</h1>
-          <p className="mt-1 text-[13px] capitalize text-muted-foreground">{range.label}</p>
+          <p className="mt-1 text-sm capitalize text-muted-foreground">{range.label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="citas-agenda-proveedor" className="sr-only">
             Filtrar por proveedor
           </Label>
-          <select id="citas-agenda-proveedor" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className={SELECT_CLASS}>
+          <NativeSelect wrapperClassName="w-auto" id="citas-agenda-proveedor" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)}>
             <option value="">Todos los proveedores</option>
             {providers?.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName}
               </option>
             ))}
-          </select>
+          </NativeSelect>
 
           <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)}>
             <TabsList>
@@ -425,18 +420,18 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
       {/* Alta manual real (misma llamada `createAppointment` de siempre) — antes era
           una sección plegable inline; ahora es el modal lateral real del design
-          system (ModalFormularioLateral), mismo estado `showNewForm` que la
+          system (FormDialog), mismo estado `showNewForm` que la
           gobernaba. El botón de guardar vive en el pie del modal y dispara el
           `submit` del <form> de abajo vía `form="citas-nueva-cita"`, para no perder
           la validación nativa de los campos `required`. */}
-      <ModalFormularioLateral
+      <FormDialog
         open={showNewForm}
         onOpenChange={setShowNewForm}
         titulo="Nueva cita"
         subtitulo="Alta manual desde el panel — la misma cita que registraría el agente."
         anchoClase="max-w-3xl"
         footer={
-          <Button type="submit" form="citas-nueva-cita" disabled={creatingAppointment} className="rounded-full px-6">
+          <Button type="submit" form="citas-nueva-cita" disabled={creatingAppointment}>
             {creatingAppointment ? "Creando…" : "Crear cita"}
           </Button>
         }
@@ -445,25 +440,25 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="citas-nueva-proveedor">Proveedor</Label>
-              <select id="citas-nueva-proveedor" required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} className={SELECT_CLASS}>
+              <NativeSelect id="citas-nueva-proveedor" required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)}>
                 <option value="">Proveedor…</option>
                 {providers?.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.displayName}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="citas-nueva-servicio">Servicio</Label>
-              <select id="citas-nueva-servicio" required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} className={SELECT_CLASS}>
+              <NativeSelect id="citas-nueva-servicio" required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)}>
                 <option value="">Servicio…</option>
                 {services?.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <Label htmlFor="citas-nueva-inicio">Fecha y hora</Label>
@@ -487,12 +482,12 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             </div>
           </div>
           {createError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {createError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
       {error && <EstadoError mensaje={error} />}
 
@@ -502,7 +497,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} className="flex flex-col gap-2">
-          <h2 className="border-b border-border pb-1 text-[13px] font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt)}</h2>
+          <h2 className="border-b border-border pb-1 text-sm font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt)}</h2>
           {dayAppointments.map((apt) => (
             <Card key={apt.id}>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -510,10 +505,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   <p className="text-sm font-semibold text-foreground">
                     {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
                   </p>
-                  <p className="mt-0.5 text-[13px] text-foreground/80">
+                  <p className="mt-0.5 text-sm text-foreground/80">
                     {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
                   </p>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     {apt.providerName ?? "Proveedor desconocido"} · {formatAppointmentSource(apt.source)}
                   </p>
                   {/* Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — indicador
@@ -521,7 +516,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                       de verdad requiere atención ('error'/'invalid' — el flujo normal
                       'pending'/'synced'/'skipped' nunca se muestra aquí, sería ruido). */}
                   {googleSyncStatusNeedsAttention(apt.googleSyncStatus) && (
-                    <p className="mt-1 flex items-start gap-1 text-[12px] text-amber-700 dark:text-amber-400">
+                    <p className="mt-1 flex items-start gap-1 text-xs text-warning">
                       <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                       <span>
                         {formatGoogleSyncStatus(apt.googleSyncStatus)}
@@ -585,14 +580,14 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             <Label htmlFor="citas-espera-servicio" className="sr-only">
               Filtrar la lista de espera por servicio
             </Label>
-            <select id="citas-espera-servicio" value={waitlistServiceFilter} onChange={(e) => setWaitlistServiceFilter(e.target.value)} className={SELECT_CLASS}>
+            <NativeSelect wrapperClassName="w-auto" id="citas-espera-servicio" value={waitlistServiceFilter} onChange={(e) => setWaitlistServiceFilter(e.target.value)}>
               <option value="">Todos los servicios</option>
               {services?.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Button
               size="sm"
               onClick={() => void handleBroadcastWaitlist()}
@@ -604,7 +599,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Filtro de proveedor: el mismo selector de arriba ({providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : "todos los proveedores"}).
           </p>
 
@@ -617,13 +612,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             // `admin.ts::POST .../waitlist/broadcast`), así que este mensaje
             // NUNCA debe decir "Aviso encolado" (sería una confirmación falsa
             // -- exactamente el éxito falso que la ronda 2 encontró).
-            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
               Avisar a la lista de espera todavía no está disponible en este negocio (falta terminar de actualizar la base de datos). Ningún aviso se encoló; vuelve a intentarlo más tarde.
             </p>
           )}
 
           {broadcastSummary && broadcastSummary.queued && (
-            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
               {/* Corrección post-revisión (hallazgo B): el efecto real corre
                   post-commit, en segundo plano — este mensaje ya no promete un
                   "Avisados: N" síncrono (esa cifra no existe todavía cuando la
@@ -654,14 +649,14 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                     <TableCell className="font-medium text-foreground">#{candidate.position}</TableCell>
                     <TableCell>
                       <span className="block font-medium text-foreground">{candidate.customerName}</span>
-                      <span className="block text-[12px] text-muted-foreground">{candidate.customerPhone}</span>
+                      <span className="block text-xs text-muted-foreground">{candidate.customerPhone}</span>
                     </TableCell>
-                    <TableCell className="text-[12px] text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground">
                       {candidate.preferredDateFrom || candidate.preferredTimeWindow
                         ? `${candidate.preferredDateFrom ? `desde ${candidate.preferredDateFrom}` : ""}${candidate.preferredDateFrom && candidate.preferredTimeWindow ? " · " : ""}${candidate.preferredTimeWindow ?? ""}`
                         : "Sin preferencia"}
                     </TableCell>
-                    <TableCell className="text-right text-[12px] text-muted-foreground">
+                    <TableCell className="text-right text-xs text-muted-foreground">
                       {candidate.notifiedCount > 0 ? `ya avisado ${candidate.notifiedCount}x` : "nunca avisado"}
                     </TableCell>
                   </TableRow>

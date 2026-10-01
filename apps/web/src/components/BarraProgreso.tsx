@@ -1,7 +1,6 @@
-// Barra de avance del back office de plataforma (gasto de API, tope de LLM) sobre el <progress> nativo:
+// Barra de avance compartida (superadmin, despachos, citas) sobre el <progress> nativo:
 // el ancho dinamico no necesita `style={{ width }}` (el DS v2 prohibe estilos inline) y el
-// elemento ya es accesible (role progressbar, valor y rango). El color sale de tokens. Mismo
-// patron que la barra de avance de despachos.
+// elemento ya es accesible (role progressbar, valor y rango). El color sale de tokens.
 import { cn } from "@atiende/ui";
 
 export type BarraProgresoTono = "primary" | "success" | "warning" | "danger";
