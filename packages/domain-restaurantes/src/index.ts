@@ -62,7 +62,7 @@ export type { TurnoHorario, HorarioSucursal, EstadoApertura } from "./horarios.t
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
-export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, PROMOTION_CODE_PATTERN } from "./promotions.ts";
+export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
 export { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 
