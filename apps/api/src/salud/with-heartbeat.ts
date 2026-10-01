@@ -87,6 +87,26 @@ async function registrarLatidoBestEffort(deps: AppDeps, cronName: string, status
 export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Promise<Response>): () => Promise<Response> {
   return async () => {
     const startedAt = new Date();
+
+    // Interruptor de plataforma (kill switch por cron o global): si el superadmin
+    // detuvo este cron, el handler real NO corre. Responde 200 (Vercel Cron no
+    // debe reintentar una pausa deliberada) con `skipped` explicito, y deja el
+    // latido como `ok` con una nota visible -- la pausa no se esconde ni parece
+    // un fallo. El guard es fail-open (ver platform-switches.ts): si no puede
+    // leer los interruptores, el cron corre como siempre.
+    if (deps.platformSwitchGuard) {
+      let blockedBy: string | null = null;
+      try {
+        blockedBy = await deps.platformSwitchGuard.cronBlockedBy(cronName);
+      } catch (err) {
+        console.error(`withHeartbeat: no se pudo consultar el interruptor de "${cronName}" (se ejecuta el cron):`, err);
+      }
+      if (blockedBy) {
+        await registrarLatidoBestEffort(deps, cronName, "ok", `pausado por interruptor de plataforma (${blockedBy})`, startedAt, new Date());
+        return Response.json({ ok: true, skipped: "kill_switch", switch: blockedBy }, { status: 200 });
+      }
+    }
+
     try {
       const response = await handler();
       await registrarLatidoBestEffort(deps, cronName, "ok", null, startedAt, new Date());

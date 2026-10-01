@@ -179,3 +179,13 @@ export const REPUTACION_ACTION_RESOLVE_ROLES: readonly HotelRole[] = ["owner", "
 // alta invita staff nuevo — mismo conjunto que `ADMIN_ROLES` (owner/gm), nunca
 // un rol operativo (frontdesk/housekeeping/etc.) por más que gestione dinero.
 export const STAFF_INVITE_ROLES: readonly HotelRole[] = ADMIN_ROLES;
+
+// H-01 -- boveda de identidad. Espejo de app de las policies/funciones de
+// migrations/031 (la autoridad final es la base): capturar y ver METADATOS es de
+// front-of-house (mismo conjunto que da de alta huespedes/reservas); REVELAR el
+// documento en claro y verificarlo es de quien lo revisa en mostrador (owner/gm/
+// frontdesk -- `reservations` captura pero no lee en claro); purga y bitacora son
+// administrativas (owner/gm, doble control entre dos personas distintas).
+export const IDENTITY_CAPTURE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+export const IDENTITY_REVEAL_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
+export const IDENTITY_ADMIN_ROLES: readonly HotelRole[] = ADMIN_ROLES;

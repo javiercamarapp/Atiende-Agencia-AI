@@ -41,6 +41,7 @@ import {
   TabsTrigger,
   toast,
 } from "@atiende/ui";
+import { fetchConStepUp } from "../lib/stepup.ts";
 
 type IntentEstado = "pending" | "executed" | "failed" | "expired" | "cancelled";
 type IntentTipo = "reencolar_mensaje_muerto" | "cerrar_prospecto" | "ejecutar_mantenimiento_ahora";
@@ -75,7 +76,7 @@ interface AutomationLog {
 }
 
 async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
+  const res = await fetchConStepUp(apiBaseUrl, token, `${apiBaseUrl.replace(/\/$/, "")}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? "No se pudo completar la solicitud.");

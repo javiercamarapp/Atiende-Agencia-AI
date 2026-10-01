@@ -23,6 +23,8 @@ import { hotelesRevenueRoutes } from "./revenue.ts";
 import { hotelesRevenueRecomendacionesRoutes } from "./revenue-recomendaciones.ts";
 import { hotelesRevenueRecommendationsCronRoutes } from "./revenue-recommendations-cron.ts";
 import { hotelesReputacionRoutes } from "./reputacion.ts";
+import { hotelesIdentidadRoutes } from "./identidad.ts";
+import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -71,5 +73,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // clasificador + índice agregado (dominio y modelo de datos ya existían desde
   // Fase 11; esta rama agrega el primer invocador real, ver reputacion.ts).
   app.route("/", hotelesReputacionRoutes(deps));
+  // H-01 (P0) -- boveda de identidad cifrada + registro migratorio + purga con doble
+  // control (migrations/031_hoteles_boveda_identidad.sql), ver identidad.ts y el cron de
+  // purga por retencion (identidad-purga-cron.ts).
+  app.route("/", hotelesIdentidadRoutes(deps));
+  app.route("/", hotelesIdentidadPurgaCronRoutes(deps));
   return app;
 }

@@ -68,6 +68,9 @@ export {
   isHotelRole,
   MONEY_ROLES,
   ADMIN_ROLES,
+  IDENTITY_CAPTURE_ROLES,
+  IDENTITY_REVEAL_ROLES,
+  IDENTITY_ADMIN_ROLES,
   TOMAR_PEDIDO_ROLES,
   CONFIRMAR_COCINA_ROLES,
   MANAGE_RESERVATIONS_ROLES,
@@ -515,3 +518,4 @@ export { enqueueGuestEmailCore, tryEnqueueGuestEmail } from "./guest-email-notif
 export type { GuestEmailEvent, GuestEmailExtra, GuestEmailFolioExtra, GuestEmailCfdiExtra, GuestEmailResult } from "./guest-email-notifications.ts";
 export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
+export * from "./identity/index.ts";

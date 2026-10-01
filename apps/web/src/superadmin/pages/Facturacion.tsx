@@ -38,6 +38,7 @@ import {
   formatMoney,
 } from "@atiende/ui";
 import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { fetchConStepUp } from "../lib/stepup.ts";
 
 type EstadoBilling = "sin_suscripcion" | "activa" | "pago_pendiente" | "cancelada";
 type FiltroEstado = EstadoBilling | "todos";
@@ -188,7 +189,7 @@ function badgeEstado(estado: EstadoBilling) {
 }
 
 async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}${path}`, {
+  const res = await fetchConStepUp(apiBaseUrl, token, `${apiBaseUrl.replace(/\/$/, "")}${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers },
   });
