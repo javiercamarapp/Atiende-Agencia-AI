@@ -373,11 +373,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                   placeholder="Buscar huésped…"
                   className="mt-1"
                 />
-                <NativeSelect
-                  value={guestId}
-                  onChange={(e) => setGuestId(e.target.value)}
-                  size={Math.min(5, guestOptions.length + 1)}
-                >
+                <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva" className="mt-1.5">
                   <option value="">Sin huésped asignado</option>
                   {guestOptions.map((g) => (
                     <option key={g.id} value={g.id}>
