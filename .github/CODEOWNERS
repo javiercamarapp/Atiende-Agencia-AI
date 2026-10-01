@@ -1,0 +1,29 @@
+# PL-11. Duenos de revision por ruta (el ultimo patron que coincide gana).
+# Hoy el repo tiene un solo mantenedor; este archivo deja explicito que rutas son sensibles para que, al
+# sumar gente o activar "Require review from Code Owners" en la proteccion de main, la regla ya exista.
+# Nota: CODEOWNERS solo OBLIGA revision si la proteccion de rama lo exige; sin ella es informativo.
+
+*                              @javiercamarapp
+
+# CI/CD y automatizacion: un cambio aqui puede ejecutar codigo con permisos del repo.
+/.github/                      @javiercamarapp
+/vercel.json                   @javiercamarapp
+/scripts/                      @javiercamarapp
+
+# Esquema de base, RLS y GRANT (cada migracion lleva espejo byte-identico en supabase/migrations).
+/supabase/                     @javiercamarapp
+/packages/db/migrations/       @javiercamarapp
+
+# Autenticacion, autorizacion, limite de tasa y superficie de sesion/superadmin de la API.
+/packages/core-auth/           @javiercamarapp
+/packages/core-authz/          @javiercamarapp
+/packages/core-ratelimit/      @javiercamarapp
+/apps/api/src/routes/auth*.ts  @javiercamarapp
+/apps/api/src/routes/superadmin*.ts @javiercamarapp
+/apps/api/src/origin-guard.ts  @javiercamarapp
+/apps/api/src/http-security.ts @javiercamarapp
+/apps/api/src/cabeceras-seguridad.ts @javiercamarapp
+
+# Dinero y datos personales.
+/packages/billing/             @javiercamarapp
+/packages/core-pii/            @javiercamarapp
