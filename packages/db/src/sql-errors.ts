@@ -45,8 +45,11 @@ function errorMessage(err: unknown): string {
 /** Mensaje real que Postgres antepone SOLO cuando la función/rutina de nivel
  *  superior no existe -- nunca para "operator does not exist" (ver cabecera
  *  del archivo). `\S+\(.*\)` acepta el nombre calificado por schema
- *  (`core.foo`) y cualquier lista de tipos de argumento. */
-const UNDEFINED_FUNCTION_MESSAGE_RE = /^function\s+\S+\(.*\)\s+does not exist/i;
+ *  (`core.foo`) y cualquier lista de tipos de argumento. El nombre excluye `(` y espacios
+ *  (clases disjuntas del literal `(`) para que la expresion sea de tiempo lineal ante un
+ *  mensaje largo o malicioso (defensa en profundidad contra ReDoS: el mensaje viene del
+ *  motor/driver). */
+const UNDEFINED_FUNCTION_MESSAGE_RE = /^function\s+[^\s(]+\([^\n]*\)\s+does not exist/i;
 
 /** SQLSTATE 42883 (`undefined_function`) -- lo que Postgres real lanza cuando
  *  una función `security definer` referenciada todavía no existe (migración

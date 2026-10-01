@@ -211,6 +211,17 @@ ningún código viejo usa las tablas nuevas. No hay variables de entorno nuevas.
 propone acciones sensibles por sí mismo (sus 3 herramientas no mueven dinero ni tarifas): la cola de aprobaciones
 recibe propuestas de personas y está lista para las del agente (`PostgresAgentesRepository.proposeAction`).
 
+**Hoteles H-06 (migración 036, grupos: cotización, bloqueo de cuartos con fecha de liberación, pickup, rooming y
+anticipos registrados) — orden de despliegue.** Mergear NO aplica `20240101000241_036_hoteles_grupos.sql` a la base
+real. El código nuevo funciona contra la base vieja: las lecturas de `/hoteles/:propertyId/grupos/*` responden
+`disponible:false` con listas vacías, las escrituras 503 y la ruta interna `/internal/hoteles/grupos-liberacion` omite las
+properties (`migracion_pendiente`). Orden: (1) despliega el código; (2) aplica la 036 (`supabase db push`; requiere 001,
+003, 005, 030 y 035 ya aplicadas); (3) verifica `GET /internal/hoteles/grupos-liberacion` con el secreto interno (debe
+reportar `omitida:null`). La liberación por cutoff es una función segura (`hoteles.group_release_due`, solo sesión de
+sistema) y una ruta interna invocable a mano: este PR NO la programa en `vercel.json` (decisión de producto). Con la 036
+aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas nuevas. No hay variables de
+entorno nuevas. Los anticipos solo se REGISTRAN: no hay cobro ni pasarela.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las

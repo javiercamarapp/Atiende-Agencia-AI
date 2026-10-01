@@ -117,3 +117,13 @@ describe("isMigrationPendingError -- clasificación compartida 42883/42P01/42703
     expect(isMigrationPendingError(pgError("42P01", "relation core.daily_ops_summary does not exist"), "core.get_daily_ops_summary_for_superadmin")).toBe(true);
   });
 });
+
+describe("isUndefinedFunctionError: mensaje largo o hostil (defensa en profundidad contra ReDoS)", () => {
+  it("un mensaje con miles de repeticiones de '!(' se rechaza en tiempo acotado y uno legitimo con firma larga sigue aceptandose", () => {
+    const hostile = `function ${"!(".repeat(30_000)}`;
+    const t0 = Date.now();
+    expect(isUndefinedFunctionError(pgError("42883", hostile))).toBe(false);
+    expect(isUndefinedFunctionError(pgError("42883", `function hoteles.f(${"uuid, ".repeat(2_000)}uuid) does not exist`))).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+});

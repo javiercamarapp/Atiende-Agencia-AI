@@ -31,6 +31,8 @@ import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
 import { hotelesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { hotelesAgentesRoutes } from "./agentes.ts";
 import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts";
+import { hotelesGruposRoutes } from "./grupos.ts";
+import { hotelesGruposLiberacionCronRoutes } from "./grupos-liberacion-cron.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -98,5 +100,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // cron de expiracion (agentes-expiracion-cron.ts).
   app.route("/", hotelesAgentesRoutes(deps));
   app.route("/", hotelesAgentesExpiracionCronRoutes(deps));
+  // H-06 (P1) -- grupos: cotizacion con vigencia, bloqueo de cuartos con fecha de liberacion, pickup, rooming y anticipos
+  // registrados (migrations/036_hoteles_grupos.sql), ver grupos.ts y la liberacion por cutoff (grupos-liberacion-cron.ts,
+  // sin cron programado).
+  app.route("/", hotelesGruposRoutes(deps));
+  app.route("/", hotelesGruposLiberacionCronRoutes(deps));
   return app;
 }
