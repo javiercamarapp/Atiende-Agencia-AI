@@ -336,5 +336,5 @@ describe("E.11 fallas del proveedor LLM", () => {
 
   it.todo("T-FP05b / P31 [P1] DECISION ABIERTA: el presupuesto por defecto del turno es 45 s y el dueno pide <=10 s; el tope solo se revisa entre llamadas (no hay timeout por llamada al proveedor)");
   it.todo("T-FP01 / T-FP02 [P0] SoftRestaurant caido o tardio: cubierto por softrestaurant-outbox-service.spec.ts (reintento con la misma clave, un solo folio, captura asistida)");
-  it.todo("T-FP07..T-FP12 [P1] llamadas de voz (silencio, barge-in, tool lenta, variables dinamicas, vista previa, duracion): dependen del proveedor ElevenLabs; se miden en la pasada manual con modelo real");
+  it.todo("T-FP07..T-FP12 [P1] llamadas de voz (silencio, barge-in, tool lenta, variables dinamicas, vista previa, duracion): cubiertos por el simulador de voz (voz-simulador-prueba-ciega.spec.ts, voz-llamada-maquina.spec.ts) y, con modelo real, por npm run evals:voz:real");
 });
