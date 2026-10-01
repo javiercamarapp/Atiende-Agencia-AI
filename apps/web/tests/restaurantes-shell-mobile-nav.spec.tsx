@@ -21,6 +21,7 @@ import { RestaurantesShell } from "../src/verticals/restaurantes/RestaurantesShe
 import type { BranchOption } from "../src/verticals/restaurantes/dashboard-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -46,6 +47,7 @@ let rendered: RenderedComponent | undefined;
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
+  vi.unstubAllGlobals();
   fetchBranchesMock.mockReset();
 });
 
@@ -102,5 +104,11 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader).toBeDefined();
     expect(desktopHeader!.parentElement!.className).toContain("hidden");
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
+  });
+
+  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+    rendered = await renderShell();
+    await cerrarSesionDesdeMenuMovil(rendered.container);
+    expect(window.localStorage.getItem("atiende.restaurantes.session")).toBeNull();
   });
 });
