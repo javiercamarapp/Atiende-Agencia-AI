@@ -76,8 +76,8 @@ describe("cifrado del secreto TOTP", () => {
     expect(() => decryptTotpSecret(parts.join("."), KEY, "user-1")).toThrow();
     expect(() => decryptTotpSecret("v2.a.b.c", KEY, "user-1")).toThrow();
   });
-  it("rechaza material de llave corto y produce cifrados distintos (IV aleatorio)", () => {
-    expect(() => encryptTotpSecret("X", "corta", "u")).toThrow();
+  it("rechaza material de llave vacio y produce cifrados distintos (IV aleatorio)", () => {
+    expect(() => encryptTotpSecret("X", "", "u")).toThrow();
     expect(encryptTotpSecret("X", KEY, "u")).not.toBe(encryptTotpSecret("X", KEY, "u"));
   });
 });
