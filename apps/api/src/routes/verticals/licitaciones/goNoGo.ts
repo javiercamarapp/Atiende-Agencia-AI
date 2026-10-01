@@ -7,7 +7,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { GO_NO_GO_ROLES, GoNoGoRejectedError, MatchingEngine, buildMatchInputsSnapshot, computeMatchInputsHash, toOrganizationMatchingProfile } from "@atiende/domain-licitaciones";
+import { GO_NO_GO_ROLES, GoNoGoRejectedError, computeLiveGoNoGoMatch } from "@atiende/domain-licitaciones";
 import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -27,7 +27,6 @@ function mapGoNoGoRejectedError(err: unknown): Error {
 
 export function licitacionesGoNoGoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const engine = new MatchingEngine();
   const base = "/licitaciones/:propertyId/tenders/:tenderId/go-no-go";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -68,18 +67,15 @@ export function licitacionesGoNoGoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     // El MatchResult VIGENTE se calcula aquí, en vivo, contra el perfil y la
     // convocatoria actuales -- nunca uno que el cliente mande.
-    const profileRecord = await repo.findMatchingProfile(organizationId);
-    const profile = toOrganizationMatchingProfile(profileRecord, organizationId);
-    const matchResult = engine.score(tender, profile);
-    const matchInputsHash = computeMatchInputsHash(buildMatchInputsSnapshot(tender, profileRecord));
+    const match = await computeLiveGoNoGoMatch(repo, organizationId, tender);
 
     try {
       const decision = await repo.createGoNoGoDecision(organizationId, tenderId, {
         decision: raw.decision,
         reasons,
-        matchScore: matchResult.score,
-        matchEligibilityStatus: matchResult.eligibility.status,
-        matchInputsHash,
+        matchScore: match.matchScore,
+        matchEligibilityStatus: match.matchEligibilityStatus,
+        matchInputsHash: match.matchInputsHash,
         actorId,
         actorRole,
       });

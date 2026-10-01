@@ -441,3 +441,5 @@ export type {
 } from "./whatsapp-repository.ts";
 export { enqueueDeadlineReminderWhatsApp, enqueueTenderNotices, requestGoNoGoDecisionsByWhatsApp } from "./whatsapp-service.ts";
 export type { DecisionRequestInput, DecisionRequestResult, NoticeInput } from "./whatsapp-service.ts";
+export { computeLiveGoNoGoMatch } from "./go-no-go-live.ts";
+export type { LiveGoNoGoMatchSnapshot } from "./go-no-go-live.ts";

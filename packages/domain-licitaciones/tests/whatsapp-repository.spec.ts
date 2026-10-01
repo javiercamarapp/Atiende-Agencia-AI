@@ -56,10 +56,10 @@ describe("PostgresWhatsAppRepository -- base sin migracion 030", () => {
 
   it("base migrada: el puerto inyecta el remitente de la plataforma y no confia en uno del payload", async () => {
     const session = new AbortAwareFakeSession([
-      { match: /claim_whatsapp_outbox_batch/, respond: () => [{ id: "o1", attempts: 0, payload: { to: "+525500000000", body: "hola", phoneNumberId: "atacante" } }] },
+      { match: /claim_whatsapp_outbox_batch/, respond: () => [{ id: "o1", attempts: 0, payload: { to: "+525500000000", body: "hola", phone_number_id: "atacante" } }] },
     ]);
     const [item] = await createLicitacionesMessagingOutboxPort(new PostgresWhatsAppRepository(session), "123456").claimBatch(5, 60);
-    expect((item!.payload as { phoneNumberId: string }).phoneNumberId).toBe("123456");
+    expect((item!.payload as { phone_number_id: string }).phone_number_id).toBe("123456");
   });
 
   it("el consumo normaliza la fila de la funcion SQL", async () => {

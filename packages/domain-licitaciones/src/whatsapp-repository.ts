@@ -108,7 +108,8 @@ export interface WhatsAppRepository {
 /**
  * Puerto del dispatcher de `@atiende/whatsapp-gateway`. `phoneNumberId` es el numero
  * remitente de la plataforma (config del ambiente): el payload de la cola solo guarda
- * `to`/`body`/`buttons`, nunca un remitente que un cliente pudiera haber elegido.
+ * `to`/`body`/`buttons`, nunca un remitente que un cliente pudiera haber elegido; se inyecta como
+ * `phone_number_id` (la clave que valida el dispatcher del gateway).
  * Base sin migrar: `claimBatch` devuelve vacio (no hay nada que enviar), no lanza.
  */
 export function createLicitacionesMessagingOutboxPort(repo: WhatsAppRepository, phoneNumberId: string): MessagingOutboxPort {
@@ -119,7 +120,7 @@ export function createLicitacionesMessagingOutboxPort(repo: WhatsAppRepository, 
         const items = await repo.claimOutboxBatch(limit, leaseSeconds);
         return items.map((item) => ({
           ...item,
-          payload: item.payload && typeof item.payload === "object" ? { ...(item.payload as Record<string, unknown>), phoneNumberId } : item.payload,
+          payload: item.payload && typeof item.payload === "object" ? { ...(item.payload as Record<string, unknown>), phone_number_id: phoneNumberId } : item.payload,
         }));
       } catch (err) {
         if (err instanceof WhatsAppNotAvailableError) return [];
