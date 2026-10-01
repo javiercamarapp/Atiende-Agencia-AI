@@ -51,11 +51,17 @@ export class GoogleOAuthError extends Error {
 }
 
 export interface OAuthStateClaims {
-  readonly purpose: "login";
+  /** `login`: iniciar sesion (anonimo). `link`: vincular Google a una cuenta YA autenticada (el
+   *  `state` lo emite una ruta con sesion y lleva `staffId`/`orgSlug`; sin sesion nunca se emite). */
+  readonly purpose: "login" | "link";
   readonly vertical: string;
   readonly nonce: string;
   readonly codeVerifier: string;
   readonly redirectUri: string;
+  /** Solo `purpose: "link"`: la cuenta a la que se vincula (la fija el servidor, nunca el navegador). */
+  readonly staffId?: string;
+  /** Solo `purpose: "link"`: slug de la organizacion a la que se regresa (validado contra las membresias). */
+  readonly orgSlug?: string;
 }
 
 function secretKey(secret: string): Uint8Array {
