@@ -9,11 +9,17 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   GESTION_VENCIMIENTOS_ROLES,
+  REGIMEN_FISCAL_POR_DEFECTO,
+  RegimenNoSoportadoError,
   VER_VENCIMIENTOS_ROLES,
   calcularVencimientosDelPeriodo,
   diasHasta,
   decidirEscalamiento,
-  tryEnqueueEscalationEmail,
+  metadatosVencimiento,
+  regimenSoportado,
+  barrerEscalamientosVencimientos,
+  crearVencimientosDelPeriodo,
+  registrarEscalamiento,
 } from "@atiende/domain-despachos";
 import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
@@ -25,6 +31,8 @@ import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 interface CalcularBody {
   readonly year?: unknown;
   readonly month?: unknown;
+  /** Clave del catálogo c_RegimenFiscal del SAT. Sin ella se asume 601 (persona moral, régimen general). */
+  readonly regimenFiscal?: unknown;
 }
 
 interface CompletarBody {
@@ -52,6 +60,7 @@ function todayIso(zonaHoraria: string): string {
 }
 
 function serializeDeadline(d: FiscalDeadlineRecord, hoy: string) {
+  const meta = metadatosVencimiento(d.tipo, d.fechaLimite);
   return {
     id: d.id,
     tipo: d.tipo,
@@ -63,6 +72,8 @@ function serializeDeadline(d: FiscalDeadlineRecord, hoy: string) {
     comprobanteUrl: d.comprobanteUrl,
     diasRestantes: diasHasta(d.fechaLimite, hoy),
     creadoEn: d.createdAt,
+    fundamento: meta.fundamento,
+    validarConFiscalista: meta.validarConFiscalista,
   };
 }
 
@@ -107,11 +118,22 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const month = typeof raw.month === "number" ? raw.month : hoyMonth;
     if (!Number.isInteger(month) || month < 1 || month > 12) throw Errors.validation("month: se esperaba un entero 1-12.");
 
-    const nuevos = calcularVencimientosDelPeriodo(year, month, hoy);
-    const creados: FiscalDeadlineRecord[] = [];
-    for (const n of nuevos) {
-      creados.push(await repo.createDeadline({ organizationId, propertyId, tipo: n.tipo, periodo: n.periodo, fechaLimite: n.fechaLimite, prioridad: n.prioridad }));
+    const regimenFiscal = raw.regimenFiscal === undefined ? REGIMEN_FISCAL_POR_DEFECTO : raw.regimenFiscal;
+    if (typeof regimenFiscal !== "string" || !regimenSoportado(regimenFiscal)) {
+      throw Errors.validation("regimenFiscal: clave de c_RegimenFiscal sin calendario modelado.");
     }
+
+    let nuevos;
+    try {
+      nuevos = calcularVencimientosDelPeriodo(year, month, hoy, { regimenFiscal });
+    } catch (err) {
+      if (err instanceof RegimenNoSoportadoError) throw Errors.validation(err.message);
+      throw err;
+    }
+    const { creados, omitidos } = await crearVencimientosDelPeriodo(repo, c.get("db"), { organizationId, propertyId }, nuevos);
+    // El cuerpo sigue siendo la lista de vencimientos (contrato previo). Los tipos que la base aún no admite se
+    // reportan en el encabezado: no se finge que se crearon.
+    if (omitidos.length > 0) c.header("X-Vencimientos-Omitidos", omitidos.join(","));
     return c.json(creados.map((d) => serializeDeadline(d, hoy)), 201);
   });
 
@@ -145,17 +167,11 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
     const dias = diasHasta(deadline.fechaLimite, hoy);
     const decision = decidirEscalamiento(deadline.tipo, deadline.fechaLimite, dias);
-    const escalation = await repo.insertEscalation(deadlineId, decision.level, new Date().toISOString(), decision.notes);
-    await repo.updateDeadlineEstado(deadlineId, "escalado");
-
-    // Hallazgo de auditoría (severidad ALTA): hasta esta fase, escalar un
-    // vencimiento solo insertaba la fila en BD sin notificar a nadie. Aviso
-    // real por correo (best-effort, ver email-notifications.ts) al staff
-    // owner/admin de la organización -- el escalamiento en sí YA quedó
-    // registrado con éxito arriba, así que un fallo al notificar nunca
+    // Hallazgo de auditoría (severidad ALTA): hasta esta fase, escalar un vencimiento solo insertaba la fila en BD
+    // sin notificar a nadie. Aviso real por correo (best-effort, ver email-notifications.ts) al staff owner/admin de
+    // la organización -- el escalamiento en sí queda registrado antes, así que un fallo al notificar nunca
     // convierte esta respuesta en un error.
-    const organization = await repo.findOrganizationById(deadline.organizationId);
-    const notificacion = await tryEnqueueEscalationEmail(repo, deadline, decision, organization?.name ?? "tu despacho", dias);
+    const { escalation, notificacion } = await registrarEscalamiento(repo, deadline, decision, dias);
     // Cierre del hallazgo "despachos no tiene disparo inline de correo" (ver
     // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
     // transacción del request, best-effort real.
@@ -175,6 +191,26 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       },
       201,
     );
+  });
+
+  // D-26: escalamiento automático invocable. Evalúa TODOS los vencimientos no completados de la property y escala
+  // los que vencen hoy o mañana (nivel_2/3) o ya vencieron (nivel_4) y aún no tienen un escalamiento de ese nivel
+  // o mayor. Idempotente: llamarlo dos veces seguidas no repite escalamientos ni correos. No hay cron nuevo: lo
+  // dispara el botón del panel con la sesión del staff (un barrido de sistema para todas las properties requeriría
+  // funciones SQL de solo-sistema: queda como hueco declarado en el PR).
+  // Cada vencimiento corre en su SAVEPOINT: uno con datos raros no revierte los ya escalados del mismo request.
+  app.post("/despachos/:propertyId/vencimientos/barrido", async (c) => {
+    assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    const db = c.get("db");
+    const repo = deps.despachosRepo(db);
+    const propertyId = c.req.param("propertyId");
+    const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
+    const resultado = await barrerEscalamientosVencimientos(repo, db, propertyId, hoy);
+    if (resultado.escalados.length > 0) {
+      await triggerDespachosEmailDispatchInline(deps, db, repo);
+      c.get("postCommitTasks").push(() => runDespachosEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
+    }
+    return c.json(resultado);
   });
 
   return app;
