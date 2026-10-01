@@ -20,8 +20,10 @@
 // esto solo resetea su estado, el código de producción bajo prueba (`auth.ts`) sigue
 // llamando a la función real.
 import { beforeEach } from "vitest";
-import { resetDefaultRateLimiterForTests } from "@atiende/core-ratelimit";
+import { resetDefaultLoginLockoutForTests, resetDefaultRateLimiterForTests } from "@atiende/core-ratelimit";
 
 beforeEach(() => {
   resetDefaultRateLimiterForTests();
+  // PL-09: el bloqueo por login fallido tambien es por-proceso; mismo aislamiento por test.
+  resetDefaultLoginLockoutForTests();
 });

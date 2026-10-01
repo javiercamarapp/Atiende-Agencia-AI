@@ -13,7 +13,7 @@ import { Hono } from "hono";
 import { authMiddleware, hashInviteToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hashPassword, verifyPassword, StaffInviteInvalidError } from "@atiende/db";
-import { rateLimit } from "@atiende/core-ratelimit";
+import { getDefaultLoginLockout, rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
@@ -50,6 +50,13 @@ const EXCHANGE_CODE_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 // mientras mantiene mínima la superficie de un código interceptado (ej. en un
 // log de acceso) antes de que expire por sí solo.
 export const EXCHANGE_CODE_TTL_MS = 60_000;
+
+let decoyHash: Promise<string> | undefined;
+/** Hash scrypt fijo (calculado una vez por proceso) para igualar el costo del login de un correo inexistente. */
+function decoyPasswordHash(): Promise<string> {
+  decoyHash ??= hashPassword("atiende-decoy-password-no-account");
+  return decoyHash;
+}
 
 interface LoginBody {
   readonly email?: unknown;
@@ -138,11 +145,25 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     });
     if (!loginAllowed) throw Errors.tooManyRequests("Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.");
 
+    // PL-09: bloqueo temporal con backoff por intentos FALLIDOS, llave IP+correo (la misma que el rate
+    // limit). Se consulta ANTES de tocar la base o scrypt, y aplica igual a correos inexistentes: el
+    // bloqueo depende solo de la llave, nunca de si la cuenta existe. Un intento hecho mientras la llave
+    // esta bloqueada no suma fallos (el bloqueo maximo es acotado, ver `LoginLockout`).
+    const lockout = getDefaultLoginLockout();
+    const lockKey = requestActor(c.req.raw, email);
+    const lockState = await lockout.status(lockKey);
+    if (lockState.locked) throw Errors.loginLocked(lockState.retryAfterMs);
+
     const invalidCredentials = () => Errors.unauthorized("Correo o contraseña incorrectos.");
     const staff = await deps.coreRepo.findStaffByEmail(email);
-    if (!staff) throw invalidCredentials();
-    const valid = await verifyPassword(password, staff.passwordHash);
-    if (!valid) throw invalidCredentials();
+    // Correo inexistente: se verifica contra un hash señuelo para que el costo (scrypt) y por tanto el
+    // tiempo de respuesta no delaten si la cuenta existe.
+    const valid = await verifyPassword(password, staff ? staff.passwordHash : await decoyPasswordHash());
+    if (!staff || !valid) {
+      await lockout.recordFailure(lockKey);
+      throw invalidCredentials();
+    }
+    await lockout.recordSuccess(lockKey);
 
     if (staff.createdVia === "registro_autoservicio" && !staff.emailVerifiedAt) {
       throw Errors.forbidden("Todavía no confirmas tu correo. Revisa tu bandeja o pide que te reenvíen el enlace de verificación.");
