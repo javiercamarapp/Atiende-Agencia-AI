@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
 import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
