@@ -35,7 +35,7 @@ import type { AppDeps } from "../../../deps.ts";
 
 function parseVersionEsperada(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 1_000_000) {
-    throw Errors.validation("versionEsperada: entero >= 0 (0 si todavia no hay configuracion guardada).");
+    throw Errors.validation("versionEsperada: entero >= 0 (0 si todavía no hay configuración guardada).");
   }
   return value;
 }
@@ -101,9 +101,9 @@ export function citasWhatsappMensajesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const staffId = c.get("userId");
     const repo = deps.citasRepo(c.get("db"));
     const resultado = await repo.saveWhatsappMessageConfig(organizationId, versionEsperada, accion, config);
-    if (resultado.status === "conflict") throw Errors.conflict("La configuracion cambio mientras la editabas. Recarga la pagina y vuelve a intentar.");
+    if (resultado.status === "conflict") throw Errors.conflict("La configuración cambió mientras la editabas. Recarga la página y vuelve a intentar.");
     if (resultado.status === "forbidden") throw Errors.forbidden();
-    if (resultado.status === "unavailable") throw Errors.serviceUnavailable("La edicion de mensajes todavia no esta disponible en este ambiente (migracion pendiente).");
+    if (resultado.status === "unavailable") throw Errors.serviceUnavailable("La edición de mensajes todavía no está disponible en este ambiente (migración pendiente).");
     logEvent(c, "info", "citas_admin_whatsapp_mensajes_guardado", { actorUserId: staffId, organizationId, accion, version: resultado.version });
     // Bitacora best-effort (nunca revierte el guardado): version anterior y nueva, sin el texto de los mensajes.
     await repo.registrarAuditoria({

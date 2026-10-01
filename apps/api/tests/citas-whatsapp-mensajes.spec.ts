@@ -66,7 +66,7 @@ describe("PUT whatsapp-mensajes", () => {
     const h = (await (await app.request(`${url}/historial`, authedGet(t))).json()) as Json;
     expect(h.entradas.map((e: Json) => [e.version, e.accion])).toEqual([[2, "actualizado"], [1, "actualizado"]]);
     expect(h.entradas[0].anterior).toMatchObject({ reminderLeadHours: 12 });
-    expect(h.entradas[0].diferencias.map((d: Json) => d.campo)).toContain("Anticipacion del recordatorio (horas)");
+    expect(h.entradas[0].diferencias.map((d: Json) => d.campo)).toContain("Anticipación del recordatorio (horas)");
     expect(h.entradas[1].anterior).toBeNull();
 
     const bitacora = ctx.citasRepo.auditLog.filter((r) => r.action === "configuracion.whatsapp_mensajes_actualizado");
@@ -137,7 +137,7 @@ describe("vista previa y restablecer", () => {
     const body = (await r.json()) as Json;
     expect(body.vistaPrevia[0]).toMatchObject({ kind: "recordatorio", esPorDefecto: false });
     expect(body.vistaPrevia[0].texto).toBe("Cita Consulta general el jueves 2 de octubre, 10:00 a. m. con Dra. López");
-    expect(body.diferencias.map((d: Json) => d.campo)).toEqual(["Texto del recordatorio", "Anticipacion del recordatorio (horas)"]);
+    expect(body.diferencias.map((d: Json) => d.campo)).toEqual(["Texto del recordatorio", "Anticipación del recordatorio (horas)"]);
     expect(body.version).toBe(0);
     expect(((await (await app.request(url, authedGet(t))).json()) as Json).version).toBe(0);
     expect(ctx.citasRepo.auditLog.filter((r) => r.action.startsWith("configuracion.whatsapp_mensajes"))).toHaveLength(0);

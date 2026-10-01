@@ -107,7 +107,7 @@ describe("validarConfigMensajes", () => {
   it("el error de un texto invalido se propaga con el nombre del mensaje", () => {
     const r = validarConfigMensajes({ cancellationText: "Hola {{inventada}}" });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("Cancelacion");
+    if (!r.ok) expect(r.error).toContain("Cancelación");
   });
 });
 
@@ -225,7 +225,7 @@ describe("historial y diferencias", () => {
   it("sin version anterior compara contra los valores de fabrica", () => {
     const despues = fotoConfigMensajes({ ...MENSAJES_CONFIG_POR_OMISION, reminderLeadHours: 12, confirmationEnabled: true });
     const d = diferenciasConfigMensajes(null, despues);
-    expect(d.map((x) => x.campo)).toEqual(["Anticipacion del recordatorio (horas)", "Aviso de confirmacion activo"]);
+    expect(d.map((x) => x.campo)).toEqual(["Anticipación del recordatorio (horas)", "Aviso de confirmación activo"]);
     expect(d[1]).toMatchObject({ antes: "no", despues: "si" });
   });
 

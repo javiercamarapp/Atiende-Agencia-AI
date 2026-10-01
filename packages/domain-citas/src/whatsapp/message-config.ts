@@ -12,8 +12,8 @@ export type MensajeKind = (typeof MENSAJE_KINDS)[number];
 
 export const MENSAJE_ETIQUETAS: Readonly<Record<MensajeKind, string>> = {
   recordatorio: "Recordatorio de cita",
-  confirmacion: "Confirmacion de cita",
-  cancelacion: "Cancelacion de cita",
+  confirmacion: "Confirmación de cita",
+  cancelacion: "Cancelación de cita",
   reagendado: "Cita reagendada",
 };
 
@@ -127,7 +127,7 @@ export function validarTextoMensaje(raw: unknown, kind: MensajeKind): ResultadoV
   if (typeof raw !== "string") return { ok: false, error: `${etiqueta}: se esperaba un texto o null.` };
   const texto = raw.replace(/\r\n?/g, "\n").trim();
   if (texto.length === 0) return { ok: true, valor: null };
-  if (texto.length > MENSAJE_LIMITES.texto) return { ok: false, error: `${etiqueta}: maximo ${MENSAJE_LIMITES.texto} caracteres.` };
+  if (texto.length > MENSAJE_LIMITES.texto) return { ok: false, error: `${etiqueta}: máximo ${MENSAJE_LIMITES.texto} caracteres.` };
   if (CONTROL.test(texto)) return { ok: false, error: `${etiqueta}: contiene caracteres no permitidos.` };
 
   const permitidas = variablesDe(kind) as readonly string[];
@@ -144,7 +144,7 @@ export function validarTextoMensaje(raw: unknown, kind: MensajeKind): ResultadoV
     return { ok: false, error: `${etiqueta}: hay una variable mal escrita. El formato es {{nombre}}.` };
   }
   if (kind !== "cancelacion" && !usadas.has("hora") && !usadas.has("fecha_hora")) {
-    return { ok: false, error: `${etiqueta}: debe incluir {{hora}} o {{fecha_hora}} para que el cliente sepa cuando es su cita.` };
+    return { ok: false, error: `${etiqueta}: debe incluir {{hora}} o {{fecha_hora}} para que el cliente sepa cuándo es su cita.` };
   }
   return { ok: true, valor: texto };
 }
@@ -158,7 +158,7 @@ function booleano(raw: unknown, campo: string, porOmision: boolean): ResultadoVa
 function enteroEnRango(raw: unknown, campo: string, min: number, max: number): ResultadoValidacion<number | null> {
   if (raw === undefined || raw === null) return { ok: true, valor: null };
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < min || raw > max) {
-    return { ok: false, error: `${campo}: un numero entero entre ${min} y ${max}.` };
+    return { ok: false, error: `${campo}: un número entero entre ${min} y ${max}.` };
   }
   return { ok: true, valor: raw };
 }
@@ -190,9 +190,9 @@ export function validarConfigMensajes(raw: unknown): ResultadoValidacion<Whatsap
   if (!inicio.ok) return inicio;
   const fin = enteroEnRango(r.sendWindowEnd, "sendWindowEnd", 1, 24);
   if (!fin.ok) return fin;
-  if ((inicio.valor === null) !== (fin.valor === null)) return { ok: false, error: "El horario de envio necesita hora de inicio y de fin." };
+  if ((inicio.valor === null) !== (fin.valor === null)) return { ok: false, error: "El horario de envío necesita hora de inicio y de fin." };
   if (inicio.valor !== null && fin.valor !== null && fin.valor <= inicio.valor) {
-    return { ok: false, error: "El horario de envio: la hora de fin debe ser mayor que la de inicio." };
+    return { ok: false, error: "Horario de envío: la hora de fin debe ser mayor que la de inicio." };
   }
 
   const v = <T>(x: ResultadoValidacion<T>): T => (x as { valor: T }).valor;
@@ -321,11 +321,11 @@ export function ventanaDeRecordatorio(
 const ETIQUETAS_CAMPO: Readonly<Record<string, string>> = {
   reminderEnabled: "Recordatorio activo",
   reminderText: "Texto del recordatorio",
-  reminderLeadHours: "Anticipacion del recordatorio (horas)",
-  confirmationEnabled: "Aviso de confirmacion activo",
-  confirmationText: "Texto de la confirmacion",
-  cancellationEnabled: "Aviso de cancelacion activo",
-  cancellationText: "Texto de la cancelacion",
+  reminderLeadHours: "Anticipación del recordatorio (horas)",
+  confirmationEnabled: "Aviso de confirmación activo",
+  confirmationText: "Texto de la confirmación",
+  cancellationEnabled: "Aviso de cancelación activo",
+  cancellationText: "Texto de la cancelación",
   rescheduleEnabled: "Aviso de reagendado activo",
   rescheduleText: "Texto del reagendado",
   sendWindowStart: "Enviar desde (hora)",
