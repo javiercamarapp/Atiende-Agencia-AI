@@ -204,8 +204,8 @@ describe("E.9 abuso: precio, descuento y reglas de negocio las decide el servido
 describe("E.9 abuso: entradas raras (enormes, unicode, emojis, multimedia) no tumban el turno", () => {
   const rarezas: Array<[string, string]> = [
     ["mensaje enorme (200 KB)", "a".repeat(200_000)],
-    ["emojis y ZWJ", "🌮🌮🌮 quiero 👨‍👩‍👧‍👦 tacos 🔥🔥"],
-    ["RTL, ceros de ancho y combinantes", "‮tacos‬ ​‍ holá́́"],
+    ["emojis y ZWJ", "🌮🌮🌮 quiero 👨\u200d👩\u200d👧\u200d👦 tacos 🔥🔥"],
+    ["RTL, ceros de ancho y combinantes", "\u202etacos\u202c \u200b\u200d holá́́"],
     ["caracteres de control y NUL", "hola\u0000\u0007\u001b[31m mundo"],
     ["solo espacios", "   \n\t  "],
     ["mensaje vacío (audio/imagen/ubicación sin texto)", ""],
