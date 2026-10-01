@@ -115,8 +115,10 @@ export interface RentasRepository {
   findOcupacionParaMovimiento(propertyId: string, ocupacionId: string): Promise<OcupacionParaMovimiento | null>;
   /** Resuelve la regla vigente: busca primero una específica de `propertyId`, cae a
    *  la regla global del tenant (`property_id IS NULL`) si no hay una específica —
-   *  mismo orden de búsqueda que `buscarReglaComisionCanal` del origen. Lanza si no
-   *  hay ninguna regla configurada (fail-closed: nunca asume una comisión de 0%). */
+   *  mismo orden de búsqueda que `buscarReglaComisionCanal` del origen. Sin regla:
+   *  una reserva SIN canal externo (canal nulo o "manual") usa el default seguro de 0 pb
+   *  (`reglaComisionPorDefecto`); un canal externo lanza `ReglaComisionCanalNoConfiguradaError`
+   *  (error de negocio, nunca asume una comisión de 0%). */
   findReglaComisionCanal(propertyId: string, canalId: string | null): Promise<ConfiguracionComisionCanal>;
   insertReservaFinanciero(input: NewReservaFinancieroInput): Promise<{ id: string; createdAt: string }>;
   findReservaFinanciero(propertyId: string, ocupacionId: string): Promise<MovimientoFinancieroReserva | null>;

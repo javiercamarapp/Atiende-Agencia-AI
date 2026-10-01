@@ -414,7 +414,7 @@ export interface IncidenciaMantenimientoRecord {
 // vigente tras f3-rentas-bitacora-y-guards). `bloqueo`/`owner_credential` -- ver
 // migrations/023_rentas_audit_log_cobertura_completa.sql.
 // ---------------------------------------------------------------------------
-export type RentasAuditEntityType = "pricing" | "reserva" | "payout" | "owner_statement" | "membership" | "canal" | "bloqueo" | "owner_credential";
+export type RentasAuditEntityType = "pricing" | "reserva" | "payout" | "owner_statement" | "membership" | "canal" | "bloqueo" | "owner_credential" | "propiedad" | "unidad" | "propietario" | "regla_comision";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;
