@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
-import plugin from "tailwindcss/plugin";
+import plugin from "tailwindcss/plugin.js";
 
 /**
  * Preset compartido, portado literalmente de atiende-restaurantes
