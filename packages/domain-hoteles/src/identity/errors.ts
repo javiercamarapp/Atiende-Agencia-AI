@@ -71,3 +71,11 @@ export class IdentityDecryptError extends Error {
     this.name = "IdentityDecryptError";
   }
 }
+
+/** La identidad esta bloqueada (migracion 032): sin acceso operativo; solo acceso excepcional con doble control. */
+export class IdentityBlockedError extends Error {
+  constructor(message = "La identidad esta bloqueada y no tiene acceso operativo; solo hay acceso excepcional con doble control y motivo.") {
+    super(message);
+    this.name = "IdentityBlockedError";
+  }
+}

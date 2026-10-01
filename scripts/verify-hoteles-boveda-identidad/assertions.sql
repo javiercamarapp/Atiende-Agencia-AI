@@ -348,18 +348,20 @@ $q$, '42501');
 select count(*) as sigue_activa_deberia_ser_1 from hoteles.identity_vault where id = '00000000-0000-0000-0000-0000000d0003' and status = 'activo';
 rollback;
 
-\echo '=== 26. owner solicita, GM (otra persona) aprueba: la purga se ejecuta y anula sobre, last4 y nacionalidad ==='
+\echo '=== 26. owner solicita, GM (otra persona) aprueba: desde 032 la identidad pasa a BLOQUEADA (no se purga de golpe): conserva el sobre y sella el bloqueo ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
 select hoteles.request_identity_purge('00000000-0000-0000-0000-0000000d0003', 'Cancelacion ARCO solicitada por el titular');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a02', true);
 select hoteles.decide_identity_purge((select id from hoteles.identity_purge_request where vault_id = '00000000-0000-0000-0000-0000000d0003' and status = 'pendiente'), true, 'Aprobada tras verificar la solicitud');
-select count(*) as purgada_deberia_ser_1 from hoteles.identity_vault
- where id = '00000000-0000-0000-0000-0000000d0003' and status = 'purgado' and document_last4 is null and nationality is null and purged_at is not null;
+reset role;
+select count(*) as bloqueada_deberia_ser_1 from hoteles.identity_vault
+ where id = '00000000-0000-0000-0000-0000000d0003' and status = 'bloqueada' and payload_enc is not null and purged_at is null
+   and block_reason = 'solicitud_purga' and block_window_days = 7 and blocked_by = '00000000-0000-0000-0000-0000000a0a02' and blocked_until > now();
 rollback;
 
-\echo '=== 27. tras la purga, revelar/verificar la identidad falla (P0001 identidad_purgada) y la solicitud queda ejecutada ==='
+\echo '=== 27. tras aprobar la purga la identidad esta bloqueada: revelar/verificar fallan (P0001 identidad_bloqueada) y la solicitud queda en_bloqueo ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
@@ -368,7 +370,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a02
 select hoteles.decide_identity_purge((select id from hoteles.identity_purge_request where vault_id = '00000000-0000-0000-0000-0000000d0003' and status = 'pendiente'), true, null);
 select public.verify_expect_error($q$ select * from hoteles.reveal_identity('00000000-0000-0000-0000-0000000d0003', 'Intento de revelar tras purga') $q$, 'P0001');
 select public.verify_expect_error($q$ select hoteles.verify_identity('00000000-0000-0000-0000-0000000d0003') $q$, 'P0001');
-select count(*) as solicitud_ejecutada_deberia_ser_1 from hoteles.identity_purge_request where vault_id = '00000000-0000-0000-0000-0000000d0003' and status = 'ejecutada' and decided_by = '00000000-0000-0000-0000-0000000a0a02';
+select count(*) as solicitud_en_bloqueo_deberia_ser_1 from hoteles.identity_purge_request where vault_id = '00000000-0000-0000-0000-0000000d0003' and status = 'en_bloqueo' and decided_by = '00000000-0000-0000-0000-0000000a0a02';
 rollback;
 
 \echo '=== 28. rechazar deja la identidad intacta y la solicitud en rechazada ==='
@@ -446,34 +448,56 @@ rollback;
 -- (f) Purga por retencion (sistema) y bitacora
 -- =============================================================================
 
-\echo '=== 34. sesion de SISTEMA purga solo lo vencido de UNA property: 1 purgada (v4), el resto activo ==='
+\echo '=== 34. sesion de SISTEMA: el barrido BLOQUEA (no purga) lo vencido de UNA property: 1 bloqueada (v4) y 0 purgadas ==='
 begin;
 set local role authenticated;
-select hoteles.purge_expired_identities('00000000-0000-0000-0000-0000000a1a01', '2026-01-01') as purgadas_deberia_ser_1;
+select out_blocked as bloqueadas_deberia_ser_1 from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
+rollback;
+begin;
+set local role authenticated;
+select out_purged as purgadas_deberia_ser_0 from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
 rollback;
 
 \echo '=== 35. tras el barrido quedan 3 activas en Hotel A (las vigentes) y la de Hotel B intacta ==='
 begin;
 set local role authenticated;
-select hoteles.purge_expired_identities('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
+select * from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
 reset role;
 select count(*) as activas_a_deberia_ser_3 from hoteles.identity_vault where property_id = '00000000-0000-0000-0000-0000000a1a01' and status = 'activo';
 rollback;
 begin;
 set local role authenticated;
-select hoteles.purge_expired_identities('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
+select * from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
 reset role;
 select count(*) as activas_b_deberia_ser_1 from hoteles.identity_vault where property_id = '00000000-0000-0000-0000-0000000b1b01' and status = 'activo';
 rollback;
 
-\echo '=== 36. el barrido cierra la solicitud pendiente de una identidad vencida y deja huella purga_por_retencion con actor NULL ==='
+\echo '=== 36. el barrido bloquea la identidad vencida (la solicitud pendiente sigue abierta); al vencer la ventana la purga cierra la solicitud y deja huella purga_por_bloqueo_vencido con actor NULL ==='
 begin;
 update hoteles.identity_vault set retention_until = '2020-01-01' where id = '00000000-0000-0000-0000-0000000d0002';
+set local role authenticated;
+select * from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
+reset role;
+select count(*) as bloqueada_con_solicitud_abierta_deberia_ser_1 from hoteles.identity_purge_request r
+ join hoteles.identity_vault v on v.id = r.vault_id and v.status = 'bloqueada' and v.block_reason = 'retencion_vencida'
+ where r.vault_id = '00000000-0000-0000-0000-0000000d0002' and r.status = 'pendiente';
+rollback;
+begin;
+update hoteles.identity_vault set retention_until = '2020-01-01' where id = '00000000-0000-0000-0000-0000000d0002';
+set local role authenticated;
+select * from hoteles.sweep_identity_retention('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
+reset role;
+-- La guarda impide reescribir el bloqueo: para simular que pasaron los dias, el fixture
+-- (superusuario) la desactiva solo dentro de esta transaccion revertida.
+alter table hoteles.identity_vault disable trigger identity_vault_guard_trg;
+update hoteles.identity_vault set blocked_until = now() - interval '1 hour', blocked_at = now() - interval '8 days' where id = '00000000-0000-0000-0000-0000000d0002';
+alter table hoteles.identity_vault enable trigger identity_vault_guard_trg;
 set local role authenticated;
 select hoteles.purge_expired_identities('00000000-0000-0000-0000-0000000a1a01', '2026-01-01');
 reset role;
 select count(*) as cerrada_y_con_huella_deberia_ser_1 from hoteles.identity_purge_request r
- join hoteles.identity_access_log l on l.vault_id = r.vault_id and l.action = 'purga_por_retencion' and l.actor_user_id is null
+ join hoteles.identity_access_log l on l.vault_id = r.vault_id and l.action = 'purga_por_bloqueo_vencido' and l.actor_user_id is null
+ join hoteles.identity_vault v on v.id = r.vault_id and v.status = 'purgado' and v.payload_enc is null
  where r.vault_id = '00000000-0000-0000-0000-0000000d0002' and r.status = 'ejecutada';
 rollback;
 
@@ -626,7 +650,7 @@ begin;
 drop table hoteles.migratory_registration;
 drop table hoteles.identity_purge_request;
 drop table hoteles.identity_access_log;
-drop table hoteles.identity_vault;
+drop table hoteles.identity_vault cascade;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a03', true);
 savepoint sp_verify_vault_missing;
