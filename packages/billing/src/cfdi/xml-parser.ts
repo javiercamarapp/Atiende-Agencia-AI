@@ -13,8 +13,8 @@
 // CFDI 4.0 con un solo nodo `cfdi:Comprobante`, N conceptos, impuestos
 // trasladados/retenidos "planos" (un renglón de IVA/IEPS/ISR por concepto o a
 // nivel comprobante) y el complemento `tfd:TimbreFiscalDigital` para el UUID.
-// QUEDAN FUERA (no se finge soporte): comercio exterior, pagos en
-// parcialidades/complemento de pagos, nómina vía XML (ya existe
+// QUEDAN FUERA (no se finge soporte): comercio exterior, el complemento de
+// pagos (ver `rep-parser.ts`, D-23: se procesa aparte, no como factura), nómina vía XML (ya existe
 // `generarXmlCfdiNomina` para el sentido inverso, emisión, no consumo), y
 // cualquier CFDI con más de un `cfdi:Comprobante` en el mismo archivo.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -30,7 +30,7 @@ export const CFDI_XML_MAX_BYTES = 2 * 1024 * 1024;
  * declaraciones de entidad, hojas de estilo, NUL, codificacion distinta de UTF-8 y tamano excesivo ANTES de que
  * el parser vea el documento, de modo que la expansion de entidades (disponibilidad) y las entidades externas
  * nunca se evaluan, sin depender de la configuracion interna de fast-xml-parser. */
-function rechazarContenidoPeligroso(xml: string): void {
+export function validarXmlCfdiSeguro(xml: string): void {
   if (xml.length > CFDI_XML_MAX_BYTES || new TextEncoder().encode(xml).byteLength > CFDI_XML_MAX_BYTES) {
     throw new CfdiXmlParseError(`El XML excede el tope de ${CFDI_XML_MAX_BYTES / (1024 * 1024)} MB.`);
   }
@@ -189,7 +189,7 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
     throw new CfdiXmlParseError('El XML está vacío.');
   }
 
-  rechazarContenidoPeligroso(xml);
+  validarXmlCfdiSeguro(xml);
 
   const validacion = XMLValidator.validate(xml);
   if (validacion !== true) {
@@ -206,6 +206,10 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
   const comprobante = doc.Comprobante as Record<string, unknown> | undefined;
   if (!comprobante || typeof comprobante !== 'object') {
     throw new CfdiXmlParseError('No es un CFDI válido: falta el nodo raíz cfdi:Comprobante.');
+  }
+
+  if (attrString(comprobante.TipoDeComprobante) === 'P') {
+    throw new CfdiXmlParseError('Es un CFDI de pago (tipo P): se procesa con el complemento de pago 2.0, no como factura.');
   }
 
   const version = attrString(comprobante.Version);
