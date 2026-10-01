@@ -1134,7 +1134,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
         return estado.rows[0] ? { estado: "disponible", periodoLista: estado.rows[0].out_periodo, coincidencias: [] } : EFOS_NO_DISPONIBLE;
       },
       isRecoverable: (err) => isMigrationPendingError(err),
-      fallback: () => EFOS_NO_DISPONIBLE,
+      fallback: async () => EFOS_NO_DISPONIBLE,
     });
   }
 
