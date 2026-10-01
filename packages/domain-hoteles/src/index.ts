@@ -519,3 +519,4 @@ export type { GuestEmailEvent, GuestEmailExtra, GuestEmailFolioExtra, GuestEmail
 export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
 export * from "./identity/index.ts";
+export * from "./privacy/index.ts";

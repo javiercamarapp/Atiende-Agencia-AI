@@ -40,16 +40,62 @@ const IDENT = {
 };
 const PURGA = { id: "purga-1", identidadId: "ident-1", solicitadaPor: "owner-1", motivo: "Cancelacion ARCO del titular", estado: "pendiente", decididaPor: null, decididaEn: null, notaDecision: null, creadaEn: "2026-03-02T00:00:00Z" };
 
+const INFO = {
+  avisoLegal: "Esta pantalla es una herramienta de registro y control. NO es asesoria legal ni garantiza el cumplimiento de la LFPDPPP.",
+  unAbogadoDebeConfirmar: ["Si los plazos ARCO se cuentan en dias naturales o habiles.", "Plazo y forma de la notificacion de vulneraciones (art. 19)."],
+  plazos: { arcoRespuestaDias: 20, arcoEjecucionDias: 15, diasNaturales: true, prorrogaUnicaPorIgualPlazo: true, ventanaBloqueoDias: { minimo: 3, maximo: 30, porDefecto: 7 } },
+};
+const AVISO = {
+  id: "aviso-1", version: "v1", textoSimplificado: "Usamos tus datos para identificarte y facturar.", urlIntegral: "https://hotel.example.com/aviso",
+  finalidadesObligatorias: ["identificar al huesped", "facturacion"], finalidadesOpcionales: ["promociones"], vigente: true, publicadoEn: "2026-03-01T00:00:00Z",
+};
+const IDENT_BLOQUEADA = { ...IDENT, id: "ident-2", estado: "bloqueada", bloqueadaEn: "2026-03-02T00:00:00Z", bloqueadaHasta: "2026-03-09T00:00:00Z", ventanaBloqueoDias: 7, motivoBloqueo: "retencion_vencida", bloqueadaPor: null };
+const ARCO = {
+  id: "arco-1", folio: "ARCO-20260301-AB12CD", derecho: "cancelacion", huespedId: "guest-1", identidadId: "ident-1", solicitante: "Juan Perez", contacto: null, canal: "correo", descripcion: "Pide borrar sus datos",
+  recibidaEn: "2026-03-01", respuestaLimite: "2026-03-21", ejecucionLimite: null, estado: "recibida", notaDecision: null, prorroga: null,
+  plazo: { fase: "respuesta", vence: "2026-03-21", diasRestantes: -3, estado: "vencida" }, prorrogaDisponible: { disponible: true, dias: 20 },
+};
+const INCIDENTE = {
+  id: "inc-1", folio: "INC-20260301-AB12CD", tipo: "divulgacion", severidad: "alta", titulo: "Correo al huesped equivocado", descripcion: "Se envio una confirmacion a otra persona.", detectadoEn: "2026-03-01T10:00:00Z",
+  afectados: 1, riesgoSignificativo: true, estado: "detectada", notificacion: null, motivoNoNotificar: null,
+  recordatorio: { requerido: true, vencido: true, horasDesdeDeteccion: 5, mensaje: "Notifica al titular DE INMEDIATO (art. 19 LFPDPPP): van 5 h desde la deteccion. Este sistema NO envia la notificacion; registrala aqui cuando la hagas." },
+};
+const RETENCION = { id: "hold-1", identidadId: "ident-2", incidenteId: null, folio: "FGR-2026-0042", motivo: "Carpeta de investigacion abierta", autorizacion: "Direccion juridica", estado: "activa", revisarAntesDe: "2027-03-01", revision: "vigente" };
+const ACCESO = { id: "acc-1", identidadId: "ident-2", solicitadaPor: "owner-1", motivo: "Requerimiento de autoridad con oficio 123", estado: "pendiente", caducaEn: null };
+
 interface Opts {
   list?: unknown;
   purgas?: unknown;
   decideStatus?: number;
+  avisos?: unknown;
+  arco?: unknown;
+  incidentes?: unknown;
+  retenciones?: unknown;
+  accesos?: unknown;
+  decideAccesoStatus?: number;
 }
 
 function stubFetch(opts: Opts = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     const path = url.replace("https://api.test", "");
+    if (path.startsWith("/hoteles/prop-1/privacidad/")) {
+      const p = path.replace("/hoteles/prop-1/privacidad/", "");
+      if (method === "GET" && p === "info") return jsonResponse(INFO);
+      if (method === "GET" && p === "avisos") return jsonResponse(opts.avisos ?? { disponible: true, items: [] });
+      if (method === "GET" && p === "consentimientos") return jsonResponse({ disponible: true, items: [] });
+      if (method === "GET" && p === "configuracion") return jsonResponse({ disponible: true, ventanaBloqueoDias: 7, esDefault: true, actualizadoPor: null, actualizadoEn: null });
+      if (method === "GET" && p === "arco") return jsonResponse(opts.arco ?? { disponible: true, hoy: "2026-03-24", items: [] });
+      if (method === "GET" && p === "incidentes") return jsonResponse(opts.incidentes ?? { disponible: true, items: [] });
+      if (method === "GET" && p === "retenciones") return jsonResponse(opts.retenciones ?? { disponible: true, items: [] });
+      if (method === "GET" && p === "accesos-excepcionales") return jsonResponse(opts.accesos ?? { disponible: true, items: [] });
+      if (method === "GET" && p.startsWith("bitacora")) return jsonResponse({ disponible: true, items: [] });
+      if (method === "POST" && p === "accesos-excepcionales/acc-1/decidir") {
+        return opts.decideAccesoStatus && opts.decideAccesoStatus >= 400
+          ? jsonResponse({ message: "Doble control: quien solicita el acceso excepcional no puede aprobarlo ni rechazarlo; debe decidirlo otra persona con rol owner/gm." }, opts.decideAccesoStatus)
+          : jsonResponse({ resultado: "aprobada" });
+      }
+    }
     if (method === "GET" && path.startsWith("/hoteles/prop-1/identidad-purgas")) return jsonResponse(opts.purgas ?? { disponible: true, items: [PURGA] });
     if (method === "GET" && path.startsWith("/hoteles/prop-1/identidad")) return jsonResponse(opts.list ?? { disponible: true, llaveConfigurada: true, items: [IDENT] });
     if (method === "GET" && path.startsWith("/hoteles/prop-1/registro-migratorio")) return jsonResponse({ disponible: true, items: [] });
@@ -226,5 +272,131 @@ describe("IdentidadPage (hoteles)", () => {
     await clickButton(buttonByText("Aprobar purga"));
     expect(toastMock.success).not.toHaveBeenCalled();
     expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"));
+  });
+});
+
+describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad", () => {
+  it("una identidad BLOQUEADA muestra el bloqueo, no ofrece Revelar/Verificar/Solicitar purga y el admin ve Acceso excepcional y Retencion legal", async () => {
+    stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [IDENT_BLOQUEADA] } });
+    rendered = renderPage();
+    await esperar();
+    const text = rendered.container.textContent!;
+    expect(text).toContain("Bloqueada");
+    expect(rendered.container.querySelector('[data-testid="identidad-bloqueada"]')!.textContent).toContain("Retención vencida");
+    expect(rendered.container.querySelector('[data-testid="identidad-bloqueada"]')!.textContent).toContain("sin acceso operativo");
+    expect(buttonByText("Revelar")).toBeUndefined();
+    expect(buttonByText("Marcar verificada")).toBeUndefined();
+    expect(buttonByText("Solicitar purga")).toBeUndefined();
+    expect(buttonByText("Acceso excepcional")).toBeDefined();
+    expect(buttonByText("Retención legal")).toBeDefined();
+  });
+
+  it("frontdesk no ve acciones sobre una identidad bloqueada; owner ve 'Bloquear' y 'Retencion legal' sobre una activa", async () => {
+    stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [IDENT_BLOQUEADA] } });
+    rendered = renderPage({ ...CTX, role: "frontdesk" });
+    await esperar();
+    expect(buttonByText("Acceso excepcional")).toBeUndefined();
+    rendered.unmount();
+    stubFetch();
+    rendered = renderPage();
+    await esperar();
+    expect(buttonByText("Bloquear")).toBeDefined();
+    expect(buttonByText("Retención legal")).toBeDefined();
+  });
+
+  it("con aviso vigente el formulario de captura pide aceptar TODAS las finalidades obligatorias antes de capturar", async () => {
+    stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] }, avisos: { disponible: true, items: [AVISO] } });
+    rendered = renderPage();
+    await esperar();
+    const fieldset = rendered.container.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
+    expect(fieldset.textContent).toContain("Usamos tus datos para identificarte y facturar.");
+    expect(fieldset.textContent).toContain("Finalidades obligatorias (todas)");
+    expect(fieldset.textContent).toContain("casilla distinta, sin marcar");
+    expect(fieldset.querySelector('[role="alert"]')).not.toBeNull();
+    const boxes = [...fieldset.querySelectorAll('input[type="checkbox"]')] as HTMLInputElement[];
+    // 0 = registrar consentimiento, 1-2 = obligatorias, 3 = opcional, 4 = sensibles
+    expect(boxes[1]!.checked).toBe(false);
+    expect(boxes[3]!.checked).toBe(false);
+    for (const b of [boxes[1]!, boxes[2]!]) await clickButton(b);
+    expect(fieldset.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("sin aviso vigente avisa que se publique uno y la captura sigue disponible (consentimiento opcional)", async () => {
+    stubFetch({ list: { disponible: true, llaveConfigurada: true, items: [] } });
+    rendered = renderPage();
+    await esperar();
+    const fieldset = rendered.container.querySelector('fieldset[aria-label="Consentimiento y aviso de privacidad"]')!;
+    expect(fieldset.textContent).toContain("No hay un aviso de privacidad vigente");
+    expect(rendered.container.querySelector('form[aria-label="Capturar identidad"]')).not.toBeNull();
+  });
+
+  it("pestana Privacidad: muestra que NO es asesoria legal y la lista 'un abogado debe confirmar'", async () => {
+    stubFetch();
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    expect(rendered.container.querySelector('[data-testid="aviso-legal"]')!.textContent).toContain("NO es asesoria legal");
+    expect(rendered.container.textContent).toContain("Un abogado debe confirmar (2 puntos)");
+    expect(rendered.container.textContent).toContain("naturales o habiles");
+  });
+
+  it("pestana Privacidad > ARCO (owner): lista la solicitud con su plazo vencido y las acciones", async () => {
+    stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("ARCO");
+    expect(rendered.container.textContent).toContain("ARCO-20260301-AB12CD");
+    expect(rendered.container.querySelector('[data-testid="plazo-arco"]')!.textContent).toContain("vencida hace 3 d");
+    expect(buttonByText("Procedente")).toBeDefined();
+    expect(buttonByText("Prórroga (+20 d)")).toBeDefined();
+  });
+
+  it("pestana Privacidad > Incidentes (owner): el recordatorio del art. 19 es visible y solo informa; frontdesk reporta pero no ve ARCO ni Retencion", async () => {
+    stubFetch({ incidentes: { disponible: true, items: [INCIDENTE] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("Incidentes");
+    const alerta = rendered.container.querySelector('[data-testid="recordatorio-notificar"]')!;
+    expect(alerta.textContent).toContain("DE INMEDIATO");
+    expect(alerta.textContent).toContain("NO envia");
+    expect(buttonByText("Registrar notificación al titular")).toBeDefined();
+    rendered.unmount();
+
+    stubFetch();
+    rendered = renderPage({ ...CTX, role: "frontdesk" });
+    await esperar();
+    await openTab("Privacidad");
+    expect(buttonByText("ARCO")).toBeUndefined();
+    expect(buttonByText("Retención y bloqueo")).toBeUndefined();
+    await openTab("Incidentes");
+    expect(rendered.container.querySelector('form[aria-label="Reportar incidente"]')).not.toBeNull();
+    expect(rendered.container.textContent).toContain("Solo owner/gm ven y gestionan los incidentes reportados.");
+  });
+
+  it("pestana Privacidad > Retencion y bloqueo: lista retenciones y accesos; el doble control rechaza al solicitante con el mensaje real", async () => {
+    stubFetch({ retenciones: { disponible: true, items: [RETENCION] }, accesos: { disponible: true, items: [ACCESO] }, decideAccesoStatus: 403 });
+    vi.spyOn(window, "prompt").mockReturnValue("");
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("Retención y bloqueo");
+    expect(rendered.container.textContent).toContain("Caso FGR-2026-0042");
+    expect(rendered.container.textContent).toContain("autoriza: Direccion juridica");
+    expect(buttonByText("Liberar retención")).toBeDefined();
+    await clickButton(buttonByText("Aprobar acceso"));
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("Doble control"));
+  });
+
+  it("base sin migrar (032): las secciones de privacidad muestran 'aun no esta disponible', sin pantallas rotas", async () => {
+    stubFetch({ avisos: { disponible: false, items: [] }, arco: { disponible: false, hoy: "2026-03-24", items: [] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    expect(rendered.container.textContent).toContain("migración 032 pendiente");
+    await openTab("ARCO");
+    expect(rendered.container.textContent).toContain("migración 032 pendiente");
   });
 });

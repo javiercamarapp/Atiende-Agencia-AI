@@ -19,7 +19,9 @@ import {
   ClipboardCheck,
   ClipboardList,
   History,
+  Clock,
   LayoutDashboard,
+  MessageSquare,
   Mic,
   Settings,
   Store,
@@ -88,6 +90,9 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
       title: "Operación",
       items: [
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
+        { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
+        { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
         { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
         { to: `${base}/promociones`, label: "Promociones", icon: Tag },
