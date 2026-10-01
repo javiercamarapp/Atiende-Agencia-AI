@@ -4,7 +4,7 @@ import { buildApp } from "../src/app.ts";
 import { buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
-const CFDI = `<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Version="4.0" TipoDeComprobante="I" SubTotal="1000.00" Total="1160.00" FormaPago="03" MetodoPago="PUE" Fecha="2026-09-10T10:00:00" Sello="AbC=" NoCertificado="00001000000500000000">
+const CFDI = `<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Version="4.0" TipoDeComprobante="I" Moneda="MXN" SubTotal="1000.00" Total="1160.00" FormaPago="03" MetodoPago="PUE" Fecha="2026-09-10T10:00:00" Sello="AbC=" NoCertificado="00001000000500000000">
   <cfdi:Emisor Rfc="EKU9003173C9" Nombre="Escuela Kemper Urgate" RegimenFiscal="601"/>
   <cfdi:Receptor Rfc="XAXX010101000" UsoCFDI="G03"/>
   <cfdi:Conceptos><cfdi:Concepto Cantidad="1" ValorUnitario="1000.00" Importe="1000.00"/></cfdi:Conceptos>

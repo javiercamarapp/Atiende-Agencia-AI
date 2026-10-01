@@ -29,45 +29,6 @@ import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export class CfdiXmlParseError extends Error {}
 
-/** Tope de tamano del XML (bytes UTF-8). Un CFDI 4.0 tipico pesa 5-50 KB; 2 MB iguala el tope del portal
- * del cliente (`PORTAL_MAX_ARCHIVO_BYTES`) y deja margen a facturas con cientos de conceptos. */
-export const CFDI_XML_MAX_BYTES = 2 * 1024 * 1024;
-
-/** Defensa en profundidad previa al parser (D-29): mismas garantias que el portal del cliente. Rechaza DTD,
- * declaraciones de entidad, hojas de estilo, NUL, codificacion distinta de UTF-8 y tamano excesivo ANTES de que
- * el parser vea el documento, de modo que la expansion de entidades (disponibilidad) y las entidades externas
- * nunca se evaluan, sin depender de la configuracion interna de fast-xml-parser. */
-export function validarXmlCfdiSeguro(xml: string): void {
-  if (xml.length > CFDI_XML_MAX_BYTES || new TextEncoder().encode(xml).byteLength > CFDI_XML_MAX_BYTES) {
-    throw new CfdiXmlParseError(`El XML excede el tope de ${CFDI_XML_MAX_BYTES / (1024 * 1024)} MB.`);
-  }
-  // U+FFFD es lo que deja `Request.text()` al encontrar bytes que no son UTF-8 valido.
-  if (xml.includes('\uFFFD')) throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 valido.');
-  if (xml.includes('\u0000')) throw new CfdiXmlParseError('El XML contiene caracteres no permitidos.');
-  // `<!` solo se admite para comentarios y CDATA: cierra DTD, <!ENTITY> y <!DOCTYPE>.
-  if (/<!(?!--|\[CDATA\[)/.test(xml)) throw new CfdiXmlParseError('El XML no puede declarar DTD ni entidades.');
-  if (/<\?xml-stylesheet/i.test(xml)) throw new CfdiXmlParseError('El XML no puede incluir hojas de estilo.');
-  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml);
-  if (codificacion && codificacion[1]!.toLowerCase() !== 'utf-8') {
-    throw new CfdiXmlParseError('El XML debe declarar codificacion UTF-8.');
-  }
-}
-
-/** Variante para bytes crudos (archivo subido): decodifica UTF-8 estricto (sin sustitucion silenciosa) y aplica
- * las mismas defensas que `parseCfdiXml`. */
-export function parseCfdiXmlBytes(bytes: Uint8Array): CfdiXmlParseResult {
-  if (bytes.byteLength > CFDI_XML_MAX_BYTES) {
-    throw new CfdiXmlParseError(`El XML excede el tope de ${CFDI_XML_MAX_BYTES / (1024 * 1024)} MB.`);
-  }
-  let texto: string;
-  try {
-    texto = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 valido.');
-  }
-  return parseCfdiXml(texto);
-}
-
 /** Un renglón de impuesto desglosado (Anexo 20: Traslado / Retencion). Los montos son
  * cadenas decimales EXACTAS (suma sin pasar por flotantes, 6 decimales) para que el
  * llamador las convierta a centavos sin error de punto flotante. */
@@ -301,26 +262,38 @@ function desglosarImpuestos(comprobante: Record<string, unknown>): readonly Cfdi
 }
 
 /** Rechaza todo lo que no sea un CFDI plano ANTES de entregarlo al parser (ver cabecera: seguridad de la entrada). */
-function rechazarXmlPeligroso(xml: string): void {
+export function validarXmlCfdiSeguro(xml: string): void {
   if (xml.length > CFDI_XML_MAX_CARACTERES) {
     throw new CfdiXmlParseError('El XML excede el tamaño máximo permitido.');
   }
+  // U+FFFD es lo que deja `Request.text()` al encontrar bytes que no son UTF-8 válido (D-29).
+  if (xml.includes('\uFFFD')) throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 válido.');
   if (xml.includes('\u0000')) throw new CfdiXmlParseError('El XML contiene caracteres no permitidos.');
   // `<!` solo se admite para comentarios y CDATA: cualquier otra declaración (DOCTYPE, ENTITY, ELEMENT, ATTLIST...) se rechaza.
   if (/<!(?!--|\[CDATA\[)/.test(xml)) throw new CfdiXmlParseError('El XML no puede declarar DTD ni entidades.');
   if (/<\?xml-stylesheet/i.test(xml)) throw new CfdiXmlParseError('El XML no puede incluir hojas de estilo.');
-  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml);
+  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml);
   if (codificacion && codificacion[1]!.toLowerCase() !== 'utf-8') {
     throw new CfdiXmlParseError('El XML debe declarar codificación UTF-8.');
   }
+}
+
+/** Variante para bytes crudos (archivo subido): UTF-8 estricto (sin sustitución silenciosa por U+FFFD) y el mismo tope. */
+export function parseCfdiXmlBytes(bytes: Uint8Array): CfdiXmlParseResult {
+  if (bytes.byteLength > CFDI_XML_MAX_CARACTERES) throw new CfdiXmlParseError('El XML excede el tamaño máximo permitido.');
+  let texto: string;
+  try {
+    texto = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 válido.');
+  }
+  return parseCfdiXml(texto);
 }
 
 export function parseCfdiXml(xml: string): CfdiXmlParseResult {
   if (typeof xml !== 'string' || xml.trim().length === 0) {
     throw new CfdiXmlParseError('El XML está vacío.');
   }
-  rechazarXmlPeligroso(xml);
-
   validarXmlCfdiSeguro(xml);
 
   const validacion = XMLValidator.validate(xml);
