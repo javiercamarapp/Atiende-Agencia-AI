@@ -8,6 +8,7 @@ import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts";
 import {
+  CALLBACK_ESTADOS,
   CALLBACK_RESULTADOS,
   ConversacionesNoDisponibleError,
   ConversacionesConflictoError,
@@ -21,6 +22,8 @@ import type {
   BandejaFiltro,
   BandejaItem,
   BandejaPagina,
+  CallbackAccion,
+  CallbackEstado,
   CallbackIntento,
   CallbackIntentoEntrada,
   CallbackItem,
@@ -49,7 +52,7 @@ export function esBaseSinMigrar(err: unknown): boolean {
 /** Rechazos de negocio que la base declara con un SQLSTATE conocido. */
 function esRechazoConocido(err: unknown): boolean {
   const c = code(err);
-  return esBaseSinMigrar(err) || c === "42501" || c === "55006" || c === "P0002" || c === "22023" || c === "23514" || c === "23503" || c === "23505";
+  return esBaseSinMigrar(err) || c === "42501" || c === "55006" || c === "55000" || c === "P0002" || c === "22023" || c === "23514" || c === "23503" || c === "23505";
 }
 
 let advertido = false;
@@ -70,6 +73,7 @@ function aError(err: unknown): never {
     throw new ConversacionesNoDisponibleError();
   }
   if (c === "55006") throw new HandoffYaTomadoError();
+  if (c === "55000") throw new ConversacionesConflictoError();
   if (c === "P0002") throw new SinNumeroWhatsappError();
   if (c === "22023" || c === "23514") throw new ConversacionesValidacionError("Dato fuera de rango (revisa el texto, el turno o el resultado).");
   if (c === "23505") throw new ConversacionesConflictoError();
@@ -117,6 +121,40 @@ function mapBandeja(r: BandejaRow): BandejaItem {
     tomadaPorNombre: r.tomada_por_nombre,
     tomadaAt: isoOrNull(r.tomada_at),
     resultadoVoz: r.resultado_voz,
+  };
+}
+
+interface CallbackRow {
+  id: string; property_id: string | null; customer_name: string; customer_phone: string; reason: string | null; message: string | null;
+  source: string; resolved: boolean; created_at: Date | string; intentos: unknown;
+}
+
+interface CallbackEstadoRow {
+  status: string; assigned_to: string | null; assigned_to_nombre: string | null; assigned_at: Date | string | null; taken_at: Date | string | null;
+  resolved_at: Date | string | null; resolved_by_nombre: string | null; resolution_note: string | null;
+}
+
+function mapCallback(r: CallbackRow): CallbackItem {
+  return {
+    id: r.id,
+    propertyId: r.property_id,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    reason: r.reason,
+    message: r.message,
+    source: (["voice", "whatsapp", "web", "admin"] as const).find((s) => s === r.source) ?? "admin",
+    resolved: r.resolved === true,
+    createdAt: iso(r.created_at),
+    intentos: (Array.isArray(r.intentos) ? (r.intentos as Array<Record<string, unknown>>) : []).map(
+      (a): CallbackIntento => ({
+        id: String(a.id),
+        resultado: (CALLBACK_RESULTADOS as readonly string[]).includes(String(a.resultado)) ? (a.resultado as CallbackResultado) : "no_contesto",
+        nota: typeof a.nota === "string" ? a.nota : null,
+        proximoIntentoAt: typeof a.proximoIntentoAt === "string" ? iso(a.proximoIntentoAt) : null,
+        autor: typeof a.autor === "string" ? a.autor : null,
+        creadoAt: iso(String(a.creadoAt)),
+      }),
+    ),
   };
 }
 
@@ -296,32 +334,56 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
   }
 
   async listarCallbacks(organizationId: string, propertyId: string, soloAbiertos: boolean): Promise<ConversacionesLectura<readonly CallbackItem[]>> {
-    return this.lectura<readonly CallbackItem[]>("sp_conv_callbacks_read", [], async () => {
-      const { rows } = await this.db.query<{
-        id: string; property_id: string | null; customer_name: string; customer_phone: string; reason: string | null; message: string | null;
-        source: string; resolved: boolean; created_at: Date | string; intentos: unknown;
-      }>(`select id, property_id, customer_name, customer_phone, reason, message, source, resolved, created_at, intentos from restaurantes.callbacks_sucursal($1::uuid, $2::uuid, $3::boolean, 100);`, [organizationId, propertyId, soloAbiertos]);
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        customerName: r.customer_name,
-        customerPhone: r.customer_phone,
-        reason: r.reason,
-        message: r.message,
-        source: (["voice", "whatsapp", "web", "admin"] as const).find((s) => s === r.source) ?? "admin",
-        resolved: r.resolved === true,
-        createdAt: iso(r.created_at),
-        intentos: (Array.isArray(r.intentos) ? (r.intentos as Array<Record<string, unknown>>) : []).map(
-          (a): CallbackIntento => ({
-            id: String(a.id),
-            resultado: (CALLBACK_RESULTADOS as readonly string[]).includes(String(a.resultado)) ? (a.resultado as CallbackResultado) : "no_contesto",
-            nota: typeof a.nota === "string" ? a.nota : null,
-            proximoIntentoAt: typeof a.proximoIntentoAt === "string" ? iso(a.proximoIntentoAt) : null,
-            autor: typeof a.autor === "string" ? a.autor : null,
-            creadoAt: iso(String(a.creadoAt)),
-          }),
-        ),
-      }));
+    return this.lectura<readonly CallbackItem[]>("sp_conv_callbacks_read", [], async () =>
+      // Con la migracion 033 la bandeja trae estado y asignacion; sin ella (42883/42703) cae a la funcion de 028 con
+      // SAVEPOINT propio (la transaccion del request es una sola) y los campos nuevos quedan ausentes.
+      runWithSavepointFallback<readonly CallbackItem[]>({
+        session: this.db,
+        savepointName: "sp_conv_callbacks_estado_read",
+        primary: async () => {
+          const { rows } = await this.db.query<CallbackRow & CallbackEstadoRow>(
+            `select id, property_id, customer_name, customer_phone, reason, message, source, resolved, created_at, intentos,
+                    status, assigned_to, assigned_to_nombre, assigned_at, taken_at, resolved_at, resolved_by_nombre, resolution_note
+               from restaurantes.callbacks_sucursal_estado($1::uuid, $2::uuid, $3::boolean, 100);`,
+            [organizationId, propertyId, soloAbiertos],
+          );
+          return rows.map((r) => ({
+            ...mapCallback(r),
+            estado: (CALLBACK_ESTADOS as readonly string[]).includes(r.status) ? (r.status as CallbackEstado) : r.resolved === true ? "resuelto" : "nuevo",
+            asignadoA: r.assigned_to,
+            asignadoNombre: r.assigned_to_nombre,
+            asignadoAt: isoOrNull(r.assigned_at),
+            tomadoAt: isoOrNull(r.taken_at),
+            resueltoAt: isoOrNull(r.resolved_at),
+            resueltoPorNombre: r.resolved_by_nombre,
+            notaResolucion: r.resolution_note,
+          }));
+        },
+        isRecoverable: esBaseSinMigrar,
+        fallback: async () => {
+          const { rows } = await this.db.query<CallbackRow>(
+            `select id, property_id, customer_name, customer_phone, reason, message, source, resolved, created_at, intentos from restaurantes.callbacks_sucursal($1::uuid, $2::uuid, $3::boolean, 100);`,
+            [organizationId, propertyId, soloAbiertos],
+          );
+          return rows.map(mapCallback);
+        },
+      }),
+    );
+  }
+
+  async actualizarCallback(
+    organizationId: string,
+    callbackId: string,
+    accion: CallbackAccion,
+    opciones: { readonly asignadoA?: string | null; readonly nota?: string | null },
+  ): Promise<CallbackEstado> {
+    return this.escritura("sp_conv_callback_actualizar", async () => {
+      const { rows } = await this.db.query<{ status: string }>(
+        `select restaurantes.callback_actualizar($1::uuid, $2::uuid, $3::text, $4::uuid, $5::text) as status;`,
+        [organizationId, callbackId, accion, opciones.asignadoA ?? null, opciones.nota ?? null],
+      );
+      const status = rows[0]?.status;
+      return (CALLBACK_ESTADOS as readonly string[]).includes(String(status)) ? (status as CallbackEstado) : "nuevo";
     });
   }
 

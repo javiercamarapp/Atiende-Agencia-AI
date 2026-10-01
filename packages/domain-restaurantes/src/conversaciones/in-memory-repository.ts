@@ -4,11 +4,13 @@
 // scripts/verify-restaurantes-conversaciones-handoff/ contra Postgres real).
 import { randomUUID } from "node:crypto";
 import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts";
-import { ConversacionesNoDisponibleError, ConversacionesRechazadaError, HandoffYaTomadoError, SinNumeroWhatsappError } from "./types.ts";
+import { ConversacionesConflictoError, ConversacionesNoDisponibleError, ConversacionesRechazadaError, HandoffYaTomadoError, SinNumeroWhatsappError } from "./types.ts";
 import type {
   BandejaFiltro,
   BandejaItem,
   BandejaPagina,
+  CallbackAccion,
+  CallbackEstado,
   CallbackIntentoEntrada,
   CallbackItem,
   ConversacionCanal,
@@ -234,7 +236,7 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     if (!this.disponible) return { disponible: false, valor: [] };
     return {
       disponible: true,
-      valor: this.callbacks.filter((c) => c.organizationId === organizationId && (c.propertyId === propertyId || c.propertyId === null) && (!soloAbiertos || !c.resolved)),
+      valor: this.callbacks.filter((c) => c.organizationId === organizationId && (c.propertyId === propertyId || c.propertyId === null) && (!soloAbiertos || estadoCallback(c) !== "resuelto")),
     };
   }
 
@@ -245,13 +247,62 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     const cb = this.callbacks[i]!;
     const id = randomUUID();
     const resuelto = intento.resultado === "contactado" || intento.resultado === "numero_invalido";
+    const ahora = this.now().toISOString();
+    const autor = this.opts.actorUserId;
     this.callbacks[i] = {
       ...cb,
       resolved: cb.resolved || resuelto,
+      estado: resuelto ? "resuelto" : estadoCallback(cb) === "nuevo" ? "en_curso" : estadoCallback(cb),
+      tomadoAt: cb.tomadoAt ?? ahora,
+      asignadoA: cb.asignadoA ?? autor,
+      asignadoNombre: cb.asignadoNombre ?? this.nombre(autor),
+      asignadoAt: cb.asignadoAt ?? ahora,
+      resueltoAt: resuelto ? (cb.resueltoAt ?? ahora) : (cb.resueltoAt ?? null),
+      resueltoPorNombre: resuelto ? this.nombre(autor) : (cb.resueltoPorNombre ?? null),
       intentos: [{ id, resultado: intento.resultado, nota: intento.nota, proximoIntentoAt: intento.proximoIntentoAt, autor: this.nombre(this.opts.actorUserId), creadoAt: this.now().toISOString() }, ...cb.intentos],
     };
     return id;
   }
+
+  async actualizarCallback(organizationId: string, callbackId: string, accion: CallbackAccion, opciones: { readonly asignadoA?: string | null; readonly nota?: string | null }): Promise<CallbackEstado> {
+    this.requerirDisponible();
+    const i = this.callbacks.findIndex((c) => c.id === callbackId && c.organizationId === organizationId);
+    if (i < 0) throw new ConversacionesRechazadaError();
+    const cb = this.callbacks[i]!;
+    const actual = estadoCallback(cb);
+    const uid = this.opts.actorUserId;
+    const ahora = this.now().toISOString();
+    const gestor = this.opts.actorEsAdministrador === true;
+    let sig: CallbackItem & { organizationId: string };
+    if (accion === "tomar") {
+      if (actual === "resuelto") throw new ConversacionesConflictoError();
+      if (cb.asignadoA && cb.asignadoA !== uid) throw new HandoffYaTomadoError();
+      sig = { ...cb, estado: "en_curso", asignadoA: uid, asignadoNombre: this.nombre(uid), asignadoAt: cb.asignadoAt ?? ahora, tomadoAt: cb.tomadoAt ?? ahora };
+    } else if (accion === "asignar") {
+      if (!gestor) throw new ConversacionesRechazadaError();
+      if (actual === "resuelto") throw new ConversacionesConflictoError();
+      if (!opciones.asignadoA || !this.opts.nombres || !(opciones.asignadoA in this.opts.nombres)) throw new ConversacionesRechazadaError();
+      sig = { ...cb, estado: "en_curso", asignadoA: opciones.asignadoA, asignadoNombre: this.nombre(opciones.asignadoA), asignadoAt: ahora, tomadoAt: cb.tomadoAt ?? ahora };
+    } else if (accion === "liberar") {
+      if (actual === "resuelto") throw new ConversacionesConflictoError();
+      if (cb.asignadoA !== uid && !gestor) throw new ConversacionesRechazadaError();
+      sig = { ...cb, estado: "nuevo", asignadoA: null, asignadoNombre: null, asignadoAt: null };
+    } else if (accion === "resolver") {
+      if (actual === "resuelto") throw new ConversacionesConflictoError();
+      if (cb.asignadoA && cb.asignadoA !== uid && !gestor) throw new HandoffYaTomadoError();
+      sig = { ...cb, estado: "resuelto", resolved: true, resueltoAt: ahora, resueltoPorNombre: this.nombre(uid), notaResolucion: opciones.nota?.trim() || null, tomadoAt: cb.tomadoAt ?? ahora, asignadoA: cb.asignadoA ?? uid, asignadoNombre: cb.asignadoNombre ?? this.nombre(uid), asignadoAt: cb.asignadoAt ?? ahora };
+    } else {
+      if (!gestor) throw new ConversacionesRechazadaError();
+      if (actual !== "resuelto") throw new ConversacionesConflictoError();
+      sig = { ...cb, estado: "nuevo", resolved: false, resueltoAt: null, resueltoPorNombre: null, notaResolucion: null, asignadoA: null, asignadoNombre: null, asignadoAt: null, tomadoAt: null };
+    }
+    this.callbacks[i] = sig;
+    return sig.estado ?? "nuevo";
+  }
+}
+
+function estadoCallback(c: CallbackItem): CallbackEstado {
+  return c.estado ?? (c.resolved ? "resuelto" : "nuevo");
 }
 
 /** Gate en memoria del agente: lee el mismo almacen de tomas que el repositorio. */
