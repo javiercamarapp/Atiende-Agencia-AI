@@ -10,8 +10,8 @@
 // como PARAMETRO a la funcion (nunca el reloj de la base), para poder simularlo en pruebas.
 //
 // Base sin la migracion 034: la property se reporta `omitida: migracion_pendiente` (no es un fallo: el
-// latido queda en ok y no se toca nada). NO esta registrado en vercel.json: programarlo es una decision
-// de despliegue (ver el cuerpo del PR / docs) -- la ruta acepta GET/POST con el secreto interno.
+// latido queda en ok y no se toca nada). Cron en vercel.json (cada 10 minutos, ver docs/CRONS.md); la ruta
+// acepta GET/POST con el secreto interno.
 import { Hono } from "hono";
 import { PostgresGuestTicketRepository, TicketUnavailableError, type GuestTicketRepository, type SlaSweepItem } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
