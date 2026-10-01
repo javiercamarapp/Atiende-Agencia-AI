@@ -21,3 +21,12 @@ export class WhatsappNumberInUseError extends OrderValidationError {
     this.name = "WhatsappNumberInUseError";
   }
 }
+
+/** El guardado del agente de WhatsApp perdio contra otro guardado (la version esperada ya no es la vigente). Las
+ * rutas lo traducen a 409 para que la pantalla recargue y el usuario revise antes de reintentar. */
+export class WhatsAppAgentConfigConflictError extends Error {
+  constructor() {
+    super("La configuración del agente cambió mientras la editaba. Recargue y revise los cambios antes de guardar.");
+    this.name = "WhatsAppAgentConfigConflictError";
+  }
+}

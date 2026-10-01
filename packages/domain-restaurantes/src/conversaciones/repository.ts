@@ -1,6 +1,8 @@
 import type {
   BandejaFiltro,
   BandejaPagina,
+  CallbackAccion,
+  CallbackEstado,
   CallbackIntentoEntrada,
   CallbackItem,
   ConversacionCanal,
@@ -32,6 +34,10 @@ export interface ConversacionesRepository {
 
   listarCallbacks(organizationId: string, propertyId: string, soloAbiertos: boolean): Promise<ConversacionesLectura<readonly CallbackItem[]>>;
   registrarIntentoCallback(organizationId: string, callbackId: string, intento: CallbackIntentoEntrada): Promise<string>;
+  /** Cambia el estado de trabajo de un callback (migracion 033) y devuelve el estado resultante. Base sin 033 ->
+   * `ConversacionesNoDisponibleError`; ya tomado por otra persona -> `HandoffYaTomadoError`; ya resuelto o no
+   * resuelto segun la accion -> `ConversacionesConflictoError`; sin permiso -> `ConversacionesRechazadaError`. */
+  actualizarCallback(organizationId: string, callbackId: string, accion: CallbackAccion, opciones: { readonly asignadoA?: string | null; readonly nota?: string | null }): Promise<CallbackEstado>;
 }
 
 /** Lo que consulta el agente de WhatsApp (sesion de SISTEMA, sin usuario). */
