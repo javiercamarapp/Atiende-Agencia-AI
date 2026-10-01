@@ -17,12 +17,12 @@ interface Pantalla {
 
 // Solo pantallas con tabla Y fixture en la API simulada (si no, la pagina muestra un estado de error sin tabla).
 const PANTALLAS: readonly Pantalla[] = [
-  { nombre: "citas-proveedores", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/proveedores` },
-  { nombre: "citas-servicios", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/servicios` },
   { nombre: "citas-clientes", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/clientes` },
-  { nombre: "citas-agenda", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/agenda` },
   { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos` },
+  { nombre: "restaurantes-clientes", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/clientes` },
+  { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial` },
   { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
+  { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin" },
 ];
 
 test.describe("superficies de Likida @ds @oscuro", () => {
@@ -72,8 +72,8 @@ test.describe("superficies de Likida @ds @oscuro", () => {
 
   test("receta medida: tarjeta de radio 16 con hairline, cabecera mono de 10 px y celdas de 12 x 8 px (tolerancia 1 px)", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("citas", "owner");
-    await page.goto(`/citas/${citas.orgSlug}/proveedores`);
-    await afirmarPantallaSana(page, "citas proveedores");
+    await page.goto(`/citas/${citas.orgSlug}/clientes`);
+    await afirmarPantallaSana(page, "citas clientes");
     const tabla = page.locator("main table").first();
     await expect(tabla).toBeVisible();
     const m = await page.evaluate(() => {

@@ -35,7 +35,7 @@ describe("Card", () => {
   it("es la tarjeta de Likida: clase card, radio 16, hairline y sombra fina, sin relleno propio", () => {
     const c = montar(<Card data-testid="x" className="p-4" />);
     const el = c.firstElementChild as HTMLElement;
-    for (const clase of ["card", "rounded-lg", "border", "border-border", "bg-card", "shadow-card", "p-4"]) expect(el.className).toContain(clase);
+    for (const clase of ["card", "min-w-0", "rounded-lg", "border", "border-border", "bg-card", "shadow-card", "p-4"]) expect(el.className).toContain(clase);
     expect(el.className).not.toContain("shadow-sm");
   });
 
