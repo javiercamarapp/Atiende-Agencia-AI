@@ -289,3 +289,7 @@ export { PostgresRentasOnboardingRepository } from "./onboarding/postgres-reposi
 // que un incidente de emergencia necesita registrar.
 // ---------------------------------------------------------------------------
 export * from "./break-glass/index.ts";
+
+// "Chatea con tus datos" -- catalogo de rentas (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.
+export { buildRentasDataChatCatalog, buildRentasDataChatTools, PostgresRentasDataChatReader, ALL_RENTAS_DATA_CHAT_SQL } from "./data-chat/index.ts";
+export type { RentasDataChatReader, RentasDataChatWindow } from "./data-chat/index.ts";
