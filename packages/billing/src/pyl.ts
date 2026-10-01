@@ -411,7 +411,7 @@ export function pylACsv(pyl: Pyl, nivel: NivelPylCsv): string {
     for (const v of [...pyl.porVertical, pyl.total]) {
       const nota = notaBase();
       if (v.organizacionesSinIngreso > 0) nota.push(`${v.organizacionesSinIngreso} organizacion(es) sin ingreso conocido fuera del margen`);
-      lineas.push([pyl.mes, v.clave, v.organizaciones, ...comunes(v, nota)].map(celdaCsv).join(','));
+      lineas.push([pyl.mes, v.clave, String(v.organizaciones), ...comunes(v, nota)].map(celdaCsv).join(','));
     }
   } else {
     for (const f of pyl.porCliente) {
