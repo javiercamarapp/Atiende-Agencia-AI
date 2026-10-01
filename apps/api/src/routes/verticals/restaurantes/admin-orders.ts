@@ -9,10 +9,11 @@
 // `@atiende/domain-restaurantes::order-lifecycle.ts` — nunca acepta un string
 // crudo sin validar la transición.
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
-import type { Order, OrderPickupInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -27,7 +28,21 @@ async function pickupInfoByOrder(repo: RestaurantesRepository, organizationId: s
   return new Map(rows.map((r) => [r.orderId, r]));
 }
 
-function serializeOrder(o: Order, pickup?: OrderPickupInfo) {
+/** Programacion (migracion 034) de varios pedidos. `[]` contra la base sin migrar (SAVEPOINT en el repo). */
+async function scheduleInfoByOrder(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[]): Promise<ReadonlyMap<string, OrderScheduleInfo>> {
+  const rows = await repo.listOrderScheduleInfo(organizationId, orders.map((o) => o.id));
+  return new Map(rows.map((r) => [r.orderId, r]));
+}
+
+/** Pedidos serializados con canal/propina/hora de recogida (031) y programacion (034) leidos aparte. */
+async function serializeOrders(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[]) {
+  // Secuencial a proposito: ambas lecturas llevan SAVEPOINT sobre la MISMA transaccion y no deben intercalarse.
+  const pickup = await pickupInfoByOrder(repo, organizationId, orders);
+  const schedule = await scheduleInfoByOrder(repo, organizationId, orders);
+  return orders.map((o) => serializeOrder(o, pickup.get(o.id), schedule.get(o.id)));
+}
+
+function serializeOrder(o: Order, pickup?: OrderPickupInfo, schedule?: OrderScheduleInfo) {
   return {
     id: o.id,
     propertyId: o.propertyId,
@@ -48,6 +63,10 @@ function serializeOrder(o: Order, pickup?: OrderPickupInfo) {
     canal: pickup?.canal ?? null,
     propina: pickup?.propina ?? null,
     horaRecogida: pickup?.horaRecogida ?? null,
+    // R-11 (migracion 034): hora para la que se programo el pedido y cuando se promovio a `pending`. `null` en
+    // pedidos normales o contra la base sin migrar.
+    programadoPara: schedule?.programadoPara ?? o.programadoPara ?? null,
+    promovidoAt: schedule?.promovidoAt ?? o.promovidoAt ?? null,
     // Fase 8 — ver domain-restaurantes/src/roles.ts::REPARTIDOR_ROLES. El admin
     // necesita ver a quién despachó un pedido (y la incidencia, si la hay) desde
     // esta MISMA vista de operación/historial -- nunca un endpoint aparte.
@@ -109,6 +128,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.use("/v1/restaurantes/:propertyId/admin/orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/orders/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/v1/restaurantes/:propertyId/admin/scheduled-orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/order-notifications", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/order-notifications/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -126,10 +146,54 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const limit = parseLimit(c.req.query("limit"));
     const cursor = c.req.query("cursor") || undefined;
 
+    // R-11: auto-promocion de pedidos programados al CONSULTAR (sin cron). Solo cuando la consulta puede incluir
+    // pedidos que acaban de pasar a `pending` (sin filtro de estado o con `pending`/`programado`); un historial
+    // por fecha no la dispara. Nunca rompe el listado: un fallo se registra y se sigue.
+    if (status === undefined || status === "pending" || status === "programado") {
+      await promoverAlConsultar(c, repo, organizationId, propertyIds);
+    }
     const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, limit, cursor });
-    const pickup = await pickupInfoByOrder(repo, c.get("organizationId"), page.orders);
-    return c.json({ orders: page.orders.map((o) => serializeOrder(o, pickup.get(o.id))), nextCursor: page.nextCursor });
+    return c.json({ orders: await serializeOrders(repo, organizationId, page.orders), nextCursor: page.nextCursor });
   });
+
+  // R-11: pestana "Programados" -- pedidos en estado `programado` (el mas proximo primero). Promueve antes de
+  // listar, asi un pedido que ya entro en la anticipacion deja de aparecer aqui y aparece en pendientes.
+  // `disponible:false` = la base aun no tiene la migracion 034 (lista vacia honesta, nunca un 500).
+  app.get("/v1/restaurantes/:propertyId/admin/scheduled-orders", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const branchId = parseBranchId(c.req.query("branchId"));
+    const propertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, branchId);
+    const limit = parseLimit(c.req.query("limit"));
+    const promovidos = await promoverAlConsultar(c, repo, organizationId, propertyIds);
+    const result = await repo.listScheduledOrders(organizationId, { propertyIds, limit });
+    return c.json({
+      disponible: result.disponible,
+      orders: await serializeOrders(repo, organizationId, result.orders),
+      promovidos: promovidos.map((o) => o.id),
+      serverNow: new Date().toISOString(),
+    });
+  });
+
+  /** Promueve a `pending` los programados vencidos de las sucursales del alcance. Nunca lanza. */
+  async function promoverAlConsultar(
+    c: Context<CoreAuthHonoEnv>,
+    repo: RestaurantesRepository,
+    organizationId: string,
+    propertyIds: readonly string[] | null,
+  ): Promise<readonly Order[]> {
+    try {
+      const r = await promoverProgramadosVencidos(repo, organizationId, { propertyIds });
+      if (r.promovidos.length > 0) {
+        logEvent(c, "info", "restaurantes_programados_promovidos", { organizationId, promovidos: r.promovidos.length });
+      }
+      return r.promovidos;
+    } catch (err) {
+      logEvent(c, "warn", "restaurantes_programados_promocion_fallida", { organizationId, error: err instanceof Error ? err.message : String(err) });
+      return [];
+    }
+  }
 
   app.get("/v1/restaurantes/:propertyId/admin/orders/:orderId", async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
@@ -139,7 +203,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (!order) throw Errors.notFound("Pedido no encontrado.");
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
-    return c.json({ order: serializeOrder(order, (await pickupInfoByOrder(repo, organizationId, [order])).get(order.id)) });
+    return c.json({ order: (await serializeOrders(repo, organizationId, [order]))[0] });
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/status", async (c) => {
@@ -221,7 +285,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         });
       }
 
-      return c.json({ order: serializeOrder(updated, (await pickupInfoByOrder(repo, organizationId, [updated])).get(updated.id)) });
+      return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
       if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 031).");
@@ -304,7 +368,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       despues: raw.repartidorId,
     });
 
-    return c.json({ order: serializeOrder(updated, (await pickupInfoByOrder(repo, organizationId, [updated])).get(updated.id)) });
+    return c.json({ order: (await serializeOrders(repo, organizationId, [updated]))[0] });
   });
 
   // Fase 9 — bandeja de notificaciones internas al staff (ver order-notifications.ts):

@@ -43,6 +43,7 @@ import type {
   BranchHoursException,
   NewBranchHoursExceptionInput,
   OrderPickupInfo,
+  OrderScheduleInfo,
   Order,
   OrderListFilter,
   OrderListPage,
@@ -71,7 +72,9 @@ import type {
   KpiDateRange,
   MessagingOutboxRow,
   NewOrderRecord,
+  PromotedScheduledOrdersResult,
   RestaurantesRepository,
+  ScheduledOrdersResult,
   SalesBucketRow,
   SearchableProduct,
   StaffOrderNotificationEventType,
@@ -300,6 +303,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly branchPolicies = new Map<string, BranchPolicy>();
   private readonly branchHoursExceptions: BranchHoursException[] = [];
   private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
+  // R-11 (migracion 034): `false` simula la base SIN migrar (los pedidos programados no estan disponibles).
+  private scheduledOrdersSupported = true;
   private readonly whatsAppAgentConfigs = new Map<string, WhatsAppAgentConfigRow>();
   private readonly branchDeliveryZones = new Map<string, Set<string>>();
   private readonly whatsappBranchChannels = new Map<string, { organizationId: string; propertyId: string }>();
@@ -807,12 +812,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
           (o) =>
             o.organizationId === order.organizationId &&
             o.dedupeFingerprint === dedupeFingerprint &&
-            o.status === "pending" &&
+            (o.status === "pending" || o.status === "programado") &&
             Date.parse(o.createdAt) >= fiveMinutesAgo,
         );
         if (existing) return existing;
       }
 
+      const programadoPara = this.scheduledOrdersSupported ? (order.programadoPara ?? null) : null;
+      if (programadoPara && Date.parse(programadoPara) <= Date.now()) throw new Error("programado_para debe ser una hora futura");
       const created: Order = {
         id: randomUUID(),
         organizationId: order.organizationId,
@@ -824,7 +831,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         customerEmail: order.customerEmail,
         branch: order.branch,
         total: order.total,
-        status: "pending",
+        // Espejo de create_order_idempotent (034): con `programadoPara` nace `programado`; la funcion VIEJA
+        // (base sin migrar) ignora la llave y lo crea `pending`.
+        status: programadoPara ? "programado" : "pending",
         items: order.items,
         source: order.source,
         notes: order.notes,
@@ -840,6 +849,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         canal: order.canal ?? null,
         propina: order.propina ?? null,
         horaRecogida: order.horaRecogida ?? null,
+        ...(programadoPara ? { programadoPara, promovidoAt: null } : {}),
       };
       this.orders.push(created);
       this.orderPickupInfo.set(created.id, { canal: order.canal ?? null, propina: order.propina ?? null, horaRecogida: order.horaRecogida ?? null });
@@ -1750,6 +1760,64 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return this.orders
       .filter((o) => o.organizationId === organizationId && wanted.has(o.id) && this.orderPickupInfo.has(o.id))
       .map((o) => ({ orderId: o.id, ...this.orderPickupInfo.get(o.id)! }));
+  }
+
+  // ---- Pedidos programados (migracion 034), espejo en memoria ----
+
+  /** Solo para pruebas: simula una base sin la migracion 034. */
+  setScheduledOrdersSupported(supported: boolean): void {
+    this.scheduledOrdersSupported = supported;
+  }
+
+  async supportsScheduledOrders(): Promise<boolean> {
+    return this.scheduledOrdersSupported;
+  }
+
+  async listOrderScheduleInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderScheduleInfo[]> {
+    if (!this.scheduledOrdersSupported) return [];
+    const wanted = new Set(orderIds);
+    return this.orders
+      .filter((o) => o.organizationId === organizationId && wanted.has(o.id) && o.programadoPara)
+      .map((o) => ({ orderId: o.id, programadoPara: o.programadoPara ?? null, promovidoAt: o.promovidoAt ?? null }));
+  }
+
+  async listScheduledOrders(organizationId: string, filter: { readonly propertyIds: readonly string[] | null; readonly limit: number }): Promise<ScheduledOrdersResult> {
+    if (!this.scheduledOrdersSupported) return { disponible: false, orders: [] };
+    const scope = filter.propertyIds ? new Set(filter.propertyIds) : null;
+    const orders = this.orders
+      .filter((o) => o.organizationId === organizationId && o.status === "programado" && (scope === null || scope.has(o.propertyId)))
+      .sort((a, b) => (a.programadoPara ?? "").localeCompare(b.programadoPara ?? "") || a.id.localeCompare(b.id))
+      .slice(0, filter.limit);
+    return { disponible: true, orders };
+  }
+
+  async promoteDueScheduledOrders(
+    organizationId: string | null,
+    options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
+  ): Promise<PromotedScheduledOrdersResult> {
+    if (!this.scheduledOrdersSupported) return { disponible: false, promoted: [] };
+    const scope = options.propertyIds ? new Set(options.propertyIds) : null;
+    const limitMs = options.now.getTime() + Math.min(Math.max(options.anticipacionMin, 0), 1440) * 60_000;
+    const promoted: Order[] = [];
+    // Espejo del UPDATE ... WHERE status = 'programado': solo toca programados (un cancelado nunca se promueve).
+    const due = this.orders
+      .filter(
+        (o) =>
+          o.status === "programado" &&
+          (organizationId === null || o.organizationId === organizationId) &&
+          (scope === null || scope.has(o.propertyId)) &&
+          o.programadoPara !== undefined &&
+          o.programadoPara !== null &&
+          Date.parse(o.programadoPara) <= limitMs,
+      )
+      .sort((a, b) => (a.programadoPara ?? "").localeCompare(b.programadoPara ?? ""));
+    for (const o of due.slice(0, 1000)) {
+      const index = this.orders.findIndex((x) => x.id === o.id);
+      const updated: Order = { ...this.orders[index]!, status: "pending", promovidoAt: options.now.toISOString() };
+      this.orders[index] = updated;
+      promoted.push(updated);
+    }
+    return { disponible: true, promoted };
   }
 
   async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {

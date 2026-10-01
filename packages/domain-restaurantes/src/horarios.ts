@@ -155,6 +155,24 @@ export function mensajeSucursalCerrada(nombreSucursal: string, estado: EstadoApe
   return `La sucursal ${nombreSucursal} está cerrada en este momento; abre ${hoy ? "hoy" : `el ${dia}`} a las ${hora}.`;
 }
 
+/** Etiqueta legible de un instante en la zona del negocio ("sábado 03/10 14:30"), para mensajes de pedidos
+ * programados: la misma hora que el cliente eligio, nunca la del proceso (UTC en Vercel). */
+export function etiquetaHoraLocal(instante: Date, zonaHoraria: string): string {
+  const { dia, minutos } = componentesLocales(instante, zonaHoraria);
+  const fecha = fechaLocal(instante, zonaHoraria);
+  const hh = String(Math.floor(minutos / 60)).padStart(2, "0");
+  const mm = String(minutos % 60).padStart(2, "0");
+  return `${DIAS_SEMANA[dia]} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} ${hh}:${mm}`;
+}
+
+/** Mensaje cuando la hora PROGRAMADA cae fuera del horario de la sucursal. */
+export function mensajeProgramadoFueraDeHorario(nombreSucursal: string, etiquetaHora: string, estado: EstadoApertura): string {
+  const base = `La sucursal ${nombreSucursal} no atiende a la hora elegida (${etiquetaHora}).`;
+  if (!estado.proximaApertura) return `${base} Elija otra hora dentro de su horario.`;
+  const { dia, hora, hoy } = estado.proximaApertura;
+  return `${base} La siguiente apertura es ${hoy ? "ese mismo día" : `el ${dia}`} a las ${hora}: elija una hora dentro del horario.`;
+}
+
 // ---------------------------------------------------------------------------
 // Puentes: excepciones de horario por FECHA (migracion 031) y dia de negocio.
 // ---------------------------------------------------------------------------

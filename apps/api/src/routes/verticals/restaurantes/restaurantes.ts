@@ -15,6 +15,7 @@ import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
 import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
+import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
@@ -49,6 +50,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Hallazgo de auditoría — dispatcher real del canal de correo (channel='email'
   // del outbox), mismo patrón exacto que citasEmailDispatchRoutes.
   app.route("/", restaurantesEmailDispatchRoutes(deps));
+  // R-11 (migración 034): promoción de pedidos programados por endpoint interno (sin cron, ver el archivo).
+  app.route("/", restaurantesProgramadosInternoRoutes(deps));
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
   app.route("/", restaurantesAuditoriaRoutes(deps));

@@ -14,6 +14,7 @@ import {
   invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
+  RestaurantesConfigUnavailableError,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -62,6 +63,8 @@ interface CreateOrderBody {
   /** PM PR-3: hora prometida de recogida (ISO 8601 con zona, solo canal "recoger") y doble porcion de salsas. */
   readonly hora_recogida?: unknown;
   readonly doble_salsas?: unknown;
+  /** R-11: pedido PROGRAMADO -- fecha y hora (ISO 8601 con zona) para la que se quiere el pedido. */
+  readonly programado_para?: unknown;
 }
 
 function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, source: "web" | "voice"): CreateOrderInput {
@@ -99,6 +102,8 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     propina: typeof body.propina === "number" ? body.propina : undefined,
     horaRecogida: typeof body.hora_recogida === "string" ? body.hora_recogida : undefined,
     doubleSalsas: Array.isArray(body.doble_salsas) ? (body.doble_salsas as CreateOrderInput["doubleSalsas"]) : undefined,
+    // Un valor no-string se manda tal cual: `createOrder` lo rechaza con un 400 claro (nunca se ignora en silencio).
+    programadoPara: body.programado_para === undefined || body.programado_para === null ? undefined : (body.programado_para as string),
   };
 }
 
@@ -197,6 +202,9 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
         // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
         // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
+        // R-11: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
+        // antes). Al promoverse a `pending` aparece en el panel; la captura manual de la comanda sigue disponible.
+        if (order.status === "programado") return c.json({ order });
         const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
         if (comanda.modo === "activo") {
           // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
@@ -206,6 +214,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
         if (err instanceof OrderValidationError) throw Errors.validation(err.message);
+        if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los pedidos programados todavía no están disponibles (falta aplicar la migración 034).");
         throw err;
       }
     });

@@ -189,6 +189,11 @@ export interface CreateOrderInput {
   readonly propina?: number;
   /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger". */
   readonly horaRecogida?: string;
+  /** R-11 (migracion 034): PEDIDO PROGRAMADO. Fecha y hora (ISO 8601 con zona) para la que el cliente
+   * quiere el pedido. Queda en estado `programado` y pasa solo a `pending` poco antes de esa hora. Debe caer
+   * dentro del horario de la sucursal (en SU zona horaria) y dentro de la ventana permitida (ver
+   * pedidos-programados.ts). Sin esto el pedido es inmediato, como siempre. */
+  readonly programadoPara?: string;
 }
 
 export type CanalPedido = "domicilio" | "recoger";
@@ -318,6 +323,17 @@ export interface Order {
   readonly canal?: CanalPedido | null;
   readonly propina?: number | null;
   readonly horaRecogida?: string | null;
+  /** Migracion 034. Igual que arriba: solo vienen cuando la fila las trae; los listados generales no las
+   * seleccionan (la base puede no estar migrada) -- `repo.listOrderScheduleInfo` las lee aparte. */
+  readonly programadoPara?: string | null;
+  readonly promovidoAt?: string | null;
+}
+
+/** Datos de programacion de un pedido (migracion 034): hora para la que se pidio y cuando se promovio a `pending`. */
+export interface OrderScheduleInfo {
+  readonly orderId: string;
+  readonly programadoPara: string | null;
+  readonly promovidoAt: string | null;
 }
 
 /** Datos de recoger de un pedido (migracion 031): canal, propina y hora prometida de recogida. */
@@ -432,7 +448,9 @@ export type OrderStatus =
   | "completado"
   | "problema"
   | "listo_para_recoger"
-  | "no_recogido";
+  | "no_recogido"
+  /** R-11 (migracion 034): pedido dejado para una hora futura; fuera de cocina hasta que se promueve a `pending`. */
+  | "programado";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;
