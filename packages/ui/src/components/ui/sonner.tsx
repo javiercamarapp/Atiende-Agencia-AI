@@ -3,15 +3,11 @@ import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-// Pedido real de Javier ("hazme todos los mensajes que salgan así — más
-// como el software elegante minimalista con letra fina, elegante,
-// tipografía como el software, compacto animado"), portado del componente
-// de toast de atiende-restaurantes (src/components/ui/toast.tsx) a las
-// clases que expone sonner: tarjeta redondeada con blur, tipografía
-// compacta font-display/font-body, y SOLO el tipo error con fondo sólido
-// (el resto se queda neutro/glassy). Este es el único componente
-// compartido detrás de cada llamada a toast() en toda la app -- se
-// corrige una vez y aplica a las 6 verticales por igual.
+// Toast con el material de card de Likida (spec UNI-3c 6.5): radio 16, hairline,
+// bg-card, sombra de elevacion y texto de 13 px; sin blur ni fuente de pantalla.
+// El error usa el par peligro/tinte de Likida (--bad sobre --badbg) en lugar del
+// bloque rojo solido. Este es el unico componente compartido detras de cada
+// llamada a toast() en toda la app: se corrige una vez y aplica a las 6 verticales.
 //
 // Tema: antes `theme="system"` (seguia solo al sistema operativo e ignoraba el
 // ThemeSelector). Ahora sigue la clase `dark` de <html>, la misma que alterna
@@ -39,19 +35,20 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:rounded-2xl group-[.toaster]:border group-[.toaster]:border-border/60 group-[.toaster]:bg-background/95 group-[.toaster]:text-foreground group-[.toaster]:shadow-[0_10px_30px_-8px_rgb(0,0,0,0.18)] group-[.toaster]:backdrop-blur-sm",
-          title: "group-[.toast]:font-display group-[.toast]:text-[13.5px] group-[.toast]:font-medium group-[.toast]:tracking-tight",
-          description: "group-[.toast]:font-body group-[.toast]:text-[12.5px] group-[.toast]:leading-snug group-[.toast]:opacity-75",
-          actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+            "group toast group-[.toaster]:rounded-lg group-[.toaster]:border group-[.toaster]:border-border group-[.toaster]:bg-card group-[.toaster]:p-3 group-[.toaster]:text-ui group-[.toaster]:text-card-foreground group-[.toaster]:shadow-elevated",
+          title: "group-[.toast]:text-ui group-[.toast]:font-medium",
+          description: "group-[.toast]:text-xs group-[.toast]:leading-snug group-[.toast]:text-muted-foreground",
+          actionButton: "group-[.toast]:h-7 group-[.toast]:rounded-lg group-[.toast]:bg-primary group-[.toast]:px-2.5 group-[.toast]:text-xs group-[.toast]:font-medium group-[.toast]:text-primary-foreground",
+          cancelButton: "group-[.toast]:h-7 group-[.toast]:rounded-lg group-[.toast]:bg-canvas group-[.toast]:px-2.5 group-[.toast]:text-xs group-[.toast]:text-muted-foreground",
+          closeButton: "group-[.toast]:border-border group-[.toast]:bg-card group-[.toast]:text-muted-foreground",
           // Sonner define su propio color de texto por defecto en [data-title]/
-          // [data-description] (sobrevive a heredar el `text-destructive-foreground`
-          // del contenedor) -- se fuerza aquí con selectores de descendiente.
+          // [data-description] (sobrevive a heredar el color del contenedor) -- se
+          // fuerza aqui con selectores de descendiente.
           success: "[&_[data-icon]]:text-success",
           warning: "[&_[data-icon]]:text-warning",
           info: "[&_[data-icon]]:text-info",
           error:
-            "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive group-[.toaster]:text-destructive-foreground [&_[data-title]]:!text-destructive-foreground [&_[data-description]]:!text-destructive-foreground [&_[data-description]]:!opacity-85",
+            "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive-tint group-[.toaster]:text-destructive [&_[data-title]]:!text-destructive [&_[data-description]]:!text-destructive [&_[data-description]]:!opacity-85 [&_[data-icon]]:text-destructive",
         },
       }}
       {...props}
