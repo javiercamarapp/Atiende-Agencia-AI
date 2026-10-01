@@ -57,6 +57,7 @@ import type { GuestOption, ReservationStatus, ReservationSummary, RoomOption, Ro
 import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
 import { dineroMx } from "../lib/dinero.ts";
+import { CotizadorPanel } from "./CotizadorPanel.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const FILTERS: ReadonlyArray<ReservationStatus | "todas"> = ["todas", "confirmada", "check_in", "en_estancia", "check_out", "cerrada", "cancelada"];
@@ -67,6 +68,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // H-35: cotizador (consulta de precio, no reserva nada).
+  const [showCotizador, setShowCotizador] = useState(false);
   // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
   // confirmación: cancelar reserva... ejecuta de inmediato con un clic"): la
   // reserva pendiente de confirmar cancelación en el <Dialog> de abajo -- `null`
@@ -324,11 +327,18 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
     <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Reservas</h1>
-        <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-          {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
-          {showForm ? "Cancelar" : "Nueva reserva"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setShowCotizador((v) => !v)}>
+            {showCotizador ? "Cerrar cotizador" : "Cotizar"}
+          </Button>
+          <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
+            {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
+            {showForm ? "Cancelar" : "Nueva reserva"}
+          </Button>
+        </div>
       </header>
+
+      {showCotizador && <CotizadorPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
 
       {showForm && (
         <Card className="max-w-md">
