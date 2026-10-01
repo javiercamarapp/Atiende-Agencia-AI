@@ -5,15 +5,11 @@ import { MapaProductoCodigo } from "../src/softrestaurant/catalog-map.ts";
 import { FakeSoftRestaurantAdapter } from "../src/softrestaurant/fake-adapter.ts";
 import { InMemoryComandaOutboxStore } from "../src/softrestaurant/outbox-memory-store.ts";
 import {
-  crearAlertaCapturaManual,
   crearResolverSucursalPos,
   drenarComandas,
-  encolarComandaParaPedido,
   encolarComandasDePromovidos,
-  llaveIdempotenciaComanda,
   type DepsComandaPos,
 } from "../src/softrestaurant/outbox-service.ts";
-import type { ComandaResultado, SoftRestaurantPort } from "../src/softrestaurant/types.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const T0 = new Date("2026-09-30T18:00:00.000Z");
