@@ -1,5 +1,7 @@
 // PL-12 (CI ampliado): logica pura de los guards nuevos de CI. Sin red, sin Postgres, sin procesos externos.
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { SPECS_SENSIBLES_AL_RELOJ } from "../../../vitest.clock-guard.config.ts";
 import { contarResultadosEslint, evaluarRatchet } from "../../../scripts/lint-ratchet/ratchet.ts";
 
 describe("lint-ratchet", () => {
@@ -32,5 +34,22 @@ describe("lint-ratchet", () => {
     expect(evaluarRatchet({ errores: 0, advertencias: 0 }, -1).ok).toBe(false);
     expect(evaluarRatchet({ errores: 0, advertencias: 0 }, 1.5).ok).toBe(false);
     expect(evaluarRatchet({ errores: 0, advertencias: 0 }, Number.NaN).ok).toBe(false);
+  });
+});
+
+describe("clock-guard (seleccion de specs sensibles al reloj)", () => {
+  const raiz = new URL("../../../", import.meta.url);
+
+  it("cada spec listada existe (un rename no deja el guard corriendo en vacio)", () => {
+    const faltan = SPECS_SENSIBLES_AL_RELOJ.filter((ruta) => !existsSync(new URL(ruta, raiz)));
+    expect(faltan).toEqual([]);
+  });
+
+  it("no hay duplicados y cubre los casos que motivaron el guard (rentas-pricing, hoteles night-audit, fin de mes)", () => {
+    expect(new Set(SPECS_SENSIBLES_AL_RELOJ).size).toBe(SPECS_SENSIBLES_AL_RELOJ.length);
+    const texto = SPECS_SENSIBLES_AL_RELOJ.join("\n");
+    for (const requerida of ["rentas-pricing-servidor-hoy", "hoteles-night-audit-servidor-hoy", "reloj-simulado-fronteras", "despachos-cierre-mensual-servidor-hoy"]) {
+      expect(texto).toContain(requerida);
+    }
   });
 });
