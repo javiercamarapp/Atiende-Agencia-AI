@@ -54,6 +54,8 @@ export const test = base.extend<Fixtures>({
     // Cobertura pendiente de la API simulada: rutas que la pagina pidio y ninguna fixture atendio (informativo).
     const pendientes = [...new Set(v.sinFixture)].sort();
     if (pendientes.length > 0) await info.attach("sin-fixture", { body: pendientes.join("\n"), contentType: "text/plain" });
+    // E2E_LISTAR_SIN_FIXTURE=1 los imprime en la consola (backlog de cobertura de la API simulada).
+    if (process.env.E2E_LISTAR_SIN_FIXTURE === "1" && pendientes.length > 0) console.log(`[sin-fixture] ${info.title}\n  ${pendientes.join("\n  ")}`);
   },
 
   iniciarSesion: async ({ page, mock }, use) => {
