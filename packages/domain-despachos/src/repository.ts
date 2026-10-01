@@ -25,6 +25,7 @@ import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./con
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
@@ -96,6 +97,12 @@ export interface DespachosRepository {
    * duplica, sin necesitar un header Idempotency-Key aparte (a diferencia de
    * hoteles/folios, donde "cargo nuevo" no tiene una llave natural propia). */
   insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord>;
+  /** D-22: desglose de impuestos persistido de UN CFDI (vacío si el XML no traía detalle, el CFDI es anterior a la
+   * migración 018 o la base aún no la tiene -- nunca lanza por eso). */
+  listarImpuestosInvoice(propertyId: string, invoiceId: string): Promise<readonly ImpuestoCfdiRecord[]>;
+  /** D-22: captura el estado del CFDI ante el SAT. Lanza `InvoiceNoEncontradoError` (no existe en esa property),
+   * `EstadoSatInvalidoError` (un cancelado no cambia) o `EstadoSatNoDisponibleError` (base sin la migración 018). */
+  registrarEstadoSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<void>;
   findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null>;
   /** Batch de `findInvoice` -- hallazgo de auditoría (rubro 10, "performance y
    * escalabilidad", severidad MEDIA: "cobranza de despachos con 1+2N queries
@@ -128,7 +135,7 @@ export interface DespachosRepository {
    * COMPLETO de un período (declaraciones/DIOT/devolución de IVA/conciliación) --
    * paginar esa función truncaría un cálculo fiscal real. Orden `created_at desc`
    * (más reciente primero), mismo criterio que `listInvoices`. */
-  listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage>;
+  listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage>;
 
   // ---- Cola de revisión humana (flujo 2) ----
   createReview(input: NewInvoiceReviewInput): Promise<InvoiceReviewRecord>;

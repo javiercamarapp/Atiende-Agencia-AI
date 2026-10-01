@@ -144,6 +144,8 @@ export {
   GESTIONAR_CONFIGURACION_ROLES,
   VER_DASHBOARD_ROLES,
   VER_REPORTES_ROLES,
+  VER_CARTERA_ROLES,
+  GESTIONAR_CARTERA_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -577,3 +579,32 @@ export * from "./data-chat/index.ts";
 export * from "./portal-cliente/index.ts";
 // D-11: cola de cobranza (gestiones por factura/cliente, reporte de cartera, outbox de WhatsApp con opt-in/opt-out).
 export * from "./cola-cobranza/index.ts";
+
+
+// D-21: cartera de clientes del despacho (ficha fiscal por property).
+export * from "./cartera/index.ts";
+
+// D-22: modelo CFDI completo (direccion emitido/recibido, centavos enteros, impuestos desglosados, estado SAT).
+export {
+  clasificarDireccionCfdi,
+  aCentavos,
+  montosCfdiACentavos,
+  normalizarCamposPagoCfdi,
+  impuestosDesdeXml,
+  esEstadoSatCfdi,
+  ESTADOS_SAT_CFDI,
+  NOMBRE_IMPUESTO,
+  MontoInvalidoError,
+} from "./cfdi/modelo-cfdi.ts";
+export type {
+  DireccionCfdi,
+  EstadoSatCfdi,
+  ImpuestoCfdiInput,
+  ImpuestoCfdiRecord,
+  CamposPagoCfdi,
+  MontosCfdiCentavos,
+  MontosCfdiEntrada,
+  NaturalezaImpuesto,
+  TipoFactorImpuesto,
+} from "./cfdi/modelo-cfdi.ts";
+export { EstadoSatNoDisponibleError, EstadoSatInvalidoError, InvoiceNoEncontradoError } from "./errors.ts";

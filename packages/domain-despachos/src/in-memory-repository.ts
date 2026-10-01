@@ -4,8 +4,10 @@
 // para tests determinísticos y como fallback dev/CI sin Postgres real — mismo rol
 // que InMemoryHotelesRepository/InMemoryRestaurantesRepository.
 import { randomUUID } from "node:crypto";
-import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
+import { EstadoSatInvalidoError, InvoiceAlreadyExistsError, InvoiceNoEncontradoError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
+import { NOMBRE_IMPUESTO } from "./cfdi/modelo-cfdi.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
 import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
@@ -37,6 +39,7 @@ import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly invoices = new Map<string, InvoiceRecord>();
   private readonly invoiceByOrgFolio = new Map<string, string>(); // key: organizationId:folioFiscal -> invoiceId
+  private readonly impuestosPorInvoice = new Map<string, readonly ImpuestoCfdiRecord[]>();
   private readonly reviews = new Map<string, InvoiceReviewRecord>();
   private readonly deadlines = new Map<string, FiscalDeadlineRecord>();
   private readonly escalations = new Map<string, DeadlineEscalationRecord[]>(); // key: deadlineId
@@ -180,10 +183,45 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     const id = randomUUID();
     // confianza: Fase 1 siempre null (sin evaluar confianza automática todavía — el
     // motor de confianza real es Fase 2, ver types.ts).
-    const record: InvoiceRecord = { id, createdAt: new Date().toISOString(), confianza: null, ...input };
+    const { impuestos, ...historico } = input;
+    const record: InvoiceRecord = {
+      id,
+      createdAt: new Date().toISOString(),
+      confianza: null,
+      ...historico,
+      direccion: input.direccion ?? null,
+      metodoPago: input.metodoPago ?? null,
+      formaPago: input.formaPago ?? null,
+      usoCfdi: input.usoCfdi ?? null,
+      moneda: input.moneda ?? null,
+      tipoCambio: input.tipoCambio ?? null,
+      subtotalCentavos: input.subtotalCentavos ?? null,
+      descuentoCentavos: input.descuentoCentavos ?? null,
+      totalCentavos: input.totalCentavos ?? null,
+      ivaTrasladadoCentavos: input.ivaTrasladadoCentavos ?? null,
+      isrRetenidoCentavos: input.isrRetenidoCentavos ?? null,
+      ivaRetenidoCentavos: input.ivaRetenidoCentavos ?? null,
+      iepsCentavos: input.iepsCentavos ?? null,
+      estadoSat: "pendiente",
+      estadoSatVerificadoEn: null,
+    };
+    this.impuestosPorInvoice.set(id, (impuestos ?? []).map((i) => ({ ...i, nombre: NOMBRE_IMPUESTO[i.impuesto] ?? i.impuesto })));
     this.invoices.set(id, record);
     this.invoiceByOrgFolio.set(key, id);
     return record;
+  }
+
+  async listarImpuestosInvoice(propertyId: string, invoiceId: string): Promise<readonly ImpuestoCfdiRecord[]> {
+    const invoice = this.invoices.get(invoiceId);
+    if (!invoice || invoice.propertyId !== propertyId) return [];
+    return this.impuestosPorInvoice.get(invoiceId) ?? [];
+  }
+
+  async registrarEstadoSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<void> {
+    const invoice = this.invoices.get(invoiceId);
+    if (!invoice || invoice.propertyId !== propertyId) throw new InvoiceNoEncontradoError();
+    if (invoice.estadoSat === "cancelado" && estado !== "cancelado") throw new EstadoSatInvalidoError("un CFDI cancelado no cambia de estado");
+    this.invoices.set(invoiceId, { ...invoice, estadoSat: estado, estadoSatVerificadoEn: new Date().toISOString() });
   }
 
   async findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null> {
@@ -219,10 +257,11 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
-  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean; readonly direccion?: DireccionCfdi }): Promise<InvoicePage> {
     const filtered = [...this.invoices.values()]
       .filter((i) => i.propertyId === propertyId)
       .filter((i) => opts.requiresHumanReview === undefined || i.requiresHumanReview === opts.requiresHumanReview)
+      .filter((i) => opts.direccion === undefined || i.direccion === opts.direccion)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     const items = filtered.slice(opts.offset, opts.offset + opts.limit);
     const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;

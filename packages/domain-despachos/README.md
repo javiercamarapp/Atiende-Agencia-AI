@@ -217,6 +217,27 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   `disponible: false` y las escrituras responden 503, nunca un 500.
 - **Verificación**: `scripts/verify-despachos-cola-cobranza/` (Postgres real, 79 escenarios, integrado al gate de CI).
 
+## D-21 / D-22 — Cartera de clientes y modelo CFDI completo (migración 018)
+
+- **Cartera (D-21)**: una ficha fiscal por cliente del despacho (`despachos.cliente_ficha`, una fila por
+  property de `core`): RFC (12/13 caracteres con fecha válida; los genéricos XAXX/XEXX se rechazan; el
+  dígito verificador de la homoclave **no** se verifica), razón social, régimen(es) fiscal(es)
+  (c_RegimenFiscal, con la regla régimen ↔ tipo de persona en `src/cartera/ficha.ts`), CP fiscal,
+  periodicidad de pagos provisionales (mensual/bimestral) y responsable. Alta y edición pasan por funciones
+  `security definer` (`cliente_alta`, `cliente_ficha_guardar`); el RFC de una ficha existente no cambia.
+  Repositorio propio (`CarteraRepository`), opcional en `AppDeps.carteraRepo`.
+- **CFDI completo (D-22)**: `despachos.invoice` gana `direccion` (emitido/recibido/indeterminado, se resuelve
+  comparando el RFC de la ficha con emisor/receptor; sin ficha queda `indeterminado`, nunca se adivina),
+  método/forma de pago, uso, moneda, tipo de cambio, montos en **centavos enteros** (bigint) y `estado_sat`
+  (pendiente/vigente/cancelado/no_encontrado; lo captura el staff, sin llamadas al SAT). El desglose por
+  impuesto vive en `despachos.invoice_impuesto`. Las columnas en pesos `numeric(14,2)` no se tocan.
+- **Compatibilidad con la base sin migrar**: `insertInvoice` intenta el insert completo bajo SAVEPOINT y cae
+  al insert histórico ante 42703/42P01; la ficha, el desglose y el filtro por sentido degradan a vacío /
+  «no disponible» (ver `tests/cartera-postgres-savepoint.spec.ts` y
+  `apps/api/tests/despachos-cfdi-ingesta-base-sin-migrar.spec.ts`).
+- **Pendiente (D-23)**: liga persistida del REP a CFDI PPD (el análisis de solo lectura ya existe, ver la sección
+  siguiente). `parseCfdiXml` sigue excluyendo el complemento de pagos; lo lee `parseComplementoPagoXml`.
+
 ## Calendario fiscal (D-26) y complemento de pago 2.0 (D-23)
 
 - `src/vencimientos/calendario-fiscal.ts`: fechas límite en **día hábil** (art. 12 CFF) por obligación y régimen
@@ -229,4 +250,4 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   Migración `019_despachos_calendario_fiscal_tipos.sql` (espejo `20240101000262`); verificación en
   `scripts/verify-despachos-calendario-fiscal/`.
 - `src/cfdi/rep.ts`: análisis del REP 2.0 (`POST .../cfdi/rep/analizar`, solo lectura): saldo insoluto e IVA efectivamente
-  pagado por mes de pago, en centavos. No persiste ni alimenta DIOT/pagos provisionales todavía (depende de D-22, PR #290).
+  pagado por mes de pago, en centavos. No persiste ni alimenta DIOT/pagos provisionales todavía (la persistencia depende de la liga a PPD, D-23).

@@ -9,8 +9,31 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { analizarComplementoPago, RepRfcAjenoError, validarCfdiDespachos, aplicarEfosAlResultado, hallazgoEfosParaCfdi, EFOS_NO_DISPONIBLE, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
-import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, EfosConsulta, EfosSituacion, FacturaLigable, InvoiceRecord } from "@atiende/domain-despachos";
+import {
+  analizarComplementoPago,
+  RepRfcAjenoError,
+  validarCfdiDespachos,
+  aplicarEfosAlResultado,
+  hallazgoEfosParaCfdi,
+  EFOS_NO_DISPONIBLE,
+  InvoiceAlreadyExistsError,
+  INGESTA_CFDI_ROLES,
+  VER_CFDI_ROLES,
+  GESTIONAR_CARTERA_ROLES,
+  estaPeriodoCerrado,
+  PostgresCarteraRepository,
+  clasificarDireccionCfdi,
+  esEstadoSatCfdi,
+  impuestosDesdeXml,
+  montosCfdiACentavos,
+  normalizarCamposPagoCfdi,
+  MontoInvalidoError,
+  EstadoSatInvalidoError,
+  EstadoSatNoDisponibleError,
+  InvoiceNoEncontradoError,
+} from "@atiende/domain-despachos";
+import type { CarteraRepository, CategoriaContable, DatosCfdiDespachos, DespachosRepository, DireccionCfdi, EfosConsulta, EfosSituacion, FacturaLigable, ImpuestoCfdiInput, ImpuestoCfdiRecord, InvoiceRecord } from "@atiende/domain-despachos";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
@@ -27,6 +50,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const RFC_RE = /^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/i;
 
 const TIPOS_COMPROBANTE_VALIDOS = new Set(["I", "E", "T", "P", "N"]);
+
+/** Tope de renglones de impuesto que se persisten por comprobante (un CFDI real trae unas pocas tasas distintas). */
+const MAX_RENGLONES_IMPUESTO = 50;
 
 // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
 // "listados sin paginación en 4 verticales") -- `GET .../cfdi` devolvía TODOS los
@@ -79,6 +105,9 @@ interface IngestaCfdiBody {
   readonly tipoRelacion?: unknown;
   readonly nomina?: { totalPercepciones?: unknown } | null;
   readonly categoria?: unknown;
+  /** D-22: moneda ISO 4217 (default MXN) y tipo de cambio a MXN. */
+  readonly moneda?: unknown;
+  readonly tipoCambio?: unknown;
 }
 
 function requireString(value: unknown, field: string): string {
@@ -148,11 +177,13 @@ function parseIngestaBody(raw: IngestaCfdiBody): DatosCfdiDespachos & { categori
     cfdiRelacionados,
     tipoRelacion: typeof raw.tipoRelacion === "string" ? raw.tipoRelacion : undefined,
     nomina: parseNomina(raw.nomina),
+    moneda: typeof raw.moneda === "string" && raw.moneda.trim() !== "" ? raw.moneda.trim().toUpperCase() : undefined,
+    tipoCambio: optionalNumber(raw.tipoCambio, "tipoCambio") ?? undefined,
     categoria,
   };
 }
 
-function serializeInvoice(invoice: InvoiceRecord) {
+function serializeInvoice(invoice: InvoiceRecord, impuestos?: readonly ImpuestoCfdiRecord[]) {
   return {
     id: invoice.id,
     folioFiscal: invoice.folioFiscal,
@@ -172,6 +203,25 @@ function serializeInvoice(invoice: InvoiceRecord) {
     diot: invoice.diot,
     fecha: invoice.fecha,
     creadoEn: invoice.createdAt,
+    // D-22 (migracion 018): `null` = dato que el CFDI no trajo o que se ingirio antes de la migracion; nunca un 0 inventado.
+    direccion: invoice.direccion ?? null,
+    metodoPago: invoice.metodoPago ?? null,
+    formaPago: invoice.formaPago ?? null,
+    usoCfdi: invoice.usoCfdi ?? null,
+    moneda: invoice.moneda ?? null,
+    tipoCambio: invoice.tipoCambio ?? null,
+    montosCentavos: {
+      subtotal: invoice.subtotalCentavos ?? null,
+      descuento: invoice.descuentoCentavos ?? null,
+      total: invoice.totalCentavos ?? null,
+      ivaTrasladado: invoice.ivaTrasladadoCentavos ?? null,
+      isrRetenido: invoice.isrRetenidoCentavos ?? null,
+      ivaRetenido: invoice.ivaRetenidoCentavos ?? null,
+      ieps: invoice.iepsCentavos ?? null,
+    },
+    estadoSat: invoice.estadoSat ?? "pendiente",
+    estadoSatVerificadoEn: invoice.estadoSatVerificadoEn ?? null,
+    ...(impuestos ? { impuestos } : {}),
   };
 }
 
@@ -204,6 +254,7 @@ async function ingestarCfdiDespachos(
   propertyId: string,
   datos: DatosCfdiDespachos,
   categoria: CategoriaContable,
+  extras: { readonly cartera: CarteraRepository; readonly impuestos?: readonly ImpuestoCfdiInput[] },
 ): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
   // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
   // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
@@ -242,6 +293,20 @@ async function ingestarCfdiDespachos(
   const coincidenciaEfos = consultaEfos.coincidencias.find((c) => c.rfc === datos.rfcEmisor.trim().toUpperCase()) ?? null;
   const resultado = aplicarEfosAlResultado(validarCfdiDespachos(datos), hallazgoEfosParaCfdi(datos.rfcEmisor, coincidenciaEfos, consultaEfos.periodoLista));
 
+  // D-22 (migración 018): modelo CFDI completo. La dirección (emitido/recibido) sale de comparar el RFC de la ficha de
+  // cartera del cliente con emisor/receptor; sin ficha (o con la base sin migrar: `obtenerFicha` degrada a null dentro de
+  // su SAVEPOINT) queda `indeterminado`, nunca adivinada. Los montos viajan además en centavos enteros.
+  const ficha = await extras.cartera.obtenerFicha(propertyId);
+  const direccion: DireccionCfdi = clasificarDireccionCfdi(ficha?.rfc ?? null, datos.rfcEmisor, datos.rfcReceptor);
+  const pago = normalizarCamposPagoCfdi({ metodoPago: datos.metodoPago, formaPago: datos.formaPago, usoCfdi: datos.usoCfdi, moneda: datos.moneda, tipoCambio: datos.tipoCambio });
+  let montos: ReturnType<typeof montosCfdiACentavos>;
+  try {
+    montos = montosCfdiACentavos({ subtotal: datos.subtotal, total: datos.total, descuento: datos.descuento, iva: datos.iva, retencionIsr: datos.retencionIsr, retencionIva: datos.retencionIva, ieps: datos.ieps });
+  } catch (err) {
+    if (err instanceof MontoInvalidoError) throw Errors.validation(`Monto inválido en el CFDI: ${err.message}`);
+    throw err;
+  }
+
   try {
     const invoice = await repo.insertInvoice({
       organizationId,
@@ -262,6 +327,10 @@ async function ingestarCfdiDespachos(
       warnings: resultado.warnings,
       requiresHumanReview: resultado.requiresHumanReview,
       diot: resultado.diot,
+      direccion,
+      ...pago,
+      ...montos,
+      impuestos: extras.impuestos ?? [],
     });
 
     // Flujo 2 (cola de revisión humana): gateado ESTRICTAMENTE por el flag
@@ -291,23 +360,28 @@ export async function ingestarXmlCfdiDespachos(
   organizationId: string,
   propertyId: string,
   xml: string,
+  cartera: CarteraRepository,
 ): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
   let datos: DatosCfdiDespachos;
+  let impuestos: readonly ImpuestoCfdiInput[];
   try {
-    const parsed = parseCfdiXml(xml);
+    const { impuestos: desglose, ...parsed } = parseCfdiXml(xml);
     if (!TIPOS_COMPROBANTE_VALIDOS.has(parsed.tipo)) {
       throw Errors.validation(`TipoDeComprobante: '${parsed.tipo}' — se esperaba I|E|T|P|N.`);
     }
     datos = { ...parsed, tipo: parsed.tipo as DatosCfdiDespachos["tipo"] };
+    impuestos = impuestosDesdeXml(desglose).slice(0, MAX_RENGLONES_IMPUESTO);
   } catch (err) {
     if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
+    if (err instanceof MontoInvalidoError) throw Errors.validation(`Monto inválido en el CFDI: ${err.message}`);
     throw err;
   }
-  return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
+  return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar", { cartera, impuestos });
 }
 
 export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
+  const carteraDe = (db: TenantDbSession): CarteraRepository => (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db));
 
   app.use("/despachos/:propertyId/cfdi/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/cfdi", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -320,7 +394,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
     const { categoria, ...datos } = parseIngestaBody(raw);
 
-    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria);
+    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria, { cartera: carteraDe(c.get("db")) });
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
@@ -340,7 +414,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const xml = await readTextCapped(c.req.raw, MAX_CFDI_XML_BYTES);
 
-    const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml);
+    const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml, carteraDe(c.get("db")));
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
@@ -398,6 +472,29 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const repo = deps.despachosRepo(c.get("db"));
     const invoice = await repo.findInvoice(c.req.param("propertyId"), c.req.param("invoiceId"));
     if (!invoice) throw Errors.notFound("CFDI no encontrado.");
+    // Desglose de impuestos (D-22): vacío si el CFDI es anterior a la migración 018, no traía detalle o la base aún no la tiene.
+    return c.json(serializeInvoice(invoice, await repo.listarImpuestosInvoice(invoice.propertyId, invoice.id)));
+  });
+
+  // D-22: estado del CFDI ante el SAT, capturado por el staff (la consulta automática al SAT es otro ítem). Un CFDI cancelado
+  // no cambia de estado. Base sin migrar -> 503, nunca 500.
+  app.put("/despachos/:propertyId/cfdi/:invoiceId/estado-sat", async (c) => {
+    assertVerticalRole(c, GESTIONAR_CARTERA_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
+    const propertyId = c.req.param("propertyId");
+    const invoiceId = c.req.param("invoiceId");
+    const raw = await readJsonCapped<{ estado?: unknown }>(c.req.raw, 1024);
+    if (!esEstadoSatCfdi(raw.estado)) throw Errors.validation("estado: se esperaba pendiente|vigente|cancelado|no_encontrado.");
+    try {
+      await repo.registrarEstadoSatInvoice(propertyId, invoiceId, raw.estado);
+    } catch (err) {
+      if (err instanceof InvoiceNoEncontradoError) throw Errors.notFound("CFDI no encontrado.");
+      if (err instanceof EstadoSatInvalidoError) throw Errors.conflict(err.message);
+      if (err instanceof EstadoSatNoDisponibleError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
+    const invoice = await repo.findInvoice(propertyId, invoiceId);
+    if (!invoice) throw Errors.notFound("CFDI no encontrado.");
     return c.json(serializeInvoice(invoice));
   });
 
@@ -414,10 +511,14 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // verdad es que la QUERY ahora está acotada por `limit`/`offset` en vez de traer
     // TODA la tabla; el total real y el siguiente offset van en headers para
     // cualquier consumidor que sí quiera paginar de verdad.
-    const page = await repo.listInvoicesPage(c.req.param("propertyId"), { limit, offset, requiresHumanReview: soloRevision !== undefined ? soloRevision === "true" : undefined });
+    const direccionRaw = c.req.query("direccion");
+    if (direccionRaw !== undefined && direccionRaw !== "emitido" && direccionRaw !== "recibido" && direccionRaw !== "indeterminado") {
+      throw Errors.validation("direccion: se esperaba emitido|recibido|indeterminado.");
+    }
+    const page = await repo.listInvoicesPage(c.req.param("propertyId"), { limit, offset, requiresHumanReview: soloRevision !== undefined ? soloRevision === "true" : undefined, direccion: direccionRaw });
     c.header("X-Total-Count", String(page.total));
     if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
-    return c.json(page.items.map(serializeInvoice));
+    return c.json(page.items.map((item) => serializeInvoice(item)));
   });
 
   return app;
