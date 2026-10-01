@@ -12,7 +12,7 @@
 //
 // Presentación — migrado de la nav `<nav>`/estilos inline original al `Sidebar`
 // real de @atiende/ui (mismo patrón "sidebar bottom hundido gris" ya portado desde
-// atiende-hoteles, ver packages/ui/src/components/Sidebar.tsx): los 12 ítems de
+// atiende-hoteles, ver packages/ui/src/components/Sidebar.tsx): los ítems de
 // NAV_ITEMS de abajo se agrupan por dominio contable en `SIDEBAR_SECTIONS` y se
 // pasan tal cual a `sections`. Toda la lógica de sesión/branches/propertyId de
 // abajo sigue exactamente igual — solo cambia el JSX/CSS de presentación.
@@ -74,12 +74,14 @@ import {
   Briefcase,
   CalendarCheck,
   CalendarClock,
+  FileBarChart,
   FileDigit,
   FileSpreadsheet,
   FileText,
   FolderInput,
   HandCoins,
   Landmark,
+  LayoutDashboard,
   Settings,
   Undo2,
   UsersRound,
@@ -128,6 +130,7 @@ export interface DespachosShellProps {
 // natural de un despacho; el resto sigue el mismo acordeón "uno abierto a la vez"
 // que ya trae `Sidebar`.
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "dashboard", label: "Dashboard" },
   { to: "cierre-mensual", label: "Cierre mensual" },
   { to: "cfdi", label: "CFDI" },
   { to: "cobranza", label: "Cobranza" },
@@ -138,6 +141,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "migracion-catalogo", label: "Migración de catálogo" },
   { to: "devolucion-iva", label: "Devolución de IVA" },
   { to: "bookkeeping", label: "Bookkeeping" },
+  { to: "reportes", label: "Reportes de cliente" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
   { to: "staff", label: "Staff" },
   { to: "configuracion", label: "Configuración" },
@@ -153,7 +157,10 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
     {
       title: "Panel",
       siempreAbierto: true,
-      items: [{ ...item("cierre-mensual"), icon: CalendarCheck }],
+      items: [
+        { ...item("dashboard"), icon: LayoutDashboard },
+        { ...item("cierre-mensual"), icon: CalendarCheck },
+      ],
     },
     {
       title: "Facturación",
@@ -172,6 +179,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
         { ...item("contabilidad-electronica"), icon: FileDigit },
         { ...item("devolucion-iva"), icon: Undo2 },
         { ...item("bookkeeping"), icon: BookOpen },
+        { ...item("reportes"), icon: FileBarChart },
         { ...item("migracion-catalogo"), icon: FolderInput },
       ],
     },
@@ -356,7 +364,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       {/* En viewport móvil el <Sidebar> compartido es `hidden md:flex`: el
           acceso móvil es <MobileHeader> (logo, selector de contribuyente, campana
           y menú de cuenta con chat y cerrar sesión) más <BottomNav>, cuya barra
-          trae los 4 destinos de uso diario y cuyo botón "Más" abre las 13
+          trae los 4 destinos de uso diario y cuyo botón "Más" abre las 15
           secciones fiscales/contables (todas, sin curarlas a ojo). */}
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
