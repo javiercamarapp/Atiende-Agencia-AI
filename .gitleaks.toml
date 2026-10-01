@@ -19,3 +19,12 @@ targetRules = ["generic-api-key", "stripe-access-token"]
 paths = [
   '''(^|/)tests?/''',
 ]
+
+# Fixture del test de redaccion del respaldo (scripts/respaldo/tests): trae un JWT y una llave `AGE-SECRET-KEY-1QQQ`
+# truncada A PROPOSITO, para comprobar que `redact()` los oculta. Regla `jwt` acotada a ese directorio.
+[[allowlists]]
+description = "Cadenas de relleno del test de redaccion del respaldo (JWT de juguete)"
+targetRules = ["jwt"]
+paths = [
+  '''(^|/)scripts/respaldo/tests/''',
+]
