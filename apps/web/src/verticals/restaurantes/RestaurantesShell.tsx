@@ -219,7 +219,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <UtensilsCrossed className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}
       branchSelector={sucursalSelector}
       mobileSelector={branches.length > 1 ? sucursalSelector : null}
       contentKey={propertyId}

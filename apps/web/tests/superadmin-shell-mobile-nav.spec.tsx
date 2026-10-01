@@ -45,7 +45,7 @@ async function renderShell(onRequireLogin: () => void = () => {}, ruta = "/super
 }
 
 describe("SuperAdminShell — nav móvil", () => {
-  it("agrega MobileHeader y BottomNav con los 4 destinos diarios; Sidebar y DashboardHeader quedan solo para escritorio", async () => {
+  it("agrega MobileHeader y BottomNav con los 4 destinos diarios; Sidebar y BarraPagina quedan solo para escritorio", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(root.querySelector('aside[aria-label="Navegación principal"]')!.className).toContain("md:flex");

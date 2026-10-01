@@ -233,7 +233,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       user={{ email: session.email, rol: role }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx(), resumenTo: `/despachos/${orgSlug}/dashboard` }}
       branchSelector={contribuyenteSelector}
       mobileSelector={contribuyenteSelector}
       contentKey={propertyId}

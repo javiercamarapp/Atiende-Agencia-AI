@@ -113,7 +113,7 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(window.localStorage.getItem("atiende.despachos.session")).toBeNull();
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];

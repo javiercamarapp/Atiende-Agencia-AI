@@ -154,7 +154,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
     >
       {children(contexto)}

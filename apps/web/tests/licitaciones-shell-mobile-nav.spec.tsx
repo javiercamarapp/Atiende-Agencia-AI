@@ -131,7 +131,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(hrefs).not.toContain("/licitaciones/demo/staff");
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const desktopHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.textContent?.includes("Licitaciones · demo") && !h.className.includes("md:hidden"));
     expect(desktopHeader).toBeDefined();

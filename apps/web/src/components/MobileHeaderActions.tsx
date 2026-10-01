@@ -1,5 +1,5 @@
 // Acciones del MobileHeader compartidas por las 6 verticales y el superadmin.
-// En movil el Sidebar y el DashboardHeader estan ocultos (`hidden md:*`), asi
+// En movil el Sidebar y el BarraPagina estan ocultos (`hidden md:*`), asi
 // que sin esto la campana, "Chatea con tus datos" y el cierre de sesion eran
 // inalcanzables (hallazgo F-01 del informe de diseno-ux; solo licitaciones
 // tenia un "Salir"). Campana visible en el header (con su contador) y el resto

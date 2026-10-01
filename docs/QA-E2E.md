@@ -144,10 +144,10 @@ Defectos conocidos:
   `humo-restaurantes.spec.ts` (test marcado `test.fail`). Causa probable: Radix devuelve el foco a `triggerRef`, que no
   existe aqui; arreglo en `packages/ui/src/components/ConfirmDialog.tsx` / `FormDialog.tsx` (guardar y restaurar
   `document.activeElement` en `onCloseAutoFocus`). No corregido en este paso.
-- **BUG-E2E-002 (baja, accesibilidad/estructura)**: en escritorio cada pantalla de panel tiene dos `<h1>` (el del
-  `DashboardHeader` del shell, p. ej. "Rentas Sol y Mar · Casa Playa Norte", y el titulo de la pagina). Reproduce en
-  `ds-shell.spec.ts` (test marcado `test.fail`). No corregido: unificar la jerarquia es una decision de diseno (el
-  encabezado del shell podria ser un `<p>`/`<div>` o el de la pagina un `<h2>`).
+- **BUG-E2E-002 (resuelto en UNI-4)**: en escritorio cada pantalla de panel tenia dos `<h1>` (el de la cabecera del shell y el
+  de la pagina). Ahora la barra superior (`BarraPagina`) pinta el nombre de la pagina en un `<p>` y el unico `<h1>` es el de
+  la pagina; si una pagina no pinta ninguno, la barra hace de encabezado de nivel 1 hasta que aparezca. Lo cubren
+  `ds-shell.spec.ts` y `barra-pagina.spec.ts` (el nombre de cada pagina de las 7 consolas y un solo `<h1>` por pantalla).
 
 ## CI
 

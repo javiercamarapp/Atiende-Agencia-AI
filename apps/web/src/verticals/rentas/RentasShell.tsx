@@ -190,7 +190,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       user={{ email: session.email, rol: org?.rol }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Home className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, fecha: fechaCortaEsMx(), resumenTo: `/rentas/${orgSlug}` }}
       branchSelector={propiedadSelector}
       mobileSelector={branches.length > 1 ? propiedadSelector : null}
       contentKey={propertyId}

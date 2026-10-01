@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // PR-3 de diseno-ux (4.5/4.7): PageHeader (un unico h1, migas, atras, acciones)
-// y PageContainer (ancho por size, padding, entrada page-in solo con movimiento).
+// y PageContainer (ancho completo, gap-2.5; sin animacion propia: la pone el shell).
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { PageContainer, PageHeader } from "@atiende/ui";
@@ -26,6 +26,21 @@ describe("PageHeader", () => {
     expect(c.textContent).toContain("Todas las reservas del mes");
     expect(c.textContent).toContain("12 activas");
     expect(c.querySelector("header button")!.textContent).toBe("Nueva reserva");
+  });
+
+  it("h1 de 20 px sin columna angosta: text-xl, truncate y descripcion text-ui", () => {
+    rendered = renderComponent(
+      <MemoryRouter>
+        <PageHeader titulo="Reservas" descripcion="Detalle" />
+      </MemoryRouter>,
+    );
+    const h1 = rendered.container.querySelector("h1")!;
+    expect(h1.className).toContain("text-xl");
+    expect(h1.className).not.toContain("text-2xl");
+    expect(h1.className).toContain("truncate");
+    const desc = rendered.container.querySelector("header p")!;
+    expect(desc.className).toContain("text-ui");
+    expect(desc.className).not.toContain("max-w-prose");
   });
 
   it("migas: nav con nombre, enlaces reales salvo la ultima que lleva aria-current=page", () => {
@@ -76,31 +91,28 @@ describe("PageHeader", () => {
 });
 
 describe("PageContainer", () => {
-  it("ancho por size (lg por defecto), padding y entrada page-in solo con movimiento permitido", () => {
+  it("contrato de pagina: ancho completo (sin max-w), gap-2.5, sin relleno y sin animacion propia", () => {
     rendered = renderComponent(<PageContainer>contenido</PageContainer>);
     const el = rendered.container.firstElementChild as HTMLElement;
     expect(el.tagName).toBe("DIV");
-    expect(el.className).toContain("max-w-6xl");
-    expect(el.className).toContain("p-4");
-    expect(el.className).toContain("motion-safe:animate-page-in");
-    expect(el.className).not.toContain("stagger");
+    expect(el.className).toContain("gap-2.5");
+    expect(el.className).toContain("w-full");
+    expect(el.className).not.toMatch(/max-w/);
+    expect(el.className).not.toMatch(/\bp-\d/);
+    expect(el.className).not.toContain("animate-page-in");
+    expect(el.className).not.toContain("mx-auto");
   });
 
-  it("size sm/md/xl, padding none, as=section y className propio", () => {
+  it("padding default fuera de un shell, as=section y className propio", () => {
     rendered = renderComponent(
-      <PageContainer size="sm" padding="none" as="section" className="extra" aria-label="Pagina">
+      <PageContainer padding="default" as="section" className="extra" aria-label="Pagina">
         x
       </PageContainer>,
     );
     const el = rendered.container.firstElementChild as HTMLElement;
     expect(el.tagName).toBe("SECTION");
-    expect(el.className).toContain("max-w-2xl");
-    expect(el.className).not.toContain("p-4");
+    expect(el.className).toContain("p-4");
     expect(el.className).toContain("extra");
     expect(el.getAttribute("aria-label")).toBe("Pagina");
-    rendered.rerender(<PageContainer size="md">x</PageContainer>);
-    expect((rendered.container.firstElementChild as HTMLElement).className).toContain("max-w-4xl");
-    rendered.rerender(<PageContainer size="xl">x</PageContainer>);
-    expect((rendered.container.firstElementChild as HTMLElement).className).toContain("max-w-[88rem]");
   });
 });
