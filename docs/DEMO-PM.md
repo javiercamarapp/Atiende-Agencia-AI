@@ -190,7 +190,7 @@ aparece en el panel de cocina, y el panel (KPIs, historial, clientes, auditoría
 | **Combo del martes** | No cargado; el agente no lo promete | Dueño (definir las aguas de cortesía) |
 | **Promoción de programados a cocina** | Existe el endpoint interno, pero ningún *cron* lo llama todavía | Pendiente de agendar (R-28) |
 | **Respuesta humana por WhatsApp** | Requiere un número conectado | Dueño + Meta |
-| **Notificaciones in-app** de eventos del ciclo (pedido nuevo, escalación…) | Aún no existe el productor compartido en `main`: la campana no recibe estos eventos | PL-34 / UNI-NOTIF |
+| **Notificaciones in-app** | Conectados por esta demo: la escalación a una persona (`restaurantes.handoff.solicitado`, también para el WhatsApp real) y el tope diario del chat (`restaurantes.demo.tope_diario_alcanzado`) emiten su notificación con el productor compartido. La **campana con punto rojo y la página de notificaciones** son la parte B de las notificaciones (otro PR, ver `docs/NOTIFICACIONES.md`): hoy la campana sigue mostrando un número. Pendientes de conectar de esta demo: pedido nuevo del agente, contacto nuevo y el cierre del checklist de Primeros pasos. | Parte B de notificaciones |
 | La organización demo en **superadmin/costos** | Aparece como una organización más (no se filtra por demo) | Pendiente |
 
 ## Reinicio entre demos

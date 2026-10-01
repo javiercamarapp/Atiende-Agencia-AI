@@ -2,7 +2,7 @@
 // POST .../demo/:orgSlug/mensaje. SIN login: igual que el storefront, este grupo se monta sin `authMiddleware` y abre su
 // propia sesion de sistema (`userId: null`); su defensa es CORS por origen, topes de tasa (IP, sesion y organizacion =
 // tope de costo), validacion estricta de entradas y que SOLO atiende organizaciones marcadas como demo
-// (`restaurantes.demo_organization`, migracion 036): una organizacion real nunca responde por aqui.
+// (`restaurantes.demo_organization`, migracion 037): una organizacion real nunca responde por aqui.
 //
 // El visitante conversa con el MISMO agente real de WhatsApp (`deps.turnHandler`, el que usa el webhook, con el mismo
 // gateway LLM, presupuesto y kill switch) mediante `runDemoWidgetTurn`, que reutiliza la plomeria del webhook con
@@ -13,6 +13,7 @@
 // Compatibilidad con la base sin migrar: la lectura de la marca degrada con SAVEPOINT a "no es demo" (404/no disponible).
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { emitirNotificacion } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { DEMO_SESSION_ID_RE, DEMO_WIDGET_LIMITS, DAY_SECONDS, DemoWidgetValidationError, buildStorefrontBranches, consumeRateLimit, resolveDemoWidgetEstado, runDemoWidgetTurn } from "@atiende/domain-restaurantes";
 import type { DemoWidgetEstado, RestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -90,7 +91,13 @@ export function restaurantesDemoWidgetRoutes(deps: AppDeps): Hono {
       const byIp = await consumeRateLimit(repo, "demo-widget-ip", requestActor(c.req.raw, ""), DEMO_WIDGET_LIMITS.perIpPerMinute, 60);
       if (!byIp.allowed) throw Errors.tooManyRequests();
       const byOrg = await consumeRateLimit(repo, "demo-widget-org", org.id, DEMO_WIDGET_LIMITS.perOrganizationPerDay, DAY_SECONDS);
-      if (!byOrg.allowed) return c.json({ code: "demo_tope_alcanzado", message: "La demo alcanzó su tope de mensajes de hoy. Inténtelo mañana o avise al equipo." }, 429);
+      if (!byOrg.allowed) {
+        // Notificacion in-app al dueño (productor compartido, catalogo `restaurantes.demo.tope_diario_alcanzado`): una por dia, sin PII.
+        // Best-effort: nunca cambia la respuesta 429 ni deja abortada la transaccion del request (SAVEPOINT dentro del productor).
+        const dia = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+        await emitirNotificacion(db, { evento: "restaurantes.demo.tope_diario_alcanzado", organizationId: org.id, clave: dia, parametros: { cantidad: DEMO_WIDGET_LIMITS.perOrganizationPerDay } });
+        return c.json({ code: "demo_tope_alcanzado", message: "La demo alcanzó su tope de mensajes de hoy. Inténtelo mañana o avise al equipo." }, 429);
+      }
       const bySession = await consumeRateLimit(repo, "demo-widget-session", sessionId, DEMO_WIDGET_LIMITS.perSessionPerDay, DAY_SECONDS);
       if (!bySession.allowed) return c.json({ code: "demo_sesion_tope", message: "Esta conversación alcanzó su tope de mensajes. Inicie una nueva conversación." }, 429);
 

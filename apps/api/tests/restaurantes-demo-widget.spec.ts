@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { DEMO_WIDGET_LIMITS, InMemoryDemoRepository, createLlmWhatsAppTurnHandler, esTelefonoDemo } from "@atiende/domain-restaurantes";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
@@ -41,12 +42,28 @@ async function setup(options: { demo?: "marcada" | "apagada" | "ninguna"; agente
   gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "unused" })]);
   const turnHandler = createLlmWhatsAppTurnHandler(t.restaurantesRepo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
 
-  const deps: AppDeps = { ...t.deps, demoRepo: (_db) => demoRepo, turnHandler, llmGateway: options.agente === false ? undefined : gateway };
+  // El motor en memoria no soporta `core.emit_notification`: se registra el SQL que la ruta intenta (el productor lo contiene y nunca lanza).
+  const sqls: Array<{ sql: string; params: unknown[] }> = [];
+  const base = t.deps.engine;
+  const engine = {
+    ...base,
+    withAppSession: <R>(claims: { userId: string | null }, fn: (db: TenantDbSession) => Promise<R>) =>
+      base.withAppSession(claims, (session) =>
+        fn({
+          query: async <Q>(sql: string, params?: unknown[]) => {
+            sqls.push({ sql, params: params ?? [] });
+            return session.query<Q>(sql, params);
+          },
+          exec: (sql: string) => session.exec(sql),
+        }),
+      ),
+  } as unknown as AppDeps["engine"];
+  const deps: AppDeps = { ...t.deps, engine, demoRepo: (_db) => demoRepo, turnHandler, llmGateway: options.agente === false ? undefined : gateway };
   const app = buildApp(deps);
   const post = (body: Record<string, unknown>, headers: Record<string, string> = ORIGIN) => app.request(`${BASE}/mensaje`, jsonRequestInit(body, headers));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json = async (res: Response) => (await res.json()) as Record<string, any>;
-  return { ...t, app, post, json, demoRepo, calls: () => gatewayCalls };
+  return { ...t, app, post, json, demoRepo, sqls, calls: () => gatewayCalls };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -211,6 +228,13 @@ describe("topes de tasa y de costo", () => {
     expect(res.status).toBe(429);
     expect(await s.json(res)).toMatchObject({ code: "demo_tope_alcanzado" });
     expect(s.calls()).toBe(0);
+    // Notificacion in-app al dueño por el productor compartido: el evento del catalogo, esta organizacion y la clave del dia, sin PII.
+    const emision = s.sqls.find((q) => /core\.emit_notification/.test(q.sql));
+    expect(emision, "la ruta debe intentar emitir la notificacion del tope").toBeDefined();
+    expect(emision!.params[0]).toBe(s.organizationId);
+    expect(emision!.params[2]).toBe("restaurantes.demo.tope_diario_alcanzado");
+    expect(String(emision!.params[10])).toMatch(/^restaurantes\.demo\.tope_diario_alcanzado:\d{4}-\d{2}-\d{2}$/);
+    expect(String(emision!.params[5])).toContain("tope diario");
   });
 });
 
