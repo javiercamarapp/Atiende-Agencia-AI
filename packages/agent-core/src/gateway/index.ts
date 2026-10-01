@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './errors.js';
 export * from './circuit-breaker.js';
+export * from './upstash-rest-client.js';
 export * from './budget.js';
 export * from './org-monthly-budget.js';
 export * from './usage.js';
