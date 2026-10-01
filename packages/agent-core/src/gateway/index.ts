@@ -4,6 +4,7 @@ export * from './circuit-breaker.js';
 export * from './budget.js';
 export * from './org-monthly-budget.js';
 export * from './usage.js';
+export * from './kill-switch.js';
 export * from './residency.js';
 export * from './retryable.js';
 export * from './gateway.js';

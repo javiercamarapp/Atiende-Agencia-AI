@@ -31,6 +31,7 @@ import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRec
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
 import { AllProvidersFailedError, GatewayError } from './errors.js';
+import { KillSwitchEngagedError, type GatewayKillSwitch } from './kill-switch.js';
 import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLane, LlmProvider } from './types.js';
 
 /** Cota conservadora por defecto: ~1 token por 4 caracteres de entrada más
@@ -68,6 +69,10 @@ export interface LlmGatewayOptions {
    *  una llamada procede. `NoopUsageRecorder` por defecto: ningún gateway/test
    *  existente que no lo pase se ve afectado. */
   usageRecorder?: UsageRecorder;
+  /** Interruptor de plataforma (ver `kill-switch.ts`): consultado al INICIO de
+   *  cada `complete()`, antes de residencia/red/presupuesto. Opcional:
+   *  `undefined` preserva el comportamiento previo a este campo. */
+  killSwitch?: GatewayKillSwitch;
 }
 
 export interface GatewayCallOptions {
@@ -102,6 +107,7 @@ export class LlmGateway {
   private readonly costEstimator: LlmCostEstimator;
   private readonly orgMonthlyBudgetStore: OrgMonthlyBudgetStore | undefined;
   private readonly usageRecorder: UsageRecorder;
+  private readonly killSwitch: GatewayKillSwitch | undefined;
   private readonly laddersByRole = new Map<string, LlmProvider[]>();
 
   constructor(opts: LlmGatewayOptions) {
@@ -112,6 +118,7 @@ export class LlmGateway {
     this.costEstimator = opts.costEstimator ?? defaultCostEstimator;
     this.orgMonthlyBudgetStore = opts.orgMonthlyBudgetStore;
     this.usageRecorder = opts.usageRecorder ?? NoopUsageRecorder;
+    this.killSwitch = opts.killSwitch;
   }
 
   /** Registra la escalera de proveedores (en orden de preferencia) para un
@@ -125,6 +132,19 @@ export class LlmGateway {
   async complete(opts: GatewayCallOptions): Promise<GatewayCallResult> {
     const ladder = this.laddersByRole.get(opts.role);
     if (!ladder) throw new Error(`gateway: sin proveedores registrados para el rol "${opts.role}" (llamar registerLadder primero)`);
+
+    // Interruptor de plataforma: ANTES de residencia, breaker, presupuesto y red.
+    // Un fallo del propio puerto es fail-open (nunca tumba a los agentes por un
+    // problema del mecanismo de pausa); la decision "bloqueado" SI es definitiva.
+    if (this.killSwitch) {
+      let blockedBy: string | null = null;
+      try {
+        blockedBy = await this.killSwitch.blockedBy(opts.role);
+      } catch (err) {
+        console.error(JSON.stringify({ level: 'error', event: 'gateway_kill_switch_check_failed', role: opts.role, message: err instanceof Error ? err.message : String(err) }));
+      }
+      if (blockedBy) throw new KillSwitchEngagedError(blockedBy, opts.role);
+    }
 
     const policy: ResidencyPolicy = { ...this.residencyPolicy, ...opts.residency };
     // Puede lanzar ResidencyGateBlockedError — se propaga tal cual, antes de
