@@ -84,6 +84,7 @@ import {
   PostgresCoreRepository,
   PostgresImpersonationRepository,
   PostgresMfaRepository,
+  PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
@@ -465,6 +466,7 @@ export function buildProductionDeps(): AppDeps {
     mfaRepo: (db) => new PostgresMfaRepository(db),
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
+    costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
     alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),

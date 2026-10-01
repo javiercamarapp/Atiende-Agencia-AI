@@ -42,6 +42,8 @@ import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
+import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
+import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -108,6 +110,8 @@ import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx"
 import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
+import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
+import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
 import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMensualDetalle.tsx";
 import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
@@ -342,6 +346,24 @@ function SuperAdminGestionOrganizacionesRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminGestionOrganizacionesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminCostosMargenRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCostosMargenPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminPlanesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminPlanesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -711,6 +733,8 @@ function DespachosRootRedirect() {
   return <Navigate to={`/despachos/${orgSlug}/cierre-mensual`} replace />;
 }
 
+const DespachosDashboardRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosDashboardPage {...ctx} />);
+const DespachosReportesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosReportesPage {...ctx} />);
 const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);
 const DespachosCierreMensualDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualDetallePage {...ctx} />);
 const DespachosCfdiRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiPage {...ctx} />);
@@ -773,6 +797,8 @@ export function App() {
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
+        <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
+        <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />
         <Route path="/superadmin/auditoria-denegaciones" element={<SuperAdminAuthzAuditoriaRoute />} />
@@ -850,6 +876,8 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/firmantes" element={<LicitacionesFirmantesRedirect />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
+        <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
+        <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
