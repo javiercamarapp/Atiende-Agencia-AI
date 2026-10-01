@@ -245,8 +245,7 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
         // `procesarCheckoutsPendientes`/`crearTareaOperativaManual` (ronda que agregó
         // apps/api/.../rentas/checkout-sweep-cron.ts y el POST manual de
         // limpieza.ts). `reprogramarTareaPorCambioReserva`/
-        // `cancelarTareaPorCancelacionReserva`/`confirmarBloqueoMantenimiento` siguen
-        // SIN soportarse aquí a propósito -- ningún HTTP route las invoca todavía
+        // `cancelarTareaPorCancelacionReserva` siguen SIN soportarse aquí a propósito -- ningún HTTP route las invoca todavía
         // (ver README de este paquete, sección "Fuera de fase"); los tests que solo
         // necesitan una tarea/inventario ya existente pueden seguir sembrándola
         // directo con `store.seedTareaOperativa`/`store.seedItemInventario`.
@@ -424,6 +423,39 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
             propuestaBloqueoFin,
           });
           return { rows: [resultado] as unknown as R[] };
+        }
+
+        // ---- confirmarBloqueoMantenimiento (Rn-05): SELECT de la incidencia + UPDATE al confirmar ----
+        if (n.startsWith("select id, organization_id, property_id, unidad_id, severidad, estado,") && n.includes("from rentas.incidencia_mantenimiento")) {
+          const [incidenciaId] = params as [string];
+          const inc = store.incidencias.get(incidenciaId);
+          if (!inc) return { rows: [] as R[] };
+          return {
+            rows: [
+              {
+                id: inc.id,
+                organization_id: inc.organizationId,
+                property_id: inc.propertyId,
+                unidad_id: inc.unidadId,
+                severidad: inc.severidad,
+                estado: inc.estado,
+                inicio: inc.propuestaBloqueoInicio,
+                fin: inc.propuestaBloqueoFin,
+              },
+            ] as unknown as R[],
+          };
+        }
+        if (n.startsWith("update rentas.incidencia_mantenimiento set estado = 'bloqueo_confirmado'")) {
+          const [incidenciaId, bloqueoOcupacionId, confirmadoPor, inicio, fin] = params as [string, string, string, string, string];
+          const inc = store.incidencias.get(incidenciaId);
+          if (inc) {
+            inc.estado = "bloqueo_confirmado";
+            inc.bloqueoOcupacionId = bloqueoOcupacionId;
+            inc.confirmadoPor = confirmadoPor;
+            inc.propuestaBloqueoInicio = inicio;
+            inc.propuestaBloqueoFin = fin;
+          }
+          return { rows: [] as R[] };
         }
 
         throw new Error(`InMemoryRentasTenancyEngine: consulta SQL no soportada (alcance angosto a propósito): ${sql}`);

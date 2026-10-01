@@ -20,12 +20,11 @@
 // -- además de quien ya puede escribir calendario" -- `contador`/
 // `operador:solo_calendario` nunca operan tareas de limpieza, ni siquiera para leer).
 //
-// Deliberadamente NO expone `confirmarBloqueoMantenimiento` (confirmación de bloqueo
-// de calendario por una incidencia grave, acotada a
-// `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`) -- fuera del alcance del hallazgo que cierra
-// esta fase (4 capacidades concretas: listar tareas asignadas, marcar checklist,
-// reportar incidencia, registrar movimiento de inventario), documentado honestamente
-// como bloqueador conocido, no fingido como resuelto.
+// `confirmarBloqueoMantenimiento` (confirmación de bloqueo de calendario por una
+// incidencia grave, acotada a `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`) quedó fuera del
+// alcance de esta fase y se expone en Rn-05 (POST .../incidencias/:incidenciaId/
+// confirmar-bloqueo, más abajo): lo confirma un humano de gestión, nunca el rol
+// `limpieza` que reporta la incidencia.
 //
 // Ronda posterior -- cierra el hallazgo "en rentas no existe ninguna forma de que
 // nazca una tarea de limpieza en producción": `crearTareaLimpiezaPorCheckout`/
@@ -45,7 +44,9 @@ import {
   asignarTarea,
   completarChecklistItem,
   completarTarea,
+  confirmarBloqueoMantenimiento,
   crearTareaOperativaManual,
+  LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES,
   LIMPIEZA_CREACION_MANUAL_ROLES,
   LIMPIEZA_OPERACION_ROLES,
   registrarIncidencia,
@@ -206,8 +207,9 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const completarTareaPath = "/rentas/:propertyId/tareas/:tareaId/completar";
   const inventarioPath = "/rentas/:propertyId/unidades/:unidadId/inventario";
   const incidenciasPath = "/rentas/:propertyId/unidades/:unidadId/incidencias";
+  const confirmarBloqueoPath = "/rentas/:propertyId/unidades/:unidadId/incidencias/:incidenciaId/confirmar-bloqueo";
 
-  for (const path of [tareasBase, tareaDetallePath, asignarPath, checklistCompletarPath, completarTareaPath, inventarioPath, incidenciasPath]) {
+  for (const path of [tareasBase, tareaDetallePath, asignarPath, checklistCompletarPath, completarTareaPath, inventarioPath, incidenciasPath, confirmarBloqueoPath]) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
@@ -435,6 +437,45 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const incidencias = await repo.listIncidencias(propertyId, unidadId);
     return c.json({ incidencias }, 200);
+  });
+
+  // ---- Rn-05: POST .../incidencias/:incidenciaId/confirmar-bloqueo -- un humano de
+  // gestión (LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES, nunca `limpieza`) confirma el bloqueo de
+  // mantenimiento que una incidencia GRAVE propuso. Cuerpo opcional `{ rango: {inicio, fin} }`
+  // (si no viene, se usa el rango propuesto). Delega en `confirmarBloqueoMantenimiento`, que
+  // crea el bloqueo vía `crearBloqueo` y NUNCA cancela una reserva existente: un solape con
+  // una reserva confirmada queda como conflicto `capa_cruzada` (conflictosCapaCruzada). ----
+  app.post(confirmarBloqueoPath, async (c) => {
+    assertVerticalRole(c, LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const incidenciaId = c.req.param("incidenciaId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+
+    const unidad = await repo.findUnidad(propertyId, unidadId);
+    if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");
+    // Defensa en profundidad: la incidencia debe ser de ESTA unidad/property (el motor la
+    // busca solo por id).
+    const incidencias = await repo.listIncidencias(propertyId, unidadId);
+    if (!incidencias.some((i) => i.id === incidenciaId)) throw Errors.notFound("Incidencia no encontrada en esta unidad.");
+
+    const raw = await readJsonCapped<{ rango?: unknown }>(c.req.raw, 2 * 1024);
+    const rangoRaw = raw.rango;
+    let rango: { inicio: string; fin: string } | undefined;
+    if (rangoRaw !== undefined && rangoRaw !== null) {
+      if (typeof rangoRaw !== "object") throw Errors.validation("rango: se esperaba un objeto {inicio, fin}.");
+      const r = rangoRaw as { inicio?: unknown; fin?: unknown };
+      rango = { inicio: requireFecha(r.inicio, "rango.inicio"), fin: requireFecha(r.fin, "rango.fin") };
+    }
+
+    try {
+      const resultado = await confirmarBloqueoMantenimiento(db, { incidenciaId, confirmadoPor: c.get("userId"), rango });
+      return c.json({ incidenciaId, bloqueoId: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada }, 201);
+    } catch (err) {
+      if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
+      throw err;
+    }
   });
 
   return app;
