@@ -27,7 +27,6 @@ import { cancelAppointment, normalizePhone } from "../appointments.ts";
 import { resolveProviderTimeZone, runAfterCancelEffects } from "../appointment-effects.ts";
 import { AppointmentConflictError, AppointmentNotFoundError } from "../errors.ts";
 import type { CitasRepository } from "../repository.ts";
-import type { AppointmentRecord } from "../types.ts";
 import { parseAppointmentButtonId } from "./appointment-button-ids.ts";
 import type { MetaInteractiveReply } from "./channel-config.ts";
 
