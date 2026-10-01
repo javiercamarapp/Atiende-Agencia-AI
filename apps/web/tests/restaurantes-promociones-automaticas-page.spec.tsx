@@ -50,9 +50,12 @@ async function abrir() {
 const q = (sel: string) => document.body.querySelector(sel) as HTMLElement;
 const post = () => fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
 
-function seleccionar(select: HTMLSelectElement, values: string[]) {
-  for (const o of [...select.options]) o.selected = values.includes(o.value);
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+/** Marca, en orden, los productos con ese nombre dentro del grupo de casillas (la lista de productos ya no es un <select multiple>). */
+function marcarProductos(grupo: HTMLElement, nombres: string[]) {
+  for (const nombre of nombres) {
+    const casilla = [...grupo.querySelectorAll("label")].find((l) => l.textContent === nombre)!.querySelector("input")!;
+    click(casilla);
+  }
 }
 
 describe("PromocionesPage -- promociones automaticas", () => {
@@ -96,8 +99,8 @@ describe("PromocionesPage -- promociones automaticas", () => {
     await act(async () => {
       click(q("#promocion-auto"));
       click(q('[data-testid="promocion-dia-2"]'));
-      seleccionar(q("#promocion-productos") as HTMLSelectElement, ["nachos"]);
-      seleccionar(q("#promocion-cortesia") as HTMLSelectElement, ["agua-1", "agua-2"]);
+      marcarProductos(q("#promocion-productos"), ["nachos"]);
+      marcarProductos(q("#promocion-cortesia"), ["agua-1", "agua-2"]);
     });
     await submitForm(q("#restaurantes-promocion-nueva") as HTMLFormElement);
     expect(JSON.parse(post()![1].body as string)).toMatchObject({

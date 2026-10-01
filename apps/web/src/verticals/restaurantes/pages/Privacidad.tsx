@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
 import type { ConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -14,9 +14,7 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const PRIVACIDAD_ROLES = new Set(["owner", "admin"]);
 const PAGE_SIZE = 25;
-const SELECT_CLASES =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<RestaurantesShellContext, "apiBaseUrl" | "token" | "propertyId">) {
   const [config, setConfig] = useState<ConfiguracionPrivacidad | null>(null);
@@ -88,7 +86,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
       <CardContent>
         <form onSubmit={guardar} className="flex flex-col gap-4">
           {config && !config.configurada && (
-            <p className="m-0 text-[12px] text-muted-foreground">Todavía no guardas esta configuración: rigen los valores por defecto (conversaciones 180 días, voz 30 días, consentimiento de grabación exigido).</p>
+            <p className="m-0 text-xs text-muted-foreground">Todavía no guardas esta configuración: rigen los valores por defecto (conversaciones 180 días, voz 30 días, consentimiento de grabación exigido).</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Label className={LABEL_CLASES}>
@@ -111,17 +109,19 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
               Conservar transcripciones de voz (días, 0 a 365; 0 = no guardar)
               <Input type="number" min={0} max={365} value={diasVoz} onChange={(e) => setDiasVoz(e.target.value)} />
             </Label>
-            <label className="flex items-center gap-2 text-[13px] text-foreground sm:self-end">
-              <input type="checkbox" checked={exigirConsentimiento} onChange={(e) => setExigirConsentimiento(e.target.checked)} />
-              Exigir consentimiento para grabar la llamada
-            </label>
+            <Checkbox
+              checked={exigirConsentimiento}
+              onChange={(e) => setExigirConsentimiento(e.target.checked)}
+              label="Exigir consentimiento para grabar la llamada"
+              wrapperClassName="sm:self-end"
+            />
           </div>
           {error && (
-            <span role="alert" className="text-[12px] text-destructive">
+            <span role="alert" className="text-xs text-destructive">
               {error}
             </span>
           )}
-          {guardado && <span className="text-[12px] text-muted-foreground">Configuración guardada.</span>}
+          {guardado && <span className="text-xs text-muted-foreground">Configuración guardada.</span>}
           <div>
             <Button type="submit" size="sm" disabled={guardando}>
               {guardando ? "Guardando…" : "Guardar configuración"}
@@ -196,17 +196,17 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[1000px]">
+    <PageContainer padding="none" className="gap-5">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Privacidad</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solicitudes de derechos ARCO (acceso, rectificación, cancelación y oposición) que tus clientes abren por WhatsApp o por llamada. El agente solo atiende al titular desde su propio número y nunca comparte datos por chat: tú los entregas tras verificar su identidad. En las solicitudes por llamada el identificador de llamada puede falsearse: verifica al titular por otra vía antes de responder.
         </p>
-        <p className="m-0 mt-1 text-[12px] text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
+        <p className="m-0 mt-1 text-xs text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden ver las solicitudes ARCO — tu rol actual es <strong className="text-foreground">{role}</strong>.
         </p>
       ) : (
@@ -220,25 +220,25 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[200px]`}>
                 Estado
-                <select value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")} className={SELECT_CLASES}>
+                <NativeSelect value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_ESTADO_LABEL) as SolicitudArcoEstado[]).map((e) => (
                     <option key={e} value={e}>
                       {SOLICITUD_ARCO_ESTADO_LABEL[e]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
                 Derecho
-                <select value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")} className={SELECT_CLASES}>
+                <NativeSelect value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")}>
                   <option value="">Todos</option>
                   {(Object.keys(SOLICITUD_ARCO_DERECHO_LABEL) as SolicitudArcoDerecho[]).map((d) => (
                     <option key={d} value={d}>
                       {SOLICITUD_ARCO_DERECHO_LABEL[d]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
             </CardContent>
           </Card>
@@ -271,6 +271,6 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

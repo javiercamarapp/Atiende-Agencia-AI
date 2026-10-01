@@ -93,7 +93,7 @@ describe("reglas de pedido por sucursal (UI)", () => {
     expect((rendered!.container.querySelector("#min-rec-prop-1") as HTMLInputElement).value).toBe("");
     expect((rendered!.container.querySelector("#propina-prop-1") as HTMLSelectElement).value).toBe("solo_tarjeta");
     expect((rendered!.container.querySelector("#wa-prop-1") as HTMLInputElement).value).toBe("15550001111");
-    const zonas = [...rendered!.container.querySelectorAll("input[type=checkbox]")].filter((i) => i.parentElement?.textContent === "Altabrisa" || i.parentElement?.textContent === "Pensiones") as HTMLInputElement[];
+    const zonas = [...rendered!.container.querySelectorAll("input[type=checkbox]")].filter((i) => i.closest("label")?.textContent === "Altabrisa" || i.closest("label")?.textContent === "Pensiones") as HTMLInputElement[];
     expect(zonas.map((z) => z.checked)).toEqual([true, false]);
   });
 
@@ -108,7 +108,7 @@ describe("reglas de pedido por sucursal (UI)", () => {
     changeValue(rendered!.container.querySelector("#min-dom-prop-1") as HTMLInputElement, "250");
     changeValue(rendered!.container.querySelector("#min-rec-prop-1") as HTMLInputElement, "80");
     changeValue(rendered!.container.querySelector("#propina-prop-1") as HTMLSelectElement, "");
-    const pensiones = [...rendered!.container.querySelectorAll("input[type=checkbox]")].find((i) => i.parentElement?.textContent === "Pensiones")!;
+    const pensiones = [...rendered!.container.querySelectorAll("input[type=checkbox]")].find((i) => i.closest("label")?.textContent === "Pensiones")!;
     click(pensiones);
     await act(async () => {
       click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent === "Guardar reglas")!);

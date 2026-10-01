@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm } from "@atiende/ui";
 import { Clock, Info, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -47,14 +47,9 @@ const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: s
  * `null` antes de llamar a la API. */
 const SIN_CONFIGURAR = "";
 
-/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para el
- * `<select>` que se queda nativo (el design system no exporta un Select) --
- * mismo criterio EXACTO que `citas/pages/Configuracion.tsx::SELECT_CLASS`. */
-const SELECT_CLASS =
-  "h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
 export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
 
   const [whatsapp, setWhatsapp] = useState<WhatsappChannelConfig | null>(null);
   const [phoneNumberId, setPhoneNumberId] = useState("");
@@ -151,7 +146,13 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
   }
 
   async function handleDeleteZone(zone: KnownZone) {
-    if (!window.confirm(`¿Quitar "${zone.name}" de las zonas conocidas?`)) return;
+    const ok = await confirmar({
+      titulo: `Quitar "${zone.name}" de las zonas conocidas`,
+      descripcion: "El agente dejará de usar esta zona para encontrar la sucursal más cercana.",
+      tono: "danger",
+      confirmar: "Quitar zona",
+    });
+    if (!ok) return;
     setDeletingZoneId(zone.id);
     setError(null);
     try {
@@ -166,20 +167,20 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
 
   if (!canManage) {
     return (
-      <div className="flex max-w-2xl flex-col gap-5 p-6">
+      <PageContainer padding="none" size="sm" className="gap-5">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
         <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-[13px] text-muted-foreground">
+          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
             <span>Editar la configuración de WhatsApp y las zonas conocidas está reservado a dueños y administradores. Tu rol actual es «{role}».</span>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5 p-6">
+    <PageContainer padding="none" size="sm" className="gap-5">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -239,14 +240,14 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
             <form onSubmit={handleSaveZonaHoraria} className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="config-zona-horaria">Zona horaria de esta sucursal</Label>
-                <select
+                <NativeSelect
                   id="config-zona-horaria"
                   value={zonaHorariaSelect}
                   onChange={(e) => {
                     setZonaHorariaSelect(e.target.value);
                     setZonaHorariaSaved(false);
                   }}
-                  className={`${SELECT_CLASS} w-auto min-w-[280px]`}
+                  wrapperClassName="w-auto min-w-72"
                 >
                   <option value={SIN_CONFIGURAR}>Usar el default de la plataforma (Ciudad de México)</option>
                   {ZONA_HORARIA_OPTIONS.map((opt) => (
@@ -254,7 +255,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <Button type="submit" disabled={savingZonaHoraria}>
                 {savingZonaHoraria ? "Guardando…" : "Guardar"}
@@ -307,12 +308,12 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
               zonas.map((z) => (
                 <div key={z.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-2.5">
                   <div>
-                    <p className="m-0 text-[13px] font-semibold text-foreground">{z.name}</p>
+                    <p className="m-0 text-sm font-semibold text-foreground">{z.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {z.lat}, {z.lng}
                     </p>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Quitar zona ${z.name}`} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
                     <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                   </Button>
                 </div>
@@ -322,6 +323,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
       </Card>
 
       <AgenteWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

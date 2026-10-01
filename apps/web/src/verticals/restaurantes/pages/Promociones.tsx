@@ -11,16 +11,15 @@
 // servidor sigue siendo el enforcement — 403 si algún día cambia).
 //
 // Presentación real desde esta ronda: los dos formularios (crear un código nuevo y
-// editar la vigencia de uno existente) pasan a <ModalFormularioLateral> — el shell de
+// editar la vigencia de uno existente) pasan a <FormDialog> — el shell de
 // modal ya existente en apps/web/src/components — y la lista a `Card`/`Badge`/
 // `Button` de `@atiende/ui`. Los campos, la validación de cliente, los payloads
 // enviados y las llamadas al backend son EXACTAMENTE los mismos que antes: lo único
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   createPromotion,
   fetchPromotions,
@@ -33,9 +32,6 @@ import type { Product } from "../lib/catalog-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-
-const SELECT_CLASES =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatValue(type: PromotionType, value: number): string {
   if (type === "bogo") return "2x1";
@@ -103,8 +99,13 @@ const EMPTY_FORM: FormState = {
   courtesyQuantity: "2",
 };
 
-function selectedValues(select: HTMLSelectElement): string[] {
-  return [...select.selectedOptions].map((o) => o.value);
+/** Ids elegidos tras marcar/desmarcar uno: se conserva el orden del catalogo (el mismo que daba una seleccion multiple nativa). */
+function alternarProducto(elegidos: readonly string[], id: string, marcado: boolean, catalogo: readonly Product[] | null): string[] {
+  const set = new Set(elegidos);
+  if (marcado) set.add(id);
+  else set.delete(id);
+  const ordenados = (catalogo ?? []).filter((p) => set.has(p.id)).map((p) => p.id);
+  return ordenados.length === set.size ? ordenados : [...set];
 }
 
 export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
@@ -113,7 +114,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
-  // Solo controla si el <ModalFormularioLateral> de alta está abierto — el formulario
+  // Solo controla si el <FormDialog> de alta está abierto — el formulario
   // y su validación son los mismos de siempre.
   const [modalCrearAbierto, setModalCrearAbierto] = useState(false);
 
@@ -228,7 +229,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
   const promocionEnEdicion = promotions?.find((p) => p.id === editingId) ?? null;
 
   return (
-    <div className="flex max-w-4xl flex-col gap-5 p-6">
+    <PageContainer padding="none" size="md" className="gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Promociones</h1>
         <Button type="button" onClick={() => setModalCrearAbierto(true)}>
@@ -249,7 +250,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               <Card key={p.id} className={p.isActive ? undefined : "opacity-60"}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                   <div>
-                    <div className="m-0 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-foreground">
+                    <div className="m-0 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-foreground">
                       <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{p.code}</code>
                       <span>· {p.name}</span>
                       {p.autoApply && <Badge variant="secondary">Automática</Badge>}
@@ -294,7 +295,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         )}
       </section>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={modalCrearAbierto}
         onOpenChange={setModalCrearAbierto}
         titulo="Crear un código nuevo"
@@ -337,17 +338,16 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             <Label htmlFor="promocion-tipo" className="text-xs text-muted-foreground">
               Tipo de descuento
             </Label>
-            <select
+            <NativeSelect
               id="promocion-tipo"
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
-              className={SELECT_CLASES}
             >
               <option value="percentage">% descuento</option>
               <option value="fixed">$ fijo</option>
               <option value="bogo">2x1</option>
               <option value="cortesia">Combo de cortesía</option>
-            </select>
+            </NativeSelect>
           </div>
           {form.type !== "bogo" && form.type !== "cortesia" && (
             <div className="flex flex-col gap-1.5">
@@ -370,72 +370,68 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             <Label htmlFor="promocion-canal" className="text-xs text-muted-foreground">
               Canal
             </Label>
-            <select id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))} className={SELECT_CLASES}>
+            <NativeSelect id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
               <option value="">Todos los canales</option>
               <option value="recoger">Solo recoger</option>
               <option value="domicilio">Solo domicilio</option>
-            </select>
+            </NativeSelect>
           </div>
-          <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-2">
-            <input type="checkbox" id="promocion-auto" checked={form.autoApply} onChange={(e) => setForm((f) => ({ ...f, autoApply: e.target.checked }))} />
-            Aplicar automáticamente (sin código, según día y canal). Exige elegir un canal.
-          </label>
+          <Checkbox
+            id="promocion-auto"
+            checked={form.autoApply}
+            onChange={(e) => setForm((f) => ({ ...f, autoApply: e.target.checked }))}
+            label="Aplicar automáticamente (sin código, según día y canal). Exige elegir un canal."
+            wrapperClassName="sm:col-span-2"
+          />
           <fieldset className="flex flex-wrap items-center gap-3 sm:col-span-2">
             <legend className="text-xs text-muted-foreground">Días (vacío = todos)</legend>
             {DAY_LABELS.map((label, d) => (
-              <label key={d} className="flex items-center gap-1 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  data-testid={`promocion-dia-${d}`}
-                  checked={form.days.includes(d)}
-                  onChange={(e) => setForm((f) => ({ ...f, days: e.target.checked ? [...f.days, d].sort() : f.days.filter((x) => x !== d) }))}
-                />
-                {label}
-              </label>
+              <Checkbox
+                key={d}
+                data-testid={`promocion-dia-${d}`}
+                label={label}
+                wrapperClassName="text-xs"
+                checked={form.days.includes(d)}
+                onChange={(e) => setForm((f) => ({ ...f, days: e.target.checked ? [...f.days, d].sort() : f.days.filter((x) => x !== d) }))}
+              />
             ))}
           </fieldset>
           {(form.type === "bogo" || form.type === "cortesia") && (
             <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor="promocion-productos" className="text-xs text-muted-foreground">
+              <Label id="promocion-productos-etiqueta" className="text-xs text-muted-foreground">
                 {form.type === "bogo" ? "Productos del 2x1 (vacío = todos)" : "Productos que disparan el combo"}
               </Label>
-              <select
-                id="promocion-productos"
-                multiple
-                size={6}
-                value={[...form.productIds]}
-                onChange={(e) => setForm((f) => ({ ...f, productIds: selectedValues(e.target) }))}
-                className={SELECT_CLASES}
-              >
+              <div id="promocion-productos" role="group" aria-labelledby="promocion-productos-etiqueta" className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-field border border-input p-3">
                 {products?.map((pr) => (
-                  <option key={pr.id} value={pr.id}>
-                    {pr.name}
-                  </option>
+                  <Checkbox
+                    key={pr.id}
+                    label={pr.name}
+                    wrapperClassName="text-sm"
+                    checked={form.productIds.includes(pr.id)}
+                    onChange={(e) => setForm((f) => ({ ...f, productIds: alternarProducto(f.productIds, pr.id, e.target.checked, products) }))}
+                  />
                 ))}
-              </select>
+              </div>
               {productsError && <p className="m-0 text-xs text-destructive">No se pudo cargar el catálogo: {productsError}</p>}
             </div>
           )}
           {form.type === "cortesia" && (
             <>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="promocion-cortesia" className="text-xs text-muted-foreground">
+                <Label id="promocion-cortesia-etiqueta" className="text-xs text-muted-foreground">
                   Productos de cortesía (el cliente elige)
                 </Label>
-                <select
-                  id="promocion-cortesia"
-                  multiple
-                  size={6}
-                  value={[...form.courtesyProductIds]}
-                  onChange={(e) => setForm((f) => ({ ...f, courtesyProductIds: selectedValues(e.target) }))}
-                  className={SELECT_CLASES}
-                >
+                <div id="promocion-cortesia" role="group" aria-labelledby="promocion-cortesia-etiqueta" className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-field border border-input p-3">
                   {products?.map((pr) => (
-                    <option key={pr.id} value={pr.id}>
-                      {pr.name}
-                    </option>
+                    <Checkbox
+                      key={pr.id}
+                      label={pr.name}
+                      wrapperClassName="text-sm"
+                      checked={form.courtesyProductIds.includes(pr.id)}
+                      onChange={(e) => setForm((f) => ({ ...f, courtesyProductIds: alternarProducto(f.courtesyProductIds, pr.id, e.target.checked, products) }))}
+                    />
                   ))}
-                </select>
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="promocion-cortesia-cantidad" className="text-xs text-muted-foreground">
@@ -486,9 +482,9 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             <Input id="promocion-hasta" type="date" value={form.endsAt} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))} />
           </div>
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={editingId !== null}
         onOpenChange={(abierto) => !abierto && setEditingId(null)}
         titulo="Editar vigencia"
@@ -514,7 +510,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
             <Input id="promocion-edit-hasta" type="date" value={editEndsAt} onChange={(e) => setEditEndsAt(e.target.value)} />
           </div>
         </div>
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+    </PageContainer>
   );
 }

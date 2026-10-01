@@ -134,7 +134,7 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="callbacks-filtro" className="text-[13px] text-muted-foreground">
+        <label htmlFor="callbacks-filtro" className="text-sm text-muted-foreground">
           Mostrar
         </label>
         <NativeSelect id="callbacks-filtro" size="sm" wrapperClassName="w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}>
@@ -146,7 +146,7 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
         </NativeSelect>
       </div>
       {aviso && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {aviso}
         </p>
       )}
@@ -155,7 +155,7 @@ export function CallbacksPanel({ ctx }: { ctx: RestaurantesShellContext }) {
         const persona = asignando[cb.id] ?? "";
         return (
           <Card key={cb.id}>
-            <CardContent className="flex flex-col gap-2 pt-4 text-[13px]">
+            <CardContent className="flex flex-col gap-2 pt-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <strong>
                   {cb.nombre} · {cb.telefono}

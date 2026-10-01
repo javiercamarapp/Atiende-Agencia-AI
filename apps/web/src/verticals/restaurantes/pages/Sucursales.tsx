@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer } from "@atiende/ui";
 import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
@@ -59,7 +59,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4 p-6">
+    <PageContainer padding="none" size="sm" className="gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Sucursales</h1>
       <p className="m-0 text-xs text-muted-foreground">
         Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
@@ -120,7 +120,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                   </div>
                 </div>
               ) : (
-                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                   <dt className="text-muted-foreground">Teléfono</dt>
                   <dd className="m-0 text-foreground">{b.phone ?? "—"}</dd>
                   <dt className="text-muted-foreground">Dirección</dt>
@@ -147,6 +147,6 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
           </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

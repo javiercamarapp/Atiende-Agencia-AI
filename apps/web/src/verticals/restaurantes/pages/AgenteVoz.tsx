@@ -12,7 +12,7 @@
 // de sesión con token efímero.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Mic, Wrench } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, VistaPreviaLlamada } from "@atiende/ui";
+import { Badge, Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada } from "@atiende/ui";
 import { fetchConversacionesVoz, fetchConversacionVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
@@ -135,11 +135,11 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
 
   return (
     <div className="relative min-h-[620px] h-full">
-      <div className="p-5 space-y-4">
+      <PageContainer padding="none" className="gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Agente de voz</h1>
-            <p className="text-[12.5px] text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
+            <p className="text-xs text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
           </div>
           <Button type="button" onClick={() => setVistaPrevia(true)}>
             <Mic className="h-4 w-4 mr-1.5" strokeWidth={1.75} />
@@ -157,7 +157,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
               aria-selected={pestana === p.id}
               aria-controls={`panel-${p.id}`}
               onClick={() => setPestana(p.id)}
-              className={`h-8 px-3 rounded-lg text-[12.5px] font-medium border transition-colors ${pestana === p.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+              className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors ${pestana === p.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
               {p.etiqueta}
             </button>
@@ -165,7 +165,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
         </div>
 
         {config.estado === "no_disponible" ? (
-          <p role="status" data-testid="aviso-servicio" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] text-muted-foreground">
+          <p role="status" data-testid="aviso-servicio" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             El servicio de voz todavía no está disponible para este negocio. Puedes explorar la vista previa en modo demostración, pero los cambios no se guardarán hasta que el servicio esté activo.
           </p>
         ) : null}
@@ -178,91 +178,92 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
 
           {pestana === "voz" && config.estado !== "cargando" ? (
             <div className="space-y-3">
-              <label className="flex items-center gap-2 text-[13px] text-foreground">
-                <input type="checkbox" id="voz-habilitado" checked={borrador.habilitado} onChange={(e) => setBorrador({ ...borrador, habilitado: e.target.checked })} />
-                Agente habilitado para recibir llamadas en esta sucursal
-              </label>
+              <Checkbox
+                id="voz-habilitado"
+                checked={borrador.habilitado}
+                onChange={(e) => setBorrador({ ...borrador, habilitado: e.target.checked })}
+                label="Agente habilitado para recibir llamadas en esta sucursal"
+              />
               <SelectorVoz vozId={borrador.vozId} onElegir={(id) => setBorrador({ ...borrador, vozId: id })} baseUrl={import.meta.env.BASE_URL} crearAudio={crearAudio} />
             </div>
           ) : null}
 
           {pestana === "conocimiento" && config.estado !== "cargando" ? (
             <div className="space-y-4">
-              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] text-muted-foreground">
+              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                 Las notas de conocimiento libres todavía no se guardan en el servicio de voz. Mientras tanto, escribe horarios, políticas y preguntas frecuentes en la pestaña Comportamiento: el agente las recibe como parte de sus instrucciones.
               </p>
               <div>
-                <p className="text-[13px] font-medium text-foreground mb-1.5 flex items-center gap-1.5">
+                <p className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />
                   Datos que consulta en vivo
                 </p>
-                <p className="text-[12px] text-muted-foreground">El menú, los precios, las sucursales y los clientes no se copian aquí: el agente los consulta en tiempo real con sus herramientas (ver la pestaña Herramientas), así que siempre ve lo vigente.</p>
+                <p className="text-xs text-muted-foreground">El menú, los precios, las sucursales y los clientes no se copian aquí: el agente los consulta en tiempo real con sus herramientas (ver la pestaña Herramientas), así que siempre ve lo vigente.</p>
               </div>
             </div>
           ) : null}
 
           {pestana === "comportamiento" && config.estado !== "cargando" ? (
             <div>
-              <label htmlFor="voz-prompt" className="block text-[13px] font-medium text-foreground mb-1.5">
+              <label htmlFor="voz-prompt" className="block text-sm font-medium text-foreground mb-1.5">
                 Comportamiento (prompt del sistema)
               </label>
-              <textarea
+              <Textarea
                 id="voz-prompt"
                 value={borrador.promptSistema}
                 onChange={(e) => setBorrador({ ...borrador, promptSistema: e.target.value })}
                 rows={14}
                 placeholder="Cómo debe hablar y actuar el agente: tono, reglas para tomar pedidos, qué hacer si no entiende…"
-                className="w-full rounded-lg border border-border bg-card p-3 text-[13px] font-mono text-foreground"
+                className="font-mono"
               />
-              <p className="mt-1 text-[11.5px] text-muted-foreground">El español de México y el acento se piden aquí: las voces son multilingües y no vienen etiquetadas por acento.</p>
+              <p className="mt-1 text-xs text-muted-foreground">El español de México y el acento se piden aquí: las voces son multilingües y no vienen etiquetadas por acento.</p>
             </div>
           ) : null}
 
           {pestana === "mensaje" && config.estado !== "cargando" ? (
             <div className="space-y-3">
-              <div role="note" data-testid="aviso-asistente-virtual" className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[12.5px] text-foreground">
+              <div role="note" data-testid="aviso-asistente-virtual" className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
                 <strong>Transparencia:</strong> el primer mensaje debe presentarse como asistente virtual, por ejemplo «Le atiende el asistente virtual de …». Quien llama tiene derecho a saber que habla con una inteligencia artificial.
               </div>
               <div>
-                <label htmlFor="voz-mensaje-inicial" className="block text-[13px] font-medium text-foreground mb-1.5">
+                <label htmlFor="voz-mensaje-inicial" className="block text-sm font-medium text-foreground mb-1.5">
                   Primer mensaje
                 </label>
-                <textarea
+                <Textarea
                   id="voz-mensaje-inicial"
                   value={borrador.mensajeInicial}
                   onChange={(e) => setBorrador({ ...borrador, mensajeInicial: e.target.value })}
                   rows={4}
                   placeholder="Hola, le atiende el asistente virtual de …"
-                  className="w-full rounded-lg border border-border bg-card p-3 text-[13px] text-foreground"
                 />
               </div>
               {borrador.mensajeInicial.trim() !== "" && !mencionaAsistenteVirtual(borrador.mensajeInicial) ? (
-                <p role="alert" data-testid="alerta-sin-asistente-virtual" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12.5px] text-amber-700">
+                <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
                   Este mensaje no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
-                </p>
+                </Callout>
               ) : null}
             </div>
           ) : null}
 
           {pestana === "herramientas" ? (
             <div className="space-y-3">
-              <p className="text-[12px] text-muted-foreground">Herramientas que el agente puede usar durante una llamada.</p>
+              <p className="text-xs text-muted-foreground">Herramientas que el agente puede usar durante una llamada.</p>
               <ul className="grid gap-2">
                 {HERRAMIENTAS_AGENTE.map((h) => (
                   <li key={h.nombre} data-herramienta={h.nombre} className="rounded-xl border border-border bg-card p-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[13px] font-medium text-foreground flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
                         <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
                         {h.titulo}
                       </p>
-                      <p className="text-[12px] text-muted-foreground">{h.descripcion}</p>
+                      <p className="text-xs text-muted-foreground">{h.descripcion}</p>
                     </div>
-                    <span data-testid={`ejecuciones-${h.nombre}`} className="shrink-0 text-[11.5px] text-muted-foreground text-right">
+                    <span data-testid={`ejecuciones-${h.nombre}`} className="shrink-0 text-xs text-muted-foreground text-right">
                       {ejecuciones.disponible ? (
                         (ejecuciones.cuentas[h.nombre] ?? 0) > 0 ? (
                           <>
                             {ejecuciones.cuentas[h.nombre]} {ejecuciones.cuentas[h.nombre] === 1 ? "ejecución" : "ejecuciones"}
-                            <span className="block text-[10.5px]">en las últimas {ejecuciones.llamadas} llamadas</span>
+                            <span className="block text-2xs">en las últimas {ejecuciones.llamadas} llamadas</span>
                           </>
                         ) : (
                           <>Sin ejecuciones en las últimas {ejecuciones.llamadas} llamadas</>
@@ -275,7 +276,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
                 ))}
               </ul>
               {!ejecuciones.disponible ? (
-                <p role="status" data-testid="motivo-sin-ejecuciones" className="text-[12px] text-muted-foreground">
+                <p role="status" data-testid="motivo-sin-ejecuciones" className="text-xs text-muted-foreground">
                   {ejecuciones.motivo}
                 </p>
               ) : null}
@@ -290,21 +291,21 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
             <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || guardando || borrador.vozId === null}>
               {guardando ? "Guardando…" : "Guardar cambios"}
             </Button>
-            {sucio ? <span className="text-[12px] text-muted-foreground">Hay cambios sin guardar.</span> : null}
-            {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-[12px] text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}
+            {sucio ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar.</span> : null}
+            {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-xs text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}
             {avisoGuardado && !sucio ? (
-              <span role="status" className="text-[12px] text-primary">
+              <span role="status" className="text-xs text-primary">
                 Cambios guardados.
               </span>
             ) : null}
             {errorGuardado ? (
-              <span role="alert" className="text-[12px] text-destructive">
+              <span role="alert" className="text-xs text-destructive">
                 {errorGuardado}
               </span>
             ) : null}
           </div>
         ) : null}
-      </div>
+      </PageContainer>
 
       {vistaPrevia ? <VistaPreviaDemo saludo={borrador.mensajeInicial} onCerrar={() => setVistaPrevia(false)} /> : null}
     </div>
@@ -327,12 +328,12 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-sm font-semibold">Servicio de voz</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0 text-[13px]">
+          <CardContent className="p-4 pt-0 text-sm">
             {config.estado === "cargando" ? <EstadoCargando etiqueta="Consultando…" /> : null}
             {config.estado === "listo" ? <Badge variant="secondary">Disponible</Badge> : null}
             {config.estado === "no_disponible" ? <p className="text-muted-foreground">Todavía no disponible para este negocio.</p> : null}
             {config.estado === "error" ? <p className="text-destructive">No se pudo consultar: {config.mensaje}</p> : null}
-            {config.estado === "listo" && config.datos === null ? <p className="mt-1 text-[12px] text-muted-foreground">Esta sucursal aún no tiene configuración guardada.</p> : null}
+            {config.estado === "listo" && config.datos === null ? <p className="mt-1 text-xs text-muted-foreground">Esta sucursal aún no tiene configuración guardada.</p> : null}
           </CardContent>
         </Card>
 
@@ -340,7 +341,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
           <CardHeader className="p-4 pb-2">
             <CardTitle className="text-sm font-semibold">Voz elegida</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0 text-[13px]">{voz ? `${voz.nombre} · ${voz.tono}` : <span className="text-muted-foreground">Sin elegir</span>}</CardContent>
+          <CardContent className="p-4 pt-0 text-sm">{voz ? `${voz.nombre} · ${voz.tono}` : <span className="text-muted-foreground">Sin elegir</span>}</CardContent>
         </Card>
 
         <Card className="sm:col-span-2">
@@ -348,7 +349,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
             <CardTitle className="text-sm font-semibold">Llamadas</CardTitle>
             <CardDescription>Datos reales del historial; sin cifras de relleno.</CardDescription>
           </CardHeader>
-          <CardContent className="p-4 pt-0 text-[13px]" data-testid="resumen-llamadas">
+          <CardContent className="p-4 pt-0 text-sm" data-testid="resumen-llamadas">
             {conversaciones.estado === "cargando" ? <EstadoCargando etiqueta="Cargando historial…" /> : null}
             {conversaciones.estado === "no_disponible" ? <EstadoVacio titulo="Sin historial todavía" mensaje="Las llamadas se mostrarán aquí cuando el servicio de voz esté activo." /> : null}
             {conversaciones.estado === "error" ? <p className="text-destructive">No se pudo cargar el historial: {conversaciones.mensaje}</p> : null}
@@ -363,7 +364,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
           <CardTitle className="text-sm font-semibold">Antes de salir en vivo</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          <ul className="space-y-1.5 text-[13px]">
+          <ul className="space-y-1.5 text-sm">
             {pasos.map((p) => (
               <li key={p.texto} data-ok={p.ok ? "true" : "false"} className="flex items-center gap-2">
                 <span aria-hidden className={p.ok ? "text-primary" : "text-muted-foreground"}>
@@ -390,15 +391,15 @@ function ResumenLlamadas({ lista }: { lista: readonly ConversacionVoz[] }) {
   return (
     <dl className="grid grid-cols-3 gap-2">
       <div>
-        <dt className="text-[10.5px] uppercase tracking-wide text-muted-foreground">Conversaciones</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Conversaciones</dt>
         <dd className="text-base font-semibold tabular-nums">{lista.length}</dd>
       </div>
       <div>
-        <dt className="text-[10.5px] uppercase tracking-wide text-muted-foreground">Duración total</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Duración total</dt>
         <dd className="text-base font-semibold tabular-nums">{conDuracion.length > 0 ? formatoDuracion(totalSeg) : "—"}</dd>
       </div>
       <div>
-        <dt className="text-[10.5px] uppercase tracking-wide text-muted-foreground">Costo total</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Costo total</dt>
         <dd className="text-base font-semibold tabular-nums">{conCosto.length > 0 ? formatoCostoUsd(totalCosto) : "—"}</dd>
       </div>
     </dl>
@@ -417,9 +418,9 @@ function VistaPreviaDemo({ saludo, onCerrar }: { saludo: string; onCerrar: () =>
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
       etiquetaSimulacion="Simulación"
       pie={
-        <p role="note" data-testid="aviso-simulacion" className="mx-4 mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11.5px] text-amber-700">
+        <Callout tone="warning" role="note" data-testid="aviso-simulacion" className="mx-4 mb-3">
           Es una simulación: no llama a tu agente real, no usa la voz elegida ni registra pedidos. Sirve para ver cómo se comporta la interfaz.
-        </p>
+        </Callout>
       }
     />
   );

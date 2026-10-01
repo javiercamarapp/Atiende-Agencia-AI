@@ -53,7 +53,7 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
         <Button type="button" variant="ghost" size="sm" onClick={() => setAbiertaId(null)}>
           ‹ Volver a la lista
         </Button>
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[12px]">
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <Dato titulo="Fecha" valor={formatoInstante(abierta.iniciadaEn)} />
           <Dato titulo="Duración" valor={formatoDuracion(abierta.duracionSegundos)} />
           <Dato titulo="Costo" valor={formatoCostoUsd(abierta.costoUsd)} />
@@ -62,8 +62,8 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
         <div className="rounded-xl border border-border p-4">
           {cargarDetalle && detalle.estado === "cargando" ? <EstadoCargando etiqueta="Cargando transcripción…" /> : null}
           {cargarDetalle && detalle.estado === "error" ? <EstadoError mensaje={detalle.mensaje} onReintentar={() => setAbiertaId(abierta.id)} /> : null}
-          {cargarDetalle && detalle.estado === "no_disponible" ? <p className="text-[12.5px] text-muted-foreground">La transcripción todavía no está disponible.</p> : null}
-          {!cargarDetalle || detalle.estado === "listo" ? lineas.length === 0 ? <p className="text-[12.5px] text-muted-foreground">Esta conversación no incluye transcripción.</p> : <TranscripcionEnVivo lineas={lineas} /> : null}
+          {cargarDetalle && detalle.estado === "no_disponible" ? <p className="text-xs text-muted-foreground">La transcripción todavía no está disponible.</p> : null}
+          {!cargarDetalle || detalle.estado === "listo" ? lineas.length === 0 ? <p className="text-xs text-muted-foreground">Esta conversación no incluye transcripción.</p> : <TranscripcionEnVivo lineas={lineas} /> : null}
         </div>
       </div>
     );
@@ -71,7 +71,7 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
 
   return (
     <div className="rounded-xl border border-border overflow-hidden">
-      <table className="w-full text-[12.5px]">
+      <table className="w-full text-xs">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr className="text-left">
             <th className="px-3 py-2 font-medium">Fecha</th>
@@ -104,8 +104,8 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
 function Dato({ titulo, valor }: { titulo: string; valor: string }) {
   return (
     <div className="rounded-lg border border-border bg-card p-2.5">
-      <dt className="text-[10.5px] uppercase tracking-wide text-muted-foreground">{titulo}</dt>
-      <dd className="mt-0.5 text-[13px] text-foreground">{valor}</dd>
+      <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{titulo}</dt>
+      <dd className="mt-0.5 text-sm text-foreground">{valor}</dd>
     </div>
   );
 }

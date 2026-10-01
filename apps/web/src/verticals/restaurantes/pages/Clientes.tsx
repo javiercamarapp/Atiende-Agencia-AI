@@ -10,7 +10,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -21,20 +20,15 @@ import {
   EstadoVacio,
   Input,
   Label,
+  PageContainer,
+  StatusBadge,
+  statusTone,
 } from "@atiende/ui";
 import { ArrowLeft, Search } from "lucide-react";
 import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
-import type { CustomerDetail, CustomerSummary, CustomerTier } from "../lib/customers-client.ts";
+import type { CustomerDetail, CustomerSummary } from "../lib/customers-client.ts";
+import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
-
-/** Mismos 4 tiers de siempre (label/glifo idénticos); el color deja de ser un hex
- * suelto y pasa a clases de token que funcionan en claro y oscuro. */
-const TIER_META: Record<CustomerTier, { label: string; glyph: string; clase: string }> = {
-  BLACK: { label: "Black", glyph: "♛", clase: "border-transparent bg-foreground text-background" },
-  PLATINUM: { label: "Platinum", glyph: "◆", clase: "border-border bg-muted text-muted-foreground" },
-  GOLD: { label: "Gold", glyph: "★", clase: "border-transparent bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" },
-  BLUE: { label: "Blue", glyph: "●", clase: "border-transparent bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200" },
-};
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
   const [search, setSearch] = useState("");
@@ -52,7 +46,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
   }, [apiBaseUrl, token, propertyId, search]);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <PageContainer padding="none" className="gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Clientes</h1>
 
       <div className="max-w-xs">
@@ -85,7 +79,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
             <Card className="h-full transition-colors hover:bg-muted/50">
               <CardContent className="p-4">
                 <p className="m-0 font-semibold text-foreground">{c.name ?? c.phone}</p>
-                <p className="mt-1 text-[13px] text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {c.phone} · {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"}
                 </p>
               </CardContent>
@@ -93,7 +87,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
           </Link>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -116,7 +110,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
   }, [apiBaseUrl, token, propertyId, customerId]);
 
   return (
-    <div className="flex max-w-xl flex-col gap-4 p-6">
+    <PageContainer padding="none" size="sm" className="gap-4">
       <Button asChild variant="ghost" size="sm" className="self-start px-2 text-muted-foreground">
         <Link to={`/restaurantes/${orgSlug}/clientes`}>
           <ArrowLeft />
@@ -133,10 +127,10 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
           <div className="flex items-center gap-2.5">
             <h1 className="m-0 font-display text-xl font-semibold text-foreground">{detail.name ?? "Sin nombre"}</h1>
             {detail.tier && (
-              <Badge variant="outline" className={`gap-1.5 px-2.5 py-1 font-medium ${TIER_META[detail.tier].clase}`}>
-                <span aria-hidden>{TIER_META[detail.tier].glyph}</span>
-                {TIER_META[detail.tier].label}
-              </Badge>
+              <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detail.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detail.tier) ?? ""}`}>
+                <span aria-hidden>{CUSTOMER_TIER_META[detail.tier].glyph}</span>
+                {CUSTOMER_TIER_META[detail.tier].label}
+              </StatusBadge>
             )}
           </div>
 
@@ -147,13 +141,13 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
 
           <Card>
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-[13px] font-semibold">Direcciones guardadas</CardTitle>
+              <CardTitle className="text-sm font-semibold">Direcciones guardadas</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {detail.addresses.length === 0 ? (
-                <p className="m-0 text-[13px] text-muted-foreground">Sin direcciones guardadas.</p>
+                <p className="m-0 text-sm text-muted-foreground">Sin direcciones guardadas.</p>
               ) : (
-                <ul className="m-0 list-disc pl-5 text-[13px] text-foreground">
+                <ul className="m-0 list-disc pl-5 text-sm text-foreground">
                   {detail.addresses.map((a, i) => (
                     <li key={i}>
                       {a.address} {a.isDefault && <span className="text-muted-foreground">(principal)</span>}
@@ -166,13 +160,13 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
 
           <Card>
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-[13px] font-semibold">Lo que más pide</CardTitle>
+              <CardTitle className="text-sm font-semibold">Lo que más pide</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {detail.frequentItems.length === 0 ? (
-                <p className="m-0 text-[13px] text-muted-foreground">Sin historial suficiente todavía.</p>
+                <p className="m-0 text-sm text-muted-foreground">Sin historial suficiente todavía.</p>
               ) : (
-                <ul className="m-0 list-disc pl-5 text-[13px] text-foreground">
+                <ul className="m-0 list-disc pl-5 text-sm text-foreground">
                   {detail.frequentItems.map((item, i) => (
                     <li key={i}>
                       {item.quantity}× {item.name}
@@ -187,7 +181,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
             <section className="rounded-lg border border-dashed border-border p-3">
               <p className="m-0 mb-1.5 text-xs font-semibold text-muted-foreground">Notas para el agente</p>
               {detail.agentNotes.map((note, i) => (
-                <p key={i} className="mt-1 text-[13px] text-foreground">
+                <p key={i} className="mt-1 text-sm text-foreground">
                   {note}
                 </p>
               ))}
@@ -195,6 +189,6 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

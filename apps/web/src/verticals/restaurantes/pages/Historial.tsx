@@ -4,12 +4,11 @@
 //
 // Presentación real desde esta ronda: la `<table>` hecha a mano con `style={{...}}`
 // pasa a `Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell` de
-// `@atiende/ui`, los filtros a `Input`/`Label` (+ `<select>` nativo restilado con
-// tokens) y "Cargar más" a `Button`. El estado de cada orden se pinta con `Badge`.
+// `@atiende/ui`, los filtros a `Input`/`Label`/`NativeSelect` y "Cargar más" a
+// `Button`. El estado de cada orden se pinta con `StatusBadge` (tono por estado).
 // La lógica de carga/paginación de abajo es la MISMA: solo cambia el JSX.
 import { useEffect, useState } from "react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -17,6 +16,9 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
   Table,
   TableBody,
   TableCaption,
@@ -24,27 +26,17 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  formatMoney,
+  statusTone,
 } from "@atiende/ui";
 import { ChevronDown } from "lucide-react";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
-
-/** Mismo criterio de color que Pedidos.tsx: "problema" es el único estado que se
- * destaca en rojo; el resto usa el gris neutro del sistema. */
-function badgeVariantForStatus(status: OrderStatus): "destructive" | "secondary" {
-  return status === "problema" ? "destructive" : "secondary";
-}
-
-const SELECT_CLASES =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
@@ -90,7 +82,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }, [apiBaseUrl, token, propertyId, statusFilter, dateFrom, dateTo]);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <PageContainer padding="none" className="gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Historial de órdenes</h1>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -98,11 +90,11 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
           <Label htmlFor="restaurantes-historial-estado" className="text-xs text-muted-foreground">
             Estado
           </Label>
-          <select
+          <NativeSelect
             id="restaurantes-historial-estado"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
-            className={SELECT_CLASES}
+            wrapperClassName="w-auto min-w-44"
           >
             <option value="">Todos los estados</option>
             {ALL_STATUSES.map((s) => (
@@ -110,7 +102,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                 {ORDER_STATUS_LABELS[s]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="restaurantes-historial-desde" className="text-xs text-muted-foreground">
@@ -150,9 +142,9 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                   <TableCell>{o.customerName}</TableCell>
                   <TableCell className="text-muted-foreground">{o.branch ?? "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={badgeVariantForStatus(o.status)}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                    <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                   </TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(o.total)}</TableCell>
+                  <TableCell className="tabular-nums">${formatMoney(o.total)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -166,6 +158,6 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
           {loading ? "Cargando…" : "Cargar más"}
         </Button>
       )}
-    </div>
+    </PageContainer>
   );
 }

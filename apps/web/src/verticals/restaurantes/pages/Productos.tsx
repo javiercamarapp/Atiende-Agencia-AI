@@ -5,8 +5,7 @@
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Card`/`CardHeader`/`CardContent` para los dos
-// formularios de alta, `Input`/`Label` para sus campos (el `<select>` sigue siendo
-// nativo, solo restilado con tokens), `Button` para enviar, `Badge` para las
+// formularios de alta, `Input`/`Label`/`NativeSelect` para sus campos, `Checkbox` para las marcas, `Button` para enviar, `Badge` para las
 // categorías existentes y para el estado "Disponible / No disponible", y `Table` para
 // el catálogo. TODO el CRUD/estado de abajo es el MISMO: solo cambia el JSX.
 import { useEffect, useState } from "react";
@@ -19,11 +18,14 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Checkbox,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
   Table,
   TableBody,
   TableCaption,
@@ -31,6 +33,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  formatMoney,
 } from "@atiende/ui";
 import { FolderPlus, Plus } from "lucide-react";
 import {
@@ -45,13 +48,6 @@ import type { Category, Product } from "../lib/catalog-client.ts";
 import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
 import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
-
-const SELECT_CLASES =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
   const [categories, setCategories] = useState<readonly Category[] | null>(null);
@@ -180,7 +176,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <PageContainer padding="none" className="gap-5">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Productos y categorías</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -232,17 +228,15 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
               <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
               <div className="flex flex-wrap gap-3">
                 {categories.map((c) => (
-                  <label key={c.id} className="flex items-center gap-1 text-xs">
-                    <input
-                      type="checkbox"
-                      aria-label={`${c.name}: no se vende a domicilio`}
-                      checked={marks.categoryIds.includes(c.id)}
-                      onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
-                      disabled={savingId === c.id}
-                      className="h-4 w-4 accent-primary"
-                    />
-                    {c.name}
-                  </label>
+                  <Checkbox
+                    key={c.id}
+                    aria-label={`${c.name}: no se vende a domicilio`}
+                    label={c.name}
+                    wrapperClassName="text-xs"
+                    checked={marks.categoryIds.includes(c.id)}
+                    onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
+                    disabled={savingId === c.id}
+                  />
                 ))}
               </div>
             </fieldset>
@@ -287,11 +281,11 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
               <Label htmlFor="restaurantes-producto-categoria" className="text-xs text-muted-foreground">
                 Categoría
               </Label>
-              <select
+              <NativeSelect
                 id="restaurantes-producto-categoria"
                 value={newProdCategoryId}
                 onChange={(e) => setNewProdCategoryId(e.target.value)}
-                className={SELECT_CLASES}
+                wrapperClassName="w-auto min-w-44"
               >
                 <option value="">Sin categoría</option>
                 {categories?.map((c) => (
@@ -299,7 +293,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <Button type="submit" disabled={creatingProduct}>
               <Plus />
@@ -348,7 +342,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                           className="h-9 w-[100px]"
                         />
                         {p.branch === null && (
-                          <span className="text-[11px] text-muted-foreground">(precio base {formatMoney(p.price)}, nunca dado de alta aquí)</span>
+                          <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>
                         )}
                       </div>
                     </TableCell>
@@ -365,24 +359,20 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                       </Button>
                     </TableCell>
                     <TableCell>
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={`Marcar ${p.name} como popular`}
                         checked={p.isPopular}
                         onChange={() => void handleTogglePopular(p)}
                         disabled={savingId === p.id}
-                        className="h-4 w-4 accent-primary"
                       />
                     </TableCell>
                     {marks && (
                       <TableCell>
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={`${p.name}: no se vende a domicilio`}
                           checked={marks.productIds.includes(p.id)}
                           onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
                           disabled={savingId === p.id}
-                          className="h-4 w-4 accent-primary"
                         />
                       </TableCell>
                     )}
@@ -393,6 +383,6 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

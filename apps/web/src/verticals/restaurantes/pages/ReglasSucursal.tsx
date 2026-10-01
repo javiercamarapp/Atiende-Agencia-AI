@@ -3,7 +3,7 @@
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
 import { useEffect, useState } from "react";
-import { Button, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
@@ -23,7 +23,6 @@ import {
 } from "../lib/modelo-pm-client.ts";
 import type { PropinaPolitica, Puente, TurnoHorario, TurnoPuente } from "../lib/modelo-pm-client.ts";
 
-const SELECT_CLASES = "h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
 
 interface Props {
   readonly apiBaseUrl: string;
@@ -197,10 +196,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-2">
             <div className="flex flex-wrap gap-2" role="group" aria-label={`Días del turno ${index + 1}`}>
               {NOMBRES_DIAS.map((nombre, dia) => (
-                <label key={dia} className="flex items-center gap-1 text-xs">
-                  <input type="checkbox" checked={turno.dias.includes(dia)} onChange={() => toggleDia(index, dia)} className="h-4 w-4 accent-primary" />
-                  {nombre}
-                </label>
+                <Checkbox key={dia} label={nombre} wrapperClassName="text-xs" checked={turno.dias.includes(dia)} onChange={() => toggleDia(index, dia)} />
               ))}
             </div>
             <div className="flex flex-wrap items-end gap-2">
@@ -220,7 +216,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
                 Quitar turno
               </Button>
             </div>
-            <p className="m-0 text-[11px] text-muted-foreground">{turno.dias.length > 0 && turno.abre && turno.cierra ? describirTurno(turno) : "Turno incompleto"}</p>
+            <p className="m-0 text-xs text-muted-foreground">{turno.dias.length > 0 && turno.abre && turno.cierra ? describirTurno(turno) : "Turno incompleto"}</p>
           </div>
         ))}
         <div>
@@ -247,12 +243,12 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <Label htmlFor={`propina-${branchId}`} className="text-xs text-muted-foreground">
             Propina
           </Label>
-          <select id={`propina-${branchId}`} value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} className={SELECT_CLASES}>
+          <NativeSelect id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
             <option value="">No preguntar</option>
             <option value="solo_tarjeta">Solo si paga con tarjeta</option>
             <option value="siempre">Siempre</option>
             <option value="nunca">Nunca</option>
-          </select>
+          </NativeSelect>
         </div>
       </section>
 
@@ -266,22 +262,20 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         ) : (
           <div className="flex flex-wrap gap-3">
             {zonas.map((zona) => (
-              <label key={zona.id} className="flex items-center gap-1 text-xs">
-                <input
-                  type="checkbox"
-                  checked={zonasElegidas.has(zona.id)}
-                  onChange={() =>
-                    setZonasElegidas((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(zona.id)) next.delete(zona.id);
-                      else next.add(zona.id);
-                      return next;
-                    })
-                  }
-                  className="h-4 w-4 accent-primary"
-                />
-                {zona.name}
-              </label>
+              <Checkbox
+                key={zona.id}
+                label={zona.name}
+                wrapperClassName="text-xs"
+                checked={zonasElegidas.has(zona.id)}
+                onChange={() =>
+                  setZonasElegidas((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(zona.id)) next.delete(zona.id);
+                    else next.add(zona.id);
+                    return next;
+                  })
+                }
+              />
             ))}
           </div>
         )}
