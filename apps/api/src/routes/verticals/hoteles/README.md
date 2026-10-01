@@ -206,6 +206,17 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
 - `agentes-expiracion-cron.ts` — `GET|POST /internal/hoteles/aprobaciones-expiracion`: expira las solicitudes
   abiertas vencidas, sesión de sistema y una transacción por property. Protegido con el secreto interno. **No
   está en `vercel.json`** (ver `docs/DEPLOY.md`).
+- `grupos.ts` (H-06, migración 036) — `GET/POST /hoteles/:propertyId/grupos/cotizaciones` (cotización de grupo con
+  vigencia; montos en centavos enteros MXN, un decimal responde 400), `GET .../cotizaciones/:id`,
+  `POST .../cotizaciones/:id/enviar|cerrar|aceptar|anticipos`. Aceptar BLOQUEA los cuartos (atómico y sin
+  sobreventa; sin cupo en una noche = 409 y no retiene nada); el anticipo SOLO se registra (no cobra; owner/gm/
+  accountant). `GET .../grupos/bloqueos[/:id]` (pickup confirmados vs bloqueados y rooming list),
+  `POST .../bloqueos/:id/huespedes|liberar|cancelar` y `POST .../grupos/huespedes/:entryId/confirmar|cancelar`.
+  Roles: ven owner/gm/frontdesk/reservations/accountant; gestionan owner/gm/reservations; rooming además frontdesk.
+- `grupos-liberacion-cron.ts` — `GET|POST /internal/hoteles/grupos-liberacion`: libera lo NO confirmado de los
+  bloqueos cuya fecha de liberación ya llegó en la zona horaria de CADA property y vence propuestas fuera de
+  vigencia; sesión de sistema y una transacción por property. Protegido con el secreto interno. **No está en
+  `vercel.json`** (programarlo es decisión de producto; ver `docs/DEPLOY.md`).
 - Gobierno de agentes: el turno de WhatsApp (`production/hoteles-agentes-gobierno.ts`) y el barrido de revenue
   consultan el kill switch y el presupuesto de su agente por property; pausado o sin presupuesto, el mensaje
   se deriva a una persona. Base sin la 035: lecturas `disponible:false`, escrituras 503, comportamiento previo.

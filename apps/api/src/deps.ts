@@ -22,7 +22,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -173,6 +173,10 @@ export interface AppDeps {
    *  define y las rutas usan `PostgresAgentesRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo
    *  sobreescriben con el repo en memoria. */
   readonly hotelesAgentesRepo?: (db: TenantDbSession) => AgentesRepository;
+  /** H-06 -- grupos: cotizacion, bloqueo de cuartos con cutoff, pickup, rooming y anticipos registrados (migracion 036). OPCIONAL:
+   *  en produccion no se define y las rutas usan `PostgresGruposRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los
+   *  tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesGruposRepo?: (db: TenantDbSession) => GruposRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
