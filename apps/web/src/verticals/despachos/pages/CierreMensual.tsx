@@ -101,7 +101,7 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
   const ordenados = periodos ? [...periodos].sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month)) : [];
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>

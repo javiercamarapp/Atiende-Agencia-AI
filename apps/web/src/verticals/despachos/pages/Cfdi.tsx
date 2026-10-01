@@ -161,7 +161,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">CFDI</h1>

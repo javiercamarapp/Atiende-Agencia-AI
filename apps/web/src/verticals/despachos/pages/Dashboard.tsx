@@ -177,7 +177,7 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
   const activo = data?.ranking.find((c) => c.propertyId === propertyId) ?? null;
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Dashboard gerencial</h1>
         <p className="mt-1 text-sm text-muted-foreground">

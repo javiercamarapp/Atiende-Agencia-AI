@@ -174,7 +174,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   }
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Vencimientos fiscales</h1>
@@ -208,7 +208,6 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                   id="venc-mes"
                   value={calcMes}
                   onChange={(e) => setCalcMes(Number(e.target.value))}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   {MESES.slice(1).map((nombre, i) => (
                     <option key={i + 1} value={i + 1}>
@@ -240,7 +239,8 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
           id="venc-filtro-estado"
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          size="sm"
+          wrapperClassName="w-auto min-w-44"
         >
           {ESTADO_FILTROS.map((f) => (
             <option key={f.value} value={f.value}>

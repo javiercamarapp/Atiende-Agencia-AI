@@ -108,7 +108,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2">
+      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede importar estados de cuenta -- el servidor lo rechazaría igual.
@@ -122,7 +122,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
   const parseo = vista?.parseo;
 
   return (
-    <PageContainer padding="none" className="gap-5">
+    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>

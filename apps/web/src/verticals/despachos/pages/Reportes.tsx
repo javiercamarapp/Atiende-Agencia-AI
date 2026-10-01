@@ -11,6 +11,7 @@ import {
   CardContent,
   EstadoCargando,
   EstadoError,
+  Input,
   Label,
   NativeSelect,
   PageContainer,
@@ -146,7 +147,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
   }
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Reportes de cliente</h1>
         <p className="mt-1 text-sm text-muted-foreground">Balanza, DIOT, nómina e impuestos del contribuyente activo, listos para revisar, descargar en PDF o en Excel. Solo con datos reales: lo que aún no existe en el sistema se marca «Sin datos».</p>
@@ -159,7 +160,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
             id="reporte-tipo"
             value={tipo}
             onChange={(e) => setTipo(e.target.value as TipoReporte)}
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            wrapperClassName="w-auto min-w-44"
           >
             {TIPOS_REPORTE.map((t) => (
               <option key={t} value={t}>
@@ -170,14 +171,14 @@ export function ReportesPage({ apiBaseUrl, token, propertyId }: DespachosShellCo
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="reporte-periodo">Período (AAAA-MM)</Label>
-          <input
+          <Input
             id="reporte-periodo"
             type="text"
             inputMode="numeric"
             placeholder="2026-08"
             value={periodo}
             onChange={(e) => setPeriodo(e.target.value)}
-            className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="w-32"
           />
         </div>
         <Button type="submit" disabled={loading}>

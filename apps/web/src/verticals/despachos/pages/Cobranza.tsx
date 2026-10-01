@@ -239,7 +239,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   }
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Cobranza</h1>
@@ -280,7 +280,6 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                 value={invoiceId}
                 onChange={(e) => setInvoiceId(e.target.value)}
                 required
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <option value="">Selecciona un CFDI…</option>
                 {invoicesDisponibles.map((inv) => (
@@ -389,7 +388,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                                   id={`cobranza-etapa-${cuenta.id}`}
                                   value={stageChoice[cuenta.id] ?? ""}
                                   onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
-                                  className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                  size="sm" wrapperClassName="min-w-36 flex-1"
                                 >
                                   <option value="">Etapa sugerida</option>
                                   {COBRANZA_REMINDER_STAGES.map((s) => (

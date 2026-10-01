@@ -117,7 +117,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
 
   return (
-    <PageContainer padding="none" size="md" className="gap-4">
+    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <div>
         <Link to={`/despachos/${orgSlug}/cierre-mensual`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />

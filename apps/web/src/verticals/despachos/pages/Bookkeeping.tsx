@@ -390,7 +390,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2">
+      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede clasificar CFDI, generar pólizas ni registrar ajustes -- el servidor las rechazaría igual.
@@ -400,7 +400,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
+    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
         <p className="mt-1 text-sm text-muted-foreground">

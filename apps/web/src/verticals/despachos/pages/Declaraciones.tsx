@@ -445,7 +445,7 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <PageContainer padding="none">
+      <PageContainer padding="none" className="[&>*]:min-w-0">
         <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
         <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a declaraciones fiscales. Solo admin/contador.
@@ -455,7 +455,7 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
   }
 
   return (
-    <PageContainer padding="none" className="gap-7">
+    <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
         <p className="mt-1 text-sm text-muted-foreground">ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>

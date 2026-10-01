@@ -250,7 +250,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Migración de catálogo contable</h1>
@@ -333,7 +333,8 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
             id="migracion-filtro-estado"
             value={filtroEstado}
             onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")}
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            size="sm"
+            wrapperClassName="w-auto min-w-44"
           >
             {ESTADO_FILTROS.map((f) => (
               <option key={f.value} value={f.value}>

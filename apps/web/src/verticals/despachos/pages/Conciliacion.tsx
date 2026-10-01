@@ -453,7 +453,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   if (!puedeGestionar) {
     return (
-      <PageContainer padding="none" className="gap-2">
+      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr matching, alertas ni verificaciones -- el servidor las rechazaría igual.
@@ -463,7 +463,7 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
+    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>

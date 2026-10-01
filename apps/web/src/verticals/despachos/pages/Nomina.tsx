@@ -236,7 +236,7 @@ export function NominaPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <PageContainer padding="none">
+      <PageContainer padding="none" className="[&>*]:min-w-0">
         <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Nómina</h1>
         <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a nómina. Solo admin/contador.
@@ -365,7 +365,7 @@ export function NominaPage(ctx: DespachosShellContext) {
   }
 
   return (
-    <PageContainer padding="none" className="gap-7">
+    <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Nómina</h1>
         <p className="mt-1 text-sm text-muted-foreground">Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
@@ -507,7 +507,6 @@ export function NominaPage(ctx: DespachosShellContext) {
                     id="emisor-tipo-nomina"
                     value={tipoNomina}
                     onChange={(e) => setTipoNomina(e.target.value as TipoNomina)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <option value="O">O -- Ordinaria</option>
                     <option value="E">E -- Extraordinaria</option>

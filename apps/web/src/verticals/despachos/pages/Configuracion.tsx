@@ -82,7 +82,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Despa
 
   if (!canManage) {
     return (
-      <PageContainer padding="none" size="sm" className="gap-5">
+      <PageContainer padding="none" size="sm" className="gap-5 [&>*]:min-w-0">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
         <Card className="bg-muted/40">
           <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
@@ -95,7 +95,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Despa
   }
 
   return (
-    <PageContainer padding="none" size="sm" className="gap-5">
+    <PageContainer padding="none" size="sm" className="gap-5 [&>*]:min-w-0">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}

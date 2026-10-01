@@ -114,7 +114,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
   if (!invoice) return null;
 
   return (
-    <PageContainer padding="none" size="md" className="gap-4">
+    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <div>
         <Link to={`/despachos/${orgSlug}/cfdi`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />

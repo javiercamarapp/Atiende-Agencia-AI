@@ -122,7 +122,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -159,7 +159,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
                 id="staff-rol"
                 value={verticalRole}
                 onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                wrapperClassName="w-auto min-w-44"
               >
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>
@@ -245,7 +245,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
                       value={m.verticalRole}
                       disabled={savingRoleId === m.id}
                       onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      wrapperClassName="w-auto min-w-44"
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r}>
