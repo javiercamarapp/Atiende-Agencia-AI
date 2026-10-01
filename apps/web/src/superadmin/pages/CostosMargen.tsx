@@ -221,7 +221,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
 
       {!datos.disponible && (
         <p role="alert" className="text-[13px] text-muted-foreground">
-          El costo por evento todavía no está disponible en esta base (migración 0027 pendiente de aplicar).
+          El costo por evento todavía no está disponible en esta base (migración 0028 pendiente de aplicar).
         </p>
       )}
       {aviso && (

@@ -1,6 +1,6 @@
 // Repositorio del superadmin "CFO": costo por evento por organizacion (SA-02), tipo de
 // cambio, catalogo de planes/limites y asignacion de planes (SA-03) -- puerto contra las
-// funciones `security definer` de packages/db/migrations/0027_superadmin_costos_planes.sql.
+// funciones `security definer` de packages/db/migrations/0028_superadmin_costos_planes.sql.
 //
 // SESIONES (ver la cabecera de la migracion): `recordEvent` es SOLO-SISTEMA (el llamador
 // la invoca en `withAppSession({ userId: null })`); todo lo demas es caller-bound
@@ -8,7 +8,7 @@
 // `TenantDbSession` ya abierto.
 //
 // COMPATIBILIDAD CON LA BASE SIN MIGRAR: cada metodo corre bajo `runWithSavepointFallback`
-// -- un SQLSTATE 42883/42P01/42703 (migracion 0027 sin aplicar) revierte SOLO el
+// -- un SQLSTATE 42883/42P01/42703 (migracion 0028 sin aplicar) revierte SOLO el
 // savepoint (la transaccion de la sesion sigue viva) y devuelve `availability:
 // "not_migrated"` con datos vacios; nunca 500 ni exito simulado. Los errores de negocio
 // de la base (42501/22023/P0002/55006/23505/23514) se traducen a `SuperadminSeguridadError`
@@ -189,7 +189,7 @@ function warnOnce(): void {
   if (warned) return;
   warned = true;
   console.warn(
-    "superadmin-costos-planes-repository: las funciones/tablas de 0027_superadmin_costos_planes.sql no existen todavia " +
+    "superadmin-costos-planes-repository: las funciones/tablas de 0028_superadmin_costos_planes.sql no existen todavia " +
       "(SQLSTATE 42883/42P01/42703) -- degradando a 'no disponible aun' (nunca 500, nunca exito simulado). Aplica la migracion " +
       "(o su espejo en supabase/migrations/) para habilitar costo por evento, margen y catalogo de planes.",
   );

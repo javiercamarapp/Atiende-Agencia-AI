@@ -1,5 +1,5 @@
 // Costo por evento por organizacion, margen y alertas de tope (SA-02, superadmin "CFO").
-// Ver packages/db/migrations/0027_superadmin_costos_planes.sql y docs/SUPERADMIN_COSTOS_PLANES.md.
+// Ver packages/db/migrations/0028_superadmin_costos_planes.sql y docs/SUPERADMIN_COSTOS_PLANES.md.
 //
 // El reporte une, por organizacion y mes: LLM (core.llm_usage_daily, la fuente que ya tiene
 // tope y reserva) + eventos de voz/WhatsApp/telefonia/sms/email/storage
@@ -12,7 +12,7 @@
 // es `null` con su razon. Nada de esto cobra ni cambia nada: es solo lectura, salvo
 // `PUT /superadmin/costos/tipo-cambio` (acepta step-up, ver superadmin-seguridad/step-up.ts).
 //
-// Base sin migrar (0027 sin aplicar): `disponible: false` con listas vacias en las lecturas y 503
+// Base sin migrar (0028 sin aplicar): `disponible: false` con listas vacias en las lecturas y 503
 // honesto en la escritura -- nunca un 500 ni un reporte inventado.
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -25,7 +25,7 @@ import { requestActor } from "../http-security.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
-const NO_DISPONIBLE = "El costo por evento y el margen todavía no están disponibles en este despliegue (falta aplicar la migración 0027_superadmin_costos_planes).";
+const NO_DISPONIBLE = "El costo por evento y el margen todavía no están disponibles en este despliegue (falta aplicar la migración 0028_superadmin_costos_planes).";
 const MUTACION_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 const MES_RE = /^(\d{4})-(0[1-9]|1[0-2])$/u;
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/u;

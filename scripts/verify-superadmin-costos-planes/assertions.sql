@@ -1,5 +1,5 @@
 -- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), la migracion
--- packages/db/migrations/0027_superadmin_costos_planes.sql:
+-- packages/db/migrations/0028_superadmin_costos_planes.sql:
 --
 --   A) record_usage_cost_event: solo-sistema (un authenticated no puede inflar el costo
 --      de otra organizacion), anon sin EXECUTE, vertical derivado de la organizacion,

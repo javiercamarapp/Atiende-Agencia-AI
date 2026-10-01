@@ -1,5 +1,5 @@
 // Catalogo de planes y precios por vertical, limites por plan y asignacion de plan a
-// organizaciones (SA-03, superadmin "CFO"). Ver packages/db/migrations/0027_superadmin_costos_planes.sql
+// organizaciones (SA-03, superadmin "CFO"). Ver packages/db/migrations/0028_superadmin_costos_planes.sql
 // y docs/SUPERADMIN_COSTOS_PLANES.md.
 //
 // Asignar un plan es DOS pasos (solicitar -> confirmar), motivo >= 20 caracteres, solo el
@@ -20,7 +20,7 @@ import { requestActor } from "../http-security.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
-const NO_DISPONIBLE = "El catálogo de planes todavía no está disponible en este despliegue (falta aplicar la migración 0027_superadmin_costos_planes).";
+const NO_DISPONIBLE = "El catálogo de planes todavía no está disponible en este despliegue (falta aplicar la migración 0028_superadmin_costos_planes).";
 const MUTACION_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;

@@ -283,7 +283,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
 
       {!disponible && (
         <p role="alert" className="text-[13px] text-muted-foreground">
-          El catálogo de planes todavía no está disponible en esta base (migración 0027 pendiente de aplicar).
+          El catálogo de planes todavía no está disponible en esta base (migración 0028 pendiente de aplicar).
         </p>
       )}
       {aviso && (

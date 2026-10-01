@@ -66,7 +66,7 @@ describe("SuperAdminPlanesPage", () => {
     stub({ disponible: false });
     rendered = render();
     await esperar();
-    expect(rendered.container.textContent).toContain("migración 0027 pendiente");
+    expect(rendered.container.textContent).toContain("migración 0028 pendiente");
     const botones = [...rendered.container.querySelectorAll("button")].map((b) => b.textContent?.trim());
     expect(botones).not.toContain("Nuevo plan");
     expect(botones).not.toContain("Asignar plan");

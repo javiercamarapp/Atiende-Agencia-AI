@@ -470,7 +470,7 @@ export interface AppDeps {
   /** Gestion de organizaciones con solicitar -> confirmar (routes/superadmin-organizaciones.ts). */
   readonly orgAdminRepo?: (db: TenantDbSession) => OrgAdminRepository;
   /** Costo por evento por organizacion, margen, tipo de cambio y catalogo de planes
-   *  (packages/db/migrations/0027_superadmin_costos_planes.sql, ver
+   *  (packages/db/migrations/0028_superadmin_costos_planes.sql, ver
    *  routes/superadmin-costos.ts y routes/superadmin-planes.ts). Fabrica por sesion:
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */

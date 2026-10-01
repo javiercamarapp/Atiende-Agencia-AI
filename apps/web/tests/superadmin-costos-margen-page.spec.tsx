@@ -90,7 +90,7 @@ describe("SuperAdminCostosMargenPage", () => {
     rendered = render();
     await esperar();
     const t = rendered.container.textContent ?? "";
-    expect(t).toContain("migración 0027 pendiente");
+    expect(t).toContain("migración 0028 pendiente");
     expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Capturar tipo de cambio"))).toBe(false);
   });
 

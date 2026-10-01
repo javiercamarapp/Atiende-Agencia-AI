@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificacion manual, opt-in, contra un Postgres LOCAL real -- mismo patron que
 # scripts/verify-superadmin-mfa-switches-orgs/run.sh. Acompana a
-# packages/db/migrations/0027_superadmin_costos_planes.sql (costo por evento por
+# packages/db/migrations/0028_superadmin_costos_planes.sql (costo por evento por
 # organizacion, tipo de cambio, catalogo de planes/limites y asignacion en dos pasos)
 # y prueba, contra RLS/GRANT/auth.uid() reales: caller-binding, funcion de
 # solo-sistema, anon sin acceso, aislamiento entre organizaciones, no-duplicacion
@@ -50,7 +50,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0027_superadmin_costos_planes.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0028_superadmin_costos_planes.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

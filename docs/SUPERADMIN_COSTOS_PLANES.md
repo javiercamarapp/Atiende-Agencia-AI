@@ -1,7 +1,7 @@
 # Superadmin CFO: costo por evento, margen y planes (SA-02 / SA-03)
 
-Migración: `packages/db/migrations/0027_superadmin_costos_planes.sql` (espejo
-`supabase/migrations/20240101000209_0027_superadmin_costos_planes.sql`).
+Migración: `packages/db/migrations/0028_superadmin_costos_planes.sql` (espejo
+`supabase/migrations/20240101000209_0028_superadmin_costos_planes.sql`).
 Verificación contra Postgres real: `scripts/verify-superadmin-costos-planes/` (lo corre el gate de CI).
 Pantallas: `/superadmin/costos-margen` y `/superadmin/planes`.
 
