@@ -46,6 +46,7 @@ import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionO
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
 import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
 import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
+import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
@@ -392,6 +393,15 @@ function SuperAdminCfoDashboardRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminZonaCfoRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminZonaCfoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -880,6 +890,7 @@ export function App() {
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
+        <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
