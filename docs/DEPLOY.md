@@ -56,7 +56,7 @@ falsos) hasta que se configure:
 
 | Puerto | Bloqueado por | Dónde |
 |---|---|---|
-| `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` (agente LLM de WhatsApp) | Ninguna API key de proveedor LLM configurada | `ANTHROPIC_API_KEY`+`ANTHROPIC_MODEL` / `OPENAI_API_KEY`+`OPENAI_MODEL` / `OPENROUTER_API_KEY`+`OPENROUTER_MODEL`, ver `.env.example` y `apps/api/src/production/llm-gateway.ts` |
+| `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` (agente LLM de WhatsApp) | Ninguna API key de proveedor LLM configurada | `OPENROUTER_API_KEY` (proveedor primario; los modelos por rol salen de `apps/api/src/production/llm-models.ts` y de `LLM_MODELS_JSON`) o, solo como legado, `OPENAI_API_KEY`+`OPENAI_MODEL`; ver `docs/LLM-GATEWAY.md` y `apps/api/src/production/llm-gateway.ts` |
 | `whatsAppDispatcher` (envío saliente real de WhatsApp) | Sin `WHATSAPP_ACCESS_TOKEN` | `.env.example`, `apps/api/src/production/deps.ts` |
 | `citasGoogleCalendarPortResolver` | Sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_BASE_URL` | ídem — devuelve "sin conectar" honesto, nunca error, mientras falten |
 | `hotelesCfdiPort` (timbrar/cancelar CFDI de hospedaje) | Sin credenciales/CSD reales de Finkok NI de SW Sapien | `.env.example` (`FINKOK_*`/`SW_*`), `packages/mcp-servers/cfdi/README.md` |
@@ -493,8 +493,8 @@ registran como una línea de log estructurada (sin resultados ni PII) en vez de 
 1. Desplegar el código (funciona contra la base sin migrar; `GET .../admin/chat-datos/estado` responde
    `available: false` si no hay ningún proveedor LLM y el botón sigue diciendo "Pronto").
 2. Aplicar la migración 0029 (la aplica Javier; es solo aditiva: tabla nueva + una función).
-3. Tener al menos un proveedor LLM configurado (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`
-   y su modelo). El gasto del chat cuenta contra `core.llm_org_budget` (tope mensual por organización) y
+3. Tener al menos un proveedor LLM configurado (`OPENROUTER_API_KEY`; opcional `LLM_MODELS_JSON`; el legado
+   `OPENAI_API_KEY`+`OPENAI_MODEL` solo aplica sin llave de OpenRouter). El gasto del chat cuenta contra `core.llm_org_budget` (tope mensual por organización) y
    queda en `core.llm_usage_daily` con el rol `restaurantes:data_chat`.
 4. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `restaurantes:data_chat`.
 
@@ -509,7 +509,7 @@ Orden recomendado:
    está disponible" y la transacción de la request sigue sana (cada consulta va en SAVEPOINT).
 2. (Opcional) Aplicar la migración 0029 si aún no está (bitácora en `core.data_chat_query_log`; sin ella queda
    una línea de log estructurada sin resultados ni PII).
-3. Tener un proveedor LLM configurado (los mismos `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`).
+3. Tener un proveedor LLM configurado (`OPENROUTER_API_KEY`, o el legado `OPENAI_API_KEY`+`OPENAI_MODEL`).
    Los roles nuevos `hoteles:data_chat` y `rentas:data_chat` cuentan contra `core.llm_org_budget` y quedan en
    `core.llm_usage_daily`.
 4. Quién lo ve: hoteles solo `owner`/`gm`; rentas solo `admin_gestora`/`contador`. Para el resto de roles
