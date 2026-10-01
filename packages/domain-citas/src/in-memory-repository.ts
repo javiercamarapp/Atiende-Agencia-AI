@@ -6,6 +6,8 @@
 // real — mismo rol que InMemoryRestaurantesRepository/InMemoryHotelesRepository.
 import { randomUUID } from "node:crypto";
 import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
+import { MENSAJES_CONFIG_POR_OMISION as MENSAJES_CONFIG_POR_OMISION_MEM, fotoConfigMensajes } from "./whatsapp/message-config.ts";
+import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type {
   ConfirmDataRightsOutcome,
   DataRightsEventRow,
@@ -196,6 +198,9 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly appointmentIdByIdempotencyKey = new Map<string, string>(); // `${orgId}:${key}`
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
+  // C-04 -- mensajes de WhatsApp editables (sin RLS que simular: el rol owner/admin lo valida la API).
+  private readonly whatsappMessageConfigByOrg = new Map<string, WhatsappMessageConfigRecord>();
+  private readonly whatsappMessageConfigHistoryByOrg = new Map<string, WhatsappMessageConfigHistoryEntry[]>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
@@ -1030,7 +1035,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       const startsMs = Date.parse(apt.startsAt);
       if (startsMs < startMs || startsMs > endMs) continue;
       const customer = this.customers.get(apt.customerId);
-      rows.push({ appointmentId: apt.id, providerId: apt.providerId, startsAt: apt.startsAt, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? "" });
+      rows.push({ appointmentId: apt.id, providerId: apt.providerId, startsAt: apt.startsAt, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? "", serviceId: apt.serviceId });
     }
     return rows;
   }
@@ -1039,6 +1044,38 @@ export class InMemoryCitasRepository implements CitasRepository {
     const appointment = this.appointments.get(appointmentId);
     if (!appointment) return;
     this.appointments.set(appointmentId, { ...appointment, reminder24hSentAt: sentAtIso });
+  }
+
+  // ---- C-04 -- mensajes de WhatsApp editables ----
+
+  async getWhatsappMessageConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappMessageConfigRecord | null }> {
+    return { disponible: true, record: this.whatsappMessageConfigByOrg.get(organizationId) ?? null };
+  }
+
+  async getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null> {
+    return this.whatsappMessageConfigByOrg.get(organizationId)?.config ?? null;
+  }
+
+  async saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado> {
+    const actual = this.whatsappMessageConfigByOrg.get(organizationId);
+    if (expectedVersion !== (actual?.version ?? 0)) return { status: "conflict" };
+    const version = (actual?.version ?? 0) + 1;
+    const nuevo = accion === "restablecido" ? { ...fotoConfigMensajes(MENSAJES_CONFIG_POR_OMISION_MEM) } : fotoConfigMensajes(config);
+    this.whatsappMessageConfigByOrg.set(organizationId, {
+      config: accion === "restablecido" ? MENSAJES_CONFIG_POR_OMISION_MEM : config,
+      version,
+      updatedAt: new Date().toISOString(),
+      updatedBy: null,
+    });
+    const historial = this.whatsappMessageConfigHistoryByOrg.get(organizationId) ?? [];
+    historial.push({ version, accion, anterior: actual ? fotoConfigMensajes(actual.config) : null, nuevo, actorId: null, actorNombre: null, createdAt: new Date().toISOString() });
+    this.whatsappMessageConfigHistoryByOrg.set(organizationId, historial);
+    return { status: "saved", version };
+  }
+
+  async listWhatsappMessageConfigHistory(organizationId: string, limit: number): Promise<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }> {
+    const items = [...(this.whatsappMessageConfigHistoryByOrg.get(organizationId) ?? [])].sort((a, b) => b.version - a.version).slice(0, Math.max(1, limit));
+    return { disponible: true, items };
   }
 
   async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {

@@ -10,6 +10,7 @@
 // las lanza la capa de negocio (appointments.ts), nunca el adaptador. Esto reproduce
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
+import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -188,6 +189,8 @@ export interface ReminderCandidateRow {
   readonly startsAt: string;
   readonly customerName: string | null;
   readonly customerPhone: string;
+  /** C-04 -- para la variable {{servicio}} de la plantilla; `null`/ausente = "Servicio". */
+  readonly serviceId?: string | null;
 }
 
 /** Mismo shape que `ConversationMessage` de domain-restaurantes/domain-hoteles —
@@ -844,4 +847,17 @@ export interface CitasRepository {
   listDataRightsEvents(organizationId: string, requestId: string): Promise<readonly DataRightsEventRow[] | null>;
   /** Staff owner/admin: la función SQL valida rol, organización y transición. */
   updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult>;
+  // ---- C-04 -- mensajes de WhatsApp editables, ver migrations/026_citas_whatsapp_mensajes_config.sql y
+  // whatsapp/message-config.ts. Ningun metodo lanza por una base sin migrar (SQLSTATE 42883/42P01/42703): con SAVEPOINT en
+  // la sesion compartida degradan a "no disponible" / "sin configuracion" (se usan los textos de siempre). ----
+  /** Panel (owner/admin, RLS). `disponible: false` si la migracion 026 no esta aplicada; `record: null` si nunca se configuro. */
+  getWhatsappMessageConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappMessageConfigRecord | null }>;
+  /** Para ENVIAR (sesion de sistema o de staff de la organizacion). `null` = sin configuracion o migracion pendiente: el
+   * llamador usa el comportamiento de siempre. */
+  getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null>;
+  /** Guarda (`actualizado`) o restablece (`restablecido`) con control de version optimista (`expectedVersion` = 0 si aun no
+   * hay fila). La funcion SQL valida rol owner/admin y organizacion. */
+  saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado>;
+  /** Historial (owner/admin) de la mas reciente a la mas antigua. `disponible: false` si la migracion no esta aplicada. */
+  listWhatsappMessageConfigHistory(organizationId: string, limit: number): Promise<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }>;
 }

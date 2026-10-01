@@ -10,6 +10,8 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { fotoConfigMensajes } from "./whatsapp/message-config.ts";
+import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
   ConfirmDataRightsOutcome,
@@ -341,6 +343,52 @@ function mapDataRightsRequestRow(row: DataRightsRequestRowSql): DataRightsReques
     handledBy: row.handled_by,
     updatedAt: row.updated_at,
   };
+}
+
+// C-04 -- ver el bloque "mensajes de WhatsApp editables" de la clase.
+interface WhatsappMessageConfigRowSql {
+  reminder_enabled: boolean;
+  reminder_text: string | null;
+  reminder_lead_hours: number;
+  confirmation_enabled: boolean;
+  confirmation_text: string | null;
+  cancellation_enabled: boolean;
+  cancellation_text: string | null;
+  reschedule_enabled: boolean;
+  reschedule_text: string | null;
+  send_window_start: number | null;
+  send_window_end: number | null;
+  // Solo vienen en la lectura del panel (la de envio no las devuelve).
+  version: number;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+function mapWhatsappMessageConfigRow(r: WhatsappMessageConfigRowSql): WhatsappMessageConfig {
+  return {
+    reminderEnabled: r.reminder_enabled,
+    reminderText: r.reminder_text,
+    reminderLeadHours: Number(r.reminder_lead_hours),
+    confirmationEnabled: r.confirmation_enabled,
+    confirmationText: r.confirmation_text,
+    cancellationEnabled: r.cancellation_enabled,
+    cancellationText: r.cancellation_text,
+    rescheduleEnabled: r.reschedule_enabled,
+    rescheduleText: r.reschedule_text,
+    sendWindowStart: r.send_window_start === null ? null : Number(r.send_window_start),
+    sendWindowEnd: r.send_window_end === null ? null : Number(r.send_window_end),
+  };
+}
+
+const mensajesAdvertidos = new Set<string>();
+function advertirMensajesNoDisponibles(metodo: string, err: unknown): void {
+  if (mensajesAdvertidos.has(metodo)) return;
+  mensajesAdvertidos.add(metodo);
+  console.warn(
+    `PostgresCitasRepository.${metodo}: la configuracion de mensajes de WhatsApp (migracion 026) no esta disponible en esta base ` +
+      "(SQLSTATE 42883/42P01/42703 o sin acceso) -- se usan los textos y el horario de siempre.",
+    err instanceof Error ? err.message : err,
+  );
 }
 
 function sqlState(err: unknown): string | undefined {
@@ -1028,8 +1076,8 @@ export class PostgresCitasRepository implements CitasRepository {
   }
 
   async loadAppointmentsPendingReminder(organizationId: string, windowStartIso: string, windowEndIso: string): Promise<readonly ReminderCandidateRow[]> {
-    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; starts_at: string; customer_name: string | null; customer_phone: string }>(
-      `select a.id as appointment_id, a.provider_id, a.starts_at, c.full_name as customer_name, c.phone as customer_phone
+    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; service_id: string | null; starts_at: string; customer_name: string | null; customer_phone: string }>(
+      `select a.id as appointment_id, a.provider_id, a.service_id, a.starts_at, c.full_name as customer_name, c.phone as customer_phone
        from citas.appointments a
        join citas.customers c on c.id = a.customer_id
        where a.organization_id = $1 and a.status in ('pending','confirmed')
@@ -1037,7 +1085,101 @@ export class PostgresCitasRepository implements CitasRepository {
          and a.starts_at >= $2 and a.starts_at <= $3;`,
       [organizationId, windowStartIso, windowEndIso],
     );
-    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone }));
+    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone, serviceId: r.service_id }));
+  }
+
+  // ============================================================================
+  // C-04 -- mensajes de WhatsApp editables, ver migrations/026_citas_whatsapp_mensajes_config.sql. REGLA DURA DE
+  // COMPATIBILIDAD CON LA BASE SIN MIGRAR: mergear despliega el codigo pero nadie aplica la migracion. Cada metodo corre bajo
+  // `runWithSavepointFallback` (SAVEPOINT / ROLLBACK TO SAVEPOINT) porque la sesion es UNA transaccion por request: un
+  // SQLSTATE 42883/42P01/42703 sin savepoint la dejaria abortada (25P02) y el COMMIT revertiria el trabajo del request.
+  // ============================================================================
+
+  async getWhatsappMessageConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappMessageConfigRecord | null }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean; readonly record: WhatsappMessageConfigRecord | null }>({
+      session: this.db,
+      savepointName: "sp_citas_wa_msg_config_read",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsappMessageConfigRowSql>(
+          `select reminder_enabled, reminder_text, reminder_lead_hours, confirmation_enabled, confirmation_text, cancellation_enabled,
+                  cancellation_text, reschedule_enabled, reschedule_text, send_window_start, send_window_end, version, updated_by,
+                  updated_at::text as updated_at
+             from citas.whatsapp_message_config where organization_id = $1;`,
+          [organizationId],
+        );
+        const row = rows[0];
+        if (!row) return { disponible: true, record: null };
+        return { disponible: true, record: { config: mapWhatsappMessageConfigRow(row), version: row.version, updatedAt: row.updated_at, updatedBy: row.updated_by } };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirMensajesNoDisponibles("getWhatsappMessageConfig", err);
+        return Promise.resolve({ disponible: false, record: null });
+      },
+    });
+  }
+
+  async getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null> {
+    return runWithSavepointFallback<WhatsappMessageConfig | null>({
+      session: this.db,
+      savepointName: "sp_citas_wa_msg_config_send",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsappMessageConfigRowSql>(`select * from citas.whatsapp_message_config_envio($1);`, [organizationId]);
+        return rows[0] ? mapWhatsappMessageConfigRow(rows[0]) : null;
+      },
+      // 42501: una sesion de staff de OTRA organizacion pidio esta configuracion -- sin acceso se actua como "sin configuracion".
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.whatsapp_message_config_envio") || sqlState(err) === "42501",
+      fallback: (err) => {
+        advertirMensajesNoDisponibles("getWhatsappMessageConfigForSend", err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado> {
+    return runWithSavepointFallback<MensajeConfigGuardado>({
+      session: this.db,
+      savepointName: "sp_citas_wa_msg_config_save",
+      primary: async () => {
+        const { rows } = await this.db.query<{ version: number }>(`select citas.save_whatsapp_message_config($1, $2, $3, $4::jsonb) as version;`, [
+          organizationId,
+          expectedVersion,
+          accion,
+          JSON.stringify(fotoConfigMensajes(config)),
+        ]);
+        return { status: "saved", version: Number(rows[0]?.version) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.save_whatsapp_message_config") || ["AT409", "42501"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        const code = sqlState(err);
+        if (code === "AT409") return Promise.resolve({ status: "conflict" });
+        if (code === "42501") return Promise.resolve({ status: "forbidden" });
+        advertirMensajesNoDisponibles("saveWhatsappMessageConfig", err);
+        return Promise.resolve({ status: "unavailable" });
+      },
+    });
+  }
+
+  async listWhatsappMessageConfigHistory(organizationId: string, limit: number): Promise<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }>({
+      session: this.db,
+      savepointName: "sp_citas_wa_msg_config_history",
+      primary: async () => {
+        const { rows } = await this.db.query<{ version: number; accion: "actualizado" | "restablecido"; anterior: Record<string, unknown> | null; nuevo: Record<string, unknown>; actor_id: string | null; actor_nombre: string | null; created_at: string }>(
+          `select version, accion, anterior, nuevo, actor_id, actor_nombre, created_at::text as created_at from citas.whatsapp_message_config_history_list($1, $2);`,
+          [organizationId, limit],
+        );
+        return {
+          disponible: true,
+          items: rows.map((r) => ({ version: r.version, accion: r.accion, anterior: r.anterior, nuevo: r.nuevo, actorId: r.actor_id, actorNombre: r.actor_nombre, createdAt: r.created_at })),
+        };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirMensajesNoDisponibles("listWhatsappMessageConfigHistory", err);
+        return Promise.resolve({ disponible: false, items: [] });
+      },
+    });
   }
 
   async markReminderSent(appointmentId: string, sentAtIso: string): Promise<void> {

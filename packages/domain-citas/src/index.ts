@@ -271,3 +271,42 @@ export type {
 } from "./data-rights.ts";
 export { detectArcoConfirmation, detectArcoIntent, normalizeArcoText, runArcoFastPath } from "./arco-intent.ts";
 export type { ArcoConfirmationIntent, ArcoFastPathResult, ArcoIntent } from "./arco-intent.ts";
+
+// C-04 -- mensajes de WhatsApp editables (migrations/026_citas_whatsapp_mensajes_config.sql).
+export {
+  ANTICIPACION_POR_OMISION_HORAS,
+  MENSAJE_ETIQUETAS,
+  MENSAJE_KINDS,
+  MENSAJE_LIMITES,
+  MENSAJES_CONFIG_POR_OMISION,
+  VALORES_DE_MUESTRA,
+  VARIABLES_BASE,
+  configDesdeFoto,
+  dentroDelHorarioDeEnvio,
+  diferenciasConfigMensajes,
+  fotoConfigMensajes,
+  horaLocal,
+  legacyReminderBody,
+  mensajeActivo,
+  plantillaEfectiva,
+  previewMensajes,
+  renderizarMensaje,
+  sanitizarValor,
+  textoPorOmision,
+  textoPropio,
+  validarConfigMensajes,
+  validarTextoMensaje,
+  variablesDe,
+  ventanaDeRecordatorio,
+} from "./whatsapp/message-config.ts";
+export type {
+  DiferenciaCampo,
+  MensajeConfigGuardado,
+  MensajeKind,
+  ValoresMensaje,
+  VariableMensaje,
+  VistaPreviaMensaje,
+  WhatsappMessageConfig,
+  WhatsappMessageConfigHistoryEntry,
+  WhatsappMessageConfigRecord,
+} from "./whatsapp/message-config.ts";
