@@ -53,7 +53,7 @@ import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-h
 import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresRestaurantesRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -106,6 +106,7 @@ import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-re
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
+import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
 import {
@@ -284,6 +285,8 @@ export function buildProductionDeps(): AppDeps {
     // Voz de restaurantes (migración 025): el adaptador de Gemini solo emite sesiones con
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
+    conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
+    handoffGate: (db) => new PostgresHandoffAgentGate(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     dataChat: buildProductionDataChat(llmGateway),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
@@ -463,6 +466,8 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     platformSwitchGuard,
+    // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
+    alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.
