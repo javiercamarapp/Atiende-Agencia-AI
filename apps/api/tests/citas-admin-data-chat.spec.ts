@@ -156,7 +156,7 @@ describe("rol del gateway LLM (kill switch, presupuesto y costo por rol)", () =>
     const h = await harness([REVENUE, { text: "ok" }]);
     await h.app.request(url(h), post(h.ctx.staff.owner.token, { question: "ingresos del mes pasado" }));
     expect(CITAS_DATA_CHAT_ROLE).toBe("citas:data_chat");
-    expect(h.roles).toEqual(["citas:data_chat"]);
+    expect(h.roles).toEqual(["citas:data_chat", "citas:data_chat_retry"]); // turno + reintento por guardia de cifras (DeepSeek V4 Pro)
   });
 });
 

@@ -10,33 +10,13 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn, type DataChatHistoryTurn } from "@atiende/agent-core/data-chat";
+import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
 import { MANAGER_ROLES, buildRestaurantesDataChatCatalog } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
-
-const MAX_BODY_HISTORY = 12;
-
-function parseBody(raw: unknown): { question: string; history: DataChatHistoryTurn[] } {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo inválido: se esperaba un objeto JSON.");
-  const body = raw as Record<string, unknown>;
-  for (const key of Object.keys(body)) {
-    if (key !== "question" && key !== "history") throw Errors.validation(`Campo no permitido: ${key.slice(0, 40)}.`);
-  }
-  if (typeof body["question"] !== "string") throw Errors.validation("question: se esperaba texto.");
-  const history: DataChatHistoryTurn[] = [];
-  const rawHistory = body["history"];
-  if (rawHistory !== undefined) {
-    if (!Array.isArray(rawHistory) || rawHistory.length > MAX_BODY_HISTORY) throw Errors.validation(`history: se esperaba una lista de a lo mucho ${MAX_BODY_HISTORY} turnos.`);
-    for (const item of rawHistory) {
-      const t = item as { role?: unknown; text?: unknown };
-      if ((t?.role !== "user" && t?.role !== "assistant") || typeof t.text !== "string") throw Errors.validation("history: cada turno debe ser {role: 'user'|'assistant', text}.");
-      history.push({ role: t.role, text: t.text });
-    }
-  }
-  return { question: body["question"], history };
-}
+import { parseDataChatBody } from "../../../data-chat/body.ts";
+import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 
 export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -56,7 +36,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
     const raw: unknown = await c.req.json().catch(() => {
       throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
     });
-    const { question, history } = parseBody(raw);
+    const { question, history, tool } = parseDataChatBody(raw);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -81,7 +61,9 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
       },
       question,
       history,
+      ...(tool ? { directTool: tool } : {}),
       complete: completion(organizationId),
+      completeRetry: completion(organizationId, `restaurantes:${DATA_CHAT_RETRY_SUFFIX}`),
       rateLimiter: dataChat.rateLimiter,
       audit: dataChat.audit(db),
       onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),

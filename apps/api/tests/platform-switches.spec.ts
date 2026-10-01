@@ -137,3 +137,11 @@ describe("withHeartbeat + interruptor de cron", () => {
     spy.mockRestore();
   });
 });
+
+describe("interruptor del rol de reintento por guardia de cifras", () => {
+  it("el rol <vertical>:data_chat_retry se detiene junto con su rol base <vertical>:data_chat", async () => {
+    const guard = createPlatformSwitchGuard(async () => [{ scope: "agente", target: "restaurantes:data_chat" }]);
+    expect(await guard.agentBlockedBy("restaurantes:data_chat_retry")).toBe("agente:restaurantes:data_chat");
+    expect(await guard.agentBlockedBy("hoteles:data_chat_retry")).toBeNull();
+  });
+});

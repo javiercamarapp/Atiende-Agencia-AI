@@ -132,9 +132,11 @@ export function createPlatformSwitchGuard(loader: () => Promise<readonly Blocked
       const set = await current();
       if (set.has(switchKey("global", "llm"))) return switchKey("global", "llm");
       if (set.has(switchKey("agente", role))) return switchKey("agente", role);
-      // El rol "escalado" de un agente se detiene junto con su rol base.
-      if (role.endsWith("_escalated")) {
-        const base = role.slice(0, -"_escalated".length);
+      // El rol "escalado" de un agente y el rol de REINTENTO por guardia de cifras (`<vertical>:data_chat_retry`) se
+      // detienen junto con su rol base.
+      for (const suffix of ["_escalated", "_retry"]) {
+        if (!role.endsWith(suffix)) continue;
+        const base = role.slice(0, -suffix.length);
         if (set.has(switchKey("agente", base))) return switchKey("agente", base);
       }
       return null;
