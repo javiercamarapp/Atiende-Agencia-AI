@@ -141,6 +141,7 @@ export {
   SheetTitle,
   SheetTrigger,
 } from "./components/ui/sheet.js";
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverClose, PopoverContent } from "./components/ui/popover.js";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar.js";
 export {
   DropdownMenu,
