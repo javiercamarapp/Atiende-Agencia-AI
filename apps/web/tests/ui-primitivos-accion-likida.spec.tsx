@@ -4,6 +4,7 @@
 // y tokens reales), el texto unificado de guardado, el select sin recorte, las pestanas
 // desplazables y la accesibilidad basica (foco visible, nombres accesibles, teclado).
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Button, buttonVariants, Checkbox, FormField, Input, NativeSelect, Switch, Tabs, TabsContent, TabsList, TabsTrigger, TEXTO_GUARDANDO, Textarea } from "@atiende/ui";
 import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
@@ -18,7 +19,8 @@ const q = <T extends Element>(sel: string): T => {
   if (!el) throw new Error(`no existe ${sel}`);
   return el;
 };
-const fuente = (ruta: string) => readFileSync(new URL(`../../../packages/ui/src/${ruta}`, import.meta.url), "utf8");
+// vitest corre desde la raiz del repo (mismo criterio que los demas specs que leen fuentes).
+const fuente = (ruta: string) => readFileSync(join(process.cwd(), "packages/ui/src", ruta), "utf8");
 
 describe("Button como Likida", () => {
   it("default: h-9 px-4 rounded-md text-sm font-medium con el azul de marca, sin sombra ni elevacion", () => {

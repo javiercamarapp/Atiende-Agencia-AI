@@ -340,10 +340,10 @@ describe("FormField", () => {
 });
 
 describe("Input (campo base compartido)", () => {
-  it("usa el alto por token de control y el radio de campo; un h-* explicito gana", () => {
+  it("usa el alto por token de control y rounded-lg de Likida; un h-* explicito gana", () => {
     rendered = renderComponent(<Input aria-label="x" />);
     expect(q<HTMLInputElement>("input").className).toContain("h-[var(--control-md)]");
-    expect(q<HTMLInputElement>("input").className).toContain("rounded-field");
+    expect(q<HTMLInputElement>("input").className).toContain("rounded-lg");
     rendered.rerender(<Input aria-label="x" className="h-9" />);
     expect(q<HTMLInputElement>("input").className).toContain("h-9");
     expect(q<HTMLInputElement>("input").className).not.toContain("h-[var(--control-md)]");
