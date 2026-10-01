@@ -5,6 +5,24 @@ import { InMemoryRentasReportesRepository } from "@atiende/domain-rentas";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
 
+interface GrupoJson {
+  clave: string;
+  etiqueta: string;
+  noches_ocupadas: number;
+  ingreso_bruto_centavos: number;
+}
+interface ReporteJson {
+  moneda: string;
+  financiero_disponible: boolean;
+  periodo: { desde: string; hasta: string };
+  totales: { noches_ocupadas: number; ingreso_bruto_centavos: number; llegadas: number };
+  por_unidad: GrupoJson[];
+  por_propietario: GrupoJson[];
+  por_canal: GrupoJson[];
+  por_mes: GrupoJson[];
+  advertencias: { reservas_sin_movimiento_financiero: number };
+}
+
 const get = (token: string) => authedJson(token, undefined, {}, "GET");
 const OWNER = "11111111-1111-4111-8111-111111111111";
 
@@ -28,24 +46,24 @@ describe("GET /rentas/:propertyId/reportes/ocupacion-ingresos", () => {
     const { ctx, app, url } = await preparar();
     const res = await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01`, get(ctx.staff.adminGestora.token));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as ReporteJson;
     expect(body.moneda).toBe("MXN");
     expect(body.financiero_disponible).toBe(true);
     expect(body.totales.noches_ocupadas).toBe(8);
     expect(body.totales.ingreso_bruto_centavos).toBe(100003);
     expect(body.totales.llegadas).toBe(2);
-    const meses = Object.fromEntries(body.por_mes.map((m: any) => [m.clave, m]));
+    const meses = Object.fromEntries(body.por_mes.map((m: GrupoJson) => [m.clave, m]));
     expect(meses["2026-03"].noches_ocupadas).toBe(6); // 4 de r1 + 2 de r2
     expect(meses["2026-04"].noches_ocupadas).toBe(2);
     expect(meses["2026-03"].ingreso_bruto_centavos + meses["2026-04"].ingreso_bruto_centavos).toBe(100003);
-    expect(body.por_canal.map((c: any) => c.clave).sort()).toEqual(["airbnb", "manual"]);
-    expect(body.por_propietario.map((p: any) => p.etiqueta).sort()).toEqual(["Ana", "Sin propietario"]);
+    expect(body.por_canal.map((c: GrupoJson) => c.clave).sort()).toEqual(["airbnb", "manual"]);
+    expect(body.por_propietario.map((p: GrupoJson) => p.etiqueta).sort()).toEqual(["Ana", "Sin propietario"]);
     expect(body.advertencias.reservas_sin_movimiento_financiero).toBe(1);
   });
 
   it("sin desde/hasta usa el mes en curso (periodo calendario completo, fin exclusivo)", async () => {
     const { ctx, app, url } = await preparar();
-    const body = (await (await app.request(url, get(ctx.staff.adminGestora.token))).json()) as any;
+    const body = (await (await app.request(url, get(ctx.staff.adminGestora.token))).json()) as ReporteJson;
     expect(body.periodo.desde).toMatch(/^\d{4}-\d{2}-01$/);
     expect(body.periodo.hasta).toMatch(/^\d{4}-\d{2}-01$/);
     expect(body.periodo.hasta > body.periodo.desde).toBe(true);
@@ -63,9 +81,9 @@ describe("GET /rentas/:propertyId/reportes/ocupacion-ingresos", () => {
   it("filtra por canal y por propietario", async () => {
     const { ctx, app, url } = await preparar();
     const t = ctx.staff.adminGestora.token;
-    const porCanal = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01&canal=manual`, get(t))).json()) as any;
+    const porCanal = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01&canal=manual`, get(t))).json()) as ReporteJson;
     expect(porCanal.totales.noches_ocupadas).toBe(2);
-    const porOwner = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01&propietario_id=${OWNER}`, get(t))).json()) as any;
+    const porOwner = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01&propietario_id=${OWNER}`, get(t))).json()) as ReporteJson;
     expect(porOwner.totales.noches_ocupadas).toBe(6);
     expect(porOwner.por_unidad).toHaveLength(1);
   });
@@ -99,7 +117,7 @@ describe("GET /rentas/:propertyId/reportes/ocupacion-ingresos", () => {
   it("base sin movimiento financiero legible: responde 200 con financiero_disponible=false y sin montos", async () => {
     const { ctx, repo, app, url } = await preparar();
     repo.financieroDisponible = false;
-    const body = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01`, get(ctx.staff.adminGestora.token))).json()) as any;
+    const body = (await (await app.request(`${url}?desde=2026-03-01&hasta=2026-05-01`, get(ctx.staff.adminGestora.token))).json()) as ReporteJson;
     expect(body.financiero_disponible).toBe(false);
     expect(body.totales.ingreso_bruto_centavos).toBe(0);
     expect(body.totales.noches_ocupadas).toBe(8);

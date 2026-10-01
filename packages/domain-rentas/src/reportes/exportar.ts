@@ -2,6 +2,9 @@
 // PDF simple de una tabla. Sin dependencias nuevas, sin IO.
 import type { AgrupacionReporte, GrupoReporte, ResultadoReporte } from "./tipos.ts";
 
+/** BOM UTF-8: hace que Excel detecte la codificación al abrir el CSV. */
+const BOM = String.fromCharCode(0xfeff);
+
 const ETIQUETA_GRUPO: Record<AgrupacionReporte, string> = { unidad: "Unidad", propietario: "Propietario", canal: "Canal", mes: "Mes" };
 
 export function formatearCentavos(centavos: number): string {
@@ -67,7 +70,7 @@ export function reporteACsv(reporte: ResultadoReporte, agrupar: AgrupacionReport
   const filas = tablaReporte(reporte, agrupar);
   const lineas = filas.map((fila, i) => fila.map((celda, j) => celdaCsv(i > 0 && j === 0 ? celdaTextoSegura(celda) : celda)).join(","));
   const meta = [`Reporte de ocupacion e ingresos`, `Periodo,${reporte.periodo.inicio} a ${reporte.periodo.fin} (fin exclusivo)`, `Moneda,${reporte.moneda}`, `Montos,en unidades de moneda (centavos / 100)`];
-  return `﻿${[...meta, "", ...lineas].join("\r\n")}\r\n`;
+  return `${BOM}${[...meta, "", ...lineas].join("\r\n")}\r\n`;
 }
 
 // ---------------------------------------------------------------------------
