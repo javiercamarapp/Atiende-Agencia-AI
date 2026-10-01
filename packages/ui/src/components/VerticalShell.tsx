@@ -241,7 +241,13 @@ export function VerticalShell({
     return () => observador.disconnect();
   }, [pathname, contentKey]);
   const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
-  const activo = itemActivo(sections, pathname);
+  // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
+  // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
+  // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
+  const destinosPie: SidebarSection[] = (sidebarPie ?? []).some((p) => p.to)
+    ? [{ title: "Cuenta", items: (sidebarPie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+    : [];
+  const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
   const barraDeRuta = !activo || esResumen ? null : activo.item;
   const IconoBarra = sobrescrito?.icono ?? barraDeRuta?.icon;
