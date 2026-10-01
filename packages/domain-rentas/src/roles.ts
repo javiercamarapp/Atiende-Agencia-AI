@@ -145,6 +145,17 @@ export const LIMPIEZA_CREACION_MANUAL_ROLES: readonly RentasVerticalRole[] = ["a
 // los operadores de calendario ven la reserva, no la llave.
 export const ACCESO_HUESPED_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total"];
 
+// Rn-19: alta y edicion de propiedades, unidades y propietarios (y sus reglas de comision, Rn-18, que ya
+// escribe FINANZAS_ESCRITURA_ROLES): solo admin_gestora. Espejo de rentas.es_admin_gestora (migracion 027),
+// que es la autoridad real. La LECTURA del catalogo se abre ademas al operador de acceso total y al contador
+// (necesitan ver propietarios y unidades para operar y liquidar), nunca a los roles de piso.
+export const CATALOGO_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
+export const CATALOGO_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "contador"];
+
+// Rn-20: invitar, cambiar el rol y dar de baja al staff -- solo admin_gestora (el unico rol con platformRole
+// owner; ademas `canInviteStaff` de core-authz exige que quien invita tenga al menos el rango del invitado).
+export const STAFF_INVITE_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
+
 export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RentasVerticalRole, "owner" | "admin" | "member" | "viewer"> = {
   admin_gestora: "owner",
   "operador:acceso_total": "member",

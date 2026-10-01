@@ -100,15 +100,15 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });
 
-  it('el botón "Más" abre los 11 destinos, incluidos Precios, Finanzas y Auditoría', async () => {
+  it('el botón "Más" abre los 13 destinos, incluidos Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(11);
+    expect(hrefs).toHaveLength(13);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria"]),
+      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
     );
   });
 

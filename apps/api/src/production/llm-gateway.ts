@@ -27,37 +27,32 @@
 //
 // FAIL-CLOSED explícito, mismo principio que `notProductionReady` (../not-ready.ts):
 // este módulo NUNCA finge un gateway funcional sin proveedores reales detrás. Se
-// construye SOLO SI al menos un proveedor tiene su API key Y su modelo
-// configurados vía env.ts (`ApiEnv.llmProviders`, leído de
-// `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`, `OPENAI_API_KEY`/`OPENAI_MODEL`,
-// `OPENROUTER_API_KEY`/`OPENROUTER_MODEL`+`OPENROUTER_COUNTRY_OF_RESIDENCE`
-// opcional — ver providers/{anthropic,openai,openrouter}.ts para qué opciones
-// espera cada uno). Si NINGUNO está configurado, devuelve `undefined` — el
-// llamador (`production/deps.ts`, `technicalProposal.ts`) decide el fallback
-// explícito (`notProductionReady` / solo `RuleBasedExtractor`), nunca este módulo.
+// construye SOLO SI hay OPENROUTER_API_KEY (proveedor PRIMARIO y ÚNICO por defecto; basta la
+// llave, los modelos por rol salen de `./llm-models.ts`) o, como legado, OPENAI_API_KEY +
+// OPENAI_MODEL cuando NO hay llave de OpenRouter. Si ninguno está configurado, devuelve
+// `undefined` — el llamador (`production/deps.ts`, `technicalProposal.ts`) decide el fallback
+// explícito (`notProductionReady` / solo `RuleBasedExtractor`), nunca este módulo. El proveedor
+// directo de Anthropic se RETIRÓ (ignoraba tools): los modelos Anthropic pasan por OpenRouter.
+//
+// ESCALERA POR ROL: cada rol tiene su lista ordenada de modelos (`resolveRoleRoute`); cada modelo
+// es un escalón (`OpenRouterProvider` con id `openrouter:<modelo>`, su propio circuit breaker y
+// sus parámetros). Ver docs/LLM-GATEWAY.md.
 //
 // SINGLETON: a diferencia de `buildProductionDeps()` (que cachea en un `let
 // cached` de módulo porque se invoca en cada request), esta función es pura
 // (mismo `env` de entrada → mismo resultado) y se llama UNA sola vez, dentro de
 // `buildProductionDeps()`, que ya está cacheada a nivel de proceso — no hace
 // falta un segundo cache aquí (ver `../production/deps.ts::cached`).
-//
-// UNA escalera de proveedores compartida por las 5 (más el rol *_escalated de
-// cada turn handler, que usa la MISMA escalera): hoy no hay una variable de
-// entorno que distinga un modelo "barato" (rol default) de uno "caro" (rol
-// escalado) — el fallback REAL entre proveedores (Anthropic → OpenAI →
-// OpenRouter, con circuit breaker y presupuesto) sigue aplicando dentro de cada
-// llamada. Separar barato/caro con más variables de entorno es una extensión
-// futura legítima (agregar otra ladder), no un requisito para que esta pieza
-// deje de fingir.
 import {
-  AnthropicProvider,
   CircuitBreaker,
   InMemoryBudgetLedgerStore,
   InMemoryCircuitBreakerStore,
   LlmGateway,
   OpenAiProvider,
   OpenRouterProvider,
+  RedisCircuitBreakerStore,
+  UpstashRestClient,
+  type CircuitBreakerStore,
   type GatewayBudgetLimits,
   type GatewayKillSwitch,
   type LlmProvider,
@@ -66,6 +61,7 @@ import type { TenancyEngine } from "@atiende/core-tenancy";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
+import { parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -156,26 +152,51 @@ export const DEFAULT_LLM_GATEWAY_BUDGET_LIMITS: GatewayBudgetLimits = {
   maxTenantDailyUsd: 50,
 };
 
-function buildProviderLadder(env: ApiEnv): LlmProvider[] {
-  const providers: LlmProvider[] = [];
-  const { anthropic, openai, openrouter } = env.llmProviders;
+/** Atribucion hacia OpenRouter (cabeceras HTTP-Referer / X-Title). */
+const OPENROUTER_APP_NAME = "Atiende";
 
-  // Orden de preferencia: integraciones DIRECTAS primero (residencia declarada
-  // y fija, ver providers/{anthropic,openai}.ts), el agregador OpenRouter al
-  // final (residencia 'unknown' salvo que el operador la confirme vía
-  // OPENROUTER_COUNTRY_OF_RESIDENCE).
-  if (anthropic) providers.push(new AnthropicProvider({ apiKey: anthropic.apiKey, model: anthropic.model }));
-  if (openai) providers.push(new OpenAiProvider({ apiKey: openai.apiKey, model: openai.model }));
+/** Carga y valida LLM_MODELS_JSON. Nunca lanza: una configuracion invalida se ignora (rol por rol) y
+ *  queda registrada como error estructurado -- los defaults versionados siguen vigentes. */
+export function loadLlmModelsConfig(env: ApiEnv): LlmModelsConfig {
+  const { config, errors } = parseLlmModelsJson(env.llmProviders.openrouter?.modelsJson);
+  for (const message of errors) console.error(JSON.stringify({ level: "error", event: "llm_models_json_invalid", message }));
+  return config;
+}
+
+/** Breaker COMPARTIDO entre instancias si hay Upstash (mismas variables que el rate limit); si no,
+ *  en memoria por instancia (limite documentado en docs/LLM-GATEWAY.md). */
+export function buildBreakerStore(env: ApiEnv): CircuitBreakerStore {
+  const shared = env.llmProviders.openrouter?.sharedBreaker;
+  if (shared) return new RedisCircuitBreakerStore(new UpstashRestClient({ url: shared.url, token: shared.token }));
+  return new InMemoryCircuitBreakerStore();
+}
+
+/** Escalera de un rol: un escalon por modelo de su ruta. `undefined` si no hay ningun proveedor. */
+export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConfig): LlmProvider[] | undefined {
+  const { openrouter, openai } = env.llmProviders;
   if (openrouter) {
-    providers.push(
-      new OpenRouterProvider({
-        apiKey: openrouter.apiKey,
-        model: openrouter.model,
-        countryOfResidence: openrouter.countryOfResidence ?? undefined,
-      }),
+    const route = resolveRoleRoute(role, models);
+    return route.models.map(
+      (rung) =>
+        new OpenRouterProvider({
+          id: `openrouter:${rung.model}`,
+          apiKey: openrouter.apiKey,
+          model: rung.model,
+          params: rung,
+          routing: routingForModel(route, rung.model, openrouter.zdr),
+          countryOfResidence: openrouter.countryOfResidence ?? undefined,
+          appUrl: env.appBaseUrl,
+          appName: OPENROUTER_APP_NAME,
+        }),
     );
   }
-  return providers;
+  // LEGADO: sin llave de OpenRouter, el proveedor directo de OpenAI (un solo modelo para todos los roles).
+  if (openai) return [new OpenAiProvider({ apiKey: openai.apiKey, model: openai.model })];
+  return undefined;
+}
+
+function hasAnyProvider(env: ApiEnv): boolean {
+  return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
 }
 
 /**
@@ -196,11 +217,11 @@ function buildProviderLadder(env: ApiEnv): LlmProvider[] {
  * `buildProductionDeps`).
  */
 export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
-  const providers = buildProviderLadder(env);
-  if (providers.length === 0) return undefined;
+  if (!hasAnyProvider(env)) return undefined;
+  const models = loadLlmModelsConfig(env);
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+    breaker: new CircuitBreaker(buildBreakerStore(env)),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
@@ -209,8 +230,11 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
     killSwitch,
   });
 
-  for (const role of ALL_PRODUCTION_ROLES) {
-    gateway.registerLadder(role, providers);
+  // El copiloto de superadmin/CFO (SA-33..35) todavia no tiene ruta que lo invoque, pero su escalera
+  // premium ya existe para que se enchufe sin tocar el gateway (su interruptor de plataforma llegara
+  // con ese trabajo: no esta en ALL_PRODUCTION_ROLES a proposito, un test lo ata a core.platform_switch).
+  for (const role of [...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE]) {
+    gateway.registerLadder(role, buildRoleLadder(env, role, models)!);
   }
 
   return gateway;
@@ -239,8 +263,8 @@ export const RESUMEN_DIARIO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
  * falsa solo para reusar esas tablas (ver el comentario largo de
  * `../resumen-diario/redaccion.ts`, que documenta la decisión completa).
  *
- * MISMA escalera de proveedores/credenciales que `buildProductionLlmGateway`
- * (misma llamada a `buildProviderLadder`), pero con su PROPIO circuit
+ * MISMA llave de OpenRouter que `buildProductionLlmGateway`
+ * (escalera de reportes de `./llm-models.ts`), pero con su PROPIO circuit
  * breaker/budget ledger en memoria (aislados del gateway de tenants) y sin
  * `usageRecorder`/`orgMonthlyBudgetStore` -- el costo/modelo/proveedor real
  * que el proveedor reportó se guarda directamente en la fila de `core.
@@ -252,15 +276,14 @@ export const RESUMEN_DIARIO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
  * llamada.
  */
 export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
-  const providers = buildProviderLadder(env);
-  if (providers.length === 0) return undefined;
+  if (!hasAnyProvider(env)) return undefined;
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+    breaker: new CircuitBreaker(buildBreakerStore(env)),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: RESUMEN_DIARIO_LLM_BUDGET_LIMITS,
     killSwitch,
   });
-  gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, providers);
+  gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, buildRoleLadder(env, RESUMEN_DIARIO_LLM_ROLE, loadLlmModelsConfig(env))!);
   return gateway;
 }

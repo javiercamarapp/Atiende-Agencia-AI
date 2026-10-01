@@ -6,6 +6,7 @@ import type { HallazgoCfdi } from "@atiende/billing";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
 import type { CobranzaReminderStage } from "./cobranza/templates.ts";
+import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiInput } from "./cfdi/modelo-cfdi.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 
@@ -45,6 +46,26 @@ export interface InvoiceRecord {
    * únicamente existe para un CFDI tipo 'I' con subtotal>0). */
   readonly fecha: string;
   readonly createdAt: string;
+  // ---- D-22 (migración 018): modelo CFDI completo. Opcionales a propósito (los literales de `InvoiceRecord` de otros módulos/pruebas siguen compilando); ausente o `null` = dato desconocido (CFDI ingerido antes de la migración
+  // o con la base sin migrar), jamás un 0 inventado. Los montos en centavos son enteros; `subtotal`/`total`/... (pesos,
+  // numeric(14,2)) siguen siendo la fuente de los reportes existentes.
+  /** Sentido del CFDI respecto del RFC del cliente (ficha de cartera): emitido / recibido / indeterminado. */
+  readonly direccion?: DireccionCfdi | null;
+  readonly metodoPago?: string | null;
+  readonly formaPago?: string | null;
+  readonly usoCfdi?: string | null;
+  readonly moneda?: string | null;
+  readonly tipoCambio?: number | null;
+  readonly subtotalCentavos?: number | null;
+  readonly descuentoCentavos?: number | null;
+  readonly totalCentavos?: number | null;
+  readonly ivaTrasladadoCentavos?: number | null;
+  readonly isrRetenidoCentavos?: number | null;
+  readonly ivaRetenidoCentavos?: number | null;
+  readonly iepsCentavos?: number | null;
+  /** Estado del comprobante ante el SAT. `pendiente` = nunca verificado (default); lo captura el staff. */
+  readonly estadoSat?: EstadoSatCfdi;
+  readonly estadoSatVerificadoEn?: string | null;
 }
 
 export interface NewInvoiceInput {
@@ -67,6 +88,22 @@ export interface NewInvoiceInput {
   readonly diot: DiotResult;
   /** Ver `InvoiceRecord.fecha` — "YYYY-MM-DD", la fecha real de emisión del CFDI. */
   readonly fecha: string;
+  // ---- D-22 (opcionales: el camino anterior de la ingesta no los manda y la base sin migrar los ignora) ----
+  readonly direccion?: DireccionCfdi | null;
+  readonly metodoPago?: string | null;
+  readonly formaPago?: string | null;
+  readonly usoCfdi?: string | null;
+  readonly moneda?: string | null;
+  readonly tipoCambio?: number | null;
+  readonly subtotalCentavos?: number | null;
+  readonly descuentoCentavos?: number | null;
+  readonly totalCentavos?: number | null;
+  readonly ivaTrasladadoCentavos?: number | null;
+  readonly isrRetenidoCentavos?: number | null;
+  readonly ivaRetenidoCentavos?: number | null;
+  readonly iepsCentavos?: number | null;
+  /** Desglose de impuestos por (naturaleza, impuesto, factor, tasa); se persiste en la misma operación que el invoice. */
+  readonly impuestos?: readonly ImpuestoCfdiInput[];
 }
 
 export type InvoiceReviewStatus = "pendiente" | "aprobado" | "rechazado";

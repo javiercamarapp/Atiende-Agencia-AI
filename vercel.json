@@ -72,8 +72,8 @@
     { "path": "/internal/licitaciones/email-dispatch", "schedule": "0 8 * * *" },
     { "path": "/internal/hoteles/identidad-purga", "schedule": "0 8 * * *" },
     { "path": "/internal/hoteles/night-audit", "schedule": "0 9 * * *" },
-    { "path": "/internal/citas/confirmacion-cita", "schedule": "0 14 * * *" },
-    { "path": "/internal/citas/email-dispatch", "schedule": "5 14 * * *" },
+    { "path": "/internal/citas/confirmacion-cita", "schedule": "*/30 * * * *" },
+    { "path": "/internal/citas/email-dispatch", "schedule": "*/15 * * * *" },
     { "path": "/internal/citas/google-calendar-sync", "schedule": "10 14 * * *" },
     { "path": "/internal/hoteles/email-dispatch", "schedule": "15 14 * * *" },
     { "path": "/internal/restaurantes/email-dispatch", "schedule": "20 14 * * *" },
@@ -81,12 +81,19 @@
     { "path": "/internal/despachos/email-dispatch", "schedule": "30 14 * * *" },
     { "path": "/internal/rentas/email-dispatch", "schedule": "35 14 * * *" },
     { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
-    { "path": "/internal/rentas/ical-sync", "schedule": "45 14 * * *" },
+    { "path": "/internal/rentas/ical-sync", "schedule": "*/15 * * * *" },
     { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" },
-    { "path": "/internal/whatsapp/dispatch", "schedule": "55 14 * * *" },
+    { "path": "/internal/whatsapp/dispatch", "schedule": "*/5 * * * *" },
     { "path": "/internal/superadmin/resumen-diario", "schedule": "0 15 * * *" },
     { "path": "/internal/superadmin/mantenimiento", "schedule": "5 15 * * *" },
     { "path": "/internal/superadmin/alertas-cfo", "schedule": "15 15 * * *" },
-    { "path": "/internal/hoteles/revenue-recommendations", "schedule": "10 15 * * *" }
+    { "path": "/internal/hoteles/revenue-recommendations", "schedule": "10 15 * * *" },
+    { "path": "/internal/restaurantes/promover-programados", "schedule": "*/5 * * * *" },
+    { "path": "/internal/restaurantes/softrestaurant-dispatch", "schedule": "*/5 * * * *" },
+    { "path": "/internal/hoteles/tickets-sla", "schedule": "*/10 * * * *" },
+    { "path": "/internal/hoteles/aprobaciones-expiracion", "schedule": "20 * * * *" },
+    { "path": "/internal/rentas/acceso-huesped", "schedule": "10 * * * *" },
+    { "path": "/internal/hoteles/grupos-liberacion", "schedule": "30 9 * * *" },
+    { "path": "/internal/restaurantes/privacidad-retencion", "schedule": "30 8 * * *" }
   ]
 }

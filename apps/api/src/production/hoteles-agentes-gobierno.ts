@@ -11,6 +11,7 @@ import {
   type AgentesRepository,
   type HotelesRepository,
   type HotelesWhatsAppTurnHandler,
+  type ReservasAgenteRepository,
 } from "@atiende/domain-hoteles";
 
 export interface GovernedHotelesTurnOptions {
@@ -19,6 +20,8 @@ export interface GovernedHotelesTurnOptions {
   readonly gateway: Pick<LlmGateway, "complete">;
   readonly defaultRole: string;
   readonly escalatedRole: string;
+  /** H-25: agente de reservas (solo se expone si el hotel habilito los holds en su politica; base sin migrar = sin herramientas). */
+  readonly reservas?: ReservasAgenteRepository;
   readonly now?: () => Date;
   readonly onError?: (err: unknown) => void;
 }
@@ -36,6 +39,7 @@ export function buildGovernedHotelesTurnHandler(opts: GovernedHotelesTurnOptions
           createLlmHotelesWhatsAppTurnHandler(opts.hoteles, meterGateway(opts.gateway, meter), {
             defaultRole: opts.defaultRole,
             escalatedRole: opts.escalatedRole,
+            ...(opts.reservas ? { reservas: opts.reservas } : {}),
           }).handleInboundMessage(args),
         blocked: () => acknowledgeOnlyTurnHandler(opts.hoteles).handleInboundMessage(args),
         ...(opts.onError ? { onError: opts.onError } : {}),

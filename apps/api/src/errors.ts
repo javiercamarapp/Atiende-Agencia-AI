@@ -53,6 +53,8 @@ export const Errors = {
     new ApiError(409, "pricing_solapado", `Se traslapa con "${nombreOtro}" (${rango.inicio}..${rango.fin}).`),
   rentasPricingMonedaInconsistente: (monedaExistente: string) =>
     new ApiError(400, "pricing_moneda_inconsistente", `La unidad ya tiene tarifas en "${monedaExistente}"; no se mezclan monedas por unidad.`),
+  // ---- rentas (Rn-18: reservas de un canal externo sin regla de comision configurada) ----
+  rentasComisionCanalSinRegla: (message: string) => new ApiError(409, "comision_canal_sin_regla", message),
   // ---- rentas (portal de propietario, ver diseño Fase 3 rentas §4/§5) ----
   rentasOwnerInviteTokenInvalido: () => new ApiError(400, "portal_invite_token_invalido", "El enlace de activación es inválido, ya fue usado, o expiró. Pide a tu gestora que te reenvíe la invitación."),
   // ---- hoteles (máquina de estados de reservas, ver diseño Fase 3 §5) ----

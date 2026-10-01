@@ -1,7 +1,9 @@
 // R-11 -- HTTP end-to-end de pedidos programados: pestana "Programados", auto-promocion al consultar (sin cron),
 // alta por el endpoint publico, endpoint interno de promocion y degradacion contra la base sin migrar.
 import { describe, expect, it } from "vitest";
+import type { InMemorySaludRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
+import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
 import { buildTestDeps, jsonRequestInit, TEST_ENV } from "./fixtures.ts";
 
@@ -200,5 +202,23 @@ describe("/internal/restaurantes/promover-programados", () => {
     const app = buildApp(deps);
     const res = await app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
     expect(await res.json()).toMatchObject({ ok: true, status: "not_available", promoted: 0 });
+  });
+
+  it("registra latido (cron de vercel.json) y el kill switch por cron detiene la promocion sin tocar pedidos", async () => {
+    const { deps, restaurantesRepo, organizationId, propertyId } = await buildTestDeps();
+    const saludRepo = deps.saludRepo as InMemorySaludRepository;
+    saludRepo.addPlatformSuperadmin("admin-1");
+    const o = makeOrder({ organizationId, propertyId, status: "programado", programadoPara: enMin(10), promovidoAt: null });
+    restaurantesRepo.seedOrder(o);
+    const guard = createPlatformSwitchGuard(async () => [{ scope: "cron", target: "/internal/restaurantes/promover-programados" }]);
+    const app = buildApp({ ...deps, platformSwitchGuard: guard });
+    const headers = { authorization: `Bearer ${TEST_ENV.internalSecret}` };
+    const pausado = await app.request("/internal/restaurantes/promover-programados", { method: "GET", headers });
+    expect(await pausado.json()).toMatchObject({ ok: true, skipped: "kill_switch" });
+    expect((await restaurantesRepo.findOrderById(organizationId, o.id))?.status).toBe("programado");
+    const normal = buildApp(deps);
+    expect(await (await normal.request("/internal/restaurantes/promover-programados", { method: "GET", headers })).json()).toMatchObject({ promoted: 1 });
+    const latidos = await saludRepo.listCronHeartbeatsForSuperadmin("admin-1");
+    expect(latidos.find((l) => l.cronName === "/internal/restaurantes/promover-programados")).toMatchObject({ lastStatus: "ok" });
   });
 });

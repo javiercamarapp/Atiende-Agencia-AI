@@ -8,7 +8,8 @@ export { calcularNoches, diaDeLaSemana, esFechaCalendario, esRangoValido, noches
 export type { EjecutorTransaccional, FilaSql } from "./ejecutor.ts";
 export { bloquearOwnerStatementEnTransaccion, bloquearUnidadEnTransaccion, esViolacionExclusion } from "./ejecutor.ts";
 
-export { RentasDomainError } from "./errors.ts";
+export { RentasDomainError, ReglaComisionCanalNoConfiguradaError } from "./errors.ts";
+export { CODIGO_CANAL_DIRECTO, FUENTE_COMISION_DIRECTA_POR_DEFECTO, reglaComisionPorDefecto } from "./finanzas/regla-comision-por-defecto.ts";
 export type { RentasErrorCode } from "./errors.ts";
 
 export {
@@ -66,6 +67,9 @@ export type { CandidataConciliacion, EstadoConciliacion, LineaConciliada, LineaP
 export {
   CALENDARIO_LECTURA_ROLES,
   CANCELAR_ROLES,
+  CATALOGO_ESCRITURA_ROLES,
+  CATALOGO_LECTURA_ROLES,
+  STAFF_INVITE_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
   ACCESO_HUESPED_ROLES,
   FINANZAS_ESCRITURA_ROLES,
@@ -343,3 +347,44 @@ export type { EntradaInstruccion, EntradaPolitica } from "./acceso/validacion.ts
 export type { RentasAccesoRepository } from "./acceso/repository.ts";
 export { InMemoryRentasAccesoRepository } from "./acceso/in-memory-repository.ts";
 export { PostgresRentasAccesoRepository } from "./acceso/postgres-repository.ts";
+
+// ---- Rn-18 / Rn-19: reglas de comision de canal y catalogo (propiedades, unidades, propietarios) ----
+export { InMemoryRentasCatalogoRepository } from "./catalogo/in-memory-repository.ts";
+export { PostgresRentasCatalogoRepository } from "./catalogo/postgres-repository.ts";
+export type { RentasCatalogoRepository } from "./catalogo/repository.ts";
+export { MONEDAS_PERMITIDAS } from "./catalogo/tipos.ts";
+export type {
+  CanalRecordCatalogo,
+  EntradaActualizarPropiedad,
+  EntradaActualizarPropietario,
+  EntradaActualizarReglaComision,
+  EntradaActualizarUnidad,
+  EntradaCrearPropiedad,
+  EntradaCrearPropietario,
+  EntradaCrearUnidad,
+  EntradaReglaComision,
+  MonedaPermitida,
+  MotivoRechazoCatalogo,
+  PropiedadCatalogoRecord,
+  PropietarioRecord,
+  ReglaComisionRecord,
+  ResultadoCatalogo,
+  UnidadCatalogoRecord,
+} from "./catalogo/tipos.ts";
+export {
+  esUuid,
+  esZonaHorariaIana,
+  validarEntradaActualizarPropiedad,
+  validarEntradaActualizarPropietario,
+  validarEntradaActualizarRegla,
+  validarEntradaActualizarUnidad,
+  validarEntradaCrearPropiedad,
+  validarEntradaCrearPropietario,
+  validarEntradaCrearUnidad,
+  validarEntradaRegla,
+} from "./catalogo/validacion.ts";
+
+// ---- Rn-20: correo de invitacion de staff ----
+export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
+export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
+export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from "./staff-invite-email.ts";

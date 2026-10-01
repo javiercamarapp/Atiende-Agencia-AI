@@ -24,7 +24,15 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ADMIN_ROLES, consumeRateLimit, registerContactoNoOperativo, resolveAllergyDeclared } from "@atiende/domain-hoteles";
+import {
+  ADMIN_ROLES,
+  PostgresReservasAgenteRepository,
+  consumeRateLimit,
+  executeReservasTool,
+  isReservasToolName,
+  registerContactoNoOperativo,
+  resolveAllergyDeclared,
+} from "@atiende/domain-hoteles";
 import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { constantTimeEqual, readJsonCapped, requestActor } from "../../../http-security.ts";
@@ -139,6 +147,44 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       });
 
       return c.json({ id: contacto.id, ok: true });
+    });
+  });
+
+  // H-25 -- agente de reservas por VOZ: disponibilidad, cotizacion, pre-reserva (hold), estado, cancelacion y handoff, con las MISMAS herramientas
+  // y la MISMA logica que el agente de WhatsApp (`executeReservasTool`). POST /v1/hoteles/:propertyId/voz/reservas/:herramienta, con el secreto
+  // dedicado por property. Cuerpo = los argumentos de la herramienta + `telefono` (numero de la llamada; obligatorio para apartar/estado/cancelar)
+  // + `llamada_id` opcional (idempotencia de reintentos dentro de la llamada). Si el hotel no habilito los holds en su politica, o la base no tiene
+  // la migracion 037, responde 200 con `{error, requiere_humano:true}` (nunca un 500) para que el agente de voz derive a una persona. La respuesta
+  // trae SOLO campos tipados: los precios los fija la base; ninguna ruta acepta un precio del agente.
+  app.post("/v1/hoteles/:propertyId/voz/reservas/:herramienta", async (c) => {
+    const propertyId = c.req.param("propertyId");
+    const herramienta = c.req.param("herramienta");
+    if (!isReservasToolName(herramienta)) throw Errors.notFound("Herramienta de voz desconocida.");
+
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.hotelesRepo(db);
+      const { organizationId } = await requireVoiceAgentConfig(repo, propertyId, c.req.raw);
+
+      const limited = await consumeRateLimit(repo, "voice-reservas", requestActor(c.req.raw, propertyId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
+      const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 8 * 1024);
+      const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+      const reservas = deps.hotelesReservasAgenteRepo ? deps.hotelesReservasAgenteRepo(db) : new PostgresReservasAgenteRepository(db);
+
+      const policy = await reservas.agentPolicy(propertyId).catch(() => null);
+      if (!policy || !policy.disponible || !policy.politica.holdsEnabled) {
+        return c.json({ error: "holds_deshabilitados", mensaje: "El hotel no aparta habitaciones por este canal. Una persona del hotel continuara.", requiere_humano: true });
+      }
+
+      const telefono = typeof input.telefono === "string" ? input.telefono.slice(0, 40) : "";
+      const llamadaId = typeof input.llamada_id === "string" && input.llamada_id.trim() ? input.llamada_id.trim().slice(0, 64) : randomUUID();
+      const outcome = await executeReservasTool(
+        { reservas, hotelesRepo: repo, organizationId, propertyId, contactPhone: telefono, channel: "voz", turnId: llamadaId },
+        herramienta,
+        input,
+      );
+      return c.json(outcome.result);
     });
   });
 

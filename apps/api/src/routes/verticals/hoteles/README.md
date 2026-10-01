@@ -217,6 +217,16 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
   bloqueos cuya fecha de liberación ya llegó en la zona horaria de CADA property y vence propuestas fuera de
   vigencia; sesión de sistema y una transacción por property. Protegido con el secreto interno. **No está en
   `vercel.json`** (programarlo es decisión de producto; ver `docs/DEPLOY.md`).
+- `reservas-agente.ts` (H-25, migración 037) — lado staff del AGENTE DE RESERVAS: `GET /hoteles/:propertyId/reservas-agente/holds`
+  (pre-reservas que apartó el agente; `?estado=` y `?abiertas=1`), `POST .../holds/:id/decidir` (`aprobar|rechazar` con motivo),
+  `POST .../holds/:id/link-pago` (SOLO registra la referencia de un link que el hotel generó por fuera; rechaza números con forma de
+  tarjeta), `POST .../holds/:id/confirmar` (crea la reserva y su folio; el inventario ya estaba retenido por el hold) y
+  `POST .../holds/:id/cancelar`; `GET|PUT .../reservas-agente/politica` (habilitado, modo `aprobacion_humana|link_pago`, vigencia, topes).
+  Ven owner/gm/frontdesk/reservations/accountant; deciden, confirman y cancelan owner/gm/reservations; la política la escriben owner/gm.
+  Sin política habilitada (default) el agente NO expone herramientas de reservas. Base sin la 037: lecturas `disponible:false`, escrituras 503.
+- `voice-tools.ts` — además de las 2 herramientas de F&B/contacto, `POST /v1/hoteles/:propertyId/voz/reservas/:herramienta`
+  (`consultar_disponibilidad|cotizar_estancia|crear_pre_reserva|estado_pre_reserva|cancelar_pre_reserva|derivar_a_humano`) con el mismo núcleo que
+  el agente de WhatsApp y el secreto dedicado por property; cuerpo = argumentos + `telefono` (+ `llamada_id` opcional). Nunca acepta un precio.
 - Gobierno de agentes: el turno de WhatsApp (`production/hoteles-agentes-gobierno.ts`) y el barrido de revenue
   consultan el kill switch y el presupuesto de su agente por property; pausado o sin presupuesto, el mensaje
   se deriva a una persona. Base sin la 035: lecturas `disponible:false`, escrituras 503, comportamiento previo.

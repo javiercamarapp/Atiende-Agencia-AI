@@ -70,7 +70,7 @@ export const TEST_ENV: ApiEnv = {
   rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
   rentasOwnerAccessTokenTtlSeconds: 900,
   rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
-  llmProviders: { anthropic: null, openai: null, openrouter: null },
+  llmProviders: { openai: null, openrouter: null },
 };
 
 export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
