@@ -52,4 +52,14 @@ test.describe("DS del shell @ds", () => {
       vigilante.verificar();
     });
   }
+
+  // BUG-E2E-002: el DashboardHeader del shell (escritorio) y la pagina pintan, cada uno, un <h1>. test.fail() lo documenta.
+  test("cada pantalla tiene un solo <h1> (BUG-E2E-002, defecto conocido)", async ({ page, iniciarSesion }) => {
+    test.skip(esMovil(page), "en movil el DashboardHeader no se muestra");
+    test.fail(true, "BUG-E2E-002: shell y pagina pintan un <h1> cada uno; quitar test.fail al unificar la jerarquia de encabezados");
+    await iniciarSesion("citas", "owner");
+    await page.goto(RESUMEN);
+    await expect(page.getByRole("heading", { name: "Resumen", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  });
 });

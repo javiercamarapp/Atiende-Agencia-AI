@@ -105,7 +105,8 @@ propietarios de rentas y el portal de cliente de despachos, y la mayor parte de 
 6. Corre `npm run test:e2e -- <archivo>` en escritorio y movil antes de empujar.
 
 Plantillas: `tests/humo-restaurantes.spec.ts` (menu completo por rol + confirm destructivo),
-`tests/humo-citas.spec.ts` (cancelar cita), `tests/humo-superadmin.spec.ts` (dialogo con motivo),
+`tests/humo-citas.spec.ts` (cancelar cita), `tests/humo-despachos.spec.ts` (cierre mensual irreversible con texto de
+confirmacion y rol `admin`), `tests/humo-superadmin.spec.ts` (dialogo con motivo),
 `tests/errores-y-latencia.spec.ts` (fallas e inyeccion).
 
 ## Convenciones
@@ -143,6 +144,10 @@ Defectos conocidos:
   `humo-restaurantes.spec.ts` (test marcado `test.fail`). Causa probable: Radix devuelve el foco a `triggerRef`, que no
   existe aqui; arreglo en `packages/ui/src/components/ConfirmDialog.tsx` / `FormDialog.tsx` (guardar y restaurar
   `document.activeElement` en `onCloseAutoFocus`). No corregido en este paso.
+- **BUG-E2E-002 (baja, accesibilidad/estructura)**: en escritorio cada pantalla de panel tiene dos `<h1>` (el del
+  `DashboardHeader` del shell, p. ej. "Rentas Sol y Mar · Casa Playa Norte", y el titulo de la pagina). Reproduce en
+  `ds-shell.spec.ts` (test marcado `test.fail`). No corregido: unificar la jerarquia es una decision de diseno (el
+  encabezado del shell podria ser un `<p>`/`<div>` o el de la pagina un `<h2>`).
 
 ## CI
 
