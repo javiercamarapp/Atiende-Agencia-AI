@@ -46,6 +46,7 @@ import {
   completarTarea,
   confirmarBloqueoMantenimiento,
   crearTareaOperativaManual,
+  esFechaCalendario,
   LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES,
   LIMPIEZA_CREACION_MANUAL_ROLES,
   LIMPIEZA_OPERACION_ROLES,
@@ -89,6 +90,13 @@ function parseAsignadoAQuery(raw: string | undefined, ownUserId: string): string
   if (raw === undefined) return undefined;
   if (raw === "me") return ownUserId;
   if (raw === "sin_asignar") return null;
+  return raw;
+}
+
+/** `?desde=`/`?hasta=` de `GET .../tareas`: fecha de calendario real (rechaza "2026-02-30") o ausente. */
+function parseFechaQuery(raw: string | undefined, field: string): string | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  if (!esFechaCalendario(raw)) throw Errors.validation(`${field}: se esperaba una fecha real YYYY-MM-DD.`);
   return raw;
 }
 
@@ -222,7 +230,19 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const asignadoA = parseAsignadoAQuery(c.req.query("asignadoA"), c.get("userId"));
     const estados = parseEstadoQuery(c.req.query("estado"));
-    const filtro = asignadoA !== undefined || estados !== undefined ? { ...(asignadoA !== undefined ? { asignadoA } : {}), ...(estados !== undefined ? { estados } : {}) } : undefined;
+    // Rn-06: ventana opcional de `programadaPara` (el calendario visual pide solo el mes en pantalla, no todo el historial).
+    const programadaDesde = parseFechaQuery(c.req.query("desde"), "desde");
+    const programadaHasta = parseFechaQuery(c.req.query("hasta"), "hasta");
+    if (programadaDesde !== undefined && programadaHasta !== undefined && programadaDesde > programadaHasta) throw Errors.validation("desde: no puede ser posterior a hasta.");
+    const hayFiltro = asignadoA !== undefined || estados !== undefined || programadaDesde !== undefined || programadaHasta !== undefined;
+    const filtro = hayFiltro
+      ? {
+          ...(asignadoA !== undefined ? { asignadoA } : {}),
+          ...(estados !== undefined ? { estados } : {}),
+          ...(programadaDesde !== undefined ? { programadaDesde } : {}),
+          ...(programadaHasta !== undefined ? { programadaHasta } : {}),
+        }
+      : undefined;
 
     const tareas = await repo.listTareas(propertyId, filtro);
     return c.json({ tareas }, 200);

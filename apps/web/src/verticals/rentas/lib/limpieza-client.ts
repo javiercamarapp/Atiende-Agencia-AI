@@ -119,12 +119,17 @@ export interface IncidenciaMantenimiento {
 export interface ListarTareasOpciones {
   readonly asignadoA?: "me" | "sin_asignar" | string;
   readonly estados?: readonly EstadoTareaOperativa[];
+  /** Rn-06: ventana de `programadaPara` (`YYYY-MM-DD`, ambos extremos inclusivos). */
+  readonly desde?: string;
+  readonly hasta?: string;
 }
 
 function buildTareasQuery(opciones: ListarTareasOpciones): string {
   const params = new URLSearchParams();
   if (opciones.asignadoA !== undefined) params.set("asignadoA", opciones.asignadoA);
   if (opciones.estados && opciones.estados.length > 0) params.set("estado", opciones.estados.join(","));
+  if (opciones.desde !== undefined) params.set("desde", opciones.desde);
+  if (opciones.hasta !== undefined) params.set("hasta", opciones.hasta);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

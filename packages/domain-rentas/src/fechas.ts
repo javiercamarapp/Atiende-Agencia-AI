@@ -36,6 +36,16 @@ function desdeDiasEpoca(dias: number): FechaLocal {
   return `${anio}-${mes}-${dia}`;
 }
 
+/** `true` si `fecha` es `YYYY-MM-DD` y una fecha de calendario real (rechaza "2024-02-30"). */
+export function esFechaCalendario(fecha: string): boolean {
+  try {
+    aDiasEpoca(fecha);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Un rango `[inicio, fin)` es válido si `fin` es estrictamente posterior a `inicio`
  * (nunca vacío, nunca invertido). */
 export function esRangoValido(rango: RangoFechas): boolean {

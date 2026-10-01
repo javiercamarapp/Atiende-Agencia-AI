@@ -22,7 +22,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { CALENDARIO_LECTURA_ROLES } from "@atiende/domain-rentas";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { calcularNoches, CALENDARIO_LECTURA_ROLES, esFechaCalendario, esRangoValido } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -32,6 +33,12 @@ import type { AppDeps } from "../../../deps.ts";
 // en un solo array. Una unidad con años de operación acumula cientos de filas.
 const DEFAULT_OCUPACIONES_LIMIT = 100;
 const MAX_OCUPACIONES_LIMIT = 300;
+
+// Rn-06 -- calendario visual: lectura por VENTANA (el mes en pantalla), nunca el historial.
+// Una vista de mes con semanas de relleno cubre como máximo 42 días; se permite un margen para la línea de tiempo.
+const MAX_VENTANA_DIAS = 100;
+const DEFAULT_VENTANA_LIMIT = 500;
+const MAX_VENTANA_LIMIT = 1000;
 
 function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
   if (!raw) return fallback;
@@ -47,6 +54,8 @@ export function rentasCalendarioRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const ocupacionesPath = "/rentas/:propertyId/unidades/:unidadId/ocupaciones";
   app.use(unidadesPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(ocupacionesPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  const ventanaPath = "/rentas/:propertyId/calendario";
+  app.use(ventanaPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(unidadesPath, async (c) => {
     assertVerticalRole(c, CALENDARIO_LECTURA_ROLES);
@@ -81,6 +90,50 @@ export function rentasCalendarioRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     c.header("X-Total-Count", String(page.total));
     if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
     return c.json({ ocupaciones: page.items }, 200);
+  });
+
+  // Rn-06 -- `GET .../calendario?desde=YYYY-MM-DD&hasta=YYYY-MM-DD[&unidadId=][&limit=]`: ocupaciones ACTIVAS (reservas
+  // y bloqueos) de TODA la property que tocan la ventana `[desde, hasta)`, para pintar el mes/la línea de tiempo con una
+  // sola lectura. Solo lectura, mismos roles que `GET .../ocupaciones`. Devuelve también la zona horaria de la property y
+  // "hoy" en esa zona (Cancún, UTC-5 sin horario de verano, y CDMX, UTC-6, no comparten día durante una hora cada noche:
+  // el día lo decide el servidor con la zona de la property, nunca el reloj del navegador). No expone el contacto del huésped (minimización de datos).
+  app.get(ventanaPath, async (c) => {
+    assertVerticalRole(c, CALENDARIO_LECTURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const desde = c.req.query("desde") ?? "";
+    const hasta = c.req.query("hasta") ?? "";
+    if (!esFechaCalendario(desde) || !esFechaCalendario(hasta)) throw Errors.validation("desde y hasta: se esperaban fechas reales YYYY-MM-DD.");
+    if (!esRangoValido({ inicio: desde, fin: hasta })) throw Errors.validation("hasta debe ser posterior a desde.");
+    if (calcularNoches({ inicio: desde, fin: hasta }) > MAX_VENTANA_DIAS) throw Errors.validation(`La ventana admite como máximo ${MAX_VENTANA_DIAS} días.`);
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_VENTANA_LIMIT, MAX_VENTANA_LIMIT);
+
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidadId = c.req.query("unidadId") || undefined;
+    if (unidadId !== undefined && !(await repo.findUnidad(propertyId, unidadId))) throw Errors.notFound("Unidad no encontrada en esta property.");
+
+    const zona = resolverZonaHorariaNegocio(await deps.rentasCalendarSyncRepo(c.get("db")).findZonaHorariaPropiedad(propertyId));
+    const ventana = await repo.listOcupacionesVentana(propertyId, { desde, hasta, limit, ...(unidadId !== undefined ? { unidadId } : {}) });
+    return c.json(
+      {
+        zona_horaria: zona,
+        hoy: hoyFechaNegocio(zona),
+        desde,
+        hasta,
+        total: ventana.total,
+        truncado: ventana.total > ventana.items.length,
+        ocupaciones: ventana.items.map((o) => ({
+          id: o.id,
+          unidadId: o.unidadId,
+          capa: o.capa,
+          rango: o.rango,
+          razon: o.razon,
+          estado: o.estado,
+          canalCodigo: o.canalCodigo,
+          huespedNombre: o.huespedNombre,
+        })),
+      },
+      200,
+    );
   });
 
   return app;

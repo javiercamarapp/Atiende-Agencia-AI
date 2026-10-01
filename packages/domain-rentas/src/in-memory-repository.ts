@@ -23,7 +23,7 @@
 import { randomUUID } from "node:crypto";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
-import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
+import type { OcupacionCalendarioPage, OcupacionCalendarioVentana, OcupacionVentanaOpciones, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
@@ -386,6 +386,14 @@ export class InMemoryRentasRepository implements RentasRepository {
     const items = filtered.slice(opts.offset, opts.offset + opts.limit);
     const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
     return { items, total: filtered.length, nextOffset };
+  }
+
+  async listOcupacionesVentana(propertyId: string, opts: OcupacionVentanaOpciones): Promise<OcupacionCalendarioVentana> {
+    const activas = this.calendarStore
+      .listOcupaciones(propertyId, opts.unidadId)
+      .filter((o) => o.estado !== "cancelado" && o.rango.inicio < opts.hasta && opts.desde < o.rango.fin)
+      .map((o) => ({ ...o, huespedContacto: null }));
+    return { items: activas.slice(0, opts.limit), total: activas.length };
   }
 
   // ---- RentasRepository: Fase 17 -- panel operativo del rol `limpieza` (delegado al

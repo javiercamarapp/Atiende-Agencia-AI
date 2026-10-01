@@ -156,3 +156,17 @@ dejaba inoperable el caso más común, no una excepción.
   sus `useEffect` de carga — en cuanto el Shell les pasa un `propertyId` distinto,
   vuelven a pedir datos automáticamente sin ningún cambio de código en esas 5
   páginas.
+
+## Rn-06: calendario visual
+
+`pages/Calendario.tsx` abre ahora en el calendario visual (`components/CalendarioVisual.tsx` + `components/calendario-vistas.tsx`, logica pura en
+`lib/calendario-visual.ts`); la lista de gestion de una unidad (crear, modificar y cancelar reservas y bloqueos) queda como pestana "Lista" y se alcanza
+tambien desde el detalle de cada dia.
+
+- Vistas: mes (rejilla ARIA lunes-domingo con flechas, Inicio/Fin y RePag/AvPag), linea de tiempo por unidad (desde `md`) y agenda (pantallas chicas).
+- Capas: reservas por canal (color + icono + texto), bloqueos, limpiezas/tareas y conflictos abiertos de Rn-02. Filtros por unidad y canal (el canal solo
+  filtra reservas). Las capas de limpiezas y conflictos degradan con aviso si el rol no las incluye (p. ej. `operador:solo_calendario` no ve tareas).
+- Datos, sin SQL nuevo: `GET /rentas/:propertyId/calendario?desde&hasta` (ventana de la rejilla del mes, tope 500 filas, `total`/`truncado`, zona y "hoy" de la
+  propiedad), `GET .../tareas?desde&hasta` y `GET .../conflictos`.
+- Fechas: noches `[check-in, check-out)`; el dia de check-out se marca como salida y no como noche ocupada. "Hoy" sale de la zona IANA de la propiedad.
+- Limites: la celda del mes muestra 3 elementos y "+N mas"; la linea de tiempo pinta hasta 6 carriles por unidad; sin arrastrar y soltar.

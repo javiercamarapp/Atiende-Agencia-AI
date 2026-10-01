@@ -6,7 +6,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
+import type { OcupacionCalendarioPage, OcupacionCalendarioVentana, OcupacionVentanaOpciones, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
@@ -386,6 +386,50 @@ export class PostgresRentasRepository implements RentasRepository {
     const total = rows[0] ? Number(rows[0].total) : 0;
     const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
     return { items, total, nextOffset };
+  }
+
+  async listOcupacionesVentana(propertyId: string, opts: OcupacionVentanaOpciones): Promise<OcupacionCalendarioVentana> {
+    const { rows } = await this.db.query<{
+      id: string;
+      unidad_id: string;
+      inicio: string;
+      fin: string;
+      capa: "reserva" | "bloqueo";
+      razon: OcupacionCalendarioItem["razon"];
+      estado: OcupacionCalendarioItem["estado"];
+      canal_codigo: string | null;
+      huesped_nombre: string | null;
+      created_at: string;
+      total: string;
+    }>(
+      `select o.id, o.unidad_id, lower(o.rango)::text as inicio, upper(o.rango)::text as fin, o.capa, o.razon, o.estado,
+              c.codigo as canal_codigo, g.nombre as huesped_nombre, o.created_at::text as created_at,
+              count(*) over ()::text as total
+       from rentas.ocupacion o
+       left join rentas.canal c on c.id = o.canal_origen_id
+       left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+       where o.property_id = $1
+         and o.estado <> 'cancelado'
+         and o.rango && daterange($2::date, $3::date, '[)')
+         and ($4::text is null or o.unidad_id::text = $4::text)
+       order by lower(o.rango), o.id
+       limit $5;`,
+      [propertyId, opts.desde, opts.hasta, opts.unidadId ?? null, opts.limit],
+    );
+    const items = rows.map((row) => ({
+      id: row.id,
+      unidadId: row.unidad_id,
+      capa: row.capa,
+      rango: { inicio: row.inicio, fin: row.fin },
+      razon: row.razon,
+      estado: row.estado,
+      canalCodigo: row.canal_codigo,
+      huespedNombre: row.huesped_nombre,
+      // El calendario visual no necesita el contacto del huésped: minimización de datos.
+      huespedContacto: null,
+      createdAt: row.created_at,
+    }));
+    return { items, total: rows[0] ? Number(rows[0].total) : 0 };
   }
 
   async insertGuestMinimo(input: NewGuestMinimoInput): Promise<{ id: string }> {
@@ -1069,8 +1113,10 @@ export class PostgresRentasRepository implements RentasRepository {
        where t.property_id = $1
          and ($2::boolean is not true or t.asignado_a is not distinct from $3)
          and ($4::text[] is null or t.estado = any($4::text[]))
+         and ($5::date is null or t.programada_para >= $5::date)
+         and ($6::date is null or t.programada_para <= $6::date)
        order by t.programada_para asc, t.creado_en asc;`,
-      [propertyId, filtro.asignadoA !== undefined, filtro.asignadoA ?? null, filtro.estados ? [...filtro.estados] : null],
+      [propertyId, filtro.asignadoA !== undefined, filtro.asignadoA ?? null, filtro.estados ? [...filtro.estados] : null, filtro.programadaDesde ?? null, filtro.programadaHasta ?? null],
     );
     return rows.map((r) => ({
       id: r.id,
