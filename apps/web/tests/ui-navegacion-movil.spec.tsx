@@ -161,7 +161,7 @@ describe("BottomNav: la barra del panel del chofer de Likida (UNI-1)", () => {
     expect(titulos).not.toContain("Panel");
     expect(titulos).toContain("Operación");
     // El destino de la raiz sigue alcanzable en la hoja.
-    expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toContain("Dashboard");
+    expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toContain("Resumen");
   });
 
   it("el cierre de la hoja mide 44 px (size-11) y cierra", () => {
