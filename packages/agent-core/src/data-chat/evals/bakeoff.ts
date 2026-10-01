@@ -1,11 +1,11 @@
 // BAKE-OFF de reportes PDF / visuales (MOD-08, preparacion): 40 tareas de reporte sobre tablas REALES de las herramientas de
 // referencia (los resultados congelados), comparando cuatro brazos:
 //   pipeline_gemini = Sonnet 5.5 (analista de datos) -> Gemini 3.8 Flash (redactor/disenador)
-//   pipeline_qwen   = Sonnet 5.5 (analista)          -> Qwen 3.7 Flash (redactor)
+//   pipeline_qwen   = Sonnet 5.5 (analista)          -> Qwen3-235B-A22B (redactor)
 //   sonnet_solo     = Sonnet 5.5 analiza y redacta en una llamada
 //   gemini_solo     = Gemini 3.8 Flash analiza y redacta en una llamada
 // Graders deterministas: JSON valido, cifras (cero inventadas + cobertura de las clave), fuentes de cada hallazgo, espanol por
-// reglas, grafica y SVG validos. La calidad del analisis la califica un juez barato (Qwen 3.7 Flash; NUNCA Sonnet) con rubrica.
+// reglas, grafica y SVG validos. La calidad del analisis la califica un juez barato (Qwen3-235B-A22B; NUNCA Sonnet) con rubrica.
 // Costo real por reporte desde usage.cost. Sin Sonnet como juez.
 import { allowedNumbers, extractNumbers, unsupportedNumbers } from "../numbers-guard.js";
 import { tieneEnlace } from "./texto.js";
@@ -37,7 +37,7 @@ export interface BrazoBakeoff {
 
 export const BRAZOS_BAKEOFF: readonly BrazoBakeoff[] = [
   { id: "pipeline_gemini", etiqueta: "Sonnet analiza + Gemini 3.8 Flash redacta", analista: "anthropic/claude-sonnet-5.5", redactor: "google/gemini-3.8-flash" },
-  { id: "pipeline_qwen", etiqueta: "Sonnet analiza + Qwen 3.7 Flash redacta", analista: "anthropic/claude-sonnet-5.5", redactor: "qwen/qwen3.7-flash" },
+  { id: "pipeline_qwen", etiqueta: "Sonnet analiza + Qwen3-235B redacta", analista: "anthropic/claude-sonnet-5.5", redactor: "qwen/qwen3-235b-a22b-2507" },
   { id: "sonnet_solo", etiqueta: "Sonnet 5.5 solo", redactor: "anthropic/claude-sonnet-5.5" },
   { id: "gemini_solo", etiqueta: "Gemini 3.8 Flash solo", redactor: "google/gemini-3.8-flash" },
 ];
@@ -255,7 +255,7 @@ export interface JuezAnalisis {
   calificar(entrada: { readonly peticion: string; readonly tablasJson: string; readonly reporte: string }): Promise<{ nota: number | null; costoUsd: number }>;
 }
 
-/** El juez de calidad de analisis reutiliza la cadena barata de rutas del juez de espanol (Qwen 3.7 Flash), con la rubrica de analisis. */
+/** El juez de calidad de analisis reutiliza la cadena barata de rutas del juez de espanol (Qwen3-235B-A22B), con la rubrica de analisis. */
 export function juezAnalisisDesde(j: JuezEspanol): JuezAnalisis {
   return {
     async calificar(e) {
@@ -469,7 +469,7 @@ export function bakeoffMarkdown(res: ResultadoBakeoff): string {
   L.push("");
   L.push(`**Recomendacion**: ${recomendacionBakeoff(rs)}`);
   L.push("");
-  if (rs.some((r) => r.erroresProveedor > 0 && r.evaluados === 0)) L.push("Un brazo con 0 evaluados y errores de proveedor no tiene ruta EE.UU./ZDR (404 'No endpoints'): no es elegible; la politica no se relaja salvo con --sinteticos (solo datos sinteticos del eval, para medir su calidad potencial).\n");
-  L.push("El juez de calidad del analisis es Qwen 3.7 Flash (nunca Sonnet). Con Gemini 3.8 Flash el precio se duplica el 1-ene-2027: reevaluar entonces.");
+  if (rs.some((r) => r.erroresProveedor > 0 && r.evaluados === 0)) L.push("Un brazo con 0 evaluados y errores de proveedor no tiene ruta EE.UU./ZDR (404 'No endpoints'): no es elegible; la politica EE.UU./ZDR no se relaja nunca.\n");
+  L.push("El juez de calidad del analisis es Qwen3-235B-A22B (nunca Sonnet). Con Gemini 3.8 Flash el precio se duplica el 1-ene-2027: reevaluar entonces.");
   return L.join("\n");
 }

@@ -78,7 +78,7 @@ export function finalistasDe(rutaReporte: string, top: number): ModeloCandidato[
   if (!rep) throw new Error("el archivo no trae un reporte (se esperaba la salida JSON de una corrida)");
   const elegibles = rep.resumenes.filter((r) => {
     const c = candidatoPorId(r.modelo);
-    return c && c.fases.includes("barrido") && !c.roles.includes("calibracion") && r.evaluados > 0;
+    return c && !c.noElegible && c.fases.includes("barrido") && !c.roles.includes("calibracion") && r.evaluados > 0;
   });
   return elegibles.slice(0, top).map((r) => candidatoPorId(r.modelo)!);
 }
@@ -99,6 +99,7 @@ export function construirPlan(args: Map<string, string>, todos: readonly CasoEva
     modelos = ids.map((id) => {
       const c = candidatoPorId(id);
       if (!c) throw new Error(`modelo fuera de la lista de candidatos: ${id} (ver candidatos.ts)`);
+      if (c.noElegible) throw new Error(`modelo no elegible: ${id} (${c.noElegible})`);
       return c;
     });
   } else if (fase === "barrido") {
