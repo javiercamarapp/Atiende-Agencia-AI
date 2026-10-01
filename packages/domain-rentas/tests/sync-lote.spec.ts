@@ -202,7 +202,7 @@ describe("ejecutarLoteSync -- conflictos entre canales (overbooking) y monitor",
     const lote = await ejecutarLoteSync(deps);
     expect(lote.feeds.reduce((n, x) => n + x.conflictosDetectados, 0)).toBe(1);
 
-    const listado = await syncRepo.listarConflictos(propertyId, { soloAbiertos: true, limite: 100 });
+    const listado = await syncRepo.listarConflictos(propertyId, { estado: "abiertos", limite: 100 });
     expect(listado.totalAbiertos).toBe(1);
     const conflicto = listado.conflictos[0]!;
     expect(conflicto.tipo).toBe("overbooking_confirmado");
@@ -212,10 +212,15 @@ describe("ejecutarLoteSync -- conflictos entre canales (overbooking) y monitor",
     const alertas = await syncRepo.listarBitacora(propertyId, { soloAlertasAbiertas: true, limite: 50 });
     expect(alertas.alertas.some((a) => a.tipo === "conflicto_detectado" && a.severidad === "critica" && a.conflictos === 1)).toBe(true);
 
-    expect(await syncRepo.resolverConflicto(propertyId, conflicto.id, "staff-1")).toBe("resuelto");
-    expect(await syncRepo.resolverConflicto(propertyId, conflicto.id, "staff-1")).toBe("no_encontrado");
-    expect((await syncRepo.listarConflictos(propertyId, { soloAbiertos: true, limite: 100 })).totalAbiertos).toBe(0);
-    expect((await syncRepo.listarConflictos(propertyId, { soloAbiertos: false, limite: 100 })).conflictos).toHaveLength(1);
+    expect(conflicto.estado).toBe("abierto");
+    // Las dos reservas siguen cruzadas: "resuelto" se rechaza; hay que ignorarlo con motivo.
+    expect(await syncRepo.decidirConflicto(propertyId, conflicto.id, "staff-1", { accion: "resuelto", motivo: null })).toBe("solape_vigente");
+    expect(await syncRepo.decidirConflicto(propertyId, conflicto.id, "staff-1", { accion: "ignorado", motivo: "mismo huesped en dos canales" })).toBe("ignorado");
+    expect(await syncRepo.decidirConflicto(propertyId, conflicto.id, "staff-1", { accion: "ignorado", motivo: "otra vez" })).toBe("no_encontrado");
+    expect((await syncRepo.listarConflictos(propertyId, { estado: "abiertos", limite: 100 })).totalAbiertos).toBe(0);
+    const todos = (await syncRepo.listarConflictos(propertyId, { estado: "todos", limite: 100 })).conflictos;
+    expect(todos).toHaveLength(1);
+    expect(todos[0]).toMatchObject({ estado: "ignorado", motivoResolucion: "mismo huesped en dos canales", resueltoPor: "staff-1" });
 
     // Atender la alerta tampoco se puede repetir, ni desde otra property.
     const alertaId = alertas.alertas.find((a) => a.tipo === "conflicto_detectado")!.id;
@@ -229,13 +234,13 @@ describe("ejecutarLoteSync -- conflictos entre canales (overbooking) y monitor",
     port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: ics("a1@airbnb", "2027-05-10", "2027-05-14") });
     port.definirEscenario(URL_BOOKING, { tipo: "ics", contenidoIcs: ics("b1@booking", "2027-05-12", "2027-05-16") });
     await ejecutarLoteSync(deps);
-    const propia = await syncRepo.listarConflictos(propertyId, { soloAbiertos: true, limite: 100 });
+    const propia = await syncRepo.listarConflictos(propertyId, { estado: "abiertos", limite: 100 });
     expect(propia.conflictos).toHaveLength(1);
 
     const ajena = randomUUID();
-    expect(await syncRepo.listarConflictos(ajena, { soloAbiertos: false, limite: 100 })).toEqual({ conflictos: [], totalAbiertos: 0 });
-    expect(await syncRepo.resolverConflicto(ajena, propia.conflictos[0]!.id, "staff-ajeno")).toBe("no_encontrado");
-    expect((await syncRepo.listarConflictos(propertyId, { soloAbiertos: true, limite: 100 })).totalAbiertos).toBe(1);
+    expect(await syncRepo.listarConflictos(ajena, { estado: "todos", limite: 100 })).toEqual({ conflictos: [], totalAbiertos: 0 });
+    expect(await syncRepo.decidirConflicto(ajena, propia.conflictos[0]!.id, "staff-ajeno", { accion: "ignorado", motivo: "intento ajeno" })).toBe("no_encontrado");
+    expect((await syncRepo.listarConflictos(propertyId, { estado: "abiertos", limite: 100 })).totalAbiertos).toBe(1);
   });
 });
 
@@ -252,6 +257,6 @@ describe("ejecutarLoteSync -- base sin la migración 024", () => {
 
     // El monitor degrada con honestidad: bitácora no disponible, resolver no disponible.
     expect(await syncRepo.listarBitacora(propertyId, { soloAlertasAbiertas: true, limite: 10 })).toEqual({ disponible: false, alertas: [] });
-    expect(await syncRepo.resolverConflicto(propertyId, randomUUID(), "staff-1")).toBe("no_disponible");
+    expect(await syncRepo.decidirConflicto(propertyId, randomUUID(), "staff-1", { accion: "resuelto", motivo: null })).toBe("no_disponible");
   });
 });

@@ -64,6 +64,20 @@ techo mínimo de roles.
 - `ical-monitor.ts`: `GET /rentas/:propertyId/sync-monitor`, `GET .../conflictos`,
   `POST .../conflictos/:id/resolver`, `POST .../sync-alertas/:id/atender`.
 
+### Estado de los conflictos y resolución segura (Rn-02, migración 026)
+
+- Un conflicto está `abierto`, `resuelto` o `ignorado` (con motivo). `GET .../conflictos?estado=`
+  acepta `abiertos|resueltos|ignorados|todos`; `GET .../conflictos/:id/historial` devuelve la
+  bitácora de decisiones.
+- `POST .../conflictos/:id/resolver` recibe `{ accion: "resuelto" | "ignorado", motivo? }` (cuerpo
+  vacío = `resuelto`). `resuelto` se rechaza con 409 mientras las dos ocupaciones sigan cruzadas
+  (la base lo verifica); `ignorado` exige motivo de 3 a 500 caracteres. Nunca cancela ni edita una
+  reserva.
+- `sync-monitor` suma `resumen_por_canal` y `zona_horaria`; los conflictos traen el solape y su
+  vigencia calculada con "hoy" en la zona de la property (`rentas.property_config.zona_horaria`).
+- Contra la base sin la 026: `resuelto` sigue por el camino de la 024, `ignorado` responde 409 y el
+  historial `disponible: false`; nunca 500.
+
 ## Reportes de ocupación e ingresos (Rn-03)
 
 - `reportes.ts`: `GET /rentas/:propertyId/reportes/ocupacion-ingresos` (`?desde&hasta` periodo

@@ -203,7 +203,33 @@ export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoR
 export { BACKOFF_FEED_BASE_SEGUNDOS, BACKOFF_FEED_MAX_SEGUNDOS, calcularBackoffFeedSegundos, eventosBitacoraDeCiclo, OPCIONES_RECLAMO_POR_DEFECTO } from "./sync/lease.ts";
 export type { EventoBitacora, FeedReclamado, OpcionesReclamo, ResultadoReclamo, SeveridadBitacora, TipoEventoBitacora } from "./sync/lease.ts";
 export { clasificarSaludFeed, UMBRAL_FEED_DESACTUALIZADO_MS } from "./sync/monitor.ts";
-export type { AlertaSyncRecord, ConflictoMonitorRecord, EstadoSaludFeed, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoMarcarResuelto } from "./sync/monitor.ts";
+export type {
+  AlertaSyncRecord,
+  ConflictoMonitorRecord,
+  EntradaHistorialConflicto,
+  EstadoConflicto,
+  EstadoSaludFeed,
+  FeedMonitorRecord,
+  FiltroEstadoConflictos,
+  HistorialConflicto,
+  ListadoBitacora,
+  ListadoConflictos,
+  OcupacionConflictoRecord,
+  ResultadoDecisionConflicto,
+  ResultadoMarcarResuelto,
+} from "./sync/monitor.ts";
+export {
+  calcularSolape,
+  clasificarVigenciaSolape,
+  fechaLocalEnZona,
+  formatearInstanteEnZona,
+  MOTIVO_CONFLICTO_MAX,
+  MOTIVO_CONFLICTO_MIN,
+  normalizarDecisionConflicto,
+  resolverZonaHoraria,
+  resumirSyncPorCanal,
+} from "./sync/conflictos.ts";
+export type { AccionConflicto, DecisionConflictoNormalizada, ResumenSyncCanal, VigenciaSolape } from "./sync/conflictos.ts";
 export { ejecutarLoteSync } from "./sync/lote.ts";
 export type { DepsLoteSync, OpcionesLoteSync, ResultadoFeedLote, ResultadoLoteSync } from "./sync/lote.ts";
 export { InMemoryRentasCalendarSyncRepository } from "./sync/in-memory-repository.ts";

@@ -4,25 +4,32 @@
 // sync (cuarentena, conflictos detectados, errores) y los conflictos de calendario
 // pendientes de resolver (dos reservas de canales distintos sobre las mismas noches, o una
 // reserva sobre un bloqueo). Resolver un conflicto es una decisión HUMANA: el sistema
-// nunca cancela una reserva por su cuenta.
+// nunca cancela una reserva por su cuenta. Cada conflicto tiene estado (abierto / resuelto /
+// ignorado con motivo) y su historial de decisiones; "Marcar resuelto" solo procede si el
+// solape ya no existe (el servidor lo verifica), si no, se ignora indicando el motivo. Las
+// horas se muestran en la zona horaria de la property.
 //
 // Hecha con componentes de @atiende/ui (Card/Badge/Button/Table/Estado*) y el cliente
 // lib/ical-monitor-client.ts. Gate de rol en el CLIENTE calcado de
 // SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES (el servidor re-valida
 // siempre). Contra una base sin la migración 024 las alertas se muestran como "no
 // disponibles aún" y resolver responde un error legible -- nunca una pantalla rota.
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCcw } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Badge, Button, Card, Label, Textarea, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import {
   atenderAlertaSync,
+  decidirConflicto,
+  ETIQUETA_ESTADO_CONFLICTO,
   ETIQUETA_SALUD_FEED,
   ETIQUETA_TIPO_CONFLICTO,
+  ETIQUETA_VIGENCIA_SOLAPE,
   fetchConflictos,
+  fetchHistorialConflicto,
   fetchMonitorSync,
-  resolverConflicto,
+  validarMotivoDecision,
 } from "../lib/ical-monitor-client.ts";
-import type { ConflictoCalendario, EstadoSaludFeed, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
+import type { ConflictoCalendario, EstadoSaludFeed, FiltroEstadoConflictos, HistorialConflicto, MonitorSync, OcupacionConflicto, SeveridadAlerta } from "../lib/ical-monitor-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 // Espejo web de SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES
@@ -42,9 +49,24 @@ const VARIANTE_SALUD: Record<EstadoSaludFeed, "default" | "secondary" | "destruc
 const VARIANTE_SEVERIDAD: Record<SeveridadAlerta, "default" | "secondary" | "destructive" | "outline"> = { info: "outline", aviso: "secondary", critica: "destructive" };
 const ETIQUETA_SEVERIDAD: Record<SeveridadAlerta, string> = { info: "Info", aviso: "Aviso", critica: "Crítica" };
 
-function formatearFechaHora(iso: string | null): string {
+const FILTROS: readonly { valor: FiltroEstadoConflictos; etiqueta: string }[] = [
+  { valor: "abiertos", etiqueta: "Abiertos" },
+  { valor: "resueltos", etiqueta: "Resueltos" },
+  { valor: "ignorados", etiqueta: "Ignorados" },
+  { valor: "todos", etiqueta: "Todos" },
+];
+
+const VARIANTE_ESTADO_CONFLICTO: Record<ConflictoCalendario["estado"], "default" | "secondary" | "destructive" | "outline"> = { abierto: "destructive", resuelto: "default", ignorado: "outline" };
+
+/** Instante en la zona horaria de la PROPERTY (no la del navegador: un gestor en CDMX viendo una
+ * property de Cancún debe ver la hora de Cancún). Una zona inválida cae a la del navegador. */
+function formatearFechaHora(iso: string | null, zona: string): string {
   if (!iso) return "nunca";
-  return new Date(iso).toLocaleString("es-MX");
+  try {
+    return new Date(iso).toLocaleString("es-MX", { timeZone: zona });
+  } catch {
+    return new Date(iso).toLocaleString("es-MX");
+  }
 }
 
 function describirOcupacion(o: OcupacionConflicto | null): string {
@@ -64,6 +86,11 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
+  const [filtro, setFiltro] = useState<FiltroEstadoConflictos>("abiertos");
+  // Conflicto cuyo formulario de "Ignorar" está abierto, con su motivo.
+  const [ignorando, setIgnorando] = useState<{ id: string; motivo: string } | null>(null);
+  // Historial desplegado por conflicto (undefined = cerrado; "cargando" mientras llega).
+  const [historiales, setHistoriales] = useState<Readonly<Record<string, HistorialConflicto | "cargando" | "error">>>({});
 
   useEffect(() => {
     if (!puedeLeer) return;
@@ -71,7 +98,7 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
     setError(null);
     (async () => {
       try {
-        const [m, c] = await Promise.all([fetchMonitorSync(fetch, apiBaseUrl, token, propertyId), fetchConflictos(fetch, apiBaseUrl, token, propertyId, "abiertos")]);
+        const [m, c] = await Promise.all([fetchMonitorSync(fetch, apiBaseUrl, token, propertyId), fetchConflictos(fetch, apiBaseUrl, token, propertyId, filtro)]);
         if (cancelado) return;
         setMonitor(m);
         setConflictos(c.conflictos);
@@ -82,18 +109,34 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, puedeLeer, recarga]);
+  }, [apiBaseUrl, token, propertyId, puedeLeer, recarga, filtro]);
 
   async function ejecutarAccion(id: string, accion: () => Promise<void>) {
     setOcupado(id);
     setErrorAccion(null);
     try {
       await accion();
+      setIgnorando(null);
+      setHistoriales({});
       setRecarga((n) => n + 1);
     } catch (err) {
       setErrorAccion(err instanceof Error ? err.message : "No se pudo completar la acción.");
     } finally {
       setOcupado(null);
+    }
+  }
+
+  async function alternarHistorial(id: string) {
+    if (historiales[id] !== undefined) {
+      setHistoriales((h) => Object.fromEntries(Object.entries(h).filter(([clave]) => clave !== id)));
+      return;
+    }
+    setHistoriales((h) => ({ ...h, [id]: "cargando" }));
+    try {
+      const historial = await fetchHistorialConflicto(fetch, apiBaseUrl, token, propertyId, id);
+      setHistoriales((h) => ({ ...h, [id]: historial }));
+    } catch {
+      setHistoriales((h) => ({ ...h, [id]: "error" }));
     }
   }
 
@@ -139,44 +182,185 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
           {errorAccion && <EstadoError mensaje={errorAccion} />}
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Conflictos de calendario abiertos ({monitor.conflictosAbiertos})</CardTitle>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-sm">Conflictos de calendario ({monitor.conflictosAbiertos} abiertos)</CardTitle>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar conflictos por estado">
+                {FILTROS.map((f) => (
+                  <Button key={f.valor} type="button" size="sm" variant={filtro === f.valor ? "default" : "outline"} aria-pressed={filtro === f.valor} onClick={() => setFiltro(f.valor)}>
+                    {f.etiqueta}
+                  </Button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className={conflictos.length === 0 ? undefined : "p-0"}>
               {conflictos.length === 0 ? (
-                <EstadoVacio icon={CheckCircle2} titulo="Sin conflictos abiertos" mensaje="No hay dos reservas de canales distintos sobre las mismas noches pendientes de revisar." />
+                <EstadoVacio
+                  icon={CheckCircle2}
+                  titulo={filtro === "abiertos" ? "Sin conflictos abiertos" : "Sin conflictos en este filtro"}
+                  mensaje={filtro === "abiertos" ? "No hay dos reservas de canales distintos sobre las mismas noches pendientes de revisar." : "Ningún conflicto coincide con el estado elegido."}
+                />
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Unidad</TableHead>
-                      <TableHead>Tipo</TableHead>
+                      <TableHead>Tipo / estado</TableHead>
                       <TableHead>Reservas en pugna</TableHead>
                       <TableHead>Detectado</TableHead>
-                      {puedeEscribir && <TableHead />}
+                      <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {conflictos.map((k) => (
-                      <TableRow key={k.id}>
-                        <TableCell className="text-xs">{k.unidadNombre ?? k.unidadId}</TableCell>
+                    {conflictos.map((k) => {
+                      const historial = historiales[k.id];
+                      return (
+                        <Fragment key={k.id}>
+                          <TableRow>
+                            <TableCell className="text-xs">{k.unidadNombre ?? k.unidadId}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge variant={k.tipo === "overbooking_confirmado" ? "destructive" : "secondary"} className="text-[10px]">
+                                  {ETIQUETA_TIPO_CONFLICTO[k.tipo]}
+                                </Badge>
+                                <Badge variant={VARIANTE_ESTADO_CONFLICTO[k.estado]} className="text-[10px]">
+                                  {ETIQUETA_ESTADO_CONFLICTO[k.estado]}
+                                </Badge>
+                              </div>
+                              {k.motivoResolucion && <div className="mt-1 text-[11px] text-muted-foreground">Motivo: {k.motivoResolucion}</div>}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div>{describirOcupacion(k.ocupacionA)}</div>
+                              <div className="text-muted-foreground">{describirOcupacion(k.ocupacionB)}</div>
+                              {k.solape && (
+                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                  Noches en conflicto: {k.solape.inicio} → {k.solape.fin} ({ETIQUETA_VIGENCIA_SOLAPE[k.solape.vigencia]})
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                              {k.detectadoEnLocal ?? formatearFechaHora(k.detectadoEn, monitor.zonaHoraria)}
+                              {k.resueltoEn && <div>Cerrado: {k.resueltoEnLocal ?? formatearFechaHora(k.resueltoEn, monitor.zonaHoraria)}</div>}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap justify-end gap-1.5">
+                                {puedeEscribir && k.estado === "abierto" && (
+                                  <>
+                                    <Button type="button" size="sm" variant="outline" disabled={ocupado === k.id} onClick={() => ejecutarAccion(k.id, () => decidirConflicto(fetch, apiBaseUrl, token, propertyId, k.id, { accion: "resuelto" }))}>
+                                      {ocupado === k.id ? "Guardando…" : "Marcar resuelto"}
+                                    </Button>
+                                    <Button type="button" size="sm" variant="outline" disabled={ocupado === k.id} onClick={() => setIgnorando(ignorando?.id === k.id ? null : { id: k.id, motivo: "" })}>
+                                      Ignorar…
+                                    </Button>
+                                  </>
+                                )}
+                                {k.estado !== "abierto" && (
+                                  <Button type="button" size="sm" variant="ghost" onClick={() => alternarHistorial(k.id)}>
+                                    {historial === undefined ? "Ver historial" : "Ocultar historial"}
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {ignorando?.id === k.id && (
+                            <TableRow>
+                              <TableCell colSpan={5}>
+                                <form
+                                  className="flex flex-col gap-2"
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const error = validarMotivoDecision({ accion: "ignorado", motivo: ignorando.motivo });
+                                    if (error) {
+                                      setErrorAccion(error);
+                                      return;
+                                    }
+                                    void ejecutarAccion(k.id, () => decidirConflicto(fetch, apiBaseUrl, token, propertyId, k.id, { accion: "ignorado", motivo: ignorando.motivo }));
+                                  }}
+                                >
+                                  <Label htmlFor={`motivo-${k.id}`} className="text-xs">
+                                    Motivo para ignorar este conflicto (queda en el historial)
+                                  </Label>
+                                  <Textarea
+                                    id={`motivo-${k.id}`}
+                                    value={ignorando.motivo}
+                                    maxLength={500}
+                                    rows={2}
+                                    placeholder="Ej.: es el mismo huésped reservando en dos plataformas"
+                                    onChange={(e) => setIgnorando({ id: k.id, motivo: e.target.value })}
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button type="submit" size="sm" disabled={ocupado === k.id}>
+                                      {ocupado === k.id ? "Guardando…" : "Ignorar conflicto"}
+                                    </Button>
+                                    <Button type="button" size="sm" variant="ghost" onClick={() => setIgnorando(null)}>
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </form>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {historial !== undefined && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-xs">
+                                {historial === "cargando" && <span className="text-muted-foreground">Cargando historial…</span>}
+                                {historial === "error" && <span className="text-destructive">No se pudo cargar el historial.</span>}
+                                {typeof historial === "object" &&
+                                  (!historial.disponible ? (
+                                    <span className="text-muted-foreground">El historial de decisiones todavía no está habilitado en esta base de datos.</span>
+                                  ) : historial.entradas.length === 0 ? (
+                                    <span className="text-muted-foreground">Sin decisiones registradas.</span>
+                                  ) : (
+                                    <ul className="m-0 list-none p-0">
+                                      {historial.entradas.map((e) => (
+                                        <li key={e.id}>
+                                          {e.creadoEnLocal ?? "—"} · {e.accion === "ignorado" ? "Ignorado" : "Resuelto"} por {e.porMi ? "ti" : "otro miembro del equipo"}
+                                          {e.motivo ? ` — ${e.motivo}` : ""}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ))}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Salud por canal</CardTitle>
+            </CardHeader>
+            <CardContent className={monitor.resumenPorCanal.length > 0 ? "p-0" : undefined}>
+              {monitor.resumenPorCanal.length === 0 ? (
+                <EstadoVacio icon={AlertTriangle} titulo="Sin canales conectados" mensaje="Cuando conectes un feed iCal, aquí verás el estado de cada canal de un vistazo." />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Canal</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Feeds</TableHead>
+                      <TableHead>Unidades con problema</TableHead>
+                      <TableHead>Sincronización más antigua</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {monitor.resumenPorCanal.map((r) => (
+                      <TableRow key={r.canal}>
+                        <TableCell className="text-xs">{r.canal}</TableCell>
                         <TableCell>
-                          <Badge variant={k.tipo === "overbooking_confirmado" ? "destructive" : "secondary"} className="text-[10px]">
-                            {ETIQUETA_TIPO_CONFLICTO[k.tipo]}
+                          <Badge variant={VARIANTE_SALUD[r.peor]} className="text-[10px]">
+                            {ETIQUETA_SALUD_FEED[r.peor]}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs">
-                          <div>{describirOcupacion(k.ocupacionA)}</div>
-                          <div className="text-muted-foreground">{describirOcupacion(k.ocupacionB)}</div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(k.detectadoEn)}</TableCell>
-                        {puedeEscribir && (
-                          <TableCell>
-                            <Button type="button" size="sm" variant="outline" disabled={ocupado === k.id} onClick={() => ejecutarAccion(k.id, () => resolverConflicto(fetch, apiBaseUrl, token, propertyId, k.id))}>
-                              {ocupado === k.id ? "Guardando…" : "Marcar resuelto"}
-                            </Button>
-                          </TableCell>
-                        )}
+                        <TableCell className="text-xs">{r.totalFeeds}</TableCell>
+                        <TableCell className="text-xs">{r.unidadesConProblema}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(r.sincronizacionMasAntiguaEn, monitor.zonaHoraria)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -217,7 +401,7 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                           {a.canal} · {a.unidadNombre ?? a.unidadId}
                         </TableCell>
                         <TableCell className="text-xs">{a.detalle}</TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(a.creadoEn)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(a.creadoEn, monitor.zonaHoraria)}</TableCell>
                         {puedeEscribir && (
                           <TableCell>
                             <Button type="button" size="sm" variant="outline" disabled={ocupado === a.id} onClick={() => ejecutarAccion(a.id, () => atenderAlertaSync(fetch, apiBaseUrl, token, propertyId, a.id))}>
@@ -262,8 +446,8 @@ export function MonitorSyncPage({ apiBaseUrl, token, propertyId, orgSlug, sessio
                           </Badge>
                           {f.intentosFallidosConsecutivos > 0 && <span className="ml-2 text-[11px] text-muted-foreground">{f.intentosFallidosConsecutivos} fallo(s) seguidos</span>}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(f.ultimaSincronizacionExitosaEn)}</TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.proximoIntentoEn ? formatearFechaHora(f.proximoIntentoEn) : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(f.ultimaSincronizacionExitosaEn, monitor.zonaHoraria)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.proximoIntentoEn ? formatearFechaHora(f.proximoIntentoEn, monitor.zonaHoraria) : "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
