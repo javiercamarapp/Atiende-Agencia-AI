@@ -133,6 +133,35 @@ describe("MFA del superadmin -- enrolar y verificar", () => {
     expect(ok.status).toBe(200);
   });
 
+  it("los intentos fallidos se CONFIRMAN (commit) antes de responder el 401: con una sola transaccion por request se revertirian y el bloqueo no existiria", async () => {
+    const s = await seguridadSetup();
+    const sa = await s.superadmin();
+    await post(s.app, "/superadmin/mfa/enrolar", {}, bearer(sa.token));
+    const { buildApp } = await import("../src/app.ts");
+    let commits = 0;
+    let rollbacks = 0;
+    const rastreo = {
+      async withAppSession<T>(claims: { userId: string | null }, fn: Parameters<typeof s.deps.engine.withAppSession<T>>[1]): Promise<T> {
+        try {
+          const r = await s.deps.engine.withAppSession(claims, fn);
+          commits += 1;
+          return r;
+        } catch (err) {
+          rollbacks += 1;
+          throw err;
+        }
+      },
+    };
+    const app = buildApp({ ...s.deps, engine: rastreo });
+    const antes = commits;
+    const res = await post(app, "/superadmin/mfa/verificar", { codigo: "000000" }, bearer(sa.token));
+    expect(res.status).toBe(401);
+    expect(rollbacks).toBe(0);
+    expect(commits).toBeGreaterThan(antes);
+    // el intento quedo registrado
+    expect((await s.mfa.listEvents(sa.id, "mfa")).events.map((e) => e.event)).toContain("mfa_failed");
+  });
+
   it("un codigo ya usado se rechaza (401 mfa_codigo_reusado); el del paso siguiente funciona", async () => {
     fakeTime(T0);
     const s = await seguridadSetup();
@@ -211,6 +240,21 @@ describe("step-up de acciones sensibles", () => {
     const vencido = await put(bearer(sa.token, { "x-stepup-token": stepUpToken }));
     expect(vencido.status).toBe(403);
     expect(await vencido.json()).toMatchObject({ code: "stepup_required" });
+  });
+
+  it("no hay forma de esquivar el step-up con variantes de ruta (barra final, percent-encoding, mayusculas)", async () => {
+    const s = await seguridadSetup();
+    const sa = await s.superadmin();
+    await enrolarYActivar(s, sa);
+    const intentar = (path: string) => s.app.request(path, { ...jsonRequestInit(setPayload, bearer(sa.token)), method: "PUT" });
+    // Hono es estricto con la barra final: otra ruta distinta -> 404, nunca el handler real
+    expect((await intentar("/superadmin/interruptores/")).status).toBe(404);
+    // percent-encoding: Hono decodifica antes de rutear, y el middleware lee la misma ruta decodificada
+    expect((await intentar("/superadmin/%69nterruptores")).status).toBe(403);
+    // el routing distingue mayusculas -> 404
+    expect((await intentar("/superadmin/Interruptores")).status).toBe(404);
+    // y sin step-up el estado NO cambio
+    expect((await s.switches.getBlocked()).blocked).toEqual([]);
   });
 
   it("el step-up de OTRO superadmin no sirve (atado al usuario)", async () => {
