@@ -94,6 +94,15 @@ describe("importes en texto", () => {
     ["habitacion 305", []],
   ])("extractMoneyCents(%j) = %j", (text, expected) => expect(extractMoneyCents(text)).toEqual(expected));
 
+  it("texto hostil enorme (cientos de miles de ceros o separadores) no cuelga la guardia (sin ReDoS)", () => {
+    const started = Date.now();
+    extractMoneyCents("$" + "0".repeat(300_000));
+    extractMoneyCents("0".repeat(300_000) + " pesos");
+    extractMoneyCents("$1" + ",000".repeat(100_000) + ".");
+    checkReply({ reply: "$" + "0,".repeat(200_000), allowedCents: new Set(), reservasEnabled: true, confirmedByHuman: false });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it("formatMxn con centavos y miles", () => {
     expect(formatMxn(357_000)).toBe("$3,570.00 MXN");
     expect(formatMxn(5)).toBe("$0.05 MXN");

@@ -92,7 +92,7 @@ export function mapReservasPgError(err: unknown, operation: string): unknown {
         return new ReservasAgenteError("cotizacion_no_disponible", message, { status });
       }
       if (prefix === "precio_cambio") {
-        const total = /(\d+) centavos/.exec(message)?.[1];
+        const total = /(\d{1,15}) centavos/.exec(message)?.[1];
         return new ReservasAgenteError("precio_cambio", message, total ? { totalCents: Number(total) } : undefined);
       }
       return new ReservasAgenteError(prefix ?? "parametros_invalidos", prefix ? message : "Datos invalidos (fuera de rango o formato no permitido).");

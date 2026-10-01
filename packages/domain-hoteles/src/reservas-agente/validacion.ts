@@ -107,9 +107,11 @@ export function isUuid(value: unknown): value is string {
 }
 
 /** "$1,234.56", "1234 pesos", "MXN 1,234": devuelve los importes mencionados en centavos. */
-export function extractMoneyCents(text: string): number[] {
+export function extractMoneyCents(rawText: string): number[] {
+  // Texto del modelo = entrada no confiable: se acota el largo y los cuantificadores de la expresion (sin backtracking polinomial).
+  const text = rawText.slice(0, 8000);
   const out: number[] = [];
-  const re = /(?:\$|\bmxn\b|\busd\b|us\$)\s*(\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)|(\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?:pesos|mxn|usd|d[oó]lares)/gi;
+  const re = /(?:\$|\bmxn\b|\busd\b|us\$)\s{0,3}(\d{1,15}(?:[.,]\d{3}){0,5}(?:[.,]\d{1,2})?)|(\d{1,15}(?:[.,]\d{3}){0,5}(?:[.,]\d{1,2})?)\s{0,3}(?:pesos|mxn|usd|d[oó]lares)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const raw = (m[1] ?? m[2] ?? "").replace(/\s/g, "");
