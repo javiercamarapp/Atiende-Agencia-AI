@@ -77,7 +77,7 @@ describe("GET /portal-cliente/resumen -- acceso por token", () => {
     const tokenB = await nuevoToken(propertyB);
     expect((await subir(tokenA, PDF, "application/pdf", "secreto-de-A.pdf")).status).toBe(201);
     expect((await app().request("/portal-cliente/mensajes", { method: "POST", headers: { "x-portal-token": tokenA, "content-type": "application/json" }, body: JSON.stringify({ cuerpo: "mensaje confidencial de A" }) })).status).toBe(201);
-    const b = await (await app().request("/portal-cliente/resumen", conToken(tokenB))).json();
+    const b = await (await app().request("/portal-cliente/resumen", conToken(tokenB))).text().then(JSON.parse);
     expect(b.cliente.nombre).toBe("Cliente B SA de CV");
     expect(b.obligaciones[0].tipo).toBe("IVA");
     expect(b.documentos).toEqual([]);
@@ -96,7 +96,7 @@ describe("GET /portal-cliente/resumen -- acceso por token", () => {
     for (const t of casos) {
       const res = await app().request("/portal-cliente/resumen", conToken(t));
       expect(res.status).toBe(404);
-      cuerpos.add(JSON.stringify(await res.json()));
+      cuerpos.add(JSON.stringify(await res.text().then(JSON.parse)));
     }
     expect(cuerpos.size).toBe(1);
     expect([...cuerpos][0]).toContain("enlace_no_valido");
@@ -113,7 +113,7 @@ describe("GET /portal-cliente/resumen -- acceso por token", () => {
     repo.disponible = false;
     const res = await app().request("/portal-cliente/resumen", conToken(token));
     expect(res.status).toBe(503);
-    expect(await res.json()).toMatchObject({ code: "service_unavailable" });
+    expect(await res.text().then(JSON.parse)).toMatchObject({ code: "service_unavailable" });
   });
 
   it("rate limit por IP: pasado el tope responde 429, aun con token invalido (frena la fuerza bruta)", async () => {
@@ -132,11 +132,11 @@ describe("POST /portal-cliente/documentos", () => {
     const xml = cfdiXmlPortal();
     const r1 = await subir(token, xml, "application/xml", "factura.xml");
     expect(r1.status).toBe(201);
-    const j1 = await r1.json();
+    const j1 = await r1.text().then(JSON.parse);
     expect(j1).toMatchObject({ estado: "recibido", duplicado: false, nombreArchivo: "factura.xml" });
     const r2 = await subir(token, xml, "text/xml", "otra-vez.xml");
     expect(r2.status).toBe(200);
-    expect(await r2.json()).toMatchObject({ id: j1.id, duplicado: true });
+    expect(await r2.text().then(JSON.parse)).toMatchObject({ id: j1.id, duplicado: true });
     expect(repo.documentos).toHaveLength(1);
     expect(repo.documentos[0]!.resumen).toMatchObject({ folio_fiscal: "11111111-2222-3333-4444-555555555555", total: "1160.00" });
   });
@@ -146,7 +146,7 @@ describe("POST /portal-cliente/documentos", () => {
     const xxe = cfdiXmlPortal({ prologo: '<?xml version="1.0"?><!DOCTYPE c [<!ENTITY x SYSTEM "file:///etc/passwd">]>' });
     const res = await subir(token, xxe, "application/xml");
     expect(res.status).toBe(422);
-    expect((await res.json()).code).toBe("archivo_contenido_no_permitido");
+    expect((await res.text().then(JSON.parse)).code).toBe("archivo_contenido_no_permitido");
     expect((await subir(token, cfdiXmlPortal({ prologo: '<!DOCTYPE l [<!ENTITY a "aaa"><!ENTITY b "&a;&a;&a;">]>' }), "text/xml")).status).toBe(422);
     expect(repo.documentos).toHaveLength(0);
   });
@@ -208,7 +208,7 @@ describe("POST /portal-cliente/mensajes", () => {
   it("mensaje valido -> 201 y aparece en SU resumen; vacio, largo o mal tipo -> 400; token malo -> 404", async () => {
     const token = await nuevoToken();
     expect((await msg(token, { cuerpo: "  Hola, ya subi mis facturas.  " })).status).toBe(201);
-    expect((await (await app().request("/portal-cliente/resumen", conToken(token))).json()).mensajes).toMatchObject([{ autor: "cliente", cuerpo: "Hola, ya subi mis facturas." }]);
+    expect((await (await app().request("/portal-cliente/resumen", conToken(token))).text().then(JSON.parse)).mensajes).toMatchObject([{ autor: "cliente", cuerpo: "Hola, ya subi mis facturas." }]);
     expect((await msg(token, { cuerpo: "   " })).status).toBe(400);
     expect((await msg(token, { cuerpo: "a".repeat(2001) })).status).toBe(400);
     expect((await msg(token, { cuerpo: 5 })).status).toBe(400);
@@ -223,7 +223,7 @@ describe("gestion del staff", () => {
     const res = await app().request(`${base()}/enlaces`, authedJson(ctx.staff.contador.token, { etiqueta: "Contacto de Pedro", dias: 15 }));
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    const body = await res.json();
+    const body = await res.text().then(JSON.parse);
     const [antes, token] = (body.url as string).split("#t=");
     expect(antes).toMatch(/\/portal\/cliente$/);
     expect(antes).not.toContain(token!);
@@ -264,27 +264,27 @@ describe("gestion del staff", () => {
 
   it("revocar: el MISMO enlace deja de funcionar de inmediato; revocar de nuevo es idempotente (revocado:false)", async () => {
     const token = await nuevoToken();
-    const lista = await (await app().request(`${base()}/enlaces`, authedJson(ctx.staff.admin.token))).json();
+    const lista = await (await app().request(`${base()}/enlaces`, authedJson(ctx.staff.admin.token))).text().then(JSON.parse);
     const id = lista.enlaces[0].id as string;
     expect((await app().request("/portal-cliente/resumen", conToken(token))).status).toBe(200);
     const r1 = await app().request(`${base()}/enlaces/${id}/revocar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}` } });
-    expect(await r1.json()).toEqual({ revocado: true });
+    expect(await r1.text().then(JSON.parse)).toEqual({ revocado: true });
     expect((await app().request("/portal-cliente/resumen", conToken(token))).status).toBe(404);
     const r2 = await app().request(`${base()}/enlaces/${id}/revocar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}` } });
-    expect(await r2.json()).toEqual({ revocado: false });
+    expect(await r2.text().then(JSON.parse)).toEqual({ revocado: false });
     expect((await app().request(`${base()}/enlaces/no-es-uuid/revocar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}` } })).status).toBe(400);
   });
 
   it("aceptar un CFDI XML del cliente: pasa por la MISMA ingesta (crea el invoice), marca aceptado y un segundo aceptar -> 409", async () => {
     const token = await nuevoToken();
     expect((await subir(token, cfdiXmlPortal(), "application/xml", "factura.xml")).status).toBe(201);
-    const docs = await (await app().request(`${base()}/documentos`, authedJson(ctx.staff.contador.token))).json();
+    const docs = await (await app().request(`${base()}/documentos`, authedJson(ctx.staff.contador.token))).text().then(JSON.parse);
     expect(docs.documentos).toHaveLength(1);
     expect(JSON.stringify(docs)).not.toContain("contenido");
     const id = docs.documentos[0].id as string;
     const res = await app().request(`${base()}/documentos/${id}/aceptar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}` } });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.text().then(JSON.parse);
     expect(body).toMatchObject({ estado: "aceptado" });
     expect(body.invoiceId).toBeTruthy();
     expect(await ctx.despachosRepo.findInvoice(ctx.propertyId, body.invoiceId)).toMatchObject({ folioFiscal: "11111111-2222-3333-4444-555555555555", rfcEmisor: "CON950820K12" });
@@ -309,11 +309,11 @@ describe("gestion del staff", () => {
     await subir(token, enc("%PDF-1.4 otro"), "application/pdf", "ilegible.pdf");
     const [d1, d2] = repo.documentos;
     const auth = { authorization: `Bearer ${ctx.staff.contador.token}`, "content-type": "application/json" };
-    const ok = await (await app().request(`${base()}/documentos/${d1!.id}/aceptar`, { method: "POST", headers: auth })).json();
+    const ok = await (await app().request(`${base()}/documentos/${d1!.id}/aceptar`, { method: "POST", headers: auth })).text().then(JSON.parse);
     expect(ok).toMatchObject({ estado: "aceptado", invoiceId: null });
     expect((await app().request(`${base()}/documentos/${d2!.id}/rechazar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.auditor.token}`, "content-type": "application/json" }, body: JSON.stringify({ motivo: "x" }) })).status).toBe(403);
     expect((await app().request(`${base()}/documentos/${d2!.id}/rechazar`, { method: "POST", headers: auth, body: JSON.stringify({ motivo: "Esta ilegible, vuelve a subirlo." }) })).status).toBe(200);
-    const resumen = await (await app().request("/portal-cliente/resumen", conToken(token))).json();
+    const resumen = await (await app().request("/portal-cliente/resumen", conToken(token))).text().then(JSON.parse);
     expect(resumen.documentos).toEqual(expect.arrayContaining([
       expect.objectContaining({ nombreArchivo: "constancia.pdf", estado: "aceptado" }),
       expect.objectContaining({ nombreArchivo: "ilegible.pdf", estado: "rechazado", motivo: "Esta ilegible, vuelve a subirlo." }),
@@ -340,15 +340,15 @@ describe("gestion del staff", () => {
     expect((await app().request(`${base()}/mensajes`, authedJson(ctx.staff.contador.token, { cuerpo: "Recibimos tus facturas." }))).status).toBe(201);
     expect((await app().request(`${base()}/mensajes`, authedJson(ctx.staff.auditor.token, { cuerpo: "no" }))).status).toBe(403);
     expect((await app().request(`${base()}/mensajes`, authedJson(ctx.staff.contador.token, { cuerpo: "" }))).status).toBe(400);
-    expect((await (await app().request(`${base()}/mensajes`, authedJson(ctx.staff.auditor.token))).json()).mensajes).toHaveLength(1);
-    expect((await (await app().request("/portal-cliente/resumen", conToken(token))).json()).mensajes).toMatchObject([{ autor: "despacho", cuerpo: "Recibimos tus facturas." }]);
+    expect((await (await app().request(`${base()}/mensajes`, authedJson(ctx.staff.auditor.token))).text().then(JSON.parse)).mensajes).toHaveLength(1);
+    expect((await (await app().request("/portal-cliente/resumen", conToken(token))).text().then(JSON.parse)).mensajes).toMatchObject([{ autor: "despacho", cuerpo: "Recibimos tus facturas." }]);
   });
 
   it("base sin migrar: el panel lista vacio con disponible:false y las escrituras responden 503", async () => {
     repo.disponible = false;
-    expect(await (await app().request(`${base()}/enlaces`, authedJson(ctx.staff.admin.token))).json()).toEqual({ disponible: false, enlaces: [] });
-    expect(await (await app().request(`${base()}/documentos`, authedJson(ctx.staff.admin.token))).json()).toEqual({ disponible: false, documentos: [] });
-    expect(await (await app().request(`${base()}/mensajes`, authedJson(ctx.staff.admin.token))).json()).toEqual({ disponible: false, mensajes: [] });
+    expect(await (await app().request(`${base()}/enlaces`, authedJson(ctx.staff.admin.token))).text().then(JSON.parse)).toEqual({ disponible: false, enlaces: [] });
+    expect(await (await app().request(`${base()}/documentos`, authedJson(ctx.staff.admin.token))).text().then(JSON.parse)).toEqual({ disponible: false, documentos: [] });
+    expect(await (await app().request(`${base()}/mensajes`, authedJson(ctx.staff.admin.token))).text().then(JSON.parse)).toEqual({ disponible: false, mensajes: [] });
     expect((await app().request(`${base()}/enlaces`, authedJson(ctx.staff.admin.token, { etiqueta: "x" }))).status).toBe(503);
   });
 });

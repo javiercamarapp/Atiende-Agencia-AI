@@ -102,4 +102,4 @@ lectura para esto, no es capricho de la UI):
   del contribuyente activo y un período (por defecto el mes anterior en CDMX), con descarga
   PDF y Excel (`lib/reportes-client.ts`, `fetchBlob` con refresh de sesión). Las secciones
   sin dato fuente muestran «Sin datos» con su motivo.
-- Ambos destinos se suman al sidebar y a «Más» en móvil (15 destinos).
+- Ambos destinos se suman al sidebar y a «Más» en móvil (15 destinos; el portal del cliente D-08 sube el total a 16).
