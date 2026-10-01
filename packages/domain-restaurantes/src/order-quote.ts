@@ -94,12 +94,12 @@ export function buildOrderQuoteFromProducts(
     }
     if (product.requiresAdultConfirmation) containsAlcohol = true;
 
-    if (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina") {
-      throw new OrderValidationError(`Tortilla inválida para ${product.name}: elige maíz o harina.`);
+    if (item.tortilla !== undefined && item.tortilla !== "maiz" && item.tortilla !== "harina" && item.tortilla !== "mixta") {
+      throw new OrderValidationError(`Tortilla inválida para ${product.name}: elige maíz, harina o mixta.`);
     }
     const requiresTortilla = /\btacos?\b/i.test(product.name);
     if (requiresTortilla && !item.tortilla) {
-      throw new OrderValidationError(`Antes de continuar, confirma si ${product.name} va con tortilla de maíz o harina.`);
+      throw new OrderValidationError(`Antes de continuar, confirma si ${product.name} va con tortilla de maíz, harina o mixta.`);
     }
     // Un renglón que no requiere tortilla nunca la carga, aunque el caller la mande
     // (los modelos a veces copian el último enum de tortilla a todos los renglones).

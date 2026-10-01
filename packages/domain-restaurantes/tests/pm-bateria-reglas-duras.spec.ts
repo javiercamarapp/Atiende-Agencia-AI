@@ -226,7 +226,7 @@ describe("PM reglas duras: cantidades, paquetes y tortilla (X01-X04)", () => {
 
   it("T-RD14 / X04 [P0] pastor sin tortilla: se exige la tortilla antes de cotizar", async () => {
     const f = pmFixture();
-    expect(await mensajeDe(cotizar(f, [item(f.p.pastor, 2)]))).toMatch(/tortilla de maíz o harina/);
+    expect(await mensajeDe(cotizar(f, [item(f.p.pastor, 2)]))).toMatch(/tortilla de maíz, harina o mixta/);
   });
 
   it("T-RD14b / P08 [P0] la tortilla 'mixta' es un valor valido (cuestionario: maiz, harina o mixta) en cotizar y en crear, y llega a la comanda", async () => {

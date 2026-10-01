@@ -103,7 +103,7 @@ const ITEM_SCHEMA = {
     product_id: { type: "string" },
     product_name: { type: "string", description: "Nombre exacto devuelto por buscar_producto." },
     requested_quantity: { type: "integer", description: "Cantidad de piezas/unidades que pidio el cliente, no el numero de paquetes." },
-    tortilla: { type: "string", enum: ["maiz", "harina"] },
+    tortilla: { type: "string", enum: ["maiz", "harina", "mixta"] },
   },
   required: ["product_id", "product_name", "requested_quantity"],
 } as const;
@@ -290,7 +290,7 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
       productId: typeof item.product_id === "string" ? item.product_id : undefined,
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       requestedQuantity: qty,
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? (item.tortilla as TortillaChoice) : undefined,
+      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" || item.tortilla === "mixta" ? (item.tortilla as TortillaChoice) : undefined,
     };
   });
 }
@@ -359,7 +359,7 @@ function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["i
       productName: typeof item.product_name === "string" ? item.product_name : undefined,
       quantity: typeof item.quantity === "number" ? item.quantity : undefined,
       requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : undefined,
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? (item.tortilla as TortillaChoice) : undefined,
+      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" || item.tortilla === "mixta" ? (item.tortilla as TortillaChoice) : undefined,
     };
   });
 }
