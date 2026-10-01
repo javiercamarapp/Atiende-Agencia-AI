@@ -79,6 +79,22 @@ describe("registro unico de tools", () => {
     expect(spy.mock.calls[0]![0]).toMatchObject({ customerPhone: "9991111111", reason: "escalada:queja", source: "voice" });
   });
 
+  it("escalar_a_humano acepta los motivos de PM y un motivo inventado por el modelo se guarda como 'otro'", async () => {
+    const { repo, organizationId } = buildRestaurantFixture();
+    const spy = vi.spyOn(repo, "createCallbackRequest");
+    const ctx = { organizationId, channel: "whatsapp" as const, phone: "9991111111" };
+    await invokeAgentTool(repo, ctx, "escalar_a_humano", { motivo: "modificacion_platillo", resumen: "Pide quitar guacamole" });
+    await invokeAgentTool(repo, ctx, "escalar_a_humano", { motivo: "transferencia" });
+    await invokeAgentTool(repo, ctx, "escalar_a_humano", { motivo: "<script>reembolso total</script>" });
+    expect(spy.mock.calls.map((c) => c[0].reason)).toEqual(["escalada:modificacion_platillo", "escalada:transferencia", "escalada:otro"]);
+  });
+
+  it("el esquema de escalar_a_humano publica los motivos de PM (queja, modificacion, transferencia y tiempos al gerente)", () => {
+    const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === "escalar_a_humano")!;
+    const motivo = (def.parameters.properties as Record<string, { enum: string[] }>).motivo!;
+    for (const m of ["queja", "modificacion_platillo", "transferencia", "tiempos_entrega", "pedido_grande", "falla_sistema", "producto_agotado"]) expect(motivo.enum).toContain(m);
+  });
+
   it("una tool inexistente o de otro canal se rechaza", async () => {
     const { repo, organizationId } = buildRestaurantFixture();
     await expect(invokeAgentTool(repo, { organizationId, channel: "voz", phone: null }, "borrar_todo", {})).rejects.toThrow(/Herramienta desconocida/);

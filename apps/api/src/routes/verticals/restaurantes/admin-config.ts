@@ -31,8 +31,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { STAFF_INVITE_ROLES, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
-import type { BranchTimezoneConfig, KnownZone } from "@atiende/domain-restaurantes";
+import { PERFILES_AGENTE_WHATSAPP, STAFF_INVITE_ROLES, TONOS_AGENTE_WHATSAPP, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
+import type { BranchTimezoneConfig, KnownZone, PerfilAgenteWhatsApp, TonoAgenteWhatsApp, WhatsAppAgentConfigRow } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -82,6 +82,33 @@ function optionalNullableTimeZone(value: unknown, field = "zona_horaria"): strin
   return value;
 }
 
+interface UpsertAgenteWhatsappBody {
+  readonly alcance?: unknown;
+  readonly perfil?: unknown;
+  readonly agentName?: unknown;
+  readonly businessName?: unknown;
+  readonly toneStyle?: unknown;
+  readonly deliveryTimeText?: unknown;
+}
+
+/** Texto corto opcional que termina dentro del prompt del agente: sin saltos de linea ni caracteres de control
+ * (un owner no puede colar instrucciones multilinea) y con el mismo tope que el CHECK de la tabla. */
+function optionalShortText(value: unknown, field: string, max: number): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw Errors.validation(`${field}: se esperaba un texto o null.`);
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  // eslint-disable-next-line no-control-regex
+  if (trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) {
+    throw Errors.validation(`${field}: de 1 a ${max} caracteres, en una sola linea.`);
+  }
+  return trimmed;
+}
+
+function serializeAgenteWhatsapp(row: WhatsAppAgentConfigRow | null) {
+  return row ? { perfil: row.perfil, agentName: row.agentName, businessName: row.businessName, toneStyle: row.toneStyle, deliveryTimeText: row.deliveryTimeText } : null;
+}
+
 function serializeZonaHoraria(config: BranchTimezoneConfig) {
   return { zonaHoraria: config.zonaHoraria };
 }
@@ -101,6 +128,9 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   app.use(whatsappPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(zonasPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(zonaItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  // Perfil del agente de WhatsApp (migracion 029): por organizacion o por sucursal.
+  const agenteWhatsappPath = "/v1/restaurantes/:propertyId/admin/config/agente-whatsapp";
+  app.use(agenteWhatsappPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(zonaHorariaPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(whatsappPath, async (c) => {
@@ -272,6 +302,66 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     });
 
     return c.json(serializeZonaHoraria(actualizado));
+  });
+
+  // ---- Perfil del agente de WhatsApp (migracion 029). GET nunca 404: sin fila (o base sin migrar, la lectura
+  // degrada a null) el agente que contesta es el generico de siempre. ----
+  app.get(agenteWhatsappPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizacion = await repo.findWhatsAppAgentConfig(organizationId, null);
+    const efectivaSucursal = await repo.findWhatsAppAgentConfig(organizationId, propertyId);
+    return c.json({ organizacion: serializeAgenteWhatsapp(organizacion), sucursal: serializeAgenteWhatsapp(efectivaSucursal?.propertyId === propertyId ? efectivaSucursal : null) });
+  });
+
+  app.put(agenteWhatsappPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const staffId = c.get("userId");
+
+    const raw = await readJsonCapped<UpsertAgenteWhatsappBody>(c.req.raw, 2 * 1024);
+    if (raw.alcance !== "organizacion" && raw.alcance !== "sucursal") throw Errors.validation('alcance: "organizacion" o "sucursal".');
+    if (typeof raw.perfil !== "string" || !(PERFILES_AGENTE_WHATSAPP as readonly string[]).includes(raw.perfil)) {
+      throw Errors.validation(`perfil: uno de ${PERFILES_AGENTE_WHATSAPP.join(", ")}.`);
+    }
+    if (raw.toneStyle !== undefined && raw.toneStyle !== null && !(TONOS_AGENTE_WHATSAPP as readonly string[]).includes(String(raw.toneStyle))) {
+      throw Errors.validation(`toneStyle: uno de ${TONOS_AGENTE_WHATSAPP.join(", ")} o null.`);
+    }
+    const config = {
+      perfil: raw.perfil as PerfilAgenteWhatsApp,
+      agentName: optionalShortText(raw.agentName, "agentName", 60),
+      businessName: optionalShortText(raw.businessName, "businessName", 120),
+      toneStyle: (raw.toneStyle ?? null) as TonoAgenteWhatsApp | null,
+      deliveryTimeText: optionalShortText(raw.deliveryTimeText, "deliveryTimeText", 200),
+    };
+    const alcancePropertyId = raw.alcance === "sucursal" ? propertyId : null;
+
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const anterior = await repo.findWhatsAppAgentConfig(organizationId, alcancePropertyId);
+    let actualizado: WhatsAppAgentConfigRow;
+    try {
+      actualizado = await repo.upsertWhatsAppAgentConfig(organizationId, alcancePropertyId, config);
+    } catch (err) {
+      if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
+
+    logEvent(c, "info", "restaurantes_admin_config_agente_whatsapp_actualizado", { actorUserId: staffId, organizationId, propertyId: alcancePropertyId });
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "configuracion.agente_whatsapp_actualizado",
+      entityType: "configuracion",
+      entityId: alcancePropertyId,
+      campo: "perfil",
+      antes: anterior?.perfil ?? null,
+      despues: actualizado.perfil,
+    });
+
+    return c.json(serializeAgenteWhatsapp(actualizado));
   });
 
   return app;
