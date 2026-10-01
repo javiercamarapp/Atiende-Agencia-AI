@@ -1,21 +1,65 @@
 export { cn } from "./lib/utils.js";
 export { formatMoney } from "./lib/formatMoney.js";
+export {
+  ATRIBUTO_TEMA,
+  CLAVE_TEMA_V2,
+  VALOR_TEMA_V2,
+  activarTemaV2,
+  desactivarTemaV2,
+  inicializarTemaV2,
+  temaV2Activo,
+} from "./lib/tema-v2.js";
+export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
+
+// Ticket de cocina imprimible (restaurantes, PM PR-7).
+export {
+  construirTicketCocina,
+  escaparHtml,
+  folioTicket,
+  imprimirTicketsCocina,
+  limpiarTexto,
+  renderDocumentoTicketsCocina,
+  renderTicketCocinaHtml,
+  separarNotas,
+  TICKET_COCINA_CSS,
+  TICKET_COCINA_CSS_DOCUMENTO,
+  type OpcionesTicketCocina,
+  type TicketCanal,
+  type TicketCocina,
+  type TicketCocinaLinea,
+  type TicketPedidoFuente,
+  type TicketPedidoItem,
+} from "./lib/ticketCocina.js";
+export { pedidosPorImprimir, type PedidoParaCola } from "./lib/colaImpresionCocina.js";
+export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, type TicketCocinaVistaProps } from "./components/TicketCocinaDialog.js";
 
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { StatCard, TrendStatCard } from "./components/StatCard.js";
 export { EstadoVacio } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
-export { EstadoCargando } from "./components/EstadoCargando.js";
+export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
+export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
 export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export {
+  ChatDatosDialog,
+  formatChatCell,
+  type ChatDatosDialogProps,
+  type ChatDatosMensaje,
+  type ChatDatosBloque,
+  type ChatDatosColumna,
+  type ChatDatosFuente,
+  type ChatDatosCell,
+} from "./components/ChatDatosDialog.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
+export { StatusBadge, STATUS_TONES, statusTone, type StatusBadgeProps, type StatusTone } from "./components/ui/status-badge.js";
 export {
   Table,
   TableHeader,
@@ -27,6 +71,11 @@ export {
   TableCaption,
 } from "./components/ui/table.js";
 export { Input } from "./components/ui/input.js";
+export { Textarea, type TextareaProps } from "./components/ui/textarea.js";
+export { NativeSelect, nativeSelectVariants, type NativeSelectProps } from "./components/ui/native-select.js";
+export { Checkbox, type CheckboxProps } from "./components/ui/checkbox.js";
+export { Switch, type SwitchProps } from "./components/ui/switch.js";
+export { FormField, type FormFieldControlProps, type FormFieldProps } from "./components/ui/form-field.js";
 export { Label } from "./components/ui/label.js";
 export { Separator } from "./components/ui/separator.js";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs.js";

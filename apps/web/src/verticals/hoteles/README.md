@@ -32,6 +32,12 @@ inyectado para poder probar la lógica de red con vitest en entorno "node"):
   crear/listar/filtrar/cerrar con costo real. Los turnos de camaristas/lavandería
   (REQ-HK-008, LFT) NO están en esta página — flujo de programación semanal propio,
   de forma distinta al resto de este panel, queda pendiente.
+- `pages/Housekeeping.tsx` (`lib/limpieza-client.ts`) — H-04: tablero de limpieza por
+  habitación (tarea del día, responsable, rechazos), generar las tareas del día,
+  iniciar/terminar/inspeccionar (aprobar o rechazar con nota)/asignar/cancelar, marcar
+  sucia, inhabilitar/rehabilitar (fuera de servicio / fuera de orden) y reporte diario por
+  responsable. Los botones se ocultan por rol (cosmético; el servidor es la barrera real).
+  Contra una base sin la migración 033 muestra solo el estado de cada habitación y un aviso.
 - `pages/Fraude.tsx` (`lib/fraude-client.ts`) — cola de fraude interno: ejecutar
   escaneo determinista (nunca LLM) y confirmar/descartar alertas.
 

@@ -1,14 +1,20 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-// Portado 1:1 desde atiende-restaurantes (src/components/ui/button.tsx):
-// anatomía de píldora (rounded-full en todos los tamaños), feedback de
-// press global vía CSS (:active { scale(.97) }) en index.css.
+// Anatomía de píldora (rounded-full en todos los tamaños), feedback de press
+// global vía CSS (:active { scale(.97) }) en index.css.
+//
+// Atiende DS v2: el alto sale de --control-sm/md/lg (index.css). Hoy valen
+// 44/44/48 px (igual que el h-11 / h-12 de siempre); con <html data-theme="v2">
+// pasan a 32/40/44 px y a 44 px en <md. Transiciones enumeradas con los tokens
+// de motion (nada de transition-all). Variantes retiradas por no tener ningún
+// uso en el repo: hero, terracotta, gold y el tamaño xl.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold tracking-[0.005em] ring-offset-background transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold tracking-[0.005em] ring-offset-background transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-fast ease-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -20,16 +26,14 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        hero: "bg-[image:var(--gradient-gold)] text-foreground font-semibold shadow-elevated hover:shadow-glow hover:scale-105 active:scale-100",
-        terracotta: "bg-terracotta text-white font-semibold shadow-card hover:shadow-elevated hover:-translate-y-1",
-        gold: "bg-gold text-gold-foreground font-semibold shadow-card hover:shadow-elevated hover:-translate-y-1",
       },
       size: {
-        default: "h-11 px-5 py-2",
-        sm: "h-11 px-4",
-        lg: "h-12 px-8 text-base",
-        xl: "h-14 px-10 text-lg",
-        icon: "h-11 w-11",
+        default: "h-[var(--control-md)] px-5 py-2",
+        md: "h-[var(--control-md)] px-5 py-2",
+        sm: "h-[var(--control-sm)] px-4",
+        lg: "h-[var(--control-lg)] px-8 text-base",
+        icon: "h-[var(--control-md)] w-[var(--control-md)]",
+        "icon-sm": "h-[var(--control-sm)] w-[var(--control-sm)]",
       },
     },
     defaultVariants: {
@@ -42,13 +46,42 @@ const buttonVariants = cva(
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
+  /** Renderiza el hijo (p. ej. <Link>) con los estilos del botón. `loading`, `iconLeft` e `iconRight` no aplican. */
   asChild?: boolean;
+  /**
+   * Operación en curso: muestra un spinner en lugar de `iconLeft`, marca
+   * `aria-busy` y bloquea el botón (un doble clic no duplica el envío). El
+   * texto se conserva para que el ancho no salte y el lector de pantalla lo siga leyendo.
+   */
+  loading?: boolean;
+  iconLeft?: React.ReactNode;
+  iconRight?: React.ReactNode;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
+  ({ className, variant, size, asChild = false, loading = false, iconLeft, iconRight, disabled, children, ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
+    if (asChild) {
+      return (
+        <Slot className={classes} ref={ref} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} {...props}>
+          {children}
+        </Slot>
+      );
+    }
+    return (
+      <button
+        className={classes}
+        ref={ref}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        data-loading={loading ? "" : undefined}
+        {...props}
+      >
+        {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : iconLeft}
+        {children}
+        {iconRight}
+      </button>
+    );
   },
 );
 Button.displayName = "Button";

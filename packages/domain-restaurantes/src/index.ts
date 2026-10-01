@@ -147,7 +147,7 @@ export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBr
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
+export { extractMetaTextMessages, extractMetaInboundMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
@@ -196,3 +196,4 @@ export {
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
 export * from "./privacidad/index.ts";
+export * from "./data-chat/index.ts";

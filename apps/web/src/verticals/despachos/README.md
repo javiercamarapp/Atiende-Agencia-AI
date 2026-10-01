@@ -90,3 +90,16 @@ lectura para esto, no es capricho de la UI):
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo
   hueco preexistente que citas/restaurantes/licitaciones, no nuevo de esta
   fase.
+
+## D-01 — Dashboard gerencial y Reportes de cliente
+
+- `pages/Dashboard.tsx` (`/despachos/:orgSlug/dashboard`) — KPIs consolidados del despacho
+  (clientes, cartera pendiente/vencida, tasa de cobranza, pendientes de trabajo, cierres sin
+  cerrar, anomalías), detalle del cliente activo y ranking por urgencia. Un indicador sin
+  fuente se muestra «sin dato» (`StatCard.sinDato`), nunca como cero. Datos de
+  `GET /v1/despachos/:orgSlug/dashboard` (`lib/dashboard-client.ts`).
+- `pages/Reportes.tsx` (`/despachos/:orgSlug/reportes`) — balanza, DIOT, nómina e impuestos
+  del contribuyente activo y un período (por defecto el mes anterior en CDMX), con descarga
+  PDF y Excel (`lib/reportes-client.ts`, `fetchBlob` con refresh de sesión). Las secciones
+  sin dato fuente muestran «Sin datos» con su motivo.
+- Ambos destinos se suman al sidebar y a «Más» en móvil (15 destinos).

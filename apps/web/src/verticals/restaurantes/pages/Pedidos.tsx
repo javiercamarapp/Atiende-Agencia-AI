@@ -11,7 +11,7 @@
 // confirmación no es un formulario, mismo criterio que la referencia real). El
 // gate de confirmación, las transiciones ofrecidas y todas las llamadas al
 // backend son EXACTAMENTE las mismas.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,15 +32,33 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  TicketCocinaDialog,
+  construirTicketCocina,
+  imprimirTicketsCocina,
+  pedidosPorImprimir,
 } from "@atiende/ui";
-import { AlertTriangle, Clock } from "lucide-react";
+import type { TicketCocina } from "@atiende/ui";
+import { AlertTriangle, Clock, Printer } from "lucide-react";
 import { assignRepartidor, fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
+import { guardarPrefs, leerPrefs, PREFS_VACIAS, marcarImpresos, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
+import type { PrefsTicketCocina } from "../lib/ticket-cocina-prefs.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "problema"];
+
+/** Cada cuánto consulta el panel los pedidos nuevos para la auto-impresión de cocina. */
+const AUTO_IMPRESION_INTERVALO_MS = 20_000;
+
+function storageLocal(): Storage | null {
+  try {
+    return typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
 
 const SELECT_CLASES =
   "h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
@@ -49,7 +67,7 @@ function formatMoney(n: number): string {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
   const [status, setStatus] = useState<OrderStatus | "todos">("todos");
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +86,102 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   // <AlertDialog> del final del archivo.
   const [pedidoACancelar, setPedidoACancelar] = useState<OrderSummary | null>(null);
 
+  // PM PR-7 -- ticket de cocina imprimible. El estado de impresión (auto-impresión por
+  // sucursal, pedidos ya impresos, reimpresiones) vive en el navegador que imprime; no
+  // hay cola en el servidor (ver lib/ticket-cocina-prefs.ts).
+  const [prefs, setPrefs] = useState<PrefsTicketCocina>(() => {
+    const st = storageLocal();
+    return st ? leerPrefs(st, orgSlug, propertyId) : PREFS_VACIAS;
+  });
+  const prefsRef = useRef(prefs);
+  const [vistaPrevia, setVistaPrevia] = useState<{ ticket: TicketCocina; orderId: string } | null>(null);
+  const [avisoImpresion, setAvisoImpresion] = useState<string | null>(null);
+  const autoEnCurso = useRef(false);
+  // `load` cambia con el filtro de estado; el ciclo de auto-impresión debe refrescar
+  // siempre con el filtro vigente, no con el del momento en que se activó.
+  const loadRef = useRef<() => Promise<void>>(async () => undefined);
+
+  function actualizarPrefs(next: PrefsTicketCocina): void {
+    prefsRef.current = next;
+    setPrefs(next);
+    const st = storageLocal();
+    if (st) guardarPrefs(st, orgSlug, propertyId, next);
+  }
+
+  // Al cambiar de sucursal u organización se recargan las preferencias de ESA sucursal.
+  useEffect(() => {
+    const st = storageLocal();
+    const cargadas = st ? leerPrefs(st, orgSlug, propertyId) : prefsRef.current;
+    prefsRef.current = cargadas;
+    setPrefs(cargadas);
+  }, [orgSlug, propertyId]);
+
+  function imprimirPedido(order: OrderSummary): void {
+    const yaImpreso = prefsRef.current.impresos.includes(order.id);
+    const reimpresion = yaImpreso ? (prefsRef.current.reimpresiones[order.id] ?? 0) + 1 : 0;
+    const ok = imprimirTicketsCocina([construirTicketCocina(order, { reimpresion })]);
+    if (!ok) {
+      setAvisoImpresion("Este navegador no pudo abrir la impresión.");
+      return;
+    }
+    setAvisoImpresion(null);
+    actualizarPrefs(yaImpreso ? registrarReimpresion(prefsRef.current, order.id) : marcarImpresos(prefsRef.current, [order.id]));
+  }
+
+  async function activarAutoImpresion(): Promise<void> {
+    const st = storageLocal();
+    if (!st || !storageDisponible(st)) {
+      setAvisoImpresion("La auto-impresión necesita guardar datos en este navegador y no está disponible.");
+      return;
+    }
+    try {
+      // Solo esta sucursal (branchId): sin él el API devuelve todo el alcance de la membresía.
+      // Línea base: lo que ya está pendiente NO se imprime solo (evita vomitar el rezago).
+      const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
+      actualizarPrefs({ ...marcarImpresos(prefsRef.current, page.orders.map((o) => o.id)), autoImprimir: true });
+      setAvisoImpresion(null);
+    } catch (err) {
+      setAvisoImpresion(err instanceof Error ? err.message : "No se pudo activar la auto-impresión.");
+    }
+  }
+
+  function desactivarAutoImpresion(): void {
+    actualizarPrefs({ ...prefsRef.current, autoImprimir: false });
+  }
+
+  // Polling del panel como "cola de impresión": solo mientras esta pantalla está abierta
+  // y la auto-impresión está activa en esta sucursal.
+  useEffect(() => {
+    if (!prefs.autoImprimir) return;
+    let cancelado = false;
+    async function ciclo() {
+      if (autoEnCurso.current) return;
+      autoEnCurso.current = true;
+      try {
+        const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50, branchId: propertyId });
+        if (cancelado) return;
+        const nuevos = pedidosPorImprimir(page.orders, new Set(prefsRef.current.impresos));
+        if (nuevos.length === 0) return;
+        if (imprimirTicketsCocina(nuevos.map((o) => construirTicketCocina(o)))) {
+          actualizarPrefs(marcarImpresos(prefsRef.current, nuevos.map((o) => o.id)));
+          setAvisoImpresion(null);
+          void loadRef.current();
+        } else {
+          setAvisoImpresion("Este navegador no pudo abrir la impresión automática.");
+        }
+      } catch (err) {
+        if (!cancelado) setAvisoImpresion(`Auto-impresión sin conexión: ${err instanceof Error ? err.message : "error al consultar pedidos"}`);
+      } finally {
+        autoEnCurso.current = false;
+      }
+    }
+    const id = window.setInterval(() => void ciclo(), AUTO_IMPRESION_INTERVALO_MS);
+    return () => {
+      cancelado = true;
+      window.clearInterval(id);
+    };
+  }, [prefs.autoImprimir, apiBaseUrl, token, propertyId]);
+
   async function load() {
     setError(null);
     try {
@@ -83,6 +197,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
       setError(err instanceof Error ? err.message : "No se pudieron cargar los pedidos.");
     }
   }
+
+  loadRef.current = load;
 
   useEffect(() => {
     void load();
@@ -173,6 +289,27 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
         </Tabs>
       </header>
 
+      <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+        <input
+          id="auto-imprimir-cocina"
+          type="checkbox"
+          checked={prefs.autoImprimir}
+          onChange={(e) => (e.target.checked ? void activarAutoImpresion() : desactivarAutoImpresion())}
+        />
+        <Label htmlFor="auto-imprimir-cocina" className="text-xs font-normal">
+          Imprimir ticket de cocina automáticamente al llegar un pedido (esta sucursal, este equipo)
+        </Label>
+      </div>
+      {prefs.autoImprimir && (
+        <p className="m-0 text-xs text-muted-foreground">
+          Revisando pedidos nuevos cada {AUTO_IMPRESION_INTERVALO_MS / 1000} s mientras esta pantalla esté abierta. Para imprimir sin diálogo, configura el navegador en modo de impresión silenciosa.
+        </p>
+      )}
+      {avisoImpresion && (
+        <p role="alert" className="m-0 text-xs text-destructive">
+          {avisoImpresion}
+        </p>
+      )}
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {repartidoresError && (
         <p role="alert" className="m-0 text-xs text-destructive">
@@ -235,6 +372,22 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
                 </p>
               )}
 
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <Button type="button" size="sm" variant="outline" className="h-9 text-xs" onClick={() => imprimirPedido(o)}>
+                  <Printer className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} />
+                  {prefs.impresos.includes(o.id) ? "Reimprimir ticket" : "Imprimir ticket"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-9 text-xs"
+                  onClick={() => setVistaPrevia({ ticket: construirTicketCocina(o, { reimpresion: prefs.impresos.includes(o.id) ? (prefs.reimpresiones[o.id] ?? 0) + 1 : 0 }), orderId: o.id })}
+                >
+                  Vista previa
+                </Button>
+              </div>
+
               {NEXT_STATUSES[o.status].length > 0 && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {NEXT_STATUSES[o.status].map((next) => (
@@ -256,6 +409,17 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
           </Card>
         ))}
       </div>
+
+      <TicketCocinaDialog
+        ticket={vistaPrevia?.ticket ?? null}
+        onClose={() => setVistaPrevia(null)}
+        etiquetaImprimir={vistaPrevia && prefs.impresos.includes(vistaPrevia.orderId) ? "Reimprimir" : "Imprimir"}
+        onImprimir={() => {
+          const o = orders?.find((x) => x.id === vistaPrevia?.orderId);
+          if (o) imprimirPedido(o);
+          setVistaPrevia(null);
+        }}
+      />
 
       <AlertDialog open={pedidoACancelar !== null} onOpenChange={(abierto) => !abierto && setPedidoACancelar(null)}>
         <AlertDialogContent className="sm:max-w-md">

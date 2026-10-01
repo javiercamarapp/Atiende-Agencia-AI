@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./gateway": "./src/gateway/index.ts"
+    "./gateway": "./src/gateway/index.ts",
+    "./data-chat": "./src/data-chat/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

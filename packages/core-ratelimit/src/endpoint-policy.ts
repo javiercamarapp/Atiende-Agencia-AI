@@ -124,6 +124,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       'Feed .ics público de disponibilidad (GET /rentas/.../feed.ics, sin auth, ver apps/api/src/routes/verticals/rentas/ical-feed-publico.ts) -- hallazgo de auditoría (rubro 10, "performance y escalabilidad": sin rate-limit, 3+2N queries por request). El límite es contra scraping/ráfaga (cada request ejecuta varias queries por unidad), nunca la última defensa de integridad -- el contenido es solo disponibilidad, nunca dato sensible. Negar por completo un poll real de una OTA (Airbnb/Booking/VRBO) por un blip de Redis rompe la sincronización de calendario más tiempo del que vale la pena; el backend en memoria de esta instancia sigue acotando la ráfaga mientras dura la avería.',
   },
+  'data-chat:query': {
+    failMode: 'closed',
+    reason:
+      '"Chatea con tus datos" (apps/api, POST .../admin/chat-datos): cada pregunta puede costar una o varias llamadas a un LLM de pago y consultas a la base de un tenant. El tope mensual por organización del gateway es la defensa de gasto, pero un blip de Redis no debe dejar abierta una ráfaga por usuario antes de llegar a él: negar una pregunta aislada es preferible a gasto sin freno.',
+  },
   'conversation:inbound-webhook': {
     failMode: 'open',
     reason:

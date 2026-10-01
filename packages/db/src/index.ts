@@ -165,3 +165,28 @@ export {
   PostgresPlatformSwitchRepository,
   SuperadminSeguridadError,
 } from "./superadmin-seguridad-repository.ts";
+export type {
+  AccionLimiteRow,
+  CategoriaEventoCosto,
+  CostReportRow,
+  CostosAvailability,
+  CostosPlanesRepository,
+  FxRateRow,
+  MetricaLimiteRow,
+  PlanAssignmentEstado,
+  PlanAssignmentRow,
+  PlanLimitRow,
+  PlanRow,
+  RecordUsageCostEventInput,
+  UnidadEventoCosto,
+  UpsertPlanInput,
+  UsageCostEventRow,
+  VerticalCostos,
+} from "./superadmin-costos-planes-repository.ts";
+export {
+  ACCIONES_LIMITE,
+  InMemoryCostosPlanesRepository,
+  METRICAS_LIMITE,
+  PostgresCostosPlanesRepository,
+  VERTICALES_COSTOS,
+} from "./superadmin-costos-planes-repository.ts";

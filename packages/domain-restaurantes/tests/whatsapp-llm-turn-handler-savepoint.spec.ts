@@ -79,7 +79,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
     const handler = createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
 
-    const result = await handler.handleInboundMessage({ organizationId, phone: "+5219990000000", messages: [{ role: "user", content: "tengo una queja" }], customer: NEW_CUSTOMER });
+    const result = await handler.handleInboundMessage({ organizationId, phone: "+5219990000000", messages: [{ role: "user", content: "necesito factura de mi pedido anterior" }], customer: NEW_CUSTOMER });
 
     // La respuesta se entrega -- nunca se lanza fuera del turno; el handler
     // resuelve normal (el error de Postgres se convirtió en un resultado de tool
@@ -112,5 +112,29 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
         return session.query("select 1;", []);
       })(),
     ).rejects.toMatchObject({ code: "25P02" });
+  });
+
+  it("T-HO01 / X37: la escalada por el clasificador (antes del LLM) tambien va en SAVEPOINT; si el aviso no se pudo registrar NO se dice 'ya avisé al equipo'", async () => {
+    const organizationId = randomUUID();
+    const session = new AbortAwareFakeSession([
+      { match: /from core\.property/, respond: () => [] },
+      { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
+      { match: /select 1/, respond: () => [] },
+    ]);
+    const repo = new PostgresRestaurantesRepository(session);
+    const gateway = makeGateway();
+    const provider = new FakeLlmProvider({ id: "p", script: (): LlmCompletionResult => ({ text: "NO DEBE LLAMARSE", model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 }) });
+    gateway.registerLadder("default", [provider]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+
+    const result = await handler.handleInboundMessage({ organizationId, phone: "+5219990000000", messages: [{ role: "user", content: "Llegó frío mi pedido, tengo una queja" }], customer: NEW_CUSTOMER });
+
+    expect(provider.callCount).toBe(0);
+    expect(result.reply).toMatch(/no pude avisar al equipo/);
+    expect(result.reply).not.toMatch(/ya avisé/i);
+    expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(true);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
   });
 });

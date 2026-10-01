@@ -51,6 +51,25 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
   return (await res.json()) as T;
 }
 
+/** Descarga un archivo binario (PDF/Excel) con el mismo refresh-y-reintento ante 401 que
+ * `fetchJson`. Devuelve el `Blob` y el nombre sugerido por `content-disposition`
+ * (`fallbackNombre` si el servidor no lo manda). Mismo manejo de error que `fetchJson`
+ * (mensaje real del servidor si viene). */
+export async function fetchBlob(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  fallbackNombre: string,
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<{ readonly blob: Blob; readonly nombre: string }> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    throw new DespachosAdminError(await readErrorMessage(res, `No se pudo descargar el archivo (${res.status}).`));
+  }
+  const nombre = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackNombre;
+  return { blob: await res.blob(), nombre };
+}
+
 export async function postJson<T>(
   fetchImpl: typeof fetch,
   url: string,

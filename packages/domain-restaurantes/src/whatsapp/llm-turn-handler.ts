@@ -28,6 +28,7 @@ import { vipNote } from "../customers.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
+import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -63,12 +64,18 @@ export const ORDER_QUANTITY_RULES = `REGLAS DURAS DE CANTIDADES Y TOTAL:
 - Si el producto es individual (pack_size 1), se puede pedir cualquier cantidad entera positiva. "Individual" significa precio por una pieza, NO un máximo de una pieza. Ejemplo obligatorio: 8 tacos al pastor son válidos y se cobran como 8 por el precio individual.
 - Siempre que mencionen tacos de bistec, explica de inmediato que se venden únicamente en órdenes de 3 y que el precio de menú corresponde a la orden completa. Hazlo incluso si la cantidad pedida ya es válida: 3 tacos son 1 orden; 6 tacos son 2 órdenes; 9 tacos son 3 órdenes.
 - Para cualquier producto con pack_size mayor a 1, solo acepta múltiplos exactos. Si piden 1, 2, 4, 5 u otro no múltiplo, explica la presentación y ofrece el múltiplo inferior válido y/o el siguiente.
-- Para CADA renglón de tacos, pregunta por separado si lo quiere con tortilla de maíz o de harina, salvo que el cliente diga explícitamente "todos de maíz" o "todos de harina". Guarda la elección como tortilla: "maiz" o "harina" en cada item. No cotices ni avances al pago mientras falte esta elección para cualquier taco.
+- Para CADA renglón de tacos, pregunta por separado si lo quiere con tortilla de maíz, de harina o mixta, salvo que el cliente diga explícitamente "todos de maíz", "todos de harina" o "todos mixtos". Guarda la elección como tortilla: "maiz", "harina" o "mixta" en cada item. No cotices ni avances al pago mientras falte esta elección para cualquier taco.
 - Si buscar_producto devuelve requires_adult_confirmation: true, pregunta directamente si quien recibirá el pedido es mayor de edad y espera un sí claro. Solo entonces manda adult_confirmed: true tanto a cotizar_pedido como a crear_pedido. Nunca lo infieras por el tono, el nombre, la voz o una respuesta ambigua.
 - Nunca cierres un turno diciendo solo "voy a revisar" o "déjame buscar". Ejecuta la herramienta necesaria en ese mismo turno y después responde con el resultado, o termina con una pregunta concreta que el cliente sí deba contestar.
 - Está prohibido preguntar efectivo/tarjeta antes de que cotizar_pedido responda con éxito. Flujo obligatorio: (1) cotizar_pedido; (2) repite al cliente los renglones y el total exactos y pregúntale la forma de pago y si confirma; (3) cuando el cliente responda en su SIGUIENTE mensaje con su confirmación (sí) y la forma de pago, llama confirmar_resumen (con el quote_hash de la cotización) y después crear_pedido con los mismos productos cotizados. El sistema rechaza crear_pedido si no hubo cotización vigente y confirmar_resumen antes, o si los productos cambiaron: si el cliente cambia algo, vuelve a cotizar y a pedir confirmación. Nunca llames confirmar_resumen en el mismo turno en que cotizaste.
 - Conserva en requested_quantity la cantidad de piezas/unidades que dijo y confirmó el cliente. Nunca conviertas tú las piezas a órdenes: cotizar_pedido y crear_pedido hacen esa conversión de forma determinista.
 - Antes de decir cualquier total o preguntar la forma de pago, llama siempre a cotizar_pedido. Repite exactamente el total y los renglones devueltos; nunca hagas aritmética mental ni recalcules el resultado.`;
+
+/** Trato y transparencia que fija el dueno (P26/P37): siempre de usted, y el cliente debe saber que habla con un asistente virtual. */
+export const TRATO_Y_TRANSPARENCIA_RULES = `REGLAS DURAS DE TRATO:
+- Trata SIEMPRE al cliente de usted ("¿qué le gustaría pedir?", "su pedido"); nunca lo tutees, aunque él te tutee.
+- Eres un asistente virtual y debes decirlo en tu primer mensaje. Nunca finjas ser una persona.
+- Quejas, cancelaciones o cambios de un pedido ya confirmado, cobros, alergias, pagos por transferencia y cualquier petición de hablar con una persona los resuelve el equipo del restaurante: llama a escalar_a_humano con el motivo que corresponda y no prometas reposiciones, descuentos ni cancelaciones.`;
 
 export const ORDER_IDENTITY_AND_COMPLEMENT_RULES = `REGLAS DURAS DE IDENTIDAD Y COMPLEMENTOS:
 - Si el cliente corrige su nombre, descarta por completo la versión anterior y usa únicamente ese nombre final al crear el pedido.
@@ -153,7 +160,7 @@ export const FALLBACK_CONFIG: WhatsAppLlmAgentConfig = {
   businessName: "este restaurante",
   toneStyle: "calido_cercano",
   timezone: "America/Merida",
-  deliveryTimeText: "40 a 50 minutos (1h a 1h20 si llueve)",
+  deliveryTimeText: "40 a 50 minutos (un poco más en horas pico: sábado y domingo de 1 a 4 pm y de 6 a 10 pm)",
 };
 
 /** Seam de lectura de configuración por organización — hoy siempre devuelve
@@ -186,7 +193,7 @@ REGLAS DE NEGOCIO:
 - REGLA DURA: si en esta MISMA conversación ya llamaste a crear_pedido y te respondió con éxito, NUNCA vuelvas a llamarla otra vez. Solo repítele el resumen del pedido que ya se creó. Llamar crear_pedido dos veces crea un pedido real duplicado en cocina.
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
-1. Saluda usando EXACTAMENTE el saludo de "SALUDO SEGÚN LA HORA ACTUAL" abajo (nunca uno fijo ni adivinado), preséntate como ${config.businessName} (sin mencionar sucursal todavía) y pregunta si quiere hacer un pedido. Este saludo por hora solo aplica al primer mensaje tuyo de la conversación. En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante.
+1. Saluda usando EXACTAMENTE el saludo de "SALUDO SEGÚN LA HORA ACTUAL" abajo (nunca uno fijo ni adivinado), preséntate como el asistente virtual de ${config.businessName} (sin mencionar sucursal todavía) y pregunta si quiere hacer un pedido. Este saludo por hora solo aplica al primer mensaje tuyo de la conversación. En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante.
 2. Dirección: si el CONTEXTO DEL CLIENTE dice que tiene una dirección guardada, pregunta si el pedido es para su domicilio de siempre o para otro lugar y pídele la dirección completa (no la tienes a la vista, nunca la inventes ni la adivines). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si responde encontrada:false, pide otra referencia e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal ya confirmada). Revisa pack_size ANTES de confirmar cantidad: "individual" (pack_size 1) nunca es máximo una pieza. Si buscar_producto devuelve más de un producto parecido, no elijas tú solo — dile las opciones al cliente. Instrucciones especiales del cliente van en el parámetro notes de crear_pedido.
@@ -201,6 +208,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     ORDER_QUANTITY_RULES,
     ORDER_IDENTITY_AND_COMPLEMENT_RULES,
     PRIVACY_AND_AI_RULES,
+    TRATO_Y_TRANSPARENCIA_RULES,
     ...(entryBranch ? [branchChannelRules(entryBranch)] : []),
     `TONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[config.toneStyle]}`,
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
@@ -238,8 +246,8 @@ export function enforceBistecPackNotice(reply: string, messages: readonly LlmMes
 
 export function providerFailureReply(orderId: string | null): string {
   return orderId
-    ? "¡Listo! Tu pedido ya quedó registrado y se mandó a cocina."
-    : "Ahorita tenemos un problema técnico, por favor intenta de nuevo en un momento.";
+    ? "¡Listo! Su pedido ya quedó registrado y se mandó a cocina."
+    : "Ahorita tenemos un problema técnico, por favor inténtelo de nuevo en un momento.";
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -314,10 +322,35 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
       let huboFalloDeHerramienta = false;
+      let lastQuoteTotal: number | null = null;
+      let anyToolCalled = false;
+      // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
+      const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
-      const safeReply = (reply: string) => enforceBistecPackNotice(reply, working);
+
+      // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
+      // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
+      const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
+      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content) : null;
+      if (riesgo) {
+        const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+        const aviso = await executeAgentToolSafely(
+          repo,
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+          "escalar_a_humano",
+          { customer_name: nombre, motivo: riesgo.motivo, resumen: latestUserMessage!.content.slice(0, 500) },
+        );
+        // Honestidad: solo se dice "ya avisé al equipo" si el aviso quedó registrado de verdad.
+        if (isToolErrorResult(aviso.result)) {
+          return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
+        }
+        // El aviso al equipo ya quedo registrado arriba; `escalacion` solo abre la toma de handoff (R-21),
+        // igual que cuando el modelo llama a escalar_a_humano, sin duplicar el aviso.
+        escalarMotivo = riesgo.motivo;
+        return done({ reply: riesgo.reply, orderId: null, propertyId });
+      }
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
@@ -344,8 +377,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
-          const reply = safeReply(completion.text || "¿Me puedes repetir tu pedido?");
-          return done({ reply, orderId, propertyId });
+          const base = completion.text || "¿Me puede repetir su pedido?";
+          // Un turno sin herramienta ni pregunta deja al cliente esperando: se anexa la pregunta del paso pendiente.
+          const conPregunta = anyToolCalled
+            ? base
+            : enforcePendingQuestion(
+                base,
+                branchAlreadyKnown(
+                  activeEntryBranch?.name ?? null,
+                  messages.filter((m) => m.role === "assistant").map((m) => m.content),
+                  branches,
+                ),
+                orderId,
+              );
+          return done({ reply: safeReply(conPregunta), orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -356,11 +401,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           try {
             input = JSON.parse(call.argumentsJson || "{}") as Record<string, unknown>;
           } catch {
-            result = { error: "No entendí bien los datos, ¿puedes repetir el pedido?" };
+            result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
             const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn } }, call.name, input);
             result = executed.result;
+            anyToolCalled = true;
+            const quoted = (result as { quote?: { total?: unknown }; order?: { total?: unknown } } | null) ?? null;
+            if (call.name === "cotizar_pedido" && typeof quoted?.quote?.total === "number") lastQuoteTotal = quoted.quote.total;
+            if (call.name === "crear_pedido" && typeof quoted?.order?.total === "number") lastQuoteTotal = quoted.order.total;
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -379,7 +428,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       if (orderId) {
         return done({ reply: safeReply(providerFailureReply(orderId)), orderId, propertyId });
       }
-      return done({ reply: "Se me complicó procesar tu pedido, un momento por favor.", orderId, propertyId });
+      return done({ reply: "Se me complicó procesar su pedido, un momento por favor.", orderId, propertyId });
     },
   };
 }

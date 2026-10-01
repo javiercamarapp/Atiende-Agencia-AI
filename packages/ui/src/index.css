@@ -1,5 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+/*
+ * Atiende DS v2 -- fuentes autoalojadas (apps/web/public/fonts, copiadas de la
+ * landing useatiende.ai: Manrope = AtiendeSans, Lora = AtiendeSerif, IBM Plex
+ * Mono = AtiendeMono; licencias OFL en la misma carpeta). Un @font-face solo
+ * descarga el archivo cuando algo usa la familia: mientras <html> no lleve
+ * data-theme="v2" ninguna regla las referencia y no hay trafico extra. El
+ * @import de Google de arriba se conserva SOLO porque el aspecto actual
+ * (Inter / Inter Tight) sigue en produccion hasta migrar las verticales; se
+ * retira junto con la bandera v2 (PR-12 del plan de diseno-ux).
+ */
+@font-face { font-family: "AtiendeSans"; src: url("/fonts/sans-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeSans"; src: url("/fonts/sans-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeSans"; src: url("/fonts/sans-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeSans"; src: url("/fonts/sans-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeSerif"; src: url("/fonts/lora-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeSerif"; src: url("/fonts/lora-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeMono"; src: url("/fonts/mono-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "AtiendeMono"; src: url("/fonts/mono-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,10 +27,12 @@
  * Sistema de color: white / blue / sky-blue — portado literalmente de
  * atiende-restaurantes (docs/referencia/05-frontend-restaurantes.md §1.3)
  * para cumplir REQ-UX-001 (mismos tokens HSL base). A diferencia del
- * origen, aquí SÍ se completa el modo oscuro para gold/terracotta/sand/
- * olive/cream/sidebar (variantes)/sombras/gradientes (deuda documentada en 05 parrafo 1.3:
- * ".dark no redefine esos tokens, en modo oscuro siguen resolviendo a los
- * valores light" — cerrada aquí, ver ADR-002).
+ * origen, aquí SÍ se completa el modo oscuro para sidebar (variantes) y
+ * sombras (deuda documentada en 05 parrafo 1.3: ".dark no redefine esos
+ * tokens, en modo oscuro siguen resolviendo a los valores light" — cerrada
+ * aquí, ver ADR-002). Los tokens heredados del hotel (gold, terracotta, sand,
+ * olive, cream), los gradientes y la sombra glow se retiraron en DS v2: no
+ * tenían uso real (solo el botón de cerrar del Sheet, ya migrado a accent).
  */
 @layer base {
   :root {
@@ -45,21 +66,10 @@
 
     --radius: 0.75rem;
 
-    --gold: 199 89% 48%;
-    --gold-foreground: 0 0% 100%;
-    --terracotta: 224 76% 48%;
-    --terracotta-light: 199 89% 48%;
-    --sand: 210 30% 95%;
-    --olive: 224 76% 48%;
-    --cream: 210 40% 98%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(224 76% 48% / 0.95) 0%, hsl(199 89% 40%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(199 89% 48%) 0%, hsl(199 89% 40%) 100%);
-    --gradient-warm: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(0 0% 100%) 100%);
 
     --shadow-card: 0 4px 24px -4px hsl(216 50% 12% / 0.08);
     --shadow-elevated: 0 12px 40px -8px hsl(216 50% 12% / 0.15);
-    --shadow-glow: 0 0 40px hsl(224 76% 48% / 0.2);
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 216 50% 12%;
@@ -106,22 +116,10 @@
     --input: 216 30% 20%;
     --ring: 213 82% 62%;
 
-    /* Deuda cerrada: estos 12 tokens no existían en .dark del origen. */
-    --gold: 199 89% 60%;
-    --gold-foreground: 216 45% 9%;
-    --terracotta: 213 82% 62%;
-    --terracotta-light: 199 89% 60%;
-    --sand: 216 30% 18%;
-    --olive: 213 82% 62%;
-    --cream: 216 45% 9%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(213 82% 62% / 0.9) 0%, hsl(199 89% 40%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(199 89% 55%) 0%, hsl(199 89% 35%) 100%);
-    --gradient-warm: linear-gradient(180deg, hsl(216 45% 9%) 0%, hsl(216 40% 13%) 100%);
 
     --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.45);
     --shadow-elevated: 0 12px 40px -8px hsl(0 0% 0% / 0.6);
-    --shadow-glow: 0 0 40px hsl(213 82% 62% / 0.28);
 
     --sidebar-background: 216 40% 13%;
     --sidebar-foreground: 210 30% 95%;
@@ -131,6 +129,219 @@
     --sidebar-accent-foreground: 199 89% 55%;
     --sidebar-border: 216 30% 20%;
     --sidebar-ring: 199 89% 55%;
+  }
+}
+
+/*
+ * ===========================================================================
+ * Atiende DS v2 -- tokens (PR-1 de docs diseno-ux, secciones 4.1-4.4)
+ *
+ * Dos capas, para NO cambiar el aspecto de produccion hasta migrar las
+ * verticales:
+ *  1) Tokens NUEVOS y aditivos (semanticos success/warning/info, radios con
+ *     nombre, tamanos de control, escala tipografica, motion). Sus valores por
+ *     defecto reproducen lo que ya se ve hoy (p. ej. --text-sm = 0.875rem como
+ *     Tailwind; --control-md = 2.75rem = el h-11 actual del Button/Input).
+ *  2) Cambios VISIBLES de marca (paleta de la landing, Manrope/Lora, escala
+ *     13/15 px, controles de 32/40 px): solo bajo <html data-theme="v2">, que
+ *     nadie activa todavia (ver lib/tema-v2.ts). Modo oscuro v2:
+ *     :root[data-theme="v2"].dark.
+ * Contrastes WCAG verificados por packages/ui/tests/tokens-v2.spec.ts.
+ * ===========================================================================
+ */
+@layer base {
+  :root {
+    /* Semanticos: estado de negocio. Texto = --x sobre fondo = --x-tint. */
+    --success: 142 71% 25%;
+    --success-tint: 142 60% 92%;
+    --warning: 28 90% 26%;
+    --warning-tint: 40 96% 90%;
+    --info: 219 65% 36%;
+    --info-tint: 219 70% 95%;
+    --destructive-tint: 352 80% 95%;
+    /* Borde/trazo de controles de formulario (checkbox, track de Switch
+       apagado): >= 3:1 sobre el fondo (WCAG 1.4.11); --input/--border (88%)
+       son decorativos y no lo cumplen. */
+    --control-off: 215 16% 52%;
+
+    /* Tipografia: valores actuales; v2 los reemplaza abajo. */
+    --font-body: "Inter", sans-serif;
+    --font-display: "Inter Tight", sans-serif;
+    /* font-sans / font-serif de Tailwind (pila del sistema) hasta activar v2. */
+    --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    --tracking-serif: 0em;
+
+    /* Escala tipografica (tamano / interlineado). Por defecto = Tailwind. */
+    --text-2xs: 0.625rem;
+    --text-2xs-lh: 0.875rem;
+    --text-xs: 0.75rem;
+    --text-xs-lh: 1rem;
+    --text-sm: 0.875rem;
+    --text-sm-lh: 1.25rem;
+    --text-base: 1rem;
+    --text-base-lh: 1.5rem;
+    --text-lg: 1.125rem;
+    --text-lg-lh: 1.75rem;
+    --text-xl: 1.25rem;
+    --text-xl-lh: 1.75rem;
+    --text-2xl: 1.5rem;
+    --text-2xl-lh: 2rem;
+    --text-display: clamp(2rem, 4vw, 2.875rem);
+    --text-display-lh: 1.1;
+
+    /* Radios con nombre (--radius sigue alimentando rounded-sm/md/lg). */
+    --radius-control: 9999px;
+    --radius-field: 0.625rem;
+    --radius-card: 1rem;
+    --radius-shell: 1.25rem;
+    --radius-dialog: 1.25rem;
+
+    /* Alto de controles: sm (tablas/toolbars), md (default), lg. Hoy todos son
+       tactiles (44 px; lg 48 px); v2 baja a 32/40/44 en escritorio. */
+    --control-sm: 2.75rem;
+    --control-md: 2.75rem;
+    --control-lg: 3rem;
+
+    /* Motion (4.4): easing de la landing + duraciones. */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-instant: 80ms;
+    --dur-fast: 150ms;
+    --dur-base: 250ms;
+    --dur-slow: 400ms;
+    --dur-enter: 600ms;
+  }
+
+  .dark {
+    /* Tintes oscuros OPACOS (mezcla del color sobre --card), no alfa: asi
+       admiten bg-success-tint y el contraste es medible. */
+    --success: 142 60% 65%;
+    --success-tint: 145 35% 19%;
+    --warning: 40 92% 65%;
+    --warning-tint: 40 40% 19%;
+    --info: 218 75% 68%;
+    --info-tint: 218 40% 20%;
+    --destructive-tint: 352 40% 20%;
+    --control-off: 215 16% 48%;
+  }
+
+  :root[data-theme="v2"] {
+    --background: 210 25% 97%;
+    --foreground: 215 52% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 52% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 52% 15%;
+
+    --primary: 219 65% 41%;
+    --primary-foreground: 0 0% 100%;
+
+    /* secondary deja de ser azul (F-04): neutro. */
+    --secondary: 210 24% 94%;
+    --secondary-foreground: 215 52% 15%;
+
+    --muted: 210 25% 94%;
+    --muted-foreground: 215 16% 40%;
+
+    /* accent = tinte azul suave: el hover de ghost/menus ya no pinta azul solido. */
+    --accent: 219 70% 95%;
+    --accent-foreground: 219 65% 36%;
+
+    --destructive: 352 83% 38%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 24% 88%;
+    --input: 210 24% 88%;
+    --ring: 218 71% 57%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 52% 15%;
+    --sidebar-primary: 219 65% 41%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 219 70% 95%;
+    --sidebar-accent-foreground: 219 65% 36%;
+    --sidebar-border: 210 24% 88%;
+    --sidebar-ring: 218 71% 57%;
+
+    --shadow-card: 0 4px 24px -4px hsl(215 52% 15% / 0.08);
+    --shadow-elevated: 0 12px 40px -8px hsl(215 52% 15% / 0.15);
+
+    --font-body: "AtiendeSans", "Inter", system-ui, sans-serif;
+    --font-display: "AtiendeSans", "Inter", system-ui, sans-serif;
+    --font-sans: "AtiendeSans", "Inter", system-ui, sans-serif;
+    --font-serif: "AtiendeSerif", Georgia, serif;
+    --font-mono: "AtiendeMono", "IBM Plex Mono", ui-monospace, monospace;
+    --tracking-serif: -0.03em;
+
+    /* Escala 4.2: 10 / 12 / 13 / 15 / 18 / 22 / 28 px. */
+    --text-xs-lh: 1rem;
+    --text-sm: 0.8125rem;
+    --text-sm-lh: 1.25rem;
+    --text-base: 0.9375rem;
+    --text-base-lh: 1.5rem;
+    --text-lg: 1.125rem;
+    --text-lg-lh: 1.625rem;
+    --text-xl: 1.375rem;
+    --text-xl-lh: 1.75rem;
+    --text-2xl: 1.75rem;
+    --text-2xl-lh: 2.125rem;
+
+    --control-sm: 2rem;
+    --control-md: 2.5rem;
+    --control-lg: 2.75rem;
+  }
+
+  /* Tactil: en <md todos los controles suben a 44 px (4.3). */
+  @media (max-width: 767px) {
+    :root[data-theme="v2"] {
+      --control-sm: 2.75rem;
+      --control-md: 2.75rem;
+      --control-lg: 3rem;
+    }
+  }
+
+  :root[data-theme="v2"].dark {
+    --background: 216 45% 9%;
+    --foreground: 210 30% 95%;
+
+    --card: 216 40% 13%;
+    --card-foreground: 210 30% 95%;
+    --popover: 216 40% 11%;
+    --popover-foreground: 210 30% 95%;
+
+    --primary: 218 75% 68%;
+    --primary-foreground: 216 45% 9%;
+
+    --secondary: 216 30% 18%;
+    --secondary-foreground: 210 30% 95%;
+
+    --muted: 216 30% 18%;
+    --muted-foreground: 215 18% 68%;
+
+    --accent: 218 40% 22%;
+    --accent-foreground: 218 80% 80%;
+
+    --destructive: 352 85% 70%;
+    --destructive-foreground: 216 45% 9%;
+
+    --border: 216 30% 20%;
+    --input: 216 30% 20%;
+    --ring: 218 75% 68%;
+
+    --sidebar-background: 216 40% 13%;
+    --sidebar-foreground: 210 30% 95%;
+    --sidebar-primary: 218 75% 68%;
+    --sidebar-primary-foreground: 216 45% 9%;
+    --sidebar-accent: 218 40% 22%;
+    --sidebar-accent-foreground: 218 80% 80%;
+    --sidebar-border: 216 30% 20%;
+    --sidebar-ring: 218 75% 68%;
+
+    --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.45);
+    --shadow-elevated: 0 12px 40px -8px hsl(0 0% 0% / 0.6);
   }
 }
 
@@ -171,12 +382,6 @@
 }
 
 @layer components {
-  .text-gradient-gold {
-    background: var(--gradient-gold);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
 
   /* Cierra el hueco de safe-area citado en 05§2.6 (mobile real). */
   .safe-area-top {
@@ -228,6 +433,42 @@
       transform: translateY(-1px);
       box-shadow: var(--shadow-elevated);
     }
+  }
+
+  /* Hover de elevación v2 (4.4): translateY(-1px) + shadow-elevated, solo con
+     movimiento permitido, propiedades enumeradas (nada de transition-all). */
+  @media (prefers-reduced-motion: no-preference) {
+    .interactive-lift {
+      transition:
+        transform var(--dur-fast) var(--ease-out),
+        box-shadow var(--dur-fast) var(--ease-out),
+        border-color var(--dur-fast) var(--ease-out);
+    }
+    .interactive-lift:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-elevated);
+    }
+  }
+
+  /* Skeleton v2: barrido de brillo en lugar del pulso. Clase .ds-skeleton la
+     pone el componente Skeleton; sin data-theme="v2" sigue el animate-pulse
+     de siempre. Con reduced-motion el bloque global de abajo lo detiene.
+     animation lleva !important: Skeleton conserva animate-pulse (layer
+     utilities, que gana a components) y solo !important lo supera desde un
+     layer anterior. */
+  :root[data-theme="v2"] .ds-skeleton {
+    animation: ds-shimmer 1.6s var(--ease-in-out) infinite !important;
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.14) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+  }
+  @keyframes ds-shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
   }
 
   /* prefers-reduced-motion global: apaga cualquier animación/transición no

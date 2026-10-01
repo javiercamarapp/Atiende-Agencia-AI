@@ -145,6 +145,12 @@ const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "front
 // todas formas (403 en identidad.ts); housekeeping/maintenance/fnb/accountant nunca lo ven.
 const IDENTIDAD_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
 
+// H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
+// domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
+// arriba) — solo oculta el link "Housekeeping" del nav para quien el servidor rechazaría de
+// todas formas (403 en housekeeping.ts); frontdesk/maintenance/etc. lo ven según este set.
+const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
+
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   useDocumentTitle("Hoteles");
 
@@ -316,6 +322,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       title: "Operación",
       items: [
         { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
+        ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
         { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
         { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
         { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },

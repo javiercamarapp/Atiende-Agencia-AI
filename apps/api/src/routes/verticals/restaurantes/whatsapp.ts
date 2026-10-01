@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -93,7 +93,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         return c.json({ ok: true });
       }
 
-      const incomingMessages = extractMetaTextMessages(payload);
+      const incomingMessages = extractMetaInboundMessages(payload);
       if (incomingMessages.length === 0) {
         return c.json({ ok: true });
       }
@@ -104,7 +104,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           organizationId,
           messageId: message.id,
           phone: `+${message.from}`,
-          body: message.text.body,
+          body: message.body,
           phoneNumberId,
           propertyId: channel?.propertyId ?? null,
           // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
