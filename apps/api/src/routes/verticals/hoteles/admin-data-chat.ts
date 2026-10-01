@@ -7,6 +7,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { ADMIN_ROLES, buildHotelesDataChatCatalog } from "@atiende/domain-hoteles";
 import type { AppDeps } from "../../../deps.ts";
+import { HOTELES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import { verticalDataChatRoutes } from "../../../data-chat/vertical-routes.ts";
 
 export function hotelesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -14,7 +15,7 @@ export function hotelesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     vertical: "hoteles",
     roles: ADMIN_ROLES,
     catalog: (d, db) => (d.dataChat?.hotelesReader ? buildHotelesDataChatCatalog(d.dataChat.hotelesReader(db)) : undefined),
-    completion: (d) => d.dataChat?.hotelesCompletion,
+    role: HOTELES_DATA_CHAT_ROLE,
     timezone: async (d, db, propertyId) => resolverZonaHorariaNegocio(await d.hotelesRepo(db).findPropertyTimezone(propertyId)),
   });
 }

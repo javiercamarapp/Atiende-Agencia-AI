@@ -26,7 +26,7 @@
     "@atiende/mcp-cfdi": "*",
     "@atiende/whatsapp-gateway": "*",
     "@atiende/worker": "*",
-    "hono": "4.13.7",
+    "hono": "4.13.9",
     "jose": "6.2.12"
   },
   "devDependencies": {

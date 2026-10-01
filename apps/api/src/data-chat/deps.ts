@@ -7,26 +7,28 @@ import type { LlmGateway } from "@atiende/agent-core";
 import { rateLimit } from "@atiende/core-ratelimit";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError, runWithSavepointFallback } from "@atiende/db";
-import { HOTELES_DATA_CHAT_ROLE, RENTAS_DATA_CHAT_ROLE, RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
+import { RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
 import { PostgresRestaurantesDataChatReader, type RestaurantesDataChatReader } from "@atiende/domain-restaurantes";
 import { PostgresHotelesDataChatReader, type HotelesDataChatReader } from "@atiende/domain-hoteles";
 import { PostgresRentasDataChatReader, type RentasDataChatReader } from "@atiende/domain-rentas";
+import { PostgresDespachosDataChatReader, type DespachosDataChatReader } from "@atiende/domain-despachos";
+import { PostgresLicitacionesDataChatReader, type LicitacionesDataChatReader } from "@atiende/domain-licitaciones";
 
 
 export interface DataChatDeps {
   readonly restaurantesReader: (db: TenantDbSession) => RestaurantesDataChatReader;
-  /** Hoteles / rentas: OPCIONALES (si faltan, su ruta responde "no disponible" en vez de fingir). Cada vertical
-   *  trae su propio lector de solo lectura sobre la sesion RLS del usuario y su propio rol de gateway
-   *  (`hoteles:data_chat` / `rentas:data_chat`: apagables y con presupuesto aparte, ver platform-switches.ts). */
+  /** Lectores por vertical. OPCIONALES: sin ellos su ruta responde "no disponible" (nunca 500). Cada uno corre de solo
+   *  lectura sobre la sesion RLS del usuario. */
   readonly hotelesReader?: (db: TenantDbSession) => HotelesDataChatReader;
   readonly rentasReader?: (db: TenantDbSession) => RentasDataChatReader;
+  readonly despachosReader?: (db: TenantDbSession) => DespachosDataChatReader;
+  readonly licitacionesReader?: (db: TenantDbSession) => LicitacionesDataChatReader;
   readonly audit: (db: TenantDbSession) => DataChatAuditSink;
   readonly rateLimiter: DataChatRateLimiter;
-  /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". */
-  readonly completion: ((organizationId: string) => DataChatCompletion) | undefined;
-  /** Igual que `completion`, con el rol de gateway de cada vertical. */
-  readonly hotelesCompletion?: ((organizationId: string) => DataChatCompletion) | undefined;
-  readonly rentasCompletion?: ((organizationId: string) => DataChatCompletion) | undefined;
+  /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". `role` es el rol del gateway
+   *  de la vertical (`<vertical>:data_chat`: apagable y con registro de uso aparte, ver platform-switches.ts); sin el
+   *  cae al de restaurantes (el piloto). */
+  readonly completion: ((organizationId: string, role?: string) => DataChatCompletion) | undefined;
 }
 
 /** Limitador compartido entre instancias (Upstash) o en memoria; categoria cerrada: un blip de Redis NIEGA, no abre el gasto. */
@@ -84,10 +86,10 @@ export function buildProductionDataChat(gateway: LlmGateway | undefined): DataCh
     restaurantesReader: (db) => new PostgresRestaurantesDataChatReader(db),
     hotelesReader: (db) => new PostgresHotelesDataChatReader(db),
     rentasReader: (db) => new PostgresRentasDataChatReader(db),
+    despachosReader: (db) => new PostgresDespachosDataChatReader(db),
+    licitacionesReader: (db) => new PostgresLicitacionesDataChatReader(db),
     audit: (db) => new PostgresDataChatAuditSink(db),
     rateLimiter: dataChatRateLimiter,
-    completion: gateway ? (organizationId) => gatewayCompletion(gateway, { tenantId: organizationId, role: RESTAURANTES_DATA_CHAT_ROLE }) : undefined,
-    hotelesCompletion: gateway ? (organizationId) => gatewayCompletion(gateway, { tenantId: organizationId, role: HOTELES_DATA_CHAT_ROLE }) : undefined,
-    rentasCompletion: gateway ? (organizationId) => gatewayCompletion(gateway, { tenantId: organizationId, role: RENTAS_DATA_CHAT_ROLE }) : undefined,
+    completion: gateway ? (organizationId, role = RESTAURANTES_DATA_CHAT_ROLE) => gatewayCompletion(gateway, { tenantId: organizationId, role }) : undefined,
   };
 }

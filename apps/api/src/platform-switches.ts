@@ -15,6 +15,8 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:data_chat",
   "hoteles:data_chat",
   "rentas:data_chat",
+  "despachos:data_chat",
+  "licitaciones:data_chat",
   "hoteles:whatsapp_agent",
   "citas:whatsapp_agent",
   "licitaciones:requirement_extractor",

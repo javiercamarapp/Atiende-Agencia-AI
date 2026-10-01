@@ -102,6 +102,10 @@ export {
   GUEST_TICKET_MANAGE_ROLES,
   GUEST_TICKET_SLA_POLICY_ROLES,
   GUEST_TICKET_FROM_REVIEW_ROLES,
+  AGENT_VIEW_ROLES,
+  AGENT_MANAGE_ROLES,
+  AGENT_AUTHOR_ROLES,
+  AGENT_AUDIT_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -528,6 +532,7 @@ export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as Hotel
 export * from "./identity/index.ts";
 export * from "./housekeeping/index.ts";
 export * from "./tickets/index.ts";
+export * from "./agentes/index.ts";
 export * from "./privacy/index.ts";
 
 // "Chatea con tus datos" -- catalogo de hoteles (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.

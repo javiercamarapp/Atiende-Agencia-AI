@@ -27,6 +27,7 @@ import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
 import { licitacionesResolutionRoutes } from "./resolution.ts";
 import { licitacionesCompanyDataRoutes } from "./companyData.ts";
 import { licitacionesSalaGuerraRoutes } from "./salaGuerra.ts";
+import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -73,5 +74,7 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesCompanyDataRoutes(deps));
   // L-04 — sala de guerra por convocatoria + preguntas de la junta de aclaraciones.
   app.route("/", licitacionesSalaGuerraRoutes(deps));
+  // "Chatea con tus datos" (motor compartido + catalogo cerrado de licitaciones).
+  app.route("/", licitacionesChatDatosRoutes(deps));
   return app;
 }

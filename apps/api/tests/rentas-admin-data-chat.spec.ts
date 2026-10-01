@@ -54,7 +54,7 @@ async function signIn(app: ReturnType<typeof buildApp>, email: string, password:
   return ((await res.json()) as { token: string }).token;
 }
 
-async function harness(steps: ScriptStep[], over: { limiter?: DataChatRateLimiter; completion?: DataChatDeps["rentasCompletion"]; reader?: boolean } = {}): Promise<Harness> {
+async function harness(steps: ScriptStep[], over: { limiter?: DataChatRateLimiter; completion?: DataChatDeps["completion"]; reader?: boolean } = {}): Promise<Harness> {
   const ctx = await buildRentasTestContext(buildApp);
   const coreRepo = ctx.deps.coreRepo as InMemoryCoreRepository;
   // Segunda propiedad de la MISMA organización y una organización ajena con su admin.
@@ -91,8 +91,7 @@ async function harness(steps: ScriptStep[], over: { limiter?: DataChatRateLimite
     ...(over.reader === false ? {} : { rentasReader: () => reader }),
     audit: () => ({ record: async (e) => void audit.push(e) }),
     rateLimiter: over.limiter ?? { allow: async () => true },
-    completion: undefined,
-    rentasCompletion: "completion" in over ? over.completion : () => completion,
+    completion: "completion" in over ? over.completion : () => completion,
   };
   const app = buildApp({ ...ctx.deps, dataChat });
   return {

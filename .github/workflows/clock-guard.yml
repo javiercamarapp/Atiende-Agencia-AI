@@ -1,0 +1,80 @@
+name: Clock guard (bombas de tiempo)
+
+# PL-12. Guard anti-bombas de tiempo: corre una seleccion RAPIDA de specs sensibles al reloj
+# (vitest.clock-guard.config.ts: relojes simulados a 23:30 America/Merida, cruce de mes/anio/bisiesto, Cancun vs
+# CDMX, horario de verano de Tijuana) bajo varias zonas horarias DEL PROCESO (`TZ`). Un test que solo pasa con
+# TZ=UTC delata un "hoy" calculado con la zona del servidor (el bug de rentas-pricing y los de hoteles).
+#
+# Es aparte de ci-checks.yml a proposito: ci-checks corre la suite completa una sola vez bajo la TZ del runner
+# (UTC); este job repite SOLO ~19 archivos (~10 s cada uno) en 4 zonas.
+#
+# Seguridad del workflow:
+# - Disparadores: pull_request (NO pull_request_target), push a main, schedule semanal y manual. El schedule
+#   atrapa la bomba que estalla sola con el paso del tiempo (los specs fijan el reloj, pero dependen de tzdata
+#   y de la version de Node del runner).
+# - permissions: contents: read. Sin secretos, sin red hacia servicios propios, sin despliegue.
+# - `paths` acota los PR a lo que puede romper el guard (codigo, config de vitest, este workflow); `schedule`
+#   y `workflow_dispatch` corren siempre.
+on:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "vitest*.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/clock-guard.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "vitest*.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/clock-guard.yml"
+  schedule:
+    # Domingo 08:43 UTC.
+    - cron: "43 8 * * 0"
+  workflow_dispatch: {}
+
+concurrency:
+  group: clock-guard-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  clock-guard:
+    name: specs con reloj simulado (TZ=${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        tz:
+          - UTC
+          - America/Merida
+          - America/Mexico_City
+          # UTC+14: la zona mas adelantada; el "dia UTC" y el dia local difieren casi todo el dia.
+          - Pacific/Kiritimati
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Specs sensibles al reloj
+        env:
+          TZ: ${{ matrix.tz }}
+        run: npm run test:clock-guard

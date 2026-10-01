@@ -21,8 +21,6 @@ describe("buildProductionDataChat — hoteles y rentas", () => {
   it("sin gateway de LLM: ninguna vertical tiene completion (las rutas dicen 'no disponible')", () => {
     const d = buildProductionDataChat(undefined);
     expect(d.completion).toBeUndefined();
-    expect(d.hotelesCompletion).toBeUndefined();
-    expect(d.rentasCompletion).toBeUndefined();
   });
 
   it("cada vertical llama al gateway con su propio rol, carril interactivo y la organizacion del usuario", async () => {
@@ -35,8 +33,8 @@ describe("buildProductionDataChat — hoteles y rentas", () => {
     };
     const d = buildProductionDataChat(gateway as never);
     const req = { system: "s", messages: [], maxOutputTokens: 10 } as never;
-    await d.hotelesCompletion!("org-h")(req);
-    await d.rentasCompletion!("org-r")(req);
+    await d.completion!("org-h", HOTELES_DATA_CHAT_ROLE)(req);
+    await d.completion!("org-r", RENTAS_DATA_CHAT_ROLE)(req);
     await d.completion!("org-x")(req);
     expect(calls).toEqual([
       { role: HOTELES_DATA_CHAT_ROLE, tenantId: "org-h", lane: "interactive" },
@@ -46,7 +44,7 @@ describe("buildProductionDataChat — hoteles y rentas", () => {
   });
 
   it("los roles nuevos estan registrados en el gateway de produccion y en los interruptores de plataforma", () => {
-    for (const role of ["hoteles:data_chat", "rentas:data_chat"]) {
+    for (const role of ["hoteles:data_chat", "rentas:data_chat", "despachos:data_chat", "licitaciones:data_chat"]) {
       expect(ALL_PRODUCTION_ROLES).toContain(role);
       expect(SWITCHABLE_AGENT_ROLES).toContain(role);
     }

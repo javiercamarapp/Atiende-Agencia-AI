@@ -198,6 +198,19 @@ Orden: (1) despliega el código; (2) aplica la 034 (`supabase db push`; requiere
 Con la 034 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas
 nuevas. No hay variables de entorno nuevas.
 
+**Hoteles H-03 (migración 035, catálogo de agentes, aprobaciones humanas, plantillas y guardrails) — orden de
+despliegue.** Mergear NO aplica `20240101000229_035_hoteles_agentes_aprobaciones.sql` a la base real. El código
+nuevo funciona contra la base vieja: las pantallas Agentes y Aprobaciones avisan que aún no están activas, las
+lecturas responden `disponible:false`, las escrituras 503, el cron `/internal/hoteles/aprobaciones-expiracion`
+omite las properties (`migracion_pendiente`), el turno de WhatsApp corre como siempre (la compuerta devuelve
+"activo" sin la 035) y el barrido de revenue no omite ninguna property. Orden: (1) despliega el código; (2) aplica
+la 035 (`supabase db push`; requiere 001 y 030 ya aplicadas); (3) verifica `GET /internal/hoteles/aprobaciones-expiracion`
+con el secreto interno (debe reportar `omitida:null`); (4) cuando se decida, programa ese cron en `vercel.json`
+(p. ej. cada hora) — este PR NO lo programa. Con la 035 aplicada y el código viejo en producción no se rompe nada:
+ningún código viejo usa las tablas nuevas. No hay variables de entorno nuevas. Hoy el agente de WhatsApp no
+propone acciones sensibles por sí mismo (sus 3 herramientas no mueven dinero ni tarifas): la cola de aprobaciones
+recibe propuestas de personas y está lista para las del agente (`PostgresAgentesRepository.proposeAction`).
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las

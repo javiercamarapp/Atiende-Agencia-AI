@@ -20,6 +20,7 @@ import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, M
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
+import { conexionChatDatosLicitaciones } from "./lib/chat-datos-client.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
@@ -170,6 +171,9 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   const propertyId = branches[0]!.propertyId;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "viewer";
   const puedeVerStaff = STAFF_NAV_ROLES.has(role);
+  // "Chatea con tus datos": conexion real con el backend de licitaciones (motor compartido, catalogo cerrado de
+  // solo lectura). El servidor decide el alcance (organizacion, rol) a partir del token; aqui solo va el texto.
+  const chatConexion = conexionChatDatosLicitaciones(fetch, apiBaseUrl, session.token, propertyId);
 
   const base = `/licitaciones/${orgSlug}`;
   const sections: SidebarSection[] = [
@@ -217,7 +221,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Licitaciones · {orgSlug}</span>
           </span>
         }
-        action={<MobileHeaderActions notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} />}
+        action={<MobileHeaderActions notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} chat={chatConexion} />}
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3 pt-16 pb-20 md:pt-0 md:pb-0">
@@ -239,7 +243,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
               onMarkAllRead={notif.onMarkAllRead}
             />
           }
-          chatButton={<BotonChatDatos />}
+          chatButton={<BotonChatDatos chat={chatConexion} />}
         />
 
         <main className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card p-4 sm:p-6">{children(contexto)}</main>

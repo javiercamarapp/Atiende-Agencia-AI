@@ -121,6 +121,13 @@ export interface CallbackIntento {
   readonly creadoAt: string;
 }
 
+/** Estado de trabajo de un callback (migracion 033). Una base sin 033 solo distingue abierto/resuelto: ahi el estado se
+ * deriva de `resolved` (nuevo | resuelto) y no hay asignacion. */
+export const CALLBACK_ESTADOS = ["nuevo", "en_curso", "resuelto"] as const;
+export type CallbackEstado = (typeof CALLBACK_ESTADOS)[number];
+export const CALLBACK_ACCIONES = ["tomar", "asignar", "liberar", "resolver", "reabrir"] as const;
+export type CallbackAccion = (typeof CALLBACK_ACCIONES)[number];
+
 export interface CallbackItem {
   readonly id: string;
   readonly propertyId: string | null;
@@ -132,6 +139,15 @@ export interface CallbackItem {
   readonly resolved: boolean;
   readonly createdAt: string;
   readonly intentos: readonly CallbackIntento[];
+  /** Campos de la migracion 033; ausentes (undefined) en una base sin migrar. */
+  readonly estado?: CallbackEstado;
+  readonly asignadoA?: string | null;
+  readonly asignadoNombre?: string | null;
+  readonly asignadoAt?: string | null;
+  readonly tomadoAt?: string | null;
+  readonly resueltoAt?: string | null;
+  readonly resueltoPorNombre?: string | null;
+  readonly notaResolucion?: string | null;
 }
 
 export interface CallbackIntentoEntrada {

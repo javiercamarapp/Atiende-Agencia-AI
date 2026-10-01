@@ -9,32 +9,12 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { runDataChatTurn, type DataChatCatalog, type DataChatCompletion, type DataChatHistoryTurn } from "@atiende/agent-core/data-chat";
+import { runDataChatTurn, type DataChatCatalog } from "@atiende/agent-core/data-chat";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
-
-const MAX_BODY_HISTORY = 12;
-
-export function parseDataChatBody(raw: unknown): { question: string; history: DataChatHistoryTurn[] } {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo inválido: se esperaba un objeto JSON.");
-  const body = raw as Record<string, unknown>;
-  for (const key of Object.keys(body)) {
-    if (key !== "question" && key !== "history") throw Errors.validation(`Campo no permitido: ${key.slice(0, 40)}.`);
-  }
-  if (typeof body["question"] !== "string") throw Errors.validation("question: se esperaba texto.");
-  const history: DataChatHistoryTurn[] = [];
-  const rawHistory = body["history"];
-  if (rawHistory !== undefined) {
-    if (!Array.isArray(rawHistory) || rawHistory.length > MAX_BODY_HISTORY) throw Errors.validation(`history: se esperaba una lista de a lo mucho ${MAX_BODY_HISTORY} turnos.`);
-    for (const item of rawHistory) {
-      const t = item as { role?: unknown; text?: unknown };
-      if ((t?.role !== "user" && t?.role !== "assistant") || typeof t.text !== "string") throw Errors.validation("history: cada turno debe ser {role: 'user'|'assistant', text}.");
-      history.push({ role: t.role, text: t.text });
-    }
-  }
-  return { question: body["question"], history };
-}
+import { parseDataChatBody } from "./body.ts";
+import { resolveMembershipPropertyScope } from "./property-scope.ts";
 
 export interface VerticalDataChatConfig {
   /** "hoteles" | "rentas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
@@ -43,8 +23,8 @@ export interface VerticalDataChatConfig {
   readonly roles: readonly string[];
   /** Catalogo ya ligado al lector de la sesion RLS del usuario; undefined = esta vertical no esta cableada. */
   readonly catalog: (deps: AppDeps, db: TenantDbSession) => DataChatCatalog | undefined;
-  /** Proveedor de IA de esta vertical (rol de gateway propio); undefined = sin proveedor configurado. */
-  readonly completion: (deps: AppDeps) => ((organizationId: string) => DataChatCompletion) | undefined;
+  /** Rol de gateway de esta vertical (`<vertical>:data_chat`: apagable y con registro de uso propio). */
+  readonly role: string;
   /** Zona horaria IANA ya resuelta de la propiedad activa. */
   readonly timezone: (deps: AppDeps, db: TenantDbSession, propertyId: string) => Promise<string>;
 }
@@ -59,7 +39,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
   // La UI lo consulta para mostrar "Pronto" mientras no haya proveedor de IA configurado (o el rol no sirva).
   app.get(`${base}/estado`, (c) => {
     assertVerticalRole(c, cfg.roles);
-    return c.json({ available: Boolean(cfg.completion(deps) && cfg.catalog(deps, c.get("db"))) });
+    return c.json({ available: Boolean(deps.dataChat?.completion && cfg.catalog(deps, c.get("db"))) });
   });
 
   app.post(base, async (c) => {
@@ -72,7 +52,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
     const db = c.get("db");
-    const completion = cfg.completion(deps);
+    const completion = dataChat?.completion;
     const catalog = cfg.catalog(deps, db);
     if (!dataChat || !completion || !catalog) {
       return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
@@ -80,10 +60,8 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
 
     // Alcance por membership: nunca se ensancha mas alla de las propiedades de este usuario (mismo criterio que
     // restaurantes/admin-scope.ts). Si la membership completa no aparece, cae a la unica propiedad ya verificada.
+    const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
     const propertyId = c.req.param("propertyId") ?? "";
-    const memberships = await deps.coreRepo.findMembershipsByUserId(c.get("userId"));
-    const membership = memberships.find((m) => m.organizationId === organizationId);
-    const allowedPropertyIds: readonly string[] | null = membership ? membership.propertyIds : [propertyId];
     const timezone = await cfg.timezone(deps, db, propertyId);
 
     const answer = await runDataChatTurn({
@@ -98,7 +76,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
       },
       question,
       history,
-      complete: completion(organizationId),
+      complete: completion(organizationId, cfg.role),
       rateLimiter: dataChat.rateLimiter,
       audit: dataChat.audit(db),
       onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),

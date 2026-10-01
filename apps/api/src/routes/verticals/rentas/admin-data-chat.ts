@@ -7,6 +7,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { FINANZAS_LECTURA_ROLES, buildRentasDataChatCatalog } from "@atiende/domain-rentas";
 import type { AppDeps } from "../../../deps.ts";
+import { RENTAS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import { verticalDataChatRoutes } from "../../../data-chat/vertical-routes.ts";
 
 export function rentasAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -14,7 +15,7 @@ export function rentasAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     vertical: "rentas",
     roles: FINANZAS_LECTURA_ROLES,
     catalog: (d, db) => (d.dataChat?.rentasReader ? buildRentasDataChatCatalog(d.dataChat.rentasReader(db)) : undefined),
-    completion: (d) => d.dataChat?.rentasCompletion,
+    role: RENTAS_DATA_CHAT_ROLE,
     timezone: async (d, db, propertyId) => resolverZonaHorariaNegocio(await d.rentasCalendarSyncRepo(db).findZonaHorariaPropiedad(propertyId)),
   });
 }

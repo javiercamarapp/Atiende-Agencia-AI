@@ -60,6 +60,8 @@ import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
 import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
+import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
+import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -489,6 +491,8 @@ const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ct
 const HotelesHousekeepingRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HousekeepingPage {...ctx} />);
 // H-05 — tickets de huésped con SLA, escalación y bitácora (cualquier rol hotelero; el servidor filtra por rol).
 const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <TicketsPage {...ctx} />);
+const HotelesAgentesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AgentesPage {...ctx} />);
+const HotelesAprobacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AprobacionesAgentesPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -890,6 +894,8 @@ export function App() {
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/housekeeping" element={<HotelesHousekeepingRoute />} />
         <Route path="/hoteles/:orgSlug/tickets" element={<HotelesTicketsRoute />} />
+        <Route path="/hoteles/:orgSlug/agentes" element={<HotelesAgentesRoute />} />
+        <Route path="/hoteles/:orgSlug/aprobaciones" element={<HotelesAprobacionesRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

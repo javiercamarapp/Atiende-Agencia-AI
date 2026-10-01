@@ -53,7 +53,7 @@ describe("conversaciones-client (restaurantes)", () => {
       expect(url).toBe(`${B}/callbacks?soloAbiertos=1`);
       return new Response(JSON.stringify({ disponible: true, items: [] }), { status: 200 });
     }) as unknown as typeof fetch;
-    await fetchCallbacks(f1, "http://api.local", "tok", "property-1", true);
+    await fetchCallbacks(f1, "http://api.local", "tok", "property-1", { soloAbiertos: true });
     let cuerpo: unknown;
     const f2 = vi.fn(async (_u: string, init?: RequestInit) => {
       cuerpo = JSON.parse(String(init?.body));

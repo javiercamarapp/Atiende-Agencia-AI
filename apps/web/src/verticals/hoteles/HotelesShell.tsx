@@ -46,8 +46,10 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BedDouble,
+  Bot,
   CalendarCheck,
   ClipboardCheck,
+  ClipboardList,
   Fingerprint,
   Gauge,
   LayoutDashboard,
@@ -146,6 +148,8 @@ const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "front
 // arriba) — solo oculta el link "Identidad" del nav para quien el servidor rechazaría de
 // todas formas (403 en identidad.ts); housekeeping/maintenance/fnb/accountant nunca lo ven.
 const IDENTIDAD_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
+// H-03 -- catalogo de agentes y cola de aprobaciones humanas: mismo conjunto que AGENT_VIEW_ROLES (cosmetico; la RLS manda).
+const AGENTES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
 
 // H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
@@ -337,6 +341,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
         ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
         ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
       ],
     },
     {
@@ -345,6 +350,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
         ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: "Revenue", icon: Gauge }] : []),
         ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: "Agentes", icon: Bot }] : []),
       ],
     },
     // "Administración" se omite por completo si el rol activo no puede ver P&L ni
