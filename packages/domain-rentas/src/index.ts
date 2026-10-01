@@ -291,6 +291,10 @@ export { PostgresRentasOnboardingRepository } from "./onboarding/postgres-reposi
 // ---------------------------------------------------------------------------
 export * from "./break-glass/index.ts";
 
+// "Chatea con tus datos" -- catalogo de rentas (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.
+export { buildRentasDataChatCatalog, buildRentasDataChatTools, PostgresRentasDataChatReader, ALL_RENTAS_DATA_CHAT_SQL } from "./data-chat/index.ts";
+export type { RentasDataChatReader, RentasDataChatWindow } from "./data-chat/index.ts";
+
 // ---------------------------------------------------------------------------
 // Rn-03 -- reportes de ocupación e ingresos por unidad, propietario, canal y mes (con
 // exportación CSV/PDF) -- ver src/reportes/*. Solo lectura, sin migración nueva.

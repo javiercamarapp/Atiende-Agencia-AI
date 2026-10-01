@@ -465,6 +465,26 @@ registran como una línea de log estructurada (sin resultados ni PII) en vez de 
    queda en `core.llm_usage_daily` con el rol `restaurantes:data_chat`.
 4. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `restaurantes:data_chat`.
 
+### Chatea con tus datos — hoteles y rentas vacacionales (sin migración nueva)
+
+Este PR NO agrega SQL: usa solo tablas que ya existen (`hoteles.*`, `rentas.*`) y la bitácora genérica
+`core.record_data_chat_query` (0029). Mergear el código no cambia nada para quien no tenga el asistente activo.
+Orden recomendado:
+
+1. Desplegar el código. Funciona contra la base sin migrar: si falta una tabla/columna de una consulta
+   (p. ej. `hoteles.guest_ticket` o `rentas.owner_statement`), esa herramienta responde "esa información todavía no
+   está disponible" y la transacción de la request sigue sana (cada consulta va en SAVEPOINT).
+2. (Opcional) Aplicar la migración 0029 si aún no está (bitácora en `core.data_chat_query_log`; sin ella queda
+   una línea de log estructurada sin resultados ni PII).
+3. Tener un proveedor LLM configurado (los mismos `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`).
+   Los roles nuevos `hoteles:data_chat` y `rentas:data_chat` cuentan contra `core.llm_org_budget` y quedan en
+   `core.llm_usage_daily`.
+4. Quién lo ve: hoteles solo `owner`/`gm`; rentas solo `admin_gestora`/`contador`. Para el resto de roles
+   `GET /hoteles/:propertyId/chat-datos/estado` (o `/rentas/...`) responde 403 y el botón sigue diciendo "Pronto".
+5. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `hoteles:data_chat` / `rentas:data_chat`.
+6. Verificación contra Postgres real (la corre el gate de CI): `node scripts/verify-real-postgres-ci/run-gate.mjs
+   scripts/verify-data-chat-hoteles` y `.../verify-data-chat-rentas`.
+
 ## Resumen de costo por plataforma (tier free)
 
 | Plataforma | Gratis mientras... | Empieza a costar cuando... |

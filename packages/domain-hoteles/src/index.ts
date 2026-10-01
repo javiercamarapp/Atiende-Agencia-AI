@@ -534,3 +534,7 @@ export * from "./housekeeping/index.ts";
 export * from "./tickets/index.ts";
 export * from "./agentes/index.ts";
 export * from "./privacy/index.ts";
+
+// "Chatea con tus datos" -- catalogo de hoteles (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.
+export { buildHotelesDataChatCatalog, buildHotelesDataChatTools, PostgresHotelesDataChatReader, ALL_HOTELES_DATA_CHAT_SQL } from "./data-chat/index.ts";
+export type { HotelesDataChatReader, HotelesDataChatWindow } from "./data-chat/index.ts";
