@@ -16,6 +16,7 @@ import { citasCalendarProvidersRoutes } from "./calendar-providers.ts";
 import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { citasAuditoriaRoutes } from "./auditoria.ts";
 import { citasPrivacidadRoutes } from "./privacidad.ts";
+import { citasWhatsappMensajesRoutes } from "./whatsapp-mensajes.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -43,5 +44,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasAuditoriaRoutes(deps));
   // C-02 -- seguimiento de solicitudes ARCO (ver packages/domain-citas/migrations/024_citas_data_rights.sql).
   app.route("/", citasPrivacidadRoutes(deps));
+  // C-04 -- mensajes de WhatsApp editables (ver packages/domain-citas/migrations/026_citas_whatsapp_mensajes_config.sql).
+  app.route("/", citasWhatsappMensajesRoutes(deps));
   return app;
 }

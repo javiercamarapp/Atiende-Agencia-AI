@@ -310,3 +310,5 @@ export type {
   WhatsappMessageConfigHistoryEntry,
   WhatsappMessageConfigRecord,
 } from "./whatsapp/message-config.ts";
+export { armarMensaje, enqueueAppointmentWhatsappCore, formatearFechaYHora, resolverValoresCita, tryEnqueueAppointmentWhatsapp } from "./whatsapp/message-send.ts";
+export type { AppointmentWhatsappEvent, AppointmentWhatsappResult } from "./whatsapp/message-send.ts";

@@ -201,6 +201,8 @@ export class InMemoryCitasRepository implements CitasRepository {
   // C-04 -- mensajes de WhatsApp editables (sin RLS que simular: el rol owner/admin lo valida la API).
   private readonly whatsappMessageConfigByOrg = new Map<string, WhatsappMessageConfigRecord>();
   private readonly whatsappMessageConfigHistoryByOrg = new Map<string, WhatsappMessageConfigHistoryEntry[]>();
+  /** Solo para tests: `false` simula la base sin la migracion 026 (los metodos degradan igual que el adaptador de Postgres). */
+  whatsappMessageConfigDisponible = true;
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
@@ -1049,14 +1051,17 @@ export class InMemoryCitasRepository implements CitasRepository {
   // ---- C-04 -- mensajes de WhatsApp editables ----
 
   async getWhatsappMessageConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappMessageConfigRecord | null }> {
+    if (!this.whatsappMessageConfigDisponible) return { disponible: false, record: null };
     return { disponible: true, record: this.whatsappMessageConfigByOrg.get(organizationId) ?? null };
   }
 
   async getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null> {
+    if (!this.whatsappMessageConfigDisponible) return null;
     return this.whatsappMessageConfigByOrg.get(organizationId)?.config ?? null;
   }
 
   async saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado> {
+    if (!this.whatsappMessageConfigDisponible) return { status: "unavailable" };
     const actual = this.whatsappMessageConfigByOrg.get(organizationId);
     if (expectedVersion !== (actual?.version ?? 0)) return { status: "conflict" };
     const version = (actual?.version ?? 0) + 1;
@@ -1074,6 +1079,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   async listWhatsappMessageConfigHistory(organizationId: string, limit: number): Promise<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }> {
+    if (!this.whatsappMessageConfigDisponible) return { disponible: false, items: [] };
     const items = [...(this.whatsappMessageConfigHistoryByOrg.get(organizationId) ?? [])].sort((a, b) => b.version - a.version).slice(0, Math.max(1, limit));
     return { disponible: true, items };
   }
