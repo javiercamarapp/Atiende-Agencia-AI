@@ -84,12 +84,13 @@ import {
   PostgresCoreRepository,
   PostgresImpersonationRepository,
   PostgresMfaRepository,
+  PostgresCfoRepository,
   PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
 } from "@atiende/db";
-import type { TenancyEngine } from "@atiende/core-tenancy";
+import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -98,6 +99,8 @@ import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-rep
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
+import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
+import { softRestaurantComandaDeps, type SoftRestaurantDeps } from "../routes/verticals/restaurantes/softrestaurant-wiring.ts";
 import { PersistentAuthzAuditSink } from "./authz-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
 import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
@@ -129,14 +132,23 @@ import {
  * cabecera de este archivo para por qué no puede ser un repo baked-in de una
  * sola vez.
  */
+/** Handler de restaurantes sobre UNA sesion: tambien encola la comanda de SoftRestaurant de los pedidos
+ * creados por WhatsApp (mismo helper y mismo cableado que voz/web en public.ts). Produccion no inyecta
+ * puerto ni mapeo propios todavia, asi que usa los valores por omision del cableado. */
+export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gateway: NonNullable<AppDeps["llmGateway"]>, softRestaurantDeps: SoftRestaurantDeps = {}): WhatsAppTurnHandler {
+  const repo = new PostgresRestaurantesRepository(db);
+  return createRestaurantesLlmWhatsAppTurnHandler(repo, gateway, {
+    defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
+    escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
+    encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
+  });
+}
+
 function buildRealRestaurantesTurnHandler(engine: TenancyEngine, gateway: NonNullable<AppDeps["llmGateway"]>): WhatsAppTurnHandler {
   return {
     handleInboundMessage: (args) =>
       engine.withAppSession({ userId: null }, (db) =>
-        createRestaurantesLlmWhatsAppTurnHandler(new PostgresRestaurantesRepository(db), gateway, {
-          defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
-          escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
-        }).handleInboundMessage(args),
+        buildRestaurantesTurnHandlerForSession(db, gateway).handleInboundMessage(args),
       ),
   };
 }
@@ -469,6 +481,7 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
+    cfoRepo: (db) => new PostgresCfoRepository(db),
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
     alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),

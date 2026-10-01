@@ -91,6 +91,9 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-superadmin-costos-planes/` (costo por evento por organización,
      tipo de cambio, catálogo de planes y asignación en dos pasos; ver
      `docs/SUPERADMIN_COSTOS_PLANES.md`).
+   - `scripts/verify-superadmin-cfo/` (dashboard ejecutivo CFO: lectura con
+     caller-binding, entradas de alerta y foto mensual de solo-sistema, formula
+     de ingreso sin inventar precios; ver `docs/SUPERADMIN_CFO.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada

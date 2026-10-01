@@ -51,6 +51,7 @@ import {
   Fingerprint,
   Gauge,
   LayoutDashboard,
+  LifeBuoy,
   Receipt,
   ShieldAlert,
   Star,
@@ -323,6 +324,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       items: [
         { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
         ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
+        { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
         { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
         { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
         { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
