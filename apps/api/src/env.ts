@@ -23,6 +23,8 @@ export interface ApiEnv {
    *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
    *  un envío sin ella. */
   readonly whatsappAccessToken: string | null;
+  /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
+  readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
    *  (`HOTELES_IDENTITY_KEY`). `null` cuando no esta configurada: captura/revelacion de
    *  identidad responden 503 explicito, NUNCA se guarda un documento sin cifrar. */
@@ -171,6 +173,7 @@ export function loadApiEnv(): ApiEnv {
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
+    licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
     internalSecret: requireEnv("INTERNAL_SECRET"),

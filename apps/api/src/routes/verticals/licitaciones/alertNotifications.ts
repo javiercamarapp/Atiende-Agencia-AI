@@ -38,11 +38,12 @@
 // email-dispatch (vercel.json los agenda por separado), así que sin esto una
 // alerta podía esperar hasta 24h a que corriera el OTRO cron.
 import { Hono } from "hono";
-import { dispatchPendingEmailJobs } from "@atiende/domain-licitaciones";
+import { WhatsAppNotAvailableError, dispatchPendingEmailJobs, enqueueDeadlineReminderWhatsApp } from "@atiende/domain-licitaciones";
 import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runAlertNotificationSweep } from "@atiende/worker";
+import { dispatchWhatsAppVertical } from "../../internal/whatsapp-dispatch.ts";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -149,8 +150,25 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     // recibe un runner (`withRepo`) que abre UNA transacción POR organización
     // (ver su comentario de cabecera en @atiende/worker).
     return withHeartbeat(deps, "/internal/licitaciones/alert-notifications", async () => {
-      const withRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db)));
-      const sweep = await runAlertNotificationSweep(withRepo);
+      const withRepo = <T>(fn: (repo: LicitacionesRepository, session?: unknown) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db), db));
+      // L-05: avisos de plazo por WhatsApp, en la MISMA transaccion de la organizacion. Solo si el ambiente tiene el
+      // repositorio y el numero remitente; con la base sin migrar el repositorio degrada con SAVEPOINT (nunca aborta
+      // la transaccion de la organizacion) y el aviso simplemente no se encola.
+      const waFactory = deps.licitacionesWhatsAppRepo;
+      const whatsappEnabled = Boolean(waFactory && deps.env.licitacionesWhatsappPhoneNumberId);
+      const sweep = await runAlertNotificationSweep(withRepo, {
+        onDeadlineReminders: whatsappEnabled
+          ? async ({ organizationId, reminders, session }) => {
+              if (reminders.length === 0 || !session) return 0;
+              try {
+                return await enqueueDeadlineReminderWhatsApp(waFactory!(session as TenantDbSession), organizationId, reminders);
+              } catch (err) {
+                if (!(err instanceof WhatsAppNotAvailableError)) console.error("licitaciones alert-notifications: fallo encolando avisos de WhatsApp (best-effort):", err instanceof Error ? err.message : err);
+                return 0;
+              }
+            }
+          : undefined,
+      });
       // Disparo inline best-effort (ver comentario de cabecera): el barrido de
       // arriba pudo haber encolado recordatorios de plazo/renovación/cobranza
       // reales vía `channel='email'`. r4-fix-crons-transaccion-por-unidad:
@@ -160,6 +178,8 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       // pasando `db` (además de `repo`) porque `triggerLicitacionesEmailDispatchInline`
       // envuelve el drenado en su propio SAVEPOINT (hotfix auditoría a2).
       await deps.engine.withAppSession({ userId: null }, (db) => triggerLicitacionesEmailDispatchInline(deps, db, deps.licitacionesRepo(db)));
+      // L-05: envio inmediato (best-effort, sesion de sistema propia) de los avisos de WhatsApp recien encolados.
+      if (whatsappEnabled) await dispatchWhatsAppVertical(deps, "licitaciones", INLINE_BATCH_SIZE);
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({

@@ -37,7 +37,7 @@
 // que a su vez usa el MISMO motor de correo vía Resend que citas/rentas ya
 // tienen — nunca se reinventa un canal nuevo).
 import { enqueueDeadlineReminderEmailsCore, enqueueOverdueInvoiceEmailsCore, enqueueRenewalAlertEmailsCore } from "@atiende/domain-licitaciones";
-import type { LicitacionesRepository, ScanRenewalAlertsInput } from "@atiende/domain-licitaciones";
+import type { LicitacionesRepository, ScanRenewalAlertsInput, TenderDeadlineReminderRecord } from "@atiende/domain-licitaciones";
 
 /**
  * r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA): runner de
@@ -48,7 +48,15 @@ import type { LicitacionesRepository, ScanRenewalAlertsInput } from "@atiende/do
  * `ROLLBACK` sin lanzar, revirtiendo en silencio TODAS las organizaciones ya
  * procesadas en esa corrida).
  */
-export type WithLicitacionesRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => Promise<T>;
+export type WithLicitacionesRepo = <T>(fn: (repo: LicitacionesRepository, session?: unknown) => Promise<T>) => Promise<T>;
+
+/**
+ * L-05: gancho opcional que corre DENTRO de la transaccion de la organizacion, justo despues de encolar los
+ * correos de plazo, con la MISMA sesion (`session`, opaca para el worker) para que quien lo cableo (la API)
+ * encole avisos de WhatsApp en esa misma transaccion. Devuelve cuantos avisos encolo. Debe aislar sus propios
+ * errores con SAVEPOINT (el worker no los atrapa: un error aqui reportaria la organizacion como fallida).
+ */
+export type DeadlineReminderHook = (input: { readonly organizationId: string; readonly reminders: readonly TenderDeadlineReminderRecord[]; readonly session: unknown }) => Promise<number>;
 
 export interface RunRenewalAlertSweepOptions {
   readonly leadDaysThresholds?: readonly number[];
@@ -132,11 +140,13 @@ export interface RunAlertNotificationSweepOptions {
   /** Reloj/fecha inyectables SOLO para pruebas deterministas -- por defecto el momento real de la corrida. */
   readonly now?: () => Date;
   readonly todayIsoDate?: string;
+  /** L-05: avisos de WhatsApp para los recordatorios de plazo recien creados (opcional). */
+  readonly onDeadlineReminders?: DeadlineReminderHook;
 }
 
 export interface AlertNotificationSweepResult {
   readonly organizationId: string;
-  readonly deadlineReminders: { readonly scanned: number; readonly created: number; readonly emailsEnqueued: number };
+  readonly deadlineReminders: { readonly scanned: number; readonly created: number; readonly emailsEnqueued: number; readonly whatsappEnqueued?: number };
   readonly renewalAlerts: { readonly evaluatedContracts: number; readonly alertsCreated: number; readonly emailsEnqueued: number };
   readonly collectionAlerts: { readonly overdueInvoices: number; readonly emailsEnqueued: number };
   readonly error?: string;
@@ -172,7 +182,7 @@ export async function runAlertNotificationSweep(withRepo: WithLicitacionesRepo, 
 
   for (const org of organizations) {
     try {
-      const result = await withRepo(async (repo) => {
+      const result = await withRepo(async (repo, session) => {
         // ---- 1) Recordatorios de plazo (Fase 8, reusa runDeadlineReminderSweep tal cual, sin reimplementar el escaneo). ----
         const deadlineScan = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.deadlineWindowDays, nowIso: options.now ? options.now().toISOString() : undefined });
         // r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #3):
@@ -189,6 +199,7 @@ export async function runAlertNotificationSweep(withRepo: WithLicitacionesRepo, 
         // organización, vía `withRepo`), nunca se traga en silencio. Mismo swap ya
         // hecho en `../despachos/cobranza-reminders.ts` (`enqueueCollectionReminderEmailForSystemCore`).
         const deadlineEmails = await enqueueDeadlineReminderEmailsCore(repo, org.id, deadlineScan.reminders);
+        const whatsappEnqueued = options.onDeadlineReminders ? await options.onDeadlineReminders({ organizationId: org.id, reminders: deadlineScan.reminders, session }) : undefined;
 
         // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). `systemScanRenewalAlerts`: ver comentario de cabecera de `runRenewalAlertSweep`, arriba -- exclusiva de sesión de sistema. ----
         const renewalScan = await repo.systemScanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
@@ -200,7 +211,7 @@ export async function runAlertNotificationSweep(withRepo: WithLicitacionesRepo, 
 
         return {
           organizationId: org.id,
-          deadlineReminders: { scanned: deadlineScan.scanned, created: deadlineScan.created, emailsEnqueued: deadlineEmails.enqueued },
+          deadlineReminders: { scanned: deadlineScan.scanned, created: deadlineScan.created, emailsEnqueued: deadlineEmails.enqueued, ...(whatsappEnqueued !== undefined ? { whatsappEnqueued } : {}) },
           renewalAlerts: { evaluatedContracts: renewalScan.evaluatedContracts, alertsCreated: renewalScan.alertsCreated, emailsEnqueued: renewalEmails.enqueued },
           collectionAlerts: { overdueInvoices: overdueInvoices.length, emailsEnqueued: collectionEmails.enqueued },
         };

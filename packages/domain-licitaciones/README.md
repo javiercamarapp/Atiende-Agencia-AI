@@ -89,3 +89,12 @@ Migración `029_sala_de_guerra_y_junta_aclaraciones.sql` (espejo `20240101000224
 
 **No envía nada a ningún portal** (ComprasMX u otro): `enviada` y la respuesta del acta las registra
 una persona.
+
+## L-05 — WhatsApp (avisos y decisión go/no-go por botón)
+
+Migración `030_whatsapp_avisos_y_decisiones.sql` (espejo `20240101000236_...`) y módulos `whatsapp.ts` (puro: token de un solo uso, id de botón, palabras clave SI/BAJA, redacción), `whatsapp-repository.ts` (Postgres con SAVEPOINT + versión en memoria + puerto del dispatcher de `@atiende/whatsapp-gateway`) y `whatsapp-service.ts` (solicitar decisiones y encolar avisos). Verificación contra Postgres real: `scripts/verify-licitaciones-whatsapp/`.
+
+- **Opt-in verificado**: guardar el teléfono deja el contacto `pendiente`; solo un mensaje ENTRANTE (firmado por Meta) con `SI` desde ese número lo pasa a `activo`. `BAJA` lo desactiva y un `SI` posterior no lo revierte (hay que pedirlo de nuevo desde el panel). Cambiar el teléfono reinicia el consentimiento.
+- **Token de decisión**: 32 bytes aleatorios; la base guarda solo el SHA-256. Un solo uso, vigencia de 24 h (tope 7 días), ligado a usuario + organización + convocatoria + acción + teléfono. El consumo lo revalida todo en la base (`whatsapp_consume_action_token`) y se ejecuta en la MISMA transacción que `go_no_go_decision`, con la sesión del usuario del token.
+- **Cola**: `whatsapp_outbox` (patrón `hoteles.messaging_outbox`), solo funciones de sistema; al cerrar el mensaje se borran los botones (el token en claro solo vive mientras está pendiente).
+- **Fuera de alcance de esta pieza**: aprobar/rechazar PROPUESTAS por botón (la aprobación del expediente exige el hash de insumos sellado y step-up; no se decide por un botón sin una decisión de producto) y los avisos de convocatoria nueva / fallo (hay primitiva `enqueueTenderNotices`, sin disparador cableado). Los avisos de plazo sí están cableados al barrido de alertas.

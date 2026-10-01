@@ -35,7 +35,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { LicitacionesRepository, SalaGuerraRepository } from "@atiende/domain-licitaciones";
+import type { LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
@@ -262,6 +262,8 @@ export interface AppDeps {
   readonly licitacionesRepo: (db: TenantDbSession) => LicitacionesRepository;
   /** L-04: sala de guerra + junta de aclaraciones. `production/deps.ts` lo cablea a `PostgresSalaGuerraRepository`; las pruebas de esta pieza inyectan la version en memoria. OPCIONAL a proposito para no tocar cada fixture de AppDeps: si falta, las rutas responden 503 ("no configurado") y el barrido de recordatorios de junta se omite. */
   readonly licitacionesSalaGuerraRepo?: (db: TenantDbSession) => SalaGuerraRepository;
+  /** L-05: WhatsApp de licitaciones (contactos, tokens de un solo uso, outbox, bitacora). `production/deps.ts` lo cablea a `PostgresWhatsAppRepository`; OPCIONAL a proposito: si falta, las rutas responden 503, el webhook acusa recibo sin procesar y el despacho se omite. */
+  readonly licitacionesWhatsAppRepo?: (db: TenantDbSession) => WhatsAppRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
    * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un

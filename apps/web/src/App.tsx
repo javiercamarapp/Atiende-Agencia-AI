@@ -120,6 +120,7 @@ import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatchin
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
+import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
 import { RestablecerContrasenaPage as LicitacionesRestablecerContrasenaPage, VerificarCorreoPage as LicitacionesVerificarCorreoPage } from "./verticals/licitaciones/pages/CuentaEnlaces.tsx";
 import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
 import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
@@ -783,6 +784,8 @@ const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitacione
 const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <AprobacionesPage {...ctx} />);
 const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SalaGuerraPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
+// L-05: configuración de WhatsApp (opt-in, temas de aviso, decisión go/no-go por botón).
+const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
 // restaurantes permite gestionar roles desde el producto"): licitaciones tenía
@@ -978,6 +981,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
+        <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
         <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />

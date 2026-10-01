@@ -99,6 +99,7 @@ import { createHotelesMessagingOutboxPort } from "@atiende/domain-hoteles";
 import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { createRestaurantesMessagingOutboxPort } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
+import { createLicitacionesMessagingOutboxPort } from "@atiende/domain-licitaciones";
 import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../errors.ts";
@@ -117,7 +118,7 @@ const MAX_LIMIT = 200;
  *  intentar el envío real inmediato; cualquier remanente lo recoge el cron. */
 const INLINE_LIMIT = 5;
 
-export type WhatsAppMessagingVertical = "citas" | "hoteles" | "restaurantes";
+export type WhatsAppMessagingVertical = "citas" | "hoteles" | "restaurantes" | "licitaciones";
 export type WhatsAppVerticalDispatchResult = DispatchSummary | { readonly ok: false; readonly error: string };
 
 function isFailureResult(result: WhatsAppVerticalDispatchResult): result is { readonly ok: false; readonly error: string } {
@@ -138,6 +139,14 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
   const dispatcher = deps.whatsAppDispatcher;
   if (!dispatcher) return { ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" };
 
+  // L-05: licitaciones solo envia si el ambiente la habilito (repositorio + numero remitente). Sin eso NO es un fallo:
+  // no hay nada que drenar, y no debe ensuciar el log de verticales fallidas de cada corrida del cron.
+  const licitacionesRepoFactory = deps.licitacionesWhatsAppRepo;
+  const licitacionesPhoneNumberId = deps.env.licitacionesWhatsappPhoneNumberId ?? null;
+  if (vertical === "licitaciones" && (!licitacionesRepoFactory || !licitacionesPhoneNumberId)) {
+    return { label: "licitaciones", claimed: 0, sent: 0, retried: 0, dead: 0, skipped: 0, items: [] };
+  }
+
   try {
     return await deps.engine.withAppSession({ userId: null }, async (db) => {
       const port =
@@ -145,7 +154,9 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
           ? createCitasMessagingOutboxPort(deps.citasRepo(db))
           : vertical === "hoteles"
             ? createHotelesMessagingOutboxPort(deps.hotelesRepo(db))
-            : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
+            : vertical === "licitaciones"
+              ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
+              : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
       return dispatcher.dispatchPending(port, { limit });
     });
   } catch (err) {
@@ -248,7 +259,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
 
       // Un tenant/vertical con datos raros nunca tumba el despacho de los demás —
       // mismo criterio que citasRemindersRoutes captura por organización y sigue.
-      for (const vertical of ["citas", "hoteles", "restaurantes"] as const) {
+      for (const vertical of ["citas", "hoteles", "restaurantes", "licitaciones"] as const) {
         const result = await dispatchWhatsAppVertical(deps, vertical, limit);
         results[vertical] = result;
         if (isFailureResult(result)) {
