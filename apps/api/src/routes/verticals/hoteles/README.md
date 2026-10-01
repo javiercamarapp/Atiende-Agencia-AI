@@ -241,5 +241,5 @@ Modelo en `packages/domain-hoteles/migrations/032_hoteles_consentimiento_arco_in
 - `huespedes.ts` (H-27, migración 038) — FICHA DE HUÉSPED: `GET /hoteles/:propertyId/huespedes/:guestId/ficha` (perfil, resumen e historial de
   estancias con monto neto en centavos, notas y preferencias, solicitudes de contacto de voz/WhatsApp enlazadas por teléfono, consentimientos,
   bandera de identidad y de ARCO) y `POST .../notas` / `.../notas/:id/archivar`. Minimización: nunca el documento; una nota con 13 a 19
-  dígitos (tarjeta/documento) se rechaza; con ARCO de cancelación u oposición en curso no se agregan notas (409 `arco_en_curso`). Roles:
-  owner/gm/frontdesk/reservations. Base sin la 031/032/038: perfil e historial siguen, lo que falta va como `null` o `disponible:false`.
+  dígitos (tarjeta/documento; solo se ignoran espacios y guiones: es minimización de mejor esfuerzo, NO una garantía, un número con otros separadores puede pasar) se rechaza; con ARCO de cancelación u oposición en curso no se agregan notas (409 `arco_en_curso`). Roles:
+  owner/gm/frontdesk/reservations. La ficha lee sus partes EN SECUENCIA (una sola transaccion por request; en paralelo los SAVEPOINT se intercalan). Base sin la 031/032/038: perfil e historial siguen, lo que falta va como `null` o `disponible:false`.
