@@ -5,12 +5,17 @@ import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import { beforeEach, describe, expect, it } from "vitest";
 import { hashPassword } from "@atiende/db";
+import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
+
+// Los fixtures arman repos/motor en memoria; las pruebas de aislamiento necesitan sembrar un segundo despacho.
+const coreRepo = () => ctx.deps.coreRepo as InMemoryCoreRepository;
+const engine = () => ctx.deps.engine as InMemoryTenancyEngine;
 
 beforeEach(async () => {
   ctx = await buildDespachosTestContext(buildApp);
@@ -50,15 +55,15 @@ async function seedOtroDespacho(): Promise<{ token: string; propertyId: string; 
   const orgId = randomUUID();
   const propertyId = randomUUID();
   const slug = "otro-despacho";
-  ctx.deps.coreRepo.addOrganization({ id: orgId, slug, name: "Otro Despacho", vertical: "despachos" });
-  (ctx.deps.engine as unknown as { seedProperty(p: { id: string; organizationId: string }): void }).seedProperty({ id: propertyId, organizationId: orgId });
+  coreRepo().addOrganization({ id: orgId, slug, name: "Otro Despacho", vertical: "despachos" });
+  engine().seedProperty({ id: propertyId, organizationId: orgId });
   ctx.despachosRepo.seedOrganization({ id: orgId, slug, name: "Otro Despacho" });
   ctx.despachosRepo.seedDespachosProperty({ id: propertyId, organizationId: orgId, name: "Sede ajena" });
   const userId = randomUUID();
   const password = "correcto-caballo-batería";
-  ctx.deps.coreRepo.addStaff({ id: userId, email: "ajeno@otro-despacho.mx", fullName: "Ajeno", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
-  ctx.deps.coreRepo.addMembership({ userId, organizationId: orgId, platformRole: "admin", verticalRole: "contador", propertyIds: null });
-  (ctx.deps.engine as unknown as { seedMembership(m: unknown): void }).seedMembership({ userId, organizationId: orgId, platformRole: "admin", verticalRole: "contador", propertyIds: null });
+  coreRepo().addStaff({ id: userId, email: "ajeno@otro-despacho.mx", fullName: "Ajeno", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+  coreRepo().addMembership({ userId, organizationId: orgId, platformRole: "admin", verticalRole: "contador", propertyIds: null });
+  engine().seedMembership({ userId, organizationId: orgId, platformRole: "admin", verticalRole: "contador", propertyIds: null });
   const res = await buildApp(ctx.deps).request("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "ajeno@otro-despacho.mx", password }) });
   const { token } = (await res.json()) as { token: string };
   return { token, propertyId, slug };
@@ -116,7 +121,7 @@ describe("GET /despachos/:propertyId/dashboard", () => {
 describe("GET /v1/despachos/:orgSlug/dashboard", () => {
   it("consolida los clientes visibles del despacho con ranking por urgencia", async () => {
     const segunda = randomUUID();
-    (ctx.deps.engine as unknown as { seedProperty(p: { id: string; organizationId: string }): void }).seedProperty({ id: segunda, organizationId: ctx.organizationId });
+    engine().seedProperty({ id: segunda, organizationId: ctx.organizationId });
     ctx.despachosRepo.seedDespachosProperty({ id: segunda, organizationId: ctx.organizationId, name: "Cliente Dos" });
     await ctx.despachosRepo.createDeadline({ organizationId: ctx.organizationId, propertyId: segunda, tipo: "ISR", periodo: "2026-08", fechaLimite: hoyMenos(3), prioridad: "critica" });
 
@@ -133,14 +138,14 @@ describe("GET /v1/despachos/:orgSlug/dashboard", () => {
 
   it("un miembro con alcance acotado solo ve sus clientes", async () => {
     const segunda = randomUUID();
-    (ctx.deps.engine as unknown as { seedProperty(p: { id: string; organizationId: string }): void }).seedProperty({ id: segunda, organizationId: ctx.organizationId });
+    engine().seedProperty({ id: segunda, organizationId: ctx.organizationId });
     ctx.despachosRepo.seedDespachosProperty({ id: segunda, organizationId: ctx.organizationId, name: "Cliente Dos" });
     // Un contador con alcance acotado: solo la property principal.
     const userId = randomUUID();
     const password = "correcto-caballo-batería";
-    ctx.deps.coreRepo.addStaff({ id: userId, email: "acotado@despacho-de-prueba.mx", fullName: "Acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
-    ctx.deps.coreRepo.addMembership({ userId, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
-    (ctx.deps.engine as unknown as { seedMembership(m: unknown): void }).seedMembership({ userId, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
+    coreRepo().addStaff({ id: userId, email: "acotado@despacho-de-prueba.mx", fullName: "Acotado", passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+    coreRepo().addMembership({ userId, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
+    engine().seedMembership({ userId, organizationId: ctx.organizationId, platformRole: "admin", verticalRole: "contador", propertyIds: [ctx.propertyId] });
     const login = await buildApp(ctx.deps).request("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "acotado@despacho-de-prueba.mx", password }) });
     const { token } = (await login.json()) as { token: string };
 
