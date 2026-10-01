@@ -92,4 +92,16 @@ describe("POST /v1/restaurantes/whatsapp/webhook -- bateria PM", () => {
     expect(res.status).toBe(200);
     expect(vistos).toHaveLength(0);
   });
+
+  it("T-AB11 [P1] un body mas grande que el limite responde 413 y un JSON invalido (pero firmado) responde 400: nunca se procesa ni se lanza un 500", async () => {
+    const { app, vistos } = await setup();
+    const grande = await app.request("/v1/restaurantes/whatsapp/webhook", { method: "POST", body: "{}", headers: { "content-type": "application/json", "content-length": String(300 * 1024) } });
+    expect(grande.status).toBe(413);
+    const raw = "{no es json";
+    const bytes = new TextEncoder().encode(raw);
+    const firma = `sha256=${createHmac("sha256", TEST_ENV.whatsappAppSecret).update(bytes).digest("hex")}`;
+    const invalido = await app.request("/v1/restaurantes/whatsapp/webhook", { method: "POST", body: raw, headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "x-hub-signature-256": firma } });
+    expect(invalido.status).toBe(400);
+    expect(vistos).toHaveLength(0);
+  });
 });
