@@ -107,7 +107,7 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu.js";
-export { Toaster, toast } from "./components/ui/sonner.js";
+export { Toaster, toast, notify, DURACION_NOTIFY_MS, type NotifyDeshacer, type NotifyOpciones } from "./components/ui/sonner.js";
 
 // Seguimiento de solicitudes de derechos ARCO (citas, C-02).
 export {
