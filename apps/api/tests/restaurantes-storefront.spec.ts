@@ -19,6 +19,8 @@ async function setup() {
   const app = buildApp(t.deps);
   const coca = { product_id: t.products.cocaCola, requested_quantity: 2 };
   const post = (path: string, body: Record<string, unknown>, headers: Record<string, string> = ORIGIN) => app.request(`${BASE}${path}`, jsonRequestInit(body, headers));
+  // Cuerpos de respuesta heterogeneos de un endpoint HTTP: los asserts verifican la forma.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json = async (res: Response) => (await res.json()) as Record<string, any>;
   const flow = async (extra: Record<string, unknown> = {}) => {
     const body = { session_id: SESSION, items: [coca], canal: "recoger", payment_method: "efectivo", ...extra };
@@ -44,7 +46,7 @@ describe("lectura publica: sucursales y menu", () => {
 
   it("menu por categorias con precio de la sucursal y 'hoy no hay'", async () => {
     const s = await setup();
-    await s.restaurantesRepo.upsertBranchProductState(s.propertyId, s.products.cocaCola, 47, false);
+    await s.restaurantesRepo.upsertBranchProductState(s.propertyId, s.products.cocaCola!, 47, false);
     const body = await s.json(await s.app.request(`${BASE}/fco-montejo/menu`));
     const items = body.categorias.flatMap((c: { items: unknown[] }) => c.items) as Array<{ name: string; price: number; available: boolean }>;
     expect(items.find((i) => i.name === "Coca-Cola")).toMatchObject({ price: 47, available: false });

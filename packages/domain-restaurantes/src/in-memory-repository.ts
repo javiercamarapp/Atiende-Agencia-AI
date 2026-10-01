@@ -52,7 +52,6 @@ import type {
   WhatsappBranchChannel,
   WhatsappChannelConfig,
   StorefrontCatalogRow,
-  StorefrontOrderTracking,
   StorefrontTrackingResult,
 } from "./types.ts";
 import type {
