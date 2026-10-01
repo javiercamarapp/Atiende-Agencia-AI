@@ -1,7 +1,7 @@
 # verify-outbox-backoff-equidad
 
 Verificación contra Postgres **real** de
-`packages/db/migrations/0030_outbox_backoff_y_equidad_por_tenant.sql` (PL-07): backoff
+`packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql` (PL-07): backoff
 exponencial del correo del outbox y equidad por tenant en los
 `claim_*_outbox_batch` de las 6 verticales. Corre a mano con `run.sh` (necesita
 `initdb`/`pg_ctl`/`psql`) y automáticamente en CI vía

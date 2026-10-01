@@ -1,6 +1,6 @@
 -- Fixtures + assertions contra Postgres REAL (GRANT / auth.uid() / security definer reales,
 -- que el repositorio en memoria de cada domain-* nunca aplica) de
--- packages/db/migrations/0030_outbox_backoff_y_equidad_por_tenant.sql (PL-07).
+-- packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql (PL-07).
 --
 -- Qué demuestra (positivo, negativo, cross-tenant, anon), en las 6 verticales:
 --   1. core.outbox_backoff_seconds: tabla del backoff exponencial 60 s * 2^(n-1), tope 6 h.

@@ -3,7 +3,7 @@
 # scripts/verify-rentas-ical-sync-lease/run.sh. Demuestra, contra GRANT/auth.uid()/security
 # definer reales (el repositorio en memoria nunca los aplica), el backoff exponencial del
 # correo y la equidad por tenant de los claim_*_outbox_batch de
-# packages/db/migrations/0030_outbox_backoff_y_equidad_por_tenant.sql.
+# packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql.
 # El mismo assertions.sql corre en CI vía scripts/verify-real-postgres-ci/run-gate.mjs
 # (auto-descubierto).
 #
@@ -48,7 +48,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0030_outbox_backoff_y_equidad_por_tenant.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0031_outbox_backoff_y_equidad_por_tenant.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done
