@@ -15,7 +15,7 @@
 // mismo listener de SESSION_EXPIRED_EVENT.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Building2, FileText, Gavel, Radar, ShieldCheck, Target, Users } from "lucide-react";
+import { BellRing, Building2, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Radar, ShieldCheck, Target, Users } from "lucide-react";
 import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
@@ -177,8 +177,11 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       title: "Licitaciones",
       siempreAbierto: true,
       items: [
+        { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
         { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
+        { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
         { to: `${base}/radar-renovaciones`, label: "Radar de renovaciones", icon: Radar },
+        { to: `${base}/fuentes`, label: "Fuentes y frescura", icon: Database },
       ],
     },
     {
@@ -186,6 +189,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       items: [
         { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
         { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
+        { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
         { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
       ],
@@ -243,11 +247,13 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
       <BottomNav
         items={[
+          { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
           { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
-          { to: `${base}/radar-renovaciones`, label: "Radar", icon: Radar },
-          { to: `${base}/perfil-matching`, label: "Matching", icon: Target },
+          { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
           { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
         ]}
+        // Con más destinos de los que caben en la barra, "Más" abre el mismo árbol del Sidebar (nada queda inalcanzable en móvil).
+        moreSections={sections}
       />
     </div>
   );

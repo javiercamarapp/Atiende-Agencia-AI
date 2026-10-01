@@ -19,6 +19,7 @@
 // `Badge` y los inputs/botones a `Input`/`Label`/`Button` de @atiende/ui. Mismo
 // estado, mismos fetch, mismas ramas de rol.
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
   Badge,
@@ -99,8 +100,14 @@ const FILA = "flex flex-wrap items-center justify-between gap-3 border-b border-
 /** Formulario de alta al pie de cada sección. Antes era un `style` inline. */
 const FORM_ALTA = "flex flex-wrap items-end gap-2 pt-1";
 
+const TABS_VALIDAS: ReadonlySet<string> = new Set(["documentos", "tarifas", "capacidades", "experiencia", "firmantes"]);
+
 export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canWrite = WRITE_ROLES.has(role);
+  // `?tab=firmantes` (etc.) abre directo esa pestaña -- lo usan /firmantes y el Panel; un valor desconocido cae a "documentos".
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tabInicial = tabParam && TABS_VALIDAS.has(tabParam) ? tabParam : "documentos";
 
   const [documents, setDocuments] = useState<readonly CompanyDocument[]>([]);
   const [rates, setRates] = useState<readonly ApprovedRate[]>([]);
@@ -179,7 +186,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
       )}
       {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede capturar ni aprobar datos de empresa. Se muestran de solo lectura.</p>}
 
-      <Tabs defaultValue="documentos" className="w-full">
+      <Tabs defaultValue={tabInicial} className="w-full">
         <TabsList className="flex-wrap">
           <TabsTrigger value="documentos">Documentos</TabsTrigger>
           <TabsTrigger value="tarifas">Tarifas</TabsTrigger>

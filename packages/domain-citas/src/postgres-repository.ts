@@ -12,6 +12,19 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
+  ConfirmDataRightsOutcome,
+  DataRightsEventRow,
+  DataRightsPaginacion,
+  DataRightsRequestRow,
+  DataRightsRequestsFiltro,
+  DataRightsRequestsPage,
+  DataRightStaffTargetStatus,
+  DataRightStatus,
+  DataRightType,
+  RegisterDataRightsOutcome,
+  UpdateDataRightsStatusResult,
+} from "./data-rights.ts";
+import type {
   AppointmentActorChannel,
   AppointmentRecord,
   AvailabilityOverride,
@@ -271,6 +284,65 @@ function mapCitasAuditLogRow(row: CitasAuditLogRowSql): CitasAuditLogRow {
     despues: row.despues,
     createdAtMs: new Date(row.created_at).getTime(),
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// C-02 -- solicitudes de derechos ARCO (migrations/024_citas_data_rights.sql).
+// Base SIN MIGRAR: la 024 no se aplica al mergear. Cada método corre en su propio
+// SAVEPOINT (`runWithSavepointFallback`) y cae a "no disponible" con 42883/42P01/
+// 42703 -- la sesión compartida del request/webhook nunca queda abortada (25P02).
+// ---------------------------------------------------------------------------
+let dataRightsAdvertido = false;
+function advertirDataRightsNoDisponible(operacion: string, err: unknown): void {
+  if (dataRightsAdvertido) return;
+  dataRightsAdvertido = true;
+  console.warn(
+    `PostgresCitasRepository.${operacion}: las solicitudes ARCO (citas.data_rights_*) no existen todavía en esta base ` +
+      "(SQLSTATE 42883/42P01/42703) -- degradando a 'no disponible'. Aplica packages/domain-citas/migrations/024_citas_data_rights.sql " +
+      "(o su espejo en supabase/migrations/) para habilitarlas.",
+    err instanceof Error ? err.message : err,
+  );
+}
+
+interface DataRightsRequestRowSql {
+  id: string;
+  customer_phone: string;
+  right_type: DataRightType;
+  channel: "whatsapp" | "voice";
+  status: DataRightStatus;
+  detail: string | null;
+  requested_at: string;
+  confirmed_at: string | null;
+  response_due_at: string | null;
+  execution_due_at: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  handled_by: string | null;
+  updated_at: string;
+}
+
+function mapDataRightsRequestRow(row: DataRightsRequestRowSql): DataRightsRequestRow {
+  return {
+    id: row.id,
+    customerPhone: row.customer_phone,
+    rightType: row.right_type,
+    channel: row.channel,
+    status: row.status,
+    detail: row.detail,
+    requestedAt: row.requested_at,
+    confirmedAt: row.confirmed_at,
+    responseDueAt: row.response_due_at,
+    executionDueAt: row.execution_due_at,
+    resolvedAt: row.resolved_at,
+    resolutionNote: row.resolution_note,
+    handledBy: row.handled_by,
+    updatedAt: row.updated_at,
+  };
+}
+
+function sqlState(err: unknown): string | undefined {
+  return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
 
 export class PostgresCitasRepository implements CitasRepository {
@@ -1777,6 +1849,165 @@ export class PostgresCitasRepository implements CitasRepository {
       fallback: (err) => {
         advertirCitasAuditLogLecturaNoDisponible(err);
         return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
+      },
+    });
+  }
+
+  // ---- C-02 -- solicitudes de derechos ARCO ----
+
+  async registerDataRightsRequestAsSystem(input: { readonly organizationId: string; readonly customerPhone: string; readonly rightType: DataRightType; readonly detail: string | null }): Promise<RegisterDataRightsOutcome> {
+    return runWithSavepointFallback<RegisterDataRightsOutcome>({
+      session: this.db,
+      savepointName: "sp_citas_data_rights_register",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_status: DataRightStatus; out_already_open: boolean; out_response_due_at: string | null }>(
+          `select out_id, out_status, out_already_open, out_response_due_at::text as out_response_due_at from citas.system_register_data_rights_request($1, $2, $3, 'whatsapp', $4);`,
+          [input.organizationId, input.customerPhone, input.rightType, input.detail],
+        );
+        const row = rows[0];
+        if (!row) return { available: false };
+        return { available: true, id: row.out_id, status: row.out_status, alreadyOpen: row.out_already_open, responseDueAt: row.out_response_due_at };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_register_data_rights_request"),
+      fallback: (err) => {
+        advertirDataRightsNoDisponible("registerDataRightsRequestAsSystem", err);
+        return Promise.resolve({ available: false });
+      },
+    });
+  }
+
+  async resolveDataRightsConfirmationAsSystem(organizationId: string, customerPhone: string, confirm: boolean): Promise<ConfirmDataRightsOutcome> {
+    return runWithSavepointFallback<ConfirmDataRightsOutcome>({
+      session: this.db,
+      savepointName: "sp_citas_data_rights_confirm",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_right_type: DataRightType; out_status: DataRightStatus; out_response_due_at: string | null; out_execution_due_at: string | null }>(
+          `select out_id, out_right_type, out_status, out_response_due_at::text as out_response_due_at, out_execution_due_at::text as out_execution_due_at from citas.system_resolve_data_rights_confirmation($1, $2, $3);`,
+          [organizationId, customerPhone, confirm],
+        );
+        const row = rows[0];
+        if (!row) return { available: true, found: false };
+        return { available: true, found: true, id: row.out_id, rightType: row.out_right_type, status: row.out_status, responseDueAt: row.out_response_due_at, executionDueAt: row.out_execution_due_at };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_resolve_data_rights_confirmation"),
+      fallback: (err) => {
+        advertirDataRightsNoDisponible("resolveDataRightsConfirmationAsSystem", err);
+        return Promise.resolve({ available: false });
+      },
+    });
+  }
+
+  async listDataRightsRequests(organizationId: string, filtro: DataRightsRequestsFiltro, paginacion: DataRightsPaginacion): Promise<DataRightsRequestsPage> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+    const params: unknown[] = [organizationId];
+    const condiciones = ["organization_id = $1"];
+    if (filtro.status) {
+      params.push(filtro.status);
+      condiciones.push(`status = $${params.length}`);
+    }
+    if (filtro.rightType) {
+      params.push(filtro.rightType);
+      condiciones.push(`right_type = $${params.length}`);
+    }
+    const where = condiciones.join(" and ");
+
+    return runWithSavepointFallback<DataRightsRequestsPage>({
+      session: this.db,
+      savepointName: "sp_citas_data_rights_list",
+      primary: async () => {
+        const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from citas.data_rights_requests where ${where};`, params);
+        const total = Number(totalResult.rows[0]?.total ?? 0);
+        const pageParams = [...params, limit, offset];
+        const { rows } = await this.db.query<DataRightsRequestRowSql>(
+          `select id, customer_phone, right_type, channel, status, detail, requested_at::text as requested_at, confirmed_at::text as confirmed_at,
+                  response_due_at::text as response_due_at, execution_due_at::text as execution_due_at, resolved_at::text as resolved_at,
+                  resolution_note, handled_by, updated_at::text as updated_at
+             from citas.data_rights_requests where ${where} order by created_at desc, seq desc limit $${pageParams.length - 1} offset $${pageParams.length};`,
+          pageParams,
+        );
+        const items = rows.map(mapDataRightsRequestRow);
+        return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirDataRightsNoDisponible("listDataRightsRequests", err);
+        return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
+      },
+    });
+  }
+
+  async listDataRightsEvents(organizationId: string, requestId: string): Promise<readonly DataRightsEventRow[] | null> {
+    return runWithSavepointFallback<readonly DataRightsEventRow[] | null>({
+      session: this.db,
+      savepointName: "sp_citas_data_rights_events",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          id: string;
+          request_id: string;
+          actor_kind: "titular" | "sistema" | "staff";
+          actor_user_id: string | null;
+          event: string;
+          from_status: string | null;
+          to_status: string | null;
+          note: string | null;
+          created_at: string;
+        }>(
+          `select id, request_id, actor_kind, actor_user_id, event, from_status, to_status, note, created_at::text as created_at
+             from citas.data_rights_events where organization_id = $1 and request_id = $2 order by created_at asc, seq asc;`,
+          [organizationId, requestId],
+        );
+        return rows.map((r) => ({
+          id: r.id,
+          requestId: r.request_id,
+          actorKind: r.actor_kind,
+          actorUserId: r.actor_user_id,
+          event: r.event,
+          fromStatus: r.from_status,
+          toStatus: r.to_status,
+          note: r.note,
+          createdAt: r.created_at,
+        }));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirDataRightsNoDisponible("listDataRightsEvents", err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult> {
+    return runWithSavepointFallback<UpdateDataRightsStatusResult>({
+      session: this.db,
+      savepointName: "sp_citas_data_rights_update",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_status: DataRightStatus }>(
+          `select out_id, out_status from citas.update_data_rights_request_status($1, $2, $3, $4);`,
+          [organizationId, requestId, status, note],
+        );
+        const row = rows[0];
+        if (!row) return { outcome: "not_found" };
+        return { outcome: "updated", id: row.out_id, status: row.out_status };
+      },
+      // La base sin migrar (42883/42P01/42703) Y los errores de negocio de la propia
+      // función SQL (P0002 no existe, 55000 transición inválida, 22023 parámetro,
+      // 42501 sin rol) son recuperables: todos se resuelven DENTRO del SAVEPOINT.
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.update_data_rights_request_status") || ["P0002", "55000", "22023", "42501"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        switch (sqlState(err)) {
+          case "P0002":
+            return Promise.resolve({ outcome: "not_found" });
+          case "55000":
+            return Promise.resolve({ outcome: "invalid_transition" });
+          case "22023":
+            return Promise.resolve({ outcome: "invalid_input" });
+          case "42501":
+            return Promise.resolve({ outcome: "forbidden" });
+          default:
+            advertirDataRightsNoDisponible("updateDataRightsRequestStatus", err);
+            return Promise.resolve({ outcome: "unavailable" });
+        }
       },
     });
   }
