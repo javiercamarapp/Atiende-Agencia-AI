@@ -51,8 +51,10 @@ mensual sobre un respaldo real (sección 5).
 - Cifrado: `brew install age` y `age-keygen -o ~/.llaves/atiende-respaldo.agekey`; la
   llave **pública** (`age1...`) va en `BACKUP_AGE_RECIPIENT`, la **privada** se guarda fuera de
   la Mac y de iCloud en claro. `gpg` también funciona (`BACKUP_ENCRYPT=gpg`).
-- Cadena de conexión **directa** o del pooler en modo **sesión** (puerto 5432), de un rol con
-  `SELECT` en esos esquemas. El pooler en modo transacción (6543) no sirve: no soporta
+- Cadena de conexión **directa** o del pooler en modo **sesión** (puerto 5432), del rol
+  `postgres` (o uno con `BYPASSRLS`): `pg_dump` fija `row_security=off` y falla en tablas con RLS si
+  el rol no es dueño ni `BYPASSRLS` (casi todas las tablas tienen RLS), y la huella `catalog.json`
+  contaría solo las filas visibles por RLS. El pooler en modo transacción (6543) no sirve: no soporta
   `pg_export_snapshot`. Se pone solo en la variable de entorno, nunca en un archivo del repo ni
   pegada en un chat.
 
