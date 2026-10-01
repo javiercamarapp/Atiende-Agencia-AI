@@ -275,7 +275,7 @@ export async function executeReservasTool(ctx: ReservasToolContext, name: Reserv
         const stay = validateStayDates(optString(input, "fecha_llegada"), optString(input, "fecha_salida"));
         const guests = input.huespedes === undefined || input.huespedes === null ? null : parseBoundedInt(input.huespedes, 1, 20, "huespedes");
         const res = await ctx.reservas.stayOptions(ctx.propertyId, stay.checkInDate, stay.checkOutDate, ctx.now);
-        if (!res.disponible) return errorOutcome(new ReservasAgenteError("no_disponible_aun", "no disponible"));
+        if (!res.disponible) throw new ReservasAgenteError("no_disponible_aun", "no disponible");
         return {
           result: { fecha_llegada: stay.checkInDate, fecha_salida: stay.checkOutDate, noches: stay.nights, moneda: "MXN", opciones: res.opciones.map((o) => optionView(o, guests)) },
           moneyCents: res.opciones.flatMap(moneyOf),
@@ -289,7 +289,7 @@ export async function executeReservasTool(ctx: ReservasToolContext, name: Reserv
         const stay = validateStayDates(optString(input, "fecha_llegada"), optString(input, "fecha_salida"));
         const guests = input.huespedes === undefined || input.huespedes === null ? null : parseBoundedInt(input.huespedes, 1, 20, "huespedes");
         const res = await ctx.reservas.stayOptions(ctx.propertyId, stay.checkInDate, stay.checkOutDate, ctx.now);
-        if (!res.disponible) return errorOutcome(new ReservasAgenteError("no_disponible_aun", "no disponible"));
+        if (!res.disponible) throw new ReservasAgenteError("no_disponible_aun", "no disponible");
         const option = res.opciones.find((o) => o.roomTypeId === roomTypeId);
         if (!option) throw new ReservasAgenteError("tipo_habitacion_invalido", "tipo invalido");
         return {
