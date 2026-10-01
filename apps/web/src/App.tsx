@@ -44,6 +44,7 @@ import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
+import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
@@ -372,6 +373,8 @@ const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ct
 const HotelesAsistenciaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AsistenciaPage {...ctx} />);
 
 const HotelesFraudeRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <FraudePage {...ctx} />);
+/** H-01 — bóveda de identidad + registro migratorio + purga con doble control (pages/Identidad.tsx). */
+const HotelesIdentidadRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <IdentidadPage {...ctx} />);
 const HotelesCfdiListadoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCfdiListadoPage {...ctx} />);
 
 /** Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
@@ -714,6 +717,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
+        <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
