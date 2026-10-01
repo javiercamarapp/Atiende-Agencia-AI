@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -23,12 +24,6 @@ import {
   Label,
   PageContainer,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
@@ -328,43 +323,37 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
       )}
 
       {invoices && invoices.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Folio fiscal</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Emisor</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  <TableHead>Revisión</TableHead>
-                  <TableHead>Fecha</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      <Link to={`/despachos/${orgSlug}/cfdi/${inv.id}`} className="font-mono text-xs font-semibold text-foreground hover:underline underline-offset-2">
-                        {inv.folioFiscal.slice(0, 13)}…
-                      </Link>
-                      <div className="text-xs text-muted-foreground">{inv.rfcReceptor}</div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{TIPO_LABELS[inv.tipo] ?? inv.tipo}</TableCell>
-                    <TableCell className="text-muted-foreground">{inv.emisorNombre ?? inv.rfcEmisor}</TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{formatMoney(inv.total)}</TableCell>
-                    <TableCell>
-                      <ValidoBadge valido={inv.valido} />
-                    </TableCell>
-                    <TableCell className={inv.requiereRevisionHumana ? "text-destructive" : "text-muted-foreground"}>{inv.requiereRevisionHumana ? "Pendiente" : "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(inv.creadoEn)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          etiqueta="CFDI ingestados"
+          obtenerId={(inv) => inv.id}
+          filas={invoices}
+          paginacion={false}
+          columnas={[
+            {
+              id: "folio",
+              encabezado: "Folio fiscal",
+              principal: true,
+              celda: (inv) => (
+                <>
+                  <Link to={`/despachos/${orgSlug}/cfdi/${inv.id}`} className="font-mono text-xs font-semibold text-foreground hover:underline underline-offset-2">
+                    {inv.folioFiscal.slice(0, 13)}…
+                  </Link>
+                  <div className="text-xs font-normal text-muted-foreground">{inv.rfcReceptor}</div>
+                </>
+              ),
+            },
+            { id: "tipo", encabezado: "Tipo", celda: (inv) => <span className="text-muted-foreground">{TIPO_LABELS[inv.tipo] ?? inv.tipo}</span> },
+            { id: "emisor", encabezado: "Emisor", celda: (inv) => <span className="text-muted-foreground">{inv.emisorNombre ?? inv.rfcEmisor}</span> },
+            { id: "total", encabezado: "Total", celda: (inv) => <span className="tabular-nums text-muted-foreground">{formatMoney(inv.total)}</span> },
+            { id: "estatus", encabezado: "Estatus", celda: (inv) => <ValidoBadge valido={inv.valido} /> },
+            {
+              id: "revision",
+              encabezado: "Revisión",
+              celda: (inv) => <span className={inv.requiereRevisionHumana ? "text-destructive" : "text-muted-foreground"}>{inv.requiereRevisionHumana ? "Pendiente" : "—"}</span>,
+            },
+            { id: "fecha", encabezado: "Fecha", celda: (inv) => <span className="text-muted-foreground">{formatDate(inv.creadoEn)}</span> },
+          ]}
+        />
       )}
     </PageContainer>
   );

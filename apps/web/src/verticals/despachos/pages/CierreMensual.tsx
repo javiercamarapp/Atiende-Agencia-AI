@@ -19,6 +19,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -27,12 +28,6 @@ import {
   PageContainer,
   StatusBadge,
   statusTone,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@atiende/ui";
 import { crearPeriodo, fetchPeriodos } from "../lib/cierre-mensual-client.ts";
 import type { ClosePeriod } from "../lib/cierre-mensual-client.ts";
@@ -162,36 +157,27 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
       )}
 
       {ordenados.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Período</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  <TableHead>Abierto</TableHead>
-                  <TableHead>Cerrado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordenados.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} className="font-semibold text-foreground hover:underline underline-offset-2">
-                        {formatPeriodo(p.year, p.month)}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <PeriodoBadge status={p.status} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(p.openedAt)}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(p.closedAt)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          etiqueta="Períodos de cierre mensual"
+          obtenerId={(p) => p.id}
+          filas={ordenados}
+          paginacion={false}
+          columnas={[
+            {
+              id: "periodo",
+              encabezado: "Período",
+              principal: true,
+              celda: (p) => (
+                <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+                  {formatPeriodo(p.year, p.month)}
+                </Link>
+              ),
+            },
+            { id: "estatus", encabezado: "Estatus", celda: (p) => <PeriodoBadge status={p.status} /> },
+            { id: "abierto", encabezado: "Abierto", celda: (p) => <span className="text-muted-foreground">{formatDate(p.openedAt)}</span> },
+            { id: "cerrado", encabezado: "Cerrado", celda: (p) => <span className="text-muted-foreground">{formatDate(p.closedAt)}</span> },
+          ]}
+        />
       )}
     </PageContainer>
   );

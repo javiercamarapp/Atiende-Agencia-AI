@@ -6,23 +6,7 @@
 // el modelo no asigna responsables a revisiones/tareas, la carga es por cliente.
 import { useEffect, useState } from "react";
 import { AlertTriangle, CalendarCheck, CheckCircle2, ClipboardList, HandCoins, ShieldAlert, Users, Wallet } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  PageContainer,
-  StatCard,
-  StatusBadge,
-  statusTone,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@atiende/ui";
+import { Card, CardContent, DataTable, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge, statusTone } from "@atiende/ui";
 import { fetchDashboardDespacho } from "../lib/dashboard-client.ts";
 import type { AnomaliaDashboard, DashboardDespacho, FuenteDashboard, KpisCliente, NivelAtencion, SeveridadAnomalia } from "../lib/dashboard-client.ts";
 import { formatMoney, formatPeriodo } from "../lib/format.ts";
@@ -222,42 +206,29 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
           <ResumenCards d={data} />
           {activo && <DetalleCliente cliente={activo} />}
 
-          <Card>
-            <CardContent className="overflow-x-auto p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Atención</TableHead>
-                    <TableHead>Cartera vencida</TableHead>
-                    <TableHead>Cobranza</TableHead>
-                    <TableHead>Pendientes</TableHead>
-                    <TableHead>Cierre mes anterior</TableHead>
-                    <TableHead>Anomalías</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.ranking.map((c) => (
-                    <TableRow key={c.propertyId} className="align-top">
-                      <TableCell className="font-medium">{c.nombre}</TableCell>
-                      <TableCell>
-                        <NivelBadge nivel={c.nivelAtencion} />
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : "Sin dato"}</TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : "Sin dato"}</TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : "Sin dato"}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {c.cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[c.cierres.mesAnterior.estado] : "Sin dato"}
-                      </TableCell>
-                      <TableCell className="min-w-64">
-                        <ListaAnomalias anomalias={c.anomalias} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <DataTable
+            etiqueta="Clientes del despacho por nivel de atención"
+            obtenerId={(c) => c.propertyId}
+            filas={data.ranking}
+            paginacion={false}
+            columnas={[
+              { id: "cliente", encabezado: "Cliente", principal: true, celda: (c) => <span className="font-medium">{c.nombre}</span> },
+              { id: "atencion", encabezado: "Atención", celda: (c) => <NivelBadge nivel={c.nivelAtencion} /> },
+              { id: "cartera", encabezado: "Cartera vencida", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : "Sin dato"}</span> },
+              { id: "cobranza", encabezado: "Cobranza", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : "Sin dato"}</span> },
+              { id: "pendientes", encabezado: "Pendientes", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : "Sin dato"}</span> },
+              {
+                id: "cierre",
+                encabezado: "Cierre mes anterior",
+                celda: (c) => (
+                  <span className="text-muted-foreground">
+                    {c.cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[c.cierres.mesAnterior.estado] : "Sin dato"}
+                  </span>
+                ),
+              },
+              { id: "anomalias", encabezado: "Anomalías", className: "min-w-64", celda: (c) => <ListaAnomalias anomalias={c.anomalias} /> },
+            ]}
+          />
         </>
       )}
     </PageContainer>
