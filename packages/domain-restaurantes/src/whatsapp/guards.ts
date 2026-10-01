@@ -122,3 +122,9 @@ export function classifyHighRiskIntent(text: string): HighRiskMatch | null {
   }
   return null;
 }
+
+/** Pura: ¿el texto dispara algun motivo de alto riesgo DISTINTO de `excepto`? (aunque otro de mayor
+ * prioridad en el orden de arriba tambien coincida). */
+export function matchesHighRiskOtherThan(text: string, excepto: HighRiskIntent): boolean {
+  return HIGH_RISK_PATTERNS.some(({ intent, pattern }) => intent !== excepto && pattern.test(text));
+}

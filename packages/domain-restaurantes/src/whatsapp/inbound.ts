@@ -8,6 +8,10 @@ import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
 import { lookupCustomer } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
+import { runArcoFastPath } from "../privacidad/arco-intent.ts";
+import { matchesHighRiskOtherThan } from "./guards.ts";
+import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
+import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -49,9 +53,12 @@ export async function handleInboundWhatsAppMessage(
     /** R-21: handoff a humano. Con una toma abierta para este telefono el agente NO responde (el mensaje se guarda
      * para la persona que atiende); sin la migracion 028 el gate devuelve `null` y todo sigue como antes. */
     readonly handoffGate?: HandoffAgentGate;
+    /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
+     * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
+    readonly privacy?: PrivacidadRepository;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, handoffGate } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, handoffGate, privacy } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -84,9 +91,18 @@ export async function handleInboundWhatsAppMessage(
       const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
+      // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
+      // una respuesta legal ni depende de "acordarse" de registrar la solicitud). La identidad es
+      // el telefono que escribe (Meta lo autentica), nunca texto del mensaje. `null` = no es ARCO
+      // (o la base no tiene la migracion 030): el turno sigue como antes. Corre tambien con una toma
+      // de handoff abierta: es una obligacion legal y solo responde a frases explicitas de ARCO.
+      // Un mensaje que mezcla ARCO con otro motivo de alto riesgo (alergia, cobro, queja...) NO toma el
+      // fast-path: pasa al agente, cuyo clasificador de #226 escala al equipo con el texto completo.
+      const arco = privacy && !matchesHighRiskOtherThan(body, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+
       // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
       // quedo guardado en el historial para quien atiende la conversacion.
-      if (handoffGate) {
+      if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
           await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
@@ -94,10 +110,29 @@ export async function handleInboundWhatsAppMessage(
         }
       }
 
-      const customer = await lookupCustomer(repo, organizationId, phone);
-      const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer, propertyId: propertyId ?? null });
+      const turn = arco
+        ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
+        : await turnHandler.handleInboundMessage({
+            organizationId,
+            phone,
+            messages: messagesAfterUser,
+            customer: await lookupCustomer(repo, organizationId, phone),
+            propertyId: propertyId ?? null,
+          });
 
-      const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
+      // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
+      // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
+      // en la misma transaccion; si el turno falla, el registro se revierte con el savepoint y el
+      // reintento vuelve a anteponerlo. Base sin migrar: se usa "primer mensaje de la conversacion".
+      let reply = turn.reply;
+      if (privacy) {
+        const config = await privacy.getPrivacyConfig(organizationId);
+        const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
+        const isFirstContact = claimed ?? messagesAfterUser.length === 1;
+        if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
+      }
+
+      const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -111,11 +146,11 @@ export async function handleInboundWhatsAppMessage(
       await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
         to: phone,
         phone_number_id: phoneNumberId,
-        body: turn.reply,
+        body: reply,
       });
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply: turn.reply };
+      return { ok: true, retryable: false, reply };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";

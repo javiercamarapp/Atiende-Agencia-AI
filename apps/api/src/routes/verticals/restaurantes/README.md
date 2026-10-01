@@ -173,3 +173,13 @@ documentados aquí mismo:
   voz (otra tarea); escribe por funciones SQL de solo-sistema.
 - Contrato `VoiceAgentProvider` (emitirSesionPreview / catalogoVoces / salud) en
   `packages/domain-restaurantes/src/voz/`: adaptador Gemini 3.8 Live y adaptador falso.
+
+## Privacidad (PM PR-9, migración 030)
+
+- `privacidad.ts` -- panel (owner/admin, sobre `:propertyId`): `GET .../admin/privacidad/solicitudes`,
+  `GET .../solicitudes/:id/eventos`, `PATCH .../solicitudes/:id/estado`, `GET|PUT .../admin/privacidad/configuracion`.
+- `privacidad-interno.ts` -- lado sistema (secreto interno): `GET|POST /internal/restaurantes/privacidad-retencion`
+  (purga por retención; NO está en `vercel.json`, programarlo es una decisión de despliegue),
+  `POST /internal/restaurantes/voz/privacidad/apertura`, `.../voz/conversaciones/:id/consentimiento-grabacion`,
+  `POST /internal/restaurantes/voz/arco`.
+- Base sin migrar: lecturas con `disponible:false`, escrituras 503; nunca 500.

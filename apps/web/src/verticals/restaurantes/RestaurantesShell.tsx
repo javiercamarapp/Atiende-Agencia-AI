@@ -21,6 +21,7 @@ import {
   History,
   Clock,
   LayoutDashboard,
+  Lock,
   MessageSquare,
   Mic,
   Settings,
@@ -125,6 +126,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
         // Agente de voz (config, vista previa, conversaciones) -- mismo umbral
         // owner/admin: la configuración del agente es de gestión, no de operación.
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
+        // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
+        { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
       ],
     });
   }
