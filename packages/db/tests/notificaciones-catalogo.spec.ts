@@ -96,3 +96,31 @@ describe("catalogo de notificaciones", () => {
     }
   });
 });
+
+// Los mismos CHECK y validaciones que aplica core.emit_notification en la base (migracion 0039): un evento del catalogo que no los
+// cumpla seria rechazado con 22023 en produccion y el aviso se perderia en silencio (best-effort), asi que se verifica aqui, ANTES.
+describe("el catalogo cumple las validaciones de core.emit_notification", () => {
+  const TIPO = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/;
+  const CATEGORIA = /^[a-z][a-z_]{1,39}$/;
+  const ENLACE = /^\/[A-Za-z0-9_{][A-Za-z0-9_{}/.?&=#%:@+~-]*$/;
+
+  it("tipo, categoria, enlace, titulo y cuerpo (ya renderizados con el parametro mas largo permitido) caben en las restricciones de la base", () => {
+    for (const e of CATALOGO_NOTIFICACIONES) {
+      expect(e.id, e.id).toMatch(TIPO);
+      expect(e.categoria, e.id).toMatch(CATEGORIA);
+      expect(e.enlace, e.id).toMatch(ENLACE);
+      expect(e.enlace.length, e.id).toBeLessThanOrEqual(300);
+      const peor = (t: string) => t.replace(/\{\w+\}/g, "x".repeat(40));
+      expect(peor(e.titulo).length, e.id).toBeLessThanOrEqual(160);
+      expect(peor(e.cuerpo ?? "").length, e.id).toBeLessThanOrEqual(500);
+      expect(e.venceDias, e.id).toBeLessThanOrEqual(365);
+    }
+  });
+
+  it("todo evento conectado tiene al menos un destinatario posible: roles de vertical o, por defecto, owner/admin de la organizacion; los de superadmin ninguno de vertical", () => {
+    for (const e of CATALOGO_NOTIFICACIONES) {
+      if (e.ambito === "superadmin") expect(e.roles, e.id).toEqual([]);
+      else for (const r of e.roles) expect(r, e.id).toMatch(/^[a-z_]+(:[a-z_]+)?$/);
+    }
+  });
+});

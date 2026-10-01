@@ -17,7 +17,7 @@ export interface EmisionRegistrada {
   readonly roles: readonly string[] | null;
 }
 
-export function conEmisiones<D extends { engine: TenancyEngine }>(deps: D, opciones: { alEmitir?: () => number } = {}): { deps: D; emisiones: EmisionRegistrada[] } {
+export function conEmisiones<D extends { engine: TenancyEngine }>(deps: D, opciones: { alEmitir?: () => number; alRegistrar?: (emision: EmisionRegistrada) => void } = {}): { deps: D; emisiones: EmisionRegistrada[] } {
   const emisiones: EmisionRegistrada[] = [];
   const envolver = (session: TenantDbSession): TenantDbSession => ({
     exec: (sql) => session.exec(sql),
@@ -25,7 +25,7 @@ export function conEmisiones<D extends { engine: TenancyEngine }>(deps: D, opcio
       if (/core\.emit_notification/.test(sql)) {
         const p = params ?? [];
         const n = opciones.alEmitir ? opciones.alEmitir() : 1;
-        emisiones.push({
+        const registrada: EmisionRegistrada = {
           evento: String(p[2]),
           organizationId: (p[0] as string | null) ?? null,
           propertyId: (p[1] as string | null) ?? null,
@@ -36,7 +36,9 @@ export function conEmisiones<D extends { engine: TenancyEngine }>(deps: D, opcio
           enlace: String(p[7]),
           dedupeKey: String(p[10]),
           roles: (p[11] as string[] | null) ?? null,
-        });
+        };
+        emisiones.push(registrada);
+        opciones.alRegistrar?.(registrada);
         return { rows: [{ emit_notification: n }] as unknown as T[] };
       }
       return session.query<T>(sql, params);
