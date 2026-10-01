@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./params.js";
 export * from "./period.js";
+export * from "./property-scope.js";
 export * from "./format.js";
 export * from "./sanitize.js";
 export * from "./numbers-guard.js";
