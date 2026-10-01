@@ -14,8 +14,8 @@ export function PrivacidadPage() {
           </Link>
         </header>
         <p className="login-kicker">Legal</p>
-        <h1 className="login-serif mt-4 text-[32px] sm:text-[38px] text-foreground">Aviso de Privacidad</h1>
-        <div className="mt-8 flex flex-col gap-5 text-[15px] leading-relaxed text-muted-foreground">
+        <h1 className="login-serif mt-4 text-display text-foreground">Aviso de Privacidad</h1>
+        <div className="mt-8 flex flex-col gap-5 text-base leading-relaxed text-muted-foreground">
           <p>
             Para entrar a tu panel guardamos tu correo, tu nombre y, si inicias sesión con Google, el identificador
             estable de tu cuenta de Google — nunca tu contraseña de Google, y nunca tu contraseña en texto plano en
@@ -34,7 +34,7 @@ export function PrivacidadPage() {
             Puedes pedir a quien administra tu organización que revoque tu acceso en cualquier momento; eso cierra
             todas tus sesiones activas.
           </p>
-          <p className="text-[13px] text-muted-foreground/80">
+          <p className="text-sm text-muted-foreground/80">
             Este es un resumen operativo, no un aviso de privacidad redactado conforme a la legislación de cada
             jurisdicción donde opere tu organización. Si lo necesitas, contáctanos.
           </p>

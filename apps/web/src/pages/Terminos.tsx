@@ -18,8 +18,8 @@ export function TerminosPage() {
           </Link>
         </header>
         <p className="login-kicker">Legal</p>
-        <h1 className="login-serif mt-4 text-[32px] sm:text-[38px] text-foreground">Términos de Servicio</h1>
-        <div className="mt-8 flex flex-col gap-5 text-[15px] leading-relaxed text-muted-foreground">
+        <h1 className="login-serif mt-4 text-display text-foreground">Términos de Servicio</h1>
+        <div className="mt-8 flex flex-col gap-5 text-base leading-relaxed text-muted-foreground">
           <p>
             Estos términos rigen el uso de los paneles de atiende.ai (hoteles, restaurantes, citas y reservaciones,
             licitaciones, despachos y rentas vacacionales) por parte del personal autorizado de una organización cliente.
@@ -37,7 +37,7 @@ export function TerminosPage() {
             Puedes perder acceso si quien administra tu organización revoca tu invitación, o si tu organización cancela
             su suscripción.
           </p>
-          <p className="text-[13px] text-muted-foreground/80">
+          <p className="text-sm text-muted-foreground/80">
             Este es un resumen operativo, no un contrato redactado por un despacho legal. Si tu organización necesita un
             acuerdo formal, contáctanos.
           </p>

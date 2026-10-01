@@ -12,7 +12,7 @@ export function NotFoundPage() {
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-10">
       <div className="max-w-md w-full text-center flex flex-col items-center gap-4">
         <AtiendeWordmark />
-        <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Error 404</p>
+        <p className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">Error 404</p>
         <h1 className="text-2xl font-semibold">No encontramos esta página</h1>
         <p className="text-sm text-muted-foreground break-all">
           La dirección <span className="font-mono">{pathname}</span> no existe o ya no está disponible.

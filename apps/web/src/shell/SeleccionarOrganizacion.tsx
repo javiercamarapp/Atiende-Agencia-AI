@@ -15,6 +15,7 @@
 // de esta URL), se degrada a un mensaje real en vez de una pantalla en blanco o un
 // crash — nunca un stub silencioso.
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@atiende/ui";
 import { decideOrganizacionSeleccionadaPath } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
@@ -30,8 +31,8 @@ export function SeleccionarOrganizacionPage() {
 
   if (!state?.session || !state.vertical) {
     return (
-      <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 24 }}>
-        <p style={{ maxWidth: 420, textAlign: "center", color: "#6b7280" }}>
+      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+        <p className="max-w-md text-center text-muted-foreground">
           No pudimos recuperar tu sesión para mostrarte tus organizaciones. Vuelve a iniciar sesión e inténtalo de nuevo.
         </p>
       </main>
@@ -43,28 +44,29 @@ export function SeleccionarOrganizacionPage() {
 
   if (organizaciones.length === 0) {
     return (
-      <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 24 }}>
-        <p style={{ maxWidth: 420, textAlign: "center", color: "#6b7280" }}>No encontramos ninguna organización de {vertical} en tu cuenta.</p>
+      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+        <p className="max-w-md text-center text-muted-foreground">No encontramos ninguna organización de {vertical} en tu cuenta.</p>
       </main>
     );
   }
 
   return (
-    <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 24 }}>
-      <div style={{ width: "min(420px, 90vw)", display: "flex", flexDirection: "column", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Elige una organización</h1>
-        <p style={{ color: "#6b7280", margin: 0 }}>Tu cuenta pertenece a más de una organización de {vertical}.</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+      <div className="flex w-full max-w-md flex-col gap-3">
+        <h1 className="text-xl font-semibold">Elige una organización</h1>
+        <p className="text-muted-foreground">Tu cuenta pertenece a más de una organización de {vertical}.</p>
+        <div className="flex flex-col gap-2">
           {organizaciones.map((org) => (
-            <button
+            <Button
               key={org.id}
               type="button"
+              variant="outline"
               onClick={() => navigate(decideOrganizacionSeleccionadaPath(vertical, org))}
-              style={{ textAlign: "left", padding: "12px 16px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 15 }}
+              className="h-auto flex-col items-start gap-0 px-4 py-3 text-left"
             >
-              <div style={{ fontWeight: 600 }}>{org.nombre}</div>
-              <div style={{ fontSize: 13, color: "#6b7280" }}>rol: {org.rol}</div>
-            </button>
+              <span className="font-semibold">{org.nombre}</span>
+              <span className="text-sm font-normal text-muted-foreground">rol: {org.rol}</span>
+            </Button>
           ))}
         </div>
       </div>

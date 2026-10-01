@@ -38,8 +38,6 @@ export interface VerticalLoginProps {
   readonly pie?: ReactNode;
 }
 
-const RETRASO = (ms: number) => ({ animationDelay: `${ms}ms` });
-
 export function esCorreoValido(correo: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim());
 }
@@ -112,22 +110,22 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
 
           <div className="mt-10">
             <div className="w-full">
-              <p className="login-entra login-kicker" style={RETRASO(40)}>
+              <p className="login-entra [--retraso:40ms] login-kicker">
                 {kicker}
               </p>
-              <h1 className="login-entra login-serif mt-3 text-[38px] sm:text-[46px] leading-[1.05] text-foreground" style={RETRASO(90)}>
+              <h1 className="login-entra [--retraso:90ms] login-serif mt-3 text-display leading-[1.05] text-foreground">
                 Bienvenido
                 <br />a atiende {nombre}
               </h1>
-              <p className="login-entra mt-2 text-[15px] leading-[1.6] text-muted-foreground" style={RETRASO(140)}>
+              <p className="login-entra [--retraso:140ms] mt-2 text-base leading-[1.6] text-muted-foreground">
                 {descripcion}
               </p>
 
-              <div className="login-entra mt-5 h-px bg-border" style={RETRASO(160)} />
+              <div className="login-entra [--retraso:160ms] mt-5 h-px bg-border" />
 
               {alerta && (
-                <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={RETRASO(180)}>
-                  <p className="text-[14px] leading-relaxed text-foreground">{alerta}</p>
+                <div role="alert" className="login-entra [--retraso:180ms] mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30">
+                  <p className="text-sm leading-relaxed text-foreground">{alerta}</p>
                 </div>
               )}
 
@@ -138,14 +136,13 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                     onClick={irAGoogle}
                     disabled={!googleHabilitado}
                     title={!googleHabilitado ? avisoGoogle : undefined}
-                    className="login-entra mt-5 login-btn login-btn-borde"
-                    style={RETRASO(200)}
+                    className="login-entra [--retraso:200ms] mt-5 login-btn login-btn-borde"
                   >
                     <GoogleIcon />
                     Continuar con Google
                   </button>
                   {!googleHabilitado && (
-                    <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={RETRASO(210)}>
+                    <p className="login-entra [--retraso:210ms] mt-2 text-xs leading-relaxed text-muted-foreground">
                       {avisoGoogle}
                     </p>
                   )}
@@ -153,17 +150,17 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
               )}
 
               {conGoogle && conMagicLink && (
-                <div className="login-entra my-4 flex items-center gap-4" style={RETRASO(230)}>
+                <div className="login-entra [--retraso:230ms] my-4 flex items-center gap-4">
                   <span className="h-px flex-1 bg-border" />
-                  <span className="text-[13px] lowercase text-muted-foreground">o</span>
+                  <span className="text-sm lowercase text-muted-foreground">o</span>
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
 
               {conMagicLink &&
                 (enviadoA ? (
-                  <div role="status" className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={RETRASO(250)}>
-                    <p className="text-[14px] leading-relaxed text-foreground">
+                  <div role="status" className="login-entra [--retraso:250ms] rounded-[18px] p-5 bg-primary/5 border border-primary/20">
+                    <p className="text-sm leading-relaxed text-foreground">
                       Te enviamos un enlace a <span className="font-semibold">{enviadoA}</span>. Ábrelo desde este mismo dispositivo para entrar — expira en 15 minutos.
                     </p>
                     <Button type="button" variant="link" size="sm" onClick={() => setEnviadoA(null)} className="mt-2 h-auto px-0 text-foreground">
@@ -171,7 +168,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                     </Button>
                   </div>
                 ) : (
-                  <form onSubmit={enviarMagicLink} className="login-entra flex flex-col gap-3" style={RETRASO(250)} noValidate>
+                  <form onSubmit={enviarMagicLink} className="login-entra [--retraso:250ms] flex flex-col gap-3" noValidate>
                     <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
                       {(campo) => (
                         <input
@@ -194,7 +191,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                   </form>
                 ))}
 
-              <p className="login-entra mt-5 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={RETRASO(320)}>
+              <p className="login-entra [--retraso:320ms] mt-5 text-pretty text-sm leading-relaxed text-muted-foreground">
                 {pie ?? (
                   <>
                     ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
@@ -202,7 +199,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                 )}
               </p>
 
-              <p className="login-entra mt-6 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={RETRASO(340)}>
+              <p className="login-entra [--retraso:340ms] mt-6 text-pretty text-xs leading-[1.7] text-muted-foreground">
                 Al continuar, aceptas los{" "}
                 <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
                   Términos de Servicio
@@ -223,10 +220,10 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
           <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto-marca absolute inset-0 w-full h-full object-cover" />
           <div className="login-velo" />
           <figcaption className="absolute inset-x-0 bottom-0 p-9 z-10">
-            <p className="login-kicker" style={{ color: "color-mix(in srgb, white 78%, transparent)" }}>
+            <p className="login-kicker login-kicker-foto">
               {hero.kicker}
             </p>
-            <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
+            <p className="login-serif login-titular-foto mt-3.5 foto-texto">
               {hero.texto}
             </p>
           </figcaption>

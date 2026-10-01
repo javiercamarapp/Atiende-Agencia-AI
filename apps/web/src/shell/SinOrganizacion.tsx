@@ -21,14 +21,14 @@ export function SinOrganizacionPage() {
   const state = (location.state ?? null) as SinOrganizacionState | null;
 
   return (
-    <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 420, textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Todavía no perteneces a ninguna organización</h1>
-        <p style={{ color: "#6b7280", margin: 0 }}>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+      <div className="flex max-w-md flex-col gap-3 text-center">
+        <h1 className="text-xl font-semibold">Todavía no perteneces a ninguna organización</h1>
+        <p className="text-muted-foreground">
           {state?.email ? <>Tu cuenta ({state.email}) inició sesión correctamente,</> : <>Tu cuenta inició sesión correctamente,</>} pero ningún administrador te
           asignó a una organización{state?.vertical ? ` de ${state.vertical}` : ""} todavía.
         </p>
-        <p style={{ color: "#6b7280", margin: 0 }}>Pídele a quien administra tu cuenta que te invite, y vuelve a intentar iniciar sesión.</p>
+        <p className="text-muted-foreground">Pídele a quien administra tu cuenta que te invite, y vuelve a intentar iniciar sesión.</p>
       </div>
     </main>
   );
