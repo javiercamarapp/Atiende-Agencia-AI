@@ -267,6 +267,28 @@ describe("GET /despachos/:propertyId/reportes/:tipo", () => {
     expect((await app.request(`/despachos/${ctx.propertyId}/reportes/diot`)).status).toBe(401);
   });
 
+  it("base sin la migración 006 (42703 al filtrar CFDI por fecha): 503 honesto, no 500, en los 3 formatos", async () => {
+    const original = ctx.despachosRepo.listInvoices.bind(ctx.despachosRepo);
+    ctx.despachosRepo.listInvoices = async () => {
+      throw Object.assign(new Error('column "fecha" does not exist'), { code: "42703" });
+    };
+    try {
+      const app = buildApp(ctx.deps);
+      for (const formato of ["json", "pdf", "xlsx"]) {
+        const res = await app.request(`/despachos/${ctx.propertyId}/reportes/diot?periodo=2026-08&formato=${formato}`, authedJson(ctx.staff.admin.token));
+        expect(res.status, formato).toBe(503);
+        expect(await res.text()).toContain("migración 006");
+      }
+      // Cualquier OTRO error de Postgres no se enmascara como "no disponible".
+      ctx.despachosRepo.listInvoices = async () => {
+        throw Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+      };
+      expect((await app.request(`/despachos/${ctx.propertyId}/reportes/diot?periodo=2026-08`, authedJson(ctx.staff.admin.token))).status).toBe(500);
+    } finally {
+      ctx.despachosRepo.listInvoices = original;
+    }
+  });
+
   it("aislamiento entre despachos: otro tenant no puede leer ni exportar reportes (403)", async () => {
     await ingestar();
     const otro = await seedOtroDespacho();

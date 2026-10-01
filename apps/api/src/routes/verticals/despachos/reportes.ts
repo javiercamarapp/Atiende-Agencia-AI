@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, reporteAXlsx } from "@atiende/domain-despachos";
+import { TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
 import type { TipoReporteCliente } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -53,7 +53,14 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const branches = await repo.listPropertiesForOrganization(c.get("organizationId"));
     const nombre = branches.find((b) => b.propertyId === propertyId)?.name ?? "Contribuyente";
-    const [invoicesDelPeriodo, vencimientos] = await Promise.all([repo.listInvoices(propertyId, { periodo }), repo.listDeadlines(propertyId)]);
+    // El filtro por período de `listInvoices` usa `invoice.fecha` (migración 006). Contra una base que
+    // todavía no la tiene (SQLSTATE 42703/42P01/42883) la lectura corre en su propio SAVEPOINT y se
+    // responde un 503 honesto ("no disponible aún"), nunca un 500 ni un reporte vacío engañoso.
+    const invoicesDelPeriodo = await leerFuenteOpcional(repo, () => repo.listInvoices(propertyId, { periodo }));
+    if (invoicesDelPeriodo === null) {
+      throw Errors.serviceUnavailable("Los reportes por período aún no están disponibles en esta base de datos: falta aplicar la migración 006 (fecha de emisión del CFDI).");
+    }
+    const vencimientos = await repo.listDeadlines(propertyId);
     const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo) });
 
     if (formato === "json") return c.json(reporte);
