@@ -7,11 +7,11 @@ import { crearClienteStorefront, type SucursalPublica } from "./storefront-clien
 import { StorefrontLayout } from "./StorefrontLayout.tsx";
 import { useMetaPublica } from "./meta-publica.ts";
 
-export function textoApertura(s: SucursalPublica): { texto: string; tono: "success" | "danger" | "neutral" } {
-  if (s.abiertoAhora === null) return { texto: "Consulta el horario con la sucursal", tono: "neutral" };
-  if (s.abiertoAhora) return { texto: s.cierraA ? `Abierto ahora · cierra a las ${s.cierraA}` : "Abierto ahora", tono: "success" };
+export function textoApertura(s: SucursalPublica): { texto: string; tone: "success" | "danger" | "neutral" } {
+  if (s.abiertoAhora === null) return { texto: "Consulta el horario con la sucursal", tone: "neutral" };
+  if (s.abiertoAhora) return { texto: s.cierraA ? `Abierto ahora · cierra a las ${s.cierraA}` : "Abierto ahora", tone: "success" };
   const p = s.proximaApertura;
-  return { texto: p ? `Cerrado · abre ${p.hoy ? "hoy" : `el ${p.dia}`} a las ${p.hora}` : "Cerrado ahora", tono: "danger" };
+  return { texto: p ? `Cerrado · abre ${p.hoy ? "hoy" : `el ${p.dia}`} a las ${p.hora}` : "Cerrado ahora", tone: "danger" };
 }
 
 export function RestaurantePage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; orgSlug: string }) {
