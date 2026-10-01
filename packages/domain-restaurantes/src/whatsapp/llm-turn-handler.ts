@@ -92,7 +92,7 @@ function customerContextBlock(customer: CustomerLookupResult): string {
   if (nota) lines.push(nota);
   if (customer.addresses.length > 0) {
     const def = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0]!;
-    lines.push(`Dirección guardada por defecto (referencia parcial; el sistema conserva la completa y se usa al crear el pedido): "${maskAddressForPrompt(def.address)}". Pregunta si el pedido es para esa zona o para otro lugar; si es otro lugar, pide la dirección completa.`);
+    lines.push(`Dirección guardada por defecto (solo referencia parcial, NUNCA la uses como customer_address): "${maskAddressForPrompt(def.address)}". Pregunta si el pedido es para esa zona o para otro lugar. Para crear_pedido necesitas la dirección completa: si el cliente confirma que es la misma, llama buscar_cliente y usa la dirección guardada completa que devuelve; si es otro lugar, pídesela completa.`);
     const others = customer.addresses.filter((a) => a !== def);
     if (others.length > 0) {
       lines.push(`También tiene otras direcciones guardadas: ${others.map((a) => `"${maskAddressForPrompt(a.address)}"`).join(", ")}.`);

@@ -28,6 +28,9 @@ export function sanitizeNotes(value: string): string {
     .trim();
 }
 
+export const ADDRESS_MASK_MARKER = "(calle y número omitidos)";
+export const ADDRESS_OMITTED_MARKER = "(dirección guardada, omitida)";
+
 /**
  * Referencia parcial de una direccion para el prompt del modelo: omite la calle y el numero (primer
  * segmento) y conserva colonia/ciudad, suficiente para preguntar "¿es para la misma zona?". La
@@ -36,9 +39,14 @@ export function sanitizeNotes(value: string): string {
 export function maskAddressForPrompt(address: string): string {
   const clean = sanitizeInlineText(address, 300);
   const segments = clean.split(",").map((s) => s.trim()).filter(Boolean);
-  if (segments.length >= 2) return `(calle y número omitidos), ${segments.slice(1).join(", ")}`;
+  if (segments.length >= 2) {
+    // Se descarta el primer segmento (calle) y todo segmento con digitos (numero, "Calle 5 #123"
+    // en segunda posicion, codigo postal), para no filtrar numeracion con el orden "Colonia, Calle".
+    const kept = segments.slice(1).filter((s) => !/\d/.test(s));
+    return kept.length > 0 ? `${ADDRESS_MASK_MARKER}, ${kept.join(", ")}` : ADDRESS_OMITTED_MARKER;
+  }
   // Sin comas: conserva solo palabras sin digitos (colonia o referencia) para no exponer numeracion.
   const words = clean.split(" ").filter((w) => !/\d/.test(w));
   const tail = words.slice(-3).join(" ");
-  return tail ? `(calle y número omitidos), ${tail}` : "(dirección guardada, omitida)";
+  return tail ? `${ADDRESS_MASK_MARKER}, ${tail}` : ADDRESS_OMITTED_MARKER;
 }
