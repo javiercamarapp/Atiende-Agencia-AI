@@ -58,7 +58,9 @@ describe("citas — 404 dentro del shell", () => {
     expect(c.querySelector('aside[aria-label="Navegación principal"]')).not.toBeNull();
     const volver = [...c.querySelectorAll("a")].find((a) => a.textContent === "Volver a la agenda")!;
     expect(volver.getAttribute("href")).toBe("/citas/demo/agenda");
-    expect(c.querySelector('[data-testid="vertical-migas"]')!.textContent).toBe("Citas · demo");
+    // Sin item activo la barra (y la fila movil) conservan el titulo de la consola; ya no hay migas.
+    expect(c.querySelector('[data-testid="barra-pagina-titulo"]')!.textContent).toBe("Citas · demo");
+    expect(c.querySelector('[data-testid="mobile-pagina-titulo"]')!.textContent).toBe("Citas · demo");
   });
 
   it("sin sesion redirige al login de citas en vez de mostrar el 404", async () => {
