@@ -4,8 +4,8 @@
 // POST /:id/escalar (este último ya dispara notificación real por correo,
 // ver @atiende/domain-despachos::tryEnqueueEscalationEmail), pero ningún
 // cliente web ni página los usaba. Esta página cierra el gap: lectura de las
-// obligaciones fiscales del despacho (ISR/IVA/DIOT/Nómina, día 17 del mes
-// siguiente -- motor 100% determinista, ver vencimientos/engine.ts), el
+// obligaciones fiscales del despacho (ISR/IVA/DIOT/Nómina/balanza/anual con día
+// hábil, art. 12 CFF -- motor 100% determinista, ver vencimientos/calendario-fiscal.ts), el
 // cálculo de un nuevo periodo, y las 2 acciones reales por vencimiento
 // (marcar completado con comprobante opcional, escalar). El escalamiento en
 // sí SIEMPRE exige revisión humana (CFF art. 89, ver decidirEscalamiento) --
@@ -13,7 +13,7 @@
 // existente y muestra su resultado.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp } from "lucide-react";
+import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp, TriangleAlert } from "lucide-react";
 import {
   Button,
   Card,
@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@atiende/ui";
 import {
+  barrerVencimientos,
   calcularVencimientos,
   completarVencimiento,
   escalarVencimiento,
@@ -74,6 +75,28 @@ interface RowActionState {
   readonly isError: boolean;
 }
 
+// Catálogo c_RegimenFiscal (SAT) con calendario modelado por el motor.
+const REGIMENES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "601", label: "601 · General de Ley Personas Morales" },
+  { value: "603", label: "603 · Personas Morales con Fines no Lucrativos" },
+  { value: "605", label: "605 · Sueldos y Salarios" },
+  { value: "606", label: "606 · Arrendamiento" },
+  { value: "607", label: "607 · Enajenación o Adquisición de Bienes" },
+  { value: "608", label: "608 · Demás ingresos" },
+  { value: "611", label: "611 · Ingresos por Dividendos" },
+  { value: "612", label: "612 · Personas Físicas con Actividades Empresariales y Profesionales" },
+  { value: "614", label: "614 · Ingresos por intereses" },
+  { value: "615", label: "615 · Ingresos por obtención de premios" },
+  { value: "616", label: "616 · Sin obligaciones fiscales" },
+  { value: "620", label: "620 · Sociedades Cooperativas de Producción" },
+  { value: "621", label: "621 · Incorporación Fiscal" },
+  { value: "622", label: "622 · Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
+  { value: "623", label: "623 · Opcional para Grupos de Sociedades" },
+  { value: "624", label: "624 · Coordinados" },
+  { value: "625", label: "625 · Plataformas Tecnológicas" },
+  { value: "626", label: "626 · Régimen Simplificado de Confianza" },
+];
+
 const MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
@@ -98,6 +121,9 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   const [showCalcularForm, setShowCalcularForm] = useState(false);
   const [calcAnio, setCalcAnio] = useState(() => Number(hoyFechaSolo().slice(0, 4)));
   const [calcMes, setCalcMes] = useState(() => Number(hoyFechaSolo().slice(5, 7)));
+  const [calcRegimen, setCalcRegimen] = useState("601");
+  const [barridoMsg, setBarridoMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [barriendo, setBarriendo] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [calculando, setCalculando] = useState(false);
 
@@ -134,13 +160,32 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
     }
     setCalculando(true);
     try {
-      await calcularVencimientos(fetch, apiBaseUrl, token, propertyId, { year: calcAnio, month: calcMes });
+      await calcularVencimientos(fetch, apiBaseUrl, token, propertyId, { year: calcAnio, month: calcMes, regimenFiscal: calcRegimen });
       setShowCalcularForm(false);
       await load();
     } catch (err) {
       setCalcError(err instanceof Error ? err.message : "No se pudieron calcular los vencimientos del periodo.");
     } finally {
       setCalculando(false);
+    }
+  }
+
+  async function handleBarrido() {
+    setBarridoMsg(null);
+    setBarriendo(true);
+    try {
+      const r = await barrerVencimientos(fetch, apiBaseUrl, token, propertyId);
+      const correos = r.escalados.reduce((n, e) => n + e.correosEncolados, 0);
+      const fallos = r.fallidos.length > 0 ? ` ${r.fallidos.length} no se pudo(ieron) escalar.` : "";
+      setBarridoMsg({
+        text: r.escalados.length > 0 ? `Se escalaron ${r.escalados.length} vencimiento(s) (${correos} correo(s) encolado(s)).${fallos}` : `Nada nuevo que escalar: ${r.yaEscalados} ya escalado(s), ${r.aunNoToca} aún con plazo.${fallos}`,
+        isError: r.fallidos.length > 0,
+      });
+      await load();
+    } catch (err) {
+      setBarridoMsg({ text: err instanceof Error ? err.message : "No se pudo ejecutar el barrido de escalamiento.", isError: true });
+    } finally {
+      setBarriendo(false);
     }
   }
 
@@ -178,15 +223,27 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Vencimientos fiscales</h1>
-          <p className="mt-1 text-sm text-muted-foreground">ISR, IVA, DIOT y Nómina -- fecha límite día 17 del mes siguiente, prioridad y escalamiento automáticos.</p>
+          <p className="mt-1 text-sm text-muted-foreground">ISR, IVA, DIOT, Nómina, balanza y declaración anual -- fecha límite en día hábil (art. 12 CFF), con prioridad y escalamiento.</p>
         </div>
         {puedeGestionar && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void handleBarrido()} disabled={barriendo}>
+              <TrendingUp />
+              {barriendo ? "Escalando…" : "Escalar vencidos y por vencer"}
+            </Button>
           <Button variant={showCalcularForm ? "outline" : "default"} size="sm" onClick={() => setShowCalcularForm((v) => !v)}>
             <CalendarClock />
             {showCalcularForm ? "Cancelar" : "Calcular vencimientos del periodo"}
           </Button>
+          </div>
         )}
       </header>
+
+      {barridoMsg && (
+        <p role={barridoMsg.isError ? "alert" : "status"} className={barridoMsg.isError ? "text-destructive text-sm" : "text-sm text-muted-foreground"}>
+          {barridoMsg.text}
+        </p>
+      )}
 
       {/* Panel inline plegable (no overlay): dos campos que el staff llena
           mirando la tabla de vencimientos de abajo. Solo cambia la piel. */}
@@ -194,7 +251,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
         <Card className="max-w-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Calcular vencimientos</CardTitle>
-            <CardDescription>Genera las 4 obligaciones estándar (ISR/IVA/DIOT/Nómina) con fecha límite el día 17 del mes siguiente.</CardDescription>
+            <CardDescription>Genera las obligaciones del régimen elegido con fecha límite en día hábil. Las que dependen de un plazo por confirmar quedan marcadas para validar con el fiscalista.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCalcular} className="flex flex-col gap-3">
@@ -212,6 +269,16 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                   {MESES.slice(1).map((nombre, i) => (
                     <option key={i + 1} value={i + 1}>
                       {nombre}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="venc-regimen">Régimen fiscal *</Label>
+                <NativeSelect id="venc-regimen" value={calcRegimen} onChange={(e) => setCalcRegimen(e.target.value)}>
+                  {REGIMENES.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
                     </option>
                   ))}
                 </NativeSelect>
@@ -276,7 +343,16 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                   const finalizado = d.estado === "completado";
                   return (
                     <TableRow key={d.id} className="align-top">
-                      <TableCell className="font-semibold text-foreground">{d.tipo}</TableCell>
+                      <TableCell className="font-semibold text-foreground">
+                        {d.tipo}
+                        <div className="max-w-56 text-xs font-normal text-muted-foreground">{d.fundamento}</div>
+                        {d.validarConFiscalista && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-xs font-normal text-warning">
+                            <TriangleAlert className="h-3 w-3" strokeWidth={1.75} />
+                            Validar con fiscalista
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{d.periodo}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {/* `fechaLimite`/`fechaPresentacion` son columnas `date` (solo día,
