@@ -44,15 +44,21 @@ import {
   statusTone,
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
-import { AlertTriangle, Clock, Printer } from "lucide-react";
-import { assignRepartidor, fetchOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
+import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
+import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
+import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { guardarPrefs, leerPrefs, PREFS_VACIAS, marcarImpresos, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
 import type { PrefsTicketCocina } from "../lib/ticket-cocina-prefs.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+
+/** Pestana de pedidos programados (R-11): no es un estado de `orders.status` operativo, es su propia lista. */
+type PestanaPedidos = OrderStatus | "todos" | "programados";
 
 const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "listo_para_recoger", "no_recogido", "problema"];
 
@@ -68,10 +74,17 @@ function storageLocal(): Storage | null {
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
-  const [status, setStatus] = useState<OrderStatus | "todos">("todos");
+  const [status, setStatus] = useState<PestanaPedidos>("todos");
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
+  // R-11: pestana Programados + tiempo real (sondeo). `programadosDisponible=false` = base sin la migracion 034.
+  const [programados, setProgramados] = useState<readonly OrderSummary[] | null>(null);
+  const [programadosDisponible, setProgramadosDisponible] = useState(true);
+  const [sonido, setSonido] = useState<boolean>(() => leerSonido(storageLocal(), orgSlug, propertyId));
+  const [nuevosAviso, setNuevosAviso] = useState<number>(0);
+  const [ahoraMs, setAhoraMs] = useState<number>(() => Date.now());
+  const pendientesVistos = useRef<ReadonlySet<string> | null>(null);
   // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
   // no tiene UI"): lista de repartidores REALES de la organización (ver
   // admin-staff.ts::GET .../admin/staff/repartidores) para poblar el selector de abajo.
@@ -185,10 +198,19 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     };
   }, [prefs.autoImprimir, apiBaseUrl, token, propertyId]);
 
+  async function loadProgramados() {
+    // Promover + listar: la promocion a cocina corre en el servidor al consultar (sin cron).
+    const page = await fetchScheduledOrders(fetch, apiBaseUrl, token, propertyId, { limit: 100 });
+    setProgramadosDisponible(page.disponible);
+    setProgramados(page.orders);
+  }
+
   async function load() {
     setError(null);
     try {
-      if (status === "todos") {
+      if (status === "programados") {
+        await loadProgramados();
+      } else if (status === "todos") {
         const pages = await Promise.all(OPERATIVE_STATUSES.map((s) => fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: s, limit: 50 })));
         const merged = pages.flatMap((p) => p.orders).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setOrders(merged);
@@ -206,6 +228,37 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   useEffect(() => {
     void load();
   }, [apiBaseUrl, token, propertyId, status]);
+
+  // Al cambiar de sucursal u organizacion se recarga la preferencia de sonido y se reinicia la linea base de
+  // "pedidos ya vistos" (el primer sondeo no suena por el rezago).
+  useEffect(() => {
+    setSonido(leerSonido(storageLocal(), orgSlug, propertyId));
+    pendientesVistos.current = null;
+    setNuevosAviso(0);
+  }, [orgSlug, propertyId]);
+
+  // R-11 -- tiempo real por sondeo con backoff y pausa con la pestana oculta (ver lib/sondeo-pedidos.ts). Cada
+  // consulta pide SOLO los pendientes (una peticion liviana; el servidor ademas promueve los programados
+  // vencidos); la lista completa se recarga unicamente si aparecio un pedido nuevo o cambio el conjunto.
+  const sondeo = useSondeoPedidos({
+    clave: `${apiBaseUrl}|${propertyId}|${status}`,
+    activo: true,
+    baseMs: SONDEO_BASE_MS,
+    consulta: async () => {
+      const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: "pending", limit: 50 });
+      const ids = page.orders.map((o) => o.id);
+      const previos = pendientesVistos.current;
+      const nuevos = idsNuevos(previos, ids);
+      const cambio = previos !== null && (nuevos.length > 0 || previos.size !== ids.length);
+      pendientesVistos.current = new Set(ids);
+      setAhoraMs(Date.now());
+      if (nuevos.length > 0) {
+        setNuevosAviso((n) => n + nuevos.length);
+        if (sonido) reproducirAviso();
+      }
+      if (cambio || status === "programados") await loadRef.current();
+    },
+  });
 
   async function loadRepartidores() {
     setRepartidoresError(null);
@@ -282,16 +335,47 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     <PageContainer padding="none" className="gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Pedidos en operación</h1>
-        <Tabs value={status} onValueChange={(v) => setStatus(v as OrderStatus | "todos")}>
+        <Tabs value={status} onValueChange={(v) => setStatus(v as PestanaPedidos)}>
           <TabsList className="flex-wrap">
-            {(["todos", ...OPERATIVE_STATUSES] as const).map((s) => (
+            {(["todos", ...OPERATIVE_STATUSES, "programados"] as const).map((s) => (
               <TabsTrigger key={s} value={s}>
-                {s === "todos" ? "Todos" : ORDER_STATUS_LABELS[s]}
+                {s === "todos" ? "Todos" : s === "programados" ? "Programados" : ORDER_STATUS_LABELS[s]}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
       </header>
+
+      {/* R-11: indicador de actualizacion (sondeo con backoff, en pausa con la pestana oculta) y sonido opcional. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground" role="status" aria-live="polite" data-testid="indicador-actualizacion">
+        <span className="inline-flex items-center gap-1.5">
+          <RefreshCw className={`h-3.5 w-3.5 ${sondeo.consultando ? "animate-spin" : ""}`} strokeWidth={1.75} aria-hidden="true" />
+          {sondeo.pausado
+            ? "En pausa (pestaña oculta)"
+            : sondeo.fallosSeguidos > 0
+              ? `Sin conexión: reintentando en ${Math.round(sondeo.proximoEnMs / 1000)} s`
+              : `${etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs)} · cada ${SONDEO_BASE_MS / 1000} s`}
+        </span>
+        <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => sondeo.refrescar()} disabled={sondeo.consultando}>
+          Actualizar ahora
+        </Button>
+        {nuevosAviso > 0 && (
+          <Badge variant="outline" data-testid="aviso-nuevos">
+            {nuevosAviso} pedido{nuevosAviso === 1 ? "" : "s"} nuevo{nuevosAviso === 1 ? "" : "s"}
+          </Badge>
+        )}
+        <Checkbox
+          id="sonido-pedidos"
+          checked={sonido}
+          onChange={(e) => {
+            setSonido(e.target.checked);
+            guardarSonido(storageLocal(), orgSlug, propertyId, e.target.checked);
+            if (e.target.checked) reproducirAviso();
+          }}
+          label="Sonido al llegar un pedido nuevo"
+          wrapperClassName="text-xs text-foreground"
+        />
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
         <Checkbox
@@ -317,6 +401,21 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
           No se pudo cargar la lista de repartidores: {repartidoresError}
         </p>
       )}
+      {status === "programados" ? (
+        programados ? (
+          <ProgramadosPanel
+            orders={programados}
+            disponible={programadosDisponible}
+            ahoraMs={ahoraMs}
+            changingId={changingId}
+            onAdelantar={(o) => handleChangeStatus(o, "pending")}
+            onCancelar={(o) => handleChangeStatus(o, "cancelado")}
+          />
+        ) : (
+          !error && <EstadoCargando etiqueta="Cargando pedidos programados…" />
+        )
+      ) : (
+        <>
       {!orders && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
       {orders && orders.length === 0 && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
 
@@ -342,6 +441,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                   <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>
               </div>
+              {o.programadoPara && (
+                <p className="mt-1 text-xs font-medium text-foreground" data-testid={`programado-${o.id}`}>
+                  Pedido programado para las {new Date(o.programadoPara).toLocaleString("es-MX", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
               {(o.horaRecogida || (o.propina !== null && o.propina !== undefined)) && (
                 <p className="mt-1 text-xs text-muted-foreground" data-testid={`recoger-${o.id}`}>
                   {o.horaRecogida ? `Recoge a las ${new Date(o.horaRecogida).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : null}
@@ -440,6 +544,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
           </Card>
         ))}
       </div>
+        </>
+      )}
 
       <TicketCocinaDialog
         ticket={vistaPrevia?.ticket ?? null}

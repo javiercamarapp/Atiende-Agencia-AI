@@ -5,8 +5,8 @@
 // "Plan de cuenta" NO es el plan de cobro: no toca Stripe ni la facturacion.
 import { useEffect, useState, type FormEvent } from "react";
 import { Building2, Plus } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone, useConfirm } from "@atiende/ui";
+import { ACCION_ESTADO_TONES, ORG_STATUS_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type Tipo = "alta" | "suspender" | "reactivar" | "cambiar_plan";
@@ -55,12 +55,11 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, ini
 }
 
 function badgeDeEstado(status: Organizacion["status"]) {
-  if (status === "active") return <Badge>Activa</Badge>;
-  if (status === "suspended") return <Badge variant="destructive">Suspendida</Badge>;
-  return <Badge variant="secondary">Prueba</Badge>;
+  return <StatusBadge tone={statusTone(ORG_STATUS_TONES, status)}>{status === "active" ? "Activa" : status === "suspended" ? "Suspendida" : "Prueba"}</StatusBadge>;
 }
 
 export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const { confirmar, dialogo } = useConfirm();
   const [organizaciones, setOrganizaciones] = useState<readonly Organizacion[] | null>(null);
   const [acciones, setAcciones] = useState<readonly Accion[]>([]);
   const [disponible, setDisponible] = useState(true);
@@ -139,6 +138,17 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
   }
 
   async function resolver(accion: Accion, que: "confirmar" | "cancelar") {
+    if (que === "confirmar") {
+      // Confirmar ejecuta el alta / suspensión / reactivación / cambio de cuenta de una organización: Cancelar / cerrar el diálogo NO ejecuta nada.
+      const nombre = accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : String(accion.payload.name ?? "organización nueva");
+      const ok = await confirmar({
+        titulo: `${ETIQUETA_TIPO[accion.tipo]}: ${nombre}`,
+        descripcion: `Motivo registrado: ${accion.motivo}`,
+        tono: accion.tipo === "suspender" ? "danger" : "default",
+        confirmar: "Ejecutar acción",
+      });
+      if (!ok) return;
+    }
     setTrabajando(accion.id);
     setAviso(null);
     setError(null);
@@ -160,7 +170,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
   const nombreDe = (id: string | null) => (id ? (organizaciones.find((o) => o.id === id)?.name ?? id) : "(organización nueva)");
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -180,12 +190,12 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
       </div>
 
       {!disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           La gestión de organizaciones todavía no está disponible en esta base (migración 0025 pendiente de aplicar).
         </p>
       )}
       {aviso && (
-        <p role="status" className="text-[13px] text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           {aviso}
         </p>
       )}
@@ -204,7 +214,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
                     {a.tipo === "cambiar_plan" ? ` → ${a.payload.plan === "active" ? "activa" : "prueba"}` : ""}
                     {a.tipo === "alta" ? ` (${String(a.payload.name)})` : ""}
                   </p>
-                  <p className="text-[13px] text-muted-foreground truncate" title={a.motivo}>
+                  <p className="text-sm text-muted-foreground truncate" title={a.motivo}>
                     {a.motivo}
                   </p>
                 </div>
@@ -302,7 +312,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
                         <TableCell>{ETIQUETA_TIPO[a.tipo]}</TableCell>
                         <TableCell>{nombreDe(a.organizationId ?? (typeof a.resultado?.organization_id === "string" ? a.resultado.organization_id : null))}</TableCell>
                         <TableCell>
-                          <Badge variant={a.estado === "executed" ? "default" : "outline"}>{ETIQUETA_ESTADO[a.estado]}</Badge>
+                          <StatusBadge tone={statusTone(ACCION_ESTADO_TONES, a.estado)}>{ETIQUETA_ESTADO[a.estado]}</StatusBadge>
                         </TableCell>
                         <TableCell className="max-w-[320px] truncate text-muted-foreground" title={a.motivo}>
                           {a.motivo}
@@ -316,7 +326,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
         </Card>
       )}
 
-      <ModalFormularioLateral
+      <FormDialog
         open={solicitud !== null}
         onOpenChange={(open) => !open && setSolicitud(null)}
         titulo={solicitud?.etiqueta ?? ""}
@@ -338,13 +348,13 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="org-vertical">Vertical</Label>
-                <select id="org-vertical" value={vertical} onChange={(e) => setVertical(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <NativeSelect id="org-vertical" value={vertical} onChange={(e) => setVertical(e.target.value)}>
                   {VERTICALES.map((v) => (
                     <option key={v} value={v}>
                       {v}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="org-nombre">Nombre</Label>
@@ -358,22 +368,22 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
           )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="org-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-            <textarea
+            <Textarea
               id="org-motivo"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               required
             />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+      {dialogo}
+    </PageContainer>
   );
 }

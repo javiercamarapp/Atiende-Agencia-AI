@@ -11,6 +11,8 @@ import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
+import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
+import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
@@ -131,6 +133,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     }
     if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
   }
+  // R-11: hora programada (ISO con zona, normalizada a UTC). La ventana y el horario se validan al cotizar.
+  const programadoPara = raw.programadoPara === undefined ? undefined : parsearProgramadoPara(raw.programadoPara);
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
   // Para recoger no hay direccion de entrega que exigir (la validacion de vacio va tras sanear, abajo).
   if (agentOrder && canal === "domicilio" && typeof raw.customerAddress !== "string") {
@@ -190,6 +194,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
+    programadoPara,
   };
 }
 
@@ -216,6 +221,11 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${payload.branchSlug ?? payload.branchName}' no encontrada o inactiva`);
   }
+
+  // R-11: pedido programado -- el horario y las promociones se evaluan en la hora ELEGIDA (no en este instante).
+  const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
+  if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
+  const instanteDelPedido = programado ?? new Date();
 
   const resolved = await resolveBranchOrderItems(
     repo,
@@ -287,6 +297,9 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     paymentMethod: payload.paymentMethod,
     propina: payload.propina,
     source: payload.source,
+    ...(programado
+      ? { now: programado, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, payload.programadoPara!) }
+      : {}),
   });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
@@ -317,7 +330,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
       orderTotal: total,
       items: orderItems,
       canal: normalizarCanal(payload.canal),
-      now: new Date(),
+      now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
     });
@@ -334,7 +347,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
       orderTotal: total,
       items: orderItems,
       canal: normalizarCanal(payload.canal),
-      now: new Date(),
+      now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
     });
@@ -383,6 +396,8 @@ export async function tryIncrementPromotionUses(repo: RestaurantesRepository, or
  */
 export async function createOrder(repo: RestaurantesRepository, rawInput: CreateOrderInput): Promise<Order> {
   const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = await prepareCreateOrder(repo, rawInput);
+  // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
+  if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName);
   if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
@@ -400,6 +415,10 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   if (payload.canal) canalLines.push(payload.canal === "recoger" ? "Canal: recoger en sucursal." : "Canal: domicilio.");
   if (payload.propina !== undefined && payload.propina > 0) canalLines.push(`Propina: $${payload.propina.toFixed(2)} (no incluida en el total).`);
   if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
+  if (payload.programadoPara) {
+    const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    canalLines.push(`Pedido programado para: ${etiquetaHoraLocal(new Date(payload.programadoPara), zona)}.`);
+  }
   const finalNotes = canalLines.length > 0 ? [notesWithPromotion, ...canalLines].join("\n") : notesWithPromotion;
 
   const dedupeFingerprint = sha256Hex(
@@ -418,6 +437,8 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       omit_default_complements: [...(payload.omitDefaultComplements ?? [])].sort(),
       // Solo entra al hash cuando hay doble porcion: el hash de pedidos sin ella no cambia.
       ...(payload.doubleSalsas && payload.doubleSalsas.length > 0 ? { double_salsas: [...new Set(payload.doubleSalsas)].sort() } : {}),
+      // Solo entra al hash cuando el pedido es programado: el hash de pedidos normales no cambia.
+      ...(payload.programadoPara ? { programado_para: payload.programadoPara } : {}),
     }),
   );
   const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : null;
@@ -449,6 +470,8 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       canal: payload.canal ? normalizarCanal(payload.canal) : null,
       propina: payload.propina !== undefined && payload.propina > 0 ? payload.propina : null,
       horaRecogida: payload.horaRecogida ?? null,
+      // Migracion 034: con valor, create_order_idempotent lo crea en `programado` (ya verificado arriba).
+      programadoPara: payload.programadoPara ?? null,
     },
     dedupeFingerprint,
     idempotencyKey,

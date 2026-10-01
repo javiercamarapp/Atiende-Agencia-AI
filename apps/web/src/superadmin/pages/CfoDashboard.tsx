@@ -8,7 +8,8 @@
 // se muestra como «—» con su razón, jamás como cero.
 import { useEffect, useState } from "react";
 import { AlertTriangle, Banknote, Landmark, LineChart, Percent, Repeat, TrendingUp } from "lucide-react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
+import { Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney, statusTone } from "@atiende/ui";
+import { SEVERIDAD_CFO_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface IngresoVertical {
@@ -111,9 +112,7 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string): Pr
 }
 
 function badgeSeveridad(s: Alerta["severidad"]) {
-  if (s === "critica") return <Badge variant="destructive">Crítica</Badge>;
-  if (s === "alta") return <Badge variant="destructive">Alta</Badge>;
-  return <Badge variant="secondary">Media</Badge>;
+  return <StatusBadge tone={statusTone(SEVERIDAD_CFO_TONES, s)}>{s === "critica" ? "Crítica" : s === "alta" ? "Alta" : "Media"}</StatusBadge>;
 }
 
 function TablaClientesMargen({ titulo, filas }: { readonly titulo: string; readonly filas: readonly ClienteMargen[] }) {
@@ -181,7 +180,7 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
 
   const d = datos.dashboard;
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -197,7 +196,7 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
       </div>
 
       {!datos.disponible || !d ? (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           {datos.mensaje ?? "El dashboard CFO todavía no está disponible en esta base (migración 0030 pendiente de aplicar)."}
         </p>
       ) : (
@@ -220,7 +219,7 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
                           {a.titulo}: {a.organizaciones.length}
                         </span>
                       </div>
-                      <ul className="mt-1 list-disc pl-5 text-[13px] text-muted-foreground">
+                      <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
                         {a.organizaciones.map((o) => (
                           <li key={o.organizationId}>
                             {o.nombre} — {o.dato}
@@ -330,7 +329,7 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
               <TablaClientesMargen titulo="Clientes con menor margen" filas={d.margen.peores} />
             </div>
           ) : (
-            <p role="status" className="text-[13px] text-muted-foreground">
+            <p role="status" className="text-sm text-muted-foreground">
               Mejores y peores clientes por margen: no disponible. {RAZON_MARGEN[d.margen.razon]}
             </p>
           )}
@@ -340,7 +339,7 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
               <CardTitle>Supuestos de este dashboard</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="list-disc pl-5 text-[13px] text-muted-foreground flex flex-col gap-1">
+              <ul className="list-disc pl-5 text-sm text-muted-foreground flex flex-col gap-1">
                 {datos.supuestos.map((s) => (
                   <li key={s}>{s}</li>
                 ))}
@@ -349,6 +348,6 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

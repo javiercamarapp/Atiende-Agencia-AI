@@ -4,7 +4,8 @@
 // cabecera de esa ruta para por qué no hay acciones de escritura todavía.
 import { useEffect, useState } from "react";
 import { Building2, Users } from "lucide-react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, statusTone } from "@atiende/ui";
+import { ORG_STATUS_TONES } from "../lib/status-tones.ts";
 
 interface SuperadminOrganization {
   readonly id: string;
@@ -25,10 +26,10 @@ const NOMBRE_VERTICAL: Record<string, string> = {
   rentas: "Rentas vacacionales",
 };
 
+const NOMBRE_ESTADO: Record<SuperadminOrganization["status"], string> = { active: "Activa", suspended: "Suspendida", trial: "Prueba" };
+
 function badgeDeEstado(status: SuperadminOrganization["status"]) {
-  if (status === "active") return <Badge>Activa</Badge>;
-  if (status === "suspended") return <Badge variant="destructive">Suspendida</Badge>;
-  return <Badge variant="secondary">Prueba</Badge>;
+  return <StatusBadge tone={statusTone(ORG_STATUS_TONES, status)}>{NOMBRE_ESTADO[status]}</StatusBadge>;
 }
 
 export function SuperAdminDashboardPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
@@ -60,7 +61,7 @@ export function SuperAdminDashboardPage({ apiBaseUrl, token }: { readonly apiBas
   for (const o of organizations) porVertical.set(o.vertical, (porVertical.get(o.vertical) ?? 0) + 1);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Organizaciones</h1>
         <p className="text-sm text-muted-foreground mt-1">Todas las organizaciones de las 6 verticales de atiende.ai.</p>
@@ -110,6 +111,6 @@ export function SuperAdminDashboardPage({ apiBaseUrl, token }: { readonly apiBas
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

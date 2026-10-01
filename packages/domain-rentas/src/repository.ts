@@ -71,6 +71,22 @@ export interface OcupacionCalendarioPage {
   readonly nextOffset: number | null;
 }
 
+/** Opciones de `listOcupacionesVentana`: ventana `[desde, hasta)` de fechas de calendario (`YYYY-MM-DD`). */
+export interface OcupacionVentanaOpciones {
+  readonly desde: string;
+  readonly hasta: string;
+  /** Solo esta unidad; ausente = todas las de la property. */
+  readonly unidadId?: string;
+  /** Tope de filas devueltas (el `total` real se devuelve aparte). */
+  readonly limit: number;
+}
+
+export interface OcupacionCalendarioVentana {
+  readonly items: readonly OcupacionCalendarioItem[];
+  /** Total de ocupaciones activas que tocan la ventana (puede ser mayor que `items.length`). */
+  readonly total: number;
+}
+
 export interface RentasRepository {
   // ---- Calendario / anti-doble-reserva (flujo 1) ----
   findUnidad(propertyId: string, unidadId: string): Promise<UnidadRecord | null>;
@@ -188,6 +204,10 @@ export interface RentasRepository {
    * cambiar su contrato es una decisión distinta a agregar el camino paginado que la
    * ruta HTTP necesita. */
   listOcupacionesPage(propertyId: string, unidadId: string, opts: { readonly limit: number; readonly offset: number }): Promise<OcupacionCalendarioPage>;
+  /** Rn-06 -- ocupaciones ACTIVAS (no canceladas) de la property (o de una unidad) cuyo rango toca la ventana
+   *  `[desde, hasta)`, ordenadas por inicio. Es la lectura del calendario visual: acotada por ventana y por `limit`
+   *  (nunca el historial completo). Solo lectura, sin columnas ni tablas nuevas. */
+  listOcupacionesVentana(propertyId: string, opts: OcupacionVentanaOpciones): Promise<OcupacionCalendarioVentana>;
 
   // ---- Fase 17 — panel operativo del rol `limpieza` (tareas/checklist/inventario/
   // incidencias). Las ESCRITURAS de este módulo (asignar/completar checklist/

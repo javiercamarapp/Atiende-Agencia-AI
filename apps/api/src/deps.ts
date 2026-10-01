@@ -38,7 +38,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { DespachosRepository } from "@atiende/domain-despachos";
+import type { DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -273,6 +273,8 @@ export interface AppDeps {
   /** L-08: KYC negativo 69-B (fichas, consulta con bitacora por tenant). `production/deps.ts` lo cablea a `PostgresKyc69bRepository`; OPCIONAL a proposito: si falta, las lecturas responden `available: false` y las escrituras 503. */
   readonly licitacionesKycRepo?: (db: TenantDbSession) => Kyc69bRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
+  /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
    * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un
    * mapeo de migración de catálogo (migracion-catalogo.ts). Implementa

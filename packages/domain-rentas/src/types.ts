@@ -381,6 +381,9 @@ export interface TareaOperativaRecord {
 export interface TareaListFiltro {
   readonly asignadoA?: string | null;
   readonly estados?: readonly EstadoTareaOperativa[];
+  /** Ventana de `programadaPara` (fechas de calendario `YYYY-MM-DD`, AMBAS inclusivas); cualquiera puede ir sola. */
+  readonly programadaDesde?: string;
+  readonly programadaHasta?: string;
 }
 
 export interface TareaOperativaDetalle extends TareaOperativaRecord {

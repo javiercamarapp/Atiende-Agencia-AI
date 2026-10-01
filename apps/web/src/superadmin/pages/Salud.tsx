@@ -8,7 +8,8 @@
 // GastoApi.tsx/Facturacion.tsx: sin librerías de gráficas/fecha nuevas.
 import { useEffect, useState } from "react";
 import { AlertTriangle, CircleAlert, CircleCheck, Clock, DollarSign, ExternalLink, Inbox, Radio } from "lucide-react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, statusTone } from "@atiende/ui";
+import { CRON_ESTADO_TONES, FUENTE_ESTADO_TONES, SEVERIDAD_ALERTA_TONES } from "../lib/status-tones.ts";
 
 type SeveridadAlerta = "critica" | "alta" | "media";
 
@@ -104,22 +105,17 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string): Pr
 }
 
 function BadgeEstadoCron({ estado }: { readonly estado: EstadoCron }) {
-  if (estado === "ok") return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">ok</Badge>;
-  if (estado === "vencido") return <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-500">vencido</Badge>;
-  if (estado === "error") return <Badge variant="destructive">error</Badge>;
-  return <Badge variant="outline">sin latido todavía</Badge>;
+  return <StatusBadge tone={statusTone(CRON_ESTADO_TONES, estado)}>{estado === "ok" || estado === "vencido" || estado === "error" ? estado : "sin latido todavía"}</StatusBadge>;
 }
 
 function BadgeSeveridad({ severidad }: { readonly severidad: SeveridadAlerta }) {
-  if (severidad === "critica") return <Badge variant="destructive">crítica</Badge>;
-  if (severidad === "alta") return <Badge className="bg-amber-500 text-white hover:bg-amber-500">alta</Badge>;
-  return <Badge variant="secondary">media</Badge>;
+  return <StatusBadge tone={statusTone(SEVERIDAD_ALERTA_TONES, severidad)}>{severidad === "critica" ? "crítica" : severidad}</StatusBadge>;
 }
 
 function IconoSemaforo({ alertas }: { readonly alertas: readonly Alerta[] }) {
-  if (alertas.length === 0) return <CircleCheck className="w-5 h-5 text-emerald-600" strokeWidth={1.75} />;
+  if (alertas.length === 0) return <CircleCheck className="w-5 h-5 text-success" strokeWidth={1.75} />;
   if (alertas.some((a) => a.severidad === "critica")) return <CircleAlert className="w-5 h-5 text-destructive" strokeWidth={1.75} />;
-  return <AlertTriangle className="w-5 h-5 text-amber-500" strokeWidth={1.75} />;
+  return <AlertTriangle className="w-5 h-5 text-warning" strokeWidth={1.75} />;
 }
 
 export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
@@ -161,7 +157,7 @@ export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl
   const sinNingunLatidoTodavia = crons.length > 0 && crons.every((c) => c.estado === "sin_latido");
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
           <IconoSemaforo alertas={resumen.alertas} />
@@ -173,7 +169,7 @@ export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -358,13 +354,7 @@ export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl
                       <TableCell>{f.organizationName}</TableCell>
                       <TableCell className="font-mono text-xs">{f.source}</TableCell>
                       <TableCell>
-                        {f.state === "ok" ? (
-                          <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">ok</Badge>
-                        ) : f.state === "not_configured" ? (
-                          <Badge variant="outline">not_configured</Badge>
-                        ) : (
-                          <Badge variant="destructive">{f.state}</Badge>
-                        )}
+                        <StatusBadge tone={statusTone(FUENTE_ESTADO_TONES, f.state, "danger")}>{f.state}</StatusBadge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{tiempoRelativo(f.finishedAt)}</TableCell>
                       <TableCell className="text-muted-foreground text-xs max-w-[320px] truncate" title={f.message}>
@@ -380,6 +370,6 @@ export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl
       </Card>
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

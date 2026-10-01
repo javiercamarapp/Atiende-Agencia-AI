@@ -6,7 +6,7 @@
 // apps autenticadoras de escritorio y los gestores de contrasenas abren directo).
 import { useEffect, useState, type FormEvent } from "react";
 import { KeyRound, ShieldCheck } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import { fetchConStepUp, verificarMfa } from "../lib/stepup.ts";
 
 interface MfaEstado {
@@ -149,7 +149,7 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
   if (!estado) return <EstadoCargando etiqueta="Cargando seguridad…" />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" strokeWidth={1.75} />
@@ -161,7 +161,7 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
       </div>
 
       {!estado.disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           La MFA todavía no está disponible en esta base (migración 0025 pendiente de aplicar). Las acciones sensibles siguen funcionando como hasta ahora.
         </p>
       )}
@@ -175,9 +175,9 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            {estado.inscrito ? <Badge>MFA activa</Badge> : <Badge variant="outline">{estado.pendiente ? "Enrolamiento pendiente" : "Sin MFA"}</Badge>}
-            {estado.obligatoria && <Badge variant="outline">Obligatoria en este despliegue</Badge>}
-            {estado.bloqueadoHastaMs && <Badge variant="outline">Bloqueada hasta {fechaHora(estado.bloqueadoHastaMs)}</Badge>}
+            {estado.inscrito ? <StatusBadge tone="success">MFA activa</StatusBadge> : <StatusBadge tone={estado.pendiente ? "warning" : "neutral"}>{estado.pendiente ? "Enrolamiento pendiente" : "Sin MFA"}</StatusBadge>}
+            {estado.obligatoria && <StatusBadge tone="info">Obligatoria en este despliegue</StatusBadge>}
+            {estado.bloqueadoHastaMs && <StatusBadge tone="danger">Bloqueada hasta {fechaHora(estado.bloqueadoHastaMs)}</StatusBadge>}
           </div>
 
           {estado.disponible && !estado.inscrito && !enrolamiento && (
@@ -197,7 +197,7 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
                 <Label htmlFor="mfa-secreto">Secreto</Label>
                 <Input id="mfa-secreto" readOnly value={enrolamiento.secreto} className="font-mono" onFocus={(e) => e.currentTarget.select()} />
               </div>
-              <a href={enrolamiento.otpauthUri} className="text-[13px] underline break-all">
+              <a href={enrolamiento.otpauthUri} className="text-sm underline break-all">
                 Abrir en mi app autenticadora
               </a>
               <div className="flex flex-col gap-1.5">
@@ -213,7 +213,7 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
           )}
 
           {mensaje && (
-            <p role="status" className="text-[13px] text-muted-foreground">
+            <p role="status" className="text-sm text-muted-foreground">
               {mensaje}
             </p>
           )}
@@ -234,10 +234,10 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="mfa-reset-motivo">Motivo (mínimo 20 caracteres)</Label>
-                <textarea id="mfa-reset-motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                <Textarea id="mfa-reset-motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} />
               </div>
               {resetMsg && (
-                <p role="status" className="text-[13px] text-muted-foreground">
+                <p role="status" className="text-sm text-muted-foreground">
                   {resetMsg}
                 </p>
               )}
@@ -284,6 +284,6 @@ export function SuperAdminSeguridadPage({ apiBaseUrl, token }: { readonly apiBas
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

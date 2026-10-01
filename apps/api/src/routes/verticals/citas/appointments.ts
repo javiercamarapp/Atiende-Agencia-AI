@@ -7,7 +7,7 @@
 // Protección real: originAllowed() (CORS) para source="web", x-atiende-tool-secret
 // para source="voice"|"whatsapp" (agente), rate-limit distinto por canal.
 import { Hono } from "hono";
-import { consumeRateLimit, createAppointment, tryEnqueueAppointmentEmail, tryTriggerCalendarSync, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
+import { consumeRateLimit, createAppointment, evaluarReservaPublica, tryEnqueueAppointmentEmail, tryTriggerCalendarSync, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
 import type { CitasRepository, CreateAppointmentPayload } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
@@ -94,6 +94,15 @@ export function citasAppointmentsRoutes(deps: AppDeps): Hono {
 
       const limited = await consumeRateLimit(citasRepo, "create-appointment", requestActor(c.req.raw, toolAuthorized ? input.customerPhone : ""), toolAuthorized ? 60 : 10, 60);
       if (!limited.allowed) throw Errors.tooManyRequests();
+
+      // C-06 -- puerta de la reserva publica: un negocio sin el minimo (proveedor activo que ofrece un servicio activo y
+      // tiene horario semanal) todavia no recibe citas por la web. Solo canal web; voz/WhatsApp (con el secreto de
+      // herramientas) siguen su camino. Es lo mismo que `createAppointment` ya exige, dicho de forma clara y antes de
+      // registrar nada del cliente. Va DESPUES del rate limit: una peticion publica nunca hace lecturas extra sin tope.
+      if (source === "web") {
+        const reserva = await evaluarReservaPublica(citasRepo, org.id);
+        if (!reserva.lista) throw Errors.conflict("Este negocio todavía no está listo para recibir reservas en línea. Vuelve a intentarlo más tarde.");
+      }
 
       try {
         const appointment = await createAppointment(citasRepo, input);

@@ -48,6 +48,7 @@ import {
   RAZONES_BLOQUEO,
 } from "../lib/calendario-client.ts";
 import type { OcupacionCalendario, RazonBloqueo, UnidadOption } from "../lib/calendario-client.ts";
+import { CalendarioVisual } from "../components/CalendarioVisual.tsx";
 import { ocupacionTone } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -62,9 +63,46 @@ function esReservaDirecta(o: OcupacionCalendario): boolean {
   return o.capa === "reserva" && (o.canalCodigo === null || o.canalCodigo === "manual");
 }
 
-export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellContext) {
+/** Rn-06: la página abre en el calendario visual (mes / línea de tiempo / agenda móvil); la lista de gestión de abajo
+ * (crear, modificar y cancelar reservas y bloqueos de UNA unidad) sigue intacta como segunda pestaña y se alcanza también
+ * desde el detalle de cualquier día o barra del calendario. */
+export function CalendarioPage(ctx: RentasShellContext) {
+  const [modo, setModo] = useState<"visual" | "lista">("visual");
+  const [unidadLista, setUnidadLista] = useState("");
+  return (
+    <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Calendario</h1>
+        <div role="group" aria-label="Modo del calendario" className="flex gap-1.5">
+          <Button type="button" size="sm" variant={modo === "visual" ? "default" : "outline"} aria-pressed={modo === "visual"} onClick={() => setModo("visual")}>
+            Calendario
+          </Button>
+          <Button type="button" size="sm" variant={modo === "lista" ? "default" : "outline"} aria-pressed={modo === "lista"} onClick={() => setModo("lista")}>
+            Lista
+          </Button>
+        </div>
+      </header>
+      {modo === "visual" ? (
+        <CalendarioVisual
+          apiBaseUrl={ctx.apiBaseUrl}
+          token={ctx.token}
+          propertyId={ctx.propertyId}
+          orgSlug={ctx.orgSlug}
+          onGestionar={(unidadId) => {
+            setUnidadLista(unidadId);
+            setModo("lista");
+          }}
+        />
+      ) : (
+        <CalendarioLista key={unidadLista} {...ctx} unidadInicial={unidadLista} />
+      )}
+    </PageContainer>
+  );
+}
+
+function CalendarioLista({ apiBaseUrl, token, propertyId, unidadInicial }: RentasShellContext & { readonly unidadInicial: string }) {
   const [unidades, setUnidades] = useState<readonly UnidadOption[] | null>(null);
-  const [unidadId, setUnidadId] = useState<string>("");
+  const [unidadId, setUnidadId] = useState<string>(unidadInicial);
   const [ocupaciones, setOcupaciones] = useState<readonly OcupacionCalendario[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -228,21 +266,15 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
   }
 
   if (unidades && unidades.length === 0) {
-    return (
-      <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground m-0">Calendario</h1>
-        <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
-      </PageContainer>
-    );
+    return <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />;
   }
 
   const ocupacionConfirmando = ocupaciones?.find((o) => o.id === confirmandoCancelarId) ?? null;
   const nombreUnidad = unidades?.find((u) => u.id === unidadId)?.nombre;
 
   return (
-    <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-      <header className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="font-display text-xl font-semibold text-foreground m-0">Calendario</h1>
+    <div className="flex flex-col gap-4 [&>*]:min-w-0">
+      <header className="flex items-center justify-end flex-wrap gap-3">
         <div className="flex gap-2 flex-wrap">
           <Button
             type="button"
@@ -461,6 +493,6 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
           onConfirm={() => handleCancelar(ocupacionConfirmando)}
         />
       )}
-    </PageContainer>
+    </div>
   );
 }

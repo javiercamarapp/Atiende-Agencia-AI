@@ -62,6 +62,7 @@
     { "source": "/licitaciones/:path*", "destination": "/api" },
     { "source": "/rentas/:path*", "destination": "/api" },
     { "source": "/superadmin/:path*", "destination": "/api" },
+    { "source": "/portal-cliente/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [

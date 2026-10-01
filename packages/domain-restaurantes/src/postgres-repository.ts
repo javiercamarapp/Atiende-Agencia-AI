@@ -27,6 +27,7 @@ import type {
   CanalPedido,
   NewBranchHoursExceptionInput,
   OrderPickupInfo,
+  OrderScheduleInfo,
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
@@ -77,7 +78,9 @@ import type {
   KpiDateRange,
   MessagingOutboxRow,
   NewOrderRecord,
+  PromotedScheduledOrdersResult,
   RestaurantesRepository,
+  ScheduledOrdersResult,
   SalesBucketRow,
   SearchableProduct,
   StaffOrderNotificationEventType,
@@ -195,6 +198,14 @@ interface OrderRow {
   readonly canal?: CanalPedido | null;
   readonly propina?: string | null;
   readonly hora_recogida?: string | null;
+  /** Migracion 034 -- solo vienen en la fila de `create_order_idempotent` / listados programados con la base migrada. */
+  readonly programado_para?: string | Date | null;
+  readonly promovido_at?: string | Date | null;
+}
+
+function aIsoONull(value: string | Date | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
 }
 
 function mapOrder(row: OrderRow): Order {
@@ -229,6 +240,8 @@ function mapOrder(row: OrderRow): Order {
     ...(row.canal !== undefined ? { canal: row.canal } : {}),
     ...(row.propina !== undefined ? { propina: row.propina === null ? null : Number(row.propina) } : {}),
     ...(row.hora_recogida !== undefined ? { horaRecogida: row.hora_recogida } : {}),
+    ...(row.programado_para !== undefined ? { programadoPara: aIsoONull(row.programado_para) } : {}),
+    ...(row.promovido_at !== undefined ? { promovidoAt: aIsoONull(row.promovido_at) } : {}),
   };
 }
 
@@ -447,6 +460,13 @@ function advertirAuditLogLecturaNoDisponible(err: unknown): void {
 // known_zone), ver el comentario de cabecera de `getWhatsappChannelConfig` más
 // abajo para el porqué de incluir 42501 aquí (tablas VIEJAS, GRANT nuevo).
 // ---------------------------------------------------------------------------
+/** Migracion 034 ausente: columna (42703), funcion (42883) o tabla (42P01) inexistente. NO incluye 42501: un
+ * "sin acceso" de `promover_pedidos_programados` es un rechazo real, no una base sin migrar. */
+function esErrorBaseSinMigrarProgramados(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42P01" || code === "42703";
+}
+
 function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
@@ -854,6 +874,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
             canal: order.canal ?? null,
             propina: order.propina ?? null,
             hora_recogida: order.horaRecogida ?? null,
+            // Migracion 034: el create_order_idempotent VIEJO ignora esta llave (createOrder ya verifico
+            // `supportsScheduledOrders()` antes de mandar un valor, asi que nunca se programa en vano).
+            programado_para: order.programadoPara ?? null,
           }),
           dedupeFingerprint,
           idempotencyKey,
@@ -2599,6 +2622,92 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: async () => [],
+    });
+  }
+
+  // ---- Pedidos programados (migracion 034). Cada operacion lleva SAVEPOINT propio: corre dentro de la
+  // transaccion unica del request (o del barrido) y un 42703/42883 contra la base sin migrar la dejaria
+  // abortada (25P02). ----
+
+  async supportsScheduledOrders(): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_restaurantes_programados_soporte",
+      primary: async () => {
+        const { rows } = await this.db.query<{ existe: boolean }>(
+          `select exists (
+             select 1 from information_schema.columns
+             where table_schema = 'restaurantes' and table_name = 'orders' and column_name = 'programado_para'
+           ) as existe;`,
+        );
+        return rows[0]?.existe === true;
+      },
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => false,
+    });
+  }
+
+  async listOrderScheduleInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderScheduleInfo[]> {
+    if (orderIds.length === 0) return [];
+    return runWithSavepointFallback<readonly OrderScheduleInfo[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_order_schedule_info",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; programado_para: string | Date | null; promovido_at: string | Date | null }>(
+          `select id, programado_para, promovido_at from restaurantes.orders
+           where organization_id = $1 and id = any($2::uuid[]) and programado_para is not null;`,
+          [organizationId, [...orderIds]],
+        );
+        return rows.map((r) => ({ orderId: r.id, programadoPara: aIsoONull(r.programado_para), promovidoAt: aIsoONull(r.promovido_at) }));
+      },
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => [],
+    });
+  }
+
+  async listScheduledOrders(organizationId: string, filter: { readonly propertyIds: readonly string[] | null; readonly limit: number }): Promise<ScheduledOrdersResult> {
+    return runWithSavepointFallback<ScheduledOrdersResult>({
+      session: this.db,
+      savepointName: "sp_restaurantes_programados_listar",
+      primary: async () => {
+        const params: unknown[] = [organizationId];
+        let scope = "";
+        if (filter.propertyIds !== null) {
+          params.push([...filter.propertyIds]);
+          scope = `and property_id = any($${params.length}::uuid[])`;
+        }
+        params.push(filter.limit);
+        const { rows } = await this.db.query<OrderRow>(
+          `select ${ORDER_COLUMNS}, programado_para, promovido_at
+           from restaurantes.orders
+           where organization_id = $1 and status = 'programado' ${scope}
+           order by programado_para asc, id asc
+           limit $${params.length};`,
+          params,
+        );
+        return { disponible: true, orders: rows.map(mapOrder) };
+      },
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => ({ disponible: false, orders: [] }),
+    });
+  }
+
+  async promoteDueScheduledOrders(
+    organizationId: string | null,
+    options: { readonly now: Date; readonly anticipacionMin: number; readonly propertyIds?: readonly string[] | null },
+  ): Promise<PromotedScheduledOrdersResult> {
+    return runWithSavepointFallback<PromotedScheduledOrdersResult>({
+      session: this.db,
+      savepointName: "sp_restaurantes_programados_promover",
+      primary: async () => {
+        const { rows } = await this.db.query<{ promover_pedidos_programados: readonly OrderRow[] }>(
+          `select restaurantes.promover_pedidos_programados($1::uuid, $2::timestamptz, $3::int, $4::uuid[]) as promover_pedidos_programados;`,
+          [organizationId, options.now.toISOString(), options.anticipacionMin, options.propertyIds ? [...options.propertyIds] : null],
+        );
+        return { disponible: true, promoted: (rows[0]?.promover_pedidos_programados ?? []).map(mapOrder) };
+      },
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => ({ disponible: false, promoted: [] }),
     });
   }
 

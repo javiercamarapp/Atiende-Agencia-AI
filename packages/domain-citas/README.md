@@ -658,3 +658,25 @@ del panel responden `disponible:false` y los guardados un 503.
 Límite conocido: WhatsApp exige una plantilla aprobada por Meta para escribir primero
 fuera de la ventana de 24 h (ver el comentario de `runConfirmacionCitaCore`); esa
 aprobación y el envío `type: "template"` siguen pendientes y no cambian con este PR.
+
+## C-06 -- primeros pasos y puerta de la reserva pública (sin migración)
+
+- `src/onboarding.ts`: `computeOnboardingChecklist` calcula en el servidor 9 pasos con estado
+  derivado de tablas que ya existen: proveedor activo en la sucursal (o sin sucursal), servicio
+  activo, un proveedor que ofrece un servicio (`provider_services`), horario semanal activo en un
+  proveedor que sí ofrece servicio, precio en todos los servicios activos, número de WhatsApp activo
+  (`whatsapp_config`), recordatorios (WhatsApp + `reminderEnabled`; sin fila rigen los valores de
+  fábrica), aviso de cancelación (`cancellationEnabled`, 026) y al menos una cita. El cliente no
+  envía ni decide ningún estado.
+- Requeridos para publicar: proveedor, servicio, asignación y horario. El resto es recomendado.
+- `evaluarReservaPublica` aplica solo ese mínimo, con corte temprano, y la usa
+  `POST /v1/citas/:orgSlug/appointments` para el canal web (409 si falta); voz y WhatsApp con el
+  secreto de herramientas no pasan por ella. Es lo mismo que `createAppointment` ya exige.
+- API: `GET /v1/citas/properties/:propertyId/onboarding` (solo owner/admin, por sucursal).
+  Pantalla: "Primeros pasos" en `apps/web`; descartar/posponer (7 días) es una preferencia del
+  navegador y solo aplica a pasos recomendados.
+- Base sin migrar: solo lee tablas de 001/003; la lectura de mensajes (026) degrada con SAVEPOINT
+  y el paso de cancelación queda `no_disponible`.
+- Límites: "política de cancelación" no existe como dato en el producto (no hay ventana ni cargo);
+  el paso se apoya en el mensaje de cancelación de WhatsApp. "Primera cita" se evalúa a nivel
+  negocio, no por sucursal.

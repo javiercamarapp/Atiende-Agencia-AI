@@ -550,3 +550,6 @@ export { EfosUnavailableError } from "./errors.ts";
 
 // "Chatea con tus datos": catalogo cerrado de herramientas de solo lectura (ver docs/DATA-CHAT.md).
 export * from "./data-chat/index.ts";
+
+// D-08: portal del cliente final del despacho (enlace con token, subida estricta, estatus, mensajes).
+export * from "./portal-cliente/index.ts";

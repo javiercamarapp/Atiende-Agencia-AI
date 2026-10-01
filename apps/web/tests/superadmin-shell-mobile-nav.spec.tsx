@@ -28,11 +28,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderShell(onRequireLogin: () => void = () => {}): Promise<RenderedComponent> {
+async function renderShell(onRequireLogin: () => void = () => {}, ruta = "/superadmin"): Promise<RenderedComponent> {
   installMatchMediaStub();
   installMemoryLocalStorage().setItem("atiende.superadmin.session", JSON.stringify(SESSION));
   const result = renderComponent(
-    <MemoryRouter initialEntries={["/superadmin"]}>
+    <MemoryRouter initialEntries={[ruta]}>
       <SuperAdminShell apiBaseUrl="https://api.test" onRequireLogin={onRequireLogin}>
         {() => <div>child</div>}
       </SuperAdminShell>
@@ -51,14 +51,31 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(root.querySelector('aside[aria-label="Navegación principal"]')!.className).toContain("md:flex");
     const headers = [...root.querySelectorAll("header")];
     expect(headers.some((h) => h.className.includes("md:hidden") && h.textContent?.includes("atiende"))).toBe(true);
+    // La cabecera de escritorio vive dentro de un contenedor `hidden md:block` (VerticalShell).
     const desktop = headers.find((h) => h.textContent?.includes("Consola de Atiende"))!;
-    expect(desktop.className).toContain("hidden");
+    expect(desktop.closest(".hidden")?.className).toContain("md:block");
     expect([...root.querySelectorAll('nav[aria-label="Navegación móvil"] a')].map((a) => a.getAttribute("href"))).toEqual([
       "/superadmin",
       "/superadmin/resumen",
       "/superadmin/salud",
       "/superadmin/acciones",
     ]);
+  });
+
+  it("el item raíz «Organizaciones» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
+    rendered = await renderShell(() => {}, "/superadmin/planes");
+    const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
+    expect(activos).toEqual(["/superadmin/planes"]);
+  });
+
+  it("un solo <main> con skip link (VerticalShell) y el contenido de la página dentro de él", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    const mains = root.querySelectorAll("main");
+    expect(mains).toHaveLength(1);
+    expect(mains[0]!.id).toBe("contenido-principal");
+    expect(mains[0]!.textContent).toContain("child");
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
   });
 
   it('"Más" abre los 22 destinos de la consola (incluye privacidad, gestión de organizaciones, interruptores, seguridad MFA, zona CFO segura, dashboard CFO, costos y margen, planes y contratos por cliente)', async () => {

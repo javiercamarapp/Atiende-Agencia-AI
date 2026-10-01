@@ -4,7 +4,7 @@
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido";
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado";
 
 export type OrderCanal = "domicilio" | "recoger";
 
@@ -18,6 +18,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   problema: "Incidencia",
   listo_para_recoger: "Listo para recoger",
   no_recogido: "No recogido",
+  programado: "Programado",
 };
 
 /** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
@@ -37,6 +38,8 @@ export function nextStatusesForCanal(status: OrderStatus, canal: OrderCanal | nu
  * dominio cambia la máquina de estados; el servidor SIEMPRE re-valida la transición
  * real, esto solo evita ofrecer un botón que el servidor rechazaría. */
 export const NEXT_STATUSES: Record<OrderStatus, readonly OrderStatus[]> = {
+  // R-11: un programado espera fuera de cocina; "pending" lo adelanta a cocina, "cancelado" lo descarta.
+  programado: ["pending", "cancelado"],
   pending: ["preparando", "cancelado", "problema"],
   preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
@@ -84,6 +87,10 @@ export interface OrderSummary {
   readonly canal?: OrderCanal | null;
   readonly propina?: number | null;
   readonly horaRecogida?: string | null;
+  /** R-11 (migración 034): hora para la que se programó el pedido (ISO UTC) y cuándo se promovió a cocina.
+   * `null`/ausentes en pedidos normales, anteriores o contra una base sin migrar. */
+  readonly programadoPara?: string | null;
+  readonly promovidoAt?: string | null;
 }
 
 export interface OrderListFilter {
@@ -144,4 +151,21 @@ export async function assignRepartidor(
   if (estimatedDeliveryAt !== undefined) payload.estimatedDeliveryAt = estimatedDeliveryAt;
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/assign-repartidor`, token, "PATCH", payload);
   return body.order;
+}
+
+/** Respuesta de la pestaña Programados. `disponible:false` = la base aún no tiene la migración 034. */
+export interface ScheduledOrdersPage {
+  readonly disponible: boolean;
+  readonly orders: readonly OrderSummary[];
+  /** Ids promovidos a cocina por ESTA consulta (la promoción corre al consultar, sin cron). */
+  readonly promovidos: readonly string[];
+  readonly serverNow: string;
+}
+
+export async function fetchScheduledOrders(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, filter: { readonly branchId?: string; readonly limit?: number } = {}): Promise<ScheduledOrdersPage> {
+  const params = new URLSearchParams();
+  if (filter.branchId) params.set("branchId", filter.branchId);
+  if (filter.limit) params.set("limit", String(filter.limit));
+  const qs = params.toString();
+  return fetchJson<ScheduledOrdersPage>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/scheduled-orders${qs ? `?${qs}` : ""}`, token);
 }

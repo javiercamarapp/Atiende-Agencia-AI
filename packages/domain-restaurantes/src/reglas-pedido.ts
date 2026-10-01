@@ -61,7 +61,12 @@ export interface ReglasSucursalArgs {
   readonly propina?: number;
   /** "admin" (captura manual del staff) no se bloquea por horario. */
   readonly source?: "web" | "voice" | "whatsapp" | "admin";
+  /** Instante contra el que se evalua el horario. Un pedido PROGRAMADO pasa la hora para la que se pidio. */
   readonly now?: Date;
+  /** `true` = rechazar aunque `source` sea "admin" (un pedido programado nunca se acepta fuera de horario). */
+  readonly exigirAbierto?: boolean;
+  /** Mensaje de cierre propio (pedido programado: "no atiende a la hora elegida"). */
+  readonly mensajeCerrado?: (apertura: EstadoApertura, zonaHoraria: string) => string;
 }
 
 export interface ReglasSucursalResultado {
@@ -98,8 +103,8 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     const r = aperturaConExcepciones(horarioBase ?? [], excepciones, ahora, zonaCruda);
     apertura = r.estado;
     diaNegocio = r.diaNegocio;
-    if (!apertura.abierto && args.source !== "admin") {
-      throw new OrderValidationError(mensajeSucursalCerrada(branch.name, apertura));
+    if (!apertura.abierto && (args.source !== "admin" || args.exigirAbierto === true)) {
+      throw new OrderValidationError(args.mensajeCerrado ? args.mensajeCerrado(apertura, zona) : mensajeSucursalCerrada(branch.name, apertura));
     }
   }
 

@@ -6,8 +6,8 @@
 // margen. Un precio vacio significa "por configurar" (se muestra «—», nunca 0).
 import { useEffect, useState, type FormEvent } from "react";
 import { Tags } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, formatMoney, statusTone, useConfirm } from "@atiende/ui";
+import { ACCION_ESTADO_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface Limite {
@@ -90,6 +90,7 @@ function parsePrecio(raw: string): number | null | undefined {
 }
 
 export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const { confirmar, dialogo } = useConfirm();
   const [planes, setPlanes] = useState<readonly Plan[] | null>(null);
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [disponible, setDisponible] = useState(true);
@@ -209,6 +210,14 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
   }
 
   async function quitarLimite(planId: string, metrica: string) {
+    // Quitar un límite cambia el tope de TODAS las organizaciones con ese plan: Cancelar / cerrar el diálogo NO ejecuta nada.
+    const ok = await confirmar({
+      titulo: `Quitar el límite «${ETIQUETA_METRICA[metrica] ?? metrica}»`,
+      descripcion: "Las organizaciones con este plan dejarán de tener este tope. Para volver a ponerlo tendrás que capturarlo de nuevo.",
+      tono: "danger",
+      confirmar: "Quitar límite",
+    });
+    if (!ok) return;
     setTrabajando(`${planId}|${metrica}`);
     setLError(null);
     try {
@@ -241,6 +250,15 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
   }
 
   async function resolver(a: Asignacion, que: "confirmar" | "cancelar") {
+    if (que === "confirmar") {
+      // Confirmar aplica el cambio de plan (y su facturación) a la organización: Cancelar / cerrar el diálogo NO ejecuta nada.
+      const ok = await confirmar({
+        titulo: `Asignar el plan «${planes?.find((p) => p.id === a.planId)?.nombre ?? a.planId}» a ${a.organizacion ?? a.organizationId}`,
+        descripcion: `Motivo registrado: ${a.motivo}`,
+        confirmar: "Asignar plan",
+      });
+      if (!ok) return;
+    }
     setTrabajando(a.id);
     setAviso(null);
     try {
@@ -263,7 +281,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
   const planesParaOrg = asignarA ? planes.filter((p) => p.activo && p.vertical === asignarA.vertical) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -282,12 +300,12 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
       </div>
 
       {!disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           El catálogo de planes todavía no está disponible en esta base (migración 0028 pendiente de aplicar).
         </p>
       )}
       {aviso && (
-        <p role="status" className="text-[13px] text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           {aviso}
         </p>
       )}
@@ -304,7 +322,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
                   <p className="text-sm font-medium">
                     {a.organizacion ?? a.organizationId} → {planPorId.get(a.planId)?.nombre ?? a.planId}
                   </p>
-                  <p className="text-[13px] text-muted-foreground truncate" title={a.motivo}>
+                  <p className="text-sm text-muted-foreground truncate" title={a.motivo}>
                     {a.motivo}
                   </p>
                 </div>
@@ -348,7 +366,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
                   {planes.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>
-                        <span className="font-medium">{p.nombre}</span> {!p.activo && <Badge variant="outline">Inactivo</Badge>}
+                        <span className="font-medium">{p.nombre}</span> {!p.activo && <StatusBadge tone="neutral">Inactivo</StatusBadge>}
                         <div className="text-xs text-muted-foreground">{p.id}</div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{p.vertical}</TableCell>
@@ -453,7 +471,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
                         <TableCell>{a.organizacion ?? a.organizationId}</TableCell>
                         <TableCell>{planPorId.get(a.planId)?.nombre ?? a.planId}</TableCell>
                         <TableCell>
-                          <Badge variant={a.estado === "executed" ? "default" : "outline"}>{a.estado === "pending" ? ETIQUETA_ESTADO.expired : ETIQUETA_ESTADO[a.estado]}</Badge>
+                          <StatusBadge tone={statusTone(ACCION_ESTADO_TONES, a.estado === "pending" ? "expired" : a.estado)}>{a.estado === "pending" ? ETIQUETA_ESTADO.expired : ETIQUETA_ESTADO[a.estado]}</StatusBadge>
                         </TableCell>
                         <TableCell className="max-w-[320px] truncate text-muted-foreground" title={a.motivo}>
                           {a.motivo}
@@ -467,7 +485,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
         </Card>
       )}
 
-      <ModalFormularioLateral
+      <FormDialog
         open={planForm !== null}
         onOpenChange={(open) => !open && setPlanForm(null)}
         titulo={planForm?.nuevo ? "Nuevo plan" : "Editar plan"}
@@ -495,13 +513,13 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="plan-vertical">Vertical</Label>
-            <select id="plan-vertical" value={pVertical} onChange={(e) => setPVertical(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+            <NativeSelect id="plan-vertical" value={pVertical} onChange={(e) => setPVertical(e.target.value)}>
               {catalogo.verticales.map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -518,18 +536,18 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
             <Input id="plan-incluidos" inputMode="numeric" value={pIncluidos} onChange={(e) => setPIncluidos(e.target.value)} />
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={pActivo} onChange={(e) => setPActivo(e.target.checked)} />
+            <Checkbox checked={pActivo} onChange={(e) => setPActivo(e.target.checked)} />
             Activo (asignable a organizaciones)
           </label>
           {pError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {pError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={limitesDe !== null}
         onOpenChange={(open) => !open && setLimitesDe(null)}
         titulo={`Límites — ${planEditando?.nombre ?? ""}`}
@@ -543,7 +561,7 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
       >
         <div className="flex flex-col gap-4">
           {planEditando && planEditando.limites.length > 0 && (
-            <ul className="flex flex-col gap-2 text-[13px]">
+            <ul className="flex flex-col gap-2 text-sm">
               {planEditando.limites.map((l) => (
                 <li key={l.metrica} className="flex items-center justify-between gap-2">
                   <span>{textoLimite(l)}</span>
@@ -557,13 +575,13 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
           <form id="form-limite" onSubmit={guardarLimite} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="lim-metrica">Métrica</Label>
-              <select id="lim-metrica" value={lMetrica} onChange={(e) => setLMetrica(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <NativeSelect id="lim-metrica" value={lMetrica} onChange={(e) => setLMetrica(e.target.value)}>
                 {catalogo.metricas.map((m) => (
                   <option key={m} value={m}>
                     {ETIQUETA_METRICA[m] ?? m}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
@@ -572,17 +590,17 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="lim-accion">Al exceder</Label>
-                <select id="lim-accion" value={lAccion} onChange={(e) => setLAccion(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <NativeSelect id="lim-accion" value={lAccion} onChange={(e) => setLAccion(e.target.value)}>
                   {catalogo.acciones.map((a) => (
                     <option key={a} value={a}>
                       {ETIQUETA_ACCION[a] ?? a}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
             {lError && (
-              <p role="alert" className="text-[13px] text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {lError}
               </p>
             )}
@@ -591,9 +609,9 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
             </Button>
           </form>
         </div>
-      </ModalFormularioLateral>
+      </FormDialog>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={asignarA !== null}
         onOpenChange={(open) => !open && setAsignarA(null)}
         titulo={`Asignar plan — ${asignarA?.name ?? ""}`}
@@ -613,33 +631,33 @@ export function SuperAdminPlanesPage({ apiBaseUrl, token }: { readonly apiBaseUr
         <form id="form-asignar" onSubmit={solicitarAsignacion} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="asig-plan">Plan ({asignarA?.vertical})</Label>
-            <select id="asig-plan" value={aPlan} onChange={(e) => setAPlan(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+            <NativeSelect id="asig-plan" value={aPlan} onChange={(e) => setAPlan(e.target.value)}>
               <option value="">Elige un plan…</option>
               {planesParaOrg.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="asig-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-            <textarea
+            <Textarea
               id="asig-motivo"
               value={aMotivo}
               onChange={(e) => setAMotivo(e.target.value)}
               rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               required
             />
           </div>
           {aError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {aError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+      {dialogo}
+    </PageContainer>
   );
 }

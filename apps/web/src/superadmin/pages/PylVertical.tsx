@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Download, Landmark, Percent, ReceiptText, Repeat, TrendingUp, Wallet } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, StatCard, formatMoney } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, PageContainer, StatCard, formatMoney } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
@@ -237,7 +237,7 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
   ];
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -267,19 +267,19 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
       </div>
 
       {aviso && (
-        <p role="status" className="text-[13px] text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           {aviso}
         </p>
       )}
 
       {!datos.disponible || !p || !c ? (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           {datos.mensaje ?? "El P&L todavía no está disponible en esta base (migración 0030 pendiente de aplicar)."}
         </p>
       ) : (
         <>
           {datos.tipoCambio === null && (
-            <p role="alert" className="text-[13px] text-muted-foreground">
+            <p role="alert" className="text-sm text-muted-foreground">
               No hay tipo de cambio configurado para este mes: el COGS en pesos y los márgenes no se calculan hasta capturar uno (Costos y margen).
             </p>
           )}
@@ -327,7 +327,7 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
             </CardHeader>
             <CardContent>
               {!datos.movimientoMrr || !datos.movimientoMrr.disponible ? (
-                <p role="note" className="text-[13px] text-muted-foreground">
+                <p role="note" className="text-sm text-muted-foreground">
                   {datos.movimientoMrr ? (RAZON_MOVIMIENTO[datos.movimientoMrr.razon] ?? datos.movimientoMrr.razon) : "Sin datos."}
                 </p>
               ) : (
@@ -355,7 +355,7 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {p.infra.disponible ? (
-                <ul className="text-[13px] list-disc pl-5">
+                <ul className="text-sm list-disc pl-5">
                   {p.infra.conceptos.map((i) => (
                     <li key={i.concepto}>
                       {i.concepto}: {mxn(i.montoMxn)}
@@ -365,12 +365,12 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
                   {p.infra.sinAsignarMxn > 0 && <li className="list-none -ml-5 text-muted-foreground">Sin asignar (sin COGS directo que prorratear): {mxn(p.infra.sinAsignarMxn)}</li>}
                 </ul>
               ) : (
-                <p role="note" className="text-[13px] text-muted-foreground">
+                <p role="note" className="text-sm text-muted-foreground">
                   No hay infraestructura capturada para este mes: el margen bruto no se calcula (el de contribución sí).
                 </p>
               )}
               {datos.infraCapturaDisponible === false ? (
-                <p role="alert" className="text-[13px] text-muted-foreground">
+                <p role="alert" className="text-sm text-muted-foreground">
                   La captura de infraestructura todavía no está disponible en esta base (migración 0032 pendiente de aplicar).
                 </p>
               ) : (
@@ -391,7 +391,7 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
                     Guardar
                   </Button>
                   {infraError && (
-                    <p role="alert" className="text-[13px] text-destructive w-full">
+                    <p role="alert" className="text-sm text-destructive w-full">
                       {infraError}
                     </p>
                   )}
@@ -406,7 +406,7 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
               <CardTitle>Cómo se calcula</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="list-disc pl-5 text-[13px] text-muted-foreground flex flex-col gap-1">
+              <ul className="list-disc pl-5 text-sm text-muted-foreground flex flex-col gap-1">
                 {(datos.supuestos ?? []).map((s) => (
                   <li key={s}>{s}</li>
                 ))}
@@ -415,6 +415,6 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

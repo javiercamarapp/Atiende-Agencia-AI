@@ -172,7 +172,7 @@ function serializeInvoice(invoice: InvoiceRecord) {
 
 /** Resultado de la consulta EFOS que acompaña la respuesta de ingesta (NO se persiste en el
  * invoice: issues/warnings ya llevan el hallazgo; `estado` dice si la lista estaba disponible). */
-interface EfosIngesta {
+export interface EfosIngesta {
   readonly estado: EfosConsulta["estado"];
   readonly periodoLista: string | null;
   readonly situacion: EfosSituacion | null;
@@ -278,6 +278,29 @@ async function ingestarCfdiDespachos(
   }
 }
 
+/** XML crudo del PAC -> parser -> flujo 1 (`ingestarCfdiDespachos`). Compartido por
+ * `POST .../cfdi/importar-xml` y por la aceptacion de un XML que subio el cliente final desde el
+ * portal (D-08, `portal-cliente.ts`): una sola ruta de ingesta, nunca una copia. */
+export async function ingestarXmlCfdiDespachos(
+  repo: DespachosRepository,
+  organizationId: string,
+  propertyId: string,
+  xml: string,
+): Promise<{ readonly invoice: InvoiceRecord; readonly efos: EfosIngesta }> {
+  let datos: DatosCfdiDespachos;
+  try {
+    const parsed = parseCfdiXml(xml);
+    if (!TIPOS_COMPROBANTE_VALIDOS.has(parsed.tipo)) {
+      throw Errors.validation(`TipoDeComprobante: '${parsed.tipo}' — se esperaba I|E|T|P|N.`);
+    }
+    datos = { ...parsed, tipo: parsed.tipo as DatosCfdiDespachos["tipo"] };
+  } catch (err) {
+    if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
+    throw err;
+  }
+  return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
+}
+
 export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -312,19 +335,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const xml = await readTextCapped(c.req.raw, MAX_CFDI_XML_BYTES);
 
-    let datos: DatosCfdiDespachos;
-    try {
-      const parsed = parseCfdiXml(xml);
-      if (!TIPOS_COMPROBANTE_VALIDOS.has(parsed.tipo)) {
-        throw Errors.validation(`TipoDeComprobante: '${parsed.tipo}' — se esperaba I|E|T|P|N.`);
-      }
-      datos = { ...parsed, tipo: parsed.tipo as DatosCfdiDespachos["tipo"] };
-    } catch (err) {
-      if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
-      throw err;
-    }
-
-    const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
+    const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml);
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 

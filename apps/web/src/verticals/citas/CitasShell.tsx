@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarRange,
+  ClipboardCheck,
   ClipboardList,
   LayoutDashboard,
   Lock,
@@ -96,6 +97,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
         { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
         { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
+        // C-06 -- checklist de primeros pasos y panel "listo para recibir citas" (owner/admin; la página gatea por rol).
+        { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ClipboardCheck },
       ],
     },
     {

@@ -249,3 +249,19 @@ export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSh
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
 export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";
+
+// R-11 -- pedidos programados (migracion 034).
+export {
+  ANTICIPACION_PROMOCION_MIN,
+  PROGRAMACION_MAXIMA_DIAS,
+  PROGRAMACION_MINIMA_MIN,
+  assertProgramacionDisponible,
+  parsearProgramadoPara,
+  promoverProgramadosTodasLasOrganizaciones,
+  promoverProgramadosVencidos,
+  validarVentanaProgramacion,
+} from "./pedidos-programados.ts";
+export type { PromocionProgramados } from "./pedidos-programados.ts";
+export { etiquetaHoraLocal } from "./horarios.ts";
+export type { OrderScheduleInfo } from "./types.ts";
+export type { PromotedScheduledOrdersResult, ScheduledOrdersResult } from "./repository.ts";

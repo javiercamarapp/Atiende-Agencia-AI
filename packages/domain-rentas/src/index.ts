@@ -3,7 +3,7 @@ export { PRECEDENCIA_RAZON } from "./tipos.ts";
 
 export { puedeTransicionar, transicionar } from "./estados.ts";
 
-export { calcularNoches, diaDeLaSemana, esRangoValido, nochesDelRango, rangoCubreNoche, rangosSeSuperponen } from "./fechas.ts";
+export { calcularNoches, diaDeLaSemana, esFechaCalendario, esRangoValido, nochesDelRango, rangoCubreNoche, rangosSeSuperponen } from "./fechas.ts";
 
 export type { EjecutorTransaccional, FilaSql } from "./ejecutor.ts";
 export { bloquearOwnerStatementEnTransaccion, bloquearUnidadEnTransaccion, esViolacionExclusion } from "./ejecutor.ts";
@@ -127,7 +127,7 @@ export type {
   UnidadRecord,
 } from "./types.ts";
 
-export type { RentasRepository, OcupacionCalendarioPage } from "./repository.ts";
+export type { RentasRepository, OcupacionCalendarioPage, OcupacionCalendarioVentana, OcupacionVentanaOpciones } from "./repository.ts";
 export { InMemoryRentasRepository } from "./in-memory-repository.ts";
 export { PostgresRentasRepository } from "./postgres-repository.ts";
 export { InMemoryRentasCalendarStore } from "./calendar-store.ts";

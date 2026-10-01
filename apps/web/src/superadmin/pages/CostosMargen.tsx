@@ -7,8 +7,9 @@
 // se muestra como "—" con su razon. El costo en USD siempre se muestra.
 import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, Coins, Percent, TrendingUp, Wallet } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney, statusTone } from "@atiende/ui";
+import { RIESGO_MARGEN_TONES } from "../lib/status-tones.ts";
+import { BarraProgreso } from "../components/BarraProgreso.tsx";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type Riesgo = "alto" | "medio" | "bajo" | "desconocido";
@@ -113,10 +114,8 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, ini
 }
 
 function badgeRiesgo(r: Riesgo) {
-  if (r === "alto") return <Badge variant="destructive">Riesgo alto</Badge>;
-  if (r === "medio") return <Badge variant="secondary">Riesgo medio</Badge>;
-  if (r === "bajo") return <Badge>Sano</Badge>;
-  return <Badge variant="outline">Sin datos</Badge>;
+  const etiqueta = r === "alto" ? "Riesgo alto" : r === "medio" ? "Riesgo medio" : r === "bajo" ? "Sano" : "Sin datos";
+  return <StatusBadge tone={statusTone(RIESGO_MARGEN_TONES, r)}>{etiqueta}</StatusBadge>;
 }
 
 function textoIngreso(f: Fila): string {
@@ -197,7 +196,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
 
   const r = datos.resumen;
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -220,12 +219,12 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
       </div>
 
       {!datos.disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           El costo por evento todavía no está disponible en esta base (migración 0028 pendiente de aplicar).
         </p>
       )}
       {aviso && (
-        <p role="status" className="text-[13px] text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           {aviso}
         </p>
       )}
@@ -233,7 +232,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
       {datos.disponible && r && (
         <>
           {datos.tipoCambio === null && (
-            <p role="alert" className="text-[13px] flex items-center gap-1.5 text-muted-foreground">
+            <p role="alert" className="text-sm flex items-center gap-1.5 text-muted-foreground">
               <AlertTriangle className="w-3.5 h-3.5" strokeWidth={1.75} />
               No hay tipo de cambio configurado: el costo en pesos y el margen no se calculan hasta capturar uno.
             </p>
@@ -275,7 +274,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
                               {f.vertical} · {f.planNombre ?? "sin plan"}
                             </div>
                           </TableCell>
-                          <TableCell className="text-[13px] text-muted-foreground">
+                          <TableCell className="text-sm text-muted-foreground">
                             {usd(f.costoMicroUsd.llm)} · {usd(f.costoMicroUsd.voz)} · {usd(f.costoMicroUsd.whatsapp)} · {usd(f.costoMicroUsd.telefonia)} · {usd(f.costoMicroUsd.otros)}
                             {f.eventosEstimados > 0 && <div className="text-xs">{f.eventosEstimados} de {f.eventosTotal} eventos con costo estimado</div>}
                           </TableCell>
@@ -311,7 +310,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
               <CardTitle>Supuestos de este reporte</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="list-disc pl-5 text-[13px] text-muted-foreground flex flex-col gap-1">
+              <ul className="list-disc pl-5 text-sm text-muted-foreground flex flex-col gap-1">
                 {datos.supuestos.map((s) => (
                   <li key={s}>{s}</li>
                 ))}
@@ -321,7 +320,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
         </>
       )}
 
-      <ModalFormularioLateral
+      <FormDialog
         open={fxAbierto}
         onOpenChange={setFxAbierto}
         titulo="Tipo de cambio"
@@ -352,14 +351,14 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
             <Input id="fx-fuente" value={fxFuente} onChange={(e) => setFxFuente(e.target.value)} placeholder="Banxico FIX" />
           </div>
           {fxError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {fxError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={detalle !== null}
         onOpenChange={(open) => !open && setDetalle(null)}
         titulo={detalle?.nombre ?? ""}
@@ -375,17 +374,15 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
           <div className="flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-medium mb-1">Tope mensual de LLM</h3>
-              <p className="text-[13px] text-muted-foreground">Usado: {detalle.llmUsoPct.toFixed(0)}% de su tope del mes.</p>
-              <div className="h-2 rounded-full bg-muted mt-1.5 overflow-hidden" aria-hidden>
-                <div className={`h-full ${detalle.llmUsoPct >= 100 ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, detalle.llmUsoPct)}%` }} />
-              </div>
+              <p className="text-sm text-muted-foreground">Usado: {detalle.llmUsoPct.toFixed(0)}% de su tope del mes.</p>
+              <BarraProgreso className="mt-1.5" valor={detalle.llmUsoPct} tono={detalle.llmUsoPct >= 100 ? "danger" : "primary"} aria-label="Uso del tope mensual de LLM" />
             </div>
             <div>
               <h3 className="text-sm font-medium mb-1">Límites de su plan</h3>
               {detalle.consumo.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">Su plan no define límites (o no tiene plan asignado).</p>
+                <p className="text-sm text-muted-foreground">Su plan no define límites (o no tiene plan asignado).</p>
               ) : (
-                <ul className="flex flex-col gap-1 text-[13px]">
+                <ul className="flex flex-col gap-1 text-sm">
                   {detalle.consumo.map((c) => (
                     <li key={c.metrica} className="flex items-center justify-between gap-2">
                       <span>{ETIQUETA_METRICA[c.metrica] ?? c.metrica}</span>
@@ -401,13 +398,13 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
             <div>
               <h3 className="text-sm font-medium mb-1">Últimos eventos de costo</h3>
               {eventosError ? (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {eventosError}
                 </p>
               ) : eventos === null ? (
-                <p className="text-[13px] text-muted-foreground">Cargando…</p>
+                <p className="text-sm text-muted-foreground">Cargando…</p>
               ) : eventos.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">Sin eventos de voz, WhatsApp o telefonía registrados todavía. El costo de LLM sale de su propio agregado diario.</p>
+                <p className="text-sm text-muted-foreground">Sin eventos de voz, WhatsApp o telefonía registrados todavía. El costo de LLM sale de su propio agregado diario.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
@@ -442,7 +439,7 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
             </div>
           </div>
         )}
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+    </PageContainer>
   );
 }

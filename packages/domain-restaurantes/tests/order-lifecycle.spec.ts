@@ -20,8 +20,8 @@ import { buildRestaurantFixture } from "./fixtures.ts";
 import type { CreateOrderInput } from "../src/types.ts";
 
 describe("isOrderStatus / ORDER_STATUSES", () => {
-  it("reconoce exactamente los 9 valores de orders.status (7 de migrations/001 + 2 de recoger de la 031) — nunca inventa uno nuevo", () => {
-    expect(ORDER_STATUSES).toEqual(["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido"]);
+  it("reconoce exactamente los 10 valores de orders.status (7 de migrations/001 + 2 de recoger de la 031 + programado de la 034) — nunca inventa uno nuevo", () => {
+    expect(ORDER_STATUSES).toEqual(["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido", "programado"]);
     expect(isOrderStatus("pending")).toBe(true);
     expect(isOrderStatus("listo")).toBe(false); // status inventado, nunca válido
   });

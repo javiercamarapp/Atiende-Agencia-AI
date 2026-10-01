@@ -10,37 +10,8 @@
 // para ejecutarlo. Sin librerías nuevas.
 import { useCallback, useEffect, useState } from "react";
 import { Clock, RefreshCw } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  toast,
-} from "@atiende/ui";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList, TabsTrigger, statusTone, toast } from "@atiende/ui";
+import { ACCION_ESTADO_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type IntentEstado = "pending" | "executed" | "failed" | "expired" | "cancelled";
@@ -100,11 +71,8 @@ const TIPO_LABEL: Record<IntentTipo, string> = {
 };
 
 function BadgeEstado({ estado }: { readonly estado: IntentEstado }) {
-  if (estado === "executed") return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">ejecutado</Badge>;
-  if (estado === "failed") return <Badge variant="destructive">falló</Badge>;
-  if (estado === "expired") return <Badge variant="secondary">vencido</Badge>;
-  if (estado === "cancelled") return <Badge variant="outline">cancelado</Badge>;
-  return <Badge variant="outline">pendiente</Badge>;
+  const etiqueta = estado === "executed" ? "ejecutado" : estado === "failed" ? "falló" : estado === "expired" ? "vencido" : estado === "cancelled" ? "cancelado" : "pendiente";
+  return <StatusBadge tone={statusTone(ACCION_ESTADO_TONES, estado)}>{etiqueta}</StatusBadge>;
 }
 
 export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
@@ -203,7 +171,7 @@ export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBase
   const historial = [...intents].filter((i) => i.estado !== "pending").sort((a, b) => b.creadoEn.localeCompare(a.creadoEn));
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Acciones</h1>
@@ -216,7 +184,7 @@ export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBase
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -268,9 +236,9 @@ export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBase
                   <CardContent className="pt-6 flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="flex-1 min-w-0">
-                        <Badge variant="outline" className="mb-2">
+                        <StatusBadge tone="neutral" dot={false} className="mb-2">
                           {TIPO_LABEL[i.tipo]}
-                        </Badge>
+                        </StatusBadge>
                         <p className="text-sm text-foreground">{i.resumen}</p>
                       </div>
                       <div className={`flex items-center gap-1 text-xs shrink-0 ${vencido ? "text-destructive font-medium" : "text-muted-foreground"}`}>
@@ -385,6 +353,6 @@ export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBase
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }
