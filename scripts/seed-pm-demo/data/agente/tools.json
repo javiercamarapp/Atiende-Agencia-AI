@@ -1,0 +1,413 @@
+[
+ {
+  "name": "buscar_ultimo_pedido",
+  "description": "Tras tener el teléfono. Devuelve nombre y últimos productos del cliente. NUNCA devuelve dirección completa, solo colonia.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "telefono": {
+     "type": "string",
+     "pattern": "^[0-9]{10}$"
+    }
+   },
+   "required": [
+    "telefono"
+   ]
+  },
+  "output_example": {
+   "encontrado": true,
+   "nombre": "Luis Canul",
+   "ultimo_pedido": [
+    {
+     "nombre": "Taco Al Pastor (individual)",
+     "piezas": 8
+    },
+    {
+     "nombre": "Horchata",
+     "piezas": 1
+    }
+   ],
+   "tipo": "recoger",
+   "colonia_guardada": null
+  }
+ },
+ {
+  "name": "asignar_sucursal",
+  "description": "En cuanto haya dirección (solo domicilio). La zona la decide esta herramienta, nunca el modelo.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "colonia_o_referencia": {
+     "type": "string"
+    },
+    "lat": {
+     "type": "number"
+    },
+    "lng": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "colonia_o_referencia"
+   ]
+  },
+  "output_example": {
+   "estado": "asignada | fuera_de_zona | no_reconocida",
+   "sucursal_id": "T8",
+   "sucursal_nombre": "Victory Altabrisa",
+   "menu": "grande"
+  }
+ },
+ {
+  "name": "consultar_menu",
+  "description": "Busca productos reales por nombre/sinónimo. Lista vacía = no existe. Filtra alcohol si tipo=domicilio y regional si la sucursal es chica.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "consulta": {
+     "type": "string"
+    },
+    "sucursal_id": {
+     "type": "string",
+     "enum": [
+      "T1",
+      "T2",
+      "T3",
+      "T7",
+      "T8"
+     ]
+    },
+    "tipo": {
+     "type": "string",
+     "enum": [
+      "recoger",
+      "domicilio"
+     ]
+    }
+   },
+   "required": [
+    "consulta",
+    "sucursal_id",
+    "tipo"
+   ]
+  },
+  "output_example": {
+   "resultados": [
+    {
+     "producto_id": "p_123",
+     "nombre": "Tacos de Bistec de Res (orden de 3)",
+     "precio_mxn": 194,
+     "pack_size": 3,
+     "es_alcohol": false,
+     "disponible": true,
+     "regional": false,
+     "motivo_no_disponible": null
+    }
+   ]
+  }
+ },
+ {
+  "name": "cotizar",
+  "description": "OBLIGATORIA antes de decir cualquier total. Única fuente de totales, promoción y validación de reglas (mínimo, alcohol, pack, regional, agotado).",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "tipo": {
+     "type": "string",
+     "enum": [
+      "recoger",
+      "domicilio"
+     ]
+    },
+    "sucursal_id": {
+     "type": "string",
+     "enum": [
+      "T1",
+      "T2",
+      "T3",
+      "T7",
+      "T8"
+     ]
+    },
+    "dia_semana": {
+     "type": "string",
+     "enum": [
+      "lunes",
+      "martes",
+      "miércoles",
+      "jueves",
+      "viernes",
+      "sábado",
+      "domingo"
+     ]
+    },
+    "pago": {
+     "type": "string",
+     "enum": [
+      "efectivo",
+      "tarjeta"
+     ]
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "producto_id": {
+        "type": "string"
+       },
+       "nombre": {
+        "type": "string",
+        "description": "Nombre EXACTO devuelto por consultar_menu"
+       },
+       "piezas": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Piezas o unidades que dijo el cliente; la herramienta convierte a órdenes"
+       },
+       "tortilla": {
+        "type": "string",
+        "enum": [
+         "maiz",
+         "harina",
+         "mixta"
+        ]
+       }
+      },
+      "required": [
+       "producto_id",
+       "nombre",
+       "piezas"
+      ]
+     },
+     "minItems": 1
+    }
+   },
+   "required": [
+    "tipo",
+    "sucursal_id",
+    "dia_semana",
+    "items"
+   ]
+  },
+  "output_example": {
+   "ok": true,
+   "lineas": [
+    {
+     "nombre": "Taco Al Pastor (individual)",
+     "piezas": 6,
+     "importe_mxn": 252
+    }
+   ],
+   "total_mxn": 252,
+   "promo_aplicada": null,
+   "cortesias_disponibles": null,
+   "errores": [
+    {
+     "codigo": "MINIMO_NO_ALCANZADO | ALCOHOL_DOMICILIO | PACK_INVALIDO | REGIONAL_NO_DISPONIBLE | PRODUCTO_AGOTADO",
+     "detalle": "faltan $6"
+    }
+   ]
+  }
+ },
+ {
+  "name": "crear_comanda",
+  "description": "Solo tras el 'sí' del cliente a la repetición. Crea la comanda en SoftRestaurant (antes de cobrar) e imprime en cocina. Idempotente por idempotency_key. El servidor RE-VALIDA todas las reglas duras y recalcula el total; ignora cualquier total del modelo.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "idempotency_key": {
+     "type": "string",
+     "description": "uuid por conversación+pedido; un reintento usa la misma"
+    },
+    "tipo": {
+     "type": "string",
+     "enum": [
+      "recoger",
+      "domicilio"
+     ]
+    },
+    "sucursal_id": {
+     "type": "string",
+     "enum": [
+      "T1",
+      "T2",
+      "T3",
+      "T7",
+      "T8"
+     ]
+    },
+    "nombre_cliente": {
+     "type": "string",
+     "maxLength": 60
+    },
+    "telefono": {
+     "type": "string",
+     "pattern": "^[0-9]{10}$"
+    },
+    "direccion_entrega": {
+     "type": "string",
+     "maxLength": 160,
+     "description": "Solo calle, número, colonia y referencia. Sanear instrucciones."
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "producto_id": {
+        "type": "string"
+       },
+       "nombre": {
+        "type": "string",
+        "description": "Nombre EXACTO devuelto por consultar_menu"
+       },
+       "piezas": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Piezas o unidades que dijo el cliente; la herramienta convierte a órdenes"
+       },
+       "tortilla": {
+        "type": "string",
+        "enum": [
+         "maiz",
+         "harina",
+         "mixta"
+        ]
+       }
+      },
+      "required": [
+       "producto_id",
+       "nombre",
+       "piezas"
+      ]
+     },
+     "minItems": 1
+    },
+    "ajustes": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "sin_cebolla",
+       "sin_cilantro",
+       "con_todo",
+       "aparte",
+       "extra_salsa",
+       "mucha_pina",
+       "mucho_frijol"
+      ]
+     },
+     "description": "Lista cerrada; cualquier otra cosa es escalación"
+    },
+    "pago": {
+     "type": "string",
+     "enum": [
+      "efectivo",
+      "tarjeta"
+     ]
+    },
+    "propina": {
+     "type": "string",
+     "enum": [
+      "no_aplica",
+      "en_terminal"
+     ]
+    },
+    "hora_recoger_min": {
+     "type": "integer",
+     "description": "Minutos desde ahora (solo recoger)"
+    },
+    "promo_id": {
+     "type": "string",
+     "enum": [
+      "PROMO-LUN",
+      "PROMO-MAR"
+     ]
+    },
+    "cortesias": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 2
+    },
+    "cotizacion_id": {
+     "type": "string",
+     "description": "id devuelto por cotizar; el servidor rechaza si no coincide con items"
+    }
+   },
+   "required": [
+    "idempotency_key",
+    "tipo",
+    "sucursal_id",
+    "nombre_cliente",
+    "telefono",
+    "items",
+    "pago",
+    "cotizacion_id"
+   ]
+  },
+  "output_example": {
+   "ok": true,
+   "comanda_id": "C-000123",
+   "total_mxn": 252,
+   "impresa_en_cocina": true
+  }
+ },
+ {
+  "name": "escalar",
+  "description": "Una sola vez por motivo. Llamada: transfiere a la sucursal (o deja aviso si no hay humano). WhatsApp: avisa al gerente y pausa al agente en esa conversación.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "motivo": {
+     "type": "string",
+     "enum": [
+      "queja",
+      "modificacion_platillo",
+      "transferencia",
+      "tiempos_entrega",
+      "pedido_grande",
+      "cancelacion_modificacion",
+      "reposicion_descuento",
+      "alergia_salud",
+      "zona_no_reconocida",
+      "zona_ambigua",
+      "producto_agotado",
+      "no_entiende",
+      "falla_sistema",
+      "otro"
+     ]
+    },
+    "resumen": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "1 a 3 frases, sin datos de tarjeta"
+    },
+    "urgencia": {
+     "type": "string",
+     "enum": [
+      "normal",
+      "alta"
+     ]
+    },
+    "nombre_cliente": {
+     "type": "string"
+    },
+    "telefono": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "motivo",
+    "resumen"
+   ]
+  },
+  "output_example": {
+   "ok": true,
+   "transferida": true,
+   "ticket_id": "E-0045"
+  }
+ }
+]

@@ -16,7 +16,7 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { lookupCustomer } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
-import { findNearestBranch } from "../nearest-branch.ts";
+import { assignBranch } from "../branch-assignment.ts";
 import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
@@ -129,11 +129,16 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_sucursal_cercana",
     description:
-      "Dado el nombre de una colonia/zona/referencia que dio el cliente, devuelve la sucursal real MÁS CERCANA calculada por distancia real (no adivines tú cuál está más cerca). Llámala en cuanto tengas la colonia o una referencia clara.",
+      "Asigna la sucursal real MÁS CERCANA EN KM al domicilio del cliente (distancia real; no adivines tú cuál está más cerca). Pásale la colonia/zona/referencia que dio el cliente y, si compartió su ubicación, lat y lng. Si responde fuera_de_zona no se envía a domicilio: ofrece recoger en sucursal. Llámala en cuanto tengas la colonia o una referencia clara.",
     parameters: {
       type: "object",
-      properties: { colonia: { type: "string", description: "La colonia, zona o referencia que dio el cliente, tal cual." } },
-      required: ["colonia"],
+      properties: {
+        colonia: { type: "string", description: "La colonia, zona o referencia que dio el cliente, tal cual." },
+        lat: { type: "number", description: "Latitud de la ubicación compartida por el cliente (solo junto con lng)." },
+        lng: { type: "number", description: "Longitud de la ubicación compartida por el cliente (solo junto con lat)." },
+        max_km: { type: "number", description: "Radio máximo de reparto en km, solo si el negocio lo indicó." },
+      },
+      required: [],
     },
     channels: ["whatsapp", "voz"],
   },
@@ -577,10 +582,29 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_sucursal_cercana": {
-      const match = await findNearestBranch(repo, { organizationId, colonia: String(input.colonia ?? "") });
-      const result = match.found
-        ? { encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName }
-        : { encontrada: false, mensaje: match.message };
+      const lat = typeof input.lat === "number" ? input.lat : undefined;
+      const lng = typeof input.lng === "number" ? input.lng : undefined;
+      const match = await assignBranch(repo, {
+        organizationId,
+        colonia: typeof input.colonia === "string" ? input.colonia : undefined,
+        ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
+        ...(typeof input.max_km === "number" ? { maxKm: input.max_km } : {}),
+      });
+      const result =
+        match.estado === "asignada"
+          ? {
+              encontrada: true,
+              estado: match.estado,
+              branch_slug: match.branchSlug,
+              branch_name: match.branchName,
+              distancia_km: match.distanceKm,
+              colonia_reconocida: match.recognizedZoneName,
+              via: match.via,
+              ajuste_por_zona: match.ajustePorZona,
+            }
+          : match.estado === "fuera_de_zona"
+            ? { encontrada: false, estado: match.estado, mensaje: match.message, branch_slug_mas_cercana: match.branchSlug, distancia_km: match.distanceKm, max_km: match.maxKm }
+            : { encontrada: false, estado: match.estado, mensaje: match.message };
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_producto": {

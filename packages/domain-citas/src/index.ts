@@ -232,3 +232,34 @@ export { enqueueAppointmentEmailCore, tryEnqueueAppointmentEmail } from "./appoi
 export type { AppointmentEmailEvent, AppointmentEmailExtra, AppointmentEmailResult } from "./appointment-email-notifications.ts";
 export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
+
+// C-02 -- derechos ARCO (migrations/024_citas_data_rights.sql).
+export {
+  ARCO_MENU_REPLY,
+  ARCO_THIRD_PARTY_REPLY,
+  DATA_RIGHT_LABEL,
+  DATA_RIGHT_OPEN_STATUSES,
+  DATA_RIGHT_STAFF_TARGET_STATUSES,
+  DATA_RIGHT_STATUSES,
+  DATA_RIGHT_TYPES,
+  DATA_RIGHTS_EXECUTION_DAYS,
+  DATA_RIGHTS_RESPONSE_DAYS,
+  dataRightsDeadlineState,
+  dataRightsFolio,
+} from "./data-rights.ts";
+export type {
+  ConfirmDataRightsOutcome,
+  DataRightsDeadlineState,
+  DataRightsEventRow,
+  DataRightsPaginacion,
+  DataRightsRequestRow,
+  DataRightsRequestsFiltro,
+  DataRightsRequestsPage,
+  DataRightStaffTargetStatus,
+  DataRightStatus,
+  DataRightType,
+  RegisterDataRightsOutcome,
+  UpdateDataRightsStatusResult,
+} from "./data-rights.ts";
+export { detectArcoConfirmation, detectArcoIntent, normalizeArcoText, runArcoFastPath } from "./arco-intent.ts";
+export type { ArcoConfirmationIntent, ArcoFastPathResult, ArcoIntent } from "./arco-intent.ts";

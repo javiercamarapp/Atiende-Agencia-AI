@@ -15,7 +15,8 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { MANAGER_ROLES, normalizePromotionCode, PROMOTION_CODE_PATTERN } from "@atiende/domain-restaurantes";
-import type { Promotion, PromotionType } from "@atiende/domain-restaurantes";
+import type { CanalPedido, Promotion, PromotionType, RestaurantesRepository } from "@atiende/domain-restaurantes";
+import { UUID_PATTERN } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -51,8 +52,8 @@ function optionalNullableString(value: unknown, field: string, maxLength: number
 }
 
 function requireType(value: unknown): PromotionType {
-  if (value !== "percentage" && value !== "fixed") {
-    throw Errors.validation('type: se esperaba "percentage" o "fixed".');
+  if (value !== "percentage" && value !== "fixed" && value !== "bogo") {
+    throw Errors.validation('type: se esperaba "percentage", "fixed" o "bogo" (2x1).');
   }
   return value;
 }
@@ -61,6 +62,11 @@ function requireType(value: unknown): PromotionType {
  * (mismo CHECK que migrations/010), un fijo no tiene techo aquí (lo acota el total
  * real del pedido en promotions.ts::computePromotionDiscount, nunca aquí). */
 function requireValue(value: unknown, type: PromotionType): number {
+  // 2x1: el valor no se usa; la tabla exige value = 1 (migracion 027). Se acepta omitido o 1.
+  if (type === "bogo") {
+    if (value !== undefined && value !== 1) throw Errors.validation("value: un 2x1 (bogo) no lleva valor; omítalo o envíe 1.");
+    return 1;
+  }
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     throw Errors.validation("value: se esperaba un número > 0.");
   }
@@ -115,6 +121,32 @@ function optionalNullableDaysOfWeek(value: unknown): readonly number[] | null | 
   return [...new Set(value as number[])].sort((a, b) => a - b);
 }
 
+const CANALES_VALIDOS: readonly CanalPedido[] = ["domicilio", "recoger"];
+
+function optionalNullableChannels(value: unknown): readonly CanalPedido[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.some((v) => !CANALES_VALIDOS.includes(v as CanalPedido))) {
+    throw Errors.validation('channels: se esperaba un arreglo no vacío con "domicilio" y/o "recoger", o null (todos los canales).');
+  }
+  return [...new Set(value as CanalPedido[])].sort();
+}
+
+/** Ids de producto elegibles: UUID válidos, máximo 50 y TODOS de esta organización (el arreglo de la
+ * base no tiene FK, así que la pertenencia se comprueba aquí). */
+async function optionalNullableProductIds(value: unknown, repo: RestaurantesRepository, organizationId: string): Promise<readonly string[] | null | undefined> {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50 || value.some((v) => typeof v !== "string" || !UUID_PATTERN.test(v))) {
+    throw Errors.validation("productIds: se esperaba un arreglo de 1 a 50 ids de producto (UUID) o null (todos los productos).");
+  }
+  const ids = [...new Set(value as string[])];
+  for (const id of ids) {
+    if (!(await repo.findProduct(organizationId, id))) throw Errors.validation(`productIds: el producto ${id} no existe en esta organización.`);
+  }
+  return ids;
+}
+
 function serializePromotion(p: Promotion) {
   return {
     id: p.id,
@@ -132,6 +164,8 @@ function serializePromotion(p: Promotion) {
     maxUses: p.maxUses,
     timesUsed: p.timesUsed,
     isActive: p.isActive,
+    channels: p.channels,
+    productIds: p.productIds,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -151,6 +185,8 @@ interface PromotionBody {
   readonly endTime?: unknown;
   readonly maxUses?: unknown;
   readonly isActive?: unknown;
+  readonly channels?: unknown;
+  readonly productIds?: unknown;
 }
 
 export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -185,6 +221,8 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     const endTime = optionalNullableTime(raw.endTime, "endTime");
     const maxUses = optionalNullablePositiveInt(raw.maxUses, "maxUses");
     const isActive = raw.isActive === undefined ? undefined : Boolean(raw.isActive);
+    const channels = optionalNullableChannels(raw.channels);
+    const productIds = await optionalNullableProductIds(raw.productIds, repo, c.get("organizationId"));
 
     const existing = await repo.listPromotions(c.get("organizationId"));
     if (existing.some((p) => p.code === code)) {
@@ -205,6 +243,8 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       ...(endTime !== undefined ? { endTime } : {}),
       ...(maxUses !== undefined ? { maxUses } : {}),
       ...(isActive !== undefined ? { isActive } : {}),
+      ...(channels !== undefined ? { channels } : {}),
+      ...(productIds !== undefined ? { productIds } : {}),
     });
     logEvent(c, "info", "restaurantes_admin_promocion_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), promotionId: created.id, code });
 
@@ -217,9 +257,9 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       action: "promocion.creada",
       entityType: "promocion",
       entityId: created.id,
-      campo: "code,type,value,isActive",
+      campo: "code,type,value,isActive,channels,productIds",
       antes: null,
-      despues: `${created.code} (${created.type} ${created.value}${created.type === "percentage" ? "%" : ""}, activa=${created.isActive})`,
+      despues: `${created.code} (${created.type} ${created.value}${created.type === "percentage" ? "%" : ""}, activa=${created.isActive}, canales=${created.channels?.join("|") ?? "todos"}, productos=${created.productIds?.length ?? "todos"})`,
     });
 
     return c.json({ promotion: serializePromotion(created) }, 201);
@@ -243,7 +283,11 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       }
     }
     const type = raw.type !== undefined ? requireType(raw.type) : undefined;
-    const value = raw.value !== undefined ? requireValue(raw.value, type ?? existing.type) : undefined;
+    // Cambiar el tipo sin mandar el valor dejaría el valor del tipo anterior (p. ej. 1 de un 2x1 como 1%).
+    if (type !== undefined && type !== existing.type && type !== "bogo" && raw.value === undefined) {
+      throw Errors.validation("value: al cambiar el tipo de la promoción envíe también el valor.");
+    }
+    const value = raw.value !== undefined || type === "bogo" ? requireValue(raw.value, type ?? existing.type) : undefined;
     const startsAt = optionalNullableIsoDate(raw.startsAt, "startsAt");
     const endsAt = optionalNullableIsoDate(raw.endsAt, "endsAt");
     const effectiveStartsAt = startsAt !== undefined ? startsAt : existing.startsAt;
@@ -266,6 +310,8 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       endTime: optionalNullableTime(raw.endTime, "endTime"),
       maxUses: optionalNullablePositiveInt(raw.maxUses, "maxUses"),
       isActive: raw.isActive === undefined ? undefined : Boolean(raw.isActive),
+      channels: optionalNullableChannels(raw.channels),
+      productIds: await optionalNullableProductIds(raw.productIds, repo, organizationId),
     };
     const updated = await repo.updatePromotion(organizationId, promotionId, patch);
     if (!updated) throw Errors.notFound("Promoción no encontrada.");
