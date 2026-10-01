@@ -170,6 +170,7 @@ export {
   computeCustomerKpis,
 } from "./kpis.ts";
 export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+export * from "./voz/index.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,

@@ -17,6 +17,8 @@
 import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import type { EstadoFeedCanal } from "./cuarentena.ts";
+import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo } from "./lease.ts";
+import type { FeedMonitorRecord, ListadoBitacora, ListadoConflictos, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 export interface RentasCalendarSyncRepository {
@@ -88,6 +90,35 @@ export interface RentasCalendarSyncRepository {
    * INSERT ... ON CONFLICT multi-fila para TODOS los bloqueos exportados del ciclo,
    * en vez de un upsert por bloqueo. Sin efecto si `entradas` viene vacío. */
   upsertBloqueosExportadosBatch(organizationId: string, propertyId: string, canalId: string, entradas: readonly EntradaUpsertBloqueoExportado[]): Promise<void>;
+
+  // ---- Rn-01: claim/lease por feed, backoff y bitácora (migrations/024) ----
+  // Los tres métodos de abajo son de SOLO SISTEMA (sesión con auth.uid() NULL, la del
+  // cron) y cada uno debe correr en SU PROPIA transacción corta: ninguno depende de los
+  // demás. Todos degradan sin lanzar contra una base sin la migración 024 (SAVEPOINT +
+  // SQLSTATE 42883/42P01/42703): `reclamarFeeds` devuelve `disponible: false`, los otros
+  // dos devuelven `false`.
+  /** Reclama hasta `limite` feeds activos con lease libre, fuera de backoff y fuera del
+   * piso de espaciamiento. Dos llamadas concurrentes nunca reciben el mismo feed. */
+  reclamarFeeds(opciones: OpcionesReclamo): Promise<ResultadoReclamo>;
+  /** Libera el lease con el token vigente; tras `exito: false` fija el backoff por feed.
+   * `false` si el token ya no es el vigente o la base no tiene la migración. */
+  liberarFeed(feedId: string, leaseToken: string, exito: boolean): Promise<boolean>;
+  /** Registra un evento de bitácora/alerta. `false` si la base no tiene la migración. */
+  registrarEventoBitacora(feedId: string, evento: EventoBitacora): Promise<boolean>;
+  /** Reinicia el backoff de un feed (se llama al reconectarlo con otra URL). Best-effort. */
+  reiniciarBackoffFeed(feedId: string): Promise<void>;
+
+  // ---- Rn-01/Rn-02: lecturas y acciones del monitor (staff, sesión por request) ----
+  /** Estado de TODOS los feeds de la property. Contra una base sin 024, sin las columnas
+   * de lease/backoff (quedan en null). */
+  listarFeedsMonitor(propertyId: string): Promise<FeedMonitorRecord[]>;
+  listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos>;
+  /** Marca un conflicto abierto como resuelto a nombre de `actorUserId`. `no_encontrado`
+   * si no existe/ya estaba resuelto/es de otra property; `no_disponible` si la base no
+   * tiene la migración 024 (aún no existe el UPDATE de staff). */
+  resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto>;
+  listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora>;
+  atenderAlerta(propertyId: string, alertaId: string, actorUserId: string): Promise<ResultadoMarcarResuelto>;
 }
 
 export type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";

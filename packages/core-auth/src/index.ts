@@ -57,3 +57,19 @@ export {
   buildAuthorizationUrl,
   GoogleOAuthError,
 } from "./google-oauth.ts";
+
+export {
+  BACKUP_CODE_COUNT,
+  computeTotp,
+  totpTimeStep,
+  verifyStaffTotp,
+  buildOtpAuthUrl,
+  generateBackupCodes,
+  normalizeBackupCode,
+  hashBackupCode,
+  encryptStaffTotpSecret,
+  decryptStaffTotpSecret,
+} from "./staff-totp.ts";
+
+export type { StepUpScope, StepUpClaims } from "./step-up.ts";
+export { STEP_UP_TTL_SECONDS, signContractStepUpToken, verifyContractStepUpToken } from "./step-up.ts";

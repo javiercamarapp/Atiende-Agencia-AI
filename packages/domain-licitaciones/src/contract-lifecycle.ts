@@ -81,16 +81,24 @@ export const CONTRACT_ALERT_STATES: readonly ContractStatus[] = ["penalizado", "
 /**
  * Transiciones que representan una decisión económica/legal sensible
  * (rescindir, penalizar, marcar en inconformidad, o registrar una
- * modificación): el origen las protegía con verificación en dos pasos
- * (step-up/2FA, `lib/step-up.ts`); este monorepo fusionado todavía no tiene
- * esa infraestructura para ningún vertical (ver
- * `apps/api/src/routes/verticals/licitaciones/README.md`) — el equivalente
- * de esta fase es exigir `DECISION_ROLES` (más estricto que `WRITE_ROLES`,
- * excluye "writer"/"reviewer") en vez de solo `WRITE_ROLES` para estas
- * transiciones puntuales (ver `contracts.ts`), documentado honestamente como
- * un control más débil que 2FA real hasta que exista step-up en este repo.
+ * modificación): exigen `DECISION_ROLES` (más estricto que `WRITE_ROLES`,
+ * excluye "writer"/"reviewer") en vez de solo `WRITE_ROLES` (ver
+ * `contracts.ts`). Desde L-01 ADEMÁS exigen step-up (segundo factor TOTP
+ * reciente) cuando la base ya tiene la migración de 2FA -- ver
+ * `CONTRACT_STEP_UP_TRANSITIONS` justo abajo; el control por rol queda como
+ * primera capa y como único control con la base sin migrar.
  */
 export const CONTRACT_DECISION_TRANSITIONS: readonly ContractStatus[] = ["rescindido", "penalizado", "en_inconformidad", "modificado"];
+
+/**
+ * Transiciones que ADEMÁS exigen step-up (segundo factor TOTP reciente) cuando la base
+ * ya tiene la migración de 2FA (`packages/db/migrations/0026_staff_totp_stepup_reset.sql`):
+ * las decisiones económicas/legales de `CONTRACT_DECISION_TRANSITIONS` más marcar el pago
+ * (`pagado`), que cierra la cobranza. El control de rol (`DECISION_ROLES`/`WRITE_ROLES`)
+ * se mantiene como primera capa; el step-up es la segunda. Con la base sin migrar, el
+ * llamador cae al control solo por rol (ver `apps/api/.../contracts.ts`).
+ */
+export const CONTRACT_STEP_UP_TRANSITIONS: readonly ContractStatus[] = [...CONTRACT_DECISION_TRANSITIONS, "pagado"];
 
 export function isContractStatus(value: unknown): value is ContractStatus {
   return typeof value === "string" && (CONTRACT_STATES as readonly string[]).includes(value);

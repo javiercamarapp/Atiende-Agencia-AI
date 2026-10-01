@@ -157,6 +157,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["SW_API_TOKEN", "SW_CSD_CERT_PATH", "SW_CSD_KEY_PATH", "SW_CSD_PASSWORD", "SW_WEBHOOK_SECRET"],
   },
 
+  // ---- Voz de restaurantes (Gemini 3.8 Live) ----
+  {
+    id: "voz-gemini-live",
+    nombre: "Voz de restaurantes — Gemini 3.8 Live (preview del panel)",
+    habilita:
+      "Emisión de la sesión de preview de voz del panel (POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion): GEMINI_API_KEY pide a Gemini un token efímero de un solo uso (la llave nunca sale del servidor) y VOICE_PREVIEW_TOKEN_SECRET (mínimo 16 caracteres, lo generas tú) firma el token propio ligado a organización+sucursal+sesión. Sin cualquiera de las dos, la ruta responde 503 \"voz no configurada\" (nunca un falso éxito); la configuración de voz y las conversaciones siguen disponibles.",
+    variables: ["GEMINI_API_KEY", "VOICE_PREVIEW_TOKEN_SECRET"],
+  },
+
   // ---- Proveedores LLM ----
   {
     id: "llm-anthropic",

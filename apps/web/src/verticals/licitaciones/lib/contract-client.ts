@@ -161,13 +161,17 @@ export async function transitionContract(
   token: string,
   propertyId: string,
   tenderId: string,
-  input: { toStatus: ContractStatus; reason: string; evidenceRef?: string | null },
+  input: { toStatus: ContractStatus; reason: string; evidenceRef?: string | null; stepUpToken?: string | null },
 ): Promise<ContractRecord> {
-  return postJson<ContractRecord>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/contract/transition`, token, {
-    toStatus: input.toStatus,
-    reason: input.reason,
-    evidenceRef: input.evidenceRef ?? null,
-  });
+  // L-01: si el usuario acaba de pasar un segundo factor (`POST /auth/step-up`), el token viaja en
+  // `X-Step-Up-Token`; el servidor decide si lo exige (solo transiciones sensibles y base migrada).
+  return postJson<ContractRecord>(
+    fetchImpl,
+    `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/contract/transition`,
+    token,
+    { toStatus: input.toStatus, reason: input.reason, evidenceRef: input.evidenceRef ?? null },
+    input.stepUpToken ? { "x-step-up-token": input.stepUpToken } : {},
+  );
 }
 
 export type ContractFieldKey =

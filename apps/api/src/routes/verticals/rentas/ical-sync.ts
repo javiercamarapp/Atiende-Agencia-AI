@@ -78,6 +78,9 @@ export function rentasIcalSyncRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const syncRepo = deps.rentasCalendarSyncRepo(c.get("db"));
     const resultado = await syncRepo.connectFeed({ organizationId, propertyId, unidadId, canalId: canal.id, urlImportacion });
+    // Rn-01 -- reconectar con otra URL reinicia el backoff por feed fallido (best-effort,
+    // con SAVEPOINT: contra una base sin la migración 024 es un no-op).
+    await syncRepo.reiniciarBackoffFeed(resultado.id);
 
     // r5 -- bitácora de auditoría (conexión de canal iCal). `deps.rentasRepo` sobre
     // el MISMO `db` de la request -- misma transacción compartida que la escritura de
