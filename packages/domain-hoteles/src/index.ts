@@ -515,3 +515,4 @@ export { enqueueGuestEmailCore, tryEnqueueGuestEmail } from "./guest-email-notif
 export type { GuestEmailEvent, GuestEmailExtra, GuestEmailFolioExtra, GuestEmailCfdiExtra, GuestEmailResult } from "./guest-email-notifications.ts";
 export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
+export * from "./identity/index.ts";
