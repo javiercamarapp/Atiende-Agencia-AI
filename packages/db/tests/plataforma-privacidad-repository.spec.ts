@@ -141,6 +141,13 @@ describe("PostgresPlataformaPrivacidadRepository -- errores de negocio y mapeo",
     expect(s.calls.some((c) => /org_list_arco_requests/.test(c))).toBe(true);
   });
 
+  it("listPurgeTargets mapea los pares y degrada sin migrar", async () => {
+    const ok = new AbortAwareFakeSession([{ match: /core\.system_list_purge_targets/, respond: () => [{ out_organization_id: "o1", out_data_class: "restaurantes_voz_transcripciones" }] }]);
+    await expect(new PostgresPlataformaPrivacidadRepository(ok).listPurgeTargets(null, 10)).resolves.toEqual({ availability: "available", targets: [{ organizationId: "o1", dataClass: "restaurantes_voz_transcripciones" }] });
+    const missing = new AbortAwareFakeSession([{ match: /core\.system_list_purge_targets/, respond: () => pgError("42883", "function core.system_list_purge_targets(uuid, integer) does not exist") }]);
+    await expect(new PostgresPlataformaPrivacidadRepository(missing).listPurgeTargets(null, 10)).resolves.toEqual({ availability: "not_migrated", targets: [] });
+  });
+
   it("la purga devuelve el resultado con conteos y estado", async () => {
     const s = new AbortAwareFakeSession([{ match: /core\.system_run_retention_purge/, respond: () => [{ out_run_id: "run1", out_status: "bloqueada", out_retention_days: 180, out_rows_affected: 0, out_rows_anonymized: 0, out_rows_protected: 0 }] }]);
     await expect(new PostgresPlataformaPrivacidadRepository(s).runRetentionPurge(ORG, "restaurantes_whatsapp_conversaciones", false, 500)).resolves.toEqual({
@@ -205,6 +212,17 @@ describe("InMemoryPlataformaPrivacidadRepository -- misma semantica de acceso qu
       [2, true, 2],
       [1, false, 1],
     ]);
+  });
+
+  it("lista los objetivos de purga por paginas de organizaciones (cursor por id)", async () => {
+    const r = new InMemoryPlataformaPrivacidadRepository();
+    r.seedPurgeOrg("o3");
+    r.seedPurgeOrg("o1");
+    r.seedPurgeOrg("o2");
+    const p1 = await r.listPurgeTargets(null, 2);
+    expect(p1.targets.map((t) => t.organizationId)).toEqual(["o1", "o1", "o2", "o2"]);
+    const p2 = await r.listPurgeTargets("o2", 2);
+    expect(p2.targets.map((t) => `${t.organizationId}:${t.dataClass}`)).toEqual(["o3:restaurantes_whatsapp_conversaciones", "o3:restaurantes_voz_transcripciones"]);
   });
 
   it("migrado:false responde not_migrated en todo", async () => {

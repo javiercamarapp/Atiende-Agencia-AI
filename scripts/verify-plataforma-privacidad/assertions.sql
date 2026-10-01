@@ -655,6 +655,40 @@ begin;
 insert into core.purge_run_log (organization_id, data_class, status, blocked_reason) values ('00000000-0000-0000-0000-0000000f5a00', 'restaurantes_whatsapp_conversaciones', 'bloqueada', 'telefono +5215550000') returning 1 as should_fail;
 rollback;
 
+\echo 'E28. sistema lista los pares organizacion/clase de plataforma (2 organizaciones x 2 clases = 4)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as e28_deberia_ser_4 from core.system_list_purge_targets(null, 50);
+rollback;
+
+\echo 'E29. el cursor continua despues de la primera organizacion (2 pares)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as e29_deberia_ser_2 from core.system_list_purge_targets('00000000-0000-0000-0000-0000000f5a00', 50);
+rollback;
+
+\echo 'E29b. filtrar por una organizacion devuelve solo sus 2 pares'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as e29b_deberia_ser_2 from core.system_list_purge_targets(null, 50, '00000000-0000-0000-0000-0000000f5b00');
+rollback;
+
+\echo 'E30. un owner (staff) no lista objetivos de purga'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f5a01', true);
+select core.system_list_purge_targets(null, 50) as should_fail;
+rollback;
+
+\echo 'E31. anon no tiene EXECUTE sobre la lista de objetivos'
+begin;
+set local role anon;
+select core.system_list_purge_targets(null, 50) as should_fail;
+rollback;
+
 -- ═══ F) Aviso de privacidad versionado ═══
 \echo 'F1. owner A publica la version 1 y su aceptacion queda registrada'
 begin;
@@ -909,12 +943,12 @@ rollback;
 
 \echo 'G. todas las funciones nuevas son security definer con search_path fijo (las internas y el trigger sin search_path propio solo se cuentan si son definer)'
 begin;
-select count(*)::int as g_definer_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.proname = any(array['org_list_arco_requests','org_list_retention_policies','org_set_retention_policy','org_clear_retention_policy','org_place_purge_hold','org_release_purge_hold','org_list_purge_holds','org_list_purge_runs','org_publish_privacy_notice','org_accept_privacy_notice','org_list_privacy_notices','platform_list_arco_requests','platform_privacy_overview','platform_list_purge_runs','system_run_retention_purge','_privacy_is_org_admin','_privacy_is_platform_reader','_arco_union','_retention_effective','privacy_append_only_block_mutation']) and p.proname <> 'privacy_append_only_block_mutation' and (not p.prosecdef or p.proconfig is null or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'));
+select count(*)::int as g_definer_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.proname = any(array['org_list_arco_requests','org_list_retention_policies','org_set_retention_policy','org_clear_retention_policy','org_place_purge_hold','org_release_purge_hold','org_list_purge_holds','org_list_purge_runs','org_publish_privacy_notice','org_accept_privacy_notice','org_list_privacy_notices','platform_list_arco_requests','platform_privacy_overview','platform_list_purge_runs','system_run_retention_purge','system_list_purge_targets','_privacy_is_org_admin','_privacy_is_platform_reader','_arco_union','_retention_effective','privacy_append_only_block_mutation']) and p.proname <> 'privacy_append_only_block_mutation' and (not p.prosecdef or p.proconfig is null or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'));
 rollback;
 
 \echo 'G. ninguna funcion nueva es ejecutable por anon ni por public'
 begin;
-select count(*)::int as g_anon_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.proname = any(array['org_list_arco_requests','org_list_retention_policies','org_set_retention_policy','org_clear_retention_policy','org_place_purge_hold','org_release_purge_hold','org_list_purge_holds','org_list_purge_runs','org_publish_privacy_notice','org_accept_privacy_notice','org_list_privacy_notices','platform_list_arco_requests','platform_privacy_overview','platform_list_purge_runs','system_run_retention_purge','_privacy_is_org_admin','_privacy_is_platform_reader','_arco_union','_retention_effective','privacy_append_only_block_mutation']) and (has_function_privilege('anon', p.oid, 'execute') or exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'));
+select count(*)::int as g_anon_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.proname = any(array['org_list_arco_requests','org_list_retention_policies','org_set_retention_policy','org_clear_retention_policy','org_place_purge_hold','org_release_purge_hold','org_list_purge_holds','org_list_purge_runs','org_publish_privacy_notice','org_accept_privacy_notice','org_list_privacy_notices','platform_list_arco_requests','platform_privacy_overview','platform_list_purge_runs','system_run_retention_purge','system_list_purge_targets','_privacy_is_org_admin','_privacy_is_platform_reader','_arco_union','_retention_effective','privacy_append_only_block_mutation']) and (has_function_privilege('anon', p.oid, 'execute') or exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'));
 rollback;
 
 \echo 'G. las tablas nuevas tienen RLS habilitado'
