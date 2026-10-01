@@ -53,7 +53,6 @@ const entrada = (organizationId: string, contenido: string, extra: { propertyId?
   customer: { isNew: true as const },
   propertyId: extra.propertyId ?? null,
 });
-const COCA2 = [{ product_id: "", product_name: "Coca-Cola", requested_quantity: 2 }];
 
 // Tuteo en texto que LEE EL CLIENTE (el verificador de "usted" de las evals, aqui sobre las cadenas fijas del codigo).
 const TUTEO = /\b(?:t[úu]|tu|tus|tienes|puedes|quieres|necesitas|dime|dinos|p[íi]de|env[íi]a|m[áa]ndame|av[íi]same|comp[áa]rtenos|intenta|ll[áa]manos|te|ti|contigo)\b/i;
