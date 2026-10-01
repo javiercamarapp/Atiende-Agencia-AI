@@ -75,6 +75,7 @@ import {
   PostgresBreakGlassSessionRepository,
   PostgresRentasRepository,
   PostgresRentasCalendarSyncRepository,
+  PostgresRentasAccesoRepository,
   PostgresRentasReportesRepository,
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
@@ -412,6 +413,7 @@ export function buildProductionDeps(): AppDeps {
     // plataforma pendiente.
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
     rentasReportesRepo: (db) => new PostgresRentasReportesRepository(db),
+    rentasAccesoRepo: (db) => new PostgresRentasAccesoRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).
