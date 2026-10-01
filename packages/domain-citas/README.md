@@ -642,7 +642,7 @@ Qué hay:
   avisos sobre el outbox existente.
 - El recordatorio (`runConfirmacionCitaCore`) usa la anticipación (1-72 h), el horario de
   envío y el texto configurados; sin configuración es **idéntico al de antes** (24 h
-  +- 30 min, a cualquier hora, mismo texto). Fuera del horario la cita se deja
+  de anticipación, a cualquier hora, mismo texto; desde C-14 la ventana es `(ahora, ahora + 24 h]`, ver abajo). Fuera del horario la cita se deja
   pendiente y se envía al abrir el horario. Los avisos de confirmación, cancelación y
   reagendado nacen **apagados** y se encolan, si se encienden, al confirmar/cancelar
   desde el panel, al cancelar y reagendar por las rutas del agente (con secreto de herramienta).
@@ -658,6 +658,47 @@ del panel responden `disponible:false` y los guardados un 503.
 Límite conocido: WhatsApp exige una plantilla aprobada por Meta para escribir primero
 fuera de la ventana de 24 h (ver el comentario de `runConfirmacionCitaCore`); esa
 aprobación y el envío `type: "template"` siguen pendientes y no cambian con este PR.
+
+## C-14 -- el recordatorio de 24 h sale con cualquier cadencia de cron (sin migración)
+
+- Antes la ventana de candidatas era `ahora + 24 h +- 30 min`: con el cron diario de las 14:00 UTC solo
+  recibían aviso las citas que empiezan entre 13:30 y 14:30 UTC del día siguiente, y una cita
+  reservada con menos de 24 h de aviso no lo recibía nunca.
+- Ahora es `(ahora, ahora + reminderLeadHours]` (`ventanaDeRecordatorio`): cada cita entra a la ventana
+  cuando faltan `reminderLeadHours` y se queda hasta que empieza, así que ninguna cita queda entre dos
+  corridas, sea el cron diario o cada 30 min. El dedupe es `reminder_24h_sent_at` + la clave del outbox
+  (`reminder-24h:<id>` por canal), no la ventana. Es una ventana de instantes absolutos; la zona de la
+  sucursal decide la hora que se muestra y el horario de envío (`dentroDelHorarioDeEnvio`).
+- Una reserva de hace menos de 1 h espera a la siguiente corrida (`reservaMuyReciente`) para que el
+  aviso no llegue pegado a la propia reserva.
+- Con horario de envío y el cron DIARIO (14:00 UTC = 08:00 CDMX) las citas se saltan hasta que una corrida
+  caiga dentro del horario: el cron de cada 30 min es el que lo resuelve del todo.
+- Evento de notificación `citas.recordatorio_fallido` (`notification-events.ts`): el resumen devuelve
+  `failedReminderEvents` (cita aislada por un error real = `error_interno`; recordatorio activo sin ningún
+  canal = `sin_canal`), sin PII y con clave de dedupe por cita y motivo; la ruta del cron lo expone en
+  `notification_events`. El productor compartido de `core.notification` todavía no existe en main.
+- Pruebas: `tests/reminders-ventana-cron.spec.ts` (reloj simulado, tres zonas, cruce de medianoche UTC).
+
+## C-15 -- conectar el número de WhatsApp y la personalidad del agente (migración 028)
+
+- `migrations/028_citas_agente_whatsapp_config.sql` (espejo `supabase/migrations/20240101000256_028_citas_agente_whatsapp_config.sql`):
+  `citas.whatsapp_agent_config` (nombre, tono, bienvenida y hasta 5 reglas de una línea; lectura solo
+  owner/admin con SELECT por columna; sin GRANT de escritura), `citas.save_whatsapp_agent_config` (versión
+  optimista), `citas.whatsapp_agent_config_envio` (lectura para armar el prompt: sistema o miembro),
+  `citas.connect_whatsapp_number` / `citas.disconnect_whatsapp_number` (owner/admin; `AT410` si el número ya está
+  en otro negocio). `citas.whatsapp_config` pasa de "cualquier miembro escribe" a solo lectura para el staff.
+- `src/whatsapp/agent-config.ts` (puro): validación, diferencias y estado honesto de la conexión. El prompt
+  (`llm-turn-handler.ts::buildSystemPrompt`) usa nombre y tono en la presentación, la bienvenida tras el saludo
+  por hora y las reglas DESPUÉS de las reglas duras y de menor prioridad; sin personalidad es idéntico al de siempre.
+- API: `GET/PUT .../admin/whatsapp-agente`, `POST .../vista-previa` (solo lectura), `POST .../restablecer`,
+  `PUT/DELETE .../conexion` (solo owner/admin). Pantalla: "Agente de WhatsApp" en `apps/web`; el paso de onboarding
+  "Conecta tu número de WhatsApp" lleva ahí.
+- La conexión REGISTRA el número (el webhook rutea por él) pero no lo verifica con Meta: sin la credencial de envío
+  de la plataforma el estado es `sin_credenciales_de_envio` y la pantalla lo dice.
+- Verificación contra Postgres real: `scripts/verify-citas-agente-whatsapp/`.
+
+Base sin migrar: todos los métodos usan `runWithSavepointFallback`; sin la 028 el agente habla como siempre,
+la pantalla muestra "no disponible" y las escrituras responden 503.
 
 ## C-06 -- primeros pasos y puerta de la reserva pública (sin migración)
 

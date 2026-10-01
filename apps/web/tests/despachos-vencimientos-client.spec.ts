@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { calcularVencimientos, completarVencimiento, escalarVencimiento, fetchVencimientos } from "../src/verticals/despachos/lib/vencimientos-client.ts";
+import { barrerVencimientos, calcularVencimientos, completarVencimiento, escalarVencimiento, fetchVencimientos } from "../src/verticals/despachos/lib/vencimientos-client.ts";
 import type { FiscalDeadline } from "../src/verticals/despachos/lib/vencimientos-client.ts";
 
 const DEADLINE: FiscalDeadline = {
@@ -13,6 +13,8 @@ const DEADLINE: FiscalDeadline = {
   comprobanteUrl: null,
   diasRestantes: 5,
   creadoEn: "2026-03-01T00:00:00Z",
+  fundamento: "LISR art. 14; art. 12 CFF",
+  validarConFiscalista: false,
 };
 
 describe("fetchVencimientos", () => {
@@ -45,6 +47,29 @@ describe("calcularVencimientos", () => {
     }) as unknown as typeof fetch;
     const result = await calcularVencimientos(fetchImpl, "http://api.local", "tok", "prop-1", { year: 2026, month: 3 });
     expect(result).toEqual(nuevos);
+  });
+});
+
+describe("calcularVencimientos con régimen", () => {
+  it("manda regimenFiscal en el cuerpo cuando se elige uno", async () => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.body).toBe(JSON.stringify({ year: 2026, month: 3, regimenFiscal: "626" }));
+      return new Response(JSON.stringify([DEADLINE]), { status: 201 });
+    }) as unknown as typeof fetch;
+    await calcularVencimientos(fetchImpl, "http://api.local", "tok", "prop-1", { year: 2026, month: 3, regimenFiscal: "626" });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+});
+
+describe("barrerVencimientos", () => {
+  it("manda POST .../vencimientos/barrido y devuelve el resumen", async () => {
+    const resumen = { evaluados: 2, escalados: [{ id: "d1", tipo: "ISR", periodo: "2026-03", nivel: "nivel_4", correosEncolados: 1 }], yaEscalados: 0, aunNoToca: 1, fallidos: [] };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/despachos/prop-1/vencimientos/barrido");
+      expect(init?.method).toBe("POST");
+      return new Response(JSON.stringify(resumen), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await barrerVencimientos(fetchImpl, "http://api.local", "tok", "prop-1")).toEqual(resumen);
   });
 });
 

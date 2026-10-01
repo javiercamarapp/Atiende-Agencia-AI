@@ -79,7 +79,7 @@ describe("camino feliz de lectura", () => {
   it("mapea bigint como string a numero entero y null a null", async () => {
     const fila = {
       fecha: "2026-03-10", zona_horaria: "America/Mexico_City", llamadas: 4, llamadas_cerradas: 3, duracion_total_s: "1290", pedidos_voz: 1, escaladas: 1, abandonadas: 1,
-      errores_proveedor: 4, errores_elevenlabs: 2, errores_twilio: 1, errores_otros: 1, tool_calls: 20, tool_p95_ms: 950,
+      errores_proveedor: 4, errores_twilio: 1, errores_otros: 1, tool_calls: 20, tool_p95_ms: 950,
       costo_voz_micro_usd: "1500000", costo_telefonia_micro_usd: "500000", costo_total_centavos_mxn: "4000", costo_llm_org_micro_usd: null, costo_llm_org_centavos_mxn: null,
     };
     const s = new AbortAwareFakeSession([{ match: /voz_kpis_diarios/i, respond: () => [fila] }]);

@@ -16,6 +16,7 @@
 // guarda en claro: solo su sha256.
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
+import { emitirNotificacion } from "@atiende/db";
 import {
   VOZ_EVENTO_TIPOS,
   VOZ_PROVEEDORES,
@@ -144,6 +145,11 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       try {
         const cerrada = await repoDe(db).cerrarConversacion({ organizationId, conversationId, resultado: body.resultado as VozResultado, endedAt, orderId });
+        // Notificacion in-app (best-effort, dentro de un SAVEPOINT: nunca rompe el cierre ni la base sin migrar): una llamada que
+        // el agente paso a una persona es "algo nuevo que atender". Una sola vez por llamada (la clave es la conversacion).
+        if (cerrada && body.resultado === "escalado") {
+          await emitirNotificacion(db, { evento: "restaurantes.voz.llamada_escalada", organizationId, clave: conversationId, entidadTipo: "voz_conversacion", entidadId: conversationId });
+        }
         return c.json({ cerrada });
       } catch (err) {
         return mapErrorDeVoz(err);
@@ -199,6 +205,11 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
       if (!deps.vozKpiRepo) throw Errors.serviceUnavailable("Los KPI de voz no están disponibles en este despliegue.");
       try {
         await deps.vozKpiRepo(db).registrarEvento({ organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt });
+        // Un error del proveedor de voz avisa al owner/admin (best-effort, sin PII, una por sucursal por hora).
+        if (tipo === "error_proveedor") {
+          const hora = (ocurridoAt ?? new Date().toISOString()).replace(/\D/g, "").slice(0, 10);
+          await emitirNotificacion(db, { evento: "restaurantes.voz.proveedor_con_fallas", organizationId, propertyId, clave: `${propertyId}:${hora}` });
+        }
         return c.json({ registrado: true }, 201);
       } catch (err) {
         return mapErrorDeVoz(err);

@@ -1,7 +1,15 @@
 // Tipos del backend propio de voz de restaurantes (migracion 025).
-export type VozProveedorId = "gemini-3.8-live" | "gpt-live-1" | "elevenlabs-agents";
-export const VOZ_PROVEEDORES: readonly VozProveedorId[] = ["gemini-3.8-live", "gpt-live-1", "elevenlabs-agents"];
+// ElevenLabs se retiro del stack de PM (decision 1-oct-2026): la escalera es Gemini 3.8 Live -> gpt-live-1 -> humano/buzon
+// con callback. La migracion 025 conserva `elevenlabs-agents` en sus CHECK solo por filas historicas; la API ya no lo acepta
+// y `proveedorDeFila` lo normaliza.
+export type VozProveedorId = "gemini-3.8-live" | "gpt-live-1";
+export const VOZ_PROVEEDORES: readonly VozProveedorId[] = ["gemini-3.8-live", "gpt-live-1"];
 export const VOZ_PROVEEDOR_PRINCIPAL: VozProveedorId = "gemini-3.8-live";
+
+/** Proveedor de una fila de la base: un valor historico fuera de la escalera vigente (p. ej. `elevenlabs-agents`) cae al principal. */
+export function proveedorDeFila(valor: string): VozProveedorId {
+  return (VOZ_PROVEEDORES as readonly string[]).includes(valor) ? (valor as VozProveedorId) : VOZ_PROVEEDOR_PRINCIPAL;
+}
 
 export type VozResultado = "pedido_creado" | "escalado" | "abandonado";
 export const VOZ_RESULTADOS: readonly VozResultado[] = ["pedido_creado", "escalado", "abandonado"];

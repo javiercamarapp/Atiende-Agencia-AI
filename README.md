@@ -24,7 +24,7 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 | Vertical | Funciona de punta a punta | Pendiente honesto |
 |---|---|---|
-| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Agente de voz ElevenLabs completo. Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
+| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Voz por teléfono (Gemini Live + LiveKit): núcleo de llamada, simulador, prueba ciega y llamada de prueba del panel listos; falta el worker de telefonía y las credenciales (ver `docs/VOZ-PM.md`). Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
 | **hoteles** | Reservas/folios/CFDI de hospedaje (timbrado real vía Finkok/SW Sapien, credencial pendiente), housekeeping, fraude, P&L (USALI), checador de asistencia. | El gate/estado de **revenue management** (shadow/propone/autopilot) es real, pero **no existe ningún motor que produzca una recomendación de tarifa** — solo la máquina de estados, el backtest y la explicación de un precio ya dado. Reputación clasifica reseñas y responde, pero sin ingesta automática de Google/Booking/TripAdvisor (requiere esas credenciales). |
 | **citas** | Agenda, reservar/cancelar/confirmar/completar/no-show, horarios y excepciones editables, staff, sincronización real de calendario — **Google Calendar, Cal.com y CalDAV**, credencial por profesional. | Receptor de webhooks de Google Calendar (hoy solo sincronización por lote). |
 | **licitaciones** | Conectores OCDS reales y verificados contra la fuente pública: **Nuevo León** (333 convocatorias vigentes confirmadas). Post-adjudicación, cobranza, inconformidades, renovaciones. | **CDMX**: conector real y completo, pero la fuente pública que consume está estancada desde 2023 (no produce convocatorias vigentes hoy). Cobertura nacional depende de un **agregador comercial de pago sin proveedor elegido todavía** (`LICITACIONES_AGGREGATOR_API_KEY`) — ComprasMX en vivo y el DOF no se automatizan (reCAPTCHA/Akamai). |
@@ -33,7 +33,11 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 ## Voz (patrón oficial)
 
-Las 3 verticales con agente de voz (restaurantes, hoteles, citas) exponen
+**Restaurantes ya no usa ElevenLabs** (decisión del 1-oct-2026): su voz es Gemini Live sobre
+LiveKit SIP, con token de llamada firmado; ver `docs/VOZ-PM.md`. Lo que sigue describe el patrón
+de hoteles y citas, que conservan ElevenLabs.
+
+Las verticales hoteles y citas exponen
 Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
 voice-tools.ts`) que ElevenLabs invoca por webhook durante una llamada en
 curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,

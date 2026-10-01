@@ -124,6 +124,17 @@ export async function crearSesionPreviewVoz(fetchImpl: typeof fetch, apiBaseUrl:
   return pedir<SesionPreviewVoz>(fetchImpl, `${base(apiBaseUrl, propertyId)}/preview/sesion`, token, { method: "POST", body: opts });
 }
 
+/** Salud del proveedor de voz de ESTE despliegue (credencial presente o no), sin abrir ninguna sesion ni gastar. */
+export interface SaludVoz {
+  readonly ok: boolean;
+  readonly detalle: string;
+}
+
+export async function fetchSaludVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<SaludVoz> {
+  const w = await pedir<{ salud?: { ok?: unknown; detalle?: unknown } }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/catalogo`, token, { method: "GET" });
+  return { ok: w.salud?.ok === true, detalle: typeof w.salud?.detalle === "string" && w.salud.detalle ? w.salud.detalle : "El servicio de voz no informó su estado." };
+}
+
 interface ConversacionWire {
   readonly id: string;
   readonly iniciadaEn: string;

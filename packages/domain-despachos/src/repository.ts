@@ -150,6 +150,9 @@ export interface DespachosRepository {
   findDeadline(propertyId: string, deadlineId: string): Promise<FiscalDeadlineRecord | null>;
   markDeadlineCompleted(deadlineId: string, comprobanteUrl: string | null, fechaPresentacion: string): Promise<FiscalDeadlineRecord | null>;
   updateDeadlineEstado(deadlineId: string, estado: FiscalDeadlineRecord["estado"]): Promise<void>;
+  /** D-26: corrige la fecha límite y prioridad de un vencimiento aún NO completado (recalcular con el calendario
+   * correcto). No toca los completados. Devuelve la fila resultante o `null` si no existe o ya estaba completado. */
+  updateDeadlineFechaLimite(deadlineId: string, fechaLimite: string, prioridad: FiscalDeadlineRecord["prioridad"]): Promise<FiscalDeadlineRecord | null>;
   insertEscalation(deadlineId: string, level: NivelEscalamiento, sentAt: string, notes: string): Promise<DeadlineEscalationRecord>;
   listEscalations(deadlineId: string): Promise<readonly DeadlineEscalationRecord[]>;
 

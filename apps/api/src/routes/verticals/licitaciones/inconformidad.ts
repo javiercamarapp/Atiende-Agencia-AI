@@ -7,11 +7,12 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { WRITE_ROLES, INCONFORMIDAD_REVIEW_ROLES } from "@atiende/domain-licitaciones";
+import { WRITE_ROLES, INCONFORMIDAD_REVIEW_ROLES, calendarioAvisos } from "@atiende/domain-licitaciones";
 import type { InconformidadDraftRecord } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolveCalendarioFor } from "./calendario.ts";
 
 /** Reagrupa los campos de plazo (planos en el repositorio) bajo `plazo`, mismo contrato de API que el repo original (`mapDraftRow`). */
 function mapDraft(record: InconformidadDraftRecord) {
@@ -87,6 +88,8 @@ export function licitacionesInconformidadRoutes(deps: AppDeps): Hono<CoreAuthHon
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
 
+    // L-22: el plazo del art. 95 se cuenta con el calendario efectivo (oficiales + organizacion + convocatoria).
+    const calendario = await resolveCalendarioFor(deps, c, tenderId);
     const draft = await repo.createInconformidadDraft(organizationId, tenderId, {
       hechos,
       agravios,
@@ -94,8 +97,9 @@ export function licitacionesInconformidadRoutes(deps: AppDeps): Hono<CoreAuthHon
       falloNotifiedOn: raw.falloNotifiedOn,
       bajoTratados: raw.bajoTratados,
       actorId,
+      calendario,
     });
-    return c.json(mapDraft(draft), 201);
+    return c.json({ ...mapDraft(draft), calendario: { nota: calendario.note, avisos: calendarioAvisos(calendario, raw.falloNotifiedOn, draft.dueDate) } }, 201);
   });
 
   app.get(base, async (c) => {

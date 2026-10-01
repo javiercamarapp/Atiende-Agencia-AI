@@ -479,3 +479,41 @@ export type {
 } from "./kyc-69b.ts";
 export { InMemoryKyc69bRepository, PostgresKyc69bRepository } from "./kyc-69b-repository.ts";
 export type { Kyc69bRepository, KycConsultaBitacora, KycFichaInput, KycListaEstado, KycListaFixture, KycListaFixtureFila } from "./kyc-69b-repository.ts";
+
+// ---- L-22: calendario de días inhábiles ----
+export {
+  DIAS_INHABILES_COBERTURA_OFICIAL,
+  DIAS_INHABILES_OFICIALES,
+  DIAS_INHABILES_SUGERIDOS,
+  DIAS_INHABILES_TIME_ZONE,
+  DIAS_INHABILES_VALIDACION_NOTE,
+  DiaInhabilDuplicateError,
+  DiaInhabilNotAvailableError,
+  DiaInhabilValidationError,
+  buildCalendarioPlazos,
+  calendarioAvisos,
+  countBusinessDaysBetween,
+  describirPlazo,
+  isBusinessDay,
+  isValidDateOnly,
+  mensajeRecordatorioPlazo,
+  mexicoCityDateKey,
+  nextBusinessDayOnOrAfter,
+  officialOnlyCalendar,
+  parseDiaInhabilCreate,
+} from "./dias-inhabiles.ts";
+export type {
+  BuildCalendarioInput,
+  CalendarioPlazos,
+  DiaInhabil,
+  DiaInhabilAlcance,
+  DiaInhabilCreateInput,
+  DiaInhabilRecord,
+  DiaInhabilSugerido,
+  DiaInhabilVerificacion,
+  PlazoDescripcion,
+} from "./dias-inhabiles.ts";
+export { calendarNoteOf, holidayDatesOf } from "./business-days.ts";
+export type { DiasInhabilesInput } from "./business-days.ts";
+export { InMemoryDiasInhabilesRepository, PostgresDiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
+export type { DiasInhabilesRepository } from "./dias-inhabiles-repository.ts";

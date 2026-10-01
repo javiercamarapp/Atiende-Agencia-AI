@@ -235,5 +235,18 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   al insert histórico ante 42703/42P01; la ficha, el desglose y el filtro por sentido degradan a vacío /
   «no disponible» (ver `tests/cartera-postgres-savepoint.spec.ts` y
   `apps/api/tests/despachos-cfdi-ingesta-base-sin-migrar.spec.ts`).
-- **Pendiente (D-23)**: complemento de pago 2.0 (REP), liga a CFDI PPD, saldo insoluto e IVA por flujo de
-  efectivo. Hasta entonces `parseCfdiXml` sigue excluyendo el complemento de pagos.
+- **D-23**: el análisis de solo lectura del REP ya existe (sección siguiente); falta persistir la liga. `parseCfdiXml` rechaza el CFDI tipo P; lo lee `parseComplementoPagoXml`.
+
+## Calendario fiscal (D-26) y complemento de pago 2.0 (D-23)
+
+- `src/vencimientos/calendario-fiscal.ts`: fechas límite en **día hábil** (art. 12 CFF) por obligación y régimen
+  (ISR/IVA/Nómina día 17, DIOT último día del mes siguiente, balanza día 3 PM / 5 PF del segundo mes, anual 31-mar PM /
+  30-abr PF). Feriados por regla de la LFT art. 74 (2026-2027 verificados en `tests/calendario-fiscal.spec.ts`); Semana
+  Santa, ventanas vacacionales del SAT y los plazos de DIOT y balanza llevan `validarConFiscalista`. **Pendiente de
+  confirmar con fiscalista**: la resolución anual de días inhábiles del SAT no está modelada.
+- `src/vencimientos/procesos.ts`: persistencia compatible con la base sin migrar (SAVEPOINT ante 23514 en
+  `Balanza`/`Anual`) y barrido idempotente de escalamiento (`POST .../vencimientos/barrido`, sesión de staff).
+  Migración `019_despachos_calendario_fiscal_tipos.sql` (espejo `20240101000262`); verificación en
+  `scripts/verify-despachos-calendario-fiscal/`.
+- `src/cfdi/rep.ts`: análisis del REP 2.0 (`POST .../cfdi/rep/analizar`, solo lectura): saldo insoluto e IVA efectivamente
+  pagado por mes de pago, en centavos. Verifica MetodoPago = PPD de la factura ligada (columna de D-22). No persiste los pagos ni alimenta DIOT/pagos provisionales todavía.

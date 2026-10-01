@@ -1,4 +1,4 @@
-// Aserciones del sistema de diseno (DS v2): un solo <main>, skip link, foco, ?ds=v2 / ?ds=off y claro/oscuro.
+// Aserciones del sistema de diseno (DS v2): un solo <main>, skip link, foco y claro/oscuro.
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -19,23 +19,11 @@ export async function afirmarSkipLink(page: Page): Promise<void> {
   await expect(page.locator("main#contenido-principal")).toBeFocused();
 }
 
-/** Estado de la bandera DS v2 en <html data-theme="v2">. */
-export async function afirmarTemaDs(page: Page, esperado: "v2" | "off"): Promise<void> {
-  const html = page.locator("html");
-  if (esperado === "v2") await expect(html).toHaveAttribute("data-theme", "v2");
-  else await expect(html).not.toHaveAttribute("data-theme", "v2");
-}
-
 /** Modo claro/oscuro: `html.dark`. */
 export async function afirmarModo(page: Page, esperado: "claro" | "oscuro"): Promise<void> {
   const html = page.locator("html");
   if (esperado === "oscuro") await expect(html).toHaveClass(/(^|\s)dark(\s|$)/);
   else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/);
-}
-
-/** Anade `?ds=…` a una ruta (respeta los parametros existentes). */
-export function conDs(ruta: string, ds: "v2" | "off"): string {
-  return `${ruta}${ruta.includes("?") ? "&" : "?"}ds=${ds}`;
 }
 
 /** Sin desbordamiento horizontal de la pagina (importante en 375 px). */

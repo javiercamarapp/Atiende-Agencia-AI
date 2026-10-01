@@ -109,6 +109,23 @@ describe("SalaGuerraPage -- tablero", () => {
     expect(text).toContain("no envía nada a ComprasMX");
   });
 
+  it("L-22: muestra los dias habiles que quedan y avisa si la fecha limite cae en dia inhabil", async () => {
+    const plazo = { fechaLimite: "2026-03-16", hoy: "2026-03-10", diasHabilesRestantes: 0, caeEnInhabil: true, motivoInhabil: "Natalicio de Benito Juárez", siguienteDiaHabil: "2026-03-17", avisos: ["La fecha límite cae en un día inhábil (Natalicio de Benito Juárez): confirme con la convocante si el plazo se recorre."], nota: "n" };
+    stubFetch({ "GET /sala-guerra": () => ({ body: BOARD({ plazoPresentacion: plazo }) }) });
+    mount(CTX);
+    await settle();
+    const text = rendered!.container.textContent!;
+    expect(text).toContain("sin días hábiles restantes (cae en día inhábil)");
+    expect(text).toContain("confirme con la convocante si el plazo se recorre");
+  });
+
+  it("L-22: un servidor sin plazoPresentacion sigue mostrando el tablero", async () => {
+    stubFetch({ "GET /sala-guerra": () => ({ body: BOARD() }) });
+    mount(CTX);
+    await settle();
+    expect(rendered!.container.textContent!).not.toContain("días hábiles");
+  });
+
   it("cambiar el estado de un item hace PATCH real con el nuevo estado", async () => {
     stubFetch({ "GET /sala-guerra": () => ({ body: BOARD() }), "PATCH /sala-guerra/items/i1": () => ({ body: ITEM({ status: "listo" }) }) });
     mount(CTX);

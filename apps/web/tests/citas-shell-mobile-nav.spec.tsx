@@ -102,6 +102,7 @@ describe("CitasShell — nav móvil", () => {
       "Disponibilidad",
       "Configuración",
       "Staff",
+      "Agente de WhatsApp",
       "Mensajes de WhatsApp",
       "Auditoría",
       "Privacidad",

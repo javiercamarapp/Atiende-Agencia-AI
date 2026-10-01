@@ -85,7 +85,7 @@ describe("VencimientosPage (despachos) -- default de año/mes de 'Calcular venci
     await esperarCarga();
 
     const body = await calcularSinCambiarNada();
-    expect(body).toEqual({ year: 2026, month: 6 });
+    expect(body).toEqual({ year: 2026, month: 6, regimenFiscal: "601" });
   });
 
   it("último día del mes a las 19:30 hora de CDMX (01:30 UTC del día siguiente): el default sigue siendo el mes de CDMX, no el mes UTC (que ya sería el siguiente)", async () => {
@@ -99,7 +99,7 @@ describe("VencimientosPage (despachos) -- default de año/mes de 'Calcular venci
     await esperarCarga();
 
     const body = await calcularSinCambiarNada();
-    expect(body).toEqual({ year: 2026, month: 2 });
+    expect(body).toEqual({ year: 2026, month: 2, regimenFiscal: "601" });
   });
 
   it("31 de diciembre a las 19:30 hora de CDMX (01:30 UTC del 1-ene): el default sigue siendo diciembre del año viejo, no enero del año UTC siguiente", async () => {
@@ -113,6 +113,6 @@ describe("VencimientosPage (despachos) -- default de año/mes de 'Calcular venci
     await esperarCarga();
 
     const body = await calcularSinCambiarNada();
-    expect(body).toEqual({ year: 2026, month: 12 });
+    expect(body).toEqual({ year: 2026, month: 12, regimenFiscal: "601" });
   });
 });

@@ -1,8 +1,8 @@
 // Rutas públicas/de sistema de restaurantes — port de
 // restaurantes/supabase/functions/{create-order,customer-lookup}/index.ts. NINGUNA de
 // las dos usa Supabase Auth de usuario (ver diseño Fase 1 §3): create-order es
-// checkout web público (sin cuenta) + Server Tool de ElevenLabs; customer-lookup es
-// Server Tool de ElevenLabs únicamente. Por eso este grupo se monta SIN
+// checkout web público (sin cuenta) + Server Tool de voz; customer-lookup es
+// Server Tool de voz únicamente. Por eso este grupo se monta SIN
 // `authMiddleware`/`requirePropertyMembership` de core-auth, con su propia
 // verificación por ruta (CORS + rate limit para web, header
 // `x-atiende-tool-secret` para voz) — exactamente como en el origen.
@@ -127,7 +127,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     const credentialsPresent = hasVoiceCredentials(c);
 
     // Fase 1: source="voice" queda MODELADO pero INACTIVO en la práctica — el agente
-    // de voz ElevenLabs completo está fuera de alcance de esta fase (ver diseño §6).
+    // de voz por teléfono se conduce con el token por llamada (docs/VOZ-PM.md).
     // El guard se conserva por paridad de contrato: sin credenciales de voz, un
     // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
     if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
