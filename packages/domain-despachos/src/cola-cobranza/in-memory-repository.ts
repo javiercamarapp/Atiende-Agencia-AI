@@ -1,6 +1,7 @@
 // D-11 -- repositorio en memoria de la cola de cobranza para tests de la API y del dominio. Replica las reglas
 // de las funciones de la migracion 017 (pertenencia a la property, consentimiento, dedupe, topes, transiciones).
 // `disponible = false` simula la base SIN migrar.
+import { randomUUID } from "node:crypto";
 import { validarNuevaGestion } from "./validacion.ts";
 import { normalizarRfc } from "./whatsapp.ts";
 import {
@@ -38,7 +39,6 @@ export class InMemoryColaCobranzaRepository implements ColaCobranzaRepository {
   private readonly gestiones: (GestionCobranza & { propertyId: string })[] = [];
   private readonly consentimientos = new Map<string, ConsentimientoWhatsApp & { propertyId: string; telefono: string }>();
   private readonly outbox: (MensajeOutboxWhatsApp & { propertyId: string; dedupeKey: string; telefono: string })[] = [];
-  private seq = 0;
 
   constructor(
     private readonly cuentas: readonly CuentaSemilla[],
@@ -54,9 +54,8 @@ export class InMemoryColaCobranzaRepository implements ColaCobranzaRepository {
   private ahora(): string {
     return this.opciones.ahora ? this.opciones.ahora() : `${this.hoy()}T12:00:00.000Z`;
   }
-  private id(prefijo: string): string {
-    this.seq += 1;
-    return `${prefijo}-${String(this.seq).padStart(6, "0")}`;
+  private id(): string {
+    return randomUUID();
   }
   private cuenta(propertyId: string, receivableId: string) {
     const c = this.cuentas.find((x) => x.propertyId === propertyId && x.receivableId === receivableId);
@@ -83,7 +82,7 @@ export class InMemoryColaCobranzaRepository implements ColaCobranzaRepository {
     if (motivo !== null) throw new ColaEntradaInvalidaError(motivo);
     if (input.tipo === "promesa_pago" && cuenta.pagada) throw new ColaEntradaInvalidaError("La cuenta ya esta pagada.");
     if (this.gestiones.filter((g) => g.receivableId === input.receivableId).length >= MAX_GESTIONES_POR_CUENTA) throw new ColaCuotaExcedidaError();
-    const id = this.id("gestion");
+    const id = this.id();
     const ahora = this.ahora();
     this.gestiones.push({
       id,
@@ -140,7 +139,7 @@ export class InMemoryColaCobranzaRepository implements ColaCobranzaRepository {
     const previo = this.outbox.find((m) => m.propertyId === input.propertyId && m.dedupeKey === input.dedupeKey);
     if (previo) return this.ok({ id: previo.id, duplicado: true });
     if (this.outbox.filter((m) => m.propertyId === input.propertyId && m.estado === "pendiente").length >= MAX_PENDIENTES_OUTBOX) throw new ColaCuotaExcedidaError();
-    const id = this.id("wa");
+    const id = this.id();
     this.outbox.push({ id, propertyId: input.propertyId, receivableId: input.receivableId, rfcReceptor: cuenta.rfcReceptor, cuerpo, estado: "pendiente", creadoEn: this.ahora(), dedupeKey: input.dedupeKey, telefono: consent.telefono });
     return this.ok({ id, duplicado: false });
   }

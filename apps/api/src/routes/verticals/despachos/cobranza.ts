@@ -76,7 +76,7 @@ function isCobranzaReminderStage(value: unknown): value is CobranzaReminderStage
  * reciente vencida), o la primera etapa si la cuenta ni siquiera ha llegado a
  * pre_vencimiento. Solo se usa cuando el caller NO especifica `stage`
  * explícito -- un envío a mano siempre puede pedir cualquier etapa. */
-function etapaSugeridaPorAtraso(diasVencido: number): CobranzaReminderStage {
+export function etapaSugeridaPorAtraso(diasVencido: number): CobranzaReminderStage {
   let chosen: CobranzaReminderStage = COBRANZA_REMINDER_SEQUENCE[0];
   for (const stage of COBRANZA_REMINDER_SEQUENCE) {
     if (COBRANZA_STAGE_OFFSET_DAYS[stage] <= diasVencido) chosen = stage;
