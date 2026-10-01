@@ -8,6 +8,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
+import { sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { applyPromotionToOrderTotal, normalizePromotionCode } from "./promotions.ts";
@@ -155,14 +156,21 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     }
   }
 
+  // Saneo (defensa en profundidad): el nombre es una sola linea limpia; si queda vacio tras sanear, se rechaza.
+  const cleanName = sanitizeInlineText(raw.customerName, 160);
+  if (!cleanName) throw new OrderValidationError("branchSlug (o branchName), customerName y customerPhone son requeridos");
+  const cleanAddress = raw.customerAddress === undefined ? undefined : sanitizeInlineText(raw.customerAddress);
+  if (agentOrder && canal === "domicilio" && !cleanAddress) throw new OrderValidationError("La dirección completa de entrega es requerida");
+
   return {
     ...raw,
     branchSlug: raw.branchSlug?.trim() || undefined,
     branchName: raw.branchName?.trim() || undefined,
-    customerName: raw.customerName.trim(),
+    customerName: cleanName,
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
-    customerAddress: raw.customerAddress?.trim(),
-    colonia: raw.colonia?.trim() || undefined,
+    customerAddress: raw.customerAddress === undefined ? undefined : sanitizeInlineText(raw.customerAddress),
+    notes: typeof raw.notes === "string" ? sanitizeNotes(raw.notes) || undefined : raw.notes,
+    colonia: raw.colonia ? sanitizeInlineText(raw.colonia, 200) || undefined : undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
   };
