@@ -13,6 +13,7 @@
 // Dinero: centavos MXN ENTEROS (bigint llega como string del driver: se convierte con Number, dentro del
 // rango seguro por los CHECK de la tabla). Fechas: `YYYY-MM-DD` (se formatean en SQL con to_char para que
 // el driver no las convierta a Date con zona horaria).
+import { randomUUID } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";
 import { runWithSavepointFallback } from "./savepoint-fallback.ts";
@@ -282,7 +283,6 @@ export class InMemoryContratosRepository implements ContratosRepository {
   private readonly voz = new Map<string, { minutos: number; eventos: number }>();
   private readonly emails = new Map<string, string>();
   private readonly versions: ContratoVersionRow[] = [];
-  private idSeq = 0;
   constructor(private readonly clock: InMemoryClock = {}) {}
 
   private now(): number {
@@ -340,9 +340,8 @@ export class InMemoryContratosRepository implements ContratosRepository {
   }
 
   private push(contractId: string, organizationId: string, version: number, t: TerminosContratoInput, callerId: string): void {
-    this.idSeq += 1;
     this.versions.push({
-      id: `ver-${this.idSeq}`,
+      id: randomUUID(),
       contractId,
       organizationId,
       organizationName: this.orgs.get(organizationId)?.name ?? null,
@@ -378,8 +377,7 @@ export class InMemoryContratosRepository implements ContratosRepository {
     if (this.tramos(organizationId, null).some((o) => this.seTraslapa(o, { desde: t.vigenteDesde, hasta: t.vigenteHasta }))) {
       throw new SuperadminSeguridadError("las vigencias de dos contratos de la misma organizacion no pueden traslaparse", "conflict");
     }
-    this.idSeq += 1;
-    const contractId = `ctr-${this.idSeq}`;
+    const contractId = randomUUID();
     this.push(contractId, organizationId, 1, t, callerId);
     return { availability: "available" as const, contractId };
   }
