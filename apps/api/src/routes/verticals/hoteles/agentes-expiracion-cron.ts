@@ -8,6 +8,7 @@
 // Cron en vercel.json (cada hora, ver docs/CRONS.md); la ruta acepta GET/POST con el secreto interno.
 import { Hono } from "hono";
 import { AgentesUnavailableError, PostgresAgentesRepository, type AgentesRepository } from "@atiende/domain-hoteles";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -30,7 +31,19 @@ export async function runAprobacionesExpiracion(deps: AppDeps, now: Date = new D
     try {
       const expiradas = await deps.engine.withAppSession({ userId: null }, async (db) => {
         const repo: AgentesRepository = deps.hotelesAgentesRepo ? deps.hotelesAgentesRepo(db) : new PostgresAgentesRepository(db);
-        return repo.expireApprovals(p.propertyId, now);
+        const n = await repo.expireApprovals(p.propertyId, now);
+        // Aviso in-app (campana) a gerencia/reservaciones: una por propiedad por dia (clave de dedupe). Va dentro
+        // de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no revierte la expiracion ya hecha.
+        if (n > 0) {
+          await emitirNotificacion(db, {
+            evento: "hoteles.aprobacion.expirada",
+            organizationId: p.organizationId,
+            propertyId: p.propertyId,
+            clave: `${p.propertyId}:${now.toISOString().slice(0, 10)}`,
+            parametros: { cantidad: n },
+          });
+        }
+        return n;
       });
       results.push({ ...base, omitida: null, expiradas, error: null });
     } catch (err) {

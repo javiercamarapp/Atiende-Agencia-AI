@@ -28,6 +28,8 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  NotificationSeverity,
+  ListNotificationsOptions,
   OrgAdminStaffLookupRow,
   OrganizationBillingRow,
   OrganizationMemberRow,
@@ -52,7 +54,7 @@ import {
   ProspectoNotFoundError,
   StaffInviteInvalidError,
 } from "./core-repository.ts";
-import { isUndefinedFunctionError } from "./sql-errors.ts";
+import { isMigrationPendingError, isUndefinedFunctionError } from "./sql-errors.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -125,6 +127,12 @@ interface NotificationRawRow {
   readonly entidad_id: string | null;
   readonly created_at: string;
   readonly read_at: string | null;
+  // Solo las trae `core.list_notifications_v2_for_staff` (migración 0039); la función de 0013 no.
+  readonly organization_id?: string | null;
+  readonly tipo?: string | null;
+  readonly categoria?: string | null;
+  readonly severidad?: NotificationSeverity | null;
+  readonly enlace?: string | null;
 }
 
 function mapNotification(row: NotificationRawRow): NotificationRow {
@@ -137,6 +145,11 @@ function mapNotification(row: NotificationRawRow): NotificationRow {
     entidadId: row.entidad_id,
     createdAt: row.created_at,
     readAt: row.read_at,
+    organizationId: row.organization_id ?? null,
+    tipo: row.tipo ?? null,
+    categoria: row.categoria ?? null,
+    severidad: row.severidad ?? "info",
+    enlace: row.enlace ?? null,
   };
 }
 
@@ -787,21 +800,59 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   // funciones son `security definer` que reciben `p_staff_id` explícito, mismo
   // criterio que login/`isPlatformSuperadmin` — ninguna depende de `auth.uid()`. ----
 
-  async listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
-    const { rows } = await this.db.query<NotificationRawRow>(
-      `select id, vertical, titulo, cuerpo, entidad_tipo, entidad_id, created_at, read_at
-       from core.list_notifications_for_staff($1);`,
-      [staffId],
-    );
-    return rows.map(mapNotification);
+  // Lectura con el productor compartido (migración 0039): intenta las funciones v2 dentro de un SAVEPOINT y,
+  // contra la base sin migrar (42883/42P01/42703), cae a las de 0013 -- la sesión puede ser una transacción
+  // compartida, donde un try/catch sin SAVEPOINT dejaría la transacción abortada (25P02).
+  async listNotificationsForStaff(staffId: string, options: ListNotificationsOptions = {}): Promise<readonly NotificationRow[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<NotificationRawRow>(
+          `select id, organization_id, vertical, tipo, categoria, severidad, titulo, cuerpo, enlace, entidad_tipo, entidad_id, created_at, read_at
+           from core.list_notifications_v2_for_staff($1::uuid, $2::int, $3::timestamptz, $4::boolean, $5::text);`,
+          [staffId, options.limit ?? 50, options.before ?? null, options.soloNoLeidas ?? false, options.categoria ?? null],
+        );
+        return rows.map(mapNotification);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        // Base sin 0039: solo existen las filas de 0013 (sin categoría). Los filtros se aplican aquí para no
+        // devolver algo distinto de lo pedido.
+        if (options.categoria !== undefined) return [];
+        const { rows } = await this.db.query<NotificationRawRow>(
+          `select id, vertical, titulo, cuerpo, entidad_tipo, entidad_id, created_at, read_at
+           from core.list_notifications_for_staff($1);`,
+          [staffId],
+        );
+        const before = options.before === undefined ? null : new Date(options.before).getTime();
+        return rows
+          .filter((r) => before === null || new Date(r.created_at).getTime() < before)
+          .filter((r) => !options.soloNoLeidas || r.read_at === null)
+          .slice(0, Math.min(Math.max(options.limit ?? 50, 1), 100))
+          .map(mapNotification);
+      },
+    });
   }
 
   async countUnreadNotificationsForStaff(staffId: string): Promise<number> {
-    const { rows } = await this.db.query<{ count_unread_notifications_for_staff: number }>(
-      `select core.count_unread_notifications_for_staff($1) as count_unread_notifications_for_staff;`,
-      [staffId],
-    );
-    return rows[0]?.count_unread_notifications_for_staff ?? 0;
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ count_unread_notifications_v2_for_staff: number }>(
+          `select core.count_unread_notifications_v2_for_staff($1) as count_unread_notifications_v2_for_staff;`,
+          [staffId],
+        );
+        return rows[0]?.count_unread_notifications_v2_for_staff ?? 0;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => {
+        const { rows } = await this.db.query<{ count_unread_notifications_for_staff: number }>(
+          `select core.count_unread_notifications_for_staff($1) as count_unread_notifications_for_staff;`,
+          [staffId],
+        );
+        return rows[0]?.count_unread_notifications_for_staff ?? 0;
+      },
+    });
   }
 
   async markNotificationRead(staffId: string, notificationId: string): Promise<void> {

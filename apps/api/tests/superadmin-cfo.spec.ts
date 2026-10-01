@@ -11,6 +11,7 @@ import { crearDespachadorAlertas } from "../src/alertas/despachador.ts";
 import { crearLimitadorAlertas } from "../src/alertas/limite-horario.ts";
 import type { AlertaSaliente, DespachadorAlertas } from "../src/alertas/tipos.ts";
 import { alertaCfoASaliente } from "../src/routes/internal/superadmin-alertas-cfo.ts";
+import { conEmisiones } from "./support/emisiones.ts";
 import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
 
 afterEach(() => vi.useRealTimers());
@@ -61,17 +62,18 @@ const FILAS: CfoOrgRow[] = [
   fila("e", { orgStatus: "trial" }),
 ];
 
-async function setup(opciones: { repo?: CfoRepository | null; filas?: CfoOrgRow[]; snapshots?: BillingSnapshotRow[]; alertas?: DespachadorAlertas } = {}) {
+async function setup(opciones: { repo?: CfoRepository | null; filas?: CfoOrgRow[]; snapshots?: BillingSnapshotRow[]; alertas?: DespachadorAlertas; alEmitir?: () => number } = {}) {
   const s = await seguridadSetup();
   const cfo = new InMemoryCfoRepository();
   cfo.seedRows(opciones.filas ?? FILAS);
   cfo.seedSnapshots(opciones.snapshots ?? []);
   const repo = opciones.repo === undefined ? cfo : opciones.repo;
-  const deps = { ...s.deps, ...(repo ? { cfoRepo: () => repo } : {}), ...(opciones.alertas ? { alertas: opciones.alertas } : {}) };
+  const { deps, emisiones } = conEmisiones({ ...s.deps, ...(repo ? { cfoRepo: () => repo } : {}), ...(opciones.alertas ? { alertas: opciones.alertas } : {}) }, { alEmitir: opciones.alEmitir });
   const app = buildApp(deps);
   return {
     s,
     cfo,
+    emisiones,
     app,
     secret: deps.env.internalSecret,
     async superadmin() {
@@ -279,6 +281,56 @@ describe("cron /internal/superadmin/alertas-cfo", () => {
     expect(b.ok).toBe(true);
     expect(b.notificadas).toBe(0);
     expect(b.alertas).toHaveLength(3);
+  });
+});
+
+describe("cron /internal/superadmin/alertas-cfo -- notificacion in-app (campana)", () => {
+  it("emite UNA notificacion de plataforma por regla, con clave de dedupe por mes, severidad mapeada y texto sin PII", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const t = await setup();
+    const b = (await (await cron(t)).json()) as { ok: boolean; notificadasEnApp: number };
+    expect(b).toMatchObject({ ok: true, notificadasEnApp: 3 });
+    expect(t.emisiones.map((e) => [e.evento, e.dedupeKey, e.severidad])).toEqual([
+      ["superadmin.cfo.alerta", "superadmin.cfo.alerta:2026-09:cliente_en_riesgo", "critica"],
+      ["superadmin.cfo.alerta", "superadmin.cfo.alerta:2026-09:margen_bajo", "atencion"],
+      ["superadmin.cfo.alerta", "superadmin.cfo.alerta:2026-09:cobranza_vencida", "atencion"],
+    ]);
+    for (const e of t.emisiones) {
+      expect(e.organizationId).toBeNull();
+      expect(e.enlace).toBe("/superadmin/cfo");
+      expect(`${e.titulo} ${e.cuerpo}`).not.toMatch(/Org [a-e]|@/);
+    }
+    expect(t.emisiones[1]!.cuerpo).toBe("Regla: margen_bajo. Organizaciones afectadas: 1.");
+  });
+
+  it("sin alertas no emite nada", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const t = await setup({ filas: [fila("a"), fila("b")] });
+    expect(((await (await cron(t)).json()) as { notificadasEnApp: number }).notificadasEnApp).toBe(0);
+    expect(t.emisiones).toHaveLength(0);
+  });
+
+  it("la reemision del mismo mes cuenta 0 nuevas (dedupe en la base) y no altera la respuesta", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const t = await setup({ alEmitir: () => 0 });
+    expect(await (await cron(t)).json()).toMatchObject({ ok: true, notificadasEnApp: 0 });
+    expect(t.emisiones).toHaveLength(3);
+  });
+
+  it("si la emision falla (p. ej. base sin la 0039) el cron sigue en 200 con todo lo demas", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const t = await setup({
+      alEmitir: () => {
+        throw Object.assign(new Error("function core.emit_notification(uuid) does not exist"), { code: "42883" });
+      },
+    });
+    const res = await cron(t);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, notificadasEnApp: 0, fotoFilas: 5 });
   });
 });
 
