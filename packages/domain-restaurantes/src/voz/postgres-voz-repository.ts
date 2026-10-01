@@ -9,7 +9,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { VozRepository } from "./repository.ts";
 import {
   VOZ_PROVEEDOR_PRINCIPAL,
-  VOZ_PROVEEDORES,
+  proveedorDeFila,
   VOZ_RESULTADOS,
   VozNoDisponibleError,
   VozRechazadaError,
@@ -89,7 +89,7 @@ interface ConfigRow {
 function mapConfig(row: ConfigRow): VozConfig {
   return {
     habilitado: row.habilitado === true,
-    proveedor: (VOZ_PROVEEDORES as readonly string[]).includes(row.proveedor) ? (row.proveedor as VozProveedorId) : VOZ_PROVEEDOR_PRINCIPAL,
+    proveedor: proveedorDeFila(row.proveedor),
     voiceId: row.voice_id,
     comportamiento: row.comportamiento ?? "",
     mensajeInicial: row.mensaje_inicial ?? "",
@@ -121,7 +121,7 @@ function mapConversacion(row: ConversacionRow): VozConversacionResumen {
     propertyId: row.property_id,
     externalId: row.external_id,
     canal: row.canal as VozCanal,
-    proveedor: row.proveedor as VozProveedorId,
+    proveedor: proveedorDeFila(row.proveedor),
     voiceId: row.voice_id,
     startedAt: iso(row.started_at),
     endedAt: row.ended_at === null ? null : iso(row.ended_at),
