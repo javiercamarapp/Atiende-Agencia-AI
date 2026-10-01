@@ -24,9 +24,8 @@
 //     honesta sin afirmar que confirmó. Cancelar usa `cancel_appointment_idempotent`,
 //     que ya existe.
 import { cancelAppointment, normalizePhone } from "../appointments.ts";
-import { tryEnqueueAppointmentEmail } from "../appointment-email-notifications.ts";
+import { resolveProviderTimeZone, runAfterCancelEffects } from "../appointment-effects.ts";
 import { AppointmentConflictError, AppointmentNotFoundError } from "../errors.ts";
-import { tryNotifyWaitlistOfFreedSlot } from "../reminders.ts";
 import type { CitasRepository } from "../repository.ts";
 import type { AppointmentRecord } from "../types.ts";
 import { parseAppointmentButtonId } from "./appointment-button-ids.ts";
@@ -48,15 +47,6 @@ export function formatAppointmentWhen(startsAtIso: string, timeZone: string): st
   const day = new Intl.DateTimeFormat("es-MX", { timeZone, weekday: "long", day: "numeric", month: "long" }).format(date);
   const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(date);
   return `${day}, ${time}`;
-}
-
-async function resolveTimeZone(repo: CitasRepository, organizationId: string, appointment: AppointmentRecord): Promise<string> {
-  // SAVEPOINT propio: un error real de Postgres en estas lecturas no debe abortar la
-  // transacción compartida del turno (ver comentario de `runWithRowSavepoint`).
-  return repo.runWithRowSavepoint(async () => {
-    const provider = await repo.findProvider(organizationId, appointment.providerId);
-    return repo.findPropertyTimezone(provider?.propertyId ?? appointment.propertyId ?? null, organizationId);
-  });
 }
 
 /**
@@ -82,7 +72,7 @@ export async function resolveAppointmentButton(
   // otro cliente" -- un id adivinado no revela nada.
   if (!customer || !appointment || appointment.customerId !== customer.id) return { kind: "reply", reply: NOT_FOUND_REPLY };
 
-  const timeZone = await resolveTimeZone(repo, organizationId, appointment);
+  const timeZone = await resolveProviderTimeZone(repo, organizationId, appointment.providerId, appointment.propertyId);
   const when = formatAppointmentWhen(appointment.startsAt, timeZone);
   const isPast = Date.parse(appointment.startsAt) <= now.getTime();
 
@@ -117,8 +107,7 @@ export async function resolveAppointmentButton(
         // Efectos best-effort (cada uno con su SAVEPOINT interno): nunca revierten la
         // cancelación ya hecha. El hueco liberado se ofrece a la lista de espera y el
         // cliente recibe el correo de cancelación si tiene uno en archivo.
-        await tryNotifyWaitlistOfFreedSlot(repo, organizationId, timeZone, { providerId: cancelled.providerId, serviceId: cancelled.serviceId, startsAt: cancelled.startsAt });
-        await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.cancelled", cancelled.id);
+        await runAfterCancelEffects(repo, organizationId, cancelled, timeZone);
       } catch (err) {
         if (err instanceof AppointmentNotFoundError) return { kind: "reply", reply: NOT_FOUND_REPLY };
         if (err instanceof AppointmentConflictError) return { kind: "reply", reply: `Esa cita (${when}) ya no se puede cancelar desde aquí. Escríbeme y lo vemos.` };
