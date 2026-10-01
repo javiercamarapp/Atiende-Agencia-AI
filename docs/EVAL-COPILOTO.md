@@ -11,11 +11,11 @@ un modelo, un prompt o un catálogo. No toca producción: el arnés vive en `pac
 | Casos | 360 preguntas (6 verticales x 60), español de México real, con respuesta esperada calculada por la herramienta de referencia | `scripts/eval-copiloto/casos/*.ts` y `datos/*.congelado.json` |
 | Datos | Postgres efímero (`initdb`) con las migraciones reales y semillas de las 6 verticales (datos ficticios) | `scripts/eval-copiloto/{run.sh,preparar.sh,seeds/}` |
 | Graders | Deterministas: herramienta, argumentos, periodo, JSON, cifras exactas, cero inventadas, rechazos, aclaraciones, PII/inyección, gráfica, español por reglas | `evals/graders.ts` |
-| Juez de español | Qwen 3.7 Flash por el mismo gateway (nunca Sonnet) | `evals/juez-espanol.ts` |
+| Juez de español | Qwen3-235B-A22B-2507 por Parasail (EE.UU., ZDR) por el mismo gateway (nunca Sonnet) | `evals/juez-espanol.ts` |
 | Runner | N modelos x M casos x K repeticiones, tope de gasto duro, casos no corridos, descarte de modelos sin ruta | `evals/runner.ts`, `presupuesto.ts` |
 | Reporte | JSON + Markdown con ranking, puertas y recomendación por rol | `evals/reporte.ts` |
-| Candidatos | 25 modelos con preferencias de proveedor EE.UU./ZDR | `evals/candidatos.ts` |
-| Bake-off | 40 tareas de reporte, 4 brazos (pipeline Sonnet+Gemini, Sonnet+Qwen, Sonnet solo, Gemini solo) | `evals/bakeoff.ts`, `scripts/eval-copiloto/bakeoff*.ts` |
+| Candidatos | 25 modelos con preferencias de proveedor EE.UU./ZDR; los que no tienen proveedor elegible hoy se marcan `noElegible` y el reporte los lista | `evals/candidatos.ts` |
+| Bake-off | 40 tareas de reporte, 4 brazos (pipeline Sonnet+Gemini, Sonnet+Qwen3-235B, Sonnet solo, Gemini solo) | `evals/bakeoff.ts`, `scripts/eval-copiloto/bakeoff*.ts` |
 
 ## Cómo se corre
 
@@ -107,7 +107,7 @@ Todos son deterministas, salvo el juez de español. Un caso "pasa" si pasa todos
   (fragmentos prohibidos solo en el **texto** del asistente: una tabla puede mostrar como dato un nombre con instrucciones, pero el
   asistente no debe repetirlo), `grafica` (kind bar/line y x/y sobre columnas reales).
 - Español: reglas deterministas (peninsularismos, markdown, enlaces, moneda distinta de MXN, formato de montos, máximo 3 frases,
-  inglés) + juez Qwen 3.7 Flash 1 a 5. **No cuentan para la exactitud**; se reportan aparte.
+  inglés) + juez Qwen3-235B-A22B 1 a 5. **No cuentan para la exactitud**; se reportan aparte.
 - Latencia (tiempo de las llamadas al modelo, p50/p95) y costo real por pregunta (`usage.cost`).
 
 Puertas del plan para aprobar un modelo: herramienta >= 95 %, **0 cifras inventadas**, cifras exactas >= 98 %, JSON >= 99.5 % (por
@@ -125,13 +125,26 @@ ninguno pasa, el reporte lo dice y no recomienda.
 gpt-oss-120b, Qwen 3.7 Flash, Qwen3-235B, Mistral Small 3.2, Llama 4 Maverick), la calibración (Haiku 4.5 y Grok 4.3, **solo piloto**,
 nunca finalistas), Sonnet 5.5 (solo subconjunto CFO y analista del bake-off, **jamás juez**), Gemini 3.8 Flash (solo bake-off) y
 los 13 baratos restantes de `work/eval-candidatos-baratos.md`. Todos se llaman con `data_collection: deny`, `zdr: true`,
-`require_parameters: true`, sin fallbacks propios de OpenRouter y, cuando se verificó (API pública de OpenRouter, 1-oct-2026), una
-lista `only` de hosts de EE.UU. que hoy sirven el modelo con herramientas. Un modelo sin ruta responde 404 "No endpoints found" y el
-runner lo **descarta** tras 3 fallas seguidas (la política no se relaja). Un 401/402/403 aborta toda la corrida.
+`require_parameters: true`, sin fallbacks propios de OpenRouter y una lista `only` de hosts de EE.UU. verificada contra la API
+pública de OpenRouter (2-oct-2026) **dentro de la allowlist del gateway** (`HOSTS_PERMITIDOS_GATEWAY`, idéntica a
+`ALLOWED_PROVIDER_HOSTS` de `apps/api/src/production/llm-models.ts`; una prueba lo exige). La única excepción es Muse Spark 1.3: su
+único host (Meta) no ofrece ZDR, así que se llama con `deny` y sin `zdr`, igual que el gateway (`VERIFIED_MODEL_HOSTS`).
 
-Hallazgo: **Qwen 3.7 Flash hoy solo lo sirve Alibaba**, sin ZDR (404 estricto), así que con la regla de producción no es elegible. En el
-eval puede usarse solo con datos sintéticos: el juez prueba primero la ruta estricta, luego una ruta sin ZDR (declarada en el
-reporte) y, si falla, Gemini 2.5 Flash-Lite estricto; el bake-off lo mide sin ZDR únicamente con `--sinteticos`.
+**Modelos no elegibles.** Un candidato sin proveedor de EE.UU. permitido con ZDR hoy lleva `noElegible` con su motivo: no se corre,
+`--modelos=` lo rechaza con un error claro y el reporte (JSON `noElegibles` y sección "Modelos no elegibles" del Markdown) lo lista;
+nunca se omite en silencio. Hoy son: Qwen 3.7 Flash (solo Alibaba, sin ZDR: 404), Grok 4.3 (su único host, xAI, no está en la
+allowlist del gateway), GLM-4.7 Flash, Qwen 3.5 Flash y Seed 2.0 mini (sin host permitido con ZDR). Re-verificar con
+`node scripts/check-llm-us-hosts.mjs <modelo>`; al aparecer un proveedor basta quitar `noElegible` y fijar su `only`. Un modelo
+elegible cuya ruta deje de responder (404 "No endpoints found") sigue descartándose tras 3 fallas seguidas. Un 401/402/403 aborta
+toda la corrida.
+
+**Juez de español (cambio de Qwen 3.7 Flash a Qwen3-235B).** El hallazgo original: Qwen 3.7 Flash solo lo sirve Alibaba, sin ZDR, así
+que con la regla de producción no es elegible; el arnés ya **no** tiene la ruta "datos sintéticos sin ZDR" ni la opción
+`--sinteticos` del bake-off. El juez (y el juez de calidad de análisis del bake-off) prueba en orden, y gana la primera ruta que
+responda (400/404/422 pasa a la siguiente), siempre con `zdr` y `data_collection: deny`: (1) Qwen3-235B-A22B-2507 por Parasail,
+(2) el mismo modelo por DeepInfra o Google Vertex, (3) DeepSeek V4.1 Flash por DeepInfra, (4) Gemini 2.5 Flash-Lite. El reporte dice qué
+ruta usó. Qwen3-235B también toma los roles de enrutador y redactor de reportes que tenía Qwen 3.7 Flash; el brazo `pipeline_qwen`
+del bake-off es ahora "Sonnet analiza + Qwen3-235B redacta".
 
 Costos proyectados (8k tokens de entrada y 900 de salida por turno; precios de la API pública del 1-oct-2026; conservador: el humo
 real salió ~3 veces más barato):
@@ -151,8 +164,8 @@ Las 40 tareas salen de resultados reales congelados (7/7/7/7/6/6 por vertical; c
 JSON de reporte (título, resumen, secciones, hallazgos con fuente `{tabla, fila}`, especificación de gráfica y una infografía SVG).
 Graders: JSON y fuentes válidos, **cero cifras inventadas**, cobertura de cifras clave (>= 60 % por tarea; puerta 90 % de tareas),
 español por reglas, gráfica válida y **SVG válido** (`validarSvg`: bien formado, solo elementos de dibujo permitidos, sin scripts,
-handlers, enlaces, estilos ni recursos externos, con `xmlns`/`viewBox`, formas y texto). La calidad del análisis la califica Qwen 3.7
-Flash con rúbrica 1 a 5 (nunca Sonnet). Puertas: JSON 100 %, cifras sin inventar 100 %, SVG 95 %, español 95 %, cifras clave 90 %,
+handlers, enlaces, estilos ni recursos externos, con `xmlns`/`viewBox`, formas y texto). La calidad del análisis la califica Qwen3-235B
+con rúbrica 1 a 5 (nunca Sonnet). Puertas: JSON 100 %, cifras sin inventar 100 %, SVG 95 %, español 95 %, cifras clave 90 %,
 análisis >= 4. La recomendación es el brazo **más barato que pasa todas**; Sonnet solo queda de respaldo para reportes financieros.
 
 ## Hallazgos reales del humo (bugs encontrados)
@@ -164,8 +177,8 @@ análisis >= 4. La recomendación es el brazo **más barato que pasa todas**; So
    las fechas de "semana pasada"/"esta semana" en herramientas de periodo mixto).
 2. Luna agrega `vencen_en_dias=90` a "¿qué convocatorias tengo abiertas?", lo que excluye las convocatorias sin fecha límite (el grader
    de argumentos lo marca).
-3. Qwen 3.7 Flash razona por defecto y gasta el tope de salida (contenido vacío; 18 veces más caro como juez): se fija
-   `reasoning: none`.
+3. Qwen 3.7 Flash razonaba por defecto y gastaba el tope de salida (contenido vacío; 18 veces más caro como juez): se fijó
+   `reasoning: none`. Ese modelo ya no es juez (ver Candidatos); Qwen3-235B-A22B-2507 no razona.
 4. Gemini 3.8 Flash devolvió errores upstream intermitentes ("JSON error injected into SSE stream", 429); el runner los cuenta como
    `error_proveedor` (fuera del denominador de exactitud) y los reporta.
 5. El texto fijo del motor para "fuera de catálogo" lista las consultas y en despachos contiene "69-B": el grader ya no trata el
@@ -185,4 +198,4 @@ análisis >= 4. La recomendación es el brazo **más barato que pasa todas**; So
 - Las semillas de hoteles, rentas, despachos y licitaciones son pequeñas (28-30 sep); los periodos sin datos se usan a propósito.
 - Los modelos se comparan con el prompt y las herramientas de hoy; no hay canario en producción (`core.data_chat_query_log`) todavía.
 - La puerta de latencia usa el tiempo del modelo contra OpenRouter desde una Mac, no desde Vercel.
-- Qwen 3.7 Flash no tiene host de EE.UU. con ZDR; DeepSeek y los demás chinos solo entran a producción con una decisión explícita de Javier.
+- Qwen 3.7 Flash no tiene host de EE.UU. con ZDR (marcado no elegible); DeepSeek y los demás chinos solo entran a producción con una decisión explícita de Javier.
