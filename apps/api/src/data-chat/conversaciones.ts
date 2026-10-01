@@ -144,7 +144,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
   ) {}
 
   async list(scope: ConversacionScope): Promise<{ disponible: boolean; items: ConversacionResumenDto[] }> {
-    return runWithSavepointFallback({
+    return runWithSavepointFallback<{ disponible: boolean; items: ConversacionResumenDto[] }>({
       session: this.db,
       primary: async () => {
         const { rows } = await this.db.query<ConversacionRow>(
