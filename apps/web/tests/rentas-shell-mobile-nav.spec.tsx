@@ -123,6 +123,24 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...root.querySelectorAll("header")].some((h) => h.textContent?.includes("Demo · Depa Marina"))).toBe(true);
   });
 
+  it("el item Resumen del Sidebar solo esta activo en la raiz, no en las paginas hijas", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify(SESSION));
+    fetchPropertiesMock.mockResolvedValue([{ propertyId: "prop-1", nombre: "Depa Marina" }]);
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={["/rentas/demo/aprobaciones"]}>
+        <RentasShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {() => <div>child</div>}
+        </RentasShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
+    expect(activos).toEqual(["/rentas/demo/aprobaciones"]);
+  });
+
   it("con varias propiedades ofrece el selector real, lo persiste por organización y remonta la página", async () => {
     installMatchMediaStub();
     installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify(SESSION));

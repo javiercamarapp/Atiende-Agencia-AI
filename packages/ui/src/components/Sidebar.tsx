@@ -12,6 +12,8 @@ export interface SidebarItem {
   to: string;
   label: string;
   icon: IconType;
+  /** Activo solo con coincidencia exacta de la ruta (un item raiz como "Resumen" no debe quedar activo en todas las paginas hijas). */
+  end?: boolean;
 }
 
 export interface SidebarSection {
@@ -150,6 +152,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope 
                     <NavLink
                       key={item.to}
                       to={item.to}
+                      end={item.end}
                       className={({ isActive }) =>
                         cn(
                           "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",

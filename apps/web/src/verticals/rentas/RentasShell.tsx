@@ -73,7 +73,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
       title: "Análisis",
       siempreAbierto: true,
       items: [
-        { to: ruta(""), label: "Resumen", icon: LayoutDashboard },
+        { to: ruta(""), label: "Resumen", icon: LayoutDashboard, end: true },
         { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
       ],
     },
