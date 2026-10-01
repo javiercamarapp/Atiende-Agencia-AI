@@ -16,6 +16,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
 import { LICITACIONES_ROLES, buildLicitacionesDataChatCatalog } from "@atiende/domain-licitaciones";
 import { parseDataChatBody } from "../../../data-chat/body.ts";
+import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { Errors } from "../../../errors.ts";
 import { LICITACIONES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -38,7 +39,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const raw: unknown = await c.req.json().catch(() => {
       throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
     });
-    const { question, history } = parseDataChatBody(raw);
+    const { question, history, tool } = parseDataChatBody(raw);
 
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
@@ -64,7 +65,9 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       },
       question,
       history,
+      ...(tool ? { directTool: tool } : {}),
       complete: completion(organizationId, LICITACIONES_DATA_CHAT_ROLE),
+      completeRetry: completion(organizationId, `licitaciones:${DATA_CHAT_RETRY_SUFFIX}`),
       rateLimiter: dataChat.rateLimiter,
       audit: dataChat.audit(db),
       onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "licitaciones", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),

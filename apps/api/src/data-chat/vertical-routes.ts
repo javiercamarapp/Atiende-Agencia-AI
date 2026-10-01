@@ -13,6 +13,7 @@ import { runDataChatTurn, type DataChatCatalog } from "@atiende/agent-core/data-
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
+import { DATA_CHAT_RETRY_SUFFIX } from "../production/llm-models.ts";
 import { parseDataChatBody } from "./body.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 
@@ -48,7 +49,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const raw: unknown = await c.req.json().catch(() => {
       throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
     });
-    const { question, history } = parseDataChatBody(raw);
+    const { question, history, tool } = parseDataChatBody(raw);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -77,7 +78,9 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
       },
       question,
       history,
+      ...(tool ? { directTool: tool } : {}),
       complete: completion(organizationId, cfg.role),
+      completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`),
       rateLimiter: dataChat.rateLimiter,
       audit: dataChat.audit(db),
       onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),

@@ -40,7 +40,7 @@ import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
 import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
-import { SUGERENCIAS_RESTAURANTES, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
+import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
@@ -187,6 +187,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     clave: propertyId,
     disponible: () => fetchDataChatDisponible(fetch, apiBaseUrl, session.token, propertyId),
     enviar: (pregunta, historial) => preguntarDatos(fetch, apiBaseUrl, session.token, propertyId, pregunta, historial),
+    ejecutarOpcion: (tool) => ejecutarConsultaDirecta(fetch, apiBaseUrl, session.token, propertyId, tool),
     sugerencias: SUGERENCIAS_RESTAURANTES,
   };
 
@@ -221,7 +222,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <UtensilsCrossed className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}
       branchSelector={sucursalSelector}
       mobileSelector={branches.length > 1 ? sucursalSelector : null}
       contentKey={propertyId}

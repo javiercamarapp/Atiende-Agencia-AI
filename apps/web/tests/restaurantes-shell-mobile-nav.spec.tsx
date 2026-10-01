@@ -130,7 +130,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(window.localStorage.getItem("atiende:restaurantes:sidebar:grupo")).toBe("Equipo");
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];

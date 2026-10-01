@@ -144,7 +144,7 @@ describe("auth y roles", () => {
   it("usa el rol del gateway despachos:data_chat (tope mensual por organizacion y kill-switch propios)", async () => {
     const h = await harness([CARTERA, { text: "ok" }]);
     await h.app.request(url(h), post(h.ctx.staff.admin.token, { question: "cartera" }));
-    expect(h.roles).toEqual([DESPACHOS_DATA_CHAT_ROLE]);
+    expect(h.roles).toEqual([DESPACHOS_DATA_CHAT_ROLE, "despachos:data_chat_retry"]);
     expect(DESPACHOS_DATA_CHAT_ROLE).toBe("despachos:data_chat");
   });
 });

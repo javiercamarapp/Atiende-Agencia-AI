@@ -3,7 +3,7 @@
 // pregunta y el historial de texto: el alcance (organizacion, propiedades, rol) lo decide el servidor a partir del
 // token, nunca el cliente. Mismo refresh de sesion que el resto de clientes de cada vertical (`withAuthRefresh`).
 // `fetchImpl` inyectado: ningun test toca la red.
-import type { ChatDatosBloque, ChatDatosFuente } from "@atiende/ui";
+import type { ChatDatosBloque, ChatDatosFuente, ChatDatosSinIa } from "@atiende/ui";
 import type { ChatDatosConexion } from "../components/PanelChateaConTusDatos.tsx";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "./authed-fetch.ts";
 import type { AuthedFetchContext, AuthedSession } from "./authed-fetch.ts";
@@ -14,6 +14,8 @@ export interface DataChatRespuesta {
   readonly blocks: readonly ChatDatosBloque[];
   readonly sources: readonly ChatDatosFuente[];
   readonly toolsUsed: readonly string[];
+  /** Modo sin IA: consultas directas que ofrece el servidor (se muestran como botones). */
+  readonly noAi?: ChatDatosSinIa;
 }
 
 export interface DataChatClientConfig<S extends AuthedSession> {
@@ -69,6 +71,21 @@ export function crearClienteDataChat<S extends AuthedSession>(cfg: DataChatClien
         return respuestaLocal("unavailable", "No pude conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
       }
     },
+
+    /** MODO SIN IA: ejecuta una consulta del catalogo directo (cuerpo `{ tool }`, sin modelo). Mismo refresh y mismos errores honestos. */
+    async ejecutarConsulta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tool: string): Promise<DataChatRespuesta> {
+      const url = chatUrl(apiBaseUrl, propertyId);
+      try {
+        const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), cfg.authContext(), token, (t) =>
+          fetchImpl(url, { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ tool }) }),
+        );
+        if (res.status === 403) return respuestaLocal("unavailable", "Tu rol no tiene acceso a esta consulta.");
+        if (!res.ok) return respuestaLocal("unavailable", "No pude consultar tus datos en este momento. Inténtalo de nuevo en unos minutos.");
+        return (await res.json()) as DataChatRespuesta;
+      } catch {
+        return respuestaLocal("unavailable", "No pude conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
+      }
+    },
   };
 }
 
@@ -84,6 +101,7 @@ export function crearChatConexion<S extends AuthedSession>(
     clave: propertyId,
     disponible: () => cliente.disponible(fetch, apiBaseUrl, token, propertyId),
     enviar: (pregunta, historial) => cliente.preguntar(fetch, apiBaseUrl, token, propertyId, pregunta, historial),
+    ejecutarOpcion: (tool) => cliente.ejecutarConsulta(fetch, apiBaseUrl, token, propertyId, tool),
     sugerencias,
   };
 }

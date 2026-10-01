@@ -47,12 +47,13 @@ export {
 export { PageHeader, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
 export { PageContainer, type PageContainerProps } from "./components/PageContainer.js";
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
-export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
+export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
 export {
   VerticalShell,
   VerticalShellEstado,
+  useTituloBarra,
   VerticalNoEncontrado,
   RutaBoundary,
   construirMigas,
@@ -62,7 +63,7 @@ export {
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
-export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
 export {
   ChatDatosDialog,
   formatChatCell,
@@ -72,6 +73,8 @@ export {
   type ChatDatosColumna,
   type ChatDatosFuente,
   type ChatDatosCell,
+  type ChatDatosSinIa,
+  type ChatDatosOpcionSinIa,
 } from "./components/ChatDatosDialog.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 

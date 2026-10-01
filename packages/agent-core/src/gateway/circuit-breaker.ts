@@ -171,6 +171,13 @@ export interface CircuitBreakerOptions {
   failureThreshold?: number;
   failureWindowSeconds?: number;
   openDurationSeconds?: number;
+  /** Prefijo de ENTORNO de las claves del breaker (`cb:<prefijo>:<proveedor>`). Con un Redis compartido
+   *  entre produccion, preview y desarrollo, sin prefijo un modelo caido en preview abriria el breaker de
+   *  produccion (y al reves). Sin prefijo las claves son `cb:<proveedor>` (comportamiento anterior). */
+  keyPrefix?: string;
+  /** Se llama (best-effort, nunca lanza hacia el breaker) cuando el breaker de un proveedor pasa a OPEN. Sirve para
+   *  avisar (p. ej. notificacion in-app de "modelo caido"); un error del callback se ignora. */
+  onOpen?: (providerId: string, reason: string) => void | Promise<void>;
 }
 
 /**
@@ -182,6 +189,8 @@ export class CircuitBreaker {
   private readonly failureThreshold: number;
   private readonly failureWindowSeconds: number;
   private readonly openDurationSeconds: number;
+  private readonly prefix: string;
+  private readonly onOpen: CircuitBreakerOptions['onOpen'];
 
   constructor(
     private readonly store: CircuitBreakerStore | undefined,
@@ -190,13 +199,15 @@ export class CircuitBreaker {
     this.failureThreshold = opts.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
     this.failureWindowSeconds = opts.failureWindowSeconds ?? DEFAULT_FAILURE_WINDOW_SECONDS;
     this.openDurationSeconds = opts.openDurationSeconds ?? DEFAULT_OPEN_DURATION_SECONDS;
+    this.prefix = opts.keyPrefix ? `cb:${opts.keyPrefix}` : 'cb';
+    this.onOpen = opts.onOpen;
   }
 
   private breakerKey(providerId: string): string {
-    return `cb:${providerId}`;
+    return `${this.prefix}:${providerId}`;
   }
   private failureKey(providerId: string): string {
-    return `cb:${providerId}:failures`;
+    return `${this.prefix}:${providerId}:failures`;
   }
 
   /** Lanza `CircuitOpenError` si el breaker de este proveedor está OPEN. */
@@ -221,7 +232,11 @@ export class CircuitBreaker {
       if (count >= this.failureThreshold) {
         await this.store.setOpen(this.breakerKey(providerId), this.openDurationSeconds);
         await this.store.del(this.failureKey(providerId));
-        void reason; // el llamador puede loguearlo; el breaker no impone logger.
+        try {
+          await this.onOpen?.(providerId, reason);
+        } catch {
+          /* el aviso es best-effort: nunca altera el breaker ni la llamada */
+        }
       }
     } catch {
       /* store no disponible: no-op, ya se dejó pasar en checkCircuit */

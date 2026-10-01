@@ -210,3 +210,42 @@ describe("validación, límites y disponibilidad", () => {
     expect(((await res.json()) as DataChatAnswer).status).toBe("unavailable");
   });
 });
+
+describe("modo sin IA: botones de noAi.options (campo `tool`)", () => {
+  it("owner: `tool` ejecuta la consulta del catalogo SIN llamar al modelo, con su alcance y bitacora", async () => {
+    const h = await harness([{ text: "no debe llamarse" }]);
+    const res = await h.app.request(url(h), post(h.ctx.staff.owner.token, { tool: "ventas_por_dia" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as DataChatAnswer;
+    expect(body.status).toBe("ok");
+    expect(body.toolsUsed).toEqual(["ventas_por_dia"]);
+    expect(body.blocks[0]!.rows).toEqual([{ periodo: "2026-09-29", ventas: 350, pedidos: 2 }]);
+    expect(h.llmRequests).toHaveLength(0);
+    expect(h.reader.windows[0]).toMatchObject({ propertyIds: null, organizationId: h.ctx.organizationId });
+    expect(h.audit.at(-1)).toMatchObject({ tool: "ventas_por_dia", outcome: "ok" });
+  });
+
+  it("gerente de la sucursal A: la consulta directa sigue acotada a SU sucursal (no ve la ajena)", async () => {
+    const h = await harness([]);
+    const res = await h.app.request(url(h), post(h.ctx.staff.staffSucursalA.token, { tool: "ventas_por_dia" }));
+    const body = (await res.json()) as DataChatAnswer;
+    expect(body.blocks[0]!.rows).toEqual([{ periodo: "2026-09-29", ventas: 100, pedidos: 1 }]);
+  });
+
+  it("roles y cross-tenant: repartidor y staff de otra organizacion -> 403 tambien con `tool`", async () => {
+    const h = await harness([]);
+    expect((await h.app.request(url(h), post(h.ctx.staff.repartidor.token, { tool: "ventas_por_dia" }))).status).toBe(403);
+    expect((await h.app.request(url(h), post(h.ctx.staff.otroOrgOwner.token, { tool: "ventas_por_dia" }))).status).toBe(403);
+  });
+
+  it("`tool` inexistente -> invalid_input sin ejecutar nada; `tool` junto con `question` o con formato raro -> 400", async () => {
+    const h = await harness([]);
+    const tok = h.ctx.staff.owner.token;
+    const nope = (await (await h.app.request(url(h), post(tok, { tool: "borrar_todo" }))).json()) as DataChatAnswer;
+    expect(nope.status).toBe("invalid_input");
+    expect(h.reader.windows).toHaveLength(0);
+    expect((await h.app.request(url(h), post(tok, { tool: "ventas_por_dia", question: "x" }))).status).toBe(400);
+    expect((await h.app.request(url(h), post(tok, { tool: "ventas; drop table x" }))).status).toBe(400);
+    expect((await h.app.request(url(h), post(tok, { tool: 5 }))).status).toBe(400);
+  });
+});

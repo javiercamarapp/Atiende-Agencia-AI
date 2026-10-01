@@ -155,10 +155,10 @@ describe("VerticalShell — slots, transiciones y remontaje", () => {
 
   it("al navegar remonta el envoltorio de la página con la animación page-in (solo motion-safe)", () => {
     rendered = renderShell();
-    const antes = rendered.container.querySelector("main > div > div")!;
+    const antes = rendered.container.querySelector("main > div")!;
     expect(antes.className).toContain("motion-safe:animate-page-in");
     click([...rendered.container.querySelectorAll("a")].find((a) => a.textContent === "ir-proveedores")!);
-    const despues = rendered.container.querySelector("main > div > div")!;
+    const despues = rendered.container.querySelector("main > div")!;
     expect(despues).not.toBe(antes);
     expect(antes.isConnected).toBe(false);
   });

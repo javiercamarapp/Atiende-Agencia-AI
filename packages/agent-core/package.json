@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./gateway": "./src/gateway/index.ts",
-    "./data-chat": "./src/data-chat/index.ts"
+    "./data-chat": "./src/data-chat/index.ts",
+    "./data-chat/evals": "./src/data-chat/evals/index.ts"
   },
   "scripts": {
     "lint": "eslint .",

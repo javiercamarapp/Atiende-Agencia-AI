@@ -18,6 +18,7 @@
 // explícito (nunca dependen de `auth.uid()`), así que corren siempre sobre la
 // sesión de SISTEMA (ver `apps/api/src/production/llm-usage-repository.ts`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 
 export interface LlmUsageEventInput {
   readonly organizationId: string;
@@ -28,6 +29,9 @@ export interface LlmUsageEventInput {
   readonly lane: string;
   readonly tokensIn: number;
   readonly tokensOut: number;
+  /** Tokens de entrada leidos de cache y tokens de razonamiento (solo se guardan si la migracion 0040 esta aplicada). */
+  readonly tokensCached?: number;
+  readonly tokensReasoning?: number;
   readonly costMicroUsd: number;
   readonly fallbackUsed: boolean;
 }
@@ -182,21 +186,32 @@ export class PostgresLlmUsageRepository implements LlmUsageRepository {
   constructor(private readonly db: TenantDbSession) {}
 
   async recordUsage(event: LlmUsageEventInput): Promise<void> {
-    await this.db.query(
-      `select core.record_llm_usage($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
-      [
-        event.organizationId,
-        event.vertical,
-        event.role,
-        event.providerId,
-        event.model,
-        event.lane,
-        Math.trunc(event.tokensIn),
-        Math.trunc(event.tokensOut),
-        Math.trunc(event.costMicroUsd),
-        event.fallbackUsed,
-      ],
-    );
+    const base = [
+      event.organizationId,
+      event.vertical,
+      event.role,
+      event.providerId,
+      event.model,
+      event.lane,
+      Math.trunc(event.tokensIn),
+      Math.trunc(event.tokensOut),
+      Math.trunc(event.costMicroUsd),
+      event.fallbackUsed,
+    ];
+    // Compatibilidad con la base SIN migrar (0040 pendiente): la funcion de 12 argumentos no existe (42883) y
+    // la de 10 es la anterior. Dentro de una transaccion un error la deja abortada, asi que el intento va en
+    // un SAVEPOINT (runWithSavepointFallback) y el respaldo corre con la sesion ya recuperada.
+    await runWithSavepointFallback({
+      session: this.db,
+      primary: () =>
+        this.db.query(`select core.record_llm_usage($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`, [
+          ...base,
+          Math.trunc(Math.max(0, event.tokensCached ?? 0)),
+          Math.trunc(Math.max(0, event.tokensReasoning ?? 0)),
+        ]),
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: () => this.db.query(`select core.record_llm_usage($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`, base),
+    });
   }
 
   async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {

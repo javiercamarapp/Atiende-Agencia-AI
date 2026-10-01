@@ -191,3 +191,58 @@ jobs:
 
       - name: scripts/verify-fallback-savepoint/run.sh
         run: bash scripts/verify-fallback-savepoint/run.sh
+
+  eval-copiloto-congelado:
+    name: Arnes de evaluacion del Copiloto - respuestas esperadas congeladas vs Postgres sembrado (scripts/eval-copiloto)
+    runs-on: ubuntu-latest
+    # Job APARTE (mismo servicio postgres que el gate de arriba). Aplica las migraciones reales y las semillas del arnes
+    # (scripts/eval-copiloto/seeds) y exige que `congelar.ts --check` reproduzca BYTE A BYTE scripts/eval-copiloto/datos/*.congelado.json:
+    # las cifras esperadas de los 360 casos salen de ejecutar las herramientas de referencia, no de escribirlas a mano, y esto
+    # falla si una migracion, una consulta del catalogo o una semilla cambian lo que esas herramientas devuelven (sin costo: no
+    # llama a ningun modelo). La logica del arnes y el modelo guionado corren en `npm run test:unit` (apps/api/tests/eval-copiloto).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Preparar la base (migraciones reales + semillas del arnes)
+        run: bash scripts/eval-copiloto/preparar.sh atiende_eval_copiloto
+
+      - name: Congelado vs base sembrada (--check)
+        run: |
+          export COPILOTO_EVAL_DATABASE_URL="postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/atiende_eval_copiloto"
+          npx vite-node scripts/eval-copiloto/congelar.ts -- --check

@@ -127,3 +127,33 @@ describe('LlmGateway — registro de uso (control de gasto de API de LLM)', () =
     expect(result.providerId).toBe('p1');
   });
 });
+
+describe('LlmGateway — tokens de cache y razonamiento en el registro de uso', () => {
+  function gatewayWith(recorder: UsageRecorder, provider: FakeLlmProvider): LlmGateway {
+    const gateway = new LlmGateway({
+      breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+      budgetStore: new InMemoryBudgetLedgerStore(),
+      budgetLimits: { maxRunUsd: 1, maxTenantDailyUsd: 5 },
+      usageRecorder: recorder,
+    });
+    gateway.registerLadder('chat', [provider]);
+    return gateway;
+  }
+
+  it('pasa tokensCached y tokensReasoning al registro cuando el proveedor los reporta', async () => {
+    const { recorder, events } = fakeRecorder();
+    const provider = new FakeLlmProvider({
+      id: 'p1',
+      script: async () => ({ text: 'ok', model: 'm', tokensIn: 100, tokensOut: 40, tokensCached: 60, tokensReasoning: 25, costUsd: 0.001 }),
+    });
+    await gatewayWith(recorder, provider).complete({ tenantId: 't1', runId: 'r1', lane: 'interactive', role: 'chat', request: req() });
+    expect(events[0]).toMatchObject({ tokensCached: 60, tokensReasoning: 25 });
+  });
+
+  it('si el proveedor no los reporta, el evento no los incluye (el almacen guarda 0)', async () => {
+    const { recorder, events } = fakeRecorder();
+    await gatewayWith(recorder, fixedCostProvider('p1', 0.001)).complete({ tenantId: 't1', runId: 'r1', lane: 'interactive', role: 'chat', request: req() });
+    expect('tokensCached' in events[0]!).toBe(false);
+    expect('tokensReasoning' in events[0]!).toBe(false);
+  });
+});

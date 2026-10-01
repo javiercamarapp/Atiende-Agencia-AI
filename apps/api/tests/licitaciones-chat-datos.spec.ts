@@ -110,7 +110,7 @@ describe("auth y roles", () => {
   it("usa el rol del gateway licitaciones:data_chat (tope mensual por organizacion y kill-switch propios)", async () => {
     const h = await harness([ABIERTAS, { text: "ok" }]);
     await h.app.request(url(h), post(h.ctx.staff.owner.token, { question: "convocatorias por vencer" }));
-    expect(h.roles).toEqual([LICITACIONES_DATA_CHAT_ROLE]);
+    expect(h.roles).toEqual([LICITACIONES_DATA_CHAT_ROLE, "licitaciones:data_chat_retry"]);
     expect(LICITACIONES_DATA_CHAT_ROLE).toBe("licitaciones:data_chat");
   });
 });

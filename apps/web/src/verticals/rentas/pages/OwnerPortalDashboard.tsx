@@ -143,7 +143,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
 
   return (
     <main className="min-h-screen bg-background">
-      <PageContainer size="md" className="gap-6 [&>*]:min-w-0">
+      <PageContainer padding="default" className="mx-auto max-w-4xl gap-6 [&>*]:min-w-0">
         <header className="flex justify-between items-start gap-3">
           <div>
             <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Portal de propietario</h1>

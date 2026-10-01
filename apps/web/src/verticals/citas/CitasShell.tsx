@@ -189,7 +189,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       user={user}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <CalendarClock className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector}
       mobileSelector={branches.length > 1 ? branchSelector : null}
       contentKey={propertyId}

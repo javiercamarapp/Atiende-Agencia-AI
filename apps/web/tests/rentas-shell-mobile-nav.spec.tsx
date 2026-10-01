@@ -170,7 +170,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(window.localStorage.getItem("atiende.rentas.selectedProperty.demo")).toBe("prop-2");
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];

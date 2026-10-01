@@ -3,7 +3,7 @@
 // `MobileHeaderActions`. SOLO manda la pregunta y el historial de texto: el alcance (organizacion,
 // clientes, rol, zona horaria) lo decide el servidor a partir del token, nunca el cliente. Cualquier error
 // degrada a un aviso honesto, nunca a una excepcion ni a una respuesta simulada.
-import type { ChatDatosBloque, ChatDatosFuente } from "@atiende/ui";
+import type { ChatDatosBloque, ChatDatosFuente, ChatDatosSinIa } from "@atiende/ui";
 import type { ChatDatosConexion } from "../components/PanelChateaConTusDatos.tsx";
 
 export interface DataChatRespuesta {
@@ -12,6 +12,8 @@ export interface DataChatRespuesta {
   readonly blocks: readonly ChatDatosBloque[];
   readonly sources: readonly ChatDatosFuente[];
   readonly toolsUsed?: readonly string[];
+  /** Modo sin IA: consultas directas que ofrece el servidor (se muestran como botones). */
+  readonly noAi?: ChatDatosSinIa;
 }
 
 /** Mismos topes que valida el servidor (12 turnos de historial; 600 caracteres por turno). */
@@ -54,11 +56,22 @@ export async function enviarPregunta(
   }
 }
 
+/** MODO SIN IA: ejecuta una consulta del catalogo directo (cuerpo `{ tool }`, sin modelo). Mismos errores honestos. */
+export async function ejecutarConsultaDirecta(transporte: TransporteChatDatos, baseUrl: string, tool: string): Promise<DataChatRespuesta> {
+  try {
+    return await transporte.postJson<DataChatRespuesta>(baseUrl, { tool });
+  } catch (err) {
+    if (err instanceof TypeError) return respuestaLocal("unavailable", "No pude conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
+    return respuestaLocal("unavailable", "No pude consultar tus datos en este momento. Inténtalo de nuevo en unos minutos.");
+  }
+}
+
 export function crearConexionChatDatos(opts: { clave: string; baseUrl: string; transporte: TransporteChatDatos; sugerencias: readonly string[] }): ChatDatosConexion {
   return {
     clave: opts.clave,
     disponible: () => consultarDisponibilidad(opts.transporte, opts.baseUrl),
     enviar: (pregunta, historial) => enviarPregunta(opts.transporte, opts.baseUrl, pregunta, historial),
+    ejecutarOpcion: (tool) => ejecutarConsultaDirecta(opts.transporte, opts.baseUrl, tool),
     sugerencias: opts.sugerencias,
   };
 }

@@ -208,8 +208,23 @@ export class LlmGateway {
         throw err;
       }
 
+      // GUARDA CONTRA TEXTO DUPLICADO: si el llamador hace streaming y este escalon ya le entrego texto
+      // antes de fallar, pasar al siguiente escalon le haria llegar OTRA respuesta completa encima de la
+      // parcial (texto duplicado/mezclado de dos modelos). En ese caso la escalera se detiene.
+      let streamedText = false;
+      const onTextDelta = opts.request.onTextDelta;
+      const request: LlmCompletionRequest = onTextDelta
+        ? {
+            ...opts.request,
+            onTextDelta: (delta) => {
+              if (delta.length > 0) streamedText = true;
+              onTextDelta(delta);
+            },
+          }
+        : opts.request;
+
       try {
-        const result = await provider.complete(opts.request);
+        const result = await provider.complete(request);
         const actualMicroUsd = usdToMicroUsd(result.costUsd);
         await settleBudget(this.budgetStore, budget, reservation, result.costUsd);
         if (this.orgMonthlyBudgetStore && monthlyReservationId) {
@@ -238,6 +253,8 @@ export class LlmGateway {
             model: result.model,
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
+            ...(result.tokensCached !== undefined ? { tokensCached: result.tokensCached } : {}),
+            ...(result.tokensReasoning !== undefined ? { tokensReasoning: result.tokensReasoning } : {}),
             costMicroUsd: actualMicroUsd,
             fallbackUsed: i > 0,
             occurredAt: new Date().toISOString(),
@@ -266,6 +283,11 @@ export class LlmGateway {
 
         const retryable = err instanceof GatewayError ? err.retryable : isRetryableProviderError(err);
         await this.breaker.reportFailure(provider.id, message);
+
+        if (streamedText) {
+          // Ya se emitio texto de este escalon: no se reintenta con otro modelo (duplicaria la salida).
+          throw err;
+        }
 
         if (!retryable) {
           // Error de negocio (p.ej. 400 por input inválido): no tiene
