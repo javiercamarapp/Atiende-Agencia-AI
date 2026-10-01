@@ -412,3 +412,21 @@ lecturas degradan (`tareasDisponibles: false`) y las escrituras responden 503
 (`runWithSavepointFallback`). Verificación contra Postgres real:
 `scripts/verify-hoteles-housekeeping/`. Fuera de esta entrega: inspección con visión/fotos,
 conteo de blancos, opt-out de limpieza y asignación automática (optimizador).
+
+## Tickets de huésped con SLA (H-05)
+
+Código en `src/tickets/` (`sla.ts` reglas puras: clasificación de un mensaje libre, SLA, estado de
+SLA, transiciones y ticket desde reseña; `tipos.ts`, `repository.ts` puerto, `postgres-repository.ts` e
+`in-memory-repository.ts`); modelo SQL en `migrations/034_guest_ticket_sla_escalacion.sql`
+(`hoteles.guest_ticket`, `hoteles.guest_ticket_event` bitácora escrita por trigger, `hoteles.ticket_sla_policy`
+y la función de sistema `hoteles.sweep_guest_ticket_sla`). Ciclo: abierto -> en_progreso -> cerrado; al
+vencer el SLA sin cierre pasa a `escalado` (sube a gerencia/dirección) y desde ahí puede volver a
+en_progreso o cerrarse; cerrado/cancelado son terminales. El SLA se resuelve y congela al crear
+(la política de la property manda sobre lo que mande el cliente; reasignar el departamento no lo
+reinicia). Un ticket puede nacer de una reseña negativa de `hoteles.guest_review` (canal `resena`, a lo
+sumo un ticket activo por reseña). El barrido (`/internal/hoteles/tickets-sla`) escala los vencidos y avisa
+al 75% del SLA, es idempotente y corre una transacción por property. Contra una base sin la migración las
+lecturas degradan (`disponible: false`) y las escrituras responden 503 (`runWithSavepointFallback`).
+Verificación contra Postgres real: `scripts/verify-hoteles-tickets-sla/`. Fuera de esta entrega: ingesta
+automática desde WhatsApp/voz/QR (el canal queda declarado en el modelo), notificación activa (correo/push)
+al escalar, y escalación por activo crítico de mantenimiento.

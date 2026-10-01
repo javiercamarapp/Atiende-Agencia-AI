@@ -544,7 +544,16 @@ export function RevenuePage({ apiBaseUrl, token, propertyId }: HotelesShellConte
                         </Button>
                       </div>
                     )}
-                    {rec.estado === "aprobada" && <p className="text-xs text-muted-foreground">Aprobada — el sistema la aplicará en su siguiente corrida.</p>}
+                    {rec.estado === "aprobada" && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-muted-foreground">Aprobada — el sistema la aplicará en su siguiente corrida.</p>
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => void handleDiscard(rec.id)} disabled={busy}>
+                            Descartar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
