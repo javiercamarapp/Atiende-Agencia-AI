@@ -80,8 +80,8 @@
     ],
     "cifras": [
      {
-      "etiqueta": "monto(suma)",
-      "valor": 4292
+      "etiqueta": "cobranza vencida#1",
+      "valor": 3712
      }
     ],
     "periodLabels": [],
@@ -661,8 +661,8 @@
     ],
     "cifras": [
      {
-      "etiqueta": "total(suma)",
-      "valor": 7292
+      "etiqueta": "cfdi del mes#1",
+      "valor": 5
      }
     ],
     "periodLabels": [

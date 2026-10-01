@@ -207,8 +207,7 @@ export function recomendarPorRol(resumenes: readonly ResumenModelo[], candidatos
   const reintento = [...aptos].filter((r) => r.modelo !== primario?.modelo).sort((a, b) => b.exactitud - a.exactitud || a.inventadas - b.inventadas || a.costoPorPreguntaUsd - b.costoPorPreguntaUsd)[0];
   out.push({ rol: "reintento_guardia", primario: reintento?.modelo ?? null, respaldos: [], razon: reintento ? `mayor exactitud entre los que pasan las puertas, distinto del primario (${(reintento.exactitud * 100).toFixed(1)}%)` : "sin candidato que pase las puertas distinto del primario" });
 
-  const cfo = resumenes.filter((r) => r.evaluados > 0 && candidatos.some((c) => c.id === r.modelo && c.roles.includes("cfo_superadmin")));
-  out.push({ rol: "cfo_superadmin", primario: null, respaldos: [], razon: cfo.length ? "se decide con el subconjunto CFO (fase cfo): ver su reporte" : "sin datos: el subconjunto CFO/superadmin no tiene catalogo en main (SA-L-15); la fase cfo queda pendiente" });
+  out.push({ rol: "cfo_superadmin", primario: null, respaldos: [], razon: "sin datos en esta corrida: el subconjunto CFO/superadmin no tiene catalogo en main (SA-L-15); se decide con la fase cfo cuando exista" });
   return out;
 }
 

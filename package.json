@@ -28,7 +28,11 @@
     "smoke:post-deploy": "node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts",
     "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts",
     "test:e2e": "npm run test:e2e -w @atiende/web --",
-    "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --"
+    "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --",
+    "eval:copiloto": "vite-node scripts/eval-copiloto/cli.ts --",
+    "eval:copiloto:congelar": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts --",
+    "eval:copiloto:congelar:check": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts -- --check",
+    "eval:copiloto:real": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/cli.ts -- --modo=real"
   },
   "devDependencies": {
     "@atiende/core-ratelimit": "*",

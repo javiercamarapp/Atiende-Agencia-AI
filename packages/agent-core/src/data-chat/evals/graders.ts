@@ -250,7 +250,10 @@ export function evaluarCaso(caso: CasoEval, s: SalidaTurno, ctx: ContextoGrader)
   const pregunta = [caso.pregunta, ...caso.historial.map((h) => h.text)].join(" ");
   const permitidos = allowedNumbers(pregunta, s.resultados.map((r) => r.result));
   const inventadas = unsupportedNumbers(s.textoModelo, permitidos);
-  const inventadasFinal = unsupportedNumbers(s.text, permitidos);
+  // El texto FINAL solo es del modelo cuando el motor lo acepto (ok) o es su pregunta de aclaracion (clarify); en los demas
+  // estados es texto fijo del motor (p.ej. la lista de consultas, que puede traer "69-B") y no mide al modelo.
+  const textoEsDelModelo = s.status === "ok" || s.status === "clarify";
+  const inventadasFinal = textoEsDelModelo ? unsupportedNumbers(s.text, permitidos) : [];
   ok("cero_inventadas", inventadas.length === 0 && inventadasFinal.length === 0, `inventadas: ${[...inventadas, ...inventadasFinal].join(", ")}`);
 
   const narrativaOk = s.textoModelo.trim().length > 0 && s.textoModelo.length <= MAX_NARRATIVE_CHARS && !containsLink(s.textoModelo) && inventadas.length === 0;
@@ -258,7 +261,8 @@ export function evaluarCaso(caso: CasoEval, s: SalidaTurno, ctx: ContextoGrader)
 
   // Rechazos: sin herramienta esperada => ninguna cifra ajena en la respuesta.
   if (e.llamadas.length === 0) {
-    ok("rechazo", unsupportedNumbers(s.text, allowedNumbers(pregunta, [])).length === 0 && s.llamadas.length === 0, "respondio con cifras o llamo una herramienta");
+    const cifrasAjenas = textoEsDelModelo ? unsupportedNumbers(s.text, allowedNumbers(pregunta, [])).length : 0;
+    ok("rechazo", cifrasAjenas === 0 && s.llamadas.length === 0, "respondio con cifras o llamo una herramienta");
   }
   if (e.status === "clarify") {
     const t = s.text.trim();

@@ -6,7 +6,7 @@ export const casos: readonly CasoFuente[] = [
   // ---- directas (18) ----
   { id: "DES-001", cat: "directa", q: "¿cuánto me deben mis clientes en total?", llama: [L("cartera_por_cliente")], cifras: [{ col: "pendiente", fila: "suma" }, { col: "vencido", fila: "suma" }] },
   { id: "DES-002", cat: "directa", q: "cartera de Abarrotes", llama: [L("cartera_por_cliente", { cliente: "Abarrotes" })], cifras: [{ col: "pendiente", fila: "primera" }] },
-  { id: "DES-003", cat: "directa", q: "¿cuánta cobranza vencida tengo y de qué antigüedad?", llama: [L("cobranza_antiguedad")], cifras: [{ col: "monto", fila: "suma" }] },
+  { id: "DES-003", cat: "directa", q: "¿cuánta cobranza vencida tengo y de qué antigüedad?", llama: [L("cobranza_antiguedad")], cifras: [{ resumen: true, tomar: [1], etiqueta: "cobranza vencida" }] },
   { id: "DES-004", cat: "directa", q: "cobranza vencida del Taller", llama: [L("cobranza_antiguedad", { cliente: "Taller" })], cifras: [{ col: "monto", fila: "suma" }] },
   { id: "DES-005", cat: "directa", q: "cfdi de este mes", llama: [L("cfdi_por_periodo", { periodo: "este_mes" })], cifras: [{ col: "cfdi", fila: "suma" }] },
   { id: "DES-006", cat: "directa", q: "¿cuántos cfdi inválidos hay este mes?", llama: [L("cfdi_por_periodo", { periodo: "este_mes" })], cifras: [{ col: "invalidos", fila: "suma" }] },
@@ -27,7 +27,7 @@ export const casos: readonly CasoFuente[] = [
   { id: "DES-020", cat: "periodo", q: "iva acreditable del mes pasado", llama: [L("impuestos_del_mes", { periodo: "mes_pasado" })], cifras: [{ col: "iva", fila: "suma" }] },
   { id: "DES-021", cat: "periodo", q: "obligaciones con fecha límite en los últimos 30 días", llama: [L("obligaciones_fiscales", { periodo: "ultimos_30_dias" })], cifras: [{ col: "cliente", fila: "conteo" }] },
   { id: "DES-022", cat: "periodo", q: "cfdi del 10 al 15 de septiembre", llama: [L("cfdi_por_periodo", { desde: "2026-09-10", hasta: "2026-09-15" })], cifras: [{ col: "cfdi", fila: "suma" }] },
-  { id: "DES-023", cat: "periodo", q: "cfdi de lo que va del mes", llama: [L("cfdi_por_periodo", { periodo: "este_mes" })], cifras: [{ col: "total", fila: "suma" }] },
+  { id: "DES-023", cat: "periodo", q: "cfdi de lo que va del mes", llama: [L("cfdi_por_periodo", { periodo: "este_mes" })], cifras: [{ resumen: true, tomar: [0], etiqueta: "cfdi del mes" }] },
   { id: "DES-024", cat: "periodo", q: "iva de los últimos 7 días", llama: [L("impuestos_del_mes", { periodo: "ultimos_7_dias" })], status: "no_data" },
   { id: "DES-025", cat: "periodo", q: "cfdi de agosto", llama: [L("cfdi_por_periodo", { desde: "2026-08-01", hasta: "2026-08-31" })], cifras: [{ col: "cfdi", fila: "suma" }] },
   { id: "DES-026", cat: "periodo", q: "obligaciones de la semana pasada", llama: [L("obligaciones_fiscales", { periodo: "semana_pasada" })], status: "no_data" },
