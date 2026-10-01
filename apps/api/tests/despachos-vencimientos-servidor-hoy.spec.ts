@@ -68,9 +68,9 @@ describe("GET /despachos/:propertyId/vencimientos -- diasRestantes usa el día d
     const body = (await res.json()) as { periodo: string }[];
     // No bloqueante #9 de la revisión de PR #171: `body.every(...)` pasaría trivialmente
     // en vacío si `calcular` no devolviera nada -- `calcularVencimientosDelPeriodo`
-    // (engine.ts) siempre genera exactamente 4 (ISR, IVA, DIOT, Nómina), así que esta
+    // (engine.ts) siempre genera al menos ISR, IVA, DIOT, Nómina y balanza (5 para el régimen por defecto), así que esta
     // aserción de longitud es la que de verdad obliga a que el arreglo no esté vacío.
-    expect(body).toHaveLength(4);
+    expect(body).toHaveLength(5);
     // Con el bug viejo (mes UTC), el periodo calculado por default habría sido
     // "2026-02" (ya es 1-feb en UTC). Con el fix, el mes de NEGOCIO (CDMX) sigue
     // siendo enero -> "2026-01".
