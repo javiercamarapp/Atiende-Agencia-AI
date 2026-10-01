@@ -21,7 +21,9 @@ después se enchufaron hoteles y rentas vacacionales (ver "Catálogos por vertic
 ## Catálogos por vertical
 
 Todos: solo lectura, SQL parametrizado sobre la sesión RLS del usuario, tope de 50 filas / 8 s, montos MXN,
-periodo en la zona de la propiedad (`America/Merida` por defecto, o la configurada), propiedad pedida por
+periodo en la zona de la propiedad (restaurantes: `America/Merida` por defecto; hoteles: `hoteles.property_config.timezone`
+y, si no está configurada, la zona de plataforma `America/Mexico_City` vía `resolverZonaHorariaNegocio`; rentas:
+`rentas.property_config.zona_horaria`), propiedad pedida por
 *nombre* y resuelta solo entre las que el usuario ve, y "no hay datos" / "todavía no disponible" cuando toca.
 
 **Hoteles** (`owner`/`gm`; `hoteles:data_chat`): `ocupacion_adr_revpar`, `ingresos_por_periodo`,
