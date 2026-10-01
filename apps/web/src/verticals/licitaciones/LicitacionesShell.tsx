@@ -147,6 +147,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/licitaciones/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="licitaciones"
       sections={buildSidebarSections(orgSlug, puedeVerStaff)}
