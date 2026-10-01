@@ -21,6 +21,7 @@ import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
 import { TerminosPage } from "./pages/Terminos.tsx";
+import { NotFoundPage } from "./pages/NotFound.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
@@ -785,6 +786,8 @@ export function App() {
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
         <Route path="/" element={<SeleccionarVerticalPage />} />
+        {/* Cualquier URL sin ruta propia: 404 real en vez de pantalla en blanco. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );

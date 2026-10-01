@@ -36,6 +36,7 @@ import {
   Users,
 } from "lucide-react";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
@@ -177,8 +178,11 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [onRequireLogin]);
 
+  const [loggingOut, setLoggingOut] = useState(false);
+
   async function handleLogout() {
-    if (!session) return;
+    if (!session || loggingOut) return;
+    setLoggingOut(true);
     // Nota: el botón de logout real (Sidebar de @atiende/ui, compartido, no se
     // modifica aquí) no expone un estado "deshabilitado/cargando" propio —
     // mismo criterio ya aceptado en AppShell.tsx de atiende-hoteles. La llamada
@@ -304,7 +308,15 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={<div className="flex items-center gap-2">{branches.length > 1 ? branchSelector : null}</div>}
+        action={
+          <MobileHeaderActions
+            selector={branches.length > 1 ? branchSelector : null}
+            notif={notif}
+            user={{ email: session.email, rol: role }}
+            onLogout={() => void handleLogout()}
+            loggingOut={loggingOut}
+          />
+        }
       />
 
       <div className="flex-1 flex flex-col min-w-0">
