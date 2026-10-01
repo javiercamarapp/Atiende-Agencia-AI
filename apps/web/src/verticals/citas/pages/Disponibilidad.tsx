@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarOff, Plus, Trash2, UserRound } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
   Button,
   Card,
   CardContent,
@@ -312,7 +312,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                               <span className={r.isActive ? undefined : "opacity-50"}>
                                 {formatHHMM(r.startTime)} – {formatHHMM(r.endTime)}
                               </span>
-                              {!r.isActive && <Badge variant="outline">inactivo</Badge>}
+                              {!r.isActive && <StatusBadge tone="neutral">inactivo</StatusBadge>}
                               <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-[12px]" onClick={() => startEditingRule(r)}>
                                 Editar
                               </Button>
@@ -382,7 +382,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                   <div key={o.overrideDate} className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium text-foreground">{o.overrideDate}</span>
                     {o.isClosed ? (
-                      <Badge variant="destructive">Cerrado</Badge>
+                      <StatusBadge tone="danger">Cerrado</StatusBadge>
                     ) : (
                       <span className="text-foreground">
                         {formatHHMM(o.startTime ?? "")} – {formatHHMM(o.endTime ?? "")}

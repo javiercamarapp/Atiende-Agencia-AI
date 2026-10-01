@@ -44,7 +44,7 @@ import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.ts
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
-import { Toaster } from "@atiende/ui";
+import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -659,6 +659,15 @@ const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasSt
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 
+/** 404 DENTRO del shell de citas (PR-4): una ruta desconocida bajo `/citas/:orgSlug/` conserva la navegación y
+ * ofrece volver a la agenda. `/citas/login/...` no es un negocio: cae al 404 global. */
+const CitasNoEncontradoShellRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <VerticalNoEncontrado volverA={`/citas/${ctx.orgSlug}/agenda`} volverEtiqueta="Volver a la agenda" />);
+function CitasNoEncontradoRoute() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (orgSlug === "login") return <NotFoundPage />;
+  return <CitasNoEncontradoShellRoute />;
+}
+
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -862,6 +871,7 @@ export function App() {
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
+        <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
