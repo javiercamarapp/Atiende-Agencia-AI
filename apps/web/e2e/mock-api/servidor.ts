@@ -14,6 +14,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { esRespuestaMarcada, fallo } from "./respuestas.ts";
 import { leerToken } from "./tokens.ts";
 import { rutasAuth } from "./fixtures/auth.ts";
+import { agregarNotificacion } from "./fixtures/comun.ts";
 import { todasLasRutas } from "./fixtures/indice.ts";
 import type { EstadoEscenario, Falla, RegistroPeticion, Ruta } from "./tipos.ts";
 
@@ -145,7 +146,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
   async function control(req: IncomingMessage, res: ServerResponse, ruta: string, origen: string | undefined): Promise<void> {
     const metodo = req.method ?? "GET";
     if (ruta === "/__mock/salud") return enviar(res, 200, { ok: true, escenarios: escenarios.size }, origen);
-    const m = /^\/__mock\/escenarios\/([^/]+)\/(peticiones|config|reiniciar)$/.exec(ruta);
+    const m = /^\/__mock\/escenarios\/([^/]+)\/(peticiones|config|reiniciar|notificaciones)$/.exec(ruta);
     if (!m) return enviar(res, 404, { message: "control desconocido" }, origen);
     const e = escenario(decodeURIComponent(m[1]!));
     if (m[2] === "peticiones") {
@@ -158,6 +159,19 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     if (m[2] === "reiniciar") {
       escenarios.delete(e.id);
       return enviar(res, 200, { ok: true }, origen);
+    }
+    if (m[2] === "notificaciones") {
+      // Solo del mock: simula que un evento del ciclo emitio una notificacion nueva (sin leer) para esta sesion.
+      const nueva = ((await leerCuerpo(req)) ?? {}) as { titulo?: unknown; severidad?: unknown; categoria?: unknown; enlace?: unknown };
+      if (typeof nueva.titulo !== "string" || nueva.titulo === "") return enviar(res, 400, { message: "titulo requerido" }, origen);
+      const severidad = nueva.severidad === "critica" || nueva.severidad === "info" ? nueva.severidad : "atencion";
+      const fila = agregarNotificacion(estadoDe(e), {
+        titulo: nueva.titulo,
+        severidad,
+        ...(typeof nueva.categoria === "string" ? { categoria: nueva.categoria } : {}),
+        ...(typeof nueva.enlace === "string" ? { enlace: nueva.enlace } : {}),
+      });
+      return enviar(res, 200, { ok: true, id: fila.id }, origen);
     }
     const cuerpo = ((await leerCuerpo(req)) ?? {}) as { latenciaMs?: number; fallas?: Falla[]; agregarFallas?: Falla[] };
     if (typeof cuerpo.latenciaMs === "number") e.latenciaMs = Math.max(0, cuerpo.latenciaMs);
