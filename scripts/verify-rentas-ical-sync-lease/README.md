@@ -19,8 +19,9 @@ Se auto-descubre en CI (`scripts/verify-real-postgres-ci/run-gate.mjs`, job
   atender una alerta una sola vez y a nombre propio, GRANT por columna, append-only, anon.
 - D. GRANT por columna en `canal_feed_externo` (30-35): el staff ya no escribe las columnas
   de lease; conectar/reconectar y el persistFeedSyncState del sistema siguen funcionando.
-- E. conflictos (36-43): el staff de la property resuelve (una vez, a nombre propio);
-  otra organización, la sesión de sistema y anon no.
+- E. conflictos (36-43): lectura por property; desde la migración 026 el UPDATE directo de
+  `resuelto_en`/`resuelto_por` está cerrado (37-41 ahora comprueban el rechazo) y resolver
+  pasa por `rentas.resolver_conflicto_calendario` (ver `verify-rentas-conflictos-resolucion`).
 
 ## Qué NO cubre
 

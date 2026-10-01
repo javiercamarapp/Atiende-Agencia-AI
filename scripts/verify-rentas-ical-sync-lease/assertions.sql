@@ -15,8 +15,10 @@
 --   D. GRANT por columna: el staff ya NO puede escribir columnas de lease; SÍ sigue
 --      pudiendo conectar/desconectar un feed (url_importacion/activo) y la sesión de
 --      sistema SÍ sigue persistiendo el estado del sync.
---   E. conflictos: el staff de la property resuelve un conflicto (una sola vez, atribuido
---      a sí mismo); otra organización y la sesión de sistema no pueden; anon no ve nada.
+--   E. conflictos: lectura por property; desde la migración 026 el UPDATE directo de
+--      resuelto_en/resuelto_por está CERRADO (resolver pasa por
+--      rentas.resolver_conflicto_calendario, ver scripts/verify-rentas-conflictos-resolucion/);
+--      anon no ve nada.
 --
 -- Run vía scripts/verify-real-postgres-ci/run-gate.mjs (auto-descubierto en CI) o con
 -- ./run.sh. Cada escenario corre en su propio `begin; ... rollback;`.
@@ -417,44 +419,39 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011
 select count(*) as visibles_deberia_ser_1 from rentas.conflicto_calendario where tipo = 'overbooking_confirmado' and resuelto_en is null;
 rollback;
 
-\echo '--- 37. el staff de la Org A resuelve el conflicto (atribuido a si mismo) ---'
+\echo '--- 37. (cerrado por la migracion 026) el UPDATE directo de resuelto_en/resuelto_por ya no existe para el staff: resolver pasa por rentas.resolver_conflicto_calendario -- RECHAZADO (permission denied) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
-with u as (update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = auth.uid() where id = '00000000-0000-0000-0000-0000000000e1' returning 1)
-select count(*) as resuelto_deberia_ser_1 from u;
+update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = auth.uid() where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
-\echo '--- 38. cross-tenant: el staff de la Org B NO puede resolver el conflicto de la Org A (0 filas) ---'
+\echo '--- 38. cross-tenant: tampoco el staff de la Org B por UPDATE directo -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000013', true);
-with u as (update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = auth.uid() where id = '00000000-0000-0000-0000-0000000000e1' returning 1)
-select count(*) as conflicto_ajeno_deberia_ser_0 from u;
+update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = auth.uid() where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
-\echo '--- 39. resolver "a nombre de" otro usuario -- RECHAZADO (with check resuelto_por = auth.uid()) ---'
+\echo '--- 39. "a nombre de" otro usuario por UPDATE directo -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
 update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = '00000000-0000-0000-0000-000000000013' where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
-\echo '--- 40. un conflicto ya resuelto no se puede reabrir ni re-resolver (0 filas) ---'
+\echo '--- 40. reabrir un conflicto por UPDATE directo -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
-update rentas.conflicto_calendario set resuelto_en = now(), resuelto_por = auth.uid() where id = '00000000-0000-0000-0000-0000000000e1';
-with u as (update rentas.conflicto_calendario set resuelto_en = null, resuelto_por = null where id = '00000000-0000-0000-0000-0000000000e1' returning 1)
-select count(*) as reabrir_deberia_ser_0 from u;
+update rentas.conflicto_calendario set resuelto_en = null, resuelto_por = null where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
-\echo '--- 41. la sesion de sistema (auth.uid() NULL) NO resuelve conflictos: resolver es una decision humana (0 filas) ---'
+\echo '--- 41. la sesion de sistema (auth.uid() NULL) tampoco resuelve por UPDATE directo -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-with u as (update rentas.conflicto_calendario set resuelto_en = now() where id = '00000000-0000-0000-0000-0000000000e1' returning 1)
-select count(*) as sistema_resuelve_deberia_ser_0 from u;
+update rentas.conflicto_calendario set resuelto_en = now() where id = '00000000-0000-0000-0000-0000000000e1' returning id as should_fail;
 rollback;
 
 \echo '--- 42. el staff no puede editar otras columnas del conflicto (tipo) -- RECHAZADO (GRANT por columna) ---'
