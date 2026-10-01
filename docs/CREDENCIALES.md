@@ -176,7 +176,14 @@ OpenRouter. `OPENROUTER_MODEL` ya no se lee: el modelo sale de la tabla por rol.
 indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
-## Voz (ElevenLabs) — patrón oficial
+## Voz de restaurantes (Gemini Live + LiveKit, sin ElevenLabs)
+
+Restaurantes dejó ElevenLabs el 1-oct-2026. Variables, orden de activación, métricas y rollback están en
+`docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
+llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
+host del worker de telefonía (que aún no existe en el repo). Lo que sigue aplica a hoteles y citas.
+
+## Voz (ElevenLabs, hoteles y citas) — patrón oficial
 
 Solo existe una dirección real hoy, y **no requiere ninguna API key de
 ElevenLabs**:
