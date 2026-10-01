@@ -69,6 +69,7 @@ export default defineConfig({
         "packages/core-authz/src/impersonation/index.ts",
         "packages/core-conversation/src/index.ts",
         "packages/core-email/src/index.ts",
+        "packages/core-pii/src/index.ts",
         "packages/core-ratelimit/src/index.ts",
         "packages/core-tenancy/src/index.ts",
         "packages/db/src/index.ts",
