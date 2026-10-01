@@ -5,6 +5,7 @@ import { redactSensitiveInfo } from "../../src/whatsapp/inbound.ts";
 import { lookupCustomer } from "../../src/customers.ts";
 import { buildRestaurantFixture } from "../fixtures.ts";
 import { seedConfirmedOrderFlow } from "../support/order-flow-seed.ts";
+import { ADDRESS_MASK_MARKER, maskAddressForPrompt } from "../../src/text-sanitize.ts";
 import { PHONE, scriptedHandler } from "./harness.ts";
 
 const DIRECCION = "Calle 21 #345 por 30 y 32, Col. Itzimná, Mérida";
@@ -26,6 +27,50 @@ describe("E.12 privacidad: lo que se inyecta al prompt del modelo", () => {
     expect(system).not.toContain("#345");
     // Sigue pudiendo preguntar "¿es para ahí?": conserva la colonia.
     expect(system).toContain("Itzimná");
+  });
+
+  it("T-PR01c con el orden 'Colonia, Calle y número' tampoco se filtra la numeración en el segundo segmento", () => {
+    const masked = maskAddressForPrompt("Col. Itzimná, Calle 5 #123, Mérida");
+    expect(masked).not.toContain("123");
+    expect(masked).not.toContain("Calle 5");
+    expect(masked).toContain("Mérida");
+  });
+
+  it("T-PR01d cliente recurrente que responde 'sí, a la misma': el prompt manda a buscar_cliente y el pedido sale con la dirección COMPLETA guardada (no la máscara)", async () => {
+    const f = buildRestaurantFixture();
+    const customer = await clienteConocido(f);
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "domicilio", items: [{ productId: f.products.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });
+    const pedido = { branch_slug: "fco-montejo", customer_name: "Ana López", payment_method: "efectivo", items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }] };
+    const { handler, requests } = scriptedHandler(f.repo, [
+      { calls: [{ name: "buscar_cliente", args: {} }] },
+      { calls: [{ name: "crear_pedido", args: { ...pedido, customer_address: DIRECCION } }] },
+      { text: "Listo" },
+    ]);
+    const r = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: PHONE, messages: [{ role: "user", content: "sí, a la misma" }], customer });
+    // El prompt no promete un relleno que no existe: instruye consultar buscar_cliente.
+    expect(requests[0]!.system).toContain("buscar_cliente");
+    expect(requests[0]!.system).not.toContain("se usa al crear el pedido");
+    // La dirección completa le llega al modelo por la herramienta, y el pedido la guarda tal cual.
+    expect(JSON.stringify(requests[1]!.messages)).toContain("Calle 21 #345");
+    expect(r.orderId).not.toBeNull();
+    const order = await f.repo.findOrderById(f.organizationId, r.orderId!);
+    expect(order!.customerAddress).toBe(DIRECCION);
+  });
+
+  it("T-PR01e si el modelo copia la máscara como customer_address, crear_pedido la rechaza y no crea pedido", async () => {
+    const f = buildRestaurantFixture();
+    await seedConfirmedOrderFlow(f.repo, f.organizationId, `wa:${PHONE}`, { branchSlug: "fco-montejo", canal: "domicilio", items: [{ productId: f.products.cocaCola, productName: "Coca-Cola", requestedQuantity: 1 }] });
+    const ctx = { organizationId: f.organizationId, channel: "whatsapp" as const, phone: PHONE, flow: { key: `wa:${PHONE}`, turn: "1" } };
+    const out = await executeAgentToolSafely(f.repo, ctx, "crear_pedido", {
+      branch_slug: "fco-montejo",
+      customer_name: "Ana López",
+      customer_address: maskAddressForPrompt(DIRECCION),
+      payment_method: "efectivo",
+      items: [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 1 }],
+    });
+    expect(out.orderId).toBeNull();
+    expect(JSON.stringify(out.result)).toContain("referencia parcial");
+    expect(maskAddressForPrompt(DIRECCION)).toContain(ADDRESS_MASK_MARKER);
   });
 
   it("T-PR01b el teléfono del cliente no aparece en el system prompt", async () => {
