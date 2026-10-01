@@ -25,17 +25,23 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
   Tabs,
   TabsList,
   TabsTrigger,
   TicketCocinaDialog,
   construirTicketCocina,
+  formatMoney,
   imprimirTicketsCocina,
   pedidosPorImprimir,
+  statusTone,
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer } from "lucide-react";
@@ -43,6 +49,7 @@ import { assignRepartidor, fetchOrders, nextStatusesForCanal, ORDER_STATUS_LABEL
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
 import type { RepartidorMember } from "../lib/staff-client.ts";
+import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { guardarPrefs, leerPrefs, PREFS_VACIAS, marcarImpresos, registrarReimpresion, storageDisponible } from "../lib/ticket-cocina-prefs.ts";
 import type { PrefsTicketCocina } from "../lib/ticket-cocina-prefs.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -58,13 +65,6 @@ function storageLocal(): Storage | null {
   } catch {
     return null;
   }
-}
-
-const SELECT_CLASES =
-  "h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
@@ -279,7 +279,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="m-0 font-display text-xl font-semibold text-foreground">Pedidos en operación</h1>
         <Tabs value={status} onValueChange={(v) => setStatus(v as OrderStatus | "todos")}>
@@ -294,15 +294,12 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       </header>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
-        <input
+        <Checkbox
           id="auto-imprimir-cocina"
-          type="checkbox"
           checked={prefs.autoImprimir}
           onChange={(e) => (e.target.checked ? void activarAutoImpresion() : desactivarAutoImpresion())}
+          label="Imprimir ticket de cocina automáticamente al llegar un pedido (esta sucursal, este equipo)"
         />
-        <Label htmlFor="auto-imprimir-cocina" className="text-xs font-normal">
-          Imprimir ticket de cocina automáticamente al llegar un pedido (esta sucursal, este equipo)
-        </Label>
       </div>
       {prefs.autoImprimir && (
         <p className="m-0 text-xs text-muted-foreground">
@@ -330,7 +327,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
               <div className="flex flex-wrap justify-between gap-2">
                 <div>
                   <p className="m-0 font-semibold text-foreground">
-                    {o.customerName} · {formatMoney(o.total)}
+                    {o.customerName} · ${formatMoney(o.total)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
@@ -342,29 +339,30 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                       {o.canal === "recoger" ? "Recoger" : "Domicilio"}
                     </Badge>
                   )}
-                  <Badge variant={o.status === "problema" || o.status === "no_recogido" ? "destructive" : "secondary"}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                  <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
                 </div>
               </div>
               {(o.horaRecogida || (o.propina !== null && o.propina !== undefined)) && (
                 <p className="mt-1 text-xs text-muted-foreground" data-testid={`recoger-${o.id}`}>
                   {o.horaRecogida ? `Recoge a las ${new Date(o.horaRecogida).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : null}
                   {o.horaRecogida && o.propina !== null && o.propina !== undefined ? " · " : null}
-                  {o.propina !== null && o.propina !== undefined ? `Propina ${formatMoney(o.propina)} (no incluida en el total)` : null}
+                  {o.propina !== null && o.propina !== undefined ? `Propina $${formatMoney(o.propina)} (no incluida en el total)` : null}
                 </p>
               )}
-              <p className="mt-2 text-[13px] text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+              <p className="mt-2 text-sm text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
 
               {o.canal !== "recoger" && (
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <Label htmlFor={`repartidor-${o.id}`} className="text-xs font-normal text-foreground">
                   Repartidor:
                 </Label>
-                <select
+                <NativeSelect
                   id={`repartidor-${o.id}`}
+                  size="sm"
                   value={o.assignedRepartidorId ?? ""}
                   disabled={assigningId === o.id || !repartidores || repartidores.length === 0}
                   onChange={(e) => void handleAssignRepartidor(o, e.target.value)}
-                  className={SELECT_CLASES}
+                  wrapperClassName="w-auto min-w-36"
                 >
                   <option value="">Sin asignar</option>
                   {repartidores?.map((r) => (
@@ -372,7 +370,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                       {r.fullName}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
                 {assigningId === o.id && <span className="text-xs text-muted-foreground">Asignando…</span>}
                 {o.estimatedDeliveryAt && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -409,21 +407,19 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
               {nextStatusesForCanal(o.status, o.canal).length > 0 && (
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                   {nextStatusesForCanal(o.status, o.canal).includes("listo_para_recoger") && (
-                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={!sinAvisoPorPedido.has(o.id)}
-                        onChange={(e) =>
-                          setSinAvisoPorPedido((prev) => {
-                            const next = new Set(prev);
-                            if (e.target.checked) next.delete(o.id);
-                            else next.add(o.id);
-                            return next;
-                          })
-                        }
-                      />
-                      Avisar al cliente por WhatsApp cuando esté listo
-                    </label>
+                    <Checkbox
+                      checked={!sinAvisoPorPedido.has(o.id)}
+                      onChange={(e) =>
+                        setSinAvisoPorPedido((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.delete(o.id);
+                          else next.add(o.id);
+                          return next;
+                        })
+                      }
+                      label="Avisar al cliente por WhatsApp cuando esté listo"
+                      wrapperClassName="text-xs"
+                    />
                   )}
                   {nextStatusesForCanal(o.status, o.canal).map((next) => (
                     <Button
@@ -478,6 +474,6 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

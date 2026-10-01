@@ -17,7 +17,6 @@
 // fetch de abajo es la MISMA: solo cambia el JSX.
 import { useEffect, useState } from "react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -25,10 +24,13 @@ import {
   CardTitle,
   EstadoCargando,
   EstadoError,
+  PageContainer,
   StatCard,
+  StatusBadge,
   Tabs,
   TabsList,
   TabsTrigger,
+  statusTone,
 } from "@atiende/ui";
 import {
   Bot,
@@ -48,17 +50,9 @@ import {
 } from "lucide-react";
 import { fetchDashboardData, formatDays, formatInt, formatMoney, formatPct, formatSignedPct, PERIOD_OPTIONS } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
+import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
-
-/** Mismos 4 tiers de siempre (label/glifo idénticos); el color deja de ser un hex
- * suelto y pasa a clases de token que funcionan en claro y oscuro. */
-const TIER_META: Record<"BLACK" | "PLATINUM" | "GOLD" | "BLUE", { label: string; glyph: string; clase: string }> = {
-  BLACK: { label: "Black", glyph: "♛", clase: "border-transparent bg-foreground text-background" },
-  PLATINUM: { label: "Platinum", glyph: "◆", clase: "border-border bg-muted text-muted-foreground" },
-  GOLD: { label: "Gold", glyph: "★", clase: "border-transparent bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" },
-  BLUE: { label: "Blue", glyph: "●", clase: "border-transparent bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200" },
-};
 
 /** Sparkline SVG inline simple — no se agrega recharts como dependencia nueva solo
  * para dos mini-gráficas en una fase sobre todo de backend (ver diseño §3). El color
@@ -80,7 +74,7 @@ function Sparkline({ points, className }: { points: readonly number[]; className
 }
 
 function TituloSeccion({ children }: { children: string }) {
-  return <p className="m-0 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
+  return <p className="m-0 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
 }
 
 export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullName, staffEmail }: RestaurantesShellContext) {
@@ -113,7 +107,7 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
   }, [apiBaseUrl, token, propertyId, period]);
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+    <PageContainer padding="none">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <p className="m-0 text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
@@ -236,13 +230,13 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
                 </p>
               ) : (
                 (["BLACK", "PLATINUM", "GOLD", "BLUE"] as const).map((tier) => {
-                  const meta = TIER_META[tier];
+                  const meta = CUSTOMER_TIER_META[tier];
                   return (
-                    <Badge key={tier} variant="outline" className={`gap-1.5 px-2.5 py-1 font-medium ${meta.clase}`}>
+                    <StatusBadge key={tier} dot={false} tone={statusTone(CUSTOMER_TIER_TONES, tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(tier) ?? ""}`}>
                       <span aria-hidden>{meta.glyph}</span>
                       {meta.label}
                       <span className="opacity-80">· {data.customers.tierDistribution[tier]}</span>
-                    </Badge>
+                    </StatusBadge>
                   );
                 })
               )}
@@ -250,6 +244,6 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
           </section>
         </>
       )}
-    </main>
+    </PageContainer>
   );
 }
