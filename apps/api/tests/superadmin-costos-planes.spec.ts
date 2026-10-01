@@ -90,11 +90,11 @@ describe("GET /superadmin/costos/resumen", () => {
     t.costos.seedLlmUsage(t.org, "2026-09", 290_000_000);
     await t.costos.recordEvent({ organizationId: t.org, categoria: "voz", proveedor: "livekit", unidad: "minuto", cantidad: 150, costoMicroUsd: 10_000_000, refTipo: "voice_call", refId: "c2" });
 
-    const body = (await (await get(t.app, "/superadmin/costos/resumen", sa.token)).json()) as { tipoCambio: { mxnPorUsd: number }; organizaciones: Array<Record<string, any>>; resumen: Record<string, number> };
+    const body = (await (await get(t.app, "/superadmin/costos/resumen", sa.token)).json()) as { tipoCambio: { mxnPorUsd: number }; organizaciones: Array<{ alertas: Array<{ codigo: string }>; consumo: Array<Record<string, unknown>> } & Record<string, unknown>>; resumen: Record<string, number> };
     expect(body.tipoCambio).toMatchObject({ mxnPorUsd: 20, fuente: "Banxico FIX" });
     const f = body.organizaciones[0]!;
     expect(f).toMatchObject({ planId: "restaurantes-pro", ingresoMxn: 7498, costoMxn: 6000, margenMxn: 1498, margenPct: 19.98, riesgo: "alto" });
-    const codigos = f.alertas.map((a: { codigo: string }) => a.codigo);
+    const codigos = f.alertas.map((a) => a.codigo);
     expect(codigos).toContain("margen_bajo");
     expect(codigos).toContain("tope_llm_agotado");
     expect(codigos).toContain("limite_excedido");
@@ -132,7 +132,7 @@ describe("GET /superadmin/costos/resumen", () => {
     const body = (await (await get(sinRepo, "/superadmin/costos/resumen", sa.token)).json()) as { disponible: boolean; organizaciones: unknown[] };
     expect(body).toMatchObject({ disponible: false, organizaciones: [] });
     expect((await req(sinRepo, "PUT", "/superadmin/costos/tipo-cambio", { fecha: "2026-09-01", mxnPorUsd: 18, fuente: "Banxico" }, bearer(sa.token))).status).toBe(503);
-    expect((await get(sinRepo, "/superadmin/planes", sa.token).then((r) => r.json())) as { disponible: boolean }).toMatchObject({ disponible: false, planes: [] });
+    expect(await (await get(sinRepo, "/superadmin/planes", sa.token)).json()).toMatchObject({ disponible: false, planes: [] });
 
     const noMigrado: CostosPlanesRepository = {
       recordEvent: async () => ({ availability: "not_migrated", inserted: null }),

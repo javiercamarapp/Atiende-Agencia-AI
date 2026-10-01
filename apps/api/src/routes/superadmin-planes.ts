@@ -108,7 +108,7 @@ export function superadminPlanesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const result = await deps.engine.withAppSession({ userId: callerId }, (db) =>
-        repo(db).upsertPlan(callerId, { id, nombre, vertical, precioBaseCentavos, precioAsientoCentavos, asientosIncluidos, activo: raw.activo === undefined ? true : raw.activo }),
+        repo(db).upsertPlan(callerId, { id, nombre, vertical, precioBaseCentavos, precioAsientoCentavos, asientosIncluidos, activo: typeof raw.activo === "boolean" ? raw.activo : true }),
       );
       if (result.availability === "not_migrated") throw Errors.serviceUnavailable(NO_DISPONIBLE);
       return c.json({ ok: true });

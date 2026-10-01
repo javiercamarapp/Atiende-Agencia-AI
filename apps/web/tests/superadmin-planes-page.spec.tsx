@@ -81,7 +81,7 @@ describe("SuperAdminPlanesPage", () => {
   });
 
   it("nuevo plan: valida id y precios; vacio = null (por configurar) en el PUT", async () => {
-    const writes: Array<{ method: string; url: string; body: any }> = [];
+    const writes: Array<{ method: string; url: string; body: Record<string, unknown> | null }> = [];
     stub({ onWrite: (method, url, body) => writes.push({ method, url, body }) });
     rendered = render();
     await esperar();
@@ -106,7 +106,7 @@ describe("SuperAdminPlanesPage", () => {
   });
 
   it("limite LLM se captura en USD y se envia en micro-USD", async () => {
-    const writes: Array<{ method: string; url: string; body: any }> = [];
+    const writes: Array<{ method: string; url: string; body: Record<string, unknown> | null }> = [];
     stub({ onWrite: (method, url, body) => writes.push({ method, url, body }) });
     rendered = render();
     await esperar();
@@ -120,7 +120,7 @@ describe("SuperAdminPlanesPage", () => {
   });
 
   it("asignar plan: solo planes de la vertical, motivo corto no llama al backend, valido manda la SOLICITUD (no ejecuta)", async () => {
-    const writes: Array<{ method: string; url: string; body: any }> = [];
+    const writes: Array<{ method: string; url: string; body: Record<string, unknown> | null }> = [];
     stub({ onWrite: (method, url, body) => writes.push({ method, url, body }) });
     rendered = render();
     await esperar();
