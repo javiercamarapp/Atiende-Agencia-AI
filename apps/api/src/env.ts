@@ -19,6 +19,13 @@ export interface ApiEnv {
    *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
    *  un envío sin ella. */
   readonly whatsappAccessToken: string | null;
+  /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
+   *  (`HOTELES_IDENTITY_KEY`). `null` cuando no esta configurada: captura/revelacion de
+   *  identidad responden 503 explicito, NUNCA se guarda un documento sin cifrar. */
+  readonly hotelesIdentityKey: string | null;
+  /** Version de la llave de arriba (`HOTELES_IDENTITY_KEY_VERSION`, default 1); se guarda
+   *  en cada sobre para la rotacion futura. */
+  readonly hotelesIdentityKeyVersion: number;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
    * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
    * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
@@ -151,6 +158,8 @@ export function loadApiEnv(): ApiEnv {
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
+    hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
+    hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
     googleOAuth:
