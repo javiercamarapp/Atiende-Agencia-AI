@@ -101,3 +101,12 @@ describe("redaccion de transcripciones", () => {
     expect(redactarTranscripcion("código de seguridad 4567")).toBe("código de seguridad [REDACTADO]");
   });
 });
+
+describe("proveedores de voz tras retirar ElevenLabs", () => {
+  it("la escalera vigente es Gemini y gpt-live-1; una fila historica de ElevenLabs cae al principal", async () => {
+    const { VOZ_PROVEEDORES, VOZ_PROVEEDOR_PRINCIPAL, proveedorDeFila } = await import("../src/voz/types.ts");
+    expect(VOZ_PROVEEDORES).toEqual(["gemini-3.8-live", "gpt-live-1"]);
+    expect(proveedorDeFila("elevenlabs-agents")).toBe(VOZ_PROVEEDOR_PRINCIPAL);
+    expect(proveedorDeFila("gpt-live-1")).toBe("gpt-live-1");
+  });
+});

@@ -57,7 +57,6 @@ interface KpiRow {
   escaladas: number;
   abandonadas: number;
   errores_proveedor: number;
-  errores_elevenlabs: number;
   errores_twilio: number;
   errores_otros: number;
   tool_calls: number;
@@ -80,7 +79,6 @@ function mapKpi(r: KpiRow): VozKpiDia {
     escaladas: num(r.escaladas),
     abandonadas: num(r.abandonadas),
     erroresProveedor: num(r.errores_proveedor),
-    erroresElevenlabs: num(r.errores_elevenlabs),
     erroresTwilio: num(r.errores_twilio),
     erroresOtros: num(r.errores_otros),
     toolCalls: num(r.tool_calls),
@@ -130,7 +128,7 @@ export class PostgresVozKpiRepository implements VozKpiRepository {
       primary: async () => {
         const { rows } = await this.db.query<KpiRow>(
           `select to_char(fecha, 'YYYY-MM-DD') as fecha, zona_horaria, llamadas, llamadas_cerradas, duracion_total_s, pedidos_voz, escaladas,
-                  abandonadas, errores_proveedor, errores_elevenlabs, errores_twilio, errores_otros, tool_calls, tool_p95_ms,
+                  abandonadas, errores_proveedor, errores_twilio, errores_otros, tool_calls, tool_p95_ms,
                   costo_voz_micro_usd, costo_telefonia_micro_usd, costo_total_centavos_mxn, costo_llm_org_micro_usd, costo_llm_org_centavos_mxn
              from restaurantes.voz_kpis_diarios($1, $2, $3::date, $4::date)
             order by fecha;`,

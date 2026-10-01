@@ -82,7 +82,7 @@ export function PestanaIndicadores({ apiBaseUrl, token, propertyId, fetchImpl }:
           <StatCard icon={Clock} label="Duración promedio" value={formatoDuracion(hoy.duracionPromedioS)} {...(hoy.duracionPromedioS === null ? { sinDato: "Sin llamadas cerradas hoy." } : {})} />
           <StatCard icon={ShoppingBag} label="Pedidos por voz" value={String(hoy.pedidosVoz)} nota={`Resolución ${formatoPct(hoy.tasaResolucionPct)}`} />
           <StatCard icon={Headset} label="Pasadas a una persona" value={String(hoy.escaladas)} nota={`Handoff ${formatoPct(hoy.tasaHandoffPct)}`} />
-          <StatCard icon={TriangleAlert} label="Errores de proveedor" value={String(hoy.erroresProveedor)} nota={`ElevenLabs ${hoy.erroresElevenlabs} · Twilio ${hoy.erroresTwilio} · otros ${hoy.erroresOtros}`} />
+          <StatCard icon={TriangleAlert} label="Errores de proveedor" value={String(hoy.erroresProveedor)} nota={`Twilio ${hoy.erroresTwilio} · Gemini y otros ${hoy.erroresOtros}`} />
           <StatCard icon={Activity} label="p95 de herramientas" value={formatoMs(hoy.toolP95PeorDiaMs)} {...(hoy.toolP95PeorDiaMs === null ? { sinDato: "Sin llamadas a herramientas hoy." } : {})} />
           <StatCard icon={DollarSign} label="Costo estimado del día" value={formatoMxn(hoy.costoCentavosMxn)} {...(hoy.costoCentavosMxn === null ? { sinDato: "Falta el tipo de cambio para convertir a pesos." } : { nota: `Por llamada ${formatoMxn(hoy.costoPorLlamadaCentavosMxn)}` })} />
           <StatCard icon={DollarSign} label="Costo estimado del mes" value={formatoMxn(mes.costoCentavosMxn)} {...(mes.costoCentavosMxn === null ? { sinDato: "Falta el tipo de cambio para convertir a pesos." } : { nota: notaCosto(mes) ?? `Voz y telefonía, ${mes.llamadas} llamadas` })} />
