@@ -97,6 +97,7 @@ import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoCargando, EstadoErro
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
+import { crearChatConexionRentas } from "./lib/data-chat-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
@@ -331,6 +332,10 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
 
   const org = session.organizations.find((o) => o.slug === orgSlug);
 
+  // "Chatea con tus datos": conexion real con el backend de rentas (catalogo cerrado, solo admin_gestora/contador en el
+  // servidor). El servidor decide el alcance a partir del token; aqui solo van la propiedad activa y el texto.
+  const chatConexion = crearChatConexionRentas(apiBaseUrl, session.token, propertyId);
+
   // Selector real de property: dropdown solo cuando hay 2+ (el caso base de este
   // vertical, ver comentario de cabecera), mismo renglón que antes solo mostraba el
   // nombre cuando había exactamente 1.
@@ -372,6 +377,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
             user={{ email: session.email, rol: org?.rol }}
             onLogout={handleLogout}
             loggingOut={loggingOut}
+            chat={chatConexion}
           />
         }
       />
@@ -395,7 +401,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
                 onMarkAllRead={notif.onMarkAllRead}
               />
             }
-            chatButton={<BotonChatDatos />}
+            chatButton={<BotonChatDatos chat={chatConexion} />}
           />
         </div>
         <main className="flex-1 min-w-0 rounded-2xl border border-border bg-card p-6 pt-20 pb-24 md:pt-6 md:pb-6 overflow-auto">
