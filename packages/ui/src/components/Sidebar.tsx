@@ -282,7 +282,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
                   onClick={() => alternarGrupo(section.title)}
                   aria-expanded={abierta}
                   aria-controls={`${id}-items`}
-                  className="hidden lg:flex w-full items-center justify-between px-2.5 mb-1.5 py-1 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
+                  className="hidden lg:flex w-full items-center justify-between px-2.5 mb-1.5 font-mono text-2xs leading-[1.65] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {section.title}
                   {abierta ? <ChevronDown className="size-[13px]" strokeWidth={2} aria-hidden="true" /> : <ChevronRight className="size-[13px]" strokeWidth={2} aria-hidden="true" />}

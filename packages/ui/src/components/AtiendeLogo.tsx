@@ -45,7 +45,7 @@ export function AtiendeWordmark({
   animado?: boolean;
   /**
    * "sidebar": el lockup de 18 px de alto del sidebar de Likida (marca h-[18px],
-   * texto de 20 px con interlineado de 18 px, hueco de 6 px). La marca y el
+   * texto de 18 px con interlineado de 18 px, hueco de 6 px). La marca y el
    * texto se dimensionan juntos: antes `className="h-[18px]"` no encogia a los
    * hijos (marca h-7 + texto text-2xl) y el logo medía ~28 px.
    */
@@ -57,7 +57,7 @@ export function AtiendeWordmark({
       <AtiendeMark className={markClassName || (sidebar ? "h-[18px] w-auto shrink-0" : "h-7 w-auto")} animado={animado} />
       <span
         className={`font-display font-bold tracking-tight text-marca-atiende ${
-          sidebar ? "text-xl leading-[18px]" : "text-2xl"
+          sidebar ? "text-lg leading-[18px]" : "text-2xl"
         }`}
       >
         atiende
