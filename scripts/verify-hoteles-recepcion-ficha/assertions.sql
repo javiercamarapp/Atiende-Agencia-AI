@@ -375,6 +375,9 @@ select public.verify_su();
 select public.verify_expect_error($q$update hoteles.reservation_room_change set reason = 'editado por superusuario'$q$, '42501');
 select public.verify_expect_error($q$delete from hoteles.reservation_room_change$q$, '42501');
 select 1 as ok_append_only;
+-- el borrado EN CASCADA (reserva, habitacion) no queda bloqueado por el trigger: offboarding/depuracion siguen posibles
+delete from hoteles.reservation where id = '00000000-0000-0000-0000-0000000e0001';
+select public.verify_assert((select count(*) from hoteles.reservation_room_change where reservation_id = '00000000-0000-0000-0000-0000000e0001') = 0, 'borrar la reserva borra su bitacora en cascada');
 rollback;
 
 \echo '=== 21. RLS de la bitacora: frontdesk ve los cambios de su property; housekeeping y otro tenant no ven nada ==='
