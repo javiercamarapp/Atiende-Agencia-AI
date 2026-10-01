@@ -18,7 +18,8 @@ import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import type { EstadoFeedCanal } from "./cuarentena.ts";
 import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo } from "./lease.ts";
-import type { FeedMonitorRecord, ListadoBitacora, ListadoConflictos, ResultadoMarcarResuelto } from "./monitor.ts";
+import type { AccionConflicto } from "./conflictos.ts";
+import type { FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 export interface RentasCalendarSyncRepository {
@@ -112,11 +113,16 @@ export interface RentasCalendarSyncRepository {
   /** Estado de TODOS los feeds de la property. Contra una base sin 024, sin las columnas
    * de lease/backoff (quedan en null). */
   listarFeedsMonitor(propertyId: string): Promise<FeedMonitorRecord[]>;
-  listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos>;
-  /** Marca un conflicto abierto como resuelto a nombre de `actorUserId`. `no_encontrado`
-   * si no existe/ya estaba resuelto/es de otra property; `no_disponible` si la base no
-   * tiene la migración 024 (aún no existe el UPDATE de staff). */
-  resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto>;
+  /** Conflictos de la property filtrados por estado (`abiertos` = sin decidir). Contra una base
+   * sin la migración 026 no existe `ignorado` ni motivo: los cerrados salen como `resuelto`. */
+  listarConflictos(propertyId: string, opciones: { estado: FiltroEstadoConflictos; limite: number }): Promise<ListadoConflictos>;
+  /** Decide un conflicto abierto a nombre de `actorUserId`: "resuelto" (exige que el solape ya no
+   * exista) o "ignorado" (exige `motivo`). Nunca cancela ni edita una reserva. Contra una base sin
+   * 026 solo "resuelto" cae al UPDATE directo de 024 (sin bitácora ni verificación de solape);
+   * "ignorado" responde `no_disponible`. */
+  decidirConflicto(propertyId: string, conflictoId: string, actorUserId: string, decision: { accion: AccionConflicto; motivo: string | null }): Promise<ResultadoDecisionConflicto>;
+  /** Bitácora de decisiones de un conflicto (más antigua primero). `disponible: false` sin 026. */
+  listarHistorialConflicto(propertyId: string, conflictoId: string): Promise<HistorialConflicto>;
   listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora>;
   atenderAlerta(propertyId: string, alertaId: string, actorUserId: string): Promise<ResultadoMarcarResuelto>;
 }

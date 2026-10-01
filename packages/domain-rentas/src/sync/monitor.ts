@@ -42,8 +42,18 @@ export interface OcupacionConflictoRecord {
   readonly canalCodigo: string | null;
 }
 
+/** Estado de un conflicto: abierto (pendiente de decidir), resuelto (el solape ya no existe) o
+ * ignorado (se acepta el solape a sabiendas, con motivo). Migración 026. */
+export type EstadoConflicto = "abierto" | "resuelto" | "ignorado";
+
+/** Filtro del listado de conflictos. */
+export type FiltroEstadoConflictos = "abiertos" | "resueltos" | "ignorados" | "todos";
+
 export interface ConflictoMonitorRecord {
   readonly id: string;
+  readonly estado: EstadoConflicto;
+  /** Motivo (o nota) de la decisión; `null` en abiertos, en los resueltos sin nota y contra una base sin 026. */
+  readonly motivoResolucion: string | null;
   readonly unidadId: string;
   readonly unidadNombre: string | null;
   readonly tipo: "capa_cruzada" | "overbooking_confirmado";
@@ -81,3 +91,25 @@ export interface ListadoBitacora {
 }
 
 export type ResultadoMarcarResuelto = "resuelto" | "no_encontrado" | "no_disponible";
+
+/** Resultado de decidir un conflicto (resolver / ignorar con motivo):
+ * - `resuelto` | `ignorado`: la decisión quedó registrada.
+ * - `no_encontrado`: no existe en esta property, es de otra organización o ya estaba cerrado.
+ * - `solape_vigente`: se pidió "resuelto" pero las dos ocupaciones siguen cruzadas (usar "ignorado" con motivo).
+ * - `sin_permiso`: el rol del actor no puede resolver conflictos (defensa en profundidad de la base).
+ * - `no_disponible`: la base todavía no tiene la migración que soporta la decisión pedida. */
+export type ResultadoDecisionConflicto = "resuelto" | "ignorado" | "no_encontrado" | "solape_vigente" | "sin_permiso" | "no_disponible";
+
+export interface EntradaHistorialConflicto {
+  readonly id: string;
+  readonly accion: "resuelto" | "ignorado";
+  readonly motivo: string | null;
+  readonly actorUserId: string;
+  readonly creadoEn: string;
+}
+
+/** `disponible: false` = la base todavía no tiene la bitácora de conflictos (migración 026). */
+export interface HistorialConflicto {
+  readonly disponible: boolean;
+  readonly entradas: readonly EntradaHistorialConflicto[];
+}

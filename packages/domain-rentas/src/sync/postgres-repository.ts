@@ -9,13 +9,14 @@
 // `crearReservaConfirmada`/`modificarFechasReserva`/`cancelarOcupacion` de
 // `../aplicacion/reservas.ts` (ver ./motor.ts).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
 import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo, TipoEventoBitacora, SeveridadBitacora } from "./lease.ts";
-import type { AlertaSyncRecord, ConflictoMonitorRecord, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, ResultadoMarcarResuelto } from "./monitor.ts";
+import type { AccionConflicto } from "./conflictos.ts";
+import type { AlertaSyncRecord, ConflictoMonitorRecord, EntradaHistorialConflicto, EstadoConflicto, FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface FeedRow {
@@ -410,7 +411,7 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     }));
   }
 
-  async listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos> {
+  async listarConflictos(propertyId: string, opciones: { estado: FiltroEstadoConflictos; limite: number }): Promise<ListadoConflictos> {
     interface ConflictoRow {
       id: string;
       unidad_id: string;
@@ -419,6 +420,8 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
       detectado_en: string;
       resuelto_en: string | null;
       resuelto_por: string | null;
+      resolucion: string | null;
+      motivo_resolucion: string | null;
       a_id: string;
       a_inicio: string;
       a_fin: string;
@@ -432,9 +435,10 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
       b_capa: string | null;
       b_canal: string | null;
     }
-    // Tablas de 001 (existen en cualquier base): sin fallback de migración.
-    const filas = await this.db.query<ConflictoRow>(
-      `SELECT k.id, k.unidad_id, u.name AS unidad_nombre, k.tipo, k.detectado_en::text AS detectado_en, k.resuelto_en::text AS resuelto_en, k.resuelto_por,
+    // Las columnas resolucion/motivo_resolucion existen desde la migración 026: contra una base
+    // sin ella (42703) se repite la consulta con NULL::text (los cerrados salen como "resuelto").
+    const consulta = (resolucion: string, motivo: string) => `SELECT k.id, k.unidad_id, u.name AS unidad_nombre, k.tipo, k.detectado_en::text AS detectado_en, k.resuelto_en::text AS resuelto_en, k.resuelto_por,
+              ${resolucion} AS resolucion, ${motivo} AS motivo_resolucion,
               a.id AS a_id, lower(a.rango)::text AS a_inicio, upper(a.rango)::text AS a_fin, a.estado AS a_estado, a.capa AS a_capa, ca.codigo AS a_canal,
               b.id AS b_id, lower(b.rango)::text AS b_inicio, upper(b.rango)::text AS b_fin, b.estado AS b_estado, b.capa AS b_capa, cb.codigo AS b_canal
        FROM rentas.conflicto_calendario k
@@ -443,14 +447,26 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
        LEFT JOIN rentas.canal ca ON ca.id = a.canal_origen_id
        LEFT JOIN rentas.ocupacion b ON b.id = k.ocupacion_b_id
        LEFT JOIN rentas.canal cb ON cb.id = b.canal_origen_id
-       WHERE k.property_id = $1 AND ($2::boolean = false OR k.resuelto_en IS NULL)
+       WHERE k.property_id = $1
+         AND ($2::text = 'todos'
+              OR ($2::text = 'abiertos' AND k.resuelto_en IS NULL)
+              OR ($2::text = 'resueltos' AND k.resuelto_en IS NOT NULL AND ${resolucion} IS DISTINCT FROM 'ignorado')
+              OR ($2::text = 'ignorados' AND ${resolucion} = 'ignorado'))
        ORDER BY (k.resuelto_en IS NOT NULL), k.detectado_en DESC, k.id
-       LIMIT $3`,
-      [propertyId, opciones.soloAbiertos, opciones.limite],
-    );
+       LIMIT $3`;
+    const params = [propertyId, opciones.estado, opciones.limite];
+    const filas = await runWithSavepointFallback<ConflictoRow[]>({
+      session: this.db,
+      savepointName: "sp_rentas_conflictos_listar",
+      primary: async () => (await this.db.query<ConflictoRow>(consulta("k.resolucion", "k.motivo_resolucion"), params)).rows,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => (await this.db.query<ConflictoRow>(consulta("NULL::text", "NULL::text"), params)).rows,
+    });
     const total = await this.db.query<{ total: string }>(`SELECT count(*)::text AS total FROM rentas.conflicto_calendario WHERE property_id = $1 AND resuelto_en IS NULL`, [propertyId]);
-    const conflictos: ConflictoMonitorRecord[] = filas.rows.map((f) => ({
+    const conflictos: ConflictoMonitorRecord[] = filas.map((f) => ({
       id: f.id,
+      estado: (f.resuelto_en === null ? "abierto" : f.resolucion === "ignorado" ? "ignorado" : "resuelto") satisfies EstadoConflicto,
+      motivoResolucion: f.motivo_resolucion,
       unidadId: f.unidad_id,
       unidadNombre: f.unidad_nombre,
       tipo: f.tipo,
@@ -463,10 +479,39 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     return { conflictos, totalAbiertos: Number(total.rows[0]?.total ?? 0) };
   }
 
-  async resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
-    return runWithSavepointFallback<ResultadoMarcarResuelto>({
+  async decidirConflicto(propertyId: string, conflictoId: string, actorUserId: string, decision: { accion: AccionConflicto; motivo: string | null }): Promise<ResultadoDecisionConflicto> {
+    // Las decisiones de negocio de la función (P0002 / 55000 / 42501) y la migración pendiente
+    // (42883) son ambas "recuperables": se revierte al SAVEPOINT (la transacción compartida del
+    // request sigue utilizable, sin 25P02) y el fallback las traduce. El actor sale de auth.uid()
+    // dentro de la función; `actorUserId` solo se usa en el camino anterior a 026.
+    return runWithSavepointFallback<ResultadoDecisionConflicto>({
       session: this.db,
-      savepointName: "sp_rentas_conflicto_resolver",
+      savepointName: "sp_rentas_conflicto_decidir",
+      primary: async () => {
+        const fila = await this.db.query<{ accion: AccionConflicto }>(`SELECT rentas.resolver_conflicto_calendario($1, $2, $3, $4) AS accion`, [propertyId, conflictoId, decision.accion, decision.motivo]);
+        return fila.rows[0]?.accion ?? "no_encontrado";
+      },
+      isRecoverable: (err) => {
+        const code = (err as { code?: string } | null)?.code;
+        return code === "P0002" || code === "55000" || code === "42501" || isUndefinedFunctionError(err, "rentas.resolver_conflicto_calendario");
+      },
+      fallback: async (err) => {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "P0002") return "no_encontrado";
+        if (code === "55000") return "solape_vigente";
+        if (code === "42501") return "sin_permiso";
+        // Base sin la migración 026: solo "resuelto" existe (sin motivo ni bitácora ni verificación de solape).
+        if (decision.accion === "ignorado") return "no_disponible";
+        return this.resolverConflictoAnterior026(propertyId, conflictoId, actorUserId);
+      },
+    });
+  }
+
+  /** Camino anterior a 026 (migración 024): UPDATE directo de (resuelto_en, resuelto_por). */
+  private async resolverConflictoAnterior026(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoDecisionConflicto> {
+    return runWithSavepointFallback<ResultadoDecisionConflicto>({
+      session: this.db,
+      savepointName: "sp_rentas_conflicto_resolver_024",
       primary: async () => {
         const fila = await this.db.query<{ id: string }>(
           `UPDATE rentas.conflicto_calendario SET resuelto_en = now(), resuelto_por = $3
@@ -480,6 +525,26 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
       // filas), así que 42501 aquí solo significa "migración pendiente".
       isRecoverable: (err) => (err as { code?: string } | null)?.code === "42501",
       fallback: async () => "no_disponible",
+    });
+  }
+
+  async listarHistorialConflicto(propertyId: string, conflictoId: string): Promise<HistorialConflicto> {
+    return runWithSavepointFallback<HistorialConflicto>({
+      session: this.db,
+      savepointName: "sp_rentas_conflicto_historial",
+      primary: async () => {
+        const filas = await this.db.query<{ id: string; accion: "resuelto" | "ignorado"; motivo: string | null; actor_user_id: string; creado_en: string }>(
+          `SELECT id, accion, motivo, actor_user_id, creado_en::text AS creado_en
+           FROM rentas.conflicto_calendario_bitacora
+           WHERE property_id = $1 AND conflicto_id = $2
+           ORDER BY creado_en, id`,
+          [propertyId, conflictoId],
+        );
+        const entradas: EntradaHistorialConflicto[] = filas.rows.map((f) => ({ id: f.id, accion: f.accion, motivo: f.motivo, actorUserId: f.actor_user_id, creadoEn: f.creado_en }));
+        return { disponible: true, entradas };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, entradas: [] }),
     });
   }
 
