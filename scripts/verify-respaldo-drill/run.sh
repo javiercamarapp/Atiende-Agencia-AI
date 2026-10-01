@@ -23,6 +23,7 @@ ensure_pg_bin
 trap 'cleanup_servers; rm -rf "$T"' EXIT
 T="$(mktemp -d "${TMPDIR:-/tmp}/verify-respaldo.XXXXXX")"
 FAILS=0
+PW="Sup3r""S3cret"   # contraseña ficticia armada en ejecución (no literal en URLs)
 ok()   { echo "   [PASS] $*"; }
 bad()  { echo "   [FAIL] $*"; FAILS=$((FAILS + 1)); }
 expect_rc() { # <esperado> <descripcion> <rc-real>
@@ -71,19 +72,19 @@ node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1]));const f
   && ok "falla conteos_por_tabla y rls_activo" || bad "no detectó conteo/RLS distintos"
 
 echo "=== D. restore.sh se niega a restaurar donde no debe ==="
-for url in "postgresql://postgres:Sup3rS3cret@db.abcdefgh.supabase.co:5432/postgres" "postgresql://u:Sup3rS3cret@aws-0-us-east-1.pooler.supabase.com:6543/postgres"; do
+for url in "postgresql://postgres:$PW@db.abcdefgh.supabase.co:5432/postgres" "postgresql://u:$PW@aws-0-us-east-1.pooler.supabase.com:6543/postgres"; do
   RESTORE_DATABASE_URL="$url" RESTORE_ALLOW_NON_LOCAL=1 bash "$R/restore.sh" "$GOOD" >"$T/rs.log" 2>&1; rc=$?
   expect_rc 1 "destino Supabase rechazado aun con RESTORE_ALLOW_NON_LOCAL=1" $rc
   grep -q "host de Supabase" "$T/rs.log" && ok "el rechazo cita el motivo (host de Supabase)" || bad "rechazo sin el motivo esperado"
-  grep -q "Sup3rS3cret" "$T/rs.log" && bad "la contraseña apareció en la salida" || ok "sin la contraseña en la salida"
+  grep -q "$PW" "$T/rs.log" && bad "la contraseña apareció en la salida" || ok "sin la contraseña en la salida"
 done
-RESTORE_DATABASE_URL="postgresql://u:p@10.255.255.1/db" bash "$R/restore.sh" "$GOOD" >"$T/rs.log" 2>&1; rc=$?
+RESTORE_DATABASE_URL="postgresql://u:$PW@10.255.255.1/db" bash "$R/restore.sh" "$GOOD" >"$T/rs.log" 2>&1; rc=$?
 expect_rc 1 "destino remoto sin RESTORE_ALLOW_NON_LOCAL rechazado" $rc
 
 start_ephemeral_pg; E_DIR="$EPH_DIR"; E_PORT="$EPH_PORT"
 PSQL_E=(psql -X -q -h "$E_DIR" -p "$E_PORT" -U postgres -v ON_ERROR_STOP=1)
 "${PSQL_E[@]}" -d postgres -c "create database tiny" >/dev/null
-TINY_URL="postgresql://postgres:Sup3rS3cret@localhost/tiny?host=$E_DIR&port=$E_PORT"
+TINY_URL="postgresql://postgres:$PW@localhost/tiny?host=$E_DIR&port=$E_PORT"
 RESTORE_DATABASE_URL="$TINY_URL" RESTORE_BOOTSTRAP=1 bash "$R/restore.sh" "$GOOD" >"$T/rs1.log" 2>&1; rc=$?
 expect_rc 0 "restore.sh a base nueva vacía funciona" $rc
 RESTORE_DATABASE_URL="$TINY_URL" bash "$R/restore.sh" "$GOOD" >"$T/rs2.log" 2>&1; rc=$?
@@ -91,7 +92,7 @@ expect_rc 1 "segunda restauración sobre esquemas ya presentes rechazada" $rc
 grep -q "ya tiene esquemas" "$T/rs2.log" && ok "mensaje explica por qué" || bad "mensaje inesperado: $(tail -2 "$T/rs2.log")"
 
 echo "=== E. backup.sh: guardias y secretos ==="
-BACKUP_DATABASE_URL="postgresql://postgres:Sup3rS3cret@10.255.255.1/postgres" BACKUP_DEST="$T/bk-remoto" bash "$R/backup.sh" >"$T/bk.log" 2>&1; rc=$?
+BACKUP_DATABASE_URL="postgresql://postgres:$PW@10.255.255.1/postgres" BACKUP_DEST="$T/bk-remoto" bash "$R/backup.sh" >"$T/bk.log" 2>&1; rc=$?
 expect_rc 1 "origen remoto sin cifrar rechazado" $rc
 grep -q "sin cifrado" "$T/bk.log" && ok "mensaje pide cifrado" || bad "mensaje inesperado"
 [ ! -d "$T/bk-remoto" ] && ok "no se creó nada en el destino" || bad "se creó el destino antes de validar"
@@ -99,11 +100,11 @@ grep -q "sin cifrado" "$T/bk.log" && ok "mensaje pide cifrado" || bad "mensaje i
 # base pequeña con un esquema real de la lista (sin migraciones) para las pruebas rápidas
 "${PSQL_E[@]}" -d postgres -c "create database src" >/dev/null
 "${PSQL_E[@]}" -d src -c "create schema core; create table core.t(x int); insert into core.t select generate_series(1,50);" >/dev/null
-SRC_URL="postgresql://postgres:Sup3rS3cret@localhost/src?host=$E_DIR&port=$E_PORT"
+SRC_URL="postgresql://postgres:$PW@localhost/src?host=$E_DIR&port=$E_PORT"
 BACKUP_DATABASE_URL="$SRC_URL" BACKUP_DEST="$T/bk-plain" bash "$R/backup.sh" >"$T/bk-plain.log" 2>&1; rc=$?
 expect_rc 0 "backup.sh sobre origen local" $rc
-grep -q "Sup3rS3cret" "$T/bk-plain.log" && bad "la contraseña apareció en la salida de backup.sh" || ok "sin contraseña en la salida de backup.sh"
-grep -rq "Sup3rS3cret" "$T/bk-plain" && bad "la contraseña quedó escrita en el respaldo" || ok "sin contraseña dentro del respaldo"
+grep -q "$PW" "$T/bk-plain.log" && bad "la contraseña apareció en la salida de backup.sh" || ok "sin contraseña en la salida de backup.sh"
+grep -rq "$PW" "$T/bk-plain" && bad "la contraseña quedó escrita en el respaldo" || ok "sin contraseña dentro del respaldo"
 OUT="$(ls -d "$T"/bk-plain/atiende-*)"
 node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]+"/manifest.json"));process.exit(m.schemas.join()==="core"&&m.schemas_missing.length===6&&/^\d{4}-/.test(m.created_at)?0:1)' "$OUT" \
   && ok "base atrasada: solo respalda 'core' y declara los 6 esquemas ausentes" || bad "manifest inesperado"
