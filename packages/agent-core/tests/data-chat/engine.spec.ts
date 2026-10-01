@@ -370,3 +370,56 @@ describe("scriptedCompletion", () => {
     expect(s.requests).toHaveLength(2);
   });
 });
+
+describe("runDataChatTurn — consulta directa (botones del modo sin IA) y reintento por guardia de cifras", () => {
+  it("directTool ejecuta la herramienta SIN llamar al modelo, con periodo por defecto, mismo alcance y bitacora", async () => {
+    const t = turn([], { directTool: "ventas_por_dia", question: "" });
+    const a = await t.run();
+    expect(t.llm.requests.length).toBe(0);
+    expect(a.status).toBe("ok");
+    expect(a.toolsUsed).toEqual(["ventas_por_dia"]);
+    expect(a.text).toBe("Ventas del periodo: $2,480.50 MXN en 20 pedidos.");
+    expect(a.blocks).toHaveLength(1);
+    expect(a.sources[0]!.periodLabel).toMatch(/30 días|últimos/i);
+    expect(t.seen[0]!.scope).toEqual(SCOPE_A);
+    expect(t.audit.entries.at(-1)).toMatchObject({ tool: "ventas_por_dia", outcome: "ok" });
+  });
+
+  it("directTool con una herramienta que no esta en el catalogo se rechaza sin ejecutar nada", async () => {
+    const t = turn([], { directTool: "borrar_todo", question: "" });
+    const a = await t.run();
+    expect(a.status).toBe("invalid_input");
+    expect(t.seen).toHaveLength(0);
+    expect(t.llm.requests.length).toBe(0);
+  });
+
+  it("completeRetry: si la narrativa del primer modelo trae cifras inventadas, un reintento con el modelo fuerte la reemplaza", async () => {
+    const retry = scriptedCompletion([{ text: "Vendiste $2,480.50 MXN en 20 pedidos." }]);
+    const t = turn([CALL_SALES_THIS_WEEK, { text: "Vendiste $99,000 MXN." }], { completeRetry: retry.complete });
+    const a = await t.run();
+    expect(a.text).toBe("Vendiste $2,480.50 MXN en 20 pedidos.");
+    expect(retry.requests.length).toBe(1);
+  });
+
+  it("completeRetry que tambien inventa cifras (o lanza): se muestra el texto determinista", async () => {
+    const mala = scriptedCompletion([{ text: "Vendiste $77,777 MXN." }]);
+    const a1 = await turn([CALL_SALES_THIS_WEEK, { text: "Vendiste $99,000 MXN." }], { completeRetry: mala.complete }).run();
+    expect(a1.text).toBe("Ventas del periodo: $2,480.50 MXN en 20 pedidos.");
+    const errores: string[] = [];
+    const a2 = await turn([CALL_SALES_THIS_WEEK, { text: "Vendiste $99,000 MXN." }], {
+      completeRetry: async () => {
+        throw new Error("proveedor caido");
+      },
+      onError: (where) => errores.push(where),
+    }).run();
+    expect(a2.text).toBe("Ventas del periodo: $2,480.50 MXN en 20 pedidos.");
+    expect(errores).toContain("llm_retry");
+  });
+
+  it("completeRetry NO se usa cuando la narrativa del primer modelo ya pasa la guardia", async () => {
+    const retry = scriptedCompletion([{ text: "no debe llamarse" }]);
+    const a = await turn([CALL_SALES_THIS_WEEK, { text: "Vendiste $2,480.50 MXN en 20 pedidos." }], { completeRetry: retry.complete }).run();
+    expect(a.text).toBe("Vendiste $2,480.50 MXN en 20 pedidos.");
+    expect(retry.requests.length).toBe(0);
+  });
+});

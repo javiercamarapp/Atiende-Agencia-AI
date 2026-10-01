@@ -10,7 +10,7 @@
 //    texto del modelo solo se muestra si todos sus números existen en los resultados.
 import { isBudgetExceededError, isMonthlyBudgetExceededError } from "../gateway/errors.js";
 import { isKillSwitchEngagedError } from "../gateway/kill-switch.js";
-import type { LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
+import type { LlmCompletionResult, LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
 import { toJsonSchema, parseArgs, type ParsedArgs } from "./params.js";
 import { allowedNumbers, unsupportedNumbers } from "./numbers-guard.js";
 import { containsLink, redactPii, sanitizeCell, sanitizeRowForModel } from "./sanitize.js";
@@ -39,6 +39,13 @@ export interface RunDataChatTurnOptions {
   readonly history?: readonly DataChatHistoryTurn[];
   /** Proveedor LLM abstraído (gateway real, o el guion de pruebas). */
   readonly complete: DataChatCompletion;
+  /** Reintento UNICO con un modelo mas fuerte cuando la guardia de cifras rechaza la narrativa del primero
+   *  (cifras que no estan en los resultados). Opcional: sin el, se muestra el texto determinista. */
+  readonly completeRetry?: DataChatCompletion;
+  /** MODO SIN IA: nombre de una herramienta del catalogo para ejecutarla directo (sin llamar al modelo), con sus
+   *  parametros por defecto. Es lo que hacen los botones de `noAi.options`; mismo alcance, limites, tiempo, PII y
+   *  bitacora que un turno normal. */
+  readonly directTool?: string;
   readonly rateLimiter?: DataChatRateLimiter;
   readonly audit?: DataChatAuditSink;
   readonly limits?: Partial<DataChatLimits>;
@@ -125,6 +132,18 @@ async function withTimeout<T>(work: (signal: AbortSignal) => Promise<T>, ms: num
   }
 }
 
+/** Periodos preferidos (en orden) para una consulta directa del modo sin IA; el periodo resuelto siempre se muestra en la fuente. */
+const DIRECT_PERIOD_PREFERENCE = ["ultimos_30_dias", "este_mes", "ultimos_7_dias", "esta_semana", "proximos_7_dias", "hoy"] as const;
+
+/** Argumentos por defecto de una consulta directa: solo el periodo, si la herramienta lo declara. Una herramienta con
+ *  otros parametros OBLIGATORIOS no se puede ejecutar sin preguntar (devuelve `clarify`). */
+function directDefaultArgs(tool: DataChatTool): Record<string, string> {
+  const periodo = tool.params["periodo"];
+  if (periodo?.type !== "enum") return {};
+  const pick = DIRECT_PERIOD_PREFERENCE.find((v) => periodo.values.includes(v)) ?? periodo.values[0];
+  return pick ? { periodo: pick } : {};
+}
+
 function answer(status: DataChatAnswer["status"], text: string, extra: Partial<Omit<DataChatAnswer, "status" | "text">> = {}): DataChatAnswer {
   return { status, text, blocks: extra.blocks ?? [], sources: extra.sources ?? [], toolsUsed: extra.toolsUsed ?? [], ...(extra.noAi ? { noAi: extra.noAi } : {}) };
 }
@@ -159,9 +178,11 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   };
 
-  const question = opts.question.trim();
+  const direct = opts.directTool === undefined ? undefined : catalog.tools.find((t) => t.name === opts.directTool);
+  if (opts.directTool !== undefined && !direct) return answer("invalid_input", "Esa consulta no existe en tu catálogo.");
+  const question = direct ? direct.label : opts.question.trim();
   if (question.length === 0) return answer("invalid_input", "Escribe una pregunta sobre tus datos.");
-  if (question.length > limits.maxQuestionChars) {
+  if (!direct && question.length > limits.maxQuestionChars) {
     return answer("invalid_input", `Tu pregunta es demasiado larga (máximo ${limits.maxQuestionChars} caracteres). Hazla más corta y concreta.`);
   }
 
@@ -209,13 +230,15 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   try {
     for (let round = 0; round <= limits.maxToolRounds; round += 1) {
       const lastRound = round === limits.maxToolRounds;
-      const res = await opts.complete({
-        system,
-        messages,
-        tools: lastRound ? undefined : toolDefs,
-        maxOutputTokens: limits.maxOutputTokens,
-        temperature: 0,
-      });
+      const res: Pick<LlmCompletionResult, "text" | "toolCalls"> = direct
+        ? { text: "", ...(round === 0 ? { toolCalls: [{ id: "direct-1", name: direct.name, argumentsJson: JSON.stringify(directDefaultArgs(direct)) }] } : {}) }
+        : await opts.complete({
+            system,
+            messages,
+            tools: lastRound ? undefined : toolDefs,
+            maxOutputTokens: limits.maxOutputTokens,
+            temperature: 0,
+          });
       const calls: LlmToolCall[] = lastRound ? [] : (res.toolCalls ?? []);
       if (calls.length === 0) {
         finalText = res.text ?? "";
@@ -295,6 +318,10 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   // ---- armado de la respuesta ----
   const toolsUsed = [...new Set(runs.map((r) => r.tool.name))];
 
+  if (runs.length === 0 && direct) {
+    return answer("clarify", `La consulta «${direct.label}» necesita más datos (por ejemplo un periodo). Escríbela como pregunta indicando lo que quieres ver.`);
+  }
+
   if (runs.length === 0) {
     const asksBack = finalText.trim().endsWith("?") && finalText.trim().length <= 300;
     await audit({ tool: null, params: {}, outcome: "no_tool", rowCount: 0, durationMs: Date.now() - started });
@@ -339,10 +366,35 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   }));
 
   const deterministic = withRows.map((r) => r.result.summary ?? `${r.tool.label}: ${r.result.rows.length} fila(s) en la tabla.`).join(" ");
-  const narrative = sanitizeNarrative(finalText);
   const allowed = allowedNumbers(question, everyResult);
-  const narrativeOk =
-    narrative.length > 0 && narrative.length <= MAX_NARRATIVE_CHARS && !containsLink(narrative) && unsupportedNumbers(narrative, allowed).length === 0;
+  const passesGuard = (text: string): boolean =>
+    text.length > 0 && text.length <= MAX_NARRATIVE_CHARS && !containsLink(text) && unsupportedNumbers(text, allowed).length === 0;
+  let narrative = sanitizeNarrative(finalText);
+  let narrativeOk = passesGuard(narrative);
+
+  // Guardia de cifras: si el modelo escribio una narrativa con cifras que NO estan en los resultados, UN reintento con
+  // el modelo mas fuerte (`completeRetry`). Si tambien falla o lanza, se muestra el texto determinista (nunca se
+  // muestra una narrativa que no paso la guardia).
+  if (!narrativeOk && narrative.length > 0 && opts.completeRetry && !direct) {
+    try {
+      const retry = await opts.completeRetry({
+        system,
+        messages: [
+          ...messages,
+          { role: "user", content: "Tu respuesta anterior incluyó cifras que no aparecen en los resultados de las consultas. Redáctala de nuevo usando ÚNICAMENTE las cifras de esos resultados, sin inventar ni calcular otras." },
+        ],
+        maxOutputTokens: limits.maxOutputTokens,
+        temperature: 0,
+      });
+      const retried = sanitizeNarrative(retry.text ?? "");
+      if (passesGuard(retried)) {
+        narrative = retried;
+        narrativeOk = true;
+      }
+    } catch (err) {
+      onError("llm_retry", err);
+    }
+  }
 
   return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
 }

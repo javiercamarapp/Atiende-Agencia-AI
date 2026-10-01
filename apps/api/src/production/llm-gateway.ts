@@ -58,10 +58,11 @@ import {
   type LlmProvider,
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { DATA_CHAT_RETRY_SUFFIX, NEW_PLATFORM_LLM_ROLES, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -141,6 +142,9 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   LICITACIONES_JUNTA_QUESTION_AGENT_ROLE,
 ];
 
+/** Reintento por guardia de cifras: un rol "<vertical>:data_chat_retry" por cada rol de data-chat. */
+export const DATA_CHAT_RETRY_ROLES: readonly string[] = ALL_PRODUCTION_ROLES.filter((r) => r.endsWith(":data_chat")).map((r) => `${r.slice(0, r.indexOf(":"))}:${DATA_CHAT_RETRY_SUFFIX}`);
+
 /** Topes conservadores de defensa en profundidad, no una promesa de costo real
  *  (ver nota de `defaultCostEstimator` en gateway.ts: sobre-reservar es seguro,
  *  sub-reservar no) — $2 por corrida (un turno de WhatsApp o una página de
@@ -195,6 +199,28 @@ export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConf
   return undefined;
 }
 
+/** Notificacion in-app a los superadmins cuando el breaker de un modelo se abre (`superadmin.llm.modelo_caido`; solo el
+ *  id del modelo, sin PII; dedupe por modelo y dia en la base). Best-effort: nunca lanza ni altera la escalera. */
+export async function notificarModeloCaidoBestEffort(engine: TenancyEngine, providerId: string, ahora: Date = new Date()): Promise<void> {
+  try {
+    const modelo = providerId.replace(/^openrouter:/, "").replace(/\//g, ":").replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40);
+    await engine.withAppSession({ userId: null }, (session) =>
+      emitirNotificacion(session, { evento: "superadmin.llm.modelo_caido", organizationId: null, clave: `${modelo}:${ahora.toISOString().slice(0, 10)}`, parametros: { modelo } }),
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+/** Circuit breaker del gateway: el store compartido (o en memoria) con las claves prefijadas por entorno. Con `engine`,
+ *  avisa a los superadmins cuando un modelo se cae. */
+export function buildCircuitBreaker(env: ApiEnv, engine?: TenancyEngine): CircuitBreaker {
+  return new CircuitBreaker(buildBreakerStore(env), {
+    ...(env.llmProviders.openrouter?.breakerEnv ? { keyPrefix: env.llmProviders.openrouter.breakerEnv } : {}),
+    ...(engine ? { onOpen: (providerId: string) => notificarModeloCaidoBestEffort(engine, providerId) } : {}),
+  });
+}
+
 function hasAnyProvider(env: ApiEnv): boolean {
   return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
 }
@@ -221,7 +247,7 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   const models = loadLlmModelsConfig(env);
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(buildBreakerStore(env)),
+    breaker: buildCircuitBreaker(env, engine),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
@@ -233,7 +259,7 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   // El copiloto de superadmin/CFO (SA-33..35) todavia no tiene ruta que lo invoque, pero su escalera
   // premium ya existe para que se enchufe sin tocar el gateway (su interruptor de plataforma llegara
   // con ese trabajo: no esta en ALL_PRODUCTION_ROLES a proposito, un test lo ata a core.platform_switch).
-  for (const role of [...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE]) {
+  for (const role of [...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES]) {
     gateway.registerLadder(role, buildRoleLadder(env, role, models)!);
   }
 
@@ -279,7 +305,7 @@ export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKi
   if (!hasAnyProvider(env)) return undefined;
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(buildBreakerStore(env)),
+    breaker: buildCircuitBreaker(env),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: RESUMEN_DIARIO_LLM_BUDGET_LIMITS,
     killSwitch,

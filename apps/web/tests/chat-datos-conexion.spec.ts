@@ -1,7 +1,7 @@
 // Conexion generica de "Chatea con tus datos" (despachos, licitaciones): cuerpo sin identidad, tope de
 // historial y degradacion honesta ante errores. El transporte esta inyectado: nada toca la red.
 import { describe, expect, it } from "vitest";
-import { MAX_HISTORY, MAX_TURN_CHARS, consultarDisponibilidad, crearConexionChatDatos, enviarPregunta, type TransporteChatDatos } from "../src/lib/chat-datos-conexion.ts";
+import { MAX_HISTORY, MAX_TURN_CHARS, consultarDisponibilidad, crearConexionChatDatos, ejecutarConsultaDirecta, enviarPregunta, type TransporteChatDatos } from "../src/lib/chat-datos-conexion.ts";
 
 const BASE = "https://api.example.test/x/p1/chat-datos";
 const OK = { status: "ok", text: "hola", blocks: [], sources: [], toolsUsed: [] };
@@ -82,5 +82,28 @@ describe("crearConexionChatDatos", () => {
     expect(await c.disponible()).toBe(true);
     expect((await c.enviar("hola", [])).status).toBe("ok");
     expect(t.posts).toHaveLength(1);
+  });
+});
+
+describe("ejecutarConsultaDirecta (modo sin IA)", () => {
+  it("POST a la ruta con SOLO { tool } (sin pregunta, historial ni ids) y devuelve la respuesta del servidor", async () => {
+    const t = transporte();
+    const r = await ejecutarConsultaDirecta(t, BASE, "cartera_vencida");
+    expect(r.text).toBe("hola");
+    expect(t.posts[0]).toEqual({ url: BASE, payload: { tool: "cartera_vencida" } });
+  });
+
+  it("la conexion expone ejecutarOpcion que usa el mismo transporte", async () => {
+    const t = transporte();
+    const c = crearConexionChatDatos({ clave: "p1", baseUrl: BASE, transporte: t, sugerencias: [] });
+    await c.ejecutarOpcion!("cartera_vencida");
+    expect(t.posts[0]!.payload).toEqual({ tool: "cartera_vencida" });
+  });
+
+  it("fallo de red -> aviso de conexion; error HTTP -> 'no disponible'; nunca lanza", async () => {
+    const red = transporte({ post: async () => { throw new TypeError("Failed to fetch"); } });
+    expect((await ejecutarConsultaDirecta(red, BASE, "x")).text).toContain("conectar");
+    const http = transporte({ post: async () => { throw new Error("HTTP 500"); } });
+    expect((await ejecutarConsultaDirecta(http, BASE, "x")).status).toBe("unavailable");
   });
 });

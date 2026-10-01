@@ -51,6 +51,21 @@ describe.each(CASES)("data-chat-client de $nombre", ({ cliente, ruta, sugerencia
     expect(body.history.every((h) => h.text.length === 600)).toBe(true);
   });
 
+  it("ejecutarConsulta (modo sin IA): POST con SOLO { tool } a la misma ruta; 403/500/red degradan a un aviso honesto", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return json(200, { status: "ok", text: "Ocupación del periodo", blocks: [], sources: [], toolsUsed: ["ocupacion"] });
+    }) as typeof fetch;
+    const r = await cliente.ejecutarConsulta(fetchImpl, API, "tok", "prop-1", "ocupacion");
+    expect(r.toolsUsed).toEqual(["ocupacion"]);
+    expect(calls[0]!.url).toBe(`${API}/${ruta}/prop-1/chat-datos`);
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ tool: "ocupacion" });
+    expect((await cliente.ejecutarConsulta(mk(async () => json(403, {})), API, "tok", "p", "t")).text).toContain("rol");
+    expect((await cliente.ejecutarConsulta(mk(async () => json(500, {})), API, "tok", "p", "t")).status).toBe("unavailable");
+    expect((await cliente.ejecutarConsulta(mk(async () => { throw new Error("offline"); }), API, "tok", "p", "t")).text).toContain("conectar");
+  });
+
   it("el id de propiedad se codifica en la URL (nunca rompe la ruta)", async () => {
     let seen = "";
     await cliente.preguntar((async (url: string) => ((seen = url), json(200, { status: "ok", text: "", blocks: [], sources: [], toolsUsed: [] }))) as typeof fetch, API, "tok", "a/b?c", "q", []);

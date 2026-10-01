@@ -31,7 +31,7 @@
 //     establecido en gateway.ts, nunca un catch silencioso que dejaría pasar
 //     gasto sin control real. `settle` (ajuste post-hoc al costo real) SÍ es
 //     best-effort — el gateway ya lo envuelve en `.catch(() => {})`.
-import { LlmMonthlyBudgetExceededError, PostgresLlmUsageRepository } from "@atiende/db";
+import { LlmMonthlyBudgetExceededError, PostgresLlmUsageRepository, emitirNotificacion } from "@atiende/db";
 import { MonthlyBudgetExceededError, type LlmUsageEvent, type OrgMonthlyBudgetStore, type UsageRecorder } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -50,6 +50,8 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
           lane: event.lane,
           tokensIn: event.tokensIn,
           tokensOut: event.tokensOut,
+          ...(event.tokensCached !== undefined ? { tokensCached: event.tokensCached } : {}),
+          ...(event.tokensReasoning !== undefined ? { tokensReasoning: event.tokensReasoning } : {}),
           costMicroUsd: event.costMicroUsd,
           fallbackUsed: event.fallbackUsed,
         }),
@@ -70,7 +72,27 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
   }
 }
 
+/** Notificacion in-app a los superadmins cuando un tope MENSUAL de gasto de IA (de organizacion o de plataforma) se
+ *  agota (`superadmin.costo.ia_umbral`, umbral 100; sin PII: solo el porcentaje). Dedupe por mes en la base; el
+ *  `emitidoEn` evita abrir una sesion por cada llamada rechazada del mismo mes en esta instancia. Best-effort: nunca
+ *  lanza ni cambia el error de presupuesto que ya se propaga. */
+export async function notificarTopeIaAgotadoBestEffort(engine: TenancyEngine, emitidoEn: Set<string>, ahora: Date = new Date()): Promise<void> {
+  const clave = `100:${ahora.toISOString().slice(0, 7)}`;
+  if (emitidoEn.has(clave)) return;
+  try {
+    const res = await engine.withAppSession({ userId: null }, (session) =>
+      emitirNotificacion(session, { evento: "superadmin.costo.ia_umbral", organizationId: null, clave, parametros: { porcentaje: 100 } }),
+    );
+    // Solo se recuerda si la base lo proceso (o ya existia); un `no_disponible`/`error` se reintenta en la siguiente llamada.
+    if (res.estado === "emitida" || res.estado === "sin_nuevas") emitidoEn.add(clave);
+  } catch {
+    // best-effort
+  }
+}
+
 export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
+  private readonly topeNotificado = new Set<string>();
+
   constructor(private readonly engine: TenancyEngine) {}
 
   async reserve(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {
@@ -78,6 +100,7 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
       await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd));
     } catch (err) {
       if (err instanceof LlmMonthlyBudgetExceededError) {
+        await notificarTopeIaAgotadoBestEffort(this.engine, this.topeNotificado);
         throw new MonthlyBudgetExceededError(err.scope, err.organizationId, err.requestedMicroUsd, err.limitMicroUsd);
       }
       // Cualquier otro error (Postgres caído, timeout) se propaga tal cual —

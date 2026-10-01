@@ -288,6 +288,10 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // confiable, ver docs/CREDENCIALES.md) -- nunca bloquea nada, solo cambia de
   // qué header se deriva el actor del rate-limit.
   "TRUSTED_PROXY_IP_HEADER",
+  // `env.ts::breakerEnvName` -- entorno de despliegue que Vercel inyecta (`production`/`preview`/`development`);
+  // prefija las claves del circuit breaker compartido (`cb:<entorno>:<modelo>`) para que preview no abra el
+  // breaker de produccion. No es una credencial; sin el, cae a NODE_ENV y luego a `development`.
+  "VERCEL_ENV",
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",

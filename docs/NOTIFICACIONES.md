@@ -100,7 +100,8 @@ parte B (ver "Estado").
 |---|---|---|---|---|---|---|---|---|
 | `superadmin.cfo.alerta` | cobranza | critica | superadmins de plataforma | ChartNoAxesCombined | `/superadmin/cfo` | una por regla por mes | 31 d | conectado: `apps/api/src/routes/internal/superadmin-alertas-cfo.ts` |
 | `superadmin.cron.fallo` | salud | critica | superadmins de plataforma | ServerCrash | `/superadmin/resumen` | una por cron por dia | 7 d | conectado: `apps/api/src/salud/with-heartbeat.ts` |
-| `superadmin.costo.ia_umbral` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/gasto-api` | una por umbral (80, 100) por mes | 31 d | pendiente: guard de presupuesto de LLM (llm_usage) aun no escribe core.notification |
+| `superadmin.costo.ia_umbral` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/gasto-api` | una por umbral (80, 100) por mes | 31 d | conectado: `apps/api/src/production/llm-usage-gateway-adapters.ts` emite el umbral 100 (tope mensual agotado, de organizacion o de plataforma); el aviso de 80 % queda pendiente: el guard no devuelve el uso acumulado y falta una funcion SQL de solo lectura que lo calcule |
+| `superadmin.llm.modelo_caido` | salud | critica | superadmins de plataforma | TriangleAlert | `/superadmin/salud` | una por modelo por dia | 7 d | conectado: `apps/api/src/production/llm-gateway.ts` (cuando el circuit breaker de un modelo pasa a abierto) |
 | `superadmin.organizacion.accion_pendiente` | aprobaciones | atencion | superadmins de plataforma | UserRoundCheck | `/superadmin/gestion-organizaciones` | una por solicitud | 2 d | pendiente: doble control de gestion de organizaciones (0038): falta emitir al solicitar |
 
 
