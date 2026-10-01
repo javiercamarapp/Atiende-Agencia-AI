@@ -132,6 +132,7 @@ import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
 import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
+import { ImportarEstadoCuentaPage } from "./verticals/despachos/pages/ImportarEstadoCuenta.tsx";
 import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
@@ -808,6 +809,7 @@ const DespachosVencimientosRoute = shellRoute(DespachosShell, "/despachos/login"
 const DespachosDeclaracionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DeclaracionesPage {...ctx} />);
 const DespachosNominaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NominaPage {...ctx} />);
 const DespachosConciliacionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ConciliacionPage {...ctx} />);
+const DespachosImportarEstadoCuentaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ImportarEstadoCuentaPage {...ctx} />);
 const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <MigracionCatalogoPage {...ctx} />);
 const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
@@ -963,6 +965,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
         <Route path="/despachos/:orgSlug/conciliacion" element={<DespachosConciliacionRoute />} />
+        <Route path="/despachos/:orgSlug/conciliacion/importar" element={<DespachosImportarEstadoCuentaRoute />} />
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
