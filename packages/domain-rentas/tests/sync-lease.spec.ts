@@ -5,7 +5,7 @@ import { clasificarSaludFeed, type FeedMonitorRecord } from "../src/sync/monitor
 import type { ResultadoImportarCiclo } from "../src/sync/motor.ts";
 
 function ciclo(parcial: Partial<ResultadoImportarCiclo>): ResultadoImportarCiclo {
-  return { resultado: "exito_con_eventos", eventosEnFeed: 0, eventosAplicados: 0, ecosDescartados: 0, conflictosDetectados: 0, alertaCuarentena: null, revisionesUidReciclado: [], eventosDescartadosPorError: [], candidatosACancelarPorAusencia: [], ...parcial };
+  return { resultado: "exito_con_eventos", eventosEnFeed: 0, eventosAplicados: 0, ecosDescartados: 0, conflictosDetectados: 0, reservasNuevas: 0, alertaCuarentena: null, revisionesUidReciclado: [], eventosDescartadosPorError: [], candidatosACancelarPorAusencia: [], ...parcial };
 }
 
 describe("calcularBackoffFeedSegundos (espejo de rentas.ical_backoff_segundos)", () => {
