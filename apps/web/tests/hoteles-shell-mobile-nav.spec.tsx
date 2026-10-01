@@ -4,7 +4,7 @@
 // HotelesShell.tsx -- mismo patrón que despachos-shell-mobile-nav.spec.tsx/
 // restaurantes-shell-mobile-nav.spec.tsx: el <Sidebar> compartido de
 // @atiende/ui es `hidden md:flex`, así que en viewport móvil el usuario
-// depende por completo de <MobileHeader> + <BottomNav>. Hoteles tiene hasta 13
+// depende por completo de <MobileHeader> + <BottomNav>. Hoteles tiene hasta 14
 // destinos: la barra trae los 4 de uso diario y "Más" abre TODOS (PR-0 del
 // informe de diseno-ux, F-01: antes no había navegación móvil). Protege también
 // que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -86,7 +86,7 @@ describe("HotelesShell — nav móvil", () => {
     ]);
   });
 
-  it('el botón "Más" abre TODOS los destinos del rol (los 13 del owner), no solo los 4 de la barra', async () => {
+  it('el botón "Más" abre TODOS los destinos del rol (los 14 del owner), no solo los 4 de la barra', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);

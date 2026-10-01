@@ -398,3 +398,17 @@ Tests con `AbortAwareFakeSession` en `tests/identity/postgres-repository-032-com
   (art. 24) en lugar de los 7 días por defecto, y cuándo un legal hold es obligatorio y cada cuánto revisarlo.
 - Que la base legal del registro de huéspedes (art. 9 fr. I y IV) dispense o no el consentimiento para la
   finalidad de identificación (por eso el consentimiento ligado a la captura es **opcional**).
+
+## Housekeeping completo (H-04)
+
+Código en `src/housekeeping/` (`tareas.ts` reglas puras, `repository.ts` puerto,
+`postgres-repository.ts` y `in-memory-repository.ts`); modelo SQL en
+`migrations/033_housekeeping_completo.sql` (`hoteles.housekeeping_task`,
+`hoteles.room_out_of_service`, UPDATE de solo `hoteles.room.status`). Ciclo de una tarea:
+pendiente -> en_progreso -> terminada (espera inspección) -> inspeccionada; una inspección
+rechazada devuelve la tarea a pendiente con `rejections + 1`. Quien limpió no inspecciona su
+propio trabajo (CHECK en la migración y regla en la ruta). Contra una base sin la migración las
+lecturas degradan (`tareasDisponibles: false`) y las escrituras responden 503
+(`runWithSavepointFallback`). Verificación contra Postgres real:
+`scripts/verify-hoteles-housekeeping/`. Fuera de esta entrega: inspección con visión/fotos,
+conteo de blancos, opt-out de limpieza y asignación automática (optimizador).
