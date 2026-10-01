@@ -9,7 +9,7 @@ export function PrivacidadStorefrontPage({ orgSlug }: { orgSlug: string }) {
     <StorefrontLayout orgSlug={orgSlug}>
       <article className="mx-auto max-w-2xl">
         <h1 className="text-2xl font-semibold tracking-tight">Aviso de privacidad (versión simplificada)</h1>
-        <div className="mt-5 flex flex-col gap-4 text-[15px] leading-relaxed text-muted-foreground">
+        <div className="mt-5 flex flex-col gap-4 text-base leading-relaxed text-muted-foreground">
           <p>
             <strong className="text-foreground">Qué datos pedimos.</strong> Tu nombre y tu teléfono (obligatorios), tu dirección solo si pides a domicilio, y tu correo y
             notas solo si tú los escribes. No pedimos contraseña ni creamos una cuenta, y no guardamos datos de tarjeta: el pago se hace en la sucursal.
@@ -26,7 +26,7 @@ export function PrivacidadStorefrontPage({ orgSlug }: { orgSlug: string }) {
             <strong className="text-foreground">Tus derechos.</strong> Puedes pedir acceso, corrección o eliminación de tus datos, u oponerte a su uso, llamando o escribiendo
             a la sucursal donde pediste.
           </p>
-          <p className="text-[13px]">
+          <p className="text-sm">
             Este es un resumen operativo; no sustituye al aviso de privacidad integral del restaurante, que debe publicarlo conforme a la ley aplicable.
           </p>
         </div>
