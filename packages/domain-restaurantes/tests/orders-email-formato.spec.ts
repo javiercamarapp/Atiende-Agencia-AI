@@ -26,7 +26,8 @@ describe("correo del pedido", () => {
   });
 
   it("una cadena adversarial de longitud maxima (320) se rechaza en tiempo lineal", () => {
-    const adversarial = `a@${"!.".repeat(158)}!`;
+    // El patron que CodeQL cito: empieza con "!@!." y repite "!." muchas veces, y termina en un caracter invalido para forzar el retroceso.
+    const adversarial = `!@${"!.".repeat(158)} `;
     expect(adversarial.length).toBeLessThanOrEqual(320);
     const inicio = performance.now();
     expect(() => validateCreateOrderPayload(base(adversarial))).toThrow(/customerEmail inválido/);
