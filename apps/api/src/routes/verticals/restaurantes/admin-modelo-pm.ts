@@ -215,7 +215,7 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
     }
     if (!borrado) throw Errors.notFound("Puente no encontrado.");
     logEvent(c, "info", "restaurantes_admin_puente_eliminado", { actorUserId: c.get("userId"), organizationId, exceptionId });
-    return c.body(null, 204);
+    return c.json({ ok: true });
   });
 
   // ---- política por sucursal ----

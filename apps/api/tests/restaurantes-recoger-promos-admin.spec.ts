@@ -244,12 +244,12 @@ describe("puentes: excepciones de horario por fecha", () => {
     expect(borrar.status).toBe(404);
   });
 
-  it("borrar un puente: 204 y deja de listarse; un id inexistente es 404", async () => {
+  it("borrar un puente: 200 y deja de listarse; un id inexistente es 404", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const creado = await app.request(url(ctx), authedJson(ctx.staff.owner.token, { branchIds: [ctx.propertyIdA], fechaDesde: "2099-05-01", fechaHasta: "2099-05-03", turnos }));
     const { puentes } = (await creado.json()) as { puentes: Array<{ id: string }> };
-    expect((await app.request(url(ctx, `/${puentes[0]!.id}`), authedJson(ctx.staff.owner.token, undefined, "DELETE"))).status).toBe(204);
+    expect((await app.request(url(ctx, `/${puentes[0]!.id}`), authedJson(ctx.staff.owner.token, undefined, "DELETE"))).status).toBe(200);
     expect(((await (await app.request(url(ctx), authedGet(ctx.staff.owner.token))).json()) as { puentes: unknown[] }).puentes).toEqual([]);
     expect((await app.request(url(ctx, `/${randomUUID()}`), authedJson(ctx.staff.owner.token, undefined, "DELETE"))).status).toBe(404);
   });
