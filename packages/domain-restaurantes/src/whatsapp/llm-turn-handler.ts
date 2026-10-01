@@ -48,6 +48,14 @@ export const TONE_INSTRUCTIONS: Record<WhatsAppToneStyle, string> = {
   divertido_desenfadado: "Divertido y desenfadado: relajado, con humor ligero y algún emoji ocasional, sin dejar de ser claro con los datos del pedido.",
 };
 
+/** PM PR-9: identidad de asistente virtual y datos personales. El aviso de privacidad simplificado lo
+ * antepone el sistema (determinista) en el primer mensaje; el modelo no lo improvisa ni lo repite. */
+export const PRIVACY_AND_AI_RULES = `REGLAS DE PRIVACIDAD E IDENTIDAD:
+- Eres un asistente virtual (una inteligencia artificial). Si el cliente pregunta si hablas con una persona o con un bot, dile con claridad que eres un asistente virtual; nunca digas ni insinúes que eres humano.
+- El sistema ya antepone el aviso de privacidad en el primer mensaje: no lo repitas ni lo parafrasees por tu cuenta.
+- Si el cliente quiere ejercer derechos sobre sus datos personales (acceso, rectificación, cancelación u oposición), dile que escriba "mis datos personales"; esas solicitudes las atiende el sistema, no tú. No prometas plazos ni borres nada por tu cuenta.
+- Nunca repitas ni confirmes datos personales de otras personas; solo usa los que el cliente te da en este chat para su pedido.`;
+
 /** Reglas agregadas DESPUÉS del prompt base: una edición de tono/personalidad
  * nunca puede borrar por accidente la semántica de venta ni volver a delegar
  * la aritmética al modelo — port literal de ORDER_QUANTITY_RULES. */
@@ -80,7 +88,7 @@ export function saludoSegunHora(timezone: string, ahora: Date = new Date()): str
   return "Buenas noches";
 }
 
-function customerContextBlock(customer: CustomerLookupResult): string {
+export function customerContextBlock(customer: CustomerLookupResult): string {
   if (customer.isNew) {
     return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra.";
   }
@@ -89,13 +97,17 @@ function customerContextBlock(customer: CustomerLookupResult): string {
   lines.push(`Ha pedido ${customer.orderCount} ${customer.orderCount === 1 ? "vez" : "veces"} antes.`);
   const nota = vipNote(customer.tier);
   if (nota) lines.push(nota);
+  // PM PR-9 (minimizacion): el prompt NUNCA lleva el texto de la direccion (calle, numero,
+  // referencias) ni de las direcciones guardadas del cliente: ese dato personal no necesita viajar al
+  // proveedor del modelo en cada turno. Solo se le dice SI hay direccion guardada (y sus etiquetas
+  // genericas como "Casa"/"Trabajo", que el cliente mismo eligio) para que la pida o la confirme
+  // con el cliente, que la da de nuevo en ESTE chat.
   if (customer.addresses.length > 0) {
-    const def = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0]!;
-    lines.push(`Dirección guardada por defecto: "${def.address}".`);
-    const others = customer.addresses.filter((a) => a !== def);
-    if (others.length > 0) {
-      lines.push(`También tiene otras direcciones guardadas: ${others.map((a) => `"${a.address}"`).join(", ")}.`);
-    }
+    const etiquetas = customer.addresses.map((a) => a.label?.trim()).filter((l): l is string => !!l && l.length <= 24);
+    lines.push(
+      `Tiene ${customer.addresses.length === 1 ? "una dirección guardada" : `${customer.addresses.length} direcciones guardadas`}${etiquetas.length > 0 ? ` (etiquetas: ${etiquetas.join(", ")})` : ""}, ` +
+        "pero por privacidad NO la tienes a la vista: pregúntale si el pedido es para su domicilio de siempre o para otro lugar y pídele la dirección completa en este chat.",
+    );
   } else {
     lines.push("No tiene dirección guardada todavía — pídesela.");
   }
@@ -175,7 +187,7 @@ REGLAS DE NEGOCIO:
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda usando EXACTAMENTE el saludo de "SALUDO SEGÚN LA HORA ACTUAL" abajo (nunca uno fijo ni adivinado), preséntate como ${config.businessName} (sin mencionar sucursal todavía) y pregunta si quiere hacer un pedido. Este saludo por hora solo aplica al primer mensaje tuyo de la conversación. En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante.
-2. Dirección: si el CONTEXTO DEL CLIENTE trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o para otro lugar. Si es cliente nuevo o no tiene dirección guardada, pídesela.
+2. Dirección: si el CONTEXTO DEL CLIENTE dice que tiene una dirección guardada, pregunta si el pedido es para su domicilio de siempre o para otro lugar y pídele la dirección completa (no la tienes a la vista, nunca la inventes ni la adivines). Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si responde encontrada:false, pide otra referencia e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal ya confirmada). Revisa pack_size ANTES de confirmar cantidad: "individual" (pack_size 1) nunca es máximo una pieza. Si buscar_producto devuelve más de un producto parecido, no elijas tú solo — dile las opciones al cliente. Instrucciones especiales del cliente van en el parámetro notes de crear_pedido.
 5. Antes de cerrar, pregunta si quiere agregar algo más.
@@ -188,6 +200,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     basePrompt,
     ORDER_QUANTITY_RULES,
     ORDER_IDENTITY_AND_COMPLEMENT_RULES,
+    PRIVACY_AND_AI_RULES,
     ...(entryBranch ? [branchChannelRules(entryBranch)] : []),
     `TONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[config.toneStyle]}`,
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,

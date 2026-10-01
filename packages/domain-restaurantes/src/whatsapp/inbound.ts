@@ -7,6 +7,9 @@
 import { actorHash } from "../rate-limit.ts";
 import { lookupCustomer } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
+import { runArcoFastPath } from "../privacidad/arco-intent.ts";
+import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
+import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // Hallazgo real de la auditoría adversarial del origen (3-sep-2026): el agente le
@@ -47,9 +50,12 @@ export async function handleInboundWhatsAppMessage(
     readonly phoneNumberId: string;
     /** Sucursal resuelta desde el numero que recibio el mensaje (`resolveWhatsAppChannel`). */
     readonly propertyId?: string | null;
+    /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
+     * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
+    readonly privacy?: PrivacidadRepository;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId, propertyId } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, propertyId, privacy } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -82,10 +88,34 @@ export async function handleInboundWhatsAppMessage(
       const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
-      const customer = await lookupCustomer(repo, organizationId, phone);
-      const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer, propertyId: propertyId ?? null });
+      // PM PR-9 -- derechos ARCO: fast-path determinista ANTES del LLM (el modelo nunca improvisa
+      // una respuesta legal ni depende de "acordarse" de registrar la solicitud). La identidad es
+      // el telefono que escribe (Meta lo autentica), nunca texto del mensaje. `null` = no es ARCO
+      // (o la base no tiene la migracion 030): el turno sigue como antes.
+      const arco = privacy ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+      const turn = arco
+        ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
+        : await turnHandler.handleInboundMessage({
+            organizationId,
+            phone,
+            messages: messagesAfterUser,
+            customer: await lookupCustomer(repo, organizationId, phone),
+            propertyId: propertyId ?? null,
+          });
 
-      const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
+      // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
+      // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
+      // en la misma transaccion; si el turno falla, el registro se revierte con el savepoint y el
+      // reintento vuelve a anteponerlo. Base sin migrar: se usa "primer mensaje de la conversacion".
+      let reply = turn.reply;
+      if (privacy) {
+        const config = await privacy.getPrivacyConfig(organizationId);
+        const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
+        const isFirstContact = claimed ?? messagesAfterUser.length === 1;
+        if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
+      }
+
+      const assistantMessage: ConversationMessage = { role: "assistant", content: reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
@@ -94,11 +124,11 @@ export async function handleInboundWhatsAppMessage(
       await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
         to: phone,
         phone_number_id: phoneNumberId,
-        body: turn.reply,
+        body: reply,
       });
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply: turn.reply };
+      return { ok: true, retryable: false, reply };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
