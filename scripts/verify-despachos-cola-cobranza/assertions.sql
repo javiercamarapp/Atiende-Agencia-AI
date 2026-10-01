@@ -632,3 +632,12 @@ select count(*)::int as grants_anon_deberia_ser_0 from information_schema.role_t
 where table_schema = 'despachos' and table_name like 'cobranza\_%' and grantee in ('anon', 'PUBLIC');
 rollback;
 
+
+\echo '79. un dedupe_key ya usado por OTRA cuenta no se devuelve como duplicado (22023)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d11c01', true);
+select despachos.cobranza_whatsapp_consentimiento_fijar('00000000-0000-0000-0000-000000d11b01', 'RRR010101RR1', '+5219981234567', 'opt_in', 'Autoriza por contrato');
+select * from despachos.cobranza_whatsapp_encolar('00000000-0000-0000-0000-000000d11b01', '00000000-0000-0000-0000-000000d11e01', 'Recordatorio de pago', 'dk-1');
+select * from despachos.cobranza_whatsapp_encolar('00000000-0000-0000-0000-000000d11b01', '00000000-0000-0000-0000-000000d11e02', 'Recordatorio de pago', 'dk-1') as should_fail;
+rollback;

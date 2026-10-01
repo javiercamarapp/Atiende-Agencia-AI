@@ -215,4 +215,4 @@ lo nuevo vive en `src/cola-cobranza/` y en la migración `017_despachos_cola_cob
   WhatsApp para despachos; conectarlo es trabajo futuro. Un opt-out cancela los pendientes del cliente.
 - **Base sin migrar**: el adaptador Postgres corre cada operación bajo `runWithSavepointFallback`; sin la 017 las lecturas devuelven
   `disponible: false` y las escrituras responden 503, nunca un 500.
-- **Verificación**: `scripts/verify-despachos-cola-cobranza/` (Postgres real, 78 escenarios, integrado al gate de CI).
+- **Verificación**: `scripts/verify-despachos-cola-cobranza/` (Postgres real, 79 escenarios, integrado al gate de CI).
