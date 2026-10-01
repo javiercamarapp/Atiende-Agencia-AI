@@ -88,6 +88,9 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-superadmin-mfa-switches-orgs/` (MFA TOTP del superadmin con
      funciones solo-sistema, interruptores de plataforma y gestión de organizaciones
      en dos pasos; ver `docs/SUPERADMIN_SEGURIDAD.md`).
+   - `scripts/verify-superadmin-costos-planes/` (costo por evento por organización,
+     tipo de cambio, catálogo de planes y asignación en dos pasos; ver
+     `docs/SUPERADMIN_COSTOS_PLANES.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
