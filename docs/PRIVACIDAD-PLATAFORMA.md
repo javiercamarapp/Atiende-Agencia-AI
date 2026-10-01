@@ -85,7 +85,7 @@ si una organización fija en la plataforma MÁS días que en esa configuración 
 `GET|POST /internal/plataforma/privacidad-retencion` (secreto interno o `Authorization: Bearer` de cron):
 
 - **Sin `ejecutar=1` solo simula** (cuenta y registra; no borra).
-- `?ejecutar=1` purga de verdad.
+- `?ejecutar=1` purga de verdad y exige **POST** (un GET con esa bandera responde 400 y no borra nada).
 - `?organizationId=<uuid>` una sola organización; `?despuesDe=<uuid>` continúa desde el cursor
   `siguienteDespuesDe`; `?limite=<n>` filas por unidad (1 a 5000, por defecto 500).
 - Una transacción de sistema **por (organización, clase)**: un error en una unidad no revierte las demás ni deja la
@@ -95,7 +95,7 @@ si una organización fija en la plataforma MÁS días que en esa configuración 
 ```bash
 curl -s -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
   "https://<api>/internal/plataforma/privacidad-retencion?organizationId=<uuid>"          # simulación
-curl -s -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
+curl -s -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
   "https://<api>/internal/plataforma/privacidad-retencion?organizationId=<uuid>&ejecutar=1"  # purga real
 ```
 

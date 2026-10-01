@@ -2,7 +2,8 @@
 // scheduler o un operador). Autenticacion: secreto interno (`INTERNAL_SECRET`) o de cron, comparado en tiempo constante.
 //
 //   GET|POST /internal/plataforma/privacidad-retencion
-//        ?ejecutar=1            purga de verdad; SIN esa bandera solo SIMULA (cuenta y registra, no borra)
+//        ?ejecutar=1            purga de verdad y SOLO por POST (un GET con efecto de borrado podria dispararse por
+//                               prefetch o reintento; GET + ejecutar=1 responde 400); SIN la bandera solo SIMULA (GET o POST)
 //        &organizationId=<uuid> una sola organizacion (si no, recorre todas con clases de plataforma)
 //        &despuesDe=<uuid>      cursor devuelto como `siguienteDespuesDe` cuando quedan organizaciones
 //        &limite=<n>            filas por (organizacion, clase), 1..5000 (por defecto 500)
@@ -46,6 +47,7 @@ export function plataformaRetencionRoutes(deps: AppDeps): Hono {
 
     const url = new URL(c.req.url);
     const ejecutar = url.searchParams.get("ejecutar") === "1";
+    if (ejecutar && c.req.method !== "POST") throw Errors.validation("ejecutar=1 exige el metodo POST (GET solo simula).");
     const org = url.searchParams.get("organizationId");
     const despuesDe = url.searchParams.get("despuesDe");
     for (const [campo, valor] of [["organizationId", org], ["despuesDe", despuesDe]] as const) {

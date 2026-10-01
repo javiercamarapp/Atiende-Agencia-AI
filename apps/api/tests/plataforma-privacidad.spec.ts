@@ -342,7 +342,7 @@ describe("aviso de privacidad versionado", () => {
 
 describe("/internal/plataforma/privacidad-retencion", () => {
   const PATH = "/internal/plataforma/privacidad-retencion";
-  const llamar = (app: ReturnType<typeof buildApp>, qs = "", headers: Record<string, string> = { "x-atiende-internal-secret": SECRET }) => app.request(`${PATH}${qs}`, { headers });
+  const llamar = (app: ReturnType<typeof buildApp>, qs = "", headers: Record<string, string> = { "x-atiende-internal-secret": SECRET }) => app.request(`${PATH}${qs}`, { headers, method: qs.includes("ejecutar=1") ? "POST" : "GET" });
 
   it("exige el secreto interno (401), acepta tambien Bearer de cron", async () => {
     const t = await construir();
@@ -361,6 +361,14 @@ describe("/internal/plataforma/privacidad-retencion", () => {
     expect(real).toMatchObject({ modo: "ejecucion", unidades: 2 });
     expect(real.resultados.map((r: Json) => r.estado)).toEqual(["ok", "ok"]);
     expect(t.repo.purgeRuns()).toHaveLength(4);
+  });
+
+  it("GET con ejecutar=1 se rechaza (400) y no purga nada; la purga real exige POST", async () => {
+    const t = await construir();
+    t.repo.seedPurgeOrg(t.orgA);
+    const res = await t.app.request(`${PATH}?ejecutar=1`, { headers: { "x-atiende-internal-secret": SECRET } });
+    expect(res.status).toBe(400);
+    expect(t.repo.purgeRuns()).toHaveLength(0);
   });
 
   it("un bloqueo activo se refleja como bloqueada y no se purga esa clase", async () => {
