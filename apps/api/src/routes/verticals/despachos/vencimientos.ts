@@ -22,6 +22,7 @@ import {
   registrarEscalamiento,
 } from "@atiende/domain-despachos";
 import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -172,6 +173,17 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // la organización -- el escalamiento en sí queda registrado antes, así que un fallo al notificar nunca
     // convierte esta respuesta en un error.
     const { escalation, notificacion } = await registrarEscalamiento(repo, deadline, decision, dias);
+    // Aviso in-app (campana) del escalamiento manual: uno por vencimiento y nivel (clave de dedupe), dentro de un
+    // SAVEPOINT (emitirNotificacion) para no abortar la transaccion del request contra la base sin migrar.
+    await emitirNotificacion(c.get("db"), {
+      evento: "despachos.fiscal.vencimiento_escalado",
+      organizationId: deadline.organizationId,
+      propertyId,
+      clave: `${deadline.id}:${decision.level}`,
+      entidadTipo: "fiscal_deadline",
+      entidadId: deadline.id,
+      parametros: { nivel: decision.level },
+    });
     // Cierre del hallazgo "despachos no tiene disparo inline de correo" (ver
     // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
     // transacción del request, best-effort real.

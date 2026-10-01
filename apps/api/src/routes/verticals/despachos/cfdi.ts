@@ -35,6 +35,7 @@ import {
 import type { CarteraRepository, CategoriaContable, DatosCfdiDespachos, DespachosRepository, DireccionCfdi, EfosConsulta, EfosSituacion, FacturaLigable, ImpuestoCfdiInput, ImpuestoCfdiRecord, InvoiceRecord } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -457,12 +458,26 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         metodoPago: inv.metodoPago ?? null,
       });
     }
+    let analisis;
     try {
-      return c.json(analizarComplementoPago(rep, raw.rfcContribuyente, facturas));
+      analisis = analizarComplementoPago(rep, raw.rfcContribuyente, facturas);
     } catch (err) {
       if (err instanceof RepRfcAjenoError) throw Errors.validation(err.message);
       throw err;
     }
+    // Aviso in-app (campana): el REP analizado trae documentos sin ligar o con saldo insoluto incoherente. Uno por
+    // REP (folio fiscal saneado como clave de dedupe), dentro de un SAVEPOINT; sin PII (solo la cantidad).
+    const conProblema = analisis.documentos.filter((d) => !d.ligado || !d.saldoCoherente).length;
+    if (conProblema > 0) {
+      await emitirNotificacion(c.get("db"), {
+        evento: "despachos.rep.incoherente",
+        organizationId,
+        propertyId,
+        clave: `${propertyId}:${analisis.folioFiscalRep.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 60)}`,
+        parametros: { cantidad: conProblema },
+      });
+    }
+    return c.json(analisis);
   });
 
   // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero

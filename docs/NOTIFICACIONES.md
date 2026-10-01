@@ -75,8 +75,11 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
 | `despachos.cobranza.recordatorios` | cobranza | atencion | owner/admin, contador | Receipt | `/despachos/{orgSlug}/cola-cobranza` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/notifications.ts` |
-| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por dia | 7 d | pendiente: calendario fiscal de vencimientos: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 7 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` |
 | `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por hallazgo | 30 d | pendiente: ingesta EFOS 69-B del worker: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` |
+| `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` |
+| `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago analizado | 14 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` |
 
 ### licitaciones
 
