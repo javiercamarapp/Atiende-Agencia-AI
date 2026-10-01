@@ -84,6 +84,7 @@ import {
   PostgresCoreRepository,
   PostgresImpersonationRepository,
   PostgresMfaRepository,
+  PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
@@ -460,6 +461,7 @@ export function buildProductionDeps(): AppDeps {
     mfaRepo: (db) => new PostgresMfaRepository(db),
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
+    costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
     platformSwitchGuard,
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
