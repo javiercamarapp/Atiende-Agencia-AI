@@ -1,7 +1,8 @@
-// Seguridad de la cuenta (L-01): verificacion en dos pasos (TOTP + codigos de respaldo) y
-// cierre de otras sesiones. El login web de licitaciones es passwordless (Google/enlace por
-// correo), asi que aqui NO hay formulario de contrasena: la contrasena solo existe para el
-// flujo de invitacion y para la API (cambio/reset ya expuestos en el backend, sin UI).
+// Seguridad de la cuenta (L-01/L-02): verificacion en dos pasos (TOTP + codigos de respaldo) y, en
+// L-02, correo (verificar), contrasena (cambiar; el enlace de "olvide mi contrasena" lleva a
+// `/licitaciones/restablecer-contrasena`), vinculo de Google y sesiones activas (ver
+// `SeguridadCuenta.tsx`). El login web de licitaciones sigue siendo passwordless (Google/enlace por
+// correo): la contrasena existe por el flujo de invitacion y para la API.
 //
 // Sin libreria de QR (no hay una instalada en el repo y no se agrega dependencia): se muestra la
 // clave para captura manual en la app de autenticacion, mas el enlace `otpauth://` (en un
@@ -19,16 +20,22 @@ import {
   disableTwoFactor,
   fetchTwoFactorStatus,
   regenerateBackupCodes,
-  revokeOtherSessions,
   secondFactorFromText,
   startTwoFactorSetup,
 } from "../lib/two-factor-client.ts";
 import type { TwoFactorSetup, TwoFactorStatus } from "../lib/two-factor-client.ts";
+import { fetchCuentaEstado, fetchSesiones } from "../lib/cuenta-client.ts";
+import type { CuentaEstado, SesionesEstado } from "../lib/cuenta-client.ts";
+import { mensajeGoogleError } from "../../../lib/google-auth.ts";
+import { ContrasenaCard, CorreoCard, GoogleCard, SesionesCard } from "./SeguridadCuenta.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
-type Accion = "activar" | "confirmar" | "regenerar" | "desactivar" | "sesiones";
+/** Mientras carga el estado de la cuenta: sin `available` ni identidades (las tarjetas no ofrecen nada). */
+const CARGANDO: CuentaEstado = { available: false, email: "", emailVerified: true, hasPassword: true, google: { configured: false, available: false, identities: [] } };
 
-export function SeguridadPage({ apiBaseUrl, token }: LicitacionesShellContext) {
+type Accion = "activar" | "confirmar" | "regenerar" | "desactivar";
+
+export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellContext) {
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
   const [setup, setSetup] = useState<TwoFactorSetup | null>(null);
   const [codigo, setCodigo] = useState("");
@@ -38,6 +45,14 @@ export function SeguridadPage({ apiBaseUrl, token }: LicitacionesShellContext) {
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [mostrarDesactivar, setMostrarDesactivar] = useState(false);
+  const [cuenta, setCuenta] = useState<CuentaEstado | null>(null);
+  const [sesiones, setSesiones] = useState<SesionesEstado | null>(null);
+
+  async function recargarCuenta() {
+    const [c, s] = await Promise.all([fetchCuentaEstado(fetch, apiBaseUrl, token), fetchSesiones(fetch, apiBaseUrl, token)]);
+    setCuenta(c);
+    setSesiones(s);
+  }
 
   async function recargar() {
     setStatus(await fetchTwoFactorStatus(fetch, apiBaseUrl, token));
@@ -52,6 +67,27 @@ export function SeguridadPage({ apiBaseUrl, token }: LicitacionesShellContext) {
       vivo = false;
     };
   }, [apiBaseUrl, token]);
+
+  useEffect(() => {
+    let vivo = true;
+    void Promise.all([fetchCuentaEstado(fetch, apiBaseUrl, token), fetchSesiones(fetch, apiBaseUrl, token)]).then(([c, s]) => {
+      if (!vivo) return;
+      setCuenta(c);
+      setSesiones(s);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl, token]);
+
+  // Regreso del flujo "vincular Google" (`?google_link=ok|<codigo>`): se muestra una vez y se limpia de la URL.
+  useEffect(() => {
+    const resultado = new URLSearchParams(window.location.search).get("google_link");
+    if (!resultado) return;
+    if (resultado === "ok") setAviso("Cuenta de Google vinculada.");
+    else setError(mensajeGoogleError(resultado));
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   async function ejecutar(accion: Accion, fn: () => Promise<void>) {
     setOcupado(accion);
@@ -115,13 +151,6 @@ export function SeguridadPage({ apiBaseUrl, token }: LicitacionesShellContext) {
       setBackupCodes(null);
       setAviso("Verificación en dos pasos desactivada.");
       await recargar();
-    });
-  }
-
-  function cerrarSesiones() {
-    void ejecutar("sesiones", async () => {
-      await revokeOtherSessions(fetch, apiBaseUrl, token);
-      setAviso("Se cerraron tus otras sesiones. Esta sesión sigue activa hasta que expire.");
     });
   }
 
@@ -231,17 +260,10 @@ export function SeguridadPage({ apiBaseUrl, token }: LicitacionesShellContext) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Sesiones</CardTitle>
-          <CardDescription>Cierra las sesiones abiertas en otros dispositivos (por ejemplo si perdiste uno). Esta sesión no se interrumpe.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button size="sm" variant="outline" onClick={cerrarSesiones} disabled={ocupado !== null}>
-            {ocupado === "sesiones" ? "Cerrando…" : "Cerrar mis otras sesiones"}
-          </Button>
-        </CardContent>
-      </Card>
+      <CorreoCard apiBaseUrl={apiBaseUrl} token={token} estado={cuenta ?? CARGANDO} onAviso={setAviso} onError={setError} />
+      <ContrasenaCard apiBaseUrl={apiBaseUrl} token={token} estado={cuenta ?? CARGANDO} onAviso={setAviso} onError={setError} />
+      <GoogleCard apiBaseUrl={apiBaseUrl} token={token} orgSlug={orgSlug} estado={cuenta ?? CARGANDO} onAviso={setAviso} onError={setError} onCambio={recargarCuenta} />
+      <SesionesCard apiBaseUrl={apiBaseUrl} token={token} sesiones={sesiones} onAviso={setAviso} onError={setError} onCambio={recargarCuenta} />
     </div>
   );
 }
