@@ -405,3 +405,39 @@ export type { AlertEmailEnqueueResult } from "./alert-notifications.ts";
 
 // "Chatea con tus datos": catalogo cerrado de herramientas de solo lectura (ver docs/DATA-CHAT.md).
 export * from "./data-chat/index.ts";
+
+// ---- L-05: WhatsApp (avisos de plazos/convocatorias/fallos y decision go/no-go por boton) ----
+export {
+  DECISION_TOKEN_TTL_HOURS,
+  OPT_IN_CONFIRMED_BODY,
+  OPT_OUT_CONFIRMED_BODY,
+  WHATSAPP_BUTTON_PREFIX,
+  WHATSAPP_TOPICS,
+  WhatsAppNotAvailableError,
+  WhatsAppValidationError,
+  buildDecisionReplyBody,
+  buildDecisionRequestMessage,
+  buildNoticeMessage,
+  buttonIdForToken,
+  generateActionToken,
+  normalizePhoneE164,
+  parseActionButtonId,
+  parseOptKeyword,
+  phoneFromMeta,
+  sha256TokenHash,
+} from "./whatsapp.ts";
+export type { GeneratedActionToken, NoticeKind, OptKeyword, OutboxWhatsAppPayload, TenderSummaryForMessage, TokenConsumeResult, WhatsAppDecisionAction, WhatsAppTopic } from "./whatsapp.ts";
+export { InMemoryWhatsAppRepository, PostgresWhatsAppRepository, createLicitacionesMessagingOutboxPort } from "./whatsapp-repository.ts";
+export type {
+  ActiveContact,
+  InMemoryWhatsAppOutboxRow,
+  IssueTokenInput,
+  TokenConsumeOutcome,
+  WhatsAppContactInput,
+  WhatsAppContactRecord,
+  WhatsAppContactStatus,
+  WhatsAppEventRecord,
+  WhatsAppRepository,
+} from "./whatsapp-repository.ts";
+export { enqueueDeadlineReminderWhatsApp, enqueueTenderNotices, requestGoNoGoDecisionsByWhatsApp } from "./whatsapp-service.ts";
+export type { DecisionRequestInput, DecisionRequestResult, NoticeInput } from "./whatsapp-service.ts";
