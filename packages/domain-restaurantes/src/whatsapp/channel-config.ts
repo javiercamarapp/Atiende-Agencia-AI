@@ -50,6 +50,63 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
   return result;
 }
 
+/** Mensaje entrante ya listo para el turno: texto del cliente, o (P33/P34) una nota que le dice al
+ * modelo que llego un audio/ubicacion/archivo que NO se puede leer, para que lo pida por escrito
+ * en vez de ignorar al cliente en silencio. */
+export type MetaInboundMessage = { readonly id: string; readonly from: string; readonly body: string };
+
+const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
+
+function unsupportedBody(type: string, message: { location?: { latitude?: unknown; longitude?: unknown } }): string {
+  if (type === "audio" || type === "voice") {
+    return "[El cliente envió una nota de voz que este asistente no puede escuchar. Pídale amablemente que escriba su mensaje por texto.]";
+  }
+  if (type === "location") {
+    const lat = message.location?.latitude;
+    const lng = message.location?.longitude;
+    const coords = typeof lat === "number" && typeof lng === "number" ? ` (${lat}, ${lng})` : "";
+    return `[El cliente compartió su ubicación${coords}, pero este asistente aún no puede usarla. Pídale su colonia o una referencia cercana por texto.]`;
+  }
+  return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
+}
+
+/** Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de audio, ubicacion e imagen/
+ * archivo como una nota honesta (nunca se ignoran en silencio). Reacciones, estados y mensajes de
+ * sistema siguen ignorandose. Conserva el orden del payload. */
+export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage[] {
+  const result: MetaInboundMessage[] = [];
+  const root = payload as { entry?: unknown };
+  if (!Array.isArray(root?.entry)) return result;
+  for (const entry of root.entry) {
+    const changes = (entry as { changes?: unknown })?.changes;
+    if (!Array.isArray(changes)) continue;
+    for (const change of changes) {
+      const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
+      if (!Array.isArray(messages)) continue;
+      for (const candidate of messages) {
+        const text = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
+        if (text[0]) {
+          result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
+          continue;
+        }
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
+        if (
+          typeof message.type === "string" &&
+          UNSUPPORTED_KINDS.has(message.type) &&
+          typeof message.id === "string" &&
+          message.id.length >= 1 &&
+          message.id.length <= 255 &&
+          typeof message.from === "string" &&
+          /^\d{7,20}$/.test(message.from)
+        ) {
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type, message) });
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function extractMetaPhoneNumberId(payload: unknown): string | null {
   const root = payload as { entry?: unknown };
   const entry = Array.isArray(root?.entry) ? root.entry[0] : undefined;
