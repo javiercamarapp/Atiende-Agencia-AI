@@ -24,7 +24,20 @@ describe("identidad-client (hoteles)", () => {
       return ok({ identidad: { id: "i1" } });
     }) as unknown as typeof fetch;
     const r = await captureIdentidad(f, API, "tok", "p1", { guestId: "g1", documentType: "ine", fullName: "Ana", documentNumber: "ABC123", nationality: "", birthDate: undefined });
-    expect(r.id).toBe("i1");
+    expect(r.identidad.id).toBe("i1");
+    expect(r.consentimiento).toBeNull();
+  });
+
+  it("captureIdentidad envia el consentimiento ligado (H-02) y devuelve su estado", async () => {
+    const f = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init!.body as string).consentimiento).toEqual({ avisoId: "a1", finalidadesObligatorias: ["identificar"], finalidadesOpcionales: [], canal: "tableta", metodo: "firma_electronica", datosSensibles: true });
+      return ok({ identidad: { id: "i1" }, consentimiento: { estado: "registrado", versionAviso: "v1" } });
+    }) as unknown as typeof fetch;
+    const r = await captureIdentidad(f, API, "tok", "p1", {
+      guestId: "g1", documentType: "ine", fullName: "Ana", documentNumber: "ABC123",
+      consentimiento: { avisoId: "a1", finalidadesObligatorias: ["identificar"], finalidadesOpcionales: [], canal: "tableta", metodo: "firma_electronica", datosSensibles: true },
+    });
+    expect(r.consentimiento).toEqual({ estado: "registrado", versionAviso: "v1" });
   });
 
   it("revealIdentidad manda el motivo y devuelve solo el documento", async () => {

@@ -89,6 +89,20 @@ export {
 } from "./components/ui/dropdown-menu.js";
 export { Toaster, toast } from "./components/ui/sonner.js";
 
+// Seguimiento de solicitudes de derechos ARCO (citas, C-02).
+export {
+  SolicitudesArcoPanel,
+  SOLICITUD_ARCO_DERECHO_LABEL,
+  SOLICITUD_ARCO_ESTADO_LABEL,
+  accionesDisponibles,
+  type SolicitudArcoAccion,
+  type SolicitudArcoDerecho,
+  type SolicitudArcoEstado,
+  type SolicitudArcoPlazo,
+  type SolicitudArcoVista,
+  type SolicitudesArcoPanelProps,
+} from "./components/privacidad/SolicitudesArcoPanel.js";
+
 // Experiencia de voz (orbe, transcripción, vista previa de llamada) -- contrato
 // neutro de proveedor en components/voz/tipos.ts.
 export {

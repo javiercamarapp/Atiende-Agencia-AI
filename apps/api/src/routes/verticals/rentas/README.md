@@ -53,3 +53,14 @@ Además, `rentas.record_audit_log` ahora valida el `vertical_role` del actor
 `restaurantes.record_audit_log` (PR #183) — ver el comentario de cabecera de
 `023_rentas_audit_log_cobertura_completa.sql` para el cálculo completo del
 techo mínimo de roles.
+
+## Sync iCal por lote y monitor de conflictos (Rn-01)
+
+- `ical-sync-cron.ts` ya no barre "todos los feeds activos" sin coordinación: usa
+  `ejecutarLoteSync` (`@atiende/domain-rentas`, `src/sync/lote.ts`) con claim/lease por feed,
+  backoff por feed fallido y bitácora de eventos notables. Contra una base sin la migración
+  024 cae al barrido anterior (`modo: "sin_lease"`). Cadencia propuesta (15 min) y su impacto
+  en el plan de Vercel: `docs/DEPLOY.md`.
+- `ical-monitor.ts`: `GET /rentas/:propertyId/sync-monitor`, `GET .../conflictos`,
+  `POST .../conflictos/:id/resolver`, `POST .../sync-alertas/:id/atender`.
+

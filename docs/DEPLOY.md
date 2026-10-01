@@ -175,6 +175,19 @@ como parámetro plano.
   `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
   en la misma rama, despliega el caller primero.
 
+**Hoteles H-02 (migración 032, consentimiento/ARCO/bloqueo/incidentes) — orden de despliegue.**
+Mergear NO aplica `20240101000201_032_hoteles_consentimiento_arco_incidentes.sql` a la base real
+(ver arriba) y esa migración **requiere la 031 (`20240101000200_031_hoteles_boveda_identidad.sql`)
+ya aplicada**. El código nuevo funciona contra la base vieja (sin 031 o con 031 pero sin 032): las
+lecturas de privacidad responden `disponible:false`, las escrituras 503, la captura de identidad sigue
+sin ledger y el cron de retención cae a la purga directa de 031. Orden: (1) despliega el código; (2)
+aplica 031 si falta y después 032 (`supabase db push`); (3) verifica `GET /internal/hoteles/identidad-purga`
+(debe reportar `via_bloqueo:true`). Con 032 aplicada y el código viejo todavía en producción nada se
+rompe: `purge_expired_identities` solo purga identidades ya bloqueadas con la ventana vencida. Desde que
+se aplica 032 la purga deja de ser inmediata: una identidad vencida o con purga aprobada espera la ventana
+de bloqueo (7 días por defecto, 3 a 30). No hay variables de entorno nuevas ni cambios en `vercel.json`.
+Los plazos son decisiones de producto, no asesoría legal: ver `packages/domain-hoteles/README.md` §H-02.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
@@ -341,6 +354,59 @@ por sí solo.
    (`/auth/login` contra Postgres real). Las rutas de `/v1/restaurantes/*` y
    `/hoteles/:propertyId/*` van a responder 500 explícito hasta resolver el Paso 0.2
    — no es un bug de este deploy, es el estado real documentado arriba.
+
+---
+
+## Rentas — sync iCal cada 15 minutos (Rn-01): propuesta de cron, DECISIÓN DE JAVIER
+
+**Estado real hoy:** `/internal/rentas/ical-sync` corre **una vez al día**
+(`vercel.json`: `45 14 * * *`). Entre dos corridas una reserva tomada en Airbnb/Booking/
+Vrbo no se refleja aquí hasta 24 h, y viceversa: esa ventana es el riesgo real de
+overbooking. **Este PR NO cambia `vercel.json` ni ninguna cadencia** (cambiarla es una
+decisión de costo/plan que no se toma desde el código).
+
+**Qué sí deja listo el código** (migración `024_rentas_ical_sync_lease_backoff_bitacora.sql`
++ `ejecutarLoteSync`): el endpoint ya es un lote idempotente seguro para correr con mucha
+más frecuencia —
+
+- *claim/lease por feed*: dos instancias del cron a la vez (reintento de Vercel, disparo
+  manual) nunca procesan el mismo feed; si una muere, el lease (120 s) expira solo;
+- *piso de espaciamiento* de 10 min por feed: un cron más frecuente de lo previsto no
+  golpea de más a los canales;
+- *backoff por feed fallido*: 30 min, 1 h, 2 h, 4 h y tope de 6 h tras 1, 2, 3, 4 y 5+
+  fallos consecutivos; un éxito lo limpia y reconectar el feed lo reinicia;
+- *presupuesto de tiempo*: deja de reclamar a los 10 s (la función tiene `maxDuration` de
+  30 s y el fetch de un feed puede tardar hasta 15 s) y devuelve los feeds no alcanzados al pool para la siguiente corrida;
+- *bitácora/alertas* (`rentas.ical_sync_bitacora`) y *monitor de conflictos* en el panel
+  (Operación → Monitor de conflictos).
+
+**Cron propuesto (NO aplicado):**
+
+```json
+{ "path": "/internal/rentas/ical-sync", "schedule": "*/15 * * * *" }
+```
+
+(reemplazaría la entrada `"45 14 * * *"` de ese mismo path; sigue siendo 1 cron job, no
+agrega uno nuevo al conteo del proyecto).
+
+**Impacto en el plan de Vercel (sin verificar desde este repo):** los crons de más de
+una vez al día **no están disponibles en el plan Hobby** (máximo uno al día por cron;
+en Hobby un schedule más frecuente hace fallar el deploy). Hace falta **Vercel Pro**
+(o mover este endpoint a un scheduler externo —p. ej. un cron de GitHub Actions o un
+worker— que le haga GET con `Authorization: Bearer $CRON_SECRET`). Además cada
+invocación consume tiempo de función: 96 invocaciones/día de este endpoint (hoy 1) —
+revisa en Vercel → Usage cuánto de la cuota de Functions/Cron del plan te quedaría.
+Con el lote acotado a ~10 s de presupuesto y feeds que no cambian respondiendo 304 (ETag), el costo
+por invocación es bajo, pero eso hay que medirlo en producción, no se asume.
+
+**Orden de despliegue de este PR (seguro en cualquier orden, ninguno es bloqueante):**
+1. Mergear el código: contra la base SIN la migración 024 el cron cae solo al barrido
+   anterior (`modo: "sin_lease"` en la respuesta), el monitor muestra las alertas como
+   "no disponibles aún" y resolver conflictos responde 409 legible; nada se rompe.
+2. Aplicar `024` a la base real (`supabase db push`, lo hace Javier): desde la siguiente
+   corrida del cron el modo pasa a `"lease"` y se activan bitácora, alertas y resolver.
+3. Solo cuando Javier decida (y el plan de Vercel lo permita): cambiar el schedule a
+   `*/15 * * * *` en `vercel.json`.
 
 ---
 

@@ -29,6 +29,7 @@ import {
   CalendarClock,
   CalendarRange,
   ClipboardList,
+  Lock,
   Scissors,
   Settings,
   ShieldCheck,
@@ -112,6 +113,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
         // owner/admin la ven con datos reales -- `AuditoriaPage` misma gatea su
         // propio contenido por rol (mismo criterio que restaurantes/rentas).
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardList },
+        // C-02 -- solicitudes de derechos ARCO (owner/admin; la página gatea por rol).
+        { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
       ],
     },
   ];

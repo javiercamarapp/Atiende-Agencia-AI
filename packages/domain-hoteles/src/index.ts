@@ -523,3 +523,4 @@ export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMP
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
 export * from "./identity/index.ts";
 export * from "./housekeeping/index.ts";
+export * from "./privacy/index.ts";

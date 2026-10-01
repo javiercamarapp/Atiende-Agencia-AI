@@ -3,7 +3,7 @@
 // existe aqui en memoria; al repositorio solo llega el sobre cifrado.
 import { randomUUID } from "node:crypto";
 import { identityAad, type IdentityCipher } from "./cipher.ts";
-import { IdentityAccessDeniedError, IdentityInvalidInputError, IdentityPurgedError, IdentityUnavailableError } from "./errors.ts";
+import { IdentityAccessDeniedError, IdentityBlockedError, IdentityInvalidInputError, IdentityPurgedError, IdentityUnavailableError } from "./errors.ts";
 import type { IdentityRepository } from "./repository.ts";
 import { IDENTITY_DOCUMENT_TYPES, type IdentityDocumentType, type IdentityPayload, type IdentityVaultRecord } from "./types.ts";
 
@@ -207,8 +207,22 @@ export class IdentityVaultService {
     if (!this.cipher) throw new IdentityUnavailableError("llave_no_configurada", "reveal");
     const record = await this.repo.findIdentity(args.propertyId, args.vaultId);
     if (!record) throw new IdentityAccessDeniedError("reveal");
+    if (record.status === "bloqueada") throw new IdentityBlockedError();
     if (record.status !== "activo") throw new IdentityPurgedError();
     const { envelope } = await this.repo.revealIdentity(args.vaultId, args.reason, args.actorUserId);
+    const plaintext = this.cipher.decrypt(envelope, identityAad(record.id, record.propertyId));
+    return { record, payload: JSON.parse(plaintext) as IdentityPayload };
+  }
+
+  /** Acceso EXCEPCIONAL a una identidad bloqueada (migracion 032): consume una aprobacion vigente de doble control
+   *  (la base valida que la pidio quien llama, que no caduco y que no se uso) y descifra el sobre. */
+  async revealBlocked(args: { propertyId: string; vaultId: string; accessRequestId: string; actorUserId: string }): Promise<{ record: IdentityVaultRecord; payload: IdentityPayload }> {
+    if (!this.cipher) throw new IdentityUnavailableError("llave_no_configurada", "reveal-blocked");
+    const record = await this.repo.findIdentity(args.propertyId, args.vaultId);
+    if (!record) throw new IdentityAccessDeniedError("reveal-blocked");
+    if (record.status === "purgado") throw new IdentityPurgedError();
+    if (record.status !== "bloqueada") throw new IdentityAccessDeniedError("reveal-blocked");
+    const { envelope } = await this.repo.revealBlockedIdentity(args.accessRequestId, args.actorUserId);
     const plaintext = this.cipher.decrypt(envelope, identityAad(record.id, record.propertyId));
     return { record, payload: JSON.parse(plaintext) as IdentityPayload };
   }
