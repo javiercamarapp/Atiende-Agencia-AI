@@ -8,7 +8,8 @@
 // resuelto, nunca se duplica esa lógica aquí).
 import { fetchJson, sendJson } from "./admin-client.ts";
 
-export type PromotionType = "percentage" | "fixed";
+export type PromotionType = "percentage" | "fixed" | "bogo" | "cortesia";
+export type PromotionCanal = "domicilio" | "recoger";
 
 export interface Promotion {
   readonly id: string;
@@ -26,6 +27,12 @@ export interface Promotion {
   readonly maxUses: number | null;
   readonly timesUsed: number;
   readonly isActive: boolean;
+  /** Migraciones 027/028; ausentes si el API es anterior. */
+  readonly channels?: readonly PromotionCanal[] | null;
+  readonly productIds?: readonly string[] | null;
+  readonly autoApply?: boolean;
+  readonly courtesyProductIds?: readonly string[] | null;
+  readonly courtesyQuantity?: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -44,6 +51,11 @@ export interface NewPromotionInput {
   readonly endTime?: string | null;
   readonly maxUses?: number | null;
   readonly isActive?: boolean;
+  readonly channels?: readonly PromotionCanal[] | null;
+  readonly productIds?: readonly string[] | null;
+  readonly autoApply?: boolean;
+  readonly courtesyProductIds?: readonly string[] | null;
+  readonly courtesyQuantity?: number | null;
 }
 
 export interface PromotionPatch {
