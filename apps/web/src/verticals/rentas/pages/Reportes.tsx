@@ -185,6 +185,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
               {grupos.length === 0 ? (
                 <EstadoVacio titulo="Sin datos en el periodo" mensaje="No hay reservas confirmadas ni unidades para este periodo." />
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -213,6 +214,10 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
                     ))}
                   </TableBody>
                 </Table>
+                <p className="px-4 py-3 text-xs text-muted-foreground">
+                  Llegadas cuenta cada reserva solo en el periodo de su check-in; noches e ingresos suman únicamente las noches que caen dentro del periodo.
+                </p>
+                </>
               )}
             </CardContent>
           </Card>
