@@ -67,7 +67,7 @@ import {
   crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import { PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
+import { PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import {
   CanalMensajeriaPartnerPendiente,
@@ -419,6 +419,8 @@ export function buildProductionDeps(): AppDeps {
     // L-04 -- sala de guerra + junta de aclaraciones (migracion 029; degrada a "no disponible aun" si falta).
     licitacionesSalaGuerraRepo: (db) => new PostgresSalaGuerraRepository(db),
     licitacionesWhatsAppRepo: (db) => new PostgresWhatsAppRepository(db),
+    // L-08 -- KYC negativo 69-B (migracion 031; degrada a "no disponible aun" si falta).
+    licitacionesKycRepo: (db) => new PostgresKyc69bRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/
