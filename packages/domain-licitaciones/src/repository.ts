@@ -1,6 +1,7 @@
 // Puerto de acceso a datos de domain-licitaciones — mismo patrón dual de
 // adaptador que domain-hoteles/domain-restaurantes (ver diseño Fase 1 §3.2).
 // Ningún flujo de apps/api toca SQL directamente — todo pasa por aquí.
+import type { CalendarioPlazos } from "./dias-inhabiles.ts";
 import type {
   TenderRecord,
   ProposalRecord,
@@ -410,6 +411,8 @@ export interface CreateContractInvoiceInput {
   readonly amount: DecimalString;
   readonly invoiceVerifiedOn: string;
   readonly actorId: string;
+  /** L-22: calendario efectivo (oficiales + organizacion + convocatoria) con el que se cuenta el plazo. Si falta, solo los oficiales de plataforma (`officialOnlyCalendar`). */
+  readonly calendario?: CalendarioPlazos;
 }
 
 export interface ReceivablesSummary {
@@ -453,6 +456,8 @@ export interface CreateInconformidadDraftInput {
   readonly falloNotifiedOn: string;
   readonly bajoTratados: boolean;
   readonly actorId: string;
+  /** L-22: calendario efectivo con el que se cuenta el plazo del art. 95. Si falta, solo los oficiales de plataforma. */
+  readonly calendario?: CalendarioPlazos;
 }
 
 export interface FalloAutopsyRecord {

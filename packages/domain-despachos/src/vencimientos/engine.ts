@@ -5,24 +5,24 @@
 // Mismo criterio que folioEngine.ts/quote.ts en domain-hoteles: lógica de negocio
 // pura, 100% testeable, sin acceso a base de datos (el repositorio es quien persiste).
 //
-// LIMITACIÓN HEREDADA DEL ORIGEN (no una mejora silenciosa de esta reescritura — ver
-// diseño Fase 1 despachos §5, punto 4): el "día 17 del mes siguiente" NO se ajusta
-// por fin de semana/día inhábil ni por el sexto dígito del RFC (que en el régimen
-// RESICO y otros desplaza la fecha límite real del SAT). Se replica EXACTO; cualquier
-// ajuste de esto es una decisión explícita de una fase futura, no un efecto colateral
-// de portar el código.
+// D-26: el origen ponía las 4 obligaciones el día 17 sin ajustar por día hábil. Ahora las fechas salen de
+// `calendario-fiscal.ts` (art. 12 CFF, plazos por obligación y régimen); `fechaLimiteDia17MesSiguiente` se
+// conserva solo como fecha NOMINAL (sin ajuste) y ya no la usa el cálculo de vencimientos.
 // ═══════════════════════════════════════════════════════════════════════════
+import { calcularCalendarioFiscal } from "./calendario-fiscal.ts";
+import type { TipoVencimientoFiscal } from "./calendario-fiscal.ts";
 
 export type PrioridadVencimiento = "critica" | "alta" | "media" | "baja";
 export type EstadoVencimiento = "pendiente" | "en_proceso" | "completado" | "vencido" | "escalado";
 export type NivelEscalamiento = "nivel_1" | "nivel_2" | "nivel_3" | "nivel_4";
-export type TipoVencimiento = "ISR" | "IVA" | "DIOT" | "Nómina";
+export type TipoVencimiento = TipoVencimientoFiscal;
 
-export const TIPOS_VENCIMIENTO: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina"];
+/** Los 4 tipos originales (migración 001) y los 2 que agrega la migración 019 (Balanza, Anual). */
+export const TIPOS_VENCIMIENTO_BASE: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina"];
+export const TIPOS_VENCIMIENTO: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina", "Balanza", "Anual"];
 
-/** YYYY-MM-DD del día 17 del mes SIGUIENTE a (year, month) — port literal de
- * `calculate_deadlines` (líneas 81-89): mismo cálculo para las 4 obligaciones
- * (ISR/IVA/DIOT/Nómina comparten fecha límite en el origen). `month` es 1-12. */
+/** YYYY-MM-DD NOMINAL del día 17 del mes SIGUIENTE a (year, month), SIN ajuste por día hábil (art. 12 CFF). Solo
+ * referencia; las fechas límite reales salen de `calcularCalendarioFiscal`. `month` es 1-12. */
 export function fechaLimiteDia17MesSiguiente(year: number, month: number): string {
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
@@ -83,21 +83,36 @@ export interface NuevoVencimiento {
   readonly prioridad: PrioridadVencimiento;
   readonly descripcion: string;
   readonly periodo: string;
+  /** Fecha del plazo antes del ajuste a día hábil (art. 12 CFF). */
+  readonly fechaNominal: string;
+  readonly ajustadaPorDiaInhabil: boolean;
+  readonly fundamento: string;
+  readonly validarConFiscalista: boolean;
+  readonly nota: string | null;
 }
 
-/** Genera los 4 vencimientos estándar (ISR/IVA/DIOT/Nómina) para un periodo —
- * port de la parte determinista de `calculate_deadlines` (sin el `_uuid`/persistencia,
- * que es responsabilidad del repositorio). `month` es 1-12. */
-export function calcularVencimientosDelPeriodo(year: number, month: number, todayIso: string): readonly NuevoVencimiento[] {
-  const fechaLimite = fechaLimiteDia17MesSiguiente(year, month);
-  const prioridad = calcularPrioridad(diasHasta(fechaLimite, todayIso));
-  const periodo = `${year}-${String(month).padStart(2, "0")}`;
-  const mm = String(month).padStart(2, "0");
+/** Régimen que se asume cuando el despacho no capturó el del contribuyente: persona moral del régimen general. */
+export const REGIMEN_FISCAL_POR_DEFECTO = "601";
 
-  return [
-    { tipo: "ISR", fechaLimite, prioridad, descripcion: `Declaración mensual de ISR - ${mm}/${year}`, periodo },
-    { tipo: "IVA", fechaLimite, prioridad, descripcion: `Declaración mensual de IVA - ${mm}/${year}`, periodo },
-    { tipo: "DIOT", fechaLimite, prioridad, descripcion: `DIOT mensual - ${mm}/${year}`, periodo },
-    { tipo: "Nómina", fechaLimite, prioridad, descripcion: `Declaración de nómina - ${mm}/${year}`, periodo },
-  ];
+/** Genera las obligaciones de un periodo según el régimen (default 601), con fecha límite en día hábil (D-26).
+ * `month` es 1-12. Lanza `RegimenNoSoportadoError` si el régimen no tiene calendario modelado. */
+export function calcularVencimientosDelPeriodo(
+  year: number,
+  month: number,
+  todayIso: string,
+  opciones: { readonly regimenFiscal?: string } = {},
+): readonly NuevoVencimiento[] {
+  const regimenFiscal = opciones.regimenFiscal ?? REGIMEN_FISCAL_POR_DEFECTO;
+  return calcularCalendarioFiscal(year, month, { regimenFiscal }).map((o) => ({
+    tipo: o.tipo,
+    fechaLimite: o.fechaLimite,
+    prioridad: calcularPrioridad(diasHasta(o.fechaLimite, todayIso)),
+    descripcion: o.descripcion,
+    periodo: o.periodo,
+    fechaNominal: o.fechaNominal,
+    ajustadaPorDiaInhabil: o.ajustadaPorDiaInhabil,
+    fundamento: o.fundamento,
+    validarConFiscalista: o.validarConFiscalista,
+    nota: o.nota,
+  }));
 }

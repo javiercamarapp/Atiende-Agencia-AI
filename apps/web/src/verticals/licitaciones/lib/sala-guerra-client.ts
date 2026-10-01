@@ -2,6 +2,7 @@
 // Llama a `.../tenders/:tenderId/sala-guerra/*` y `.../junta/*`
 // (apps/api/src/routes/verticals/licitaciones/salaGuerra.ts). Nada de aqui envia
 // nada a un portal: "enviada" y la respuesta del acta las registra un humano.
+import type { PlazoDescripcion } from "./dias-inhabiles-client.ts";
 import { fetchJson, patchJson, postJson, putJson } from "./admin-client.ts";
 
 export type WarRoomItemKind = "requisito" | "tarea" | "riesgo";
@@ -73,6 +74,8 @@ export interface WarRoomBoardResponse {
     readonly goNoGo: GoNoGoSummary | null;
     readonly submissionDeadline: { readonly at: string | null; readonly semaphore: DeadlineSemaphore };
   };
+  /** L-22: dias habiles que quedan para presentar segun el calendario de dias inhabiles; ausente en servidores previos. */
+  readonly plazoPresentacion?: PlazoDescripcion | null;
   readonly entries: readonly WarRoomEntry[];
   readonly goNoGoHistory: readonly GoNoGoSummary[];
   readonly importableRequirements: readonly ImportableRequirement[];
@@ -129,6 +132,8 @@ export interface JuntaReminder {
 export interface JuntaResponse {
   readonly available: boolean;
   readonly now: string;
+  /** L-22: dias habiles que quedan para enviar preguntas y para la junta; ausente en servidores previos. */
+  readonly plazos?: { readonly preguntas: PlazoDescripcion | null; readonly junta: PlazoDescripcion | null };
   readonly config: JuntaConfig | null;
   readonly questions: readonly JuntaQuestion[];
   readonly summary: {

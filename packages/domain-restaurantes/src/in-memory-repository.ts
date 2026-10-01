@@ -656,11 +656,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       const enRango = this.orders.filter((o) => {
         if (o.organizationId !== organizationId) return false;
         if (scope !== null && !scope.has(o.propertyId)) return false;
+        if (o.status === "cancelado") return false; // R-30: ventas netas, espejo de la migracion 036
         const createdMs = Date.parse(o.createdAt);
         return createdMs >= startMs && createdMs < endMs;
       });
       const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
-      const customerCount = new Set(enRango.map((o) => o.customerName)).size;
+      // R-30: por customer_id (espejo de `count(distinct customer_id)`), nunca por nombre.
+      const customerCount = new Set(enRango.flatMap((o) => (o.customerId ? [o.customerId] : []))).size;
       return { revenue, orderCount: enRango.length, customerCount };
     });
   }
@@ -677,21 +679,29 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return earliest === null ? null : new Date(earliest);
   }
 
-  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow> {
+  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null, range?: KpiDateRange): Promise<ChannelStatsRow> {
     const scope = propertyIds ? new Set(propertyIds) : null;
-    const relevantes = this.orders.filter((o) => o.organizationId === organizationId && (scope === null || scope.has(o.propertyId)));
+    // Espejo de orders_channel_stats(_periodo) (036): ingresos SIN cancelados; conteos con cancelados.
+    const relevantes = this.orders.filter((o) => {
+      if (o.organizationId !== organizationId || (scope !== null && !scope.has(o.propertyId))) return false;
+      if (!range) return true;
+      const ms = Date.parse(o.createdAt);
+      return ms >= range.start.getTime() && ms < range.end.getTime();
+    });
+    const netos = (list: readonly Order[]) => list.filter((o) => o.status !== "cancelado").reduce((sum, o) => sum + o.total, 0);
     const porCanal = (source: "voice" | "whatsapp") => {
       const list = relevantes.filter((o) => o.source === source);
       return {
         orders: list.length,
         completed: list.filter((o) => o.status === "completado" || o.status === "entregado").length,
         cancelled: list.filter((o) => o.status === "cancelado").length,
-        revenue: list.reduce((sum, o) => sum + o.total, 0),
+        revenue: netos(list),
       };
     };
     return {
+      acotadoAPeriodo: range !== undefined,
       totalOrders: relevantes.length,
-      totalRevenue: relevantes.reduce((sum, o) => sum + o.total, 0),
+      totalRevenue: netos(relevantes),
       voice: porCanal("voice"),
       whatsapp: porCanal("whatsapp"),
     };
@@ -717,7 +727,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
     const ordenesOrg = this.orders.filter((o) => o.organizationId === organizationId);
 
-    const averageOrderValue = ordenesOrg.length > 0 ? ordenesOrg.reduce((sum, o) => sum + o.total, 0) / ordenesOrg.length : null;
+    // R-30: el ticket promedio no promedia pedidos cancelados (espejo de la migracion 036).
+    const ordenesNetas = ordenesOrg.filter((o) => o.status !== "cancelado");
+    const averageOrderValue = ordenesNetas.length > 0 ? ordenesNetas.reduce((sum, o) => sum + o.total, 0) / ordenesNetas.length : null;
     const customersWithOrders = clientes.filter((c) => c.orderCount > 0).length;
     const recurringCustomers = clientes.filter((c) => c.orderCount > 1).length;
 

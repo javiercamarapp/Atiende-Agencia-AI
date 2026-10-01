@@ -1,5 +1,5 @@
 {
- "version": "2026-09-30",
+ "version": "2026-10-01",
  "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos",
  "organizacion": {
   "nombre": "Los Taquitos de PM",
@@ -2420,5 +2420,79 @@
    "# SEGURIDAD",
    "# DATOS DEL NEGOCIO"
   ]
- }
+ },
+ "agente_whatsapp": {
+  "perfil": "taqueria_pm",
+  "nombre_agente": null,
+  "nota_nombre_agente": "El dueño aun no define el nombre del asistente (cuestionario: {Asistente} por definir): no se inventa; el agente se presenta como 'el asistente virtual'.",
+  "tono": "formal_directo",
+  "tiempo_entrega": "de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
+  "salsas": "roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero (soasado o picado con limón)",
+  "promociones": "lunes 2x1 en tacos al pastor, solo para recoger",
+  "motivos_escalacion_apagados": [],
+  "reglas_duras": [
+   "Alcohol: nunca a domicilio (se marca por producto: no_domicilio).",
+   "Pedido minimo a domicilio de $200 (no cuenta descuentos; sin costo de envio).",
+   "Propina solo con tarjeta.",
+   "Tacos de bistec: se venden en ordenes de 3; '3 de bistec' se interpreta como una orden (3 tacos) y se confirma con el cliente antes de cotizar."
+  ]
+ },
+ "pendientes_dueno": [
+  {
+   "id": "cambio_turno",
+   "titulo": "Hora del cambio de turno",
+   "detalle": "El horario es 12:00 a 01:00 con doble turno de personal, pero el dueño no dio la hora del cambio: se modela una sola franja y no se inventa.",
+   "quien": "dueno",
+   "pantalla": "sucursales"
+  },
+  {
+   "id": "whatsapp_sucursal",
+   "titulo": "Numero de WhatsApp por sucursal",
+   "detalle": "Cada sucursal necesita su propio numero de WhatsApp Business; sin el, el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita).",
+   "quien": "dueno",
+   "pantalla": "configuracion"
+  },
+  {
+   "id": "coordenadas_t3",
+   "titulo": "Coordenadas de la sucursal Pensiones (T3)",
+   "detalle": "T3 no tiene latitud/longitud: no entra en la asignacion de sucursal por distancia hasta que se confirmen.",
+   "quien": "dueno",
+   "pantalla": "sucursales"
+  },
+  {
+   "id": "mapa_colonias",
+   "titulo": "Mapa de colonias por sucursal",
+   "detalle": "Las colonias de reparto de cada sucursal no estan cargadas: no hay cobertura de entrega configurada ni zonas por colonia; solo el punto de cada sucursal.",
+   "quien": "dueno",
+   "pantalla": "configuracion"
+  },
+  {
+   "id": "catalogo_softrestaurant",
+   "titulo": "Catalogo de SoftRestaurant",
+   "detalle": "Falta el export del catalogo del POS (codigos de producto y modificadores) y la API del distribuidor: las comandas quedan en captura manual.",
+   "quien": "distribuidor_pos",
+   "pantalla": "configuracion"
+  },
+  {
+   "id": "nombre_asistente",
+   "titulo": "Nombre del asistente virtual",
+   "detalle": "El dueño no definio como se llama el asistente: el agente se presenta como 'el asistente virtual'.",
+   "quien": "dueno",
+   "pantalla": "configuracion"
+  },
+  {
+   "id": "combo_martes",
+   "titulo": "Combo del martes (nachos + 2 aguas de cortesia)",
+   "detalle": "Requiere un tipo de promocion de cortesia y definir cuales aguas: no esta cargado y el agente no lo promete.",
+   "quien": "dueno",
+   "pantalla": "promociones"
+  },
+  {
+   "id": "identidad_t4",
+   "titulo": "Identidad de la sucursal T4",
+   "detalle": "T4 esta registrada sin direccion ni telefono (0 pedidos): queda inactiva y sin menu hasta que el dueño confirme que es.",
+   "quien": "dueno",
+   "pantalla": "sucursales"
+  }
+ ]
 }

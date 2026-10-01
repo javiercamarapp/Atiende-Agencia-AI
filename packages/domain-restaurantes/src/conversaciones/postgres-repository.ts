@@ -4,7 +4,7 @@
 // la deja abortada (25P02) y el COMMIT seria un ROLLBACK silencioso; por eso TODA operacion usa
 // `runWithSavepointFallback` (SAVEPOINT / ROLLBACK TO SAVEPOINT) antes de degradar: lecturas ->
 // `disponible: false`, escrituras -> `ConversacionesNoDisponibleError` (503), el gate del agente -> "sin toma".
-import { runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts";
 import {
@@ -421,6 +421,16 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
   }
 
   async solicitarHumano(input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }): Promise<string | null> {
+    const id = await this.crearToma(input);
+    // Notificacion in-app (productor compartido, catalogo `restaurantes.handoff.solicitado`): una por conversacion derivada, sin PII
+    // (titulo y cuerpo salen del catalogo). Best-effort: nunca rompe la toma ya creada y degrada con SAVEPOINT contra la base sin migrar.
+    if (id) {
+      await emitirNotificacion(this.db, { evento: "restaurantes.handoff.solicitado", organizationId: input.organizationId, propertyId: input.propertyId, clave: id, entidadTipo: "conversation_handoff", entidadId: id });
+    }
+    return id;
+  }
+
+  private async crearToma(input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }): Promise<string | null> {
     return runWithSavepointFallback<string | null>({
       session: this.db,
       savepointName: "sp_handoff_gate_solicitar",

@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
+  Bot,
   CalendarCheck,
   CalendarClock,
   CalendarRange,
@@ -116,6 +117,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
         // C-04 -- mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
+        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
         { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
         // FASE 3 (producto) — bitácora de auditoría del staff (ver
         // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
@@ -187,7 +189,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       user={user}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <CalendarClock className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector}
       mobileSelector={branches.length > 1 ? branchSelector : null}
       contentKey={propertyId}

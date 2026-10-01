@@ -24,7 +24,7 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 | Vertical | Funciona de punta a punta | Pendiente honesto |
 |---|---|---|
-| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Agente de voz ElevenLabs completo. Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
+| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Voz por teléfono (Gemini Live + LiveKit): núcleo de llamada, simulador, prueba ciega y llamada de prueba del panel listos; falta el worker de telefonía y las credenciales (ver `docs/VOZ-PM.md`). Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
 | **hoteles** | Reservas/folios/CFDI de hospedaje (timbrado real vía Finkok/SW Sapien, credencial pendiente), housekeeping, fraude, P&L (USALI), checador de asistencia. | El gate/estado de **revenue management** (shadow/propone/autopilot) es real, pero **no existe ningún motor que produzca una recomendación de tarifa** — solo la máquina de estados, el backtest y la explicación de un precio ya dado. Reputación clasifica reseñas y responde, pero sin ingesta automática de Google/Booking/TripAdvisor (requiere esas credenciales). |
 | **citas** | Agenda, reservar/cancelar/confirmar/completar/no-show, horarios y excepciones editables, staff, sincronización real de calendario — **Google Calendar, Cal.com y CalDAV**, credencial por profesional. | Receptor de webhooks de Google Calendar (hoy solo sincronización por lote). |
 | **licitaciones** | Conectores OCDS reales y verificados contra la fuente pública: **Nuevo León** (333 convocatorias vigentes confirmadas). Post-adjudicación, cobranza, inconformidades, renovaciones. | **CDMX**: conector real y completo, pero la fuente pública que consume está estancada desde 2023 (no produce convocatorias vigentes hoy). Cobertura nacional depende de un **agregador comercial de pago sin proveedor elegido todavía** (`LICITACIONES_AGGREGATOR_API_KEY`) — ComprasMX en vivo y el DOF no se automatizan (reCAPTCHA/Akamai). |
@@ -33,7 +33,11 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 ## Voz (patrón oficial)
 
-Las 3 verticales con agente de voz (restaurantes, hoteles, citas) exponen
+**Restaurantes ya no usa ElevenLabs** (decisión del 1-oct-2026): su voz es Gemini Live sobre
+LiveKit SIP, con token de llamada firmado; ver `docs/VOZ-PM.md`. Lo que sigue describe el patrón
+de hoteles y citas, que conservan ElevenLabs.
+
+Las verticales hoteles y citas exponen
 Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
 voice-tools.ts`) que ElevenLabs invoca por webhook durante una llamada en
 curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,
@@ -107,6 +111,13 @@ honesto. **`docs/DEPLOY.md`** documenta el orden seguro (Supabase + Vercel,
 tier free) y las lecciones aprendidas — en particular, que mergear un PR a
 `main` **no** aplica sus migraciones a la base real, y que un cambio que toca
 a la vez SQL y la sesión con que la API lo invoca se despliega código primero.
+
+## Demo de restaurantes (Los Taquitos de PM)
+
+La demo completa de PM —chat estilo WhatsApp en `/demo/<slug>` conectado al agente real (sin Meta), pedidos reales que llegan al panel de
+cocina, 3 meses de datos de demostración y checklist de «Primeros pasos»— se presenta con el guion `docs/DEMO-PM.md` y se carga (y se
+borra) con el runbook `docs/DEMO-PM-CARGA.md`. El chat necesita una llave de proveedor LLM en el servidor; sin ella dice «Agente no
+disponible: requiere OPENROUTER_API_KEY» (no hay respuestas simuladas).
 
 ## Desarrollo
 

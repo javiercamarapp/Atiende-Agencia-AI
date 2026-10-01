@@ -10,7 +10,8 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryCircuitBreakerStore, LlmGateway, RedisCircuitBreakerStore } from "@atiende/agent-core";
 import { InMemoryTenancyEngine } from "@atiende/db";
-import { ALL_PRODUCTION_ROLES, RESTAURANTES_DATA_CHAT_ROLE, buildBreakerStore, buildProductionLlmGateway, buildRoleLadder, loadLlmModelsConfig } from "../src/production/llm-gateway.ts";
+import { breakerEnvName } from "../src/env.ts";
+import { ALL_PRODUCTION_ROLES, RESTAURANTES_DATA_CHAT_ROLE, buildBreakerStore, buildCircuitBreaker, buildProductionLlmGateway, buildRoleLadder, loadLlmModelsConfig } from "../src/production/llm-gateway.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -49,7 +50,12 @@ describe("buildProductionLlmGateway", () => {
   it("con OpenRouter Y OpenAI legado, la escalera usa SOLO OpenRouter (proveedor unico por defecto)", () => {
     const env = envWith({ openai: { apiKey: fakeKey(), model: "gpt-5.6-test" }, openrouter: OPENROUTER });
     const ladder = buildRoleLadder(env, "restaurantes:data_chat", { roles: {} })!;
-    expect(ladder.map((p) => p.id)).toEqual(["openrouter:openai/gpt-6-luna", "openrouter:google/gemini-3.5-flash-lite"]);
+    expect(ladder.map((p) => p.id)).toEqual([
+      "openrouter:openai/gpt-6-luna",
+      "openrouter:deepseek/deepseek-v4.1-flash",
+      "openrouter:google/gemini-2.5-flash-lite",
+      "openrouter:meta/muse-spark-1.3",
+    ]);
   });
 
   it("cada rol de produccion recibe su escalera; el copiloto de superadmin usa Claude Sonnet 5.5 primero y los reportes Gemini 3.8 Flash", () => {
@@ -78,5 +84,33 @@ describe("buildProductionLlmGateway", () => {
     expect(buildBreakerStore(envWith({ openai: null, openrouter: OPENROUTER }))).toBeInstanceOf(InMemoryCircuitBreakerStore);
     const shared = { url: "http://localhost:0", token: fakeKey() };
     expect(buildBreakerStore(envWith({ openai: null, openrouter: { ...OPENROUTER, sharedBreaker: shared } }))).toBeInstanceOf(RedisCircuitBreakerStore);
+  });
+});
+
+describe("breaker compartido: prefijo de entorno", () => {
+  it("breakerEnvName normaliza VERCEL_ENV/NODE_ENV a un fragmento seguro de clave", () => {
+    expect(breakerEnvName("production")).toBe("production");
+    expect(breakerEnvName("Preview")).toBe("preview");
+    expect(breakerEnvName("pre view:1")).toBe("preview1");
+    expect(breakerEnvName(undefined)).toBe("development");
+    expect(breakerEnvName("")).toBe("development");
+  });
+
+  it("buildCircuitBreaker usa claves cb:<entorno>:<modelo> en el Redis compartido", async () => {
+    const sent: string[][] = [];
+    const fetchImpl = (async (_url: unknown, init: { body?: string }) => {
+      sent.push(JSON.parse(init.body ?? "[]") as string[]);
+      return new Response(JSON.stringify({ result: null }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchImpl;
+    try {
+      const shared = { url: "http://localhost:0", token: fakeKey() };
+      const env = envWith({ openai: null, openrouter: { ...OPENROUTER, sharedBreaker: shared, breakerEnv: "preview" } });
+      await buildCircuitBreaker(env).checkCircuit("openrouter:openai/gpt-6-luna");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(sent.flat().join(" ")).toContain("cb:preview:openrouter:openai/gpt-6-luna");
   });
 });

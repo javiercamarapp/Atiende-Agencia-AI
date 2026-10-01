@@ -217,8 +217,8 @@ describe("salvaguardas de la CLI", () => {
   });
 
   it("parsea banderas y rechaza las desconocidas", () => {
-    expect(parseSeedArgs([])).toEqual({ apply: false, confirmHost: null, ownerEmail: null, help: false });
-    expect(parseSeedArgs(["--apply", "--confirm-host=h", "--owner-email=a@b.co"])).toEqual({ apply: true, confirmHost: "h", ownerEmail: "a@b.co", help: false });
+    expect(parseSeedArgs([])).toEqual({ apply: false, confirmHost: null, ownerEmail: null, help: false, demo: false });
+    expect(parseSeedArgs(["--apply", "--confirm-host=h", "--owner-email=a@b.co"])).toEqual({ apply: true, confirmHost: "h", ownerEmail: "a@b.co", help: false, demo: false });
     expect(() => parseSeedArgs(["--force"])).toThrow(/desconocido/);
   });
 });

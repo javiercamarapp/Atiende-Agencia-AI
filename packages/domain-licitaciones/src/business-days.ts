@@ -3,14 +3,34 @@
 // `inconformidad.ts` (plazo de inconformidad, LAASSP Art. 95). Port ~literal
 // del criterio de `licitaciones/apps/api/src/lib/expediente/business-days.ts`
 // del repo original (fuente de verdad): "día hábil" = lunes a viernes,
-// excluyendo feriados oficiales SOLO si el llamador los declara
-// explícitamente en `holidays` — este módulo NUNCA trae codificado un
-// calendario oficial de días inhábiles (REQ-056, calendario oficial SABG,
-// está explícitamente FUERA de alcance de esta fase, ver README del
-// vertical). Nunca un número "mágico" sin trazabilidad: cada resultado trae
-// su referencia legal y esta limitación explícitas, para que el consumidor
-// HTTP nunca asuma un calendario oficial completo.
-export const CALENDAR_LIMITATION_NOTE = "Solo excluye sábados y domingos; el calendario oficial de días inhábiles (REQ-056, SABG) no está construido en esta fase — declare `holidays` explícitamente si necesita excluir feriados oficiales.";
+// excluyendo los días inhábiles que el llamador pasa en `holidays`.
+// L-22: este módulo sigue sin traer codificado ningún calendario; el
+// calendario efectivo (oficiales 2026-2027 + los de la organización y la
+// convocatoria) lo arma `dias-inhabiles.ts::buildCalendarioPlazos` y TODAS las
+// rutas que calculan plazos lo pasan aquí. Cada resultado trae su referencia
+// legal y la nota del calendario usado, para que el consumidor HTTP nunca
+// asuma un calendario más completo del que se aplicó.
+/** Nota cuando el llamador NO pasó ningún día inhábil (solo fines de semana). */
+export const CALENDAR_LIMITATION_NOTE = "Solo excluye sábados y domingos: no se aplicó ningún día inhábil (REQ-056). Use el calendario de días inhábiles de la organización para excluir los feriados oficiales y los que publique la convocante.";
+
+import type { CalendarioPlazos } from "./dias-inhabiles.ts";
+
+/** Lo que aceptan los calculos de plazo: una lista de fechas o el calendario efectivo completo (L-22). */
+export type DiasInhabilesInput = readonly string[] | CalendarioPlazos;
+
+export function holidayDatesOf(input: DiasInhabilesInput | undefined): readonly string[] {
+  if (!input) return [];
+  return Array.isArray(input) ? (input as readonly string[]) : (input as CalendarioPlazos).holidays;
+}
+
+/** Nota del calendario realmente aplicado: la del calendario efectivo, o la limitacion si no se paso ningun dia. */
+export function calendarNoteOf(input: DiasInhabilesInput | undefined): string {
+  if (input && !Array.isArray(input)) return (input as CalendarioPlazos).note;
+  const dates = holidayDatesOf(input);
+  return dates.length === 0
+    ? CALENDAR_LIMITATION_NOTE
+    : `Se excluyeron sábados, domingos y ${dates.length} día(s) inhábil(es) declarados por el llamador. Validar con fiscalista/abogado.`;
+}
 
 function isWeekend(date: Date): boolean {
   const day = date.getUTCDay();
@@ -36,11 +56,11 @@ function parseDateOnly(isoDate: string, label: string): Date {
  * `businessDays` negativo o no entero lanza en vez de devolver una fecha sin
  * sentido.
  */
-export function addBusinessDays(startIsoDate: string, businessDays: number, holidays: readonly string[] = []): string {
+export function addBusinessDays(startIsoDate: string, businessDays: number, holidays: DiasInhabilesInput = []): string {
   if (!Number.isInteger(businessDays) || businessDays < 0) {
     throw new Error(`addBusinessDays: businessDays debe ser un entero >= 0, se recibió ${String(businessDays)}.`);
   }
-  const holidaySet = new Set(holidays);
+  const holidaySet = new Set(holidayDatesOf(holidays));
   const cursor = parseDateOnly(startIsoDate, "addBusinessDays(startIsoDate)");
   let remaining = businessDays;
   while (remaining > 0) {

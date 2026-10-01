@@ -17,6 +17,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-licitaciones/tests/postgres-repository-fecha-negocio-param.spec.ts",
   "packages/domain-rentas/tests/postgres-repository-fecha-negocio-param.spec.ts",
   "packages/domain-citas/tests/whatsapp-llm-turn-handler-zona-horaria.spec.ts",
+  "packages/domain-citas/tests/reminders-ventana-cron.spec.ts",
   "packages/domain-restaurantes/tests/zona-horaria-branch-savepoint.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
@@ -32,6 +33,12 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/licitaciones-rate-servidor-hoy.spec.ts",
   "apps/api/tests/citas-availability-overrides-servidor-hoy.spec.ts",
   "apps/worker/tests/despachos-cobranza-reminders-servidor-hoy.spec.ts",
+  // R-23: banco e2e del ciclo de restaurantes (reloj simulado: martes 13:00 de Merida, lunes, cierre, programados).
+  "apps/api/tests/e2e-ciclo/whatsapp-cliente-nuevo.spec.ts",
+  "apps/api/tests/e2e-ciclo/whatsapp-casos.spec.ts",
+  "apps/api/tests/e2e-ciclo/voz-ciclo.spec.ts",
+  "apps/api/tests/e2e-ciclo/storefront-ciclo.spec.ts",
+  "apps/api/tests/e2e-ciclo/programado-pos-ciclo.spec.ts",
 ] as const;
 
 // `coverage` (y su umbral) se queda como en la config base: solo se evalua con `--coverage`, que este guard no usa.

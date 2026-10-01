@@ -38,15 +38,28 @@ export function AtiendeWordmark({
   className = "",
   markClassName = "",
   animado = false,
+  tamano = "normal",
 }: {
   className?: string;
   markClassName?: string;
   animado?: boolean;
+  /**
+   * "sidebar": el lockup de 18 px de alto del sidebar de Likida (marca h-[18px],
+   * texto de 18 px con interlineado de 18 px, hueco de 6 px). La marca y el
+   * texto se dimensionan juntos: antes `className="h-[18px]"` no encogia a los
+   * hijos (marca h-7 + texto text-2xl) y el logo medía ~28 px.
+   */
+  tamano?: "normal" | "sidebar";
 }) {
+  const sidebar = tamano === "sidebar";
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      <AtiendeMark className={markClassName || "h-7 w-auto"} animado={animado} />
-      <span className="font-display text-2xl font-bold tracking-tight" style={{ color: "#1D4ED8" }}>
+    <span className={`inline-flex items-center ${sidebar ? "h-[18px] gap-1.5" : "gap-2"} ${className}`}>
+      <AtiendeMark className={markClassName || (sidebar ? "h-[18px] w-auto shrink-0" : "h-7 w-auto")} animado={animado} />
+      <span
+        className={`font-display font-bold tracking-tight text-marca-atiende ${
+          sidebar ? "text-lg leading-[18px]" : "text-2xl"
+        }`}
+      >
         atiende
       </span>
     </span>

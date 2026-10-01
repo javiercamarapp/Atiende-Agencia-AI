@@ -54,7 +54,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -67,7 +67,7 @@ import {
   crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import { PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
+import { PostgresDiasInhabilesRepository, PostgresKyc69bRepository, PostgresLicitacionesRepository, PostgresSalaGuerraRepository, PostgresWhatsAppRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import {
   CanalMensajeriaPartnerPendiente,
@@ -293,7 +293,7 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken }) }) : undefined;
+  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates }) }) : undefined;
 
   cached = {
     env,
@@ -318,6 +318,8 @@ export function buildProductionDeps(): AppDeps {
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
+    // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
+    demoRepo: (db) => new PostgresDemoRepository(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     dataChat: buildProductionDataChat(llmGateway),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
@@ -425,6 +427,8 @@ export function buildProductionDeps(): AppDeps {
     licitacionesWhatsAppRepo: (db) => new PostgresWhatsAppRepository(db),
     // L-08 -- KYC negativo 69-B (migracion 031; degrada a "no disponible aun" si falta).
     licitacionesKycRepo: (db) => new PostgresKyc69bRepository(db),
+    // L-22 -- dias inhabiles por organizacion/convocatoria (migracion 032; sin ella los plazos usan los oficiales).
+    licitacionesDiasInhabilesRepo: (db) => new PostgresDiasInhabilesRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/

@@ -89,6 +89,31 @@ en CTE separados). Solo admin_gestora/contador: lo financiero lo protege la RLS 
   "esa información todavía no está disponible", sin abortar la transacción de la request. La bitácora degrada a
   log estructurado. Cubierto con `AbortAwareFakeSession` y con SQLSTATE reales en `verify-data-chat`.
 
+## Transporte NDJSON, cancelación y `/estado`
+
+Las seis rutas (`restaurantes`, `hoteles`, `rentas`, `citas`, `despachos`, `licitaciones`) comparten el parser de cuerpo
+(`apps/api/src/data-chat/body.ts::parseDataChatRequest`) y el transporte (`apps/api/src/data-chat/ndjson.ts`).
+
+- **Sin** `Accept: application/x-ndjson`: JSON síncrono idéntico al de siempre (`DataChatAnswer`).
+- **Con** el header: flujo `application/x-ndjson`, una línea JSON por evento.
+  - `{"t":"paso","fase":"inicio"|"fin","herramienta":"<nombre del catálogo>"}`: cero o más, en vivo (solo el nombre de
+    la herramienta; nunca parámetros, filas ni texto del usuario).
+  - `{"t":"fin","respuesta":<DataChatAnswer>}`: exactamente uno si el turno terminó. Incluye también el aviso de
+    "asistente no activado".
+  - `{"t":"error","status":"error","mensaje":"..."}`: si el turno falla ya empezado el flujo; el mensaje es fijo, jamás el
+    texto de la excepción.
+  - 401, 403 y 400 de validación ocurren antes de abrir el flujo y siguen siendo JSON HTTP con su status.
+- **Sesión**: `dbSession` confirma y cierra la sesión RLS del request cuando el handler devuelve su `Response`; por eso el
+  turno en modo flujo abre su PROPIA sesión RLS del mismo usuario (`engine.withAppSession`). El alcance (organización,
+  membership, zona horaria, rol) lo verifica el handler con la sesión del request antes de abrir el flujo.
+- **Cancelación**: cerrar la lectura (Detener) o la conexión aborta el turno (`signal` del motor): no hay más pasos ni
+  llamadas al modelo y la sesión se cierra. El motor lanza `DataChatAbortedError` y no escribe bitácora de un turno
+  cancelado.
+- **`GET .../estado`**: `{ available, permitido, motivo, usoHoyPct }`. `motivo` es `null` o `"no_activado"` /
+  `"tope_diario"`. `usoHoyPct` es `null` mientras no haya un lector de uso (`DataChatDeps.usageTodayPct`, hoy sin
+  implementación de producción: requiere una función SQL que exponga el uso diario del usuario); la medición corre en
+  SAVEPOINT y degrada a `null` en la base sin migrar. El rol sin acceso sigue siendo 403.
+
 ## Catálogos de despachos y licitaciones
 
 Ambos son de solo lectura, con parámetros tipados (periodo, cliente por **nombre**, horizonte en días, límite),

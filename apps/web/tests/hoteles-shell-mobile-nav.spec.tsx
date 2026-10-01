@@ -120,7 +120,7 @@ describe("HotelesShell — nav móvil", () => {
     expect(window.localStorage.getItem("atiende.hoteles.session")).toBeNull();
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];

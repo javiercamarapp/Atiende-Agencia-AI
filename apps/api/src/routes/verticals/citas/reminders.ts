@@ -12,7 +12,7 @@
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.
 import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
-import type { CitasRepository } from "@atiende/domain-citas";
+import type { CitasRepository, EventoRecordatorioFallido } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -38,6 +38,8 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       let processed = 0;
       let sent = 0;
       let sentEmail = 0;
+      // C-14 -- eventos de "recordatorio fallido" para notificaciones (sin PII; ver domain-citas/notification-events.ts).
+      const notificationEvents: EventoRecordatorioFallido[] = [];
       const failures: { organization_id: string; appointment_id?: string; error: string }[] = [];
 
       // Un tenant con datos raros nunca tumba la corrida completa de los demás — se
@@ -48,13 +50,14 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           processed += summary.processed;
           sent += summary.sent;
           sentEmail += summary.sentEmail;
+          notificationEvents.push(...summary.failedReminderEvents);
           // Re-revisión a3 (bloqueante #1) — `runConfirmacionCitaCore` YA aísla cada
           // cita venenosa con SAVEPOINT y no lanza para la organización completa
           // (ver `failedAppointmentIds`/`failedAppointmentErrors`, domain-citas),
           // así que este `catch` de arriba NUNCA ve esos errores. Sin este volcado
           // explícito el cron respondía `ok:true, failures:[]` con el latido en
-          // verde aunque una cita real hubiera perdido su recordatorio para
-          // siempre (ventana ±30 min con cron diario = sin reintento) — mismo
+          // verde aunque una cita real se hubiera quedado sin recordatorio
+          // (la siguiente corrida la reintenta mientras no empiece, pero nadie lo veía) — mismo
           // patrón que `google-calendar-sync.ts`/PR #163: cada fallo REAL por
           // cita se vuelca a `failures[]` para que dispare `CronPartialFailureError`.
           summary.failedAppointmentIds.forEach((appointmentId, i) => {
@@ -65,7 +68,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
         }
       }
 
-      const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
+      const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, notification_events: notificationEvents, failures });
       if (failures.length > 0) {
         // `failures.length` mezcla organizaciones que lanzaron completas (catch de
         // arriba) con citas individuales aisladas por SAVEPOINT dentro de una

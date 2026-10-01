@@ -15,9 +15,11 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
 import { VER_DASHBOARD_ROLES, buildDespachosDataChatCatalog } from "@atiende/domain-despachos";
-import { parseDataChatBody } from "../../../data-chat/body.ts";
+import { parseDataChatRequest } from "../../../data-chat/body.ts";
+import { buildDataChatEstado } from "../../../data-chat/estado.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
+import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
-import { Errors } from "../../../errors.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -29,22 +31,20 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   }
 
   // La UI lo consulta para mostrar "Pronto" mientras no haya proveedor de IA ni lector configurado.
-  app.get(`${base}/estado`, (c) => {
+  app.get(`${base}/estado`, async (c) => {
     assertVerticalRole(c, VER_DASHBOARD_ROLES);
-    return c.json({ available: Boolean(deps.dataChat?.completion && deps.dataChat.despachosReader) });
+    const available = Boolean(deps.dataChat?.completion && deps.dataChat.despachosReader);
+    return c.json(await buildDataChatEstado(deps, c.get("db"), { organizationId: c.get("organizationId"), userId: c.get("userId") }, available));
   });
 
   app.post(base, async (c) => {
     assertVerticalRole(c, VER_DASHBOARD_ROLES);
-    const raw: unknown = await c.req.json().catch(() => {
-      throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
-    });
-    const { question, history } = parseDataChatBody(raw);
+    const { question, history, tool } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
     if (!dataChat || !completion || !dataChat.despachosReader) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     const db = c.get("db");
@@ -53,24 +53,31 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // `findPropertyConfig` degrada a null (nunca lanza) en la base sin la migracion 012.
     const config = await deps.despachosRepo(db).findPropertyConfig(c.req.param("propertyId") ?? "");
 
-    const answer = await runDataChatTurn({
-      catalog: buildDespachosDataChatCatalog(dataChat.despachosReader(db)),
-      scope: {
-        organizationId,
-        userId: c.get("userId"),
-        vertical: "despachos",
-        verticalRole: c.get("verticalRole") ?? "",
-        allowedPropertyIds,
-        timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
-      },
-      question,
-      history,
-      complete: completion(organizationId, DESPACHOS_DATA_CHAT_ROLE),
-      rateLimiter: dataChat.rateLimiter,
-      audit: dataChat.audit(db),
-      onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "despachos", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-    });
-    return c.json(answer);
+    const userId = c.get("userId");
+    const verticalRole = c.get("verticalRole") ?? "";
+    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
+      runDataChatTurn({
+        catalog: buildDespachosDataChatCatalog(dataChat.despachosReader!(turnDb)),
+        scope: {
+          organizationId,
+          userId,
+          vertical: "despachos",
+          verticalRole,
+          allowedPropertyIds,
+          timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
+        },
+        question,
+        history,
+        ...(tool ? { directTool: tool } : {}),
+        complete: completion(organizationId, DESPACHOS_DATA_CHAT_ROLE),
+        completeRetry: completion(organizationId, `despachos:${DATA_CHAT_RETRY_SUFFIX}`),
+        rateLimiter: dataChat.rateLimiter,
+        audit: dataChat.audit(turnDb),
+        onEvento,
+        signal,
+        onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "despachos", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+      }),
+    );
   });
 
   return app;

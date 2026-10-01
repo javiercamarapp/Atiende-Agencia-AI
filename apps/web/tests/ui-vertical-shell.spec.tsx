@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
 // PR-4 del plan de diseno-ux (4.5/4.6): <VerticalShell> unico de @atiende/ui.
-// Se prueban landmarks, skip link, aria-current, migas (solo visibles bajo
-// data-theme=v2), BottomNav con "Más", menu de cuenta movil, slots,
+// Se prueban landmarks, skip link, aria-current, migas (construirMigas; el
+// shell ya no las pinta), marco gris sunken, MobileHeader con el nombre de la
+// pagina y h1 de respaldo, BottomNav con "Más", menu de cuenta movil, slots,
 // transiciones de navegacion, limite de error de ruta y 404.
 import { act, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,7 +76,7 @@ function renderShell(o: Opciones = {}): RenderedComponent {
 }
 
 describe("VerticalShell — accesibilidad y landmarks", () => {
-  it("expone un skip link que apunta al <main> enfocable, más aside, nav móvil y migas con nombre", () => {
+  it("expone un skip link que apunta al <main> enfocable, más aside y nav móvil con nombre", () => {
     rendered = renderShell();
     const root = rendered.container;
     const skip = root.querySelector<HTMLAnchorElement>("a.sr-only")!;
@@ -87,7 +88,8 @@ describe("VerticalShell — accesibilidad y landmarks", () => {
     expect(root.querySelectorAll("main")).toHaveLength(1);
     expect(root.querySelector('aside[aria-label="Navegación principal"]')).not.toBeNull();
     expect(root.querySelector('nav[aria-label="Navegación móvil"]')).not.toBeNull();
-    expect(root.querySelector('nav[aria-label="Migas de pan"]')).not.toBeNull();
+    // Likida no usa migas: la barra de la pagina ya lleva el nombre (UNI-1 retiro el selector muerto de v2).
+    expect(root.querySelector('nav[aria-label="Migas de pan"]')).toBeNull();
   });
 
   it("marca con aria-current=page el destino activo del Sidebar y de la barra móvil", () => {
@@ -113,17 +115,93 @@ describe("VerticalShell — migas", () => {
     expect(construirMigas(SECCIONES, "/v/demo/no-existe", { etiqueta: "Demo" })).toEqual([{ etiqueta: "Demo" }]);
   });
 
-  it("se pintan en el DOM, ocultas sin data-theme=v2 y mostradas por una clase atada al atributo del <html>", () => {
+  it("el shell no pinta migas ni conserva el selector muerto de la bandera v2", () => {
     rendered = renderShell({ ruta: "/v/demo/staff" });
-    const migas = rendered.container.querySelector('[data-testid="vertical-migas"]')!;
-    expect(migas.textContent).toBe("Demo · acmeAdministrarStaff");
-    expect(migas.className).toContain("hidden");
-    expect(migas.className).toContain("[[data-theme=v2]_&]:flex");
-    expect(migas.querySelector('[aria-current="page"]')!.textContent).toBe("Staff");
+    expect(rendered.container.querySelector('[data-testid="vertical-migas"]')).toBeNull();
+    expect(rendered.container.innerHTML).not.toContain("data-theme=v2");
+  });
+});
+
+describe("VerticalShell — marco de Likida", () => {
+  it("el marco es la columna gris sunken con hairline y rounded-2xl, a la misma altura y tope que el Sidebar (100dvh)", () => {
+    rendered = renderShell();
+    const main = rendered.container.querySelector("main")!;
+    const marco = main.parentElement!;
+    for (const clase of ["bg-sunken", "md:rounded-2xl", "md:border", "md:border-border", "md:sticky", "md:top-4", "md:h-[calc(100dvh-2rem)]", "md:overflow-hidden"]) {
+      expect(marco.className, clase).toContain(clase);
+    }
+    expect(marco.className).not.toContain("100vh");
+    expect(rendered.container.querySelector("aside")!.className).toContain("h-[calc(100dvh-2rem)]");
+    expect(rendered.container.querySelector("aside")!.className).toContain("top-4");
+    // La barra de pagina vive dentro del marco, en un padre `hidden md:block`.
+    const barra = rendered.container.querySelector('[data-testid="barra-pagina"]')!;
+    expect(marco.contains(barra)).toBe(true);
+    expect(barra.parentElement!.className).toContain("hidden md:block");
+  });
+
+  it("los paddings del <main> usan safe-area arriba (cabecera movil) y abajo (barra inferior)", () => {
+    rendered = renderShell();
+    const clase = rendered.container.querySelector("main")!.className;
+    expect(clase).toContain("pt-[calc(6rem+var(--safe-area-top))]");
+    expect(clase).toContain("pb-[calc(7rem+var(--safe-area-bottom))]");
+    expect(clase).toContain("md:pt-3.5");
   });
 });
 
 describe("VerticalShell — móvil", () => {
+  it("la cabecera móvil muestra el nombre de la página activa y el <main> trae el <h1> de la página sin duplicar", () => {
+    rendered = renderShell({ ruta: "/v/demo/proveedores", children: <h1>Proveedores</h1> });
+    const titulo = rendered.container.querySelector('[data-testid="mobile-pagina-titulo"]')!;
+    expect(titulo.textContent).toBe("Proveedores");
+    expect(titulo.closest("[data-testid=mobile-header]")!.className).toContain("md:hidden");
+    // La pagina trae su <h1>: ni la barra de escritorio ni la fila movil hacen de nivel 1.
+    expect(titulo.getAttribute("role")).toBeNull();
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.getAttribute("role")).toBeNull();
+  });
+
+  it("una página sin <h1> deja el nombre como encabezado de nivel 1 TAMBIÉN en la fila móvil (no solo en la barra oculta)", async () => {
+    rendered = renderShell({ ruta: "/v/demo/proveedores", children: <p>sin encabezado</p> });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const movil = rendered.container.querySelector('[data-testid="mobile-pagina-titulo"]')!;
+    expect(movil.getAttribute("role")).toBe("heading");
+    expect(movil.getAttribute("aria-level")).toBe("1");
+    // La fila movil esta en una cabecera `md:hidden`, la de escritorio en `hidden md:block`: solo una se ve por viewport.
+    expect(movil.closest("[data-testid=mobile-header]")!.className).toContain("md:hidden");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.closest(".hidden")!.className).toContain("md:block");
+  });
+
+  it("sidebarPie llega al Sidebar y a la hoja 'Más' (sección Cuenta); sin destino real no se pinta", () => {
+    const alta = vi.fn();
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={["/v/demo/agenda"]}>
+        <VerticalShell
+          vertical="demo"
+          sections={SECCIONES}
+          mobileItems={MOBILE}
+          user={null}
+          onLogout={() => {}}
+          header={{ icon: <span />, title: "Demo", fecha: "x" }}
+          notificationBell={<span />}
+          sidebarPie={[{ label: "Costos de IA", to: "/v/demo/costos" }, { label: "Pregunta a tus datos", onClick: alta }, { label: "Solo texto" }]}
+        >
+          <p>c</p>
+        </VerticalShell>
+      </MemoryRouter>,
+    );
+    const aside = rendered.container.querySelector("aside")!;
+    expect(aside.textContent).toContain("Costos de IA");
+    expect(aside.textContent).not.toContain("Solo texto");
+    const mas = [...rendered.container.querySelectorAll("nav[aria-label='Navegación móvil'] button")].find((b) => b.textContent?.trim() === "Más")!;
+    click(mas);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect(hoja.textContent).toContain("Cuenta");
+    expect(hoja.textContent).not.toContain("Solo texto");
+    click([...hoja.querySelectorAll("button")].find((b) => b.textContent === "Pregunta a tus datos")!);
+    expect(alta).toHaveBeenCalledTimes(1);
+  });
+
   it("la barra inferior suma 'Más' con TODAS las secciones y el menú de cuenta cierra sesión", () => {
     const onLogout = vi.fn();
     rendered = renderShell({ onLogout });
@@ -155,10 +233,10 @@ describe("VerticalShell — slots, transiciones y remontaje", () => {
 
   it("al navegar remonta el envoltorio de la página con la animación page-in (solo motion-safe)", () => {
     rendered = renderShell();
-    const antes = rendered.container.querySelector("main > div > div")!;
+    const antes = rendered.container.querySelector("main > div")!;
     expect(antes.className).toContain("motion-safe:animate-page-in");
     click([...rendered.container.querySelectorAll("a")].find((a) => a.textContent === "ir-proveedores")!);
-    const despues = rendered.container.querySelector("main > div > div")!;
+    const despues = rendered.container.querySelector("main > div")!;
     expect(despues).not.toBe(antes);
     expect(antes.isConnected).toBe(false);
   });

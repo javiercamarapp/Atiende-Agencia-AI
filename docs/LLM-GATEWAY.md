@@ -32,29 +32,63 @@ rol (p.ej. restaurantes:data_chat)
 - **Archivos**: `providers/openrouter.ts` (proveedor), `prices.ts`, `upstash-rest-client.ts` (breaker
   compartido), `apps/api/src/production/llm-gateway.ts` (armado), `llm-models.ts` (tabla).
 
-## Tabla rol -> modelos (defaults, verificados el 2026-10-01)
+## Tabla rol -> modelos (defaults, verificados el 2026-10-02)
 
-| Rol | Modelo 1 | Modelo 2 (respaldo) | Notas |
-|---|---|---|---|
-| `*:data_chat` (6 verticales), `*:whatsapp_agent(_escalated)`, extractor de requisitos, borrador de propuesta, preguntas de junta, mensajería de rentas, conciliación de despachos | `openai/gpt-6-luna` (razonamiento `low`) | `google/gemini-3.5-flash-lite` (razonamiento `minimal`) | Perfil económico: barato y rápido. |
-| `superadmin:copiloto` (CFO) | `anthropic/claude-sonnet-5.5` (`medium`) | `openai/gpt-6-luna` (`high`) | Poco volumen, mayor riesgo. La ruta que lo invoque llega con SA-33..35; su interruptor de plataforma también (no está en `ALL_PRODUCTION_ROLES` a propósito). |
-| `plataforma:resumen_diario` y reportes largos | `google/gemini-3.8-flash` (`low`) | `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
+| Rol | Escalera (en orden) | Notas |
+|---|---|---|
+| `*:data_chat` (6 verticales), `*:whatsapp_agent(_escalated)`, extractor de requisitos, borrador de propuesta, preguntas de junta, mensajería de rentas, conciliación de despachos | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` (`low`, EE.UU.) -> `google/gemini-2.5-flash-lite` (`minimal`) -> `meta/muse-spark-1.3` (`low`) -> modo sin IA | Perfil económico. El modo sin IA lo decide el llamador (data-chat). |
+| `*:data_chat_retry` (reintento por guardia de cifras) | `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) -> `openai/gpt-6-luna` (`high`) | Rol y ruta listos; ver "Huecos" para el cableado en el motor. |
+| `superadmin:copiloto` (CFO) | `anthropic/claude-sonnet-5.5` (`medium`) -> `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) | Poco volumen, mayor riesgo. La ruta que lo invoque llega con SA-33..35; su interruptor de plataforma también. |
+| `reportes:analisis_financiero` | `anthropic/claude-sonnet-5.5` -> `deepseek/deepseek-v4-pro` | Etapa de análisis de datos de reportes financieros. |
+| `reportes:analisis_general` | `qwen/qwen3-235b-a22b-2507` (EE.UU.) -> `deepseek/deepseek-v4.1-flash` -> `openai/gpt-6-luna` | Etapa de análisis de reportes no financieros. |
+| `reportes:redaccion_financiero`, `reportes:redaccion_general` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` | Rutas separadas por tipo para que el eval decida (Qwen 3.7 Flash como candidato cuando tenga proveedor de EE.UU.). |
+| `plataforma:resumen_diario` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
+| `plataforma:enrutador_turno`, `plataforma:compuerta_escalamiento`, `plataforma:titulos_resumenes`, `plataforma:compactacion_historial` | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Roles pensados para Qwen 3.7 Flash; hoy NO se puede usar (ver política de proveedores). |
 
 Parámetros por modelo en los defaults:
 
-- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 (y los de Gemini 3.5 Flash-Lite en
-  Vertex) **no listan `temperature`** entre los parámetros soportados de OpenRouter (verificado en
-  `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se confirmó con una llamada real: `temperature: 0`
-  devuelve 404 "No endpoints found that can handle the requested parameters"). Con `require_parameters: true`,
-  mandarla deja la ruta sin endpoints; por eso se omite en todos los defaults.
+- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 **no listan `temperature`** entre los
+  parámetros soportados de OpenRouter (verificado en `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se
+  confirmó con una llamada real: `temperature: 0` devuelve 404 "No endpoints found that can handle the requested
+  parameters"). Con `require_parameters: true`, mandarla deja la ruta sin endpoints; por eso se omite en todos
+  los defaults.
 - `minMaxTokens`: piso del tope de salida (1500 a 4000 según el rol). Los tokens de razonamiento consumen
   el tope: con 500 la respuesta podía quedar vacía.
-- Preferencias de proveedor por laboratorio (`provider.only`): `openai/*` -> `openai`, `azure`;
-  `google/*` -> `google-ai-studio`, `google-vertex`; `anthropic/*` -> `anthropic`, `google-vertex`,
-  `amazon-bedrock`. OpenRouter solo prueba entre esos (fallback controlado).
-- **Modelos de laboratorios chinos: ninguno en producción.** `LLM_MODELS_JSON` los rechaza al validar
-  (`BLOCKED_MODEL_AUTHORS`). Los retadores (`EVAL_CHALLENGERS`) están apagados y solo los puede leer el arnés
-  de evals. Usarlos con datos de clientes requiere una decisión explícita de Javier.
+
+## Política de proveedores (allowlist) y laboratorios chinos
+
+Decisión de Javier (1-oct-2026, "sí acepta DeepSeek y Qwen"): la política ya **no es una lista negra de autores**
+sino una **lista blanca de proveedores** (`ALLOWED_PROVIDER_HOSTS` en `llm-models.ts`): un modelo de cualquier
+laboratorio entra a producción solo si TODOS sus proveedores son servidores en EE.UU. de esa lista (OpenAI,
+Azure, Google AI Studio/Vertex, Anthropic, Amazon Bedrock, Meta, DeepInfra, Together, Fireworks, Baseten,
+Parasail, CoreWeave, Groq).
+
+- Cada petición lleva `provider.only` (siempre con al menos un proveedor), `data_collection: "deny"` y
+  `require_parameters: true`. Para los modelos con endpoint ZDR en esos proveedores, además `zdr: true` (forzado).
+  `routingForModel` fija estos valores AUNQUE el objeto de configuración diga otra cosa.
+- Los modelos de laboratorios chinos y Meta están en `VERIFIED_MODEL_HOSTS` con los proveedores EE.UU.
+  verificados el 2026-10-02 contra la API pública de OpenRouter (`/api/v1/models/<id>/endpoints` cruzada con
+  `/api/v1/endpoints/zdr`, la lista pública de endpoints con retención cero):
+
+| Modelo | Proveedores de EE.UU. con ZDR | Nota de precio |
+|---|---|---|
+| `deepseek/deepseek-v4.1-flash` | DeepInfra, Together, Fireworks, Baseten, Parasail, CoreWeave | En EE.UU. cuesta 0.14-0.60 / 0.42-2.40 USD por 1M (no el 0.03 / 0.50 de lista). |
+| `deepseek/deepseek-v4-pro` | DeepInfra, Parasail, Azure (`azure/us`) | 1.30-1.91 / 2.60-3.83 USD por 1M en esos proveedores. |
+| `qwen/qwen3-235b-a22b-2507` | Google Vertex (`us-south1`), Parasail, DeepInfra | 0.09-0.25 / 0.55-1.00 USD por 1M. |
+| `qwen/qwen3.7-flash` | **ninguno**: hoy solo lo sirve Alibaba, sin ZDR | **Rechazado** al validar y en `routingForModel` con un error claro. |
+| `meta/muse-spark-1.3` | Meta (sin ZDR) | 1.25 / 4.25 USD por 1M. |
+
+- `LLM_MODELS_JSON` solo puede **estrechar** los proveedores de un modelo: un `only` con un proveedor fuera de la
+  lista, no verificado para ese modelo o vacío invalida la ruta completa (queda el default y un error
+  `llm_models_json_invalid`). Tampoco acepta `requireParameters: false` ni `dataCollection: "allow"`. Un modelo
+  sin fila verificada ni laboratorio de EE.UU. conocido (p. ej. `z-ai/*`) exige `only` explícito dentro de la
+  lista, y se le fuerza `zdr: true`.
+- Antes de cambiar una fila de `VERIFIED_MODEL_HOSTS`, re-verifica con `node scripts/check-llm-us-hosts.mjs`
+  (usa la API pública, sin llave, no corre en CI).
+- **Qwen 3.7 Flash**: sus cuatro roles (`enrutador_turno`, `compuerta_escalamiento`, `titulos_resumenes`,
+  `compactacion_historial`) quedan con Luna -> DeepSeek V4.1 Flash. Cuando OpenRouter liste un proveedor de EE.UU.
+  con ZDR para `qwen/qwen3.7-flash`, basta cambiar su fila de `VERIFIED_MODEL_HOSTS` y poner el modelo primero
+  en esas rutas (o hacerlo por `LLM_MODELS_JSON` tras actualizar la tabla).
 
 ## Cómo cambiar un modelo (sin tocar código)
 
@@ -82,7 +116,7 @@ Parámetros por modelo en los defaults:
 5. Campos por modelo: `model` (id de OpenRouter), `reasoningEffort` (`none|minimal|low|medium|high|xhigh`),
    `temperature` (`"omit"` o 0-2), `maxTokens`, `minMaxTokens`, `supportsStructuredOutput`. Campos de
    `routing`: `zdr`, `requireParameters`, `allowFallbacks`, `order`, `only`, `ignore` y `dataCollection`
-   (solo acepta `"deny"`: la privacidad no se puede relajar por configuración).
+   (solo acepta `"deny"`: la privacidad no se puede relajar por configuración). Ver "Política de proveedores".
 6. Antes de cambiar el primario de un rol, corre el eval propio (sección Evals) y una llamada de humo.
 
 Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `OPENROUTER_API_KEY` (llave),
@@ -109,13 +143,16 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 | 408, 429, 5xx, red, timeout, 200 con error del proveedor | Sí, 1 reintento con backoff exponencial + jitter (respeta `Retry-After` hasta 2 s) | Sí |
 | 400, 404, 422 (rechazo específico del modelo: parámetro no soportado, sin endpoint que cumpla la política) | No | Sí |
 | 401, 402, 403 (llave inválida, sin crédito, bloqueo) | No | No (se detiene: el siguiente modelo fallaría igual) |
-| Fallo a medio streaming | No (ya se emitió texto) | No |
+| Fallo a medio streaming | No (ya se emitió texto) | No: el gateway detiene la escalera si el escalón ya entregó texto al llamador (`onTextDelta`), para no mezclar dos respuestas. Un fallo ANTES del primer trozo sí pasa al siguiente modelo. |
 
 - Timeout por intento: 30 s (60 s en streaming).
 - **Circuit breaker por modelo** (`openrouter:<modelo>`), 5 fallas en 60 s lo abren 30 s. Es **compartido entre
   instancias** si `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` están configuradas (las mismas del rate
   limit; sin SQL). Sin Upstash, el breaker es **en memoria por instancia**: cada instancia de Vercel descubre
-  por su cuenta que un modelo cayó. Si Upstash falla, el breaker es fail-open (nunca tumba una llamada).
+  por su cuenta que un modelo cayó. Si Upstash falla, el breaker es fail-open (nunca tumba una llamada). Las claves
+  llevan el entorno (`cb:<entorno>:openrouter:<modelo>`, con `VERCEL_ENV` o `NODE_ENV`): preview y desarrollo no abren
+  el breaker de producción cuando comparten el mismo Redis. Al desplegar, los contadores anteriores (`cb:<modelo>`) se
+  abandonan y caducan solos.
 - Los topes de presupuesto (por corrida y diario) siguen **en memoria por instancia**; el tope mensual por
   organización y el de plataforma sí son persistentes (`core.llm_org_budget`). Límite conocido, sin cambios.
 
@@ -124,8 +161,23 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 Si el modelo no puede responder (toda la escalera falla, tope de gasto agotado o interruptor de plataforma
 del rol apagado), `runDataChatTurn` responde con `noAi: { reason, options }` (`provider_down`, `budget`,
 `kill_switch`): el texto dice con claridad que la IA no está disponible y por qué, y `options` lista el
-catálogo de consultas deterministas (nombre y descripción) para ofrecerlas como botones. Nunca incluye cifras.
-El kill switch por rol sigue siendo `core.platform_switch` (`agente:<rol>`).
+catálogo de consultas deterministas (nombre y descripción). Nunca incluye cifras. El kill switch por rol sigue
+siendo `core.platform_switch` (`agente:<rol>`).
+
+Los clientes web (restaurantes, hoteles/rentas y la conexión genérica de despachos/licitaciones/citas) muestran
+`options` como botones. Cada botón llama al MISMO endpoint del chat con `{ "tool": "<nombre>" }` en lugar de
+`{ "question": ... }` (no ambos): el motor ejecuta esa herramienta del catálogo sin llamar al modelo, con su periodo
+por defecto (`ultimos_30_dias` o el primero disponible; el periodo resuelto aparece siempre en la fuente), con el
+mismo alcance, límites, tiempo máximo, rate limit y bitácora que un turno normal. Una herramienta con parámetros
+obligatorios que no sean de periodo responde `clarify`. Un nombre que no está en el catálogo responde
+`invalid_input` sin ejecutar nada.
+
+## Reintento por guardia de cifras
+
+La narrativa del modelo solo se muestra si todas sus cifras existen en los resultados de las consultas. Si no, el
+motor hace UN reintento con el rol `<vertical>:data_chat_retry` (por defecto DeepSeek V4 Pro, EE.UU., luego Luna
+`high`) y, si tampoco pasa la guardia o el reintento falla, muestra el resumen determinista. El interruptor de
+plataforma del rol base (`agente:<vertical>:data_chat`) también detiene el rol de reintento.
 
 ## Salida estructurada y streaming
 
@@ -138,13 +190,18 @@ El kill switch por rol sigue siendo `core.platform_switch` (`agente:<rol>`).
 ## Costos
 
 Precios de lista usados como respaldo y para reservar (USD por millón de tokens, tarifa estándar, fuente
-catálogo de OpenRouter 2026-10-01): GPT-6 Luna 0.10 / 0.50; Gemini 3.5 Flash-Lite 0.30 / 2.50; Gemini 3.8
-Flash 0.75 / 3.75; Claude Sonnet 5.5 2 / 10; GPT-6 Sol 1 / 5. La investigación
+catálogo de OpenRouter 2026-10-01/02): GPT-6 Luna 0.10 / 0.50; Gemini 2.5 Flash-Lite 0.10 / 0.40; Gemini 3.5
+Flash-Lite 0.30 / 2.50; Gemini 3.8 Flash 0.75 / 3.75; Claude Sonnet 5.5 2 / 10; GPT-6 Sol 1 / 5; Muse Spark 1.3
+1.25 / 4.25; DeepSeek V4.1 Flash 0.60 / 2.40, DeepSeek V4 Pro 1.91 / 3.83 y Qwen3-235B 0.25 / 1 (estos tres con el
+precio MÁS CARO de sus proveedores de EE.UU., para no sub-reservar). La investigación
 (`investigacion-modelos-copiloto`) estima ~10 centavos MXN por conversación de data-chat con Luna `low`
 (estimación sin medir; se reemplaza con lo medido en evals). El costo **registrado** es el real de OpenRouter.
 
-Pendiente: guardar `tokens_cached`/`tokens_reasoning` en `core.llm_usage_daily` requiere una migración (este
-cambio no toca SQL); el proveedor ya los lee (`tokensCached`, `tokensReasoning` en el resultado).
+`tokens_cached` y `tokens_reasoning` se guardan en `core.llm_usage_daily` (migración `0040`, espejo
+`20240101000260`; `core.record_llm_usage` pasa a 12 parámetros con `default 0`). Contra una base sin migrar,
+`recordUsage` cae a la función de 10 argumentos dentro de un SAVEPOINT (SQLSTATE 42883). La misma migración amplía
+el CHECK de `vertical` con `superadmin`, `plataforma` y `reportes` (roles `superadmin:copiloto`, `plataforma:*` y
+`reportes:*`).
 
 ## Evals en modo real
 

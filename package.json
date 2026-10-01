@@ -26,9 +26,16 @@
     "audit:deps": "npm audit --audit-level=high",
     "verify:migration-versions": "node --experimental-strip-types scripts/verify-migration-versions/check-migration-versions.ts",
     "smoke:post-deploy": "node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts",
+    "demo:seed": "node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --demo",
+    "demo:volumen": "node scripts/seed-pm-demo/ejecutar.mjs seed-volumen",
+    "demo:limpiar": "node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts",
     "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts",
     "test:e2e": "npm run test:e2e -w @atiende/web --",
-    "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --"
+    "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --",
+    "eval:copiloto": "vite-node scripts/eval-copiloto/cli.ts --",
+    "eval:copiloto:congelar": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts --",
+    "eval:copiloto:congelar:check": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/congelar.ts -- --check",
+    "eval:copiloto:real": "bash scripts/eval-copiloto/run.sh vite-node scripts/eval-copiloto/cli.ts -- --modo=real"
   },
   "devDependencies": {
     "@atiende/core-ratelimit": "*",

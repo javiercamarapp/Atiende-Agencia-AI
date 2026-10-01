@@ -56,6 +56,8 @@ import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restau
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
+import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
+import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -114,6 +116,7 @@ import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
 import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
+import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
@@ -131,6 +134,7 @@ import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.ts
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
 import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
+import { DiasInhabilesPage as LicitacionesDiasInhabilesPage } from "./verticals/licitaciones/pages/DiasInhabiles.tsx";
 import { Kyc69bPage as LicitacionesKyc69bPage } from "./verticals/licitaciones/pages/Kyc69b.tsx";
 import { RestablecerContrasenaPage as LicitacionesRestablecerContrasenaPage, VerificarCorreoPage as LicitacionesVerificarCorreoPage } from "./verticals/licitaciones/pages/CuentaEnlaces.tsx";
 import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
@@ -254,6 +258,7 @@ const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes
 const RestaurantesPrivacidadOrganizacionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PrivacidadOrganizacionPage apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 // R-21: bandeja de conversaciones con handoff a humano y turnos de personal por sucursal.
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
+const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerosPasosPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
 
 // Storefront PUBLICO de restaurantes (R-09): sin login ni shell de panel; solo necesita el slug del restaurante.
@@ -268,6 +273,11 @@ function StorefrontSucursalRoute() {
 function StorefrontRastreoRoute() {
   const { orgSlug = "", token = "" } = useParams();
   return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
+}
+// Demo de WhatsApp (R-19): chat publico contra el agente real, solo para organizaciones marcadas como demo.
+function DemoWhatsAppRoute() {
+  const { orgSlug = "" } = useParams();
+  return <DemoWhatsAppPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
@@ -774,6 +784,7 @@ const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasSt
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 const CitasWhatsappMensajesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasWhatsappMensajesPage {...ctx} />);
+const CitasAgenteWhatsappRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAgenteWhatsappPage {...ctx} />);
 
 /** 404 DENTRO del shell de citas (PR-4): una ruta desconocida bajo `/citas/:orgSlug/` conserva la navegación y
  * ofrece volver a la agenda. `/citas/login/...` no es un negocio: cae al 404 global. */
@@ -832,6 +843,7 @@ const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
 // restaurantes permite gestionar roles desde el producto"): licitaciones tenía
@@ -923,11 +935,13 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
+        <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
+        <Route path="/demo/:orgSlug" element={<DemoWhatsAppRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
@@ -1020,6 +1034,7 @@ export function App() {
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
+        <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
         <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         {/* L-02: enlaces del correo (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
@@ -1042,6 +1057,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
+        <Route path="/licitaciones/:orgSlug/dias-inhabiles" element={<LicitacionesDiasInhabilesRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
         <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />

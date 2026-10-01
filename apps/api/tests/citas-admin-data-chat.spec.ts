@@ -156,7 +156,7 @@ describe("rol del gateway LLM (kill switch, presupuesto y costo por rol)", () =>
     const h = await harness([REVENUE, { text: "ok" }]);
     await h.app.request(url(h), post(h.ctx.staff.owner.token, { question: "ingresos del mes pasado" }));
     expect(CITAS_DATA_CHAT_ROLE).toBe("citas:data_chat");
-    expect(h.roles).toEqual(["citas:data_chat"]);
+    expect(h.roles).toEqual(["citas:data_chat", "citas:data_chat_retry"]); // turno + reintento por guardia de cifras (DeepSeek V4 Pro)
   });
 });
 
@@ -293,7 +293,7 @@ describe("validación, límites y disponibilidad", () => {
     const body = (await res.json()) as DataChatAnswer;
     expect(body.status).toBe("unavailable");
     expect(body.text).toContain("todavía no está activado");
-    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toEqual({ available: false });
+    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toMatchObject({ available: false });
   });
 
   it("deploy sin lector de citas (dataChat viejo): 'no disponible', nunca 500", async () => {
@@ -301,12 +301,12 @@ describe("validación, límites y disponibilidad", () => {
     const res = await h.app.request(url(h), post(h.ctx.staff.owner.token, { question: "ingresos" }));
     expect(res.status).toBe(200);
     expect(((await res.json()) as DataChatAnswer).status).toBe("unavailable");
-    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toEqual({ available: false });
+    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.owner.token))).json()).toMatchObject({ available: false });
   });
 
   it("estado available=true con proveedor y lector", async () => {
     const h = await harness([{ text: "x" }]);
-    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.admin.token))).json()).toEqual({ available: true });
+    expect(await (await h.app.request(url(h, "/estado"), authedGet(h.ctx.staff.admin.token))).json()).toMatchObject({ available: true });
   });
 
   it("sin deps.dataChat en absoluto: 'no disponible', nunca 500", async () => {

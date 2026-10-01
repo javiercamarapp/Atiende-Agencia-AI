@@ -1,14 +1,5 @@
 export { cn } from "./lib/utils.js";
 export { formatMoney } from "./lib/formatMoney.js";
-export {
-  ATRIBUTO_TEMA,
-  CLAVE_TEMA_V2,
-  VALOR_TEMA_V2,
-  activarTemaV2,
-  desactivarTemaV2,
-  inicializarTemaV2,
-  temaV2Activo,
-} from "./lib/tema-v2.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 
 // Ticket de cocina imprimible (restaurantes, PM PR-7).
@@ -56,12 +47,13 @@ export {
 export { PageHeader, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
 export { PageContainer, type PageContainerProps } from "./components/PageContainer.js";
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
-export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
+export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
-export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
+export { BottomNav, BOTTOM_NAV_MAX_DESTINOS, MobileHeader, type BottomNavItem, type BottomNavProps, type MobileHeaderTitulo } from "./components/BottomNav.js";
 export {
   VerticalShell,
   VerticalShellEstado,
+  useTituloBarra,
   VerticalNoEncontrado,
   RutaBoundary,
   construirMigas,
@@ -71,7 +63,7 @@ export {
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
-export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
 export {
   ChatDatosDialog,
   formatChatCell,
@@ -81,10 +73,13 @@ export {
   type ChatDatosColumna,
   type ChatDatosFuente,
   type ChatDatosCell,
+  type ChatDatosSinIa,
+  type ChatDatosOpcionSinIa,
 } from "./components/ChatDatosDialog.js";
+export * from "./components/copiloto/index.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 
-export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
+export { Button, buttonVariants, TEXTO_GUARDANDO, type ButtonProps } from "./components/ui/button.js";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
 export { StatusBadge, STATUS_TONES, statusTone, type StatusBadgeProps, type StatusTone } from "./components/ui/status-badge.js";

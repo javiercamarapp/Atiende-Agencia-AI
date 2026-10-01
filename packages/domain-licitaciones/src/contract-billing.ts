@@ -17,7 +17,8 @@
 // El vencimiento SIEMPRE lo calcula este motor determinista a partir de la
 // fecha de verificación de la factura declarada por el usuario — nunca lo
 // decide el cliente ni un LLM.
-import { addBusinessDays, CALENDAR_LIMITATION_NOTE } from "./business-days.ts";
+import { addBusinessDays, calendarNoteOf } from "./business-days.ts";
+import type { DiasInhabilesInput } from "./business-days.ts";
 import { fromCents, sumCents, toCents, type DecimalString } from "./money.ts";
 
 export const LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS = 17;
@@ -32,9 +33,9 @@ export interface PaymentDeadlineResult {
 }
 
 /** Calcula la fecha límite de pago (17 días hábiles desde la verificación de la factura, Art. 73 LAASSP nueva). `holidays` opcional, mismo criterio fail-closed que `business-days.ts`. */
-export function computePaymentDueDate(invoiceVerifiedOnIsoDate: string, holidays: readonly string[] = []): PaymentDeadlineResult {
+export function computePaymentDueDate(invoiceVerifiedOnIsoDate: string, holidays: DiasInhabilesInput = []): PaymentDeadlineResult {
   const dueDate = addBusinessDays(invoiceVerifiedOnIsoDate, LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS, holidays);
-  return { dueDate, businessDays: LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS, legalReference: LAASSP_ART_73_LEGAL_REFERENCE, calendarNote: CALENDAR_LIMITATION_NOTE };
+  return { dueDate, businessDays: LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS, legalReference: LAASSP_ART_73_LEGAL_REFERENCE, calendarNote: calendarNoteOf(holidays) };
 }
 
 export type ContractInvoiceStatus = "pendiente" | "pagada" | "vencida";

@@ -28,3 +28,4 @@ apps/web/dist-e2e/
 apps/web/playwright-report/
 apps/web/test-results/
 apps/web/blob-report/
+scripts/eval-copiloto/salida/

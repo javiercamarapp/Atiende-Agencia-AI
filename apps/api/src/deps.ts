@@ -21,7 +21,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -37,7 +37,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
+import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
@@ -161,6 +161,10 @@ export interface AppDeps {
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
   readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
+  /** R-19 -- marca de organizacion demo (migracion 037) para el widget publico de chat sin Meta. OPCIONAL: sin ella el
+   * widget responde "no disponible" (404) en vez de atender cualquier organizacion. En produccion es
+   * `(db) => new PostgresDemoRepository(db)` (degrada con SAVEPOINT a "no es demo" contra la base sin migrar). */
+  readonly demoRepo?: (db: TenantDbSession) => DemoRepository;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
@@ -285,6 +289,8 @@ export interface AppDeps {
   readonly licitacionesWhatsAppRepo?: (db: TenantDbSession) => WhatsAppRepository;
   /** L-08: KYC negativo 69-B (fichas, consulta con bitacora por tenant). `production/deps.ts` lo cablea a `PostgresKyc69bRepository`; OPCIONAL a proposito: si falta, las lecturas responden `available: false` y las escrituras 503. */
   readonly licitacionesKycRepo?: (db: TenantDbSession) => Kyc69bRepository;
+  /** L-22: dias inhabiles que declara cada organizacion o convocatoria (migracion 032). `production/deps.ts` lo cablea a `PostgresDiasInhabilesRepository`; OPCIONAL a proposito: si falta (o falta la migracion), los plazos se calculan con los dias OFICIALES de plataforma, la lectura responde `available: false` y las escrituras 503. */
+  readonly licitacionesDiasInhabilesRepo?: (db: TenantDbSession) => DiasInhabilesRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;

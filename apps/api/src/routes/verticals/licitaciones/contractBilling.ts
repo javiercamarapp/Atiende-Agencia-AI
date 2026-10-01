@@ -8,10 +8,11 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { WRITE_ROLES, assertValidDecimalString } from "@atiende/domain-licitaciones";
+import { WRITE_ROLES, assertValidDecimalString, calendarioAvisos } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolveCalendarioFor } from "./calendario.ts";
 
 interface CreateInvoiceBody {
   readonly concepto?: unknown;
@@ -59,8 +60,10 @@ export function licitacionesContractBillingRoutes(deps: AppDeps): Hono<CoreAuthH
     }
 
     await requireContract(repo, organizationId, tenderId);
-    const invoice = await repo.createContractInvoice(organizationId, tenderId, { concepto: raw.concepto, amount: raw.amount, invoiceVerifiedOn: raw.invoiceVerifiedOn, actorId });
-    return c.json(invoice, 201);
+    // L-22: el plazo del art. 73 se cuenta con el calendario efectivo (oficiales + organizacion + convocatoria).
+    const calendario = await resolveCalendarioFor(deps, c, tenderId);
+    const invoice = await repo.createContractInvoice(organizationId, tenderId, { concepto: raw.concepto, amount: raw.amount, invoiceVerifiedOn: raw.invoiceVerifiedOn, actorId, calendario });
+    return c.json({ ...invoice, calendario: { nota: calendario.note, avisos: calendarioAvisos(calendario, raw.invoiceVerifiedOn, invoice.dueDate) } }, 201);
   });
 
   app.get(invoicesBase, async (c) => {

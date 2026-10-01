@@ -223,7 +223,8 @@ export async function computeOnboardingChecklist(repo: CitasRepository, organiza
       estado: whatsappListo ? "completo" : "pendiente",
       requeridoParaPublicar: false,
       detalle: null,
-      ruta: "mensajes-whatsapp",
+      // C-15 -- la pantalla del agente de WhatsApp es donde SE CONECTA el numero (antes llevaba a los textos de los mensajes).
+      ruta: "agente-whatsapp",
     },
     {
       id: "recordatorios",

@@ -28,6 +28,7 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  ListNotificationsOptions,
   OrgAdminStaffLookupRow,
   OrganizationBillingRow,
   OrganizationMemberRow,
@@ -153,8 +154,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
    *  propósito (siempre nace no leída, igual que una fila real recién insertada) —
    *  usa `markNotificationRead`/`markAllNotificationsRead` para simular que ya se
    *  leyó. */
-  addNotification(staffUserId: string, notification: Omit<NotificationRow, "readAt">): void {
-    this.notifications.set(notification.id, { ...notification, readAt: null, staffUserId });
+  addNotification(
+    staffUserId: string,
+    notification: Omit<NotificationRow, "readAt" | "organizationId" | "tipo" | "categoria" | "severidad" | "enlace"> &
+      Partial<Pick<NotificationRow, "organizationId" | "tipo" | "categoria" | "severidad" | "enlace">>,
+  ): void {
+    this.notifications.set(notification.id, {
+      ...notification,
+      organizationId: notification.organizationId ?? null,
+      tipo: notification.tipo ?? null,
+      categoria: notification.categoria ?? null,
+      severidad: notification.severidad ?? "info",
+      enlace: notification.enlace ?? null,
+      readAt: null,
+      staffUserId,
+    });
   }
 
   /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — mismo
@@ -543,14 +557,33 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   private withReadAt(n: NotificationRow & { readonly staffUserId: string }, staffId: string): NotificationRow {
     const readKey = `${staffId}:${n.id}`;
     const read = this.notificationReadsByStaff.get(staffId)?.has(n.id) ?? false;
-    return { id: n.id, vertical: n.vertical, titulo: n.titulo, cuerpo: n.cuerpo, entidadTipo: n.entidadTipo, entidadId: n.entidadId, createdAt: n.createdAt, readAt: read ? (this.readAtByKey.get(readKey) ?? new Date().toISOString()) : null };
+    return {
+      id: n.id,
+      vertical: n.vertical,
+      titulo: n.titulo,
+      cuerpo: n.cuerpo,
+      entidadTipo: n.entidadTipo,
+      entidadId: n.entidadId,
+      createdAt: n.createdAt,
+      readAt: read ? (this.readAtByKey.get(readKey) ?? new Date().toISOString()) : null,
+      organizationId: n.organizationId,
+      tipo: n.tipo,
+      categoria: n.categoria,
+      severidad: n.severidad,
+      enlace: n.enlace,
+    };
   }
 
-  async listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
+  async listNotificationsForStaff(staffId: string, options: ListNotificationsOptions = {}): Promise<readonly NotificationRow[]> {
+    const read = this.notificationReadsByStaff.get(staffId);
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
     return [...this.notifications.values()]
       .filter((n) => n.staffUserId === staffId)
+      .filter((n) => options.before === undefined || n.createdAt < options.before)
+      .filter((n) => options.categoria === undefined || n.categoria === options.categoria)
+      .filter((n) => !options.soloNoLeidas || !(read?.has(n.id) ?? false))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 50)
+      .slice(0, limit)
       .map((n) => this.withReadAt(n, staffId));
   }
 

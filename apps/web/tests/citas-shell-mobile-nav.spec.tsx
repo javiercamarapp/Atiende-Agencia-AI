@@ -102,6 +102,7 @@ describe("CitasShell — nav móvil", () => {
       "Disponibilidad",
       "Configuración",
       "Staff",
+      "Agente de WhatsApp",
       "Mensajes de WhatsApp",
       "Auditoría",
       "Privacidad",
@@ -119,7 +120,7 @@ describe("CitasShell — nav móvil", () => {
     expect(window.localStorage.getItem("atiende-hoteles-sidebar-grupo-abierto")).toBeNull();
   });
 
-  it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
+  it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const headers = [...root.querySelectorAll("header")];

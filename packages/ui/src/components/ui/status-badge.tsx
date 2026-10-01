@@ -12,15 +12,15 @@ export const STATUS_TONES = ["neutral", "info", "success", "warning", "danger"] 
 export type StatusTone = (typeof STATUS_TONES)[number];
 
 const statusBadgeVariants = cva(
-  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium",
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
   {
     variants: {
       tone: {
-        neutral: "border-border bg-muted text-muted-foreground",
-        info: "border-info/25 bg-info-tint text-info",
-        success: "border-success/25 bg-success-tint text-success",
-        warning: "border-warning/25 bg-warning-tint text-warning",
-        danger: "border-destructive/25 bg-destructive-tint text-destructive",
+        neutral: "bg-canvas text-muted-foreground",
+        info: "bg-info-tint text-info",
+        success: "bg-success-tint text-success",
+        warning: "bg-warning-tint text-warning",
+        danger: "bg-destructive-tint text-destructive",
       },
     },
     defaultVariants: { tone: "neutral" },
@@ -29,7 +29,7 @@ const statusBadgeVariants = cva(
 
 export interface StatusBadgeProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "color"> {
   tone?: StatusTone;
-  /** Punto de color antes del texto (por defecto sí): refuerza el tono sin depender solo del color, el texto sigue siendo la señal accesible. */
+  /** Punto de color antes del texto (por defecto sí; tinta de Likida, tamano size-1.5): refuerza el tono sin depender solo del color, el texto sigue siendo la señal accesible. */
   dot?: boolean;
 }
 

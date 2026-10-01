@@ -37,7 +37,7 @@ describe("Badge", () => {
 
 describe("StatusBadge", () => {
   const ESPERADO: Record<StatusTone, [string, string]> = {
-    neutral: ["bg-muted", "text-muted-foreground"],
+    neutral: ["bg-canvas", "text-muted-foreground"],
     info: ["bg-info-tint", "text-info"],
     success: ["bg-success-tint", "text-success"],
     warning: ["bg-warning-tint", "text-warning"],

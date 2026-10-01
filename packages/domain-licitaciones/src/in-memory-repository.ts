@@ -63,6 +63,7 @@ import { CONTRACT_INITIAL_STATUS, checkTransition, isContractStatus } from "./co
 import type { ContractStatus } from "./contract-lifecycle.ts";
 import { extractContractFields } from "./contract-extraction.ts";
 import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
+import { mensajeRecordatorioPlazo, officialOnlyCalendar } from "./dias-inhabiles.ts";
 import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
 import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
 import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./renewal-radar.ts";
@@ -720,7 +721,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
         tenderId: tender.id,
         submissionDeadline: tender.submissionDeadline!,
         daysRemaining,
-        message: `La convocatoria "${tender.title}" vence el ${tender.submissionDeadline}.`,
+        message: mensajeRecordatorioPlazo(tender.title, tender.submissionDeadline!, now.toISOString(), officialOnlyCalendar()),
         createdAt: new Date().toISOString(),
         acknowledgedAt: null,
         acknowledgedBy: null,
@@ -1587,7 +1588,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord> {
     const contract = this.requireContract(organizationId, tenderId);
-    const due = computePaymentDueDate(input.invoiceVerifiedOn);
+    const due = computePaymentDueDate(input.invoiceVerifiedOn, input.calendario ?? officialOnlyCalendar());
     const record: ContractInvoiceRecord = {
       id: randomUUID(),
       contractId: contract.id,
@@ -1645,6 +1646,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       hechos: input.hechos,
       agravios: input.agravios,
       pruebas: input.pruebas,
+      holidays: input.calendario ?? officialOnlyCalendar(),
     });
     const record: InconformidadDraftRecord = {
       id: randomUUID(),

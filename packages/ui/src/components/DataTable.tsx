@@ -115,7 +115,7 @@ function textoColumna<T>(c: DataTableColumna<T>): string {
 }
 
 /**
- * Tabla de datos de DS v2: ordenar, paginar, seleccionar, estados cargando/error/
+ * Tabla de datos con la receta de Likida (filas de ~37 px, cabecera mono, filas punteadas): ordenar, paginar, seleccionar, estados cargando/error/
  * vacio, y vista de tarjetas en movil. Accesible: `<table>` con nombre, `aria-sort`
  * en el encabezado activo, encabezados ordenables como botones, casillas con
  * etiqueta, filas clicables enfocables (Enter/Espacio) y avisos `aria-live`.
@@ -235,11 +235,11 @@ export function DataTable<T>({
   const principal = columnas.find((c) => c.principal) ?? columnas[0];
 
   return (
-    <div className={cn("grid gap-3", className)}>
+    <div className={cn("grid min-w-0 gap-2.5", className)}>
       {comoTarjetas ? (
-        <ul aria-label={etiqueta} className="grid gap-3">
+        <ul aria-label={etiqueta} className="grid gap-2">
           {seleccionable && (
-            <li className="flex items-center rounded-card border border-border bg-card px-4 py-2">
+            <li className="flex items-center rounded-lg border border-border bg-card px-3 py-2">
               <Checkbox
                 label="Seleccionar todas"
                 checked={todasVisibles}
@@ -259,7 +259,7 @@ export function DataTable<T>({
                 onClick={(e) => clicFila(e, fila)}
                 onKeyDown={(e) => teclaFila(e, fila)}
                 className={cn(
-                  "rounded-card border border-border bg-card p-4 shadow-card data-[state=selected]:border-primary/50 data-[state=selected]:bg-muted",
+                  "rounded-lg border border-border bg-card p-3 shadow-card data-[state=selected]:border-primary/50 data-[state=selected]:bg-sunken",
                   onFilaClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 )}
               >
@@ -273,11 +273,11 @@ export function DataTable<T>({
                     />
                   )}
                 </div>
-                <dl className="mt-3 grid gap-2">
+                <dl className="mt-2 grid gap-1.5">
                   {columnas
                     .filter((c) => c !== principal && !c.ocultarEnTarjeta)
                     .map((c) => (
-                      <div key={c.id} className="flex items-baseline justify-between gap-3 text-sm">
+                      <div key={c.id} className="flex items-baseline justify-between gap-3 text-ui">
                         <dt className="shrink-0 text-xs text-muted-foreground">{textoColumna(c)}</dt>
                         <dd className="min-w-0 text-right text-foreground">{c.celda(fila)}</dd>
                       </div>
@@ -288,7 +288,7 @@ export function DataTable<T>({
           })}
         </ul>
       ) : (
-        <Table aria-label={etiqueta}>
+        <Table aria-label={etiqueta} className="[&_tbody_tr]:border-dashed">
           <TableHeader>
             <TableRow>
               {seleccionable && (
@@ -307,13 +307,13 @@ export function DataTable<T>({
                 const ariaSort = !ordenable ? undefined : activa ? (orden!.direccion === "asc" ? "ascending" : "descending") : "none";
                 const Icono = !activa ? ArrowUpDown : orden!.direccion === "asc" ? ArrowUp : ArrowDown;
                 return (
-                  <TableHead key={c.id} scope="col" aria-sort={ariaSort} className={cn("h-11", ALINEAR[c.alinear ?? "left"], c.className)}>
+                  <TableHead key={c.id} scope="col" aria-sort={ariaSort} className={cn(ALINEAR[c.alinear ?? "left"], c.className)}>
                     {ordenable ? (
                       <button
                         type="button"
                         onClick={() => alternarOrden(c.id)}
                         className={cn(
-                          "-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-[color,background-color] duration-fast ease-brand hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "-mx-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium transition-[color,background-color] duration-fast ease-brand hover:bg-sunken hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           activa && "text-foreground",
                         )}
                       >
@@ -339,7 +339,7 @@ export function DataTable<T>({
                   tabIndex={onFilaClick ? 0 : undefined}
                   onClick={(e) => clicFila(e, fila)}
                   onKeyDown={(e) => teclaFila(e, fila)}
-                  className={cn(onFilaClick && "cursor-pointer focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}
+                  className={cn(onFilaClick && "cursor-pointer focus-visible:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}
                 >
                   {seleccionable && (
                     <TableCell className="w-10">
@@ -359,20 +359,20 @@ export function DataTable<T>({
       )}
 
       {(pag || seleccionable) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs text-muted-foreground">
           <p role="status" aria-live="polite">
             {seleccionable && seleccion.size > 0 ? `${seleccion.size} seleccionada${seleccion.size === 1 ? "" : "s"} · ` : ""}
             {ordenadas.length === 0 ? "Sin resultados" : `Mostrando ${desde}–${hasta} de ${ordenadas.length}`}
           </p>
           {pag && totalPaginas > 1 && (
             <nav aria-label="Paginación" className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="sm" iconLeft={<ChevronLeft aria-hidden="true" />} disabled={pagina <= 1} onClick={() => irAPagina(pagina - 1)}>
+              <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-xs" iconLeft={<ChevronLeft aria-hidden="true" />} disabled={pagina <= 1} onClick={() => irAPagina(pagina - 1)}>
                 Anterior
               </Button>
               <span aria-current="page" className="min-w-[5.5rem] text-center">
                 Página {pagina} de {totalPaginas}
               </span>
-              <Button type="button" variant="outline" size="sm" iconRight={<ChevronRight aria-hidden="true" />} disabled={pagina >= totalPaginas} onClick={() => irAPagina(pagina + 1)}>
+              <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-xs" iconRight={<ChevronRight aria-hidden="true" />} disabled={pagina >= totalPaginas} onClick={() => irAPagina(pagina + 1)}>
                 Siguiente
               </Button>
             </nav>

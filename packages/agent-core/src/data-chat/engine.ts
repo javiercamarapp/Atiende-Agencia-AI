@@ -10,7 +10,7 @@
 //    texto del modelo solo se muestra si todos sus números existen en los resultados.
 import { isBudgetExceededError, isMonthlyBudgetExceededError } from "../gateway/errors.js";
 import { isKillSwitchEngagedError } from "../gateway/kill-switch.js";
-import type { LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
+import type { LlmCompletionResult, LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
 import { toJsonSchema, parseArgs, type ParsedArgs } from "./params.js";
 import { allowedNumbers, unsupportedNumbers } from "./numbers-guard.js";
 import { containsLink, redactPii, sanitizeCell, sanitizeRowForModel } from "./sanitize.js";
@@ -32,6 +32,27 @@ import {
   type DataChatToolResult,
 } from "./types.js";
 
+/** Evento de progreso de un turno (transporte NDJSON). El motor solo emite los PASOS de herramienta; el cierre
+ *  (`fin`) y el `error` los arma la capa HTTP con la respuesta ya terminada. `herramienta` es el nombre del catalogo
+ *  (nunca parametros, filas ni texto del usuario). */
+export interface DataChatPasoEvento {
+  readonly t: "paso";
+  readonly fase: "inicio" | "fin";
+  readonly herramienta: string;
+}
+
+/** El turno se cancelo porque `signal` se aborto (el usuario pulso Detener o cerro la conexion). */
+export class DataChatAbortedError extends Error {
+  constructor() {
+    super("data_chat_aborted");
+    this.name = "DataChatAbortedError";
+  }
+}
+
+export function isDataChatAbortedError(err: unknown): err is DataChatAbortedError {
+  return err instanceof DataChatAbortedError;
+}
+
 export interface RunDataChatTurnOptions {
   readonly catalog: DataChatCatalog;
   readonly scope: DataChatScope;
@@ -39,10 +60,23 @@ export interface RunDataChatTurnOptions {
   readonly history?: readonly DataChatHistoryTurn[];
   /** Proveedor LLM abstraído (gateway real, o el guion de pruebas). */
   readonly complete: DataChatCompletion;
+  /** Reintento UNICO con un modelo mas fuerte cuando la guardia de cifras rechaza la narrativa del primero
+   *  (cifras que no estan en los resultados). Opcional: sin el, se muestra el texto determinista. */
+  readonly completeRetry?: DataChatCompletion;
+  /** MODO SIN IA: nombre de una herramienta del catalogo para ejecutarla directo (sin llamar al modelo), con sus
+   *  parametros por defecto. Es lo que hacen los botones de `noAi.options`; mismo alcance, limites, tiempo, PII y
+   *  bitacora que un turno normal. */
+  readonly directTool?: string;
   readonly rateLimiter?: DataChatRateLimiter;
   readonly audit?: DataChatAuditSink;
   readonly limits?: Partial<DataChatLimits>;
   readonly now?: Date;
+  /** Progreso en vivo: se llama con `paso`/`inicio` antes de ejecutar cada herramienta del catalogo y con
+   *  `paso`/`fin` al terminar (haya salido bien o no). Un callback que lance NO tumba el turno. */
+  readonly onEvento?: (evento: DataChatPasoEvento) => void;
+  /** Cancelacion: si se aborta, el turno se detiene en el siguiente punto de control (antes de llamar al modelo,
+   *  antes de cada herramienta) o de inmediato si esta esperando al modelo, y lanza `DataChatAbortedError`. */
+  readonly signal?: AbortSignal;
   /** Errores internos (nunca se muestran al usuario ni al modelo). */
   readonly onError?: (where: string, err: unknown) => void;
 }
@@ -125,6 +159,48 @@ async function withTimeout<T>(work: (signal: AbortSignal) => Promise<T>, ms: num
   }
 }
 
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DataChatAbortedError();
+}
+
+/** Espera `work` pero se rinde en cuanto `signal` se aborta (el trabajo en vuelo ya no se espera). */
+function raceAbort<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) {
+    work.catch(() => {});
+    return Promise.reject(new DataChatAbortedError());
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      work.catch(() => {});
+      reject(new DataChatAbortedError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Periodos preferidos (en orden) para una consulta directa del modo sin IA; el periodo resuelto siempre se muestra en la fuente. */
+const DIRECT_PERIOD_PREFERENCE = ["ultimos_30_dias", "este_mes", "ultimos_7_dias", "esta_semana", "proximos_7_dias", "hoy"] as const;
+
+/** Argumentos por defecto de una consulta directa: solo el periodo, si la herramienta lo declara. Una herramienta con
+ *  otros parametros OBLIGATORIOS no se puede ejecutar sin preguntar (devuelve `clarify`). */
+function directDefaultArgs(tool: DataChatTool): Record<string, string> {
+  const periodo = tool.params["periodo"];
+  if (periodo?.type !== "enum") return {};
+  const pick = DIRECT_PERIOD_PREFERENCE.find((v) => periodo.values.includes(v)) ?? periodo.values[0];
+  return pick ? { periodo: pick } : {};
+}
+
 function answer(status: DataChatAnswer["status"], text: string, extra: Partial<Omit<DataChatAnswer, "status" | "text">> = {}): DataChatAnswer {
   return { status, text, blocks: extra.blocks ?? [], sources: extra.sources ?? [], toolsUsed: extra.toolsUsed ?? [], ...(extra.noAi ? { noAi: extra.noAi } : {}) };
 }
@@ -149,6 +225,14 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   const now = opts.now ?? new Date();
   const started = Date.now();
   const onError = opts.onError ?? (() => {});
+  const emit = (evento: DataChatPasoEvento): void => {
+    if (!opts.onEvento) return;
+    try {
+      opts.onEvento(evento);
+    } catch (err) {
+      onError("on_evento", err); // un cliente de transporte caido nunca tumba el turno
+    }
+  };
 
   const audit = async (entry: Omit<DataChatAuditEntry, "organizationId" | "userId" | "vertical">): Promise<void> => {
     if (!opts.audit) return;
@@ -159,9 +243,11 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   };
 
-  const question = opts.question.trim();
+  const direct = opts.directTool === undefined ? undefined : catalog.tools.find((t) => t.name === opts.directTool);
+  if (opts.directTool !== undefined && !direct) return answer("invalid_input", "Esa consulta no existe en tu catálogo.");
+  const question = direct ? direct.label : opts.question.trim();
   if (question.length === 0) return answer("invalid_input", "Escribe una pregunta sobre tus datos.");
-  if (question.length > limits.maxQuestionChars) {
+  if (!direct && question.length > limits.maxQuestionChars) {
     return answer("invalid_input", `Tu pregunta es demasiado larga (máximo ${limits.maxQuestionChars} caracteres). Hazla más corta y concreta.`);
   }
 
@@ -201,6 +287,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   }
   messages.push({ role: "user", content: question });
 
+  throwIfAborted(opts.signal);
   const runs: ToolRun[] = [];
   const everyResult: DataChatToolResult[] = [];
   let toolCallsMade = 0;
@@ -208,14 +295,20 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
 
   try {
     for (let round = 0; round <= limits.maxToolRounds; round += 1) {
+      throwIfAborted(opts.signal);
       const lastRound = round === limits.maxToolRounds;
-      const res = await opts.complete({
-        system,
-        messages,
-        tools: lastRound ? undefined : toolDefs,
-        maxOutputTokens: limits.maxOutputTokens,
-        temperature: 0,
-      });
+      const res: Pick<LlmCompletionResult, "text" | "toolCalls"> = direct
+        ? { text: "", ...(round === 0 ? { toolCalls: [{ id: "direct-1", name: direct.name, argumentsJson: JSON.stringify(directDefaultArgs(direct)) }] } : {}) }
+        : await raceAbort(
+            opts.complete({
+              system,
+              messages,
+              tools: lastRound ? undefined : toolDefs,
+              maxOutputTokens: limits.maxOutputTokens,
+              temperature: 0,
+            }),
+            opts.signal,
+          );
       const calls: LlmToolCall[] = lastRound ? [] : (res.toolCalls ?? []);
       if (calls.length === 0) {
         finalText = res.text ?? "";
@@ -223,6 +316,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
       }
       messages.push({ role: "assistant", content: res.text ?? "", toolCalls: calls });
       for (const call of calls) {
+        throwIfAborted(opts.signal);
         if (toolCallsMade >= limits.maxToolCallsPerTurn) {
           messages.push({ role: "tool", toolCallId: call.id, content: JSON.stringify({ estado: "error", mensaje: "límite de consultas por pregunta alcanzado" }) });
           continue;
@@ -253,9 +347,11 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
 
         let result: DataChatToolResult;
         let errorCode: string | undefined;
+        emit({ t: "paso", fase: "inicio", herramienta: tool.name });
         try {
-          result = await withTimeout((signal) => tool.run({ scope, now, signal, maxRows: limits.maxRows }, parsed.value), limits.toolTimeoutMs);
+          result = await raceAbort(withTimeout((signal) => tool.run({ scope, now, signal, maxRows: limits.maxRows }, parsed.value), limits.toolTimeoutMs), opts.signal);
         } catch (err) {
+          if (isDataChatAbortedError(err)) throw err;
           onError(`tool:${tool.name}`, err);
           errorCode = (err as { code?: string })?.code === "tool_timeout" ? "tool_timeout" : "tool_failed";
           result = {
@@ -270,6 +366,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
         // Las herramientas piden maxRows + 1 filas: si llega la fila extra, hay más de las que se muestran.
         const truncated = result.rows.length > limits.maxRows;
         const clipped: DataChatToolResult = result.rows.length > limits.maxRows ? { ...result, rows: result.rows.slice(0, limits.maxRows) } : result;
+        emit({ t: "paso", fase: "fin", herramienta: tool.name });
         runs.push({ tool, result: clipped, truncated });
         everyResult.push(clipped);
         await audit({
@@ -284,6 +381,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
       }
     }
   } catch (err) {
+    if (isDataChatAbortedError(err)) throw err;
     if (isMonthlyBudgetExceededError(err) || isBudgetExceededError(err)) {
       await audit({ tool: null, params: {}, outcome: "budget_exceeded", rowCount: 0, durationMs: Date.now() - started });
       return noAiAnswer("budget_exceeded", "budget", catalog);
@@ -294,6 +392,10 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
 
   // ---- armado de la respuesta ----
   const toolsUsed = [...new Set(runs.map((r) => r.tool.name))];
+
+  if (runs.length === 0 && direct) {
+    return answer("clarify", `La consulta «${direct.label}» necesita más datos (por ejemplo un periodo). Escríbela como pregunta indicando lo que quieres ver.`);
+  }
 
   if (runs.length === 0) {
     const asksBack = finalText.trim().endsWith("?") && finalText.trim().length <= 300;
@@ -339,10 +441,36 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   }));
 
   const deterministic = withRows.map((r) => r.result.summary ?? `${r.tool.label}: ${r.result.rows.length} fila(s) en la tabla.`).join(" ");
-  const narrative = sanitizeNarrative(finalText);
   const allowed = allowedNumbers(question, everyResult);
-  const narrativeOk =
-    narrative.length > 0 && narrative.length <= MAX_NARRATIVE_CHARS && !containsLink(narrative) && unsupportedNumbers(narrative, allowed).length === 0;
+  const passesGuard = (text: string): boolean =>
+    text.length > 0 && text.length <= MAX_NARRATIVE_CHARS && !containsLink(text) && unsupportedNumbers(text, allowed).length === 0;
+  let narrative = sanitizeNarrative(finalText);
+  let narrativeOk = passesGuard(narrative);
+
+  // Guardia de cifras: si el modelo escribio una narrativa con cifras que NO estan en los resultados, UN reintento con
+  // el modelo mas fuerte (`completeRetry`). Si tambien falla o lanza, se muestra el texto determinista (nunca se
+  // muestra una narrativa que no paso la guardia).
+  if (!narrativeOk && narrative.length > 0 && opts.completeRetry && !direct) {
+    throwIfAborted(opts.signal);
+    try {
+      const retry = await opts.completeRetry({
+        system,
+        messages: [
+          ...messages,
+          { role: "user", content: "Tu respuesta anterior incluyó cifras que no aparecen en los resultados de las consultas. Redáctala de nuevo usando ÚNICAMENTE las cifras de esos resultados, sin inventar ni calcular otras." },
+        ],
+        maxOutputTokens: limits.maxOutputTokens,
+        temperature: 0,
+      });
+      const retried = sanitizeNarrative(retry.text ?? "");
+      if (passesGuard(retried)) {
+        narrative = retried;
+        narrativeOk = true;
+      }
+    } catch (err) {
+      onError("llm_retry", err);
+    }
+  }
 
   return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
 }

@@ -28,6 +28,7 @@
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { etiquetaHoraLocal } from "./horarios.ts";
+import { toWhatsAppRecipient } from "./phone.ts";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
@@ -72,6 +73,36 @@ function customerMessageForStatus(order: Order): string | null {
   }
 }
 
+/** R-27: plantillas HSM de WhatsApp (una por estado notificado) para el aviso de estado del pedido al cliente.
+ * Variables del cuerpo, en este orden: {{1}} nombre del cliente, {{2}} sucursal, {{3}} total (por ejemplo
+ * "$250.00 MXN"). Los nombres/idioma son los que hay que crear y aprobar en el Business Manager de Meta (paso
+ * externo); hasta que el operador los declare en `WHATSAPP_APPROVED_TEMPLATES` el gateway envia el texto libre
+ * de siempre (ver packages/whatsapp-gateway/README.md). */
+export const PLANTILLAS_ESTADO_PEDIDO: Readonly<Partial<Record<OrderStatus, { readonly name: string; readonly language: string }>>> = {
+  preparando: { name: "pedido_confirmado", language: "es_MX" },
+  en_camino: { name: "pedido_en_camino", language: "es_MX" },
+  listo_para_recoger: { name: "pedido_listo_para_recoger", language: "es_MX" },
+  entregado: { name: "pedido_entregado", language: "es_MX" },
+  cancelado: { name: "pedido_cancelado", language: "es_MX" },
+};
+
+/** Una variable de plantilla: sin saltos de linea ni tabuladores (Meta los rechaza), espacios colapsados, tope de
+ * 1024 caracteres y nunca vacia (Meta rechaza variables vacias). */
+function parametroPlantilla(valor: string | null | undefined, respaldo: string): string {
+  const limpio = (valor ?? "").replace(/\s+/g, " ").trim().slice(0, 1024);
+  return limpio.length > 0 ? limpio : respaldo;
+}
+
+/** Plantilla HSM del estado actual del pedido, o `undefined` si ese estado no tiene plantilla. */
+export function plantillaParaEstado(order: Order): { readonly name: string; readonly language: string; readonly params: readonly string[] } | undefined {
+  const base = PLANTILLAS_ESTADO_PEDIDO[order.status];
+  if (!base) return undefined;
+  return {
+    ...base,
+    params: [parametroPlantilla(order.customerName, "cliente"), parametroPlantilla(order.branch, "la sucursal"), formatMxn(order.total)],
+  };
+}
+
 export interface CustomerOrderNotificationResult {
   readonly enqueued: boolean;
   readonly reason?: "status_not_notified" | "no_customer_phone" | "no_whatsapp_channel";
@@ -86,33 +117,35 @@ export interface CustomerOrderNotificationResult {
  * pisan entre sí — pero un reintento idéntico (mismo pedido, mismo status) nunca
  * duplica (mismo dedupe real que `reminders.ts::runConfirmacionCitaCore`).
  *
- * Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
- * "soporte de plantillas HSM de WhatsApp ausente"): este envío es PROACTIVO (el
- * negocio inicia la conversación al cambiar el estado del pedido) — incluso cuando
- * `order` se originó por voz/web/admin, sin NINGÚN mensaje de WhatsApp previo de
- * este cliente que abra la ventana de 24h de Meta. `MetaGraphWhatsAppClient`
- * (`@atiende/whatsapp-gateway`) todavía no sabe enviar `type: "template"` — ver el
- * comentario de cabecera de
- * `packages/whatsapp-gateway/src/providers/meta-graph-client.ts` (o el README de
- * ese paquete) para el gap completo. Comportamiento actual honesto: Meta real
- * rechaza este envío fuera de ventana con un 4xx de negocio, el dispatcher lo marca
- * `dead` (nunca `sent` fingido) — la notificación simplemente no le llega al
- * cliente por WhatsApp hasta que exista una plantilla real aprobada.
+ * R-27 (rubro 17 de la auditoría, plantillas HSM): este envío es PROACTIVO (el negocio inicia la conversación
+ * al cambiar el estado del pedido), incluso cuando `order` se originó por voz/web/admin, sin ningún mensaje de
+ * WhatsApp previo de este cliente que abra la ventana de 24 h de Meta. Por eso el payload lleva, además del texto
+ * libre (`body`, respaldo), la plantilla HSM del estado (`template`, ver `PLANTILLAS_ESTADO_PEDIDO`).
+ * `MetaGraphWhatsAppClient` (`@atiende/whatsapp-gateway`) la envía como `type: "template"` SOLO si el operador
+ * declaró esa plantilla aprobada por Meta (`WHATSAPP_APPROVED_TEMPLATES`); si no, sale el texto libre, que fuera
+ * de la ventana Meta rechaza con un 4xx de negocio y el dispatcher marca `dead` (nunca `sent` fingido).
  */
 export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRepository, order: Order): Promise<CustomerOrderNotificationResult> {
   if (!CUSTOMER_NOTIFIED_STATUSES.has(order.status)) return { enqueued: false, reason: "status_not_notified" };
   if (!order.customerPhone) return { enqueued: false, reason: "no_customer_phone" };
+  // El telefono guardado son 10 digitos nacionales: Meta exige el numero con codigo de pais (ver phone.ts).
+  const recipient = toWhatsAppRecipient(order.customerPhone);
+  if (!recipient) return { enqueued: false, reason: "no_customer_phone" };
 
   const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(order.organizationId, order.propertyId);
   if (!phoneNumberId) return { enqueued: false, reason: "no_whatsapp_channel" };
 
   const message = customerMessageForStatus(order);
   if (!message) return { enqueued: false, reason: "status_not_notified" };
+  const plantilla = plantillaParaEstado(order);
 
   await repo.enqueueMessagingOutbox(order.organizationId, "whatsapp", `order.status.${order.status}`, `order-status:${order.id}:${order.status}`, {
-    to: order.customerPhone,
+    to: recipient,
     phone_number_id: phoneNumberId,
     body: message,
+    // R-27: el aviso es PROACTIVO (puede caer fuera de la ventana de 24 h): se declara la plantilla HSM del
+    // estado y el gateway decide si usarla (solo si el operador la declaro aprobada); `body` es el respaldo.
+    ...(plantilla ? { template: plantilla } : {}),
   });
   return { enqueued: true };
 }

@@ -13,6 +13,7 @@ import { ArrowLeft } from "lucide-react";
 import type { StatusTone } from "@atiende/ui";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea } from "@atiende/ui";
 import { addWarRoomEntry, createWarRoomItem, fetchWarRoom, importWarRoomRequirements, updateWarRoomItem } from "../lib/sala-guerra-client.ts";
+import { textoDiasHabiles } from "../lib/dias-inhabiles-client.ts";
 import { SEMAFORO_TONES } from "../lib/status-tones.ts";
 import type { DeadlineSemaphore, SemaphoreColor, WarRoomBoardResponse, WarRoomItem, WarRoomItemKind, WarRoomItemStatus, WarRoomSeverity } from "../lib/sala-guerra-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -296,6 +297,14 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
                 <div className="text-xs uppercase text-muted-foreground">Presentación de propuestas</div>
                 <div className="text-sm font-semibold text-foreground">{board.submissionDeadline.at ? DATE_TIME.format(new Date(board.submissionDeadline.at)) : "Sin fecha declarada"}</div>
                 <StatusBadge tone={semaphoreTone(board.submissionDeadline.semaphore.color)}>{semaphoreLabel(board.submissionDeadline.semaphore)}</StatusBadge>
+                {data.plazoPresentacion ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {textoDiasHabiles(data.plazoPresentacion)}
+                    {data.plazoPresentacion.avisos.map((a) => (
+                      <div key={a}>{a}</div>
+                    ))}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           </section>

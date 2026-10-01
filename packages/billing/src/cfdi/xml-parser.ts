@@ -13,8 +13,8 @@
 // CFDI 4.0 con un solo nodo `cfdi:Comprobante`, N conceptos, impuestos
 // trasladados/retenidos "planos" (un renglón de IVA/IEPS/ISR por concepto o a
 // nivel comprobante) y el complemento `tfd:TimbreFiscalDigital` para el UUID.
-// QUEDAN FUERA (no se finge soporte): comercio exterior, pagos en
-// parcialidades/complemento de pagos, nómina vía XML (ya existe
+// QUEDAN FUERA (no se finge soporte): comercio exterior, el complemento de
+// pagos (ver `rep-parser.ts`, D-23: se procesa aparte, no como factura), nómina vía XML (ya existe
 // `generarXmlCfdiNomina` para el sentido inverso, emisión, no consumo), y
 // cualquier CFDI con más de un `cfdi:Comprobante` en el mismo archivo.
 //
@@ -262,25 +262,39 @@ function desglosarImpuestos(comprobante: Record<string, unknown>): readonly Cfdi
 }
 
 /** Rechaza todo lo que no sea un CFDI plano ANTES de entregarlo al parser (ver cabecera: seguridad de la entrada). */
-function rechazarXmlPeligroso(xml: string): void {
+export function validarXmlCfdiSeguro(xml: string): void {
   if (xml.length > CFDI_XML_MAX_CARACTERES) {
     throw new CfdiXmlParseError('El XML excede el tamaño máximo permitido.');
   }
+  // U+FFFD es lo que deja `Request.text()` al encontrar bytes que no son UTF-8 válido (D-29).
+  if (xml.includes('\uFFFD')) throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 válido.');
   if (xml.includes('\u0000')) throw new CfdiXmlParseError('El XML contiene caracteres no permitidos.');
   // `<!` solo se admite para comentarios y CDATA: cualquier otra declaración (DOCTYPE, ENTITY, ELEMENT, ATTLIST...) se rechaza.
   if (/<!(?!--|\[CDATA\[)/.test(xml)) throw new CfdiXmlParseError('El XML no puede declarar DTD ni entidades.');
   if (/<\?xml-stylesheet/i.test(xml)) throw new CfdiXmlParseError('El XML no puede incluir hojas de estilo.');
-  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml);
+  const codificacion = /^\s*<\?xml[^>]*\sencoding\s*=\s*["']([^"']+)["']/i.exec(xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml);
   if (codificacion && codificacion[1]!.toLowerCase() !== 'utf-8') {
     throw new CfdiXmlParseError('El XML debe declarar codificación UTF-8.');
   }
+}
+
+/** Variante para bytes crudos (archivo subido): UTF-8 estricto (sin sustitución silenciosa por U+FFFD) y el mismo tope. */
+export function parseCfdiXmlBytes(bytes: Uint8Array): CfdiXmlParseResult {
+  if (bytes.byteLength > CFDI_XML_MAX_CARACTERES) throw new CfdiXmlParseError('El XML excede el tamaño máximo permitido.');
+  let texto: string;
+  try {
+    texto = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new CfdiXmlParseError('El XML debe estar codificado en UTF-8 válido.');
+  }
+  return parseCfdiXml(texto);
 }
 
 export function parseCfdiXml(xml: string): CfdiXmlParseResult {
   if (typeof xml !== 'string' || xml.trim().length === 0) {
     throw new CfdiXmlParseError('El XML está vacío.');
   }
-  rechazarXmlPeligroso(xml);
+  validarXmlCfdiSeguro(xml);
 
   const validacion = XMLValidator.validate(xml);
   if (validacion !== true) {
@@ -297,6 +311,10 @@ export function parseCfdiXml(xml: string): CfdiXmlParseResult {
   const comprobante = doc.Comprobante as Record<string, unknown> | undefined;
   if (!comprobante || typeof comprobante !== 'object') {
     throw new CfdiXmlParseError('No es un CFDI válido: falta el nodo raíz cfdi:Comprobante.');
+  }
+
+  if (attrString(comprobante.TipoDeComprobante) === 'P') {
+    throw new CfdiXmlParseError('Es un CFDI de pago (tipo P): se procesa con el complemento de pago 2.0, no como factura.');
   }
 
   const version = attrString(comprobante.Version);

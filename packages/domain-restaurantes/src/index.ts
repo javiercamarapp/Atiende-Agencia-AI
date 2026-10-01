@@ -82,7 +82,7 @@ export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedid
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, computeCortesiaDiscount, selectAutomaticPromotion, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
-export { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
+export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from "./phone.ts";
 
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
 export type { RestaurantesRole } from "./roles.ts";
@@ -135,6 +135,8 @@ export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./order
 export {
   notifyCustomerOnOrderStatusChangeCore,
   tryNotifyCustomerOnOrderStatusChange,
+  PLANTILLAS_ESTADO_PEDIDO,
+  plantillaParaEstado,
   notifyStaffNewOrderCore,
   tryNotifyStaffNewOrder,
   notifyStaffOrderProblemCore,
@@ -190,6 +192,7 @@ export {
   getSalesTrendKpis,
   getChannelKpis,
   computeChannelKpis,
+  channelPeriodLabel,
   getCustomerKpis,
   computeCustomerKpis,
 } from "./kpis.ts";
@@ -220,6 +223,10 @@ export {
 } from "./whatsapp/agent-config-editor.ts";
 export type { DiferenciaCampo, LineaDiff, ResultadoValidacion } from "./whatsapp/agent-config-editor.ts";
 export * from "./conversaciones/index.ts";
+// R-19/R-20: organizacion demo (marca, widget publico de chat sin Meta, telefonos ficticios).
+export * from "./demo/index.ts";
+// R-33: checklist de onboarding calculado con datos reales.
+export * from "./onboarding.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,

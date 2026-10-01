@@ -36,6 +36,18 @@ export interface ChatDatosFuente {
   readonly scopeLabel: string;
 }
 
+/** MODO SIN IA: cuando el asistente no puede usar el modelo, el servidor devuelve el catalogo de consultas directas. */
+export interface ChatDatosOpcionSinIa {
+  readonly tool: string;
+  readonly label: string;
+  readonly description: string;
+}
+
+export interface ChatDatosSinIa {
+  readonly reason: "provider_down" | "budget" | "kill_switch";
+  readonly options: readonly ChatDatosOpcionSinIa[];
+}
+
 export interface ChatDatosMensaje {
   readonly id: string;
   readonly role: "user" | "assistant";
@@ -44,6 +56,8 @@ export interface ChatDatosMensaje {
   readonly status?: string;
   readonly blocks?: readonly ChatDatosBloque[];
   readonly sources?: readonly ChatDatosFuente[];
+  /** Presente solo cuando la respuesta se dio sin IA: sus `options` se ofrecen como botones de consulta directa. */
+  readonly noAi?: ChatDatosSinIa;
 }
 
 export interface ChatDatosDialogProps {
@@ -53,6 +67,8 @@ export interface ChatDatosDialogProps {
   readonly mensajes: readonly ChatDatosMensaje[];
   readonly enviando: boolean;
   readonly onEnviar: (pregunta: string) => void;
+  /** Ejecuta una consulta directa del modo sin IA (boton de `noAi.options`). Sin el, las opciones no se muestran como botones. */
+  readonly onEjecutarOpcion?: (opcion: ChatDatosOpcionSinIa) => void;
   /** Preguntas de ejemplo (solo cubren lo que el catalogo de la vertical sabe responder). */
   readonly sugerencias?: readonly string[];
   readonly maxCaracteres?: number;
@@ -179,7 +195,30 @@ const AVISO_POR_ESTADO: Readonly<Record<string, string>> = {
   budget_exceeded: "Tope de uso alcanzado",
 };
 
-function Burbuja({ m }: { m: ChatDatosMensaje }) {
+function OpcionesSinIa({ opciones, deshabilitado, onEjecutar }: { opciones: readonly ChatDatosOpcionSinIa[]; deshabilitado: boolean; onEjecutar: (o: ChatDatosOpcionSinIa) => void }) {
+  if (opciones.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2" role="group" aria-label="Consultas directas sin IA">
+      <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Consultas directas</p>
+      <div className="flex flex-wrap gap-2">
+        {opciones.map((o) => (
+          <button
+            key={o.tool}
+            type="button"
+            title={o.description}
+            disabled={deshabilitado}
+            onClick={() => onEjecutar(o)}
+            className="rounded-full border border-border px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Burbuja({ m, enviando, onEjecutarOpcion }: { m: ChatDatosMensaje; enviando: boolean; onEjecutarOpcion?: (o: ChatDatosOpcionSinIa) => void }) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -197,12 +236,13 @@ function Burbuja({ m }: { m: ChatDatosMensaje }) {
           <BloqueTabla key={`${b.tool}-${i}`} bloque={b} />
         ))}
         <Fuentes fuentes={m.sources ?? []} />
+        {m.noAi && onEjecutarOpcion ? <OpcionesSinIa opciones={m.noAi.options} deshabilitado={enviando} onEjecutar={onEjecutarOpcion} /> : null}
       </div>
     </div>
   );
 }
 
-export function ChatDatosDialog({ open, onOpenChange, nombreNegocio, mensajes, enviando, onEnviar, sugerencias = [], maxCaracteres = 600 }: ChatDatosDialogProps) {
+export function ChatDatosDialog({ open, onOpenChange, nombreNegocio, mensajes, enviando, onEnviar, onEjecutarOpcion, sugerencias = [], maxCaracteres = 600 }: ChatDatosDialogProps) {
   const [texto, setTexto] = useState("");
   const inputId = useId();
   const finRef = useRef<HTMLDivElement | null>(null);
@@ -251,7 +291,7 @@ export function ChatDatosDialog({ open, onOpenChange, nombreNegocio, mensajes, e
               </div>
             </div>
           ) : (
-            mensajes.map((m) => <Burbuja key={m.id} m={m} />)
+            mensajes.map((m) => <Burbuja key={m.id} m={m} enviando={enviando} onEjecutarOpcion={onEjecutarOpcion} />)
           )}
           {enviando ? (
             <p role="status" className="text-xs text-muted-foreground">

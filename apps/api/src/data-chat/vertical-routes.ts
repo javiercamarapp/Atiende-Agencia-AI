@@ -11,9 +11,11 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { runDataChatTurn, type DataChatCatalog } from "@atiende/agent-core/data-chat";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
-import { parseDataChatBody } from "./body.ts";
+import { DATA_CHAT_RETRY_SUFFIX } from "../production/llm-models.ts";
+import { parseDataChatRequest } from "./body.ts";
+import { buildDataChatEstado } from "./estado.ts";
+import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "./ndjson.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 
 export interface VerticalDataChatConfig {
@@ -38,17 +40,16 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
   }
 
   // La UI lo consulta para mostrar "Pronto" mientras no haya proveedor de IA configurado (o el rol no sirva).
-  app.get(`${base}/estado`, (c) => {
+  app.get(`${base}/estado`, async (c) => {
     assertVerticalRole(c, cfg.roles);
-    return c.json({ available: Boolean(deps.dataChat?.completion && cfg.catalog(deps, c.get("db"))) });
+    const db = c.get("db");
+    const available = Boolean(deps.dataChat?.completion && cfg.catalog(deps, db));
+    return c.json(await buildDataChatEstado(deps, db, { organizationId: c.get("organizationId"), userId: c.get("userId") }, available));
   });
 
   app.post(base, async (c) => {
     assertVerticalRole(c, cfg.roles);
-    const raw: unknown = await c.req.json().catch(() => {
-      throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
-    });
-    const { question, history } = parseDataChatBody(raw);
+    const { question, history, tool } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -56,7 +57,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const completion = dataChat?.completion;
     const catalog = cfg.catalog(deps, db);
     if (!dataChat || !completion || !catalog) {
-      return c.json({ status: "unavailable", text: "El asistente de datos todavía no está activado para tu cuenta. Tus tableros siguen disponibles.", blocks: [], sources: [], toolsUsed: [] });
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
     // Alcance por membership: nunca se ensancha mas alla de las propiedades de este usuario (mismo criterio que
@@ -65,24 +66,31 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const propertyId = c.req.param("propertyId") ?? "";
     const timezone = await cfg.timezone(deps, db, propertyId, organizationId);
 
-    const answer = await runDataChatTurn({
-      catalog,
-      scope: {
-        organizationId,
-        userId: c.get("userId"),
-        vertical: cfg.vertical,
-        verticalRole: c.get("verticalRole") ?? "",
-        allowedPropertyIds,
-        timezone,
-      },
-      question,
-      history,
-      complete: completion(organizationId, cfg.role),
-      rateLimiter: dataChat.rateLimiter,
-      audit: dataChat.audit(db),
-      onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-    });
-    return c.json(answer);
+    const verticalRole = c.get("verticalRole") ?? "";
+    const userId = c.get("userId");
+    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
+      runDataChatTurn({
+        catalog: cfg.catalog(deps, turnDb) ?? catalog,
+        scope: {
+          organizationId,
+          userId,
+          vertical: cfg.vertical,
+          verticalRole,
+          allowedPropertyIds,
+          timezone,
+        },
+        question,
+        history,
+        ...(tool ? { directTool: tool } : {}),
+        complete: completion(organizationId, cfg.role),
+        completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`),
+        rateLimiter: dataChat.rateLimiter,
+        audit: dataChat.audit(turnDb),
+        onEvento,
+        signal,
+        onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+      }),
+    );
   });
 
   return app;

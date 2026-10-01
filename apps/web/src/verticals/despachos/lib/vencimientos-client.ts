@@ -4,12 +4,12 @@
 // resto de lib/*.ts de este panel: probarla con vitest en entorno "node" sin DOM.
 // Llama a `GET/POST /despachos/:propertyId/vencimientos*`
 // (apps/api/.../despachos/vencimientos.ts) — el motor determinista
-// (ISR/IVA/DIOT/Nómina, día 17 del mes siguiente, prioridad, decisión de
+// (calendario fiscal con día hábil, prioridad, decisión de
 // escalamiento) vive por completo en @atiende/domain-despachos/vencimientos/engine.ts;
 // este cliente solo transporta lo que la ruta ya serializa vía `serializeDeadline`.
 import { fetchJson, postJson } from "./admin-client.ts";
 
-export type TipoVencimiento = "ISR" | "IVA" | "DIOT" | "Nómina";
+export type TipoVencimiento = "ISR" | "IVA" | "DIOT" | "Nómina" | "Balanza" | "Anual";
 export type PrioridadVencimiento = "critica" | "alta" | "media" | "baja";
 export type EstadoVencimiento = "pendiente" | "en_proceso" | "completado" | "vencido" | "escalado";
 
@@ -24,6 +24,10 @@ export interface FiscalDeadline {
   readonly comprobanteUrl: string | null;
   readonly diasRestantes: number;
   readonly creadoEn: string;
+  /** Fundamento legal del plazo (lo calcula el motor, nunca la UI). */
+  readonly fundamento: string;
+  /** true = el plazo o el día hábil dependen de una fuente que debe confirmar un fiscalista. */
+  readonly validarConFiscalista: boolean;
 }
 
 export async function fetchVencimientos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, filter?: { readonly estado?: EstadoVencimiento }): Promise<readonly FiscalDeadline[]> {
@@ -31,7 +35,7 @@ export async function fetchVencimientos(fetchImpl: typeof fetch, apiBaseUrl: str
   return fetchJson<readonly FiscalDeadline[]>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/vencimientos${qs}`, token);
 }
 
-export async function calcularVencimientos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: { readonly year: number; readonly month: number }): Promise<readonly FiscalDeadline[]> {
+export async function calcularVencimientos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: { readonly year: number; readonly month: number; readonly regimenFiscal?: string }): Promise<readonly FiscalDeadline[]> {
   return postJson<readonly FiscalDeadline[]>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/vencimientos/calcular`, token, input);
 }
 
@@ -62,4 +66,17 @@ export interface EscalarVencimientoResultado {
 
 export async function escalarVencimiento(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, deadlineId: string): Promise<EscalarVencimientoResultado> {
   return postJson<EscalarVencimientoResultado>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/vencimientos/${deadlineId}/escalar`, token, {});
+}
+
+export interface BarridoVencimientosResultado {
+  readonly evaluados: number;
+  readonly escalados: readonly { readonly id: string; readonly tipo: TipoVencimiento; readonly periodo: string; readonly nivel: string; readonly correosEncolados: number }[];
+  readonly yaEscalados: number;
+  readonly aunNoToca: number;
+  readonly fallidos: readonly { readonly id: string; readonly tipo: TipoVencimiento; readonly periodo: string }[];
+}
+
+/** Escala de una vez los vencimientos que vencen hoy o mañana, o ya vencieron (idempotente). */
+export async function barrerVencimientos(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<BarridoVencimientosResultado> {
+  return postJson<BarridoVencimientosResultado>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/vencimientos/barrido`, token, {});
 }

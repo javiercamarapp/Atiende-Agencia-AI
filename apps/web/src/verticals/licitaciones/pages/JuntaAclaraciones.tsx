@@ -20,6 +20,7 @@ import {
 } from "../lib/sala-guerra-client.ts";
 import type { CaptureResult, DraftResult, JuntaQuestion, JuntaQuestionPriority, JuntaQuestionStatus, JuntaQuestionTopic, JuntaResponse, TransitionInput } from "../lib/sala-guerra-client.ts";
 import { PREGUNTA_JUNTA_TONES } from "../lib/status-tones.ts";
+import { textoDiasHabiles } from "../lib/dias-inhabiles-client.ts";
 import { DATE_TIME, semaphoreTone, WRITE_ROLES, isoToLocalInput, localToIso, semaphoreLabel } from "./SalaGuerra.tsx";
 
 const DECISION_ROLES = new Set(["owner", "admin", "analyst"]);
@@ -319,6 +320,15 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
               Límite para enviar preguntas: {data.summary.questionsDeadline.at ? DATE_TIME.format(new Date(data.summary.questionsDeadline.at)) : "sin fecha declarada"} · Junta: {data.summary.meetingAt ? DATE_TIME.format(new Date(data.summary.meetingAt)) : "sin fecha declarada"}
             </span>
           </div>
+          {data.plazos?.preguntas || data.plazos?.junta ? (
+            <div className="text-xs text-muted-foreground">
+              {data.plazos.preguntas ? <div>Preguntas: {textoDiasHabiles(data.plazos.preguntas)}.</div> : null}
+              {data.plazos.junta ? <div>Junta: {textoDiasHabiles(data.plazos.junta)}.</div> : null}
+              {[...(data.plazos.preguntas?.avisos ?? []), ...(data.plazos.junta?.avisos ?? [])].map((a) => (
+                <div key={a}>{a}</div>
+              ))}
+            </div>
+          ) : null}
           {activeReminders.map((r) => (
             <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
               <span>

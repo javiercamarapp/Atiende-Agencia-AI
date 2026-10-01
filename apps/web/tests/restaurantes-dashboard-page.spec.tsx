@@ -59,6 +59,7 @@ const CHANNELS: ChannelKpis = {
   aiAdoptionPct: 41.7,
   aiRevenuePct: 40.5,
   estimatedHoursSaved: 10.8,
+  periodo: { acotado: true, etiqueta: "Últimos 30 días" },
 };
 
 const CUSTOMERS_CON_DATOS: CustomerKpis = {
@@ -163,6 +164,18 @@ describe("RestaurantesDashboardPage", () => {
     expect(text).toContain("$18,300.00"); // voice.revenue + whatsapp.revenue
     expect(text).toContain("10.8 h");
     expect(text).toContain("Estimado");
+  });
+
+  it("R-30: rotulos veraces — ventas sin cancelados y periodo real de los canales (nunca 'Ingresos generados por IA')", async () => {
+    stubFetch({ channels: { ...CHANNELS, periodo: { acotado: false, etiqueta: "Todo el tiempo registrado" } } });
+    rendered = renderPage();
+    await esperarCarga();
+    const text = rendered.container.textContent!;
+    expect(text).toContain("Ventas por voz y WhatsApp");
+    expect(text).toContain("Sin pedidos cancelados");
+    expect(text).toContain("Periodo: Todo el tiempo registrado");
+    expect(text).not.toContain("Ingresos generados por IA");
+    expect(text).not.toContain("Ingresos por agentes IA");
   });
 
   it("clientes con datos reales: total, ticket promedio, recurrencia, cliente top y tiers", async () => {

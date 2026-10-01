@@ -18,7 +18,6 @@ export interface VozKpiDia {
   readonly escaladas: number;
   readonly abandonadas: number;
   readonly erroresProveedor: number;
-  readonly erroresElevenlabs: number;
   readonly erroresTwilio: number;
   readonly erroresOtros: number;
   readonly toolCalls: number;
@@ -48,7 +47,6 @@ export interface VozKpiTotales {
   readonly tasaHandoffPct: number | null;
   readonly tasaAbandonoPct: number | null;
   readonly erroresProveedor: number;
-  readonly erroresElevenlabs: number;
   readonly erroresTwilio: number;
   readonly erroresOtros: number;
   /** Errores de proveedor / llamadas, tope 100; null sin llamadas. */
@@ -111,7 +109,6 @@ export function totalizarDias(dias: readonly VozKpiDia[]): VozKpiTotales {
     tasaHandoffPct: pct(sum((d) => d.escaladas), cerradas),
     tasaAbandonoPct: pct(sum((d) => d.abandonadas), cerradas),
     erroresProveedor: errores,
-    erroresElevenlabs: sum((d) => d.erroresElevenlabs),
     erroresTwilio: sum((d) => d.erroresTwilio),
     erroresOtros: sum((d) => d.erroresOtros),
     tasaErrorPct: llamadas > 0 ? Math.min(100, Math.round((errores * 100) / llamadas)) : null,
@@ -226,8 +223,8 @@ export function validarUmbrales(entrada: { umbralCostoDiaCentavosMxn: unknown; u
 
 export type VozEventoTipo = "tool_call" | "error_proveedor";
 export const VOZ_EVENTO_TIPOS: readonly VozEventoTipo[] = ["tool_call", "error_proveedor"];
-export type VozProveedorFallo = "elevenlabs" | "twilio" | "gemini" | "otro";
-export const VOZ_PROVEEDORES_FALLO: readonly VozProveedorFallo[] = ["elevenlabs", "twilio", "gemini", "otro"];
+export type VozProveedorFallo = "twilio" | "gemini" | "otro";
+export const VOZ_PROVEEDORES_FALLO: readonly VozProveedorFallo[] = ["twilio", "gemini", "otro"];
 
 export interface VozEventoEntrada {
   readonly organizationId: string;

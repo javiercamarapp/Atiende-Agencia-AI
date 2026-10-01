@@ -1285,8 +1285,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return min === null ? null : new Date(min);
   }
 
-  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow> {
-    const { rows } = await this.db.query<{
+  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null, range?: KpiDateRange): Promise<ChannelStatsRow> {
+    type ChannelRaw = {
       total_orders: string;
       total_revenue: string;
       voice_orders: string;
@@ -1297,10 +1297,35 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       whatsapp_completed: string;
       whatsapp_cancelled: string;
       whatsapp_revenue: string;
-    }>(`select * from restaurantes.orders_channel_stats($1, $2::uuid[]);`, [organizationId, propertyIds ? [...propertyIds] : null]);
+    };
+    const props = propertyIds ? [...propertyIds] : null;
+    const historico = async (): Promise<{ readonly acotado: boolean; readonly rows: readonly ChannelRaw[] }> => {
+      const { rows } = await this.db.query<ChannelRaw>(`select * from restaurantes.orders_channel_stats($1, $2::uuid[]);`, [organizationId, props]);
+      return { acotado: false, rows };
+    };
+    // R-30: con periodo, intenta la funcion nueva (migracion 036) dentro de un SAVEPOINT; contra la base sin
+    // migrar (42883) cae al historico y lo declara (`acotadoAPeriodo: false`), nunca un 500.
+    const { acotado, rows } = range
+      ? await runWithSavepointFallback<{ readonly acotado: boolean; readonly rows: readonly ChannelRaw[] }>({
+          session: this.db,
+          savepointName: "sp_restaurantes_canales_periodo",
+          primary: async () => {
+            const res = await this.db.query<ChannelRaw>(`select * from restaurantes.orders_channel_stats_periodo($1, $2::uuid[], $3::timestamptz, $4::timestamptz);`, [
+              organizationId,
+              props,
+              range.start.toISOString(),
+              range.end.toISOString(),
+            ]);
+            return { acotado: true, rows: res.rows };
+          },
+          isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+          fallback: historico,
+        })
+      : await historico();
     const row = rows[0];
-    if (!row) return { totalOrders: 0, totalRevenue: 0, voice: { orders: 0, completed: 0, cancelled: 0, revenue: 0 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 } };
+    if (!row) return { acotadoAPeriodo: acotado, totalOrders: 0, totalRevenue: 0, voice: { orders: 0, completed: 0, cancelled: 0, revenue: 0 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 } };
     return {
+      acotadoAPeriodo: acotado,
       totalOrders: Number(row.total_orders),
       totalRevenue: Number(row.total_revenue),
       voice: { orders: Number(row.voice_orders), completed: Number(row.voice_completed), cancelled: Number(row.voice_cancelled), revenue: Number(row.voice_revenue) },

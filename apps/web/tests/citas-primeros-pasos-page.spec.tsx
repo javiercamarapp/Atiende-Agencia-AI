@@ -33,7 +33,7 @@ const INCOMPLETO = {
     paso("asignacion", "Asigna un servicio a un profesional", "pendiente", true, "proveedores"),
     paso("horario", "Define el horario semanal", "pendiente", true, "disponibilidad"),
     paso("precio", "Ponle precio a tus servicios", "pendiente", false, "servicios", "1 servicio sin precio"),
-    paso("whatsapp", "Conecta tu número de WhatsApp", "pendiente", false, "mensajes-whatsapp"),
+    paso("whatsapp", "Conecta tu número de WhatsApp", "pendiente", false, "agente-whatsapp"),
     paso("cancelacion", "Avisa al cliente cuando se cancela una cita", "no_disponible", false, "mensajes-whatsapp"),
   ],
   completados: 2,

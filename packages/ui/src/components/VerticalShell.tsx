@@ -6,23 +6,22 @@
 // sesiones; recibe ya armados los datos y los slots (campana, chat, selector de
 // sucursal u organizacion). La sesion vive en `useVerticalSession` (apps/web).
 //
-// Aspecto: sin `data-theme="v2"` la maqueta es la misma de siempre; las migas de
-// escritorio solo se ven bajo v2 (clase condicionada al atributo del <html>, asi
-// reacciona sin recargar). El orden y las medidas de Sidebar/MobileHeader/
-// BottomNav/<main> no cambian.
+// Marco (spec UNI-1 §4-5): lienzo `--background`; sidebar sticky `top-4` a `100dvh - 2rem`; columna de
+// contenido gris sumido con hairline, `rounded-2xl` y scroll interno (misma altura y tope que el Sidebar);
+// en movil, MobileHeader fijo (logo + nombre de la pagina) y BottomNav de 63 px, con los paddings de
+// safe-area (`--safe-area-*`, que valen algo gracias a `viewport-fit=cover` en index.html).
 import * as React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ChevronRight, Compass } from "lucide-react";
+import { Compass } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
-import { DashboardHeader } from "./DashboardHeader";
+import { BarraPagina } from "./BarraPagina";
 import { EstadoCargando } from "./EstadoCargando";
 import { EstadoError } from "./EstadoError";
 import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
-import { Sidebar, type SidebarSection } from "./Sidebar";
+import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
-import { cn } from "../lib/utils";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 
@@ -41,48 +40,48 @@ export interface VerticalMiga {
  * solo item, como "Agenda").
  */
 export function construirMigas(sections: readonly SidebarSection[], pathname: string, raiz: VerticalMiga): VerticalMiga[] {
-  let mejor: { grupo: string; etiqueta: string; to: string } | null = null;
-  for (const s of sections) {
-    for (const it of s.items) {
-      const coincide = pathname === it.to || pathname.startsWith(`${it.to}/`);
-      if (coincide && (!mejor || it.to.length > mejor.to.length)) mejor = { grupo: s.title, etiqueta: it.label, to: it.to };
-    }
-  }
+  const mejor = itemActivo(sections, pathname);
   if (!mejor) return [{ etiqueta: raiz.etiqueta }];
   const migas: VerticalMiga[] = [raiz];
-  if (mejor.grupo.trim().toLowerCase() !== mejor.etiqueta.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
-  migas.push({ etiqueta: mejor.etiqueta });
+  if (mejor.grupo.trim().toLowerCase() !== mejor.item.label.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
+  migas.push({ etiqueta: mejor.item.label });
   return migas;
 }
 
-function Migas({ migas }: { migas: readonly VerticalMiga[] }) {
-  return (
-    <nav
-      aria-label="Migas de pan"
-      data-testid="vertical-migas"
-      className="hidden items-center border-b border-border bg-card px-4 py-1.5 text-xs text-muted-foreground [[data-theme=v2]_&]:flex"
-    >
-      <ol className="flex min-w-0 flex-wrap items-center gap-1">
-        {migas.map((m, i) => {
-          const ultima = i === migas.length - 1;
-          return (
-            <li key={`${i}-${m.etiqueta}`} className="flex min-w-0 items-center gap-1">
-              {i > 0 && <ChevronRight aria-hidden="true" className="size-3 shrink-0" strokeWidth={1.75} />}
-              {ultima || !m.to ? (
-                <span aria-current={ultima ? "page" : undefined} className={cn("truncate", ultima && "font-medium text-foreground")}>
-                  {m.etiqueta}
-                </span>
-              ) : (
-                <Link to={m.to} className="truncate hover:text-foreground">
-                  {m.etiqueta}
-                </Link>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
-  );
+/** Item de navegacion activo: el de `sections` cuya ruta es el prefijo mas largo del `pathname` (null si ninguno). */
+export function itemActivo(sections: readonly SidebarSection[], pathname: string): { grupo: string; item: SidebarItem } | null {
+  let mejor: { grupo: string; item: SidebarItem } | null = null;
+  for (const s of sections) {
+    for (const it of s.items) {
+      const coincide = pathname === it.to || pathname.startsWith(`${it.to}/`);
+      if (coincide && (!mejor || it.to.length > mejor.item.to.length)) mejor = { grupo: s.title, item: it };
+    }
+  }
+  return mejor;
+}
+
+// ---- Titulo de la barra superior -------------------------------------------
+
+export interface TituloBarra {
+  readonly titulo: string;
+  /** Icono (componente lucide) de 15 px; sin el, la barra usa el del item activo o el de `header`. */
+  readonly icono?: SidebarItem["icon"];
+}
+
+const TituloBarraContext = React.createContext<((t: TituloBarra | null) => void) | null>(null);
+
+/**
+ * Una pagina sobrescribe el nombre (y opcionalmente el icono) de la barra superior, p. ej. una
+ * ficha de detalle ("Pedido 1042"). Al desmontarse la pagina la barra vuelve a derivarse de la
+ * ruta activa. Fuera de un `VerticalShell` no hace nada.
+ */
+export function useTituloBarra(titulo: string | null | undefined, icono?: SidebarItem["icon"]): void {
+  const fijar = React.useContext(TituloBarraContext);
+  React.useEffect(() => {
+    if (!fijar || !titulo) return undefined;
+    fijar(icono ? { titulo, icono } : { titulo });
+    return () => fijar(null);
+  }, [fijar, titulo, icono]);
 }
 
 // ---- Estados de arranque y de ruta -----------------------------------------
@@ -177,11 +176,21 @@ export interface VerticalShellProps {
   readonly sections: SidebarSection[];
   /** Destinos curados de la barra inferior (hasta 4; el 5.o lugar es "Más", que lista TODAS las `sections`). */
   readonly mobileItems: BottomNavItem[];
-  readonly user: { email: string; rol?: string } | null;
+  readonly user: SidebarUser | null;
+  /**
+   * Pildoras del pie del Sidebar de escritorio ("Costos de IA", "Ver los otros paneles", "Pregunta a tus
+   * datos"); en movil se agregan a la hoja "Mas" como seccion "Cuenta". Cada una necesita un destino real.
+   */
+  readonly sidebarPie?: SidebarPiePildora[];
   readonly onLogout: () => void;
   readonly loggingOut?: boolean;
-  /** Barra de escritorio (`DashboardHeader` variante vertical). */
-  readonly header: { readonly icon: React.ReactNode; readonly title: string; readonly fecha: string };
+  /**
+   * Barra de escritorio (`BarraPagina`). `title`/`icon` son los de la raiz del panel ("Consola de
+   * <vertical>") y solo se pintan en el Resumen (`resumenTo`) o si la ruta no coincide con ningun
+   * item; en las demas paginas la barra muestra la etiqueta y el icono del item activo del
+   * Sidebar, y la pagina puede sobrescribirlos con `useTituloBarra`.
+   */
+  readonly header: { readonly icon: React.ReactNode; readonly title: string; readonly fecha: string; readonly resumenTo?: string };
   /** Campana ya armada; se usa en escritorio y, si no hay `mobileNotificationBell`, tambien en movil. */
   readonly notificationBell: React.ReactNode;
   readonly mobileNotificationBell?: React.ReactNode;
@@ -214,11 +223,30 @@ export function VerticalShell({
   branchSelector,
   organizationSelector,
   mobileSelector,
+  sidebarPie,
   contentKey,
   children,
 }: VerticalShellProps) {
   const { pathname } = useLocation();
-  const migas = construirMigas(sections, pathname, { etiqueta: header.title });
+  const mainRef = React.useRef<HTMLElement>(null);
+  const [sinH1, setSinH1] = React.useState(false);
+  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra hace de nivel 1 hasta que la pagina pinte el suyo.
+  React.useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return undefined;
+    const medir = () => setSinH1(main.querySelector('h1, [role="heading"][aria-level="1"]') === null);
+    medir();
+    const observador = new MutationObserver(medir);
+    observador.observe(main, { childList: true, subtree: true });
+    return () => observador.disconnect();
+  }, [pathname, contentKey]);
+  const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
+  const activo = itemActivo(sections, pathname);
+  const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
+  const barraDeRuta = !activo || esResumen ? null : activo.item;
+  const IconoBarra = sobrescrito?.icono ?? barraDeRuta?.icon;
+  const tituloBarra = sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title;
+  const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
       <div className="space-y-2">
@@ -228,7 +256,7 @@ export function VerticalShell({
     ) : undefined;
 
   return (
-    <div data-vertical={vertical} className="min-h-screen bg-background flex w-full">
+    <div data-vertical={vertical} className="min-h-[100dvh] bg-background flex w-full">
       <a
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
@@ -236,12 +264,13 @@ export function VerticalShell({
         Saltar al contenido
       </a>
 
-      <div className="hidden md:block p-3">
-        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} />
+      <div className="hidden md:block md:p-4 md:pr-0">
+        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={sidebarPie} />
       </div>
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
+        pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
         action={
           <div className="flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[40vw]">{mobileSelector}</div> : null}
@@ -253,23 +282,30 @@ export function VerticalShell({
         }
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="hidden md:block">
-          <DashboardHeader variant="vertical" icon={header.icon} title={header.title} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} />
-          <Migas migas={migas} />
+      {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
+          redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
+      <div className="flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+        <div className="hidden md:block shrink-0">
+          <BarraPagina icon={iconoBarra} title={tituloBarra} fecha={header.fecha} notificationBell={notificationBell} chatButton={chatButton} comoH1={sinH1} />
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
-        <main id={VERTICAL_SHELL_MAIN_ID} tabIndex={-1} key={contentKey} className="flex-1 px-4 py-4 pt-20 pb-24 md:pt-4 md:pb-8 md:px-6 overflow-auto focus:outline-none">
-          <div className="max-w-6xl mx-auto w-full">
-            {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. */}
-            <div key={pathname} className="motion-safe:animate-page-in">
+        <main
+          ref={mainRef}
+          id={VERTICAL_SHELL_MAIN_ID}
+          tabIndex={-1}
+          key={contentKey}
+          className="flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(6rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
+        >
+          {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
+          <div key={pathname} className="motion-safe:animate-page-in">
+            <TituloBarraContext.Provider value={fijarTitulo}>
               <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
-            </div>
+            </TituloBarraContext.Provider>
           </div>
         </main>
       </div>
 
-      <BottomNav items={mobileItems} moreSections={sections} />
+      <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
     </div>
   );
 }

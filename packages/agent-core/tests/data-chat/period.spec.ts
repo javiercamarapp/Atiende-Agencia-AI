@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePeriod, startOfLocalDay, MAX_PERIOD_DAYS } from "../../src/data-chat/period.js";
+import { resolveForwardPeriod, resolvePeriod, startOfLocalDay, MAX_PERIOD_DAYS } from "../../src/data-chat/period.js";
 
 const TZ = "America/Merida";
 // 29-sep-2026 (martes) 23:30 en Mérida = 30-sep 05:30 UTC.
@@ -81,6 +81,17 @@ describe("resolvePeriod en America/Merida", () => {
     expect(resolvePeriod({ desde: "2026-02-30", hasta: "2026-03-02" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
     expect(resolvePeriod({ desde: "2024-01-01", hasta: "2026-09-01" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
     expect(MAX_PERIOD_DAYS).toBe(366);
+  });
+
+  it("acepta 'periodo' junto con fechas que describen la MISMA ventana (modelos que rellenan todos los parametros) y rechaza si se contradicen", () => {
+    // 30-sep 05:30Z = 29-sep 23:30 en Merida: "ayer" = 28-sep
+    const ok = resolvePeriod({ periodo: "ayer", desde: "2026-09-28", hasta: "2026-09-28" }, NOW, TZ);
+    expect(ok).toMatchObject({ ok: true, period: { fromDate: "2026-09-28", toDate: "2026-09-28" } });
+    expect(ok.ok && ok.period.label).toMatch(/^ayer/);
+    expect(resolvePeriod({ periodo: "ayer", desde: "2026-09-28", hasta: "2026-09-29" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
+    expect(resolvePeriod({ periodo: "ayer", desde: "2026-09-28" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
+    expect(resolveForwardPeriod({ periodo: "hoy", desde: "2026-09-29", hasta: "2026-09-29" }, NOW, TZ)).toMatchObject({ ok: true });
+    expect(resolveForwardPeriod({ periodo: "manana", desde: "2026-09-29", hasta: "2026-09-29" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
   });
 
   it("zona inválida cae a America/Merida en vez de lanzar", () => {

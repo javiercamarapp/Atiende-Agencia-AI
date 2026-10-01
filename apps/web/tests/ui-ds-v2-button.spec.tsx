@@ -47,10 +47,10 @@ describe("Button", () => {
     expect(boton().className).not.toContain("h-[var(--control-md)]");
   });
 
-  it("mantiene foco visible y transiciones enumeradas, sin transition-all", () => {
+  it("el foco lo pinta el outline global de index.css (no se anula) y las transiciones son enumeradas, sin transition-all", () => {
     rendered = renderComponent(<Button>Ok</Button>);
-    expect(boton().className).toContain("focus-visible:ring-2");
-    expect(boton().className).toContain("focus-visible:ring-ring");
+    expect(boton().className).not.toContain("outline-none");
+    expect(boton().className).not.toContain("focus-visible:ring");
     expect(boton().className).not.toContain("transition-all");
     expect(boton().className).toContain("duration-fast");
   });
@@ -138,7 +138,8 @@ describe("Button", () => {
     );
     expect(rendered.container.querySelector("button")).toBeNull();
     const a = rendered.container.querySelector("a")!;
-    expect(a.className).toContain("rounded-full");
+    expect(a.className).toContain("rounded-md");
+    expect(a.className).not.toContain("rounded-full");
     expect(a.getAttribute("href")).toBe("/x");
   });
 

@@ -1,6 +1,5 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
-import plugin from "tailwindcss/plugin.js";
 
 /**
  * Preset compartido, portado literalmente de atiende-restaurantes
@@ -8,10 +7,13 @@ import plugin from "tailwindcss/plugin.js";
  * mismo trío tipográfico Inter / Inter Tight / IBM Plex Mono
  * (docs/referencia/05-frontend-restaurantes.md §1.2/§1.3, REQ-UX-001).
  *
- * Atiende DS v2 (PR-1 del plan de diseño-ux): familias, escala tipográfica,
- * radios con nombre, motion y colores semánticos se leen de variables CSS de
- * index.css. Sus valores por defecto reproducen el aspecto actual; la marca
- * nueva solo aplica bajo <html data-theme="v2">.
+ * UNI-0 (spec de diseño Atiende = Likida): familias, escala tipográfica,
+ * radios, motion y colores se leen de variables CSS de index.css, cuyos valores
+ * son los de Likida (el azul de marca de Atiende se conserva). Radios de
+ * Likida con Tailwind v4: rounded-sm 4 px, rounded-md 12 px, rounded-lg 16 px;
+ * rounded-xl 12 y rounded-2xl 16 son los defaults de v3 y no se tocan. La
+ * bandera visual v2 y su variante `v2:` se retiraron: todo aplica
+ * directo, en claro y oscuro.
  */
 const preset: Omit<Config, "content"> = {
   darkMode: ["class"],
@@ -29,12 +31,17 @@ const preset: Omit<Config, "content"> = {
         body: ["var(--font-body)"],
         sans: ["var(--font-sans)"],
         menu: ["var(--font-body)"],
-        serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
       },
-      // Escala única 4.2 (los text-[Npx] sueltos migran a estos nombres).
+      // Escala de Likida. Los text-[Npx] de Likida llevan nombre aquí (el guard
+      // de apps/web prohíbe los literales): 10 -> 2xs, 11 -> eyebrow,
+      // 12.5 -> pill, 13 -> ui, 17 -> widget; todos con interlineado 1.5.
       fontSize: {
         "2xs": ["var(--text-2xs)", { lineHeight: "var(--text-2xs-lh)" }],
+        eyebrow: ["var(--text-eyebrow)", { lineHeight: "var(--text-eyebrow-lh)" }],
+        pill: ["var(--text-pill)", { lineHeight: "var(--text-pill-lh)" }],
+        ui: ["var(--text-ui)", { lineHeight: "var(--text-ui-lh)" }],
+        widget: ["var(--text-widget)", { lineHeight: "var(--text-widget-lh)" }],
         xs: ["var(--text-xs)", { lineHeight: "var(--text-xs-lh)" }],
         sm: ["var(--text-sm)", { lineHeight: "var(--text-sm-lh)" }],
         base: ["var(--text-base)", { lineHeight: "var(--text-base-lh)" }],
@@ -42,9 +49,6 @@ const preset: Omit<Config, "content"> = {
         xl: ["var(--text-xl)", { lineHeight: "var(--text-xl-lh)" }],
         "2xl": ["var(--text-2xl)", { lineHeight: "var(--text-2xl-lh)" }],
         display: ["var(--text-display)", { lineHeight: "var(--text-display-lh)" }],
-      },
-      letterSpacing: {
-        serif: "var(--tracking-serif)",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -93,6 +97,27 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--info))",
           tint: "hsl(var(--info-tint))",
         },
+        // Neutrales de Likida: gris sumido, lienzo, hairline fuerte, texto secundario y tenue.
+        sunken: "hsl(var(--sunken))",
+        canvas: "hsl(var(--canvas))",
+        line2: "hsl(var(--line2))",
+        faint: "hsl(var(--faint))",
+        // Acento del Copiloto (alcance .copiloto de index.css, D0 de la spec de chat).
+        copiloto: {
+          DEFAULT: "hsl(var(--copiloto-acento))",
+          foreground: "hsl(var(--copiloto-acento-fg))",
+        },
+        "foreground-2": "hsl(var(--foreground-2))",
+        // Rampa neutra de gráficas (--g1..--g5 de Likida).
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
+        // Marca Atiende: solo el logo.
+        "marca-atiende": "hsl(var(--marca-atiende))",
         // Trazo de controles de formulario con contraste >= 3:1 (checkbox, Switch).
         control: "hsl(var(--control-off))",
         sidebar: {
@@ -107,9 +132,9 @@ const preset: Omit<Config, "content"> = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "1rem",
+        md: "0.75rem",
+        sm: "0.25rem",
         control: "var(--radius-control)",
         field: "var(--radius-field)",
         card: "var(--radius-card)",
@@ -144,8 +169,8 @@ const preset: Omit<Config, "content"> = {
           "0%, 100%": { transform: "rotate(8deg)" },
           "50%": { transform: "rotate(16deg)" },
         },
-        // Motion v2 (4.4). Nombres propios: no chocan con enter/exit de
-        // tailwindcss-animate, que siguen alimentando Dialog/Sheet hasta PR-3.
+        // Motion (4.4). Nombres propios: no chocan con enter/exit de
+        // tailwindcss-animate.
         "overlay-in": { from: { opacity: "0" }, to: { opacity: "1" } },
         "overlay-out": { from: { opacity: "1" }, to: { opacity: "0" } },
         "modal-in": {
@@ -193,14 +218,7 @@ const preset: Omit<Config, "content"> = {
       },
     },
   },
-  plugins: [
-    tailwindcssAnimate,
-    // Variante `v2:` -- la regla solo aplica bajo <html data-theme="v2">, para
-    // que un cambio visual de DS v2 no altere la apariencia con la bandera apagada.
-    plugin(({ addVariant }) => {
-      addVariant("v2", ':root[data-theme="v2"] &');
-    }),
-  ],
+  plugins: [tailwindcssAnimate],
 };
 
 export default preset;

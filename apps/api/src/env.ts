@@ -5,8 +5,8 @@ export interface ApiEnv {
   readonly jwtSecret: string;
   readonly accessTokenTtlSeconds: number;
   readonly refreshTokenTtlSeconds: number;
-  /** Secreto compartido para las Server Tools de ElevenLabs (header
-   * `x-atiende-tool-secret`) — ver diseño Fase 1 §3. */
+  /** Secreto compartido de plataforma para las Server Tools de voz (header `x-atiende-tool-secret`): las de citas y hoteles
+   * (ElevenLabs) y, en restaurantes, solo el camino de compatibilidad y la emisión del token por llamada (docs/VOZ-PM.md). */
   readonly voiceToolSecret: string;
   /** Endurecimiento de voz (restaurantes): `true` = las herramientas de voz SOLO aceptan el token por
    * llamada; los secretos (global legado o por sucursal) quedan limitados a emitir ese token. Opcional:
@@ -23,6 +23,10 @@ export interface ApiEnv {
    *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
    *  un envío sin ella. */
   readonly whatsappAccessToken: string | null;
+  /** R-27: nombres de las plantillas HSM de WhatsApp que el operador declaro APROBADAS por Meta
+   *  (`WHATSAPP_APPROVED_TEMPLATES`, lista separada por comas). Solo esas se envian como `type: "template"`;
+   *  vacia/ausente = todo sale como texto libre (comportamiento anterior). OPCIONAL: ningun fixture la exige. */
+  readonly whatsappApprovedTemplates?: readonly string[];
   /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
   readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
@@ -155,6 +159,10 @@ export interface ApiEnv {
       readonly modelsJson: string | null;
       readonly zdr: boolean;
       readonly sharedBreaker: { readonly url: string; readonly token: string } | null;
+      /** Entorno de despliegue (`production`, `preview`, `development`...) que prefija las claves del
+       * breaker compartido (`cb:<entorno>:<proveedor>`) para que preview/desarrollo no abran el breaker
+       * de produccion cuando comparten el mismo Redis. Opcional: sin el, claves `cb:<proveedor>`. */
+      readonly breakerEnv?: string;
     } | null;
     /** LEGADO: integracion directa con OpenAI (`providers/openai.ts`). Solo se usa si NO hay llave de
      * OpenRouter. El proveedor directo de Anthropic se retiro: los modelos Anthropic pasan por
@@ -169,6 +177,12 @@ function requireEnv(name: string, fallback?: string): string {
   return value;
 }
 
+/** Nombre de entorno apto para una clave de Redis (minusculas, [a-z0-9_-]); `development` si falta. */
+export function breakerEnvName(raw: string | undefined): string {
+  const clean = (raw ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return clean.length > 0 ? clean.slice(0, 32) : "development";
+}
+
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
@@ -181,6 +195,7 @@ export function loadApiEnv(): ApiEnv {
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
+    whatsappApprovedTemplates: (process.env.WHATSAPP_APPROVED_TEMPLATES ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
@@ -215,6 +230,7 @@ export function loadApiEnv(): ApiEnv {
               process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
                 ? { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }
                 : null,
+            breakerEnv: breakerEnvName(process.env.VERCEL_ENV || process.env.NODE_ENV),
           }
         : null,
       openai:

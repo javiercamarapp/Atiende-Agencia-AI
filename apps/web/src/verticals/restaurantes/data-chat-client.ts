@@ -4,7 +4,7 @@
 // Mismo refresh de sesion que el resto de clientes de restaurantes (`withAuthRefresh`).
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../lib/authed-fetch.ts";
 import { restaurantesAuthContext } from "./dashboard-client.ts";
-import type { ChatDatosBloque, ChatDatosFuente } from "@atiende/ui";
+import type { ChatDatosBloque, ChatDatosFuente, ChatDatosSinIa } from "@atiende/ui";
 
 export interface DataChatRespuesta {
   readonly status: string;
@@ -12,6 +12,8 @@ export interface DataChatRespuesta {
   readonly blocks: readonly ChatDatosBloque[];
   readonly sources: readonly ChatDatosFuente[];
   readonly toolsUsed: readonly string[];
+  /** Modo sin IA: consultas directas que ofrece el servidor (se muestran como botones). */
+  readonly noAi?: ChatDatosSinIa;
 }
 
 /** Preguntas de ejemplo: todas dicen su periodo y estan dentro del catalogo de restaurantes. */
@@ -53,6 +55,21 @@ export async function preguntarDatos(
   try {
     const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), restaurantesAuthContext(), token, (t) =>
       fetchImpl(url, { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ question, history: history.slice(-MAX_HISTORY).map((m) => ({ role: m.role, text: m.text.slice(0, MAX_TURN_CHARS) })) }) }),
+    );
+    if (res.status === 403) return respuestaLocal("unavailable", "Tu rol no tiene acceso a esta consulta.");
+    if (!res.ok) return respuestaLocal("unavailable", "No pude consultar tus datos en este momento. Inténtalo de nuevo en unos minutos.");
+    return (await res.json()) as DataChatRespuesta;
+  } catch {
+    return respuestaLocal("unavailable", "No pude conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
+  }
+}
+
+/** MODO SIN IA: ejecuta una consulta del catalogo directo (cuerpo `{ tool }`, sin modelo); mismo refresh y errores honestos. */
+export async function ejecutarConsultaDirecta(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tool: string): Promise<DataChatRespuesta> {
+  const url = chatUrl(apiBaseUrl, propertyId);
+  try {
+    const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), restaurantesAuthContext(), token, (t) =>
+      fetchImpl(url, { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ tool }) }),
     );
     if (res.status === 403) return respuestaLocal("unavailable", "Tu rol no tiene acceso a esta consulta.");
     if (!res.ok) return respuestaLocal("unavailable", "No pude consultar tus datos en este momento. Inténtalo de nuevo en unos minutos.");
