@@ -196,3 +196,24 @@ categoría, rotulado como insumo), nómina procesada (ISR retenido/IMSS por empl
 los recibos CFDI tipo N ingeridos), CFDI emitidos por el contribuyente (IVA trasladado,
 saldo de IVA e ISR del período) y la asignación de trabajo por miembro del staff (la carga
 de trabajo es por cliente).
+
+## D-21 / D-22 — Cartera de clientes y modelo CFDI completo (migración 018)
+
+- **Cartera (D-21)**: una ficha fiscal por cliente del despacho (`despachos.cliente_ficha`, una fila por
+  property de `core`): RFC (12/13 caracteres con fecha válida; los genéricos XAXX/XEXX se rechazan; el
+  dígito verificador de la homoclave **no** se verifica), razón social, régimen(es) fiscal(es)
+  (c_RegimenFiscal, con la regla régimen ↔ tipo de persona en `src/cartera/ficha.ts`), CP fiscal,
+  periodicidad de pagos provisionales (mensual/bimestral) y responsable. Alta y edición pasan por funciones
+  `security definer` (`cliente_alta`, `cliente_ficha_guardar`); el RFC de una ficha existente no cambia.
+  Repositorio propio (`CarteraRepository`), opcional en `AppDeps.carteraRepo`.
+- **CFDI completo (D-22)**: `despachos.invoice` gana `direccion` (emitido/recibido/indeterminado, se resuelve
+  comparando el RFC de la ficha con emisor/receptor; sin ficha queda `indeterminado`, nunca se adivina),
+  método/forma de pago, uso, moneda, tipo de cambio, montos en **centavos enteros** (bigint) y `estado_sat`
+  (pendiente/vigente/cancelado/no_encontrado; lo captura el staff, sin llamadas al SAT). El desglose por
+  impuesto vive en `despachos.invoice_impuesto`. Las columnas en pesos `numeric(14,2)` no se tocan.
+- **Compatibilidad con la base sin migrar**: `insertInvoice` intenta el insert completo bajo SAVEPOINT y cae
+  al insert histórico ante 42703/42P01; la ficha, el desglose y el filtro por sentido degradan a vacío /
+  «no disponible» (ver `tests/cartera-postgres-savepoint.spec.ts` y
+  `apps/api/tests/despachos-cfdi-ingesta-base-sin-migrar.spec.ts`).
+- **Pendiente (D-23)**: complemento de pago 2.0 (REP), liga a CFDI PPD, saldo insoluto e IVA por flujo de
+  efectivo. Hasta entonces `parseCfdiXml` sigue excluyendo el complemento de pagos.

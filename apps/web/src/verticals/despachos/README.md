@@ -103,3 +103,12 @@ lectura para esto, no es capricho de la UI):
   PDF y Excel (`lib/reportes-client.ts`, `fetchBlob` con refresh de sesión). Las secciones
   sin dato fuente muestran «Sin datos» con su motivo.
 - Ambos destinos se suman al sidebar y a «Más» en móvil (15 destinos; el portal del cliente D-08 sube el total a 16).
+
+## D-21 / D-22 — Cartera de clientes y CFDI completo
+
+- `/despachos/:orgSlug/cartera` (`pages/Cartera.tsx`, `lib/cartera-client.ts`): lista de clientes con su ficha fiscal
+  (RFC, régimen, CP, periodicidad), alta y edición en `FormDialog`; un cliente sin ficha se señala porque sin RFC no se
+  distingue un CFDI emitido de uno recibido. El destino suma el total del menú a 17.
+- Un despacho sin ningún cliente muestra `AltaPrimerCliente` en lugar del mensaje vacío (admin/contador).
+- `/despachos/:orgSlug/cfdi`: columnas Sentido, Moneda y SAT, y filtro emitidos/recibidos; el detalle suma datos fiscales
+  (método/forma de pago, uso, moneda, retenciones), desglose de impuestos en centavos y la captura del estado SAT.
