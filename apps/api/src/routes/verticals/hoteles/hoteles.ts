@@ -25,6 +25,7 @@ import { hotelesRevenueRecommendationsCronRoutes } from "./revenue-recommendatio
 import { hotelesReputacionRoutes } from "./reputacion.ts";
 import { hotelesIdentidadRoutes } from "./identidad.ts";
 import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
+import { hotelesPrivacidadRoutes } from "./privacidad.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -78,5 +79,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // purga por retencion (identidad-purga-cron.ts).
   app.route("/", hotelesIdentidadRoutes(deps));
   app.route("/", hotelesIdentidadPurgaCronRoutes(deps));
+  // H-02 (P0) -- consentimiento, aviso de privacidad, ARCO, bloqueo previo a la purga, retencion legal e
+  // incidentes (migrations/032_hoteles_consentimiento_arco_incidentes.sql), ver privacidad.ts.
+  app.route("/", hotelesPrivacidadRoutes(deps));
   return app;
 }

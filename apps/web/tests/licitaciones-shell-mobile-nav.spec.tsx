@@ -87,12 +87,12 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(bottomNav!.className).toContain("md:hidden");
   });
 
-  it("el BottomNav trae exactamente los 4 destinos curados", async () => {
+  it("el BottomNav trae exactamente los 4 destinos curados (el resto, bajo Más)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Convocatorias", "Radar", "Matching", "Empresa"]);
+    expect(labels).toEqual(["Panel", "Convocatorias", "Seguimiento", "Empresa"]);
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:flex, directo en el <header>)", async () => {

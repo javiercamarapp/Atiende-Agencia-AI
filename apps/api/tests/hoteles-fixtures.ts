@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryIdentityRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { InMemoryHotelesRepository, InMemoryIdentityRepository, InMemoryPrivacyRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -43,6 +43,8 @@ export interface HotelesTestContext {
   /** H-01 -- boveda de identidad en memoria (mismo objeto que resuelve `deps.hotelesIdentidadRepo(...)`);
    *  ya trae sembrados el huesped `guestId` y la reserva `reservationId` de esta property. */
   readonly identidadRepo: InMemoryIdentityRepository;
+  /** H-02 -- privacidad en memoria (mismo objeto que resuelve `deps.hotelesPrivacidadRepo(...)`), coordinada con `identidadRepo`. */
+  readonly privacidadRepo: InMemoryPrivacyRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly reservationId: string;
@@ -78,6 +80,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const engine = new InMemoryTenancyEngine();
   const hotelesRepo = new InMemoryHotelesRepository();
   const identidadRepo = new InMemoryIdentityRepository();
+  const privacidadRepo = new InMemoryPrivacyRepository(identidadRepo);
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -183,6 +186,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
     hotelesRepo: (_db) => hotelesRepo,
     hotelesIdentidadRepo: (_db) => identidadRepo,
+    hotelesPrivacidadRepo: (_db) => privacidadRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
     citasRepo: (_db) => citasRepoForResolver,
@@ -247,6 +251,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     deps,
     hotelesRepo,
     identidadRepo,
+    privacidadRepo,
     organizationId,
     propertyId,
     reservationId,
