@@ -103,9 +103,16 @@ concurrency:
 permissions:
   contents: read
 
+# Partido en dos jobs paralelos + un job agregador (ver .github/workflows/README.md,
+# sección ci-checks.yml, con la medición de tiempos que lo justifica):
+#   - estatico: typecheck + lint + trinquete + build de apps/web (~3 min medidos).
+#   - unit: test:unit (~7.5-11 min medidos; es el cuello de botella).
+#   - ci-checks: agregador que CONSERVA el nombre histórico del check
+#     ("typecheck + lint + test:unit + build de apps/web") para que cualquier
+#     protección de rama presente o futura que lo exija siga resolviendo.
 jobs:
-  ci-checks:
-    name: typecheck + lint + test:unit + build de apps/web
+  estatico:
+    name: typecheck + lint + build de apps/web
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -132,8 +139,47 @@ jobs:
       - name: Trinquete de lint (advertencias <= baseline)
         run: npm run lint:ratchet
 
+      - name: Build de apps/web (Vite)
+        run: npm run build --workspace apps/web
+
+  unit:
+    name: test:unit
+    runs-on: ubuntu-latest
+    # Medido 7.5-11.3 min en corridas recientes; 25 deja margen sin dejarlo ilimitado.
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
       - name: Tests unitarios (vitest run, repositorios en memoria)
         run: npm run test:unit
 
-      - name: Build de apps/web (Vite)
-        run: npm run build --workspace apps/web
+  # Agregador: mismo nombre que tenía el job único. if: always() para que un job
+  # cancelado o fallido produzca un veredicto rojo en vez de quedar "skipped"
+  # (un check "skipped" cuenta como exitoso para la protección de rama).
+  ci-checks:
+    name: typecheck + lint + test:unit + build de apps/web
+    needs: [estatico, unit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Veredicto de los jobs
+        env:
+          ESTATICO: ${{ needs.estatico.result }}
+          UNIT: ${{ needs.unit.result }}
+        run: |
+          echo "estatico=$ESTATICO unit=$UNIT"
+          if [ "$ESTATICO" != "success" ] || [ "$UNIT" != "success" ]; then
+            echo "::error::Un job previo no terminó en success"
+            exit 1
+          fi
