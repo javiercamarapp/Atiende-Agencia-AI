@@ -54,16 +54,16 @@ function parseNewPassword(v: unknown, field: string): string {
   return v;
 }
 
-/** Resend por fetch directo (sin SDK, mismo criterio que magic-link). Nunca lanza. */
+/** Resend por fetch directo (sin SDK, mismo criterio que magic-link). Nunca lanza; `true` solo si Resend acepto el envio. */
 async function enviarCorreo(
   deps: AppDeps,
   c: Context<CoreAuthHonoEnv>,
   evento: string,
   msg: { to: string; subject: string; html: string; text: string },
-): Promise<void> {
+): Promise<boolean> {
   if (!deps.env.resend.apiKey) {
     logEvent(c, "warn", `${evento}_resend_no_configurado`);
-    return;
+    return false;
   }
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -71,9 +71,14 @@ async function enviarCorreo(
       headers: { Authorization: `Bearer ${deps.env.resend.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: deps.env.resend.from, to: [msg.to], subject: msg.subject, html: msg.html, text: msg.text }),
     });
-    if (!res.ok) logEvent(c, "error", `${evento}_resend_fallo`, { status: res.status, body: (await res.text().catch(() => "")).slice(0, 300) });
+    if (!res.ok) {
+      logEvent(c, "error", `${evento}_resend_fallo`, { status: res.status, body: (await res.text().catch(() => "")).slice(0, 300) });
+      return false;
+    }
+    return true;
   } catch (err) {
     logEvent(c, "error", `${evento}_resend_error_red`, { message: err instanceof Error ? err.message : String(err) });
+    return false;
   }
 }
 
@@ -103,7 +108,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!staff || !(await verifyPassword(body.currentPassword, staff.passwordHash))) throw Errors.currentPasswordInvalid();
     const newHash = await hashPassword(newPassword);
     await orUnavailable(() => repo.changePassword(userId, newHash));
-    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName, { c }), 200);
   });
 
   /** "Olvide mi contrasena": SIEMPRE el mismo 200 generico (anti-enumeracion). */
@@ -179,7 +184,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     await orUnavailable(() => repo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString() }));
     const url = enlace(deps, vertical, "verificar-correo", tokenPlain);
     const nombre = NOMBRE_VERTICAL[vertical];
-    await enviarCorreo(deps, c, "email_verification", {
+    const enviado = await enviarCorreo(deps, c, "email_verification", {
       to: staff.email,
       subject: `Confirma tu correo en ${nombre}`,
       html: renderCorreo({
@@ -196,7 +201,10 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       }),
       text: `Confirma tu correo en ${nombre} (expira en 24 horas, un solo uso):\n${url}`,
     });
-    return c.json({ ok: true, alreadyVerified: false }, 200);
+    // `sent` es honesto: sin Resend configurado (o si Resend lo rechaza) el token quedo creado pero NO
+    // llego ningun correo; la UI no debe decir "enviado". (A diferencia de "olvide mi contrasena", este
+    // endpoint es autenticado: no hay enumeracion que proteger.)
+    return c.json({ ok: true, alreadyVerified: false, sent: enviado }, 200);
   });
 
   /** Canje del enlace de verificacion (POST, para que un escaner de correo no lo consuma). */

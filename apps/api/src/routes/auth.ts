@@ -10,12 +10,14 @@
 // (AdminLogin.tsx); se adopta directamente el mismo login email+password que hoteles
 // ya prueba en producción.
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { authMiddleware, hashInviteToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { hashPassword, verifyPassword, StaffInviteInvalidError } from "@atiende/db";
+import { hashPassword, verifyPassword, StaffInviteInvalidError, StaffSecurityUnavailableError } from "@atiende/db";
 import { getDefaultLoginLockout, rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
+import { logEvent } from "../logger.ts";
 import type { AppDeps } from "../deps.ts";
 
 // Hallazgo de auditoría (rubro 2, autenticación y sesión, severidad ALTA: "sin
@@ -92,12 +94,46 @@ function validateLoginBody(body: LoginBody): { email: string; password: string }
   return { email: body.email.trim().toLowerCase(), password: body.password };
 }
 
+/**
+ * Registra la sesion recien emitida para poder listarla/cerrarla. BEST-EFFORT por regla de
+ * compatibilidad con la base sin migrar: si la migracion 0033 no esta aplicada
+ * (`StaffSecurityUnavailableError`) o el registro falla por cualquier motivo, el login/refresh
+ * SIGUE emitiendo la sesion (la sesion simplemente no aparece en la lista). Seguro dentro del
+ * request porque `registerSession` abre SU PROPIA transaccion (ver staff-security-repository.ts),
+ * nunca la compartida: un error de Postgres no deja abortada ninguna otra consulta del request.
+ */
+async function registrarSesionBestEffort(deps: AppDeps, ctx: IssueSessionContext, staffId: string, refreshToken: string): Promise<void> {
+  if (!deps.staffSecurityRepo) return;
+  try {
+    const claims = await verifyRefreshToken(refreshToken, deps.env.jwtSecret);
+    await deps.staffSecurityRepo.registerSession({
+      staffId,
+      jti: claims.jti,
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      userAgent: ctx.c.req.header("user-agent")?.slice(0, 200) ?? null,
+      replacesJti: ctx.replacesJti ?? null,
+    });
+  } catch (err) {
+    logEvent(ctx.c, err instanceof StaffSecurityUnavailableError ? "warn" : "error", "sesion_no_registrada", { message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 /** Exportada para que `routes/auth-google.ts` emita EXACTAMENTE la misma forma de
  *  sesión tras un login con Google — nunca un mecanismo paralelo/duplicado (a
  *  diferencia de hoteles, que sí duplica esta función en su propio `auth-google.ts`
  *  por evitar un choque de merge entre correctores en paralelo de esa fase; aquí no
  *  aplica el mismo riesgo, así que se prefiere una sola fuente de verdad). */
-export async function issueSession(deps: AppDeps, staffId: string, email: string, fullName: string) {
+/**
+ * Contexto OPCIONAL para registrar la sesion emitida en `core.staff_session` (lista de "Sesiones
+ * activas" de Seguridad de la cuenta, migracion 0033). `replacesJti` = el refresh token que esta
+ * emision rota (POST /auth/refresh): su fila se reemplaza y la nueva hereda el inicio de sesion.
+ */
+export interface IssueSessionContext {
+  readonly c: Context;
+  readonly replacesJti?: string | null;
+}
+
+export async function issueSession(deps: AppDeps, staffId: string, email: string, fullName: string, ctx?: IssueSessionContext) {
   const memberships = await deps.coreRepo.findMembershipsByUserId(staffId);
   const first = memberships[0];
   // Fase 1: un token corresponde a UNA organización activa (mismo patrón que
@@ -116,6 +152,7 @@ export async function issueSession(deps: AppDeps, staffId: string, email: string
     deps.env.accessTokenTtlSeconds,
   );
   const refreshToken = await signRefreshToken(staffId, deps.env.jwtSecret, deps.env.refreshTokenTtlSeconds);
+  if (ctx) await registrarSesionBestEffort(deps, ctx, staffId, refreshToken);
   return {
     token,
     refreshToken,
@@ -169,7 +206,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.forbidden("Todavía no confirmas tu correo. Revisa tu bandeja o pide que te reenvíen el enlace de verificación.");
     }
 
-    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName, { c }), 200);
   });
 
   app.post("/auth/refresh", async (c) => {
@@ -230,7 +267,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // si el staff hubiera hecho logout explícito con él.
     await deps.coreRepo.revokeRefreshToken({ jti, userId: sub, expiresAt: new Date(exp * 1000).toISOString() });
 
-    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName, { c, replacesJti: jti }), 200);
   });
 
   // Hallazgo de auditoría (P2, "tokens de sesión completos en query params de
@@ -266,7 +303,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const staff = await deps.coreRepo.consumeAuthExchangeCode(hashInviteToken(raw.code));
     if (!staff) throw Errors.unauthorized("Código de intercambio inválido, ya usado, o expirado.");
 
-    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName, { c }), 200);
   });
 
   // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
@@ -422,7 +459,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     // Sesión inmediata (mismo `issueSession` que login/refresh) — el invitado queda
     // "vinculado" Y autenticado en una sola llamada, sin un paso extra de login.
-    return c.json(await issueSession(deps, result.staffId, result.email, fullName), 200);
+    return c.json(await issueSession(deps, result.staffId, result.email, fullName, { c }), 200);
   });
 
   return app;
