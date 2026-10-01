@@ -359,3 +359,162 @@ begin;
 set local role anon;
 select * from core.impersonation_session as should_fail;
 rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 6) ORDEN TOTAL (endurecimiento de esta ronda -- packages/db/migrations/
+--    0022_superadmin_bitacoras_endurecimiento.sql): `occurred_at` usa
+--    `default now()`, CONSTANTE dentro de una transacción de Postgres --
+--    varias filas de la MISMA transacción empatan. `seq` ya existía desde
+--    esta misma migración (0020, `generated always as identity`) pero
+--    `list_impersonation_audit_log_for_superadmin` nunca lo usaba como
+--    desempate -- exactamente el defecto que el PR #173 corrigió en
+--    `rentas.audit_log`.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+insert into core.organization (id, vertical, name, slug) values
+  ('00000000-0000-0000-0000-0000000c9210', 'restaurantes', 'Org Orden Total', 'org-orden-total')
+on conflict do nothing;
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000c9211', 'orden-total-imp@example.com', 'Orden Total Impersonación', 'seed')
+on conflict do nothing;
+insert into core.platform_superadmin (staff_user_id) values ('00000000-0000-0000-0000-0000000c9211') on conflict do nothing;
+
+\echo '=== 26. ORDEN TOTAL (premisa): 3 sesiones abiertas/cerradas en la MISMA transacción -- sus 6 eventos comparten EXACTAMENTE el mismo occurred_at (now() es constante por transacción) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9211', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 1 de 3.')).id as id \gset ord1_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord1_id') \gset noop1_
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 2 de 3.')).id as id \gset ord2_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord2_id') \gset noop2_
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 3 de 3.')).id as id \gset ord3_
+select count(distinct occurred_at) as deberia_ser_1 from core.impersonation_audit_log where session_id in (:'ord1_id', :'ord2_id', :'ord3_id');
+rollback;
+
+\echo '=== 27. ORDEN TOTAL (la corrección real): con los 6 eventos EMPATADOS en occurred_at, list_impersonation_audit_log_for_superadmin devuelve los 6 en el orden COMPLETO de seq descendente (end3,start3,end2,start2,end1,start1) -- nunca un orden dependiente del plan de ejecución. Re-revisión (no bloqueante 6): antes solo se comparaba el primer elemento del array, lo que dejaba pasar cualquier orden de los otros 5 -- ahora se comparan los 6 (session_id Y event_type) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9211', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 1 de 3 (escenario 27).')).id as id \gset ord1_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord1_id') \gset noop1_
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 2 de 3 (escenario 27).')).id as id \gset ord2_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord2_id') \gset noop2_
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 3 de 3 (escenario 27).')).id as id \gset ord3_
+-- El escenario 26 (premisa) NUNCA cierra la tercera sesión -- deja solo 5
+-- eventos (3 starts + 2 ends), no los 6 que el enunciado de ambos
+-- escenarios describe. Aquí SÍ se cierra, para tener de verdad los 6
+-- eventos empatados que hacen falta para probar el orden COMPLETO
+-- (end3,start3,end2,start2,end1,start1) -- sin este cierre, el array
+-- esperado de abajo tendría solo 5 elementos y `start3` (no `end3`) sería
+-- el primero.
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord3_id') \gset noop3_
+select (
+  array_agg(t.session_id) = array[:'ord3_id',:'ord3_id',:'ord2_id',:'ord2_id',:'ord1_id',:'ord1_id']::uuid[]
+  and array_agg(t.event_type) = array['end','start','end','start','end','start']::text[]
+)::int as deberia_ser_1
+from (
+  select session_id, event_type
+  from core.list_impersonation_audit_log_for_superadmin('00000000-0000-0000-0000-0000000c9211', 500)
+  where session_id in (:'ord1_id', :'ord2_id', :'ord3_id')
+) t;
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 7) BASE SIN MIGRAR -- mismo criterio que scripts/verify-superadmin-
+--    auditoria-denegaciones/assertions.sql (sección 5, ver su cabecera para
+--    la explicación completa del patrón `do $$ ... exception when others
+--    ... get stacked diagnostics ... $$`): escenarios que, DENTRO del
+--    fixture y en una transacción que se revierte, deshacen lo que
+--    producción aún no tiene, y afirman el SQLSTATE EXACTO que
+--    packages/db/src/impersonation-repository.ts espera
+--    (`isMigrationMissingError`: 42883/42P01/42703).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+\echo '=== 28. Base sin migrar -- start_impersonation_session NO existe -- SQLSTATE EXACTO 42883 ==='
+begin;
+drop function core.start_impersonation_session(uuid, uuid, text);
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.start_impersonation_session(gen_random_uuid(), gen_random_uuid(), 'motivo suficientemente largo para pasar el check de veinte');
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42883 (undefined_function)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42883' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42883)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 29. Base sin migrar -- list_impersonation_audit_log_for_superadmin NO existe -- SQLSTATE EXACTO 42883 ==='
+begin;
+drop function core.list_impersonation_audit_log_for_superadmin(uuid, int);
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.list_impersonation_audit_log_for_superadmin(gen_random_uuid(), 10);
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42883 (undefined_function)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42883' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42883)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 30. Base sin migrar -- la tabla core.impersonation_session NO existe (0020 nunca aplicada) -- SQLSTATE EXACTO 42P01 (vía is_impersonation_active_for_caller_and_org, que NO depende del tipo compuesto de la tabla -- start_impersonation_session/get_active_impersonation_session_for_superadmin SÍ lo devuelven como tipo de retorno y se eliminarían en cascada junto con la tabla, lo que daría 42883, no 42P01: no es el escenario que este caso quiere aislar) ==='
+begin;
+drop table core.impersonation_session cascade;
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.is_impersonation_active_for_caller_and_org(gen_random_uuid(), gen_random_uuid());
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42P01 (undefined_table)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42P01' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42P01)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 31. Base sin migrar -- la tabla core.impersonation_audit_log NO existe -- SQLSTATE EXACTO 42P01 (vía start_impersonation_session, que INSERTA en ella desde su cuerpo plpgsql -- Postgres no rastrea esa referencia como dependencia de tipo de retorno, así que la función sigue existiendo y falla en tiempo de ejecución, no por cascada) ==='
+begin;
+drop table core.impersonation_audit_log cascade;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9211', true);
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    -- Caller-binding y validaciones REALES deben pasar primero (motivo
+    -- válido, organización real, sin sesión activa previa, auth.uid() =
+    -- p_caller_id) -- de otro modo la función lanzaría 42501/22023/P0002
+    -- ANTES de llegar siquiera al INSERT que necesita la tabla eliminada, y
+    -- este escenario dejaría de aislar lo que quiere probar.
+    perform core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'motivo suficientemente largo para pasar el check de veinte');
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42P01 (undefined_table)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42P01' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42P01)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+-- NOTA -- por qué no hace falta un escenario de "0022 no aplicada, columna
+-- ausente" (42703) para esta bitácora, a diferencia de authz_audit_log: esta
+-- migración NO agrega ninguna columna a `core.impersonation_audit_log` --
+-- `seq` ya existía desde 0020 (ver su cabecera). El ÚNICO cambio de 0022
+-- aquí es el `order by` de `list_impersonation_audit_log_for_superadmin`
+-- (misma firma, `create or replace`) -- si 0022 no está aplicada, la función
+-- VIEJA de 0020 sigue activa tal cual (sin el desempate por `seq`, orden no
+-- determinista entre empates) y sigue respondiendo con normalidad, nunca con
+-- un error -- no hay ninguna dependencia nueva que pueda faltar.

@@ -154,6 +154,45 @@ describe("PostgresBreakGlassRentasDataRepository.listReservasTenant -- fallback 
   });
 });
 
+describe("PostgresBreakGlassRentasDataRepository.listReservasTenant -- hasMore en el caso límite duro limit===200 (hallazgo real, auditoría a3)", () => {
+  function reservaRow(i: number) {
+    return { ocupacion_id: `r${i}`, property_id: "p1", unidad_id: "u1", check_in: "2026-01-01", check_out: "2026-01-03", estado: "confirmada", huesped_nombre: null, huesped_contacto: null };
+  }
+
+  it("página EXACTAMENTE llena (200 filas) -- hasMore CONSERVADOR true, nunca el falso 'ya viste todo' del hallazgo real (sin peek real posible en este tope duro)", async () => {
+    const filas200 = Array.from({ length: 200 }, (_, i) => reservaRow(i));
+    const session = abortableFakeSession([{ match: /^select \* from rentas\.list_reservas_for_break_glass\(\$1, \$2, \$3, \$4, \$5\);$/, respond: () => filas200 }]);
+    const repo = new PostgresBreakGlassRentasDataRepository(session);
+
+    const result = await repo.listReservasTenant(ORG_ID, CALLER_ID, { limit: 200 });
+
+    expect(result.datos).toHaveLength(200); // nunca se descarta ninguna fila real
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("página INCOMPLETA (150 de 200 pedidas) -- ahí SÍ se puede afirmar con certeza que no hay más, aunque limit===200 (tope duro)", async () => {
+    const filas150 = Array.from({ length: 150 }, (_, i) => reservaRow(i));
+    const session = abortableFakeSession([{ match: /^select \* from rentas\.list_reservas_for_break_glass\(\$1, \$2, \$3, \$4, \$5\);$/, respond: () => filas150 }]);
+    const repo = new PostgresBreakGlassRentasDataRepository(session);
+
+    const result = await repo.listReservasTenant(ORG_ID, CALLER_ID, { limit: 200 });
+
+    expect(result.datos).toHaveLength(150);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it("limit < 200 (default 100) sigue con el peek REAL exacto -- regresión: este caso NUNCA debe volverse conservador", async () => {
+    const filas101 = Array.from({ length: 101 }, (_, i) => reservaRow(i)); // 100 pedidas + 1 de peek
+    const session = abortableFakeSession([{ match: /^select \* from rentas\.list_reservas_for_break_glass\(\$1, \$2, \$3, \$4, \$5\);$/, respond: () => filas101 }]);
+    const repo = new PostgresBreakGlassRentasDataRepository(session);
+
+    const result = await repo.listReservasTenant(ORG_ID, CALLER_ID);
+
+    expect(result.datos).toHaveLength(100); // la fila 101 (el peek) nunca se expone
+    expect(result.hasMore).toBe(true);
+  });
+});
+
 describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallback SQLSTATE 42883 contra transacción abortada", () => {
   it("listFinanzasTenant: función existe -> mapea la fila real", async () => {
     const session = abortableFakeSession([

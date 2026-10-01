@@ -528,7 +528,17 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
 
   async listAuditLog(callerId: string, limit = 200) {
     if (!this.isPlatformSuperadmin(callerId)) return { availability: "available" as const, entries: [] };
-    const entries = [...this.auditLog].sort((a, b) => b.occurredAtMs - a.occurredAtMs).slice(0, limit);
+    // Desempate por `seq` -- mismo criterio que
+    // `core.list_impersonation_audit_log_for_superadmin` desde
+    // `packages/db/migrations/0022_superadmin_bitacoras_endurecimiento.sql`
+    // (`order by occurred_at desc, seq desc`): sin esto, dos eventos con el
+    // mismo `occurredAtMs` (dos llamadas en el mismo milisegundo, o dos
+    // `startSession`/`endSession` con un reloj de test congelado) quedaban en
+    // el orden que `Array.prototype.sort` (estable) heredara de la inserción
+    // -- no necesariamente "más reciente primero" -- reproduciendo en memoria
+    // el MISMO defecto de orden no determinista/paginación inestable que la
+    // migración 0022 corrigió en SQL.
+    const entries = [...this.auditLog].sort((a, b) => b.occurredAtMs - a.occurredAtMs || b.seq - a.seq).slice(0, limit);
     return { availability: "available" as const, entries };
   }
 }

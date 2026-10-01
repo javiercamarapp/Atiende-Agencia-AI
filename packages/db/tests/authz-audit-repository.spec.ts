@@ -170,6 +170,27 @@ describe("PostgresAuthzAuditRepository.list", () => {
     expect(result.entries.map((e) => e.id)).toEqual(["a", "b"]);
   });
 
+  it("hasMore:true en el caso límite duro limit===200 -- el 'peek' pide 201 (migración 0022) y SÍ detecta la fila 201+, sin subir el máximo expuesto a 200", async () => {
+    const filas201 = Array.from({ length: 201 }, (_, i) => filaCruda(`row-${i}`, `2026-09-19T12:${String(i).padStart(2, "0")}:00Z`));
+    const session = new AbortAwareFakeSession((sql, params) => {
+      if (sql.includes("core.list_authz_audit_log_for_superadmin")) {
+        // Antes de la migración 0022, este repositorio pedía como máximo 200
+        // (el mismo tope duro que la función SQL aplicaba) -- así que el
+        // "peek" quedaba deshabilitado exactamente en este caso límite. Este
+        // assert es el regression guard: sin el fix, `params` sería
+        // `["superadmin-1", 200, 0]` (limit sin +1) y esta prueba fallaría.
+        expect(params).toEqual(["superadmin-1", 201, 0]);
+        return { rows: filas201 };
+      }
+      throw new Error(`query inesperada: ${sql}`);
+    });
+    const repo = new PostgresAuthzAuditRepository(session);
+
+    const result = await repo.list("superadmin-1", 200, 0);
+    expect(result.hasMore).toBe(true);
+    expect(result.entries).toHaveLength(200); // nunca se expone la fila 201 al llamador
+  });
+
   it("migración 0021 no aplicada (42P01) -- degrada a not_migrated/lista vacía, SAVEPOINT recuperado", async () => {
     const err = Object.assign(new Error("relation core.authz_audit_log does not exist"), { code: "42P01" });
     const session = new AbortAwareFakeSession((sql) => {

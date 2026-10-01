@@ -7,7 +7,7 @@
 // request no quedó abortada (25P02).
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { ImpersonationConflictError, ImpersonationForbiddenError, PostgresImpersonationRepository } from "../src/impersonation-repository.ts";
+import { ImpersonationConflictError, ImpersonationForbiddenError, InMemoryImpersonationRepository, PostgresImpersonationRepository } from "../src/impersonation-repository.ts";
 
 function migrationMissingError(): Error & { code: string } {
   const err = new Error('function core.start_impersonation_session(uuid, uuid, text) does not exist') as Error & { code: string };
@@ -182,5 +182,41 @@ describe("PostgresImpersonationRepository -- fallback SQLSTATE 42883/42P01/42703
     await expect(repoConflict.startSession("caller-1", "org-1", "motivo suficientemente largo para pasar el check")).rejects.toBeInstanceOf(
       ImpersonationConflictError,
     );
+  });
+});
+
+// Mismo defecto que la migración 0022 corrigió en SQL (`core.list_
+// impersonation_audit_log_for_superadmin`, `order by occurred_at desc, seq
+// desc`) -- este es su equivalente en el repositorio en memoria: sin el
+// desempate por `seq`, dos eventos con el MISMO `occurredAtMs` (reloj de
+// test congelado, el caso real que produce el empate en Postgres cuando
+// `now()` es constante dentro de una transacción) quedaban en el orden que
+// `Array.prototype.sort` (estable) heredara de la inserción -- no
+// necesariamente "más reciente primero".
+describe("InMemoryImpersonationRepository.listAuditLog -- orden total con occurredAtMs empatado", () => {
+  it("con 3 eventos en el MISMO instante (reloj de test congelado), el orden es por seq desc -- nunca el orden de inserción sin más", async () => {
+    const nowMs = Date.UTC(2026, 8, 19, 12, 0, 0);
+    const repo = new InMemoryImpersonationRepository({ now: () => nowMs });
+    repo.seedPlatformSuperadmin("superadmin-1", "superadmin-1@example.com");
+    repo.seedOrganization("org-1");
+    repo.seedOrganization("org-2");
+    repo.seedOrganization("org-3");
+
+    // Sin avanzar el reloj entre llamadas -- las 3 sesiones (y sus 6 eventos
+    // start/end) comparten EXACTAMENTE el mismo occurredAtMs, igual que
+    // varias filas de la misma transacción de Postgres compartirían el mismo
+    // `now()`. `startSession` exige "sin sesión activa previa" -- cada una se
+    // termina antes de abrir la siguiente, todo en el mismo tick del reloj.
+    const s1 = await repo.startSession("superadmin-1", "org-1", "Ticket ORDEN-1: verificar orden total en memoria.");
+    await repo.endSession("superadmin-1", s1.session!.id);
+    const s2 = await repo.startSession("superadmin-1", "org-2", "Ticket ORDEN-2: verificar orden total en memoria.");
+    await repo.endSession("superadmin-1", s2.session!.id);
+    const s3 = await repo.startSession("superadmin-1", "org-3", "Ticket ORDEN-3: verificar orden total en memoria.");
+    await repo.endSession("superadmin-1", s3.session!.id);
+
+    const { entries } = await repo.listAuditLog("superadmin-1", 500);
+    expect(entries.every((e) => e.occurredAtMs === nowMs)).toBe(true); // confirma el empate real
+    // "más reciente" = el `seq` más alto, sin importar el orden de inserción.
+    expect(entries.map((e) => e.seq)).toEqual([...entries.map((e) => e.seq)].sort((a, b) => b - a));
   });
 });

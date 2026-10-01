@@ -56,6 +56,20 @@ describe("SuperAdminImpersonacionPage", () => {
     expect(rendered.container.textContent).toContain("Sin eventos de impersonación registrados");
   });
 
+  it("durante la carga inicial (antes de resolver el fetch), 'Iniciar impersonación' NUNCA aparece habilitado en el DOM -- re-revisión hallazgo 8 (el `available` inicial en memoria arranca en `false`, nunca `true`, y el `return` de EstadoCargando de abajo evita que el botón exista en ese momento)", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    // Sin ningún `await`/flush todavía -- exactamente la ventana de carga
+    // inicial que el hallazgo 8 señalaba como habilitada por error.
+    expect(rendered.container.textContent).toContain("Cargando impersonación");
+    const iniciarBtnDuranteCarga = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtnDuranteCarga).toBeUndefined();
+
+    await esperarCarga();
+    const iniciarBtnTrasCargar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtnTrasCargar!.disabled).toBe(false);
+  });
+
   it("estado de error cuando el fetch falla -- nunca se queda atorado en 'Cargando'", async () => {
     fetchMock = vi.fn(async () => {
       throw new Error("network down");
@@ -95,11 +109,35 @@ describe("SuperAdminImpersonacionPage", () => {
     expect(terminarBtn).toBeDefined();
   });
 
-  it("muestra el estado 'no disponible' honesto cuando la base aún no tiene la migración aplicada", async () => {
+  it("muestra el estado 'no disponible' honesto cuando la base aún no tiene la migración aplicada, Y deshabilita 'Iniciar impersonación' (hallazgo 9, auditoría a3: antes se podía abrir el modal y enviarlo igual)", async () => {
     stubFetch({ sesiones: { available: false, sessions: [] }, bitacora: { available: false, entries: [] } });
     rendered = renderPage();
     await esperarCarga();
     expect(rendered.container.textContent).toContain("todavía no está disponible en esta base");
+
+    const iniciarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtn).toBeDefined();
+    expect(iniciarBtn!.disabled).toBe(true);
+  });
+
+  it("con available:false, hacer click en 'Iniciar impersonación' (deshabilitado) NUNCA abre el modal -- regresión del hallazgo 9 (antes se podía abrir y enviar aunque la pantalla ya avisara 'migración pendiente')", async () => {
+    stubFetch({ sesiones: { available: false, sessions: [] }, bitacora: { available: false, entries: [] } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const iniciarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    click(iniciarBtn!);
+
+    expect(document.body.querySelector("#impersonacion-org-id")).toBeNull();
+  });
+
+  it("con available:true, 'Iniciar impersonación' está habilitado", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const iniciarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtn!.disabled).toBe(false);
   });
 
   it("iniciar con motivo corto muestra el error de validación y NO llama al backend", async () => {
