@@ -111,6 +111,7 @@ import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
 import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
+import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
@@ -767,6 +768,7 @@ const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasSt
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 const CitasWhatsappMensajesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasWhatsappMensajesPage {...ctx} />);
+const CitasAgenteWhatsappRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAgenteWhatsappPage {...ctx} />);
 
 /** 404 DENTRO del shell de citas (PR-4): una ruta desconocida bajo `/citas/:orgSlug/` conserva la navegación y
  * ofrece volver a la agenda. `/citas/login/...` no es un negocio: cae al 404 global. */
@@ -1009,6 +1011,7 @@ export function App() {
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
+        <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
         <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         {/* L-02: enlaces del correo (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
