@@ -510,3 +510,5 @@ export {
   CODIGO_EFOS_PRESUNTO,
 } from "./cfdi/efos.ts";
 export type { EfosSituacion, EfosContribuyente, EfosConsulta, EfosListadoParseado, EfosFilaDescartada, HallazgoEfos } from "./cfdi/efos.ts";
+export type { EfosEstadoLista, EfosInvoiceAfectado, EfosAfectadosResultado, EfosIngestaResultado } from "./repository.ts";
+export { EfosUnavailableError } from "./errors.ts";
