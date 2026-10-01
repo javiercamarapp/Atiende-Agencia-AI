@@ -6,7 +6,7 @@ import {
   LibroNoDisponibleError,
   LibroNoEncontradoError,
   LibroSinPermisoError,
-  PeriodoCerradoError,
+  PeriodoLibroCerradoError,
   PolizaDuplicadaError,
   PostgresLibroRepository,
   construirCatalogoBase,
@@ -63,7 +63,7 @@ describe("InMemoryLibroRepository", () => {
     await expect(repo.registrarPoliza(P1, { ...INGRESO, movimientos: INGRESO.movimientos.slice(0, 2) })).rejects.toBeInstanceOf(LibroDatosInvalidosError);
     await expect(repo.registrarPoliza(P1, { ...COBRO, movimientos: [{ cuenta: "9999999", concepto: "", debeCentavos: 5, haberCentavos: 0 }, COBRO.movimientos[1]!] })).rejects.toBeInstanceOf(LibroDatosInvalidosError);
     repo.periodosCerrados.add(`${P1}|2026-07`);
-    await expect(repo.registrarPoliza(P1, INGRESO)).rejects.toBeInstanceOf(PeriodoCerradoError);
+    await expect(repo.registrarPoliza(P1, INGRESO)).rejects.toBeInstanceOf(PeriodoLibroCerradoError);
   });
 
   it("un CFDI no tiene dos pólizas vigentes; tras la reversa se libera", async () => {
@@ -173,7 +173,7 @@ describe("PostgresLibroRepository (SAVEPOINT, base sin migrar)", () => {
   it.each([
     ["42501", "libro_poliza_registrar: sin permiso sobre el cliente", LibroSinPermisoError],
     ["22023", "libro_poliza: póliza descuadrada (debe 1 y haber 2 centavos)", LibroDatosInvalidosError],
-    ["55000", "libro_poliza: el periodo 2026-07 está cerrado", PeriodoCerradoError],
+    ["55000", "libro_poliza: el periodo 2026-07 está cerrado", PeriodoLibroCerradoError],
     ["23505", "duplicate key", PolizaDuplicadaError],
     ["P0002", "libro_poliza_registrar: CFDI no encontrado", LibroNoEncontradoError],
   ])("SQLSTATE %s -> error de dominio tipado", async (code, mensaje, clase) => {

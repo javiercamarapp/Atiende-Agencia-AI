@@ -71,7 +71,7 @@ describe("esFechaValida", () => {
 function cfdi(parcial: Partial<InvoiceRecord>): InvoiceRecord {
   return {
     id: "i1", organizationId: "o1", propertyId: "p1", folioFiscal: "11111111-1111-1111-1111-111111111111", tipo: "I", rfcEmisor: "AAA010101AAA", rfcReceptor: "BBB010101BBB",
-    emisorNombre: null, subtotal: 1000, total: 1160, iva: 160, descuento: 0, categoria: "servicios_profesionales", confianza: null, valido: true, issues: [], warnings: [], requiresHumanReview: false,
+    emisorNombre: null, subtotal: 1000, total: 1160, iva: 160, descuento: 0, categoria: "honorarios", confianza: null, valido: true, issues: [], warnings: [], requiresHumanReview: false,
     diot: { reportable: false } as InvoiceRecord["diot"], fecha: "2026-07-10", createdAt: "2026-07-10T00:00:00Z", direccion: "emitido", metodoPago: "PUE", moneda: "MXN",
     subtotalCentavos: 100000, descuentoCentavos: 0, totalCentavos: 116000, ivaTrasladadoCentavos: 16000, isrRetenidoCentavos: 0, ivaRetenidoCentavos: 0, iepsCentavos: 0, estadoSat: "vigente",
     ...parcial,
@@ -113,6 +113,11 @@ describe("construirPolizaDesdeCfdi", () => {
     }
   });
 
+  it("recibido de gasto operativo: Servicios administrativos con IVA acreditable", () => {
+    const r = construirPolizaDesdeCfdi(cfdi({ direccion: "recibido", categoria: "gasto_operativo" }));
+    expect(r.ok && r.poliza.movimientos[0]?.cuenta).toBe("6020200");
+  });
+
   it.each([
     ["cancelado ante el SAT", { estadoSat: "cancelado" as const }, /cancelado/],
     ["sentido indeterminado", { direccion: "indeterminado" as const }, /emitido o recibido/],
@@ -120,7 +125,8 @@ describe("construirPolizaDesdeCfdi", () => {
     ["moneda extranjera", { moneda: "USD" }, /extranjera/],
     ["con retenciones", { isrRetenidoCentavos: 1000 }, /retenciones/],
     ["total distinto de base más IVA", { totalCentavos: 116001 }, /no es igual/],
-    ["recibido sin categoría con cuenta", { direccion: "recibido" as const, categoria: "sin_clasificar" as InvoiceRecord["categoria"] }, /clasifícalo/],
+    ["recibido con categoría sin cuenta automática (activo fijo)", { direccion: "recibido" as const, categoria: "activo_fijo" as InvoiceRecord["categoria"] }, /regístrala a mano/],
+    ["recibido sin clasificar", { direccion: "recibido" as const, categoria: "sin_clasificar" as InvoiceRecord["categoria"] }, /regístrala a mano/],
     ["nómina emitida", { tipo: "N" as const }, /no genera póliza automática/],
   ])("no arma la póliza: %s", (_n, parcial, motivo) => {
     const r = construirPolizaDesdeCfdi(cfdi(parcial as Partial<InvoiceRecord>));

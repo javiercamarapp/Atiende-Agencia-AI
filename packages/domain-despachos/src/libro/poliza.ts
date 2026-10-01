@@ -1,7 +1,7 @@
 // D-24 -- validación de una póliza de entrada y armado de la póliza de un CFDI persistido. Puro: sin I/O, sin SAT/PAC.
 // Todo en centavos enteros; el cuadre (debe = haber) se exige aquí Y en la función SQL de la migración 020.
 import { DEFAULT_MAPPINGS, mappingKey } from "../bookkeeping/catalogo.ts";
-import type { InvoiceRecord } from "../types.ts";
+import type { CategoriaContable, InvoiceRecord } from "../types.ts";
 import { CUENTA_CLIENTES, CUENTA_DEVOLUCIONES_VENTAS, CUENTA_INGRESOS_SERVICIOS, CUENTA_IVA_TRASLADADO } from "./catalogo-base.ts";
 import { TIPOS_POLIZA } from "./types.ts";
 import type { MovimientoPolizaInput, PolizaInput, TipoPoliza } from "./types.ts";
@@ -70,6 +70,17 @@ export function validarPolizaEntrada(raw: Record<string, unknown>): ResultadoVal
   return { ok: true, valor: { tipo: tipo as TipoPoliza, fecha: raw.fecha as string, concepto, movimientos } };
 }
 
+/** Categoría gruesa del CFDI (`invoice.categoria`) -> clave del mapeo de cuentas del clasificador de pólizas. Solo lo que NO es ambiguo se
+ * automatiza: activos fijos, inversiones y nómina llevan cuentas específicas que decide el contador. */
+const MAPEO_POR_CATEGORIA: Readonly<Record<CategoriaContable, string | null>> = {
+  honorarios: "servicios_profesionales",
+  gasto_operativo: "otros",
+  activo_fijo: null,
+  inversion: null,
+  nomina: null,
+  sin_clasificar: null,
+};
+
 export type ResultadoPolizaCfdi =
   | { readonly ok: true; readonly poliza: PolizaInput }
   | { readonly ok: false; readonly motivo: string };
@@ -111,8 +122,9 @@ export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi 
     return { ok: true, poliza: { tipo: "diario", fecha: f.fecha, concepto: `Nota de crédito ${f.folioFiscal}`, movimientos } };
   }
   if (f.direccion === "recibido" && f.tipo === "I") {
-    const mapeo = DEFAULT_MAPPINGS[mappingKey("I", f.categoria)];
-    if (!mapeo) return noAplica("El CFDI aún no tiene una categoría contable con cuenta asignada: clasifícalo primero.");
+    const clave = MAPEO_POR_CATEGORIA[f.categoria];
+    const mapeo = clave ? DEFAULT_MAPPINGS[mappingKey("I", clave)] : undefined;
+    if (!mapeo) return noAplica("La categoría del CFDI no tiene una cuenta de gasto que se pueda asignar sola (activo fijo, inversión, nómina o sin clasificar): regístrala a mano.");
     if (iva > 0 && !mapeo.ivaCargo) return noAplica("La categoría del CFDI no tiene cuenta de IVA acreditable: regístralo a mano.");
     const movimientos: MovimientoPolizaInput[] = [{ cuenta: mapeo.cargo, concepto, debeCentavos: base, haberCentavos: 0 }];
     if (iva > 0 && mapeo.ivaCargo) movimientos.push({ cuenta: mapeo.ivaCargo, concepto: "IVA acreditable", debeCentavos: iva, haberCentavos: 0 });

@@ -5,3 +5,4 @@ export { prepararPagosDesdeRep } from "./rep-pagos.ts";
 export type { FacturaParaPago, PagoOmitido, PreparacionPagosRep } from "./rep-pagos.ts";
 export { PostgresPagosProvisionalesRepository, traducirErrorPagos } from "./postgres-repository.ts";
 export { InMemoryPagosProvisionalesRepository } from "./in-memory-repository.ts";
+export { construirReportePagosProvisionales } from "./reporte.ts";

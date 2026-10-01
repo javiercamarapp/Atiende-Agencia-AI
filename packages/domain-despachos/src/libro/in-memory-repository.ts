@@ -7,7 +7,7 @@ import {
   LibroDatosInvalidosError,
   LibroNoDisponibleError,
   LibroNoEncontradoError,
-  PeriodoCerradoError,
+  PeriodoLibroCerradoError,
   PolizaDuplicadaError,
 } from "./types.ts";
 import type {
@@ -82,7 +82,7 @@ export class InMemoryLibroRepository implements LibroRepository {
     if (debe !== haber) throw new LibroDatosInvalidosError(`póliza descuadrada (debe ${debe} y haber ${haber} centavos)`);
     if (p.movimientos.some((m) => !catalogo.has(m.cuenta))) throw new LibroDatosInvalidosError("hay cuentas que no existen en el catálogo del cliente");
     const [ejercicio, mes] = [Number(p.fecha.slice(0, 4)), Number(p.fecha.slice(5, 7))];
-    if (this.periodosCerrados.has(`${propertyId}|${p.fecha.slice(0, 7)}`)) throw new PeriodoCerradoError(`el periodo ${p.fecha.slice(0, 7)} está cerrado`);
+    if (this.periodosCerrados.has(`${propertyId}|${p.fecha.slice(0, 7)}`)) throw new PeriodoLibroCerradoError(`el periodo ${p.fecha.slice(0, 7)} está cerrado`);
     const lista = this.lista(propertyId);
     const folio = lista.filter((x) => x.ejercicio === ejercicio && x.mes === mes && x.tipo === p.tipo).reduce((m, x) => Math.max(m, x.folio), 0) + 1;
     const id = randomUUID();

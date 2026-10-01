@@ -100,10 +100,10 @@ export class LibroDatosInvalidosError extends Error {
     this.name = "LibroDatosInvalidosError";
   }
 }
-export class PeriodoCerradoError extends Error {
+export class PeriodoLibroCerradoError extends Error {
   constructor(message = "El periodo está cerrado: no se registran pólizas en él.") {
     super(message);
-    this.name = "PeriodoCerradoError";
+    this.name = "PeriodoLibroCerradoError";
   }
 }
 export class PolizaDuplicadaError extends Error {

@@ -10,7 +10,7 @@ import {
   LibroNoEncontradoError,
   LibroSinPermisoError,
   LibroTopeExcedidoError,
-  PeriodoCerradoError,
+  PeriodoLibroCerradoError,
   PolizaDuplicadaError,
 } from "./types.ts";
 import type {
@@ -43,7 +43,7 @@ export function traducirErrorLibro(err: unknown): unknown {
     case "23514":
       return new LibroDatosInvalidosError(mensaje);
     case "55000":
-      return new PeriodoCerradoError(mensaje);
+      return new PeriodoLibroCerradoError(mensaje);
     case "23505":
       return new PolizaDuplicadaError();
     case "P0002":
