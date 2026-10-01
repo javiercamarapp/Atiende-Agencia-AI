@@ -116,6 +116,20 @@ export const HOUSEKEEPING_BOARD_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm
 /** Inhabilitar / rehabilitar una habitacion (fuera de servicio / fuera de orden): housekeeping NO decide inhabilitar. */
 export const ROOM_OUT_OF_SERVICE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "maintenance"];
 
+// H-05 (migracion 034) -- tickets de huesped con SLA. Espejo, a nivel de aplicacion, de los helpers
+// SQL hoteles.can_manage_guest_tickets / can_create_guest_ticket / can_write_ticket_sla_policy (la
+// autoridad final SIGUE SIENDO la RLS: si este espejo se desincroniza, la peor consecuencia es un
+// 403 de mas, nunca un acceso de mas).
+/** Registrar un ticket a partir de una peticion/queja del huesped y ver los que le corresponden (la RLS
+ *  filtra: manager ve todos; los demas, los de su departamento, los asignados a ellos o los que reportaron). */
+export const GUEST_TICKET_ACCESS_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations", "housekeeping", "maintenance", "fnb", "accountant"];
+/** Ver TODOS los tickets, reasignar departamento, asignar a cualquiera y escalar a mano. */
+export const GUEST_TICKET_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
+/** Configurar los minutos de SLA por (departamento, prioridad): decision de negocio. */
+export const GUEST_TICKET_SLA_POLICY_ROLES: readonly HotelRole[] = ["owner", "gm"];
+/** Convertir una resena con queja en ticket (mismos roles que capturan/ven resenas y pueden atenderla). */
+export const GUEST_TICKET_FROM_REVIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+
 // Fase 8 (REQ-BO-024, LFT art.132 fr.XXXIV) — checador de asistencia inalterable.
 // Fichar (POST /asistencia/checar) NO tiene lista de roles: CUALQUIER miembro del
 // staff de la property registra su propio fichaje (checador de autoservicio, mismo

@@ -157,6 +157,28 @@ describe("POST /hoteles/:propertyId/revenue/recomendaciones/:id/aprobar|descarta
     expect(body.descartadaPor).toBe(ctx.staff.owner.id);
   });
 
+  // Hallazgo a5 (auditoría web-contrato): el trigger real
+  // hoteles.rate_recommendation_status_guard (migrations/029, sección 5) SIEMPRE
+  // permitió la transición 'aprobada' -> 'descartada' (`old.estado in ('pendiente',
+  // 'aprobada') and new.estado = 'descartada'`) y esta ruta HTTP nunca valida el
+  // estado previo (solo rol + pertenencia a property) -- el único bug era que
+  // Revenue.tsx no renderizaba el botón "Descartar" para 'aprobada'. Este test
+  // ejerce la ruta/backend end-to-end para esa transición, independiente del fix de
+  // UI (que no tiene infraestructura de test de componentes en este repo).
+  it("owner descarta una recomendación YA APROBADA -- la ruta y el backend ya soportan esta transición (029), sin necesitar volver a 'pendiente'", async () => {
+    const rec = await seedRecommendation(ctx, "2026-12-25");
+    const app = buildApp(ctx.deps);
+    const aprobar = await app.request(`/hoteles/${ctx.propertyId}/revenue/recomendaciones/${rec.id}/aprobar`, authedJson(ctx.staff.gm.token, {}));
+    expect(aprobar.status).toBe(200);
+    expect(((await aprobar.json()) as RecommendationBody).estado).toBe("aprobada");
+
+    const descartar = await app.request(`/hoteles/${ctx.propertyId}/revenue/recomendaciones/${rec.id}/descartar`, authedJson(ctx.staff.owner.token, {}));
+    expect(descartar.status).toBe(200);
+    const body = (await descartar.json()) as RecommendationBody;
+    expect(body.estado).toBe("descartada");
+    expect(body.descartadaPor).toBe(ctx.staff.owner.id);
+  });
+
   it("404 al aprobar una recomendación de otra property", async () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/hoteles/${ctx.propertyId}/revenue/recomendaciones/00000000-0000-0000-0000-000000000abc/aprobar`, authedJson(ctx.staff.owner.token, {}));

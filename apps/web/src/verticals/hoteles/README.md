@@ -32,6 +32,12 @@ inyectado para poder probar la lógica de red con vitest en entorno "node"):
   crear/listar/filtrar/cerrar con costo real. Los turnos de camaristas/lavandería
   (REQ-HK-008, LFT) NO están en esta página — flujo de programación semanal propio,
   de forma distinta al resto de este panel, queda pendiente.
+- `pages/Tickets.tsx` (`lib/tickets-client.ts`) — H-05: bandeja de tickets de huésped con estado de SLA
+  (en tiempo / por vencer / vencido), registrar un ticket (departamento y prioridad automáticos si no se
+  indican), tomar/cerrar con nota/cancelar/escalar a gerencia, reasignar departamento (owner/gm/frontdesk),
+  pestaña Escalados, bitácora por ticket, reseñas con queja -> ticket y política de SLA editable por
+  owner/gm. Los botones se ocultan por rol (cosmético; el servidor es la barrera real). Contra una base sin la
+  migración 034 muestra un aviso y no rompe.
 - `pages/Housekeeping.tsx` (`lib/limpieza-client.ts`) — H-04: tablero de limpieza por
   habitación (tarea del día, responsable, rechazos), generar las tareas del día,
   iniciar/terminar/inspeccionar (aprobar o rechazar con nota)/asignar/cancelar, marcar
