@@ -1,0 +1,66 @@
+name: Smoke post-deploy
+
+# PL-11. Despues de un despliegue a Produccion (o a mano con una URL), comprueba desde fuera que lo esencial
+# responde: /health, cabeceras de seguridad, login rechazando credenciales inexistentes con 401, la guarda de
+# Origin, una ruta protegida sin token y la SPA. Ver scripts/smoke-post-deploy/smoke.ts.
+#
+# Seguridad del workflow:
+# - Este workflow NO despliega nada y NO usa secretos: solo hace peticiones anonimas a una URL publica.
+# - Disparadores: `deployment_status` (lo emite la integracion de Vercel del propio repo; solo se actua con
+#   state=success y environment=Production, un fork no puede generarlo) y `workflow_dispatch` manual.
+#   Sin pull_request_target ni pull_request.
+# - Se hace checkout de la rama por defecto (el script que corre es el de main, nunca el de una rama de PR).
+# - Los valores de contexto (URL) entran por variables de entorno, nunca interpolados dentro del script de shell.
+# - permissions: contents: read.
+on:
+  deployment_status: {}
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL base a comprobar (https://...)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-post-deploy
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: smoke de /health, login, guarda de origen y SPA
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (rama por defecto)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Smoke
+        env:
+          INPUT_URL: ${{ inputs.base_url }}
+          DEPLOY_ENV_URL: ${{ github.event.deployment_status.environment_url }}
+          DEPLOY_TARGET_URL: ${{ github.event.deployment_status.target_url }}
+        run: |
+          set -euo pipefail
+          url="${INPUT_URL:-${DEPLOY_ENV_URL:-$DEPLOY_TARGET_URL}}"
+          case "$url" in
+            https://*) ;;
+            *) echo "URL no valida o ausente (se exige https://): '$url'"; exit 2 ;;
+          esac
+          # La integracion de Vercel puede disparar el evento antes de que el alias responda: un reintento corto.
+          for intento in 1 2 3; do
+            if node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts "$url"; then exit 0; fi
+            echo "Intento $intento fallido; reintentando en 20 s"; sleep 20
+          done
+          exit 1
