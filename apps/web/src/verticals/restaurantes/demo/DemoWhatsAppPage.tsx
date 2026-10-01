@@ -143,7 +143,7 @@ export function DemoWhatsAppPage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; 
                   <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${b.de === "cliente" ? "bg-primary text-primary-foreground" : "border border-border bg-card"}`}>
                     <p className="whitespace-pre-wrap break-words">{b.texto}</p>
                     {b.nota && <p className="mt-1.5 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{b.nota}</p>}
-                    <p className={`mt-1 text-right text-[10px] ${b.de === "cliente" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{b.hora}</p>
+                    <p className={`mt-1 text-right text-2xs ${b.de === "cliente" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{b.hora}</p>
                   </div>
                 </div>
               ))}
@@ -168,7 +168,7 @@ export function DemoWhatsAppPage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; 
                 Enviar
               </Button>
             </form>
-            <p className="px-3 pb-2 text-[11px] text-muted-foreground">
+            <p className="px-3 pb-2 text-2xs text-muted-foreground">
               {restante === 0 ? "Esta conversación alcanzó su tope de mensajes: inicie una nueva." : `Mensajes restantes en esta conversación: ${restante}.`} Nada de esto se envía a WhatsApp.
             </p>
           </section>
