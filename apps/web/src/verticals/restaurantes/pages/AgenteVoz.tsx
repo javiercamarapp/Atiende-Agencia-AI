@@ -6,17 +6,18 @@
 // Pestañas: Resumen, Voz, Conocimiento, Comportamiento, Mensaje inicial,
 // Herramientas y Conversaciones (nueva). La config y las conversaciones vienen de
 // endpoints de la API propia que construye otra tarea (lib/voz-client.ts): si
-// responden 404/503 la pantalla lo dice, nunca inventa datos. La vista previa usa
-// el adaptador de DEMOSTRACIÓN (voz/adaptador-demo.ts) y se etiqueta como
-// simulación; el adaptador real de Gemini Live se conecta cuando exista el endpoint
-// de sesión con token efímero.
+// responden 404/503 la pantalla lo dice, nunca inventa datos. La vista previa es una
+// llamada REAL de prueba con Gemini Live por token efímero (voz/adaptador-gemini-live.ts);
+// sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Mic, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
-import { fetchConversacionesVoz, fetchConversacionVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
+import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
-import { crearFabricaDemo } from "../voz/adaptador-demo.ts";
+import { crearFabricaGeminiLive } from "../voz/adaptador-gemini-live.ts";
+import type { EntornoVoz } from "../voz/adaptador-gemini-live.ts";
+import { entornoNavegador } from "../voz/entorno-navegador.ts";
 import { desdeError } from "../voz/carga.ts";
 import type { Carga } from "../voz/carga.ts";
 import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agente.ts";
@@ -61,9 +62,11 @@ function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
 export interface AgenteVozPageProps extends RestaurantesShellContext {
   /** Solo para pruebas: reemplaza la reproducción real de la muestra de voz. */
   readonly crearAudio?: (url: string) => MuestraAudio;
+  /** Solo para pruebas: reemplaza el navegador (WebSocket, micrófono, reproducción) de la llamada de prueba. */
+  readonly entornoVoz?: EntornoVoz;
 }
 
-export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: AgenteVozPageProps) {
+export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entornoVoz }: AgenteVozPageProps) {
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -168,7 +171,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
 
         {config.estado === "no_disponible" ? (
           <p role="status" data-testid="aviso-servicio" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            El servicio de voz todavía no está disponible para este negocio. Puedes explorar la vista previa en modo demostración, pero los cambios no se guardarán hasta que el servicio esté activo.
+            El servicio de voz todavía no está disponible para este negocio. Los cambios no se guardarán hasta que el servicio esté activo.
           </p>
         ) : null}
         {config.estado === "error" ? <EstadoError mensaje={config.mensaje} onReintentar={reintentar} /> : null}
@@ -312,7 +315,9 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
         ) : null}
       </PageContainer>
 
-      {vistaPrevia ? <VistaPreviaDemo saludo={borrador.mensajeInicial} onCerrar={() => setVistaPrevia(false)} /> : null}
+      {vistaPrevia ? (
+        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} onCerrar={() => setVistaPrevia(false)} />
+      ) : null}
     </div>
   );
 }
@@ -380,7 +385,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
             ))}
           </ul>
           <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onVistaPrevia}>
-            Abrir vista previa (demostración)
+            Abrir llamada de prueba
           </Button>
         </CardContent>
       </Card>
@@ -411,20 +416,52 @@ function ResumenLlamadas({ lista }: { lista: readonly ConversacionVoz[] }) {
   );
 }
 
-function VistaPreviaDemo({ saludo, onCerrar }: { saludo: string; onCerrar: () => void }) {
-  const fabrica = useMemo(() => crearFabricaDemo({ saludo }), [saludo]);
+interface VistaPreviaVozProps {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  /** Voz GUARDADA de la sucursal (la sesión de prueba usa la guardada, no un borrador sin guardar). */
+  readonly vozId: string | null;
+  readonly servicioListo: boolean;
+  readonly entorno: EntornoVoz;
+  readonly onCerrar: () => void;
+}
+
+/** Llamada de prueba real con el agente configurado. Antes de ofrecer el botón consulta la salud del proveedor: sin credencial muestra el motivo y no simula nada. */
+function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, entorno, onCerrar }: VistaPreviaVozProps) {
+  const [motivo, setMotivo] = useState<string | null>(servicioListo ? "Comprobando el servicio de voz…" : "No disponible: el servicio de voz todavía no está activo para este negocio.");
+  useEffect(() => {
+    if (!servicioListo) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const salud = await fetchSaludVoz(fetch, apiBaseUrl, token, propertyId);
+        if (!cancelado) setMotivo(salud.ok ? null : `No disponible: ${salud.detalle}`);
+      } catch (err) {
+        if (!cancelado) setMotivo(err instanceof VozNoDisponibleError ? "No disponible: el servicio de voz todavía no está activo para este negocio." : "No se pudo comprobar el servicio de voz. Cierre y vuelva a abrir la llamada de prueba.");
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, servicioListo]);
+
+  const fabrica = useMemo(
+    () => crearFabricaGeminiLive({ entorno, crearSesion: () => crearSesionPreviewVoz(fetch, apiBaseUrl, token, propertyId, vozId ? { voiceId: vozId } : {}) }),
+    [entorno, apiBaseUrl, token, propertyId, vozId],
+  );
   const controller = useSesionVoz(fabrica);
   return (
     <VistaPreviaLlamada
       controller={controller}
       nombreAgente="Agente de voz"
-      nombreSucursal="Sucursal activa"
+      nombreSucursal="Llamada de prueba"
       onCerrar={onCerrar}
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
-      etiquetaSimulacion="Simulación"
+      {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
-        <Callout tone="warning" role="note" data-testid="aviso-simulacion" className="mx-4 mb-3">
-          Es una simulación: no llama a tu agente real, no usa la voz elegida ni registra pedidos. Sirve para ver cómo se comporta la interfaz.
+        <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
+          Es una llamada real de prueba con la voz y el comportamiento guardados. No consulta el menú ni registra pedidos, y usa su micrófono: el navegador le pedirá permiso.
         </Callout>
       }
     />
