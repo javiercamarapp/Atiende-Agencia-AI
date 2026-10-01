@@ -20,6 +20,8 @@ export interface ManejadoresSesion {
   usuarioDijo?(texto: string): void;
   /** El agente pide una herramienta; la respuesta se devuelve al proveedor tal cual. */
   ejecutarTool(llamada: ToolCallPedida): Promise<unknown>;
+  /** Audio PCM16 del agente (24 kHz mono en Gemini) para reproducirlo al cliente; solo en sesiones con audio. */
+  audioAgente?(pcm16: Uint8Array): void;
   /** Costo adicional estimado (micro-USD) desde el ultimo aviso. */
   costo?(microUsd: number): void;
   /** El proveedor se cayo (cierre inesperado, error de red o `goAway`). Lleva el handle de reanudacion si lo hay. */
