@@ -117,7 +117,7 @@ describe("ReportesPage (despachos)", () => {
   it("'Descargar Excel' pide formato=xlsx con bearer y dispara la descarga con el nombre del servidor", async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
       url.includes("formato=xlsx")
-        ? new Response(new Blob(["PK"]), { status: 200, headers: { "content-disposition": 'attachment; filename="reporte-diot-2026-08.xlsx"' } })
+        ? new Response("PK", { status: 200, headers: { "content-disposition": 'attachment; filename="reporte-diot-2026-08.xlsx"' } })
         : new Response(JSON.stringify(REPORTE), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -134,7 +134,8 @@ describe("ReportesPage (despachos)", () => {
       await esperar();
       await act(async () => {
         click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Descargar Excel"))!);
-        // `Response.blob()` resuelve en una tarea posterior a los microtasks; en CI (más lento) no basta con vaciarlos.
+        // `Response.blob()` resuelve en una tarea posterior a los microtasks: se espera con waitFor, no con flushMicrotasks.
+        // (El cuerpo es un string: el `Blob` de jsdom no es aceptado por el `Response` de undici en Node 22.)
         await vi.waitFor(() => expect(descargas.length).toBe(1), { timeout: 3000 });
       });
       const llamada = fetchMock.mock.calls.find(([u]) => String(u).includes("formato=xlsx"))!;
