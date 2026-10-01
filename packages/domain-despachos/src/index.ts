@@ -615,3 +615,6 @@ export { EstadoSatNoDisponibleError, EstadoSatInvalidoError, InvoiceNoEncontrado
 
 // D-24: libro contable persistido (catálogo por cliente, pólizas con folio, balanza derivada, póliza de un CFDI).
 export * from "./libro/index.ts";
+
+// D-25: pagos provisionales de ISR/IVA (papel de trabajo por flujo de efectivo, pagos de REP persistidos).
+export * from "./pagos-provisionales/index.ts";
