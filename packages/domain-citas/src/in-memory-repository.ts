@@ -1037,7 +1037,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       const startsMs = Date.parse(apt.startsAt);
       if (startsMs < startMs || startsMs > endMs) continue;
       const customer = this.customers.get(apt.customerId);
-      rows.push({ appointmentId: apt.id, providerId: apt.providerId, startsAt: apt.startsAt, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? "", serviceId: apt.serviceId });
+      rows.push({ appointmentId: apt.id, providerId: apt.providerId, startsAt: apt.startsAt, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? "", serviceId: apt.serviceId, createdAt: apt.createdAt });
     }
     return rows;
   }

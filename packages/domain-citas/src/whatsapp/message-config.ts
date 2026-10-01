@@ -302,18 +302,29 @@ export function dentroDelHorarioDeEnvio(config: Pick<WhatsappMessageConfig, "sen
 
 const HORA_MS = 60 * 60 * 1000;
 
-/** Ventana de citas candidatas a recordatorio. Con la anticipacion de fabrica y sin horario es la de siempre (24 h +-
- * `toleranciaMs`). Con horario de envio se amplia hacia atras las horas en que no se puede enviar, para que una cita cuyo
- * momento de aviso cayo en horas cerradas se avise al abrir el horario; nunca incluye citas que ya empezaron. */
-export function ventanaDeRecordatorio(
-  now: Date,
-  config: Pick<WhatsappMessageConfig, "reminderLeadHours" | "sendWindowStart" | "sendWindowEnd">,
-  toleranciaMs: number,
-): { readonly from: Date; readonly to: Date } {
-  const objetivo = now.getTime() + config.reminderLeadHours * HORA_MS;
-  const cerradas = config.sendWindowStart !== null && config.sendWindowEnd !== null ? (24 - (config.sendWindowEnd - config.sendWindowStart)) * HORA_MS : 0;
-  const from = Math.max(now.getTime(), objetivo - toleranciaMs - cerradas);
-  return { from: new Date(from), to: new Date(objetivo + toleranciaMs) };
+/** Ventana de citas candidatas a recordatorio (C-14): desde AHORA hasta ahora + la anticipacion configurada (24 h de
+ * fabrica). Antes era `ahora + anticipacion +- 30 min`: con el cron diario de las 14:00 UTC solo alcanzaba a las citas de
+ * una hora del dia, y una cita reservada con menos de 24 h de aviso nunca entraba. Ahora cada cita entra a la ventana en
+ * cuanto faltan `reminderLeadHours` y se queda hasta que empieza, asi que da igual la cadencia del cron (diaria o cada 30
+ * min): ninguna cita queda entre dos corridas. El dedupe es `reminder_24h_sent_at` + la clave del outbox, no la ventana, de
+ * modo que ensancharla no puede enviar dos veces. Nunca incluye citas que ya empezaron. Es una ventana de INSTANTES
+ * absolutos: no depende de ninguna zona horaria (la zona de la sucursal solo decide la hora que se muestra y el horario de
+ * envio, ver `dentroDelHorarioDeEnvio`). Las horas en que el horario de envio esta cerrado no necesitan ampliarla: la cita
+ * sigue pendiente en cada corrida hasta que una cae dentro del horario. */
+export function ventanaDeRecordatorio(now: Date, config: Pick<WhatsappMessageConfig, "reminderLeadHours">): { readonly from: Date; readonly to: Date } {
+  return { from: now, to: new Date(now.getTime() + config.reminderLeadHours * HORA_MS) };
+}
+
+/** Una cita reservada hace menos de esto no recibe el recordatorio todavia: en cuanto se reserva ya esta en la ventana y
+ * el aviso llegaria pegado a la propia reserva. La siguiente corrida la recoge. */
+export const ANTIGUEDAD_MINIMA_RESERVA_MS = HORA_MS;
+
+/** `true` si la cita se reservo hace menos de `ANTIGUEDAD_MINIMA_RESERVA_MS` (sin fecha de reserva o fechada en el futuro
+ * no cuenta como reciente). */
+export function reservaMuyReciente(createdAtIso: string | null | undefined, now: Date): boolean {
+  if (!createdAtIso) return false;
+  const edad = now.getTime() - Date.parse(createdAtIso);
+  return Number.isFinite(edad) && edad >= 0 && edad < ANTIGUEDAD_MINIMA_RESERVA_MS;
 }
 
 // ---- Historial y diferencias ----

@@ -12,16 +12,11 @@
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
-import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, dentroDelHorarioDeEnvio, legacyReminderBody, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
+import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
 import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
 export const MAX_WAITLIST_NOTIFICATIONS = 3;
-
-// El cron real corre cada tantos minutos, no exactamente a las 24h — una ventana de
-// tolerancia evita que una cita se quede sin recordatorio por caer 2 minutos fuera
-// de un corte exacto, y evita mandarlo dos veces gracias a reminder24hSentAt.
-const REMINDER_WINDOW_TOLERANCE_MS = 30 * 60 * 1000;
 
 export type TimeWindow = "morning" | "afternoon" | "evening";
 
@@ -101,9 +96,12 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   // migrar: el metodo del repositorio degrada con SAVEPOINT a `null`) es exactamente el comportamiento de siempre: 24 h
   // +- 30 min, a cualquier hora, con el texto de siempre.
   const config = (await repo.getWhatsappMessageConfigForSend(organizationId)) ?? MENSAJES_CONFIG_POR_OMISION;
-  const { from: windowStart, to: windowEnd } = ventanaDeRecordatorio(now, config, REMINDER_WINDOW_TOLERANCE_MS);
+  const { from: windowStart, to: windowEnd } = ventanaDeRecordatorio(now, config);
 
-  const pending = await repo.loadAppointmentsPendingReminder(organizationId, windowStart.toISOString(), windowEnd.toISOString());
+  // C-14 -- ventana (ahora, ahora + anticipacion]: sirve igual con el cron diario que con el de cada 30 min (ver
+  // `ventanaDeRecordatorio`). Una reserva de hace menos de 1 h espera a la siguiente corrida (no queda pegada a la reserva).
+  const candidates = await repo.loadAppointmentsPendingReminder(organizationId, windowStart.toISOString(), windowEnd.toISOString());
+  const pending = candidates.filter((c) => !reservaMuyReciente(c.createdAt, now));
   summary.processed = pending.length;
   if (pending.length === 0) return summary;
 
@@ -169,7 +167,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
         }
 
         // C-04 -- fuera del horario de envio la cita se deja pendiente: la siguiente corrida del cron (dentro del horario)
-        // la recoge porque `ventanaDeRecordatorio` ya amplia la busqueda hacia atras las horas cerradas.
+        // la recoge: la cita sigue en la ventana (ahora, ahora + anticipacion] hasta que empieza.
         if (!dentroDelHorarioDeEnvio(config, now, timeZone)) {
           skippedOutsideWindowLocal += 1;
           return;

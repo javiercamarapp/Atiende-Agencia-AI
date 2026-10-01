@@ -1076,8 +1076,8 @@ export class PostgresCitasRepository implements CitasRepository {
   }
 
   async loadAppointmentsPendingReminder(organizationId: string, windowStartIso: string, windowEndIso: string): Promise<readonly ReminderCandidateRow[]> {
-    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; service_id: string | null; starts_at: string; customer_name: string | null; customer_phone: string }>(
-      `select a.id as appointment_id, a.provider_id, a.service_id, a.starts_at, c.full_name as customer_name, c.phone as customer_phone
+    const { rows } = await this.db.query<{ appointment_id: string; provider_id: string; service_id: string | null; starts_at: string; created_at: string | null; customer_name: string | null; customer_phone: string }>(
+      `select a.id as appointment_id, a.provider_id, a.service_id, a.starts_at, a.created_at, c.full_name as customer_name, c.phone as customer_phone
        from citas.appointments a
        join citas.customers c on c.id = a.customer_id
        where a.organization_id = $1 and a.status in ('pending','confirmed')
@@ -1085,7 +1085,7 @@ export class PostgresCitasRepository implements CitasRepository {
          and a.starts_at >= $2 and a.starts_at <= $3;`,
       [organizationId, windowStartIso, windowEndIso],
     );
-    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone, serviceId: r.service_id }));
+    return rows.map((r) => ({ appointmentId: r.appointment_id, providerId: r.provider_id, startsAt: r.starts_at, customerName: r.customer_name, customerPhone: r.customer_phone, serviceId: r.service_id, createdAt: r.created_at }));
   }
 
   // ============================================================================

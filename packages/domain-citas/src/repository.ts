@@ -191,6 +191,8 @@ export interface ReminderCandidateRow {
   readonly customerPhone: string;
   /** C-04 -- para la variable {{servicio}} de la plantilla; `null`/ausente = "Servicio". */
   readonly serviceId?: string | null;
+  /** C-14 -- cuando se reservo la cita (ISO). Ausente en repositorios que no lo traen: cuenta como "no reciente". */
+  readonly createdAt?: string | null;
 }
 
 /** Mismo shape que `ConversationMessage` de domain-restaurantes/domain-hoteles —
