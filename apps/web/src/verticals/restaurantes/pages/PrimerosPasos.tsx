@@ -3,7 +3,7 @@
 // responsable y el enlace a la pantalla donde se cierran): nada se marca como hecho a mano ni se inventa.
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ListChecks, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, PageContainer, StatusBadge } from "@atiende/ui";
 import { ESTADO_LABEL, RESPONSABLE_LABEL, fetchOnboarding, type OnboardingChecklist, type OnboardingEstado } from "../lib/onboarding-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -24,16 +24,14 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
   const checklist = typeof estado === "object" && "items" in estado ? estado : null;
   return (
     <PageContainer padding="none">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h1 className="m-0 font-display text-xl font-semibold text-foreground">Primeros pasos</h1>
-        </div>
+      {/* El nombre de la pagina ya lo muestra la barra superior del shell (contrato de pagina UNI-4): solo queda el h1 para lectores de pantalla. */}
+      <h1 className="sr-only">Primeros pasos</h1>
+      <div className="flex justify-end">
         <Button type="button" variant="outline" size="sm" onClick={cargar} disabled={estado === "cargando"}>
           <RefreshCw className={estado === "cargando" ? "animate-spin" : undefined} />
           Actualizar
         </Button>
-      </header>
+      </div>
 
       {estado === "cargando" && <EstadoCargando etiqueta="Revisando la configuración…" />}
       {typeof estado === "object" && "error" in estado && <EstadoError mensaje={estado.error} onReintentar={cargar} />}
