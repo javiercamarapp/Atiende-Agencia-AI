@@ -15,6 +15,18 @@
  *  Meta, y por eso exigirían una plantilla HSM pre-aprobada que este entorno no
  *  tiene forma de conseguir) y para los 3 pasos exactos que cerrarían esto el día
  *  que exista una plantilla real aprobada. */
+/** Botón de respuesta rápida con id propio (C-01): el `id` vuelve tal cual en el
+ *  `button_reply.id` del webhook entrante, así el recordatorio puede atar el toque a
+ *  UNA cita concreta (p. ej. `cita:confirmar:<appointmentId>`) en vez del `btn_N`
+ *  posicional que no identifica nada. Una cadena sola sigue siendo válida (título
+ *  con id posicional `btn_N`, comportamiento anterior). */
+export interface OutboundButton {
+  /** 1-256 caracteres (límite de Graph API para `reply.id`). */
+  readonly id: string;
+  /** 1-20 caracteres (límite de Graph API para el título del botón). */
+  readonly title: string;
+}
+
 export interface OutboundWhatsAppMessagePayload {
   /** Número del destinatario en formato E.164 con o sin "+" (Graph API acepta
    *  ambos; se pasa tal cual llegó del encolador). */
@@ -27,7 +39,7 @@ export interface OutboundWhatsAppMessagePayload {
   /** Hasta 3 botones de respuesta rápida (interactive/button de Graph API) — usado
    *  hoy por el recordatorio 24h de citas (Confirmar/Cancelar/Reagendar). Sin
    *  botones, se manda como mensaje de texto plano. */
-  readonly buttons?: readonly string[];
+  readonly buttons?: readonly (string | OutboundButton)[];
 }
 
 export interface WhatsAppSendResult {
