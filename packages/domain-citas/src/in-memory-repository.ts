@@ -7,6 +7,19 @@
 import { randomUUID } from "node:crypto";
 import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
 import type {
+  ConfirmDataRightsOutcome,
+  DataRightsEventRow,
+  DataRightsPaginacion,
+  DataRightsRequestRow,
+  DataRightsRequestsFiltro,
+  DataRightsRequestsPage,
+  DataRightStaffTargetStatus,
+  DataRightStatus,
+  DataRightType,
+  RegisterDataRightsOutcome,
+  UpdateDataRightsStatusResult,
+} from "./data-rights.ts";
+import type {
   AppointmentActorChannel,
   AppointmentRecord,
   AvailabilityOverride,
@@ -206,6 +219,14 @@ export class InMemoryCitasRepository implements CitasRepository {
   llamadasFindServicesByIds = 0;
   llamadasFindCustomersByIds = 0;
   private readonly emergencyEscalations: EmergencyEscalationRecord[] = [];
+  // ---- C-02 -- solicitudes ARCO, mismas reglas que migrations/024_citas_data_rights.sql
+  // (una abierta por org+teléfono+derecho, confirmación vigente 24 h, plazos 20/35 días,
+  // transiciones de staff). Expuesto para que un test inspeccione lo escrito. ----
+  readonly dataRightsRequests: (DataRightsRequestRow & { readonly organizationId: string; readonly seq: number })[] = [];
+  readonly dataRightsEvents: (DataRightsEventRow & { readonly organizationId: string })[] = [];
+  private dataRightsSeq = 0;
+  /** Simula una base sin la migración 024: los métodos degradan igual que el adaptador real. */
+  dataRightsMigrationPending = false;
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff, ver
   // migrations/023_citas_audit_log.sql. Expuesta (no privada, mismo criterio que
   // `InMemoryRestaurantesRepository.auditLog`) para que un test pueda inspeccionar
@@ -1542,5 +1563,105 @@ export class InMemoryCitasRepository implements CitasRepository {
     const total = filtrados.length;
     const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, seq: _seq, ...row }) => row);
     return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
+  }
+
+  // ---- C-02 -- solicitudes de derechos ARCO ----
+
+  private pushDataRightsEvent(organizationId: string, requestId: string, actorKind: DataRightsEventRow["actorKind"], event: string, fromStatus: string | null, toStatus: string | null, actorUserId: string | null = null, note: string | null = null): void {
+    this.dataRightsEvents.push({ id: randomUUID(), organizationId, requestId, actorKind, actorUserId, event, fromStatus, toStatus, note: note ? note.slice(0, 500) : null, createdAt: new Date().toISOString() });
+  }
+
+  async registerDataRightsRequestAsSystem(input: { readonly organizationId: string; readonly customerPhone: string; readonly rightType: DataRightType; readonly detail: string | null }): Promise<RegisterDataRightsOutcome> {
+    if (this.dataRightsMigrationPending) return { available: false };
+    const now = Date.now();
+    for (const r of this.dataRightsRequests) {
+      if (r.organizationId === input.organizationId && r.customerPhone === input.customerPhone && r.status === "pendiente_confirmacion" && now - new Date(r.requestedAt).getTime() > 24 * 60 * 60 * 1000) {
+        const idx = this.dataRightsRequests.indexOf(r);
+        this.dataRightsRequests[idx] = { ...r, status: "expirada", updatedAt: new Date(now).toISOString() };
+        this.pushDataRightsEvent(r.organizationId, r.id, "sistema", "expirada", "pendiente_confirmacion", "expirada");
+      }
+    }
+    const open = this.dataRightsRequests.find(
+      (r) => r.organizationId === input.organizationId && r.customerPhone === input.customerPhone && r.rightType === input.rightType && ["pendiente_confirmacion", "recibida", "en_proceso", "bloqueada"].includes(r.status),
+    );
+    if (open) return { available: true, id: open.id, status: open.status, alreadyOpen: true, responseDueAt: open.responseDueAt };
+    this.dataRightsSeq += 1;
+    const iso = new Date(now).toISOString();
+    const row = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      seq: this.dataRightsSeq,
+      customerPhone: input.customerPhone,
+      rightType: input.rightType,
+      channel: "whatsapp" as const,
+      status: "pendiente_confirmacion" as DataRightStatus,
+      detail: input.detail ? input.detail.slice(0, 300) : null,
+      requestedAt: iso,
+      confirmedAt: null,
+      responseDueAt: null,
+      executionDueAt: null,
+      resolvedAt: null,
+      resolutionNote: null,
+      handledBy: null,
+      updatedAt: iso,
+    };
+    this.dataRightsRequests.push(row);
+    this.pushDataRightsEvent(row.organizationId, row.id, "titular", "registrada", null, "pendiente_confirmacion");
+    return { available: true, id: row.id, status: row.status, alreadyOpen: false, responseDueAt: null };
+  }
+
+  async resolveDataRightsConfirmationAsSystem(organizationId: string, customerPhone: string, confirm: boolean): Promise<ConfirmDataRightsOutcome> {
+    if (this.dataRightsMigrationPending) return { available: false };
+    const now = Date.now();
+    const candidates = this.dataRightsRequests
+      .filter((r) => r.organizationId === organizationId && r.customerPhone === customerPhone && r.status === "pendiente_confirmacion" && now - new Date(r.requestedAt).getTime() <= 24 * 60 * 60 * 1000)
+      .sort((a, b) => b.seq - a.seq);
+    const target = candidates[0];
+    if (!target) return { available: true, found: false };
+    const idx = this.dataRightsRequests.indexOf(target);
+    const day = 24 * 60 * 60 * 1000;
+    const updated = confirm
+      ? { ...target, status: "recibida" as DataRightStatus, confirmedAt: new Date(now).toISOString(), responseDueAt: new Date(now + 20 * day).toISOString(), executionDueAt: new Date(now + 35 * day).toISOString(), updatedAt: new Date(now).toISOString() }
+      : { ...target, status: "cancelada_titular" as DataRightStatus, updatedAt: new Date(now).toISOString() };
+    this.dataRightsRequests[idx] = updated;
+    this.pushDataRightsEvent(organizationId, target.id, "titular", confirm ? "confirmada" : "cancelada_por_titular", "pendiente_confirmacion", updated.status);
+    return { available: true, found: true, id: updated.id, rightType: updated.rightType, status: updated.status, responseDueAt: updated.responseDueAt, executionDueAt: updated.executionDueAt };
+  }
+
+  async listDataRightsRequests(organizationId: string, filtro: DataRightsRequestsFiltro, paginacion: DataRightsPaginacion): Promise<DataRightsRequestsPage> {
+    if (this.dataRightsMigrationPending) return { disponible: false, items: [], total: 0, nextOffset: null };
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+    let filtrados = this.dataRightsRequests.filter((r) => r.organizationId === organizationId);
+    if (filtro.status) filtrados = filtrados.filter((r) => r.status === filtro.status);
+    if (filtro.rightType) filtrados = filtrados.filter((r) => r.rightType === filtro.rightType);
+    filtrados = [...filtrados].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime() || b.seq - a.seq);
+    const total = filtrados.length;
+    const items = filtrados.slice(offset, offset + limit).map(({ organizationId: _o, seq: _s, ...row }) => row);
+    return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+  }
+
+  async listDataRightsEvents(organizationId: string, requestId: string): Promise<readonly DataRightsEventRow[] | null> {
+    if (this.dataRightsMigrationPending) return null;
+    return this.dataRightsEvents.filter((e) => e.organizationId === organizationId && e.requestId === requestId).map(({ organizationId: _o, ...row }) => row);
+  }
+
+  async updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult> {
+    if (this.dataRightsMigrationPending) return { outcome: "unavailable" };
+    const target = this.dataRightsRequests.find((r) => r.id === requestId && r.organizationId === organizationId);
+    if (!target) return { outcome: "not_found" };
+    if (status === "rechazada" && (!note || note.trim() === "")) return { outcome: "invalid_input" };
+    const allowed: Record<string, readonly string[]> = {
+      recibida: ["en_proceso", "bloqueada", "resuelta", "rechazada"],
+      en_proceso: ["bloqueada", "resuelta", "rechazada"],
+      bloqueada: ["resuelta", "rechazada"],
+    };
+    if (!(allowed[target.status] ?? []).includes(status) || (status === "bloqueada" && target.rightType !== "cancelacion")) return { outcome: "invalid_transition" };
+    const idx = this.dataRightsRequests.indexOf(target);
+    const nowIso = new Date().toISOString();
+    const closing = status === "resuelta" || status === "rechazada";
+    this.dataRightsRequests[idx] = { ...target, status, resolvedAt: closing ? nowIso : target.resolvedAt, resolutionNote: closing ? (note ?? null)?.slice(0, 1000) ?? null : target.resolutionNote, updatedAt: nowIso };
+    this.pushDataRightsEvent(organizationId, requestId, "staff", "cambio_estado", target.status, status, "staff-in-memory", note);
+    return { outcome: "updated", id: requestId, status };
   }
 }

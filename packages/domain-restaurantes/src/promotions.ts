@@ -23,7 +23,7 @@
 //   UPDATE atómico en Postgres (ver postgres-repository.ts::incrementPromotionUses)
 //   para que dos pedidos casi-simultáneos con el mismo código nunca lo rebasen.
 import { PromotionError } from "./errors.ts";
-import type { Promotion } from "./types.ts";
+import type { CanalPedido, PersistedOrderItem, Promotion } from "./types.ts";
 
 export const PROMOTION_CODE_PATTERN = /^[A-Z0-9_-]{3,40}$/;
 
@@ -97,7 +97,7 @@ function partesDeHoyEnZona(now: Date, zonaHoraria: string): { readonly dayOfWeek
  * `daysOfWeek`/`startTime`/`endTime` (hora de PARED del negocio) necesitan la
  * zona real.
  */
-export function assertPromotionApplicable(promotion: Promotion, orderTotal: number, now: Date, zonaHoraria: string): void {
+export function assertPromotionApplicable(promotion: Promotion, orderTotal: number, now: Date, zonaHoraria: string, canal?: CanalPedido): void {
   if (!promotion.isActive) {
     throw new PromotionError(`El código "${promotion.code}" ya no está activo.`);
   }
@@ -118,6 +118,11 @@ export function assertPromotionApplicable(promotion: Promotion, orderTotal: numb
     if (!withinWindow) {
       throw new PromotionError(`El código "${promotion.code}" solo aplica de ${promotion.startTime ?? "00:00"} a ${promotion.endTime ?? "23:59"}.`);
     }
+  }
+  // Restriccion por canal (migracion 027): vacio/null = todos los canales. Sin `canal` del pedido no
+  // se puede verificar, asi que una promocion restringida NO aplica (cierra por defecto).
+  if (promotion.channels && promotion.channels.length > 0 && (canal === undefined || !promotion.channels.includes(canal))) {
+    throw new PromotionError(`El código "${promotion.code}" no aplica a pedidos ${canal === "domicilio" ? "a domicilio" : canal === "recoger" ? "para recoger" : "de este tipo"}.`);
   }
   if (promotion.maxUses !== null && promotion.timesUsed >= promotion.maxUses) {
     throw new PromotionError(`El código "${promotion.code}" ya alcanzó su límite de usos.`);
@@ -143,7 +148,59 @@ export function computePromotionDiscount(promotion: Promotion, orderTotal: numbe
  * `assertPromotionApplicable`.
  */
 export function applyPromotionToOrderTotal(orderTotal: number, promotion: Promotion, now: Date, zonaHoraria: string): { readonly total: number; readonly discount: number } {
+  // Un 2x1 necesita los renglones del pedido: usa `applyPromotionToOrder`.
+  if (promotion.type === "bogo") throw new PromotionError(`El código "${promotion.code}" es 2x1 y requiere los renglones del pedido.`);
   assertPromotionApplicable(promotion, orderTotal, now, zonaHoraria);
   const discount = computePromotionDiscount(promotion, orderTotal);
+  return { total: Math.round((orderTotal - discount) * 100) / 100, discount };
+}
+
+/**
+ * Descuento de un 2x1 sobre los renglones del pedido: cada renglon cuenta `quantity` unidades al
+ * precio de linea; entre las unidades ELEGIBLES (todas si `productIds` es null, o solo las de esos
+ * productos) se agrupan de dos en dos del mas caro al mas barato y la mas barata de cada par va
+ * gratis -- o sea gratis `floor(n / 2)` unidades, las `floor(n / 2)` mas baratas. Con un solo
+ * producto elegible es el 2x1 clasico (3 piezas => 1 gratis; 4 => 2). Nunca toca los precios de
+ * linea, solo calcula el monto a restar.
+ */
+export function computeBogoDiscount(promotion: Promotion, items: readonly PersistedOrderItem[]): number {
+  const ids = promotion.productIds && promotion.productIds.length > 0 ? new Set(promotion.productIds) : null;
+  const unitPrices: number[] = [];
+  for (const item of items) {
+    if (ids && !ids.has(item.id)) continue;
+    for (let i = 0; i < item.quantity; i += 1) unitPrices.push(item.price);
+  }
+  unitPrices.sort((a, b) => b - a);
+  const free = Math.floor(unitPrices.length / 2);
+  let discount = 0;
+  for (const price of unitPrices.slice(unitPrices.length - free)) discount += price;
+  return Math.round(discount * 100) / 100;
+}
+
+/**
+ * Aplica una promocion al pedido real (renglones + canal): valida vigencia y canal
+ * (`assertPromotionApplicable`) y calcula el descuento segun el tipo. Un 2x1 sin al menos dos
+ * unidades elegibles lanza `PromotionError` con la razon real (nunca un descuento 0 silencioso).
+ * `percentage`/`fixed` conservan exactamente el calculo anterior (`computePromotionDiscount`).
+ */
+export function applyPromotionToOrder(args: {
+  readonly promotion: Promotion;
+  readonly orderTotal: number;
+  readonly items: readonly PersistedOrderItem[];
+  readonly canal: CanalPedido;
+  readonly now: Date;
+  readonly zonaHoraria: string;
+}): { readonly total: number; readonly discount: number } {
+  const { promotion, orderTotal } = args;
+  assertPromotionApplicable(promotion, orderTotal, args.now, args.zonaHoraria, args.canal);
+  let discount: number;
+  if (promotion.type === "bogo") {
+    discount = Math.min(computeBogoDiscount(promotion, args.items), orderTotal);
+    if (discount <= 0) {
+      throw new PromotionError(`El código "${promotion.code}" es 2x1: agregue al menos 2 piezas de los productos de la promoción.`);
+    }
+  } else {
+    discount = computePromotionDiscount(promotion, orderTotal);
+  }
   return { total: Math.round((orderTotal - discount) * 100) / 100, discount };
 }

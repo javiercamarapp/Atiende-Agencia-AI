@@ -12,11 +12,18 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   forma_migratoria: "Forma migratoria",
   otro: "Otro",
 };
-export type IdentidadEstado = "activo" | "purgado";
-export type PurgaEstado = "pendiente" | "ejecutada" | "rechazada";
+export type IdentidadEstado = "activo" | "bloqueada" | "purgado";
+export type PurgaEstado = "pendiente" | "en_bloqueo" | "ejecutada" | "rechazada";
+export type MotivoBloqueo = "retencion_vencida" | "solicitud_purga" | "arco" | "manual";
+export const MOTIVO_BLOQUEO_LABELS: Record<MotivoBloqueo, string> = {
+  retencion_vencida: "Retención vencida",
+  solicitud_purga: "Purga aprobada",
+  arco: "ARCO de cancelación",
+  manual: "Bloqueo manual",
+};
 export type MigratorioEstado = "pendiente" | "reportado";
 
-export const PURGA_ESTADO_LABELS: Record<PurgaEstado, string> = { pendiente: "Pendiente", ejecutada: "Ejecutada", rechazada: "Rechazada" };
+export const PURGA_ESTADO_LABELS: Record<PurgaEstado, string> = { pendiente: "Pendiente", en_bloqueo: "En bloqueo", ejecutada: "Ejecutada", rechazada: "Rechazada" };
 export const MIGRATORIO_ESTADO_LABELS: Record<MigratorioEstado, string> = { pendiente: "Pendiente", reportado: "Reportado" };
 
 export interface IdentidadSummary {
@@ -34,6 +41,12 @@ export interface IdentidadSummary {
   readonly capturadaPor: string | null;
   readonly creadaEn: string;
   readonly purgadaEn: string | null;
+  /** Bloqueo previo a la purga (migración 032). Opcionales: una API anterior no los envía. */
+  readonly bloqueadaEn?: string | null;
+  readonly bloqueadaHasta?: string | null;
+  readonly ventanaBloqueoDias?: number | null;
+  readonly motivoBloqueo?: MotivoBloqueo | null;
+  readonly bloqueadaPor?: string | null;
 }
 
 export interface IdentidadList {
@@ -91,6 +104,23 @@ export interface CaptureIdentidadInput {
   readonly birthDate?: string;
   readonly expiryDate?: string;
   readonly retentionDays?: number;
+  /** Consentimiento opcional ligado a la captura (H-02): se valida antes de capturar y se guarda en la misma transacción. */
+  readonly consentimiento?: ConsentimientoInput;
+}
+
+export interface ConsentimientoInput {
+  readonly avisoId: string;
+  readonly finalidadesObligatorias: readonly string[];
+  readonly finalidadesOpcionales: readonly string[];
+  readonly canal: string;
+  readonly metodo: string;
+  readonly datosSensibles?: boolean;
+}
+
+/** Resultado de la captura: `consentimiento.estado` = "registrado" | "no_disponible" (base sin 032) | null (no se envió). */
+export interface CapturaResultado {
+  readonly identidad: IdentidadSummary;
+  readonly consentimiento: { readonly estado: "registrado" | "no_disponible"; readonly versionAviso?: string } | null;
 }
 
 // Politica de retencion de la IMAGEN cifrada. REDECLARADA a proposito (apps/web no depende de
@@ -135,10 +165,11 @@ export function fetchIdentidades(fetchImpl: typeof fetch, apiBaseUrl: string, to
   return fetchJson<IdentidadList>(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad${estado ? `?estado=${estado}` : ""}`, token);
 }
 
-export async function captureIdentidad(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: CaptureIdentidadInput): Promise<IdentidadSummary> {
+export async function captureIdentidad(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: CaptureIdentidadInput): Promise<CapturaResultado> {
   const body: Record<string, unknown> = { ...input };
   for (const k of Object.keys(body)) if (body[k] === undefined || body[k] === "") delete body[k];
-  return (await sendJson<{ identidad: IdentidadSummary }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad`, token, "POST", body)).identidad;
+  const res = await sendJson<{ identidad: IdentidadSummary; consentimiento?: CapturaResultado["consentimiento"] }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad`, token, "POST", body);
+  return { identidad: res.identidad, consentimiento: res.consentimiento ?? null };
 }
 
 export async function verifyIdentidad(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, id: string): Promise<IdentidadSummary | null> {
@@ -157,8 +188,9 @@ export function fetchPurgas(fetchImpl: typeof fetch, apiBaseUrl: string, token: 
   return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad-purgas${estado ? `?estado=${estado}` : ""}`, token);
 }
 
-export async function decidePurga(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, solicitudId: string, aprobar: boolean, nota?: string): Promise<"ejecutada" | "rechazada"> {
-  return (await sendJson<{ resultado: "ejecutada" | "rechazada" }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad-purgas/${solicitudId}/decidir`, token, "POST", { aprobar, nota })).resultado;
+/** `en_bloqueo`: aprobar ya no purga de golpe, bloquea la identidad (migración 032). `ejecutada`: base sin 032 (purga directa). */
+export async function decidePurga(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, solicitudId: string, aprobar: boolean, nota?: string): Promise<"ejecutada" | "rechazada" | "en_bloqueo"> {
+  return (await sendJson<{ resultado: "ejecutada" | "rechazada" | "en_bloqueo" }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/identidad-purgas/${solicitudId}/decidir`, token, "POST", { aprobar, nota })).resultado;
 }
 
 export function fetchMigratorios(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, estado?: MigratorioEstado): Promise<{ readonly disponible: boolean; readonly items: readonly MigratorioSummary[] }> {

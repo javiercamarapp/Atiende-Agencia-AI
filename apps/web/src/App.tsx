@@ -18,6 +18,8 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
+import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
+import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
@@ -84,6 +86,7 @@ import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
+import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
@@ -99,6 +102,10 @@ import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatchin
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
+import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
+import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
+import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
+import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -202,6 +209,9 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
 // Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
+// R-21: bandeja de conversaciones con handoff a humano y turnos de personal por sucursal.
+const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
+const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
@@ -619,6 +629,7 @@ const CitasConfiguracionRoute = shellRoute(CitasShell, "/citas/login", (ctx) => 
 // aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
 const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasStaffPage {...ctx} />);
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
+const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
@@ -633,12 +644,17 @@ function LicitacionesLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/licitaciones/:orgSlug` a secas — convocatorias es la
- * landing real del panel (Fase 7, mismo criterio que CitasRootRedirect: aún no
- * hay dashboard de KPIs para este vertical). */
+/** Redirección al abrir `/licitaciones/:orgSlug` a secas — la landing es el
+ * Panel (L-03: resumen con métricas reales; desde ahí se llega a convocatorias). */
 function LicitacionesRootRedirect() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/licitaciones/${orgSlug}/convocatorias`} replace />;
+  return <Navigate to={`/licitaciones/${orgSlug}/panel`} replace />;
+}
+
+/** `/firmantes` abre la pestaña de firmantes de Datos de la empresa (no hay una segunda pantalla que mantener). */
+function LicitacionesFirmantesRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/licitaciones/${orgSlug}/datos-empresa?tab=firmantes`} replace />;
 }
 
 const LicitacionesConvocatoriasRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <ConvocatoriasPage {...ctx} />);
@@ -653,6 +669,10 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 // L-01: verificación en dos pasos + cierre de otras sesiones.
+const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesPanelPage {...ctx} />);
+const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
+const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SeguimientoPage {...ctx} />);
+const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <AprobacionesPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -735,6 +755,8 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
+        <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
+        <Route path="/restaurantes/:orgSlug/turnos" element={<RestaurantesTurnosRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -805,6 +827,7 @@ export function App() {
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
+        <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
@@ -820,6 +843,11 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
+        <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
+        <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
+        <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />
+        <Route path="/licitaciones/:orgSlug/aprobaciones" element={<LicitacionesAprobacionesRoute />} />
+        <Route path="/licitaciones/:orgSlug/firmantes" element={<LicitacionesFirmantesRedirect />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />

@@ -392,7 +392,7 @@ export interface CallbackRequest extends CallbackRequestInput {
 // aplicación real al total de un pedido, que el origen nunca tuvo. Una sola
 // promoción por pedido a propósito: no hay evidencia en el origen de una regla de
 // combinabilidad, así que no se inventa una.
-export type PromotionType = "percentage" | "fixed";
+export type PromotionType = "percentage" | "fixed" | "bogo";
 
 export interface Promotion {
   readonly id: string;
@@ -402,7 +402,8 @@ export interface Promotion {
   readonly name: string;
   readonly description: string | null;
   readonly type: PromotionType;
-  /** Porcentaje (1-100) si type==='percentage', pesos (>0) si type==='fixed'. */
+  /** Porcentaje (1-100) si type==='percentage', pesos (>0) si type==='fixed', siempre 1 si
+   * type==='bogo' (el 2x1 no usa el valor). */
   readonly value: number;
   /** Total mínimo del pedido (antes de descuento) para que el código aplique — null
    * = sin mínimo. */
@@ -419,6 +420,12 @@ export interface Promotion {
   readonly maxUses: number | null;
   readonly timesUsed: number;
   readonly isActive: boolean;
+  /** Canales de pedido donde aplica (migracion 027) — null = todos. PM: las promociones solo valen
+   * en `recoger`, nunca a `domicilio`. */
+  readonly channels: readonly CanalPedido[] | null;
+  /** Productos elegibles (ids de `restaurantes.products`, migracion 027) — null = todos los
+   * renglones del pedido. */
+  readonly productIds: readonly string[] | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -437,6 +444,8 @@ export interface NewPromotionInput {
   readonly endTime?: string | null;
   readonly maxUses?: number | null;
   readonly isActive?: boolean;
+  readonly channels?: readonly CanalPedido[] | null;
+  readonly productIds?: readonly string[] | null;
 }
 
 export interface PromotionPatch {
@@ -453,6 +462,8 @@ export interface PromotionPatch {
   readonly endTime?: string | null;
   readonly maxUses?: number | null;
   readonly isActive?: boolean;
+  readonly channels?: readonly CanalPedido[] | null;
+  readonly productIds?: readonly string[] | null;
 }
 
 // ---------------------------------------------------------------------------

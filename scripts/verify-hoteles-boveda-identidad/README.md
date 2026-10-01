@@ -11,7 +11,7 @@ node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-hoteles-boveda-
 
 En CI lo ejecuta automáticamente el gate `Postgres real` (auto-descubre `scripts/verify-*`).
 
-## Qué prueba (60 chequeos del gate, 52 escenarios numerados)
+## Qué prueba (62 chequeos del gate, 52 escenarios numerados; desde 032 la purga pasa por bloqueo)
 
 - Captura: frontdesk captura en su property; el trigger deriva `organization_id`, sella
   `captured_by`, fuerza `activo`/no verificado; housekeeping y owner de otra organización

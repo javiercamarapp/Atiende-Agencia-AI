@@ -18,6 +18,7 @@ import type {
   Branch,
   BranchProductState,
   BranchPolicy,
+  CanalPedido,
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
@@ -243,7 +244,7 @@ interface PromotionRow {
   readonly code: string;
   readonly name: string;
   readonly description: string | null;
-  readonly type: "percentage" | "fixed";
+  readonly type: "percentage" | "fixed" | "bogo";
   readonly value: string;
   readonly min_order_total: string | null;
   readonly starts_at: string | null;
@@ -254,6 +255,9 @@ interface PromotionRow {
   readonly max_uses: number | null;
   readonly times_used: number;
   readonly is_active: boolean;
+  /** Migracion 027 -- ausentes (undefined) cuando la base todavia no la tiene. */
+  readonly channels?: readonly CanalPedido[] | null;
+  readonly product_ids?: readonly string[] | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -283,6 +287,8 @@ function mapPromotion(row: PromotionRow): Promotion {
     maxUses: row.max_uses,
     timesUsed: row.times_used,
     isActive: row.is_active,
+    channels: row.channels ?? null,
+    productIds: row.product_ids ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -290,6 +296,8 @@ function mapPromotion(row: PromotionRow): Promotion {
 
 const PROMOTION_COLUMNS =
   "id, organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, times_used, is_active, created_at, updated_at";
+/** Con las columnas de la migracion 027 (canales y productos elegibles). */
+const PROMOTION_COLUMNS_V2 = `${PROMOTION_COLUMNS}, channels, product_ids`;
 
 interface BranchProductRow {
   readonly property_id: string;
@@ -1339,54 +1347,87 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   // ---- Fase 11 — promociones/marketing (ver promotions.ts, migrations/010) ----
 
-  async listPromotions(organizationId: string): Promise<readonly Promotion[]> {
-    const { rows } = await this.db.query<PromotionRow>(
-      `select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 order by created_at desc;`,
-      [organizationId],
-    );
+  /** Lee promociones con las columnas de la migracion 027 y, contra una base SIN migrar (42703),
+   * cae a las columnas anteriores. Corre dentro de la transaccion unica del request (p. ej.
+   * crear pedido con codigo), asi que el respaldo EXIGE SAVEPOINT. */
+  private async queryPromotions(where: string, params: readonly unknown[], suffix = ""): Promise<readonly Promotion[]> {
+    const select = (columns: string) => `select ${columns} from restaurantes.promotions where ${where}${suffix};`;
+    const rows = await runWithSavepointFallback<readonly PromotionRow[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promociones_2x1_lectura",
+      primary: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS_V2), [...params])).rows,
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => (await this.db.query<PromotionRow>(select(PROMOTION_COLUMNS), [...params])).rows,
+    });
     return rows.map(mapPromotion);
   }
 
+  async listPromotions(organizationId: string): Promise<readonly Promotion[]> {
+    return this.queryPromotions("organization_id = $1", [organizationId], " order by created_at desc");
+  }
+
   async findPromotion(organizationId: string, promotionId: string): Promise<Promotion | null> {
-    const { rows } = await this.db.query<PromotionRow>(`select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 and id = $2;`, [organizationId, promotionId]);
-    return rows[0] ? mapPromotion(rows[0]) : null;
+    return (await this.queryPromotions("organization_id = $1 and id = $2", [organizationId, promotionId]))[0] ?? null;
   }
 
   async findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null> {
-    const { rows } = await this.db.query<PromotionRow>(`select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 and code = $2;`, [organizationId, code]);
-    return rows[0] ? mapPromotion(rows[0]) : null;
+    return (await this.queryPromotions("organization_id = $1 and code = $2", [organizationId, code]))[0] ?? null;
   }
 
   async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
+    const base = [
+      organizationId,
+      input.code,
+      input.name,
+      input.description ?? null,
+      input.type,
+      input.value,
+      input.minOrderTotal ?? null,
+      input.startsAt ?? null,
+      input.endsAt ?? null,
+      input.daysOfWeek ? [...input.daysOfWeek] : null,
+      input.startTime ?? null,
+      input.endTime ?? null,
+      input.maxUses ?? null,
+      input.isActive ?? true,
+    ];
+    const usaMigracion027 = input.type === "bogo" || input.channels !== undefined || input.productIds !== undefined;
+    if (usaMigracion027) {
+      // Escribe columnas de la migracion 027: contra una base SIN migrar falla con 42703 (analisis
+      // de columnas, antes de cualquier CHECK) y se traduce a "config no disponible" con SAVEPOINT,
+      // nunca a una promocion creada a medias.
+      return runWithSavepointFallback<Promotion>({
+        session: this.db,
+        savepointName: "sp_restaurantes_promociones_2x1_alta",
+        primary: async () => {
+          const { rows } = await this.db.query<PromotionRow>(
+            `insert into restaurantes.promotions
+               (organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, is_active, channels, product_ids)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11::time, $12::time, $13, $14, $15::text[], $16::uuid[])
+             returning ${PROMOTION_COLUMNS_V2};`,
+            [...base, input.channels ? [...input.channels] : null, input.productIds ? [...input.productIds] : null],
+          );
+          return mapPromotion(rows[0]!);
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("promotions", err, "027_promociones_2x1_y_canal.sql");
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    }
     const { rows } = await this.db.query<PromotionRow>(
       `insert into restaurantes.promotions
          (organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, is_active)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11::time, $12::time, $13, $14)
        returning ${PROMOTION_COLUMNS};`,
-      [
-        organizationId,
-        input.code,
-        input.name,
-        input.description ?? null,
-        input.type,
-        input.value,
-        input.minOrderTotal ?? null,
-        input.startsAt ?? null,
-        input.endsAt ?? null,
-        input.daysOfWeek ? [...input.daysOfWeek] : null,
-        input.startTime ?? null,
-        input.endTime ?? null,
-        input.maxUses ?? null,
-        input.isActive ?? true,
-      ],
+      base,
     );
     return mapPromotion(rows[0]!);
   }
 
   async updatePromotion(organizationId: string, promotionId: string, patch: PromotionPatch): Promise<Promotion | null> {
-    const { rows } = await this.db.query<PromotionRow>(
-      `update restaurantes.promotions
-       set code = coalesce($3, code),
+    const setBase = `set code = coalesce($3, code),
            name = coalesce($4, name),
            description = case when $5::boolean then $6 else description end,
            type = coalesce($7, type),
@@ -1399,36 +1440,79 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
            end_time = case when $19::boolean then $20::time else end_time end,
            max_uses = case when $21::boolean then $22 else max_uses end,
            is_active = coalesce($23, is_active),
-           updated_at = now()
-       where id = $1 and organization_id = $2
-       returning ${PROMOTION_COLUMNS};`,
-      [
-        promotionId,
-        organizationId,
-        patch.code ?? null,
-        patch.name ?? null,
-        patch.description !== undefined,
-        patch.description ?? null,
-        patch.type ?? null,
-        patch.value ?? null,
-        patch.minOrderTotal !== undefined,
-        patch.minOrderTotal ?? null,
-        patch.startsAt !== undefined,
-        patch.startsAt ?? null,
-        patch.endsAt !== undefined,
-        patch.endsAt ?? null,
-        patch.daysOfWeek !== undefined,
-        patch.daysOfWeek ? [...patch.daysOfWeek] : null,
-        patch.startTime !== undefined,
-        patch.startTime ?? null,
-        patch.endTime !== undefined,
-        patch.endTime ?? null,
-        patch.maxUses !== undefined,
-        patch.maxUses ?? null,
-        patch.isActive ?? null,
-      ],
-    );
-    return rows[0] ? mapPromotion(rows[0]) : null;
+           updated_at = now()`;
+    const params = [
+      promotionId,
+      organizationId,
+      patch.code ?? null,
+      patch.name ?? null,
+      patch.description !== undefined,
+      patch.description ?? null,
+      patch.type ?? null,
+      patch.value ?? null,
+      patch.minOrderTotal !== undefined,
+      patch.minOrderTotal ?? null,
+      patch.startsAt !== undefined,
+      patch.startsAt ?? null,
+      patch.endsAt !== undefined,
+      patch.endsAt ?? null,
+      patch.daysOfWeek !== undefined,
+      patch.daysOfWeek ? [...patch.daysOfWeek] : null,
+      patch.startTime !== undefined,
+      patch.startTime ?? null,
+      patch.endTime !== undefined,
+      patch.endTime ?? null,
+      patch.maxUses !== undefined,
+      patch.maxUses ?? null,
+      patch.isActive ?? null,
+    ];
+    const usaMigracion027 = patch.type === "bogo" || patch.channels !== undefined || patch.productIds !== undefined;
+    if (usaMigracion027) {
+      return runWithSavepointFallback<Promotion | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_promociones_2x1_cambio",
+        primary: async () => {
+          const { rows } = await this.db.query<PromotionRow>(
+            `update restaurantes.promotions
+             ${setBase},
+               channels = case when $24::boolean then $25::text[] else channels end,
+               product_ids = case when $26::boolean then $27::uuid[] else product_ids end
+             where id = $1 and organization_id = $2
+             returning ${PROMOTION_COLUMNS_V2};`,
+            [
+              ...params,
+              patch.channels !== undefined,
+              patch.channels ? [...patch.channels] : null,
+              patch.productIds !== undefined,
+              patch.productIds ? [...patch.productIds] : null,
+            ],
+          );
+          return rows[0] ? mapPromotion(rows[0]) : null;
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("promotions", err, "027_promociones_2x1_y_canal.sql");
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    }
+    // Sin campos de la migracion 027 en el cambio: el SET es el de siempre; solo el RETURNING intenta
+    // traer las columnas nuevas (para no perder canales/productos en la respuesta) y, contra una base
+    // sin migrar, repite el mismo UPDATE devolviendo las columnas anteriores.
+    const update = (columns: string) => `update restaurantes.promotions ${setBase} where id = $1 and organization_id = $2 returning ${columns};`;
+    return runWithSavepointFallback<Promotion | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promociones_2x1_cambio_lectura",
+      primary: async () => {
+        const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS_V2), params);
+        return rows[0] ? mapPromotion(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => {
+        const { rows } = await this.db.query<PromotionRow>(update(PROMOTION_COLUMNS), params);
+        return rows[0] ? mapPromotion(rows[0]) : null;
+      },
+    });
   }
 
   /** `restaurantes.increment_promotion_uses` (ver migrations/010) es SECURITY
@@ -2113,12 +2197,12 @@ function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
 }
 
 const modeloPmAdvertido = new Set<string>();
-function advertirModeloPmNoDisponible(objeto: string, err: unknown): void {
+function advertirModeloPmNoDisponible(objeto: string, err: unknown, migracion = "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql"): void {
   if (modeloPmAdvertido.has(objeto)) return;
   modeloPmAdvertido.add(objeto);
   console.warn(
     `PostgresRestaurantesRepository: restaurantes.${objeto} todavía no existe/está habilitado en esta base (SQLSTATE 42501/42883/42P01/42703) -- aplica ` +
-      "packages/domain-restaurantes/migrations/023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql (o su espejo en supabase/migrations/).",
+      `packages/domain-restaurantes/migrations/${migracion} (o su espejo en supabase/migrations/).`,
     err,
   );
 }
