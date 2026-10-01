@@ -6,6 +6,7 @@ import type {
   ImpersonationRepository,
   LlmUsageRepository,
   MfaRepository,
+  CfoRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
@@ -16,9 +17,9 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, HandoffAgentGate, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -141,6 +142,10 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** PM PR-9 -- privacidad de restaurantes (ARCO, aviso, retencion; migracion 030). OPCIONAL: ausente =
+   * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
+   * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
+  readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
   readonly voiceProvider?: VoiceAgentProvider;
   /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
@@ -155,6 +160,10 @@ export interface AppDeps {
    *  produccion no se define y las rutas usan `PostgresHousekeepingRepository` (RLS real,
    *  SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesHousekeepingRepo?: (db: TenantDbSession) => HousekeepingRepository;
+  /** H-05 -- tickets de huesped con SLA (migracion 034). OPCIONAL: en produccion no se define y las rutas usan
+   *  `PostgresGuestTicketRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo
+   *  sobreescriben con el repo en memoria. */
+  readonly hotelesTicketsRepo?: (db: TenantDbSession) => GuestTicketRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
@@ -485,6 +494,12 @@ export interface AppDeps {
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
   readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
+  /** Dashboard ejecutivo CFO, foto mensual de ingreso (NRR) y entradas de las alertas CFO
+   *  (packages/db/migrations/0030_superadmin_cfo_dashboard.sql, ver routes/superadmin-cfo.ts y
+   *  routes/internal/superadmin-alertas-cfo.ts). Fabrica por sesion: lectura del dashboard con la
+   *  sesion del caller; el cron usa `withAppSession({ userId: null })` (SOLO sistema). OPCIONAL:
+   *  ausente -> `disponible: false` / el cron responde `migracion_pendiente`. */
+  readonly cfoRepo?: (db: TenantDbSession) => CfoRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;

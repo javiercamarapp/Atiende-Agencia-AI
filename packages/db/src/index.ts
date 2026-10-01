@@ -190,3 +190,5 @@ export {
   PostgresCostosPlanesRepository,
   VERTICALES_COSTOS,
 } from "./superadmin-costos-planes-repository.ts";
+export type { BillingSnapshotRow, CfoOrgRow, CfoRepository } from "./superadmin-cfo-repository.ts";
+export { InMemoryCfoRepository, PostgresCfoRepository } from "./superadmin-cfo-repository.ts";

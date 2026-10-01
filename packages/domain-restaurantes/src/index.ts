@@ -1,3 +1,6 @@
+export type { StorefrontCatalogRow, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
+export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
+export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
   Branch,
   BranchPolicy,
@@ -224,4 +227,5 @@ export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } fro
 
 export { formatLocationMessage, isValidCoordinate, latestSharedLocation, parseSharedLocation, type MetaLocationMessage, type SharedLocation } from "./whatsapp/location.ts";
 export type { MetaInboundMessage } from "./whatsapp/channel-config.ts";
+export * from "./privacidad/index.ts";
 export * from "./data-chat/index.ts";

@@ -22,6 +22,8 @@ import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
 import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
 import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
+import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
+import { restaurantesPrivacidadInternoRoutes } from "./privacidad-interno.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
@@ -59,6 +61,10 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // PM PR-9 -- privacidad: solicitudes ARCO + configuración (panel, owner/admin) y lado sistema
+  // (purga por retención, apertura/consentimiento/ARCO de voz). Migración 030.
+  app.route("/", restaurantesPrivacidadRoutes(deps));
+  app.route("/", restaurantesPrivacidadInternoRoutes(deps));
   // R-21 (migración 028): bandeja de conversaciones por sucursal, handoff a humano, turnos de personal y callbacks.
   app.route("/", restaurantesConversacionesAdminRoutes(deps));
   // Secreto de voz por sucursal (hash + rotación con ventana de gracia, migración 026).

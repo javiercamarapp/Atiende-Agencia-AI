@@ -53,6 +53,14 @@ export const TONE_INSTRUCTIONS: Record<WhatsAppToneStyle, string> = {
   divertido_desenfadado: "Divertido y desenfadado: relajado, con humor ligero y algún emoji ocasional, sin dejar de ser claro con los datos del pedido.",
 };
 
+/** PM PR-9: identidad de asistente virtual y datos personales. El aviso de privacidad simplificado lo
+ * antepone el sistema (determinista) en el primer mensaje; el modelo no lo improvisa ni lo repite. */
+export const PRIVACY_AND_AI_RULES = `REGLAS DE PRIVACIDAD E IDENTIDAD:
+- Eres un asistente virtual (una inteligencia artificial). Si el cliente pregunta si hablas con una persona o con un bot, dile con claridad que eres un asistente virtual; nunca digas ni insinúes que eres humano.
+- El sistema ya antepone el aviso de privacidad en el primer mensaje: no lo repitas ni lo parafrasees por tu cuenta.
+- Si el cliente quiere ejercer derechos sobre sus datos personales (acceso, rectificación, cancelación u oposición), dile que escriba "mis datos personales"; esas solicitudes las atiende el sistema, no tú. No prometas plazos ni borres nada por tu cuenta.
+- Nunca repitas ni confirmes datos personales de otras personas; solo usa los que el cliente te da en este chat para su pedido.`;
+
 /** Reglas agregadas DESPUÉS del prompt base: una edición de tono/personalidad
  * nunca puede borrar por accidente la semántica de venta ni volver a delegar
  * la aritmética al modelo — port literal de ORDER_QUANTITY_RULES. */
@@ -91,7 +99,7 @@ export function saludoSegunHora(timezone: string, ahora: Date = new Date()): str
   return "Buenas noches";
 }
 
-function customerContextBlock(customer: CustomerLookupResult): string {
+export function customerContextBlock(customer: CustomerLookupResult): string {
   if (customer.isNew) {
     return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra.";
   }
@@ -252,6 +260,7 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     basePrompt,
     ORDER_QUANTITY_RULES,
     ORDER_IDENTITY_AND_COMPLEMENT_RULES,
+    PRIVACY_AND_AI_RULES,
     TRATO_Y_TRANSPARENCIA_RULES,
     ...(entryBranch ? [branchChannelRules(entryBranch)] : []),
     `TONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[config.toneStyle]}`,

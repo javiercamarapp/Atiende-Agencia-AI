@@ -13,6 +13,7 @@
     "@atiende/core-auth": "*",
     "@atiende/core-authz": "*",
     "@atiende/core-email": "*",
+    "@atiende/core-pii": "*",
     "@atiende/core-ratelimit": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",

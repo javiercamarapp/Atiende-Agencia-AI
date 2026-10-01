@@ -25,7 +25,7 @@ Ver su propio `README.md`.
 variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
 Ver `docs/CREDENCIALES.md` y su propio `README.md`.
 
-## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-crons-transaccion-por-unidad/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`, `verify-restaurantes-audit-log/`, `verify-restaurantes-voz-seguridad/`, `verify-restaurantes-softrestaurant-outbox/`, `verify-restaurantes-conversaciones-handoff/`
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-crons-transaccion-por-unidad/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`, `verify-restaurantes-audit-log/`, `verify-restaurantes-voz-seguridad/`, `verify-restaurantes-softrestaurant-outbox/`, `verify-restaurantes-privacidad-arco/`, `verify-restaurantes-conversaciones-handoff/`
 
 `verify-correo-inline-sesion-staff/` (auditoría a2, CRÍTICO) y
 `verify-whatsapp-inline-sesion-staff/` (auditoría a2b, CRÍTICO, mismo bug con el
@@ -44,6 +44,13 @@ verifica RLS/GRANT de ninguna tabla de negocio, sino el MECANISMO de
 transacciones de Postgres (COMMIT sobre una transacción abortada devuelve
 ROLLBACK sin lanzar) detrás del fix "una transacción por unidad" en los crons
 de barrido (night-audit/cobranza-reminders/alert-notifications/etc.).
+
+## `verify-outbox-backoff-equidad/`
+
+Postgres real, mismo contrato de 3 archivos que los demás `verify-*/` (lo corre el gate de
+CI): backoff exponencial del correo del outbox y equidad por tenant de los
+`claim_*_outbox_batch` de las 6 verticales (PL-07, migración
+`packages/db/migrations/0031_outbox_backoff_y_equidad_por_tenant.sql`). Ver su `README.md`.
 
 ## `verify-real-postgres-ci/`
 

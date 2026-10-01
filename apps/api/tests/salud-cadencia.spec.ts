@@ -40,9 +40,9 @@ describe("minutosEsperadosDeCron", () => {
 });
 
 describe("cadenciaMinutosPorRuta / rutasDeCronDeclaradas", () => {
-  it("cubre los 21 crons reales de vercel.json, todos con cadencia diaria determinable", () => {
+  it("cubre los 22 crons reales de vercel.json, todos con cadencia diaria determinable", () => {
     const rutas = rutasDeCronDeclaradas();
-    expect(rutas.length).toBe(21);
+    expect(rutas.length).toBe(22);
 
     const mapa = cadenciaMinutosPorRuta();
     for (const ruta of rutas) {

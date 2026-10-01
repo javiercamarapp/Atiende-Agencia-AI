@@ -19,6 +19,7 @@ import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
+import { assertWebOrderRules } from "../storefront.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
@@ -42,7 +43,9 @@ import type {
   RequestedOrderItemInput,
 } from "../types.ts";
 
-export type AgentChannel = "whatsapp" | "voz";
+/** "web" = checkout publico del storefront (R-09): solo cotizar/confirmar/crear, con la misma maquina de estados
+ * del servidor. El telefono lo escribe el cliente (no hay canal que lo identifique), asi que `ctx.phone` es null. */
+export type AgentChannel = "whatsapp" | "voz" | "web";
 
 export type AgentToolName =
   | "buscar_cliente"
@@ -214,7 +217,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "items"],
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "confirmar_resumen",
@@ -224,7 +227,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       type: "object",
       properties: { quote_hash: { type: "string", description: "El quote_hash que devolvió cotizar_pedido (opcional; si se manda debe ser el de la última cotización)." } },
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "crear_pedido",
@@ -249,7 +252,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "registrar_contacto",
@@ -450,7 +453,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     customerPhone: ctx.phone ?? (lenient ? "" : (str(input.customer_phone) ?? "")),
     customerAddress: str(input.customer_address),
     items: toCreateOrderItems(input.items, lenient),
-    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+    source: ctx.channel === "voz" ? "voice" : ctx.channel === "web" ? "web" : "whatsapp",
     notes: str(input.notes),
     paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
@@ -692,7 +695,9 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
-      const createInput = mapCreateOrderToolInput(ctx, input, lenient);
+      const mapped = mapCreateOrderToolInput(ctx, input, lenient);
+      // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
+      const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
