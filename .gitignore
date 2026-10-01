@@ -22,3 +22,9 @@ coverage/
 # Respaldos y reportes del drill (contienen datos personales de todos los tenants)
 respaldos/
 drill-report-*/
+
+# E2E de navegador (Playwright): builds y reportes locales
+apps/web/dist-e2e/
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/

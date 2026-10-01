@@ -63,8 +63,12 @@ Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excep
   (hoy 0). El baseline solo baja: `node --experimental-strip-types scripts/lint-ratchet/ratchet.ts --update`
   lo baja si hay menos, nunca lo sube.
 - Fuera de workflows: `docs/ROLLBACK.md` + `scripts/rollback/rollback.sh` (rollback MANUAL de Vercel por
-  Javier, nunca desde CI) y `docs/E2E-PLAYWRIGHT.md` + `e2e/` (diseño y esqueleto inactivo de Playwright; no hay
-  workflow de e2e ni dependencia instalada).
+  Javier, nunca desde CI).
+- `e2e.yml` — pruebas de navegador (Playwright, solo chromium con cache) de `apps/web` contra el build estatico
+  y una API simulada en loopback (`apps/web/e2e/mock-api`): `pull_request` (con `paths`) y `workflow_dispatch`,
+  sin secretos, `permissions: contents: read`, `timeout-minutes: 25`, reporte y trazas como artefacto 7 dias.
+  **No es un check requerido y NO entra al agregador `ci-checks`**; informativo hasta medir el flake. Guia:
+  `docs/QA-E2E.md`.
 
 ## ci-checks.yml
 
