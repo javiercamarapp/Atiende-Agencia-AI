@@ -10,6 +10,7 @@ import { buildRestaurantFixture } from "./fixtures.ts";
 import {
   buildComparisonPeriods,
   buildTrendBuckets,
+  computeChannelKpis,
   getChannelKpis,
   getCustomerKpis,
   getSalesKpis,
@@ -114,8 +115,8 @@ describe("getSalesKpis — 'Tus ventas' agregado real, con % de cambio", () => {
     const now = new Date(2026, 8, 10, 12, 0, 0);
 
     // Periodo actual ('7'): últimos 7 días — 2 pedidos, $300 total.
-    fixture.repo.seedOrder(makeOrder({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 100, customerName: "Ana", createdAt: new Date(2026, 8, 8, 10, 0, 0).toISOString() }));
-    fixture.repo.seedOrder(makeOrder({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 200, customerName: "Beto", createdAt: new Date(2026, 8, 9, 10, 0, 0).toISOString() }));
+    fixture.repo.seedOrder(makeOrder({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 100, customerName: "Ana", customerId: "c-ana", createdAt: new Date(2026, 8, 8, 10, 0, 0).toISOString() }));
+    fixture.repo.seedOrder(makeOrder({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 200, customerName: "Beto", customerId: "c-beto", createdAt: new Date(2026, 8, 9, 10, 0, 0).toISOString() }));
     // Periodo previo (7-14 días atrás): 1 pedido, $100.
     fixture.repo.seedOrder(makeOrder({ organizationId: fixture.organizationId, propertyId: fixture.propertyId, total: 100, customerName: "Carla", createdAt: new Date(2026, 7, 30, 10, 0, 0).toISOString() }));
     // Fuera de ambas ventanas — nunca debe contar.
@@ -129,6 +130,27 @@ describe("getSalesKpis — 'Tus ventas' agregado real, con % de cambio", () => {
     expect(summary.revenueChangePct).toBe(200); // (300-100)/100*100
     expect(summary.ordersChangePct).toBe(100); // (2-1)/1*100
     expect(summary.periodLabel).toBe("vs 7 días anteriores");
+  });
+
+  it("R-30: las ventas NO suman pedidos cancelados y los clientes se cuentan por id, no por nombre", async () => {
+    const fixture = buildRestaurantFixture();
+    const base = { organizationId: fixture.organizationId, propertyId: fixture.propertyId };
+    const now = new Date(2026, 8, 10, 12, 0, 0);
+    const dia = new Date(2026, 8, 9, 10, 0, 0).toISOString();
+    // Dos personas distintas con el mismo nombre = 2 clientes (antes contaba 1 por nombre).
+    fixture.repo.seedOrder(makeOrder({ ...base, total: 100, customerName: "Juan", customerId: "c1", createdAt: dia }));
+    fixture.repo.seedOrder(makeOrder({ ...base, total: 100, customerName: "Juan", customerId: "c2", createdAt: dia }));
+    // Misma persona con dos grafias = 1 cliente.
+    fixture.repo.seedOrder(makeOrder({ ...base, total: 50, customerName: "Maria", customerId: "c3", createdAt: dia }));
+    fixture.repo.seedOrder(makeOrder({ ...base, total: 50, customerName: "María", customerId: "c3", createdAt: dia }));
+    // Cancelado: ni dinero, ni orden, ni cliente.
+    fixture.repo.seedOrder(makeOrder({ ...base, total: 5000, customerName: "Cancelador", customerId: "c4", status: "cancelado", createdAt: dia }));
+
+    const summary = await getSalesKpis(fixture.repo, fixture.organizationId, null, "7", now);
+    expect(summary.revenue).toBe(300);
+    expect(summary.orders).toBe(4);
+    expect(summary.customers).toBe(3);
+    expect(summary.averageOrder).toBe(75);
   });
 
   it("periodo previo en $0 -> % es 100 si el actual tiene ventas, 0 si tampoco (nunca división por cero real)", async () => {
@@ -204,15 +226,40 @@ describe("getChannelKpis — 'Impacto de tus agentes'", () => {
 
     const kpis = await getChannelKpis(fixture.repo, fixture.organizationId, null);
     expect(kpis.totalOrders).toBe(4);
-    expect(kpis.totalRevenue).toBe(500);
-    expect(kpis.voice).toEqual({ orders: 2, completed: 1, cancelled: 1, revenue: 250 });
+    // R-30: los ingresos NO suman el pedido cancelado de $50 (antes daba 500 y 250 de voz).
+    expect(kpis.totalRevenue).toBe(450);
+    expect(kpis.voice).toEqual({ orders: 2, completed: 1, cancelled: 1, revenue: 200 });
     expect(kpis.whatsapp).toEqual({ orders: 1, completed: 1, cancelled: 0, revenue: 150 });
     // (voz.total + whatsapp.total) / totalOrdenes * 100 = (2+1)/4*100
     expect(kpis.aiAdoptionPct).toBe(75);
-    // (voz.ingreso + whatsapp.ingreso) / ingresoTotal * 100 = (250+150)/500*100
-    expect(kpis.aiRevenuePct).toBe(80);
+    // (voz.ingreso + whatsapp.ingreso) / ventasNetas * 100 = (200+150)/450*100
+    expect(kpis.aiRevenuePct).toBeCloseTo((350 / 450) * 100, 10);
     // (voz.completados + whatsapp.completados) * 5 / 60 = (1+1)*5/60
     expect(kpis.estimatedHoursSaved).toBeCloseTo((2 * 5) / 60, 10);
+  });
+
+  it("R-30: con periodo, solo cuenta pedidos dentro de la ventana y el rotulo lo declara", async () => {
+    const fixture = buildRestaurantFixture();
+    const base = { organizationId: fixture.organizationId, propertyId: fixture.propertyId };
+    const now = new Date(2026, 8, 10, 12, 0, 0);
+    fixture.repo.seedOrder(makeOrder({ ...base, source: "voice", total: 100, createdAt: new Date(2026, 8, 9, 10, 0, 0).toISOString() }));
+    fixture.repo.seedOrder(makeOrder({ ...base, source: "voice", total: 900, createdAt: new Date(2026, 5, 1, 10, 0, 0).toISOString() }));
+
+    const semana = await getChannelKpis(fixture.repo, fixture.organizationId, null, "7", now);
+    expect(semana.totalOrders).toBe(1);
+    expect(semana.voice.revenue).toBe(100);
+    expect(semana.periodo).toEqual({ acotado: true, etiqueta: "Últimos 7 días" });
+
+    const historico = await getChannelKpis(fixture.repo, fixture.organizationId, null, "historico", now);
+    expect(historico.totalOrders).toBe(2);
+    expect(historico.voice.revenue).toBe(1000);
+    expect(historico.periodo).toEqual({ acotado: false, etiqueta: "Todo el tiempo registrado" });
+  });
+
+  it("R-30: si la base no pudo acotar (acotadoAPeriodo=false) el rotulo dice historico aunque se pidiera 30 dias", () => {
+    const row = { acotadoAPeriodo: false, totalOrders: 1, totalRevenue: 10, voice: { orders: 1, completed: 0, cancelled: 0, revenue: 10 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 } };
+    const kpis = computeChannelKpis(row, { total: 0, withOrder: 0, averageMessages: 0 }, "30");
+    expect(kpis.periodo).toEqual({ acotado: false, etiqueta: "Todo el tiempo registrado" });
   });
 
   it("sin pedidos todavía: los %s son null, nunca un 0/NaN fingido; horas ahorradas es 0 real", async () => {

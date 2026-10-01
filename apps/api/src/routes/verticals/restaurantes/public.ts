@@ -202,8 +202,8 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
         // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
         // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
-        // R-11: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
-        // antes). Al promoverse a `pending` aparece en el panel; la captura manual de la comanda sigue disponible.
+        // R-11/R-29: un pedido PROGRAMADO todavia no es de cocina: no se manda la comanda al POS hoy (llegaria horas
+        // antes). Al promoverse a `pending` (admin-orders.ts / programados-interno.ts) se encola su comanda.
         if (order.status === "programado") return c.json({ order });
         const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
         if (comanda.modo === "activo") {

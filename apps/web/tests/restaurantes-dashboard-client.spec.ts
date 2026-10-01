@@ -75,12 +75,12 @@ describe("resolveActivePropertyId", () => {
 describe("fetchDashboardData", () => {
   it("pide las 4 rutas de KPIs en paralelo y arma un solo DashboardData", async () => {
     const sales = { revenue: 100, orders: 2, customers: 2, averageOrder: 50, revenueChangePct: 10, ordersChangePct: 0, customersChangePct: 0, avgOrderChangePct: 0, periodLabel: "vs 7 días anteriores" };
-    const channels = { totalOrders: 2, totalRevenue: 100, voice: { orders: 1, completed: 1, cancelled: 0, revenue: 50 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 }, whatsappConversations: { total: 0, withOrder: 0, averageMessages: 0 }, aiAdoptionPct: 50, aiRevenuePct: 50, estimatedHoursSaved: 0.1 };
+    const channels = { totalOrders: 2, totalRevenue: 100, voice: { orders: 1, completed: 1, cancelled: 0, revenue: 50 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 }, whatsappConversations: { total: 0, withOrder: 0, averageMessages: 0 }, aiAdoptionPct: 50, aiRevenuePct: 50, estimatedHoursSaved: 0.1, periodo: { acotado: true, etiqueta: "Últimos 30 días" } };
     const customers = { totalCustomers: 2, averageOrderValue: 50, recurringCustomerPct: 0, topCustomer: null, avgDaysSinceLastOrder: null, tierDistribution: { metric: "sin_datos" as const, BLACK: 0, PLATINUM: 0, GOLD: 0, BLUE: 0, withoutTier: 2 } };
     const fetchImpl = fakeFetch({
       "/kpis/sales?period=7": { status: 200, body: sales },
       "/kpis/sales/trend?period=7": { status: 200, body: { buckets: [{ label: "lun", revenue: 100, orders: 2 }] } },
-      "/kpis/channels": { status: 200, body: channels },
+      "/kpis/channels?period=7": { status: 200, body: channels },
       "/kpis/customers": { status: 200, body: customers },
     });
 

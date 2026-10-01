@@ -297,6 +297,7 @@ export async function getSalesTrendKpis(
 
 export interface ChannelKpis {
   readonly totalOrders: number;
+  /** Ventas SIN pedidos cancelados (R-30). */
   readonly totalRevenue: number;
   readonly voice: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
   readonly whatsapp: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
@@ -309,20 +310,58 @@ export interface ChannelKpis {
    * (voz o WhatsApp) — AdminDashboard.tsx:3375-3378. Siempre un número (0 es un cero
    * real cuando no hay pedidos completados por agentes, nunca "sin datos"). */
   readonly estimatedHoursSaved: number;
+  /** R-30: periodo REAL al que corresponden las cifras de pedidos/ventas de arriba. `acotado:false` =
+   * todo el histórico (se pidió "histórico" o la base aún no tiene la migración 036); el rótulo sale de
+   * aquí, nunca del periodo pedido. Las conversaciones de WhatsApp y las horas ahorradas siguen la
+   * misma ventana de pedidos solo cuando `acotado` es true; `whatsappConversations` es siempre histórico. */
+  readonly periodo: { readonly acotado: boolean; readonly etiqueta: string };
+}
+
+/** Rótulo del periodo al que se acotan los canales (no es el "vs anterior" de ventas). */
+export function channelPeriodLabel(period: StatsPeriod, acotado: boolean): string {
+  if (!acotado) return "Todo el tiempo registrado";
+  switch (period) {
+    case "today":
+      return "Hoy";
+    case "7":
+      return "Últimos 7 días";
+    case "30":
+      return "Últimos 30 días";
+    case "90":
+      return "Últimos 90 días";
+    case "180":
+      return "Últimos 180 días";
+    case "365":
+      return "Último año";
+    case "historico":
+    default:
+      return "Todo el tiempo registrado";
+  }
 }
 
 const MINUTOS_AHORRADOS_POR_PEDIDO_IA = 5;
 
-/** Orquesta "Impacto de tus agentes" (AdminDashboard.tsx:3355-3393). */
-export async function getChannelKpis(repo: RestaurantesRepository, organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelKpis> {
+/** Orquesta "Impacto de tus agentes" (AdminDashboard.tsx:3355-3393), acotado al periodo pedido. */
+export async function getChannelKpis(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  propertyIds: readonly string[] | null,
+  period: StatsPeriod = "historico",
+  now: Date = new Date(),
+): Promise<ChannelKpis> {
+  const range = period === "historico" ? undefined : buildComparisonPeriods(period, now).current;
   const [channels, conversations] = await Promise.all([
-    repo.getChannelStats(organizationId, propertyIds),
+    repo.getChannelStats(organizationId, propertyIds, range),
     repo.getWhatsappConversationStats(organizationId, propertyIds),
   ]);
-  return computeChannelKpis(channels, conversations);
+  return computeChannelKpis(channels, conversations, period);
 }
 
-export function computeChannelKpis(channels: ChannelStatsRow, conversations: { readonly total: number; readonly withOrder: number; readonly averageMessages: number }): ChannelKpis {
+export function computeChannelKpis(
+  channels: ChannelStatsRow,
+  conversations: { readonly total: number; readonly withOrder: number; readonly averageMessages: number },
+  period: StatsPeriod = "historico",
+): ChannelKpis {
   const aiOrders = channels.voice.orders + channels.whatsapp.orders;
   const aiRevenue = channels.voice.revenue + channels.whatsapp.revenue;
   const aiCompleted = channels.voice.completed + channels.whatsapp.completed;
@@ -335,6 +374,7 @@ export function computeChannelKpis(channels: ChannelStatsRow, conversations: { r
     aiAdoptionPct: channels.totalOrders > 0 ? (aiOrders / channels.totalOrders) * 100 : null,
     aiRevenuePct: channels.totalRevenue > 0 ? (aiRevenue / channels.totalRevenue) * 100 : null,
     estimatedHoursSaved: (aiCompleted * MINUTOS_AHORRADOS_POR_PEDIDO_IA) / 60,
+    periodo: { acotado: channels.acotadoAPeriodo, etiqueta: channelPeriodLabel(period, channels.acotadoAPeriodo) },
   };
 }
 
