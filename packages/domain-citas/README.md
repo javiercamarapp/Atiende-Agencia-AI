@@ -645,7 +645,7 @@ Qué hay:
   +- 30 min, a cualquier hora, mismo texto). Fuera del horario la cita se deja
   pendiente y se envía al abrir el horario. Los avisos de confirmación, cancelación y
   reagendado nacen **apagados** y se encolan, si se encienden, al confirmar/cancelar
-  desde el panel, al cancelar y reagendar desde el agente de voz.
+  desde el panel, al cancelar y reagendar por las rutas del agente (con secreto de herramienta).
 - API: `GET/PUT .../admin/whatsapp-mensajes`, `GET .../opciones`, `POST .../vista-previa`
   (solo lectura), `GET .../historial`, `POST .../restablecer` (solo owner/admin).
   Pantalla: "Mensajes de WhatsApp" en `apps/web`.
