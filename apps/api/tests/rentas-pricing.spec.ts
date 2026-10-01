@@ -1,11 +1,15 @@
 // Test de integración end-to-end del flujo 4 (Fase 2) — CRUD de configuración de
 // pricing, HTTP real: tarifa-base, temporadas, descuentos-duracion, min-stay,
 // reglas-canal. Ver diseño Fase 2 rentas §3.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
 
 describe("POST /rentas/:propertyId/unidades/:unidadId/tarifa-base", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("admin_gestora crea una tarifa base nueva y la cotización posterior la usa", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
@@ -19,6 +23,23 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/tarifa-base", () => {
     const cot = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/cotizacion?checkIn=2026-06-01&checkOut=2026-06-02`, authedJson(ctx.staff.adminGestora.token));
     const body = (await cot.json()) as { totalCentavos: number };
     expect(body.totalCentavos).toBe(200000); // la tarifa nueva (vigente hoy) gana sobre la sembrada (vigente 2000-01-01)
+  });
+
+  // Regresion: antes fallaba solo entre las 23:00 y las 23:59 hora CDMX (el dia de Cancun, UTC-5, ya
+  // avanzo pero el de Mexico_City, UTC-6, no). Se fija el reloj en esa ventana para que sea determinista.
+  it("a las 23:30 hora CDMX la tarifa nueva (vigente hoy) ya aplica en la cotizacion", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T05:30:00Z")); // 30-sep 23:30 CDMX = 1-oct 00:30 Cancun
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/tarifa-base`,
+      authedJson(ctx.staff.adminGestora.token, { precioNocheCentavos: 200000, moneda: "MXN" }),
+    );
+    expect(res.status).toBe(201);
+    const cot = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/cotizacion?checkIn=2026-10-05&checkOut=2026-10-06`, authedJson(ctx.staff.adminGestora.token));
+    const body = (await cot.json()) as { totalCentavos: number };
+    expect(body.totalCentavos).toBe(200000);
   });
 
   it("operador (no admin_gestora) recibe 403 -- PRICING_ESCRITURA_ROLES = admin_gestora únicamente", async () => {

@@ -46,6 +46,10 @@ import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx"
 import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
+import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
+import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
+import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -220,6 +224,24 @@ const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/
 // R-21: bandeja de conversaciones con handoff a humano y turnos de personal por sucursal.
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
+
+// Storefront PUBLICO de restaurantes (R-09): sin login ni shell de panel; solo necesita el slug del restaurante.
+function StorefrontRestauranteRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function StorefrontSucursalRoute() {
+  const { orgSlug = "", branchSlug = "" } = useParams();
+  return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
+}
+function StorefrontRastreoRoute() {
+  const { orgSlug = "", token = "" } = useParams();
+  return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
+}
+function StorefrontPrivacidadRoute() {
+  const { orgSlug = "" } = useParams();
+  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
+}
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
@@ -813,6 +835,10 @@ export function App() {
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
+        <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
+        <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
+        <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />

@@ -26,9 +26,15 @@
 // `rentasCanalMensajeria`/`rentasOnboardingRepo` (sin credenciales de partner de
 // canal / sin sesión `service_role` respectivamente) — ver `docs/DEPLOY.md` §0.2
 // para el detalle completo, actualizado en el mismo barrido.
+import { instalarScrubEnConsola } from "@atiende/core-pii";
 import { handle } from "hono/vercel";
 import { buildApp } from "./app.ts";
 import { buildProductionDeps } from "./production/deps.ts";
+
+// PL-10: nada sale del proceso por console.* sin pasar por el scrub de PII/secretos (correos,
+// telefonos, tarjetas, tokens, JWT). Cubre los `console.error("...", err)` crudos de apps y
+// dominios sin tocarlos uno por uno; `logEvent` ya redacta sus campos por su cuenta.
+instalarScrubEnConsola();
 
 export const config = {
   runtime: "nodejs",
