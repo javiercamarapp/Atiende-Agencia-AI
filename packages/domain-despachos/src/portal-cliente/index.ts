@@ -5,6 +5,7 @@ export { PostgresPortalClienteRepository } from "./postgres-repository.ts";
 export { InMemoryPortalClienteRepository } from "./in-memory-repository.ts";
 export type { ClientePortalSemilla } from "./in-memory-repository.ts";
 export { PortalCuotaExcedidaError, PortalEnlaceInvalidoError, PortalEntradaInvalidaError, PortalSinAccesoError } from "./types.ts";
+export { VER_PORTAL_CLIENTE_ROLES, GESTIONAR_PORTAL_CLIENTE_ROLES } from "./roles.ts";
 export type {
   NuevoDocumentoPortal,
   PortalCierre,
