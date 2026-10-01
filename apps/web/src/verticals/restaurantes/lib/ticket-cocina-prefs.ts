@@ -5,6 +5,12 @@
 // estado no se comparte entre dispositivos -- la auto-impresión debe activarse en el
 // equipo que está conectado a la impresora de cocina.
 //
+// Límites asumidos: (1) el estado se lee de localStorage al montar y no se sincroniza entre
+// pestañas, así que dos pestañas de Pedidos con auto-impresión activa en el mismo equipo
+// pueden imprimir un pedido dos veces: usar UNA sola pestaña por impresora. (2) El navegador
+// no confirma que la impresión salió: un pedido queda marcado como impreso en cuanto se
+// abre el diálogo de impresión, aunque el usuario lo cancele (la reimpresión manual lo cubre).
+//
 // Best-effort como property-selection.ts: un storage bloqueado nunca tumba el panel; sin
 // storage, la auto-impresión simplemente no puede recordar qué imprimió y por eso NO se
 // ofrece (ver `storageDisponible`).
