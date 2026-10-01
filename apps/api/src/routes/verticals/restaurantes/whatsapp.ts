@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -86,32 +86,38 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // organizacion y, si el numero pertenece a una sucursal, esa sucursal; contra una base
       // sin la migracion 023 cae al numero por defecto de la organizacion (mismo
       // comportamiento de antes).
-      const channel = phoneNumberId ? await repo.resolveWhatsAppChannel(phoneNumberId) : null;
-      const organizationId = channel?.organizationId ?? null;
-      if (!phoneNumberId || !organizationId) {
-        // Número no configurado en la plataforma: ack silencioso, no reintento.
-        return c.json({ ok: true });
-      }
-
-      const incomingMessages = extractMetaInboundMessages(payload);
-      if (incomingMessages.length === 0) {
-        return c.json({ ok: true });
-      }
-
+      //
+      // Un POST firmado puede traer varios `changes`, cada uno con SU phone_number_id: cada
+      // mensaje se rutea con el numero que lo recibio (nunca con el del primer change). Un change
+      // sin numero o con numero desconocido se acusa en silencio sin arrastrar sus mensajes a otro tenant.
       let hadRetryableFailure = false;
-      for (const message of incomingMessages) {
-        const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
-          organizationId,
-          messageId: message.id,
-          phone: `+${message.from}`,
-          body: message.body,
-          phoneNumberId,
-          propertyId: channel?.propertyId ?? null,
-          // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
-          ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
-          // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
-          handoffGate: deps.handoffGate?.(db),
-        });
+      let processedAny = false;
+      const channelCache = new Map<string, Awaited<ReturnType<typeof repo.resolveWhatsAppChannel>>>();
+      for (const batch of splitMetaPayloadByChannel(payload)) {
+        if (!batch.phoneNumberId) continue;
+        const incomingMessages = extractMetaInboundMessages(batch.payload);
+        if (incomingMessages.length === 0) continue;
+        if (!channelCache.has(batch.phoneNumberId)) channelCache.set(batch.phoneNumberId, await repo.resolveWhatsAppChannel(batch.phoneNumberId));
+        const channel = channelCache.get(batch.phoneNumberId) ?? null;
+        const organizationId = channel?.organizationId ?? null;
+        // Número no configurado en la plataforma: ack silencioso, no reintento.
+        if (!organizationId) continue;
+        processedAny = true;
+        const phoneNumberIdOfBatch = batch.phoneNumberId;
+
+        for (const message of incomingMessages) {
+          const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
+            organizationId,
+            messageId: message.id,
+            phone: `+${message.from}`,
+            body: message.body,
+            phoneNumberId: phoneNumberIdOfBatch,
+            propertyId: channel?.propertyId ?? null,
+            // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
+            ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+            // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
+            handoffGate: deps.handoffGate?.(db),
+          });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`
         // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
@@ -128,7 +134,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         // responde 200 a Meta sin ningún cambio aquí -- Meta deja de reintentar, sin
         // volver a gastar ningún turno de LLM.
         if (outcome.retryable) hadRetryableFailure = true;
+        }
       }
+      // Nada que procesar (sin mensajes de texto validos o ningun numero reconocido): ack silencioso.
+      if (!processedAny) return c.json({ ok: true });
 
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
       // best-effort que citas/whatsapp.ts, ver comentario de cabecera de

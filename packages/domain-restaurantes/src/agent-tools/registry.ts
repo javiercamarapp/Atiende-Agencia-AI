@@ -33,7 +33,6 @@ import {
 import type {
   CanalPedido,
   CreateOrderInput,
-  CustomerLookupResult,
   DefaultComplement,
   Order,
   OrderQuote,
@@ -113,7 +112,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_cliente",
     description:
-      "Devuelve el historial real del cliente que esta hablando (nombre, si tiene direccion guardada, ultimo pedido, lo que mas pide). Por privacidad NO devuelve el texto de la direccion: pidesela al cliente. No recibe telefono: el sistema usa el numero real de la conversacion o llamada.",
+      "Devuelve el historial real del cliente que esta hablando (nombre, direcciones, ultimo pedido, lo que mas pide). No recibe telefono: el sistema usa el numero real de la conversacion o llamada.",
     parameters: { type: "object", properties: {} },
     channels: ["whatsapp", "voz"],
   },
@@ -543,16 +542,6 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   }
 }
 
-function redactAddressesForModel(lookup: CustomerLookupResult): unknown {
-  if (lookup.isNew) return lookup;
-  const { addresses, ...rest } = lookup;
-  return {
-    ...rest,
-    tiene_direccion_guardada: addresses.length > 0,
-    direcciones_guardadas: addresses.map((a) => ({ etiqueta: a.label, predeterminada: a.isDefault })),
-  };
-}
-
 async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
@@ -562,10 +551,8 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
   switch (def.name) {
     case "buscar_cliente": {
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
-      const lookup = await lookupCustomer(repo, organizationId, ctx.phone);
-      // PM PR-9 (minimizacion): el resultado que VE EL MODELO nunca lleva el texto de las direcciones;
-      // solo cuantas hay y sus etiquetas. `raw` conserva el resultado completo para el codigo.
-      return { result: redactAddressesForModel(lookup), raw: lookup, orderId: null, propertyId: null };
+      const result = await lookupCustomer(repo, organizationId, ctx.phone);
+      return { result, raw: result, orderId: null, propertyId: null };
     }
     case "consultar_sucursal": {
       const branchSlug = String(input.branch_slug ?? "");

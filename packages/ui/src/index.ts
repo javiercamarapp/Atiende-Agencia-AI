@@ -39,6 +39,21 @@ export { StatCard, TrendStatCard } from "./components/StatCard.js";
 export { EstadoVacio } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
+export { ConfirmDialog, validarCampoConfirm, type ConfirmCampo, type ConfirmDialogProps, type ConfirmTono } from "./components/ConfirmDialog.js";
+export { useConfirm, type OpcionesConfirmar, type OpcionesPedirTexto, type UseConfirm } from "./components/useConfirm.js";
+export { FormDialog, type FormDialogPaso, type FormDialogProps } from "./components/FormDialog.js";
+export {
+  DataTable,
+  ordenarFilas,
+  type DataTableColumna,
+  type DataTableDireccion,
+  type DataTableEstado,
+  type DataTableOrden,
+  type DataTableProps,
+  type DataTableValorOrden,
+} from "./components/DataTable.js";
+export { PageHeader, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
+export { PageContainer, type PageContainerProps } from "./components/PageContainer.js";
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
@@ -136,7 +151,7 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu.js";
-export { Toaster, toast } from "./components/ui/sonner.js";
+export { Toaster, toast, notify, DURACION_NOTIFY_MS, type NotifyDeshacer, type NotifyOpciones } from "./components/ui/sonner.js";
 
 // Seguimiento de solicitudes de derechos ARCO (citas, C-02).
 export {

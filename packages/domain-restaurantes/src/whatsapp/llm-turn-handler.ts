@@ -25,6 +25,7 @@
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
+import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
@@ -100,30 +101,26 @@ export function customerContextBlock(customer: CustomerLookupResult): string {
     return "Cliente nuevo — nunca ha pedido antes por este número. Pide su nombre y su dirección de entrega; se guardan solos en su perfil al cerrar el pedido, no hace falta hacer nada extra.";
   }
   const lines: string[] = [];
-  lines.push(`Cliente conocido${customer.name ? `: ${customer.name}` : " (sin nombre guardado todavía — pídeselo)"}.`);
+  lines.push(`Cliente conocido${customer.name ? `: ${sanitizeInlineText(customer.name, 80)}` : " (sin nombre guardado todavía — pídeselo)"}.`);
   lines.push(`Ha pedido ${customer.orderCount} ${customer.orderCount === 1 ? "vez" : "veces"} antes.`);
   const nota = vipNote(customer.tier);
   if (nota) lines.push(nota);
-  // PM PR-9 (minimizacion): el prompt NUNCA lleva el texto de la direccion (calle, numero,
-  // referencias) ni de las direcciones guardadas del cliente: ese dato personal no necesita viajar al
-  // proveedor del modelo en cada turno. Solo se le dice SI hay direccion guardada (y sus etiquetas
-  // genericas como "Casa"/"Trabajo", que el cliente mismo eligio) para que la pida o la confirme
-  // con el cliente, que la da de nuevo en ESTE chat.
   if (customer.addresses.length > 0) {
-    const etiquetas = customer.addresses.map((a) => a.label?.trim()).filter((l): l is string => !!l && l.length <= 24);
-    lines.push(
-      `Tiene ${customer.addresses.length === 1 ? "una dirección guardada" : `${customer.addresses.length} direcciones guardadas`}${etiquetas.length > 0 ? ` (etiquetas: ${etiquetas.join(", ")})` : ""}, ` +
-        "pero por privacidad NO la tienes a la vista: pregúntale si el pedido es para su domicilio de siempre o para otro lugar y pídele la dirección completa en este chat.",
-    );
+    const def = customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0]!;
+    lines.push(`Dirección guardada por defecto (solo referencia parcial, NUNCA la uses como customer_address): "${maskAddressForPrompt(def.address)}". Pregunta si el pedido es para esa zona o para otro lugar. Para crear_pedido necesitas la dirección completa: si el cliente confirma que es la misma, llama buscar_cliente y usa la dirección guardada completa que devuelve; si es otro lugar, pídesela completa.`);
+    const others = customer.addresses.filter((a) => a !== def);
+    if (others.length > 0) {
+      lines.push(`También tiene otras direcciones guardadas: ${others.map((a) => `"${maskAddressForPrompt(a.address)}"`).join(", ")}.`);
+    }
   } else {
     lines.push("No tiene dirección guardada todavía — pídesela.");
   }
   if (customer.lastOrderItems && customer.lastOrderItems.length > 0) {
-    const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${i.name}`).join(", ");
+    const items = customer.lastOrderItems.map((i) => `${i.quantity}x ${sanitizeInlineText(i.name, 80)}`).join(", ");
     lines.push(`Su último pedido fue: ${items}.`);
   }
   if (customer.frequentItems.length > 0) {
-    const items = customer.frequentItems.map((i) => i.name).join(", ");
+    const items = customer.frequentItems.map((i) => sanitizeInlineText(i.name, 80)).join(", ");
     lines.push(
       `Lo que más pide (across todo su historial real, no solo el último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
     );
@@ -194,7 +191,7 @@ REGLAS DE NEGOCIO:
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda usando EXACTAMENTE el saludo de "SALUDO SEGÚN LA HORA ACTUAL" abajo (nunca uno fijo ni adivinado), preséntate como el asistente virtual de ${config.businessName} (sin mencionar sucursal todavía) y pregunta si quiere hacer un pedido. Este saludo por hora solo aplica al primer mensaje tuyo de la conversación. En cuanto el cliente te dé su nombre en este chat, no se lo vuelvas a pedir más adelante.
-2. Dirección: si el CONTEXTO DEL CLIENTE dice que tiene una dirección guardada, pregunta si el pedido es para su domicilio de siempre o para otro lugar y pídele la dirección completa (no la tienes a la vista, nunca la inventes ni la adivines). Si es cliente nuevo o no tiene dirección guardada, pídesela.
+2. Dirección: si el CONTEXTO DEL CLIENTE trae una dirección guardada, recuérdasela y pregunta si el pedido es para ahí o para otro lugar. Si es cliente nuevo o no tiene dirección guardada, pídesela.
 3. En cuanto tengas la dirección/colonia, llama a buscar_sucursal_cercana con esa colonia/zona para obtener la sucursal real más cercana por distancia calculada — NUNCA decidas tú "a ojo" cuál está más cerca. Si responde encontrada:false, pide otra referencia e inténtalo de nuevo — no adivines. Dile al cliente de qué sucursal va a salir su pedido y confirma que está bien.
 4. Toma el pedido: ve agregando productos, confirmando cada uno con buscar_producto (pásale siempre el branch_slug de la sucursal ya confirmada). Revisa pack_size ANTES de confirmar cantidad: "individual" (pack_size 1) nunca es máximo una pieza. Si buscar_producto devuelve más de un producto parecido, no elijas tú solo — dile las opciones al cliente. Instrucciones especiales del cliente van en el parámetro notes de crear_pedido.
 5. Antes de cerrar, pregunta si quiere agregar algo más.
