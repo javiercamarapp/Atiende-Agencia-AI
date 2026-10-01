@@ -46,7 +46,6 @@ export interface InMemoryAgentesOptions {
   readonly timeZone?: string | null;
 }
 
-const TERMINAL: readonly string[] = ["rechazada", "expirada", "ejecutada", "cancelada", "bloqueada"];
 const AUTHOR_ROLES = ["owner", "gm", "frontdesk", "reservations"];
 const MANAGE_ROLES = ["owner", "gm"];
 
