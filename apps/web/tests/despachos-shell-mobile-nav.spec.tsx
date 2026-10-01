@@ -122,4 +122,49 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader!.parentElement!.className).toContain("hidden");
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
+
+  // PR-8 (shell unico): un solo <main> (antes el shell propio anidaba su <main> dentro de las paginas), skip link,
+  // clave de grupo por vertical y el nombre del contribuyente activo visible tambien en el Sidebar.
+  it("expone skip link, un único <main> enfocable y el nombre del contribuyente activo", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    const mains = root.querySelectorAll("main");
+    expect(mains).toHaveLength(1);
+    expect(mains[0]!.id).toBe("contenido-principal");
+    expect(mains[0]!.getAttribute("tabindex")).toBe("-1");
+    expect(root.querySelector("aside")!.textContent).toContain("Contribuyente Uno");
+    const equipo = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Equipo"))!;
+    click(equipo);
+    expect(window.localStorage.getItem("atiende:despachos:sidebar:grupo")).toBe("Equipo");
+  });
+
+  it("con varios contribuyentes ofrece el selector real y lo persiste por organización", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem("atiende.despachos.session", JSON.stringify(SESSION));
+    fetchBranchesMock.mockResolvedValue([
+      { propertyId: "prop-1", name: "Contribuyente Uno" },
+      { propertyId: "prop-2", name: "Contribuyente Dos" },
+    ]);
+    rendered = renderComponent(
+      <MemoryRouter>
+        <DespachosShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {(ctx) => <div data-testid="hijo">{ctx.propertyId}</div>}
+        </DespachosShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const select = rendered.container.querySelector<HTMLSelectElement>("select#despachos-contribuyente-activo")!;
+    expect(select).not.toBeNull();
+    expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-1");
+    await act(async () => {
+      select.value = "prop-2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector('[data-testid="hijo"]')!.textContent).toBe("prop-2");
+    expect(window.localStorage.getItem("atiende.despachos.selectedProperty.demo")).toBe("prop-2");
+  });
 });
