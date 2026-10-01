@@ -343,3 +343,17 @@ federal verificada que obligue a conservar la **imagen** del documento.
 - Si un rostro/huella o la imagen del documento es dato sensible bajo la nueva ley.
 - Plazos de prescripción mercantiles (Código de Comercio) y penales estatales aplicables.
 - Calificación fiscal del registro (CFF art. 30) y del CFDI.
+
+## Housekeeping completo (H-04)
+
+Código en `src/housekeeping/` (`tareas.ts` reglas puras, `repository.ts` puerto,
+`postgres-repository.ts` y `in-memory-repository.ts`); modelo SQL en
+`migrations/033_housekeeping_completo.sql` (`hoteles.housekeeping_task`,
+`hoteles.room_out_of_service`, UPDATE de solo `hoteles.room.status`). Ciclo de una tarea:
+pendiente -> en_progreso -> terminada (espera inspección) -> inspeccionada; una inspección
+rechazada devuelve la tarea a pendiente con `rejections + 1`. Quien limpió no inspecciona su
+propio trabajo (CHECK en la migración y regla en la ruta). Contra una base sin la migración las
+lecturas degradan (`tareasDisponibles: false`) y las escrituras responden 503
+(`runWithSavepointFallback`). Verificación contra Postgres real:
+`scripts/verify-hoteles-housekeeping/`. Fuera de esta entrega: inspección con visión/fotos,
+conteo de blancos, opt-out de limpieza y asignación automática (optimizador).
