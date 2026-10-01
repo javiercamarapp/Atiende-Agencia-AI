@@ -28,6 +28,8 @@ import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 import { hotelesPrivacidadRoutes } from "./privacidad.ts";
 import { hotelesTicketsRoutes } from "./tickets.ts";
 import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
+import { hotelesAgentesRoutes } from "./agentes.ts";
+import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -88,5 +90,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // (migrations/034_guest_ticket_sla_escalacion.sql), ver tickets.ts y el barrido de SLA (tickets-sla-cron.ts).
   app.route("/", hotelesTicketsRoutes(deps));
   app.route("/", hotelesTicketsSlaCronRoutes(deps));
+  // H-03 (P0) -- catalogo de agentes (kill switch, presupuesto, costo), guardrails, politicas, plantillas de WhatsApp
+  // versionadas y cola de aprobaciones humanas (migrations/035_hoteles_agentes_aprobaciones.sql), ver agentes.ts y el
+  // cron de expiracion (agentes-expiracion-cron.ts).
+  app.route("/", hotelesAgentesRoutes(deps));
+  app.route("/", hotelesAgentesExpiracionCronRoutes(deps));
   return app;
 }

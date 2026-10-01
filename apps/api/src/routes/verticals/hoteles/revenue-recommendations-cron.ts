@@ -30,6 +30,9 @@ import {
   computePickupSignal,
   computeRateRecommendation,
   DEFAULT_PRICING_RULES,
+  PostgresAgentesRepository,
+  agentRunState,
+  currentUsageMonth,
   type HotelesRepository,
   type PricingRules,
   type LocalEventInput,
@@ -71,7 +74,7 @@ function pricingRulesFromRecord(rule: Awaited<ReturnType<HotelesRepository["find
 export interface RateRecommendationSweepPropertyResult {
   readonly organizationId: string;
   readonly propertyId: string;
-  readonly skippedReason: "sin_gate_inicializado" | null;
+  readonly skippedReason: "sin_gate_inicializado" | "agente_pausado" | null;
   readonly fechasEvaluadas: number;
   readonly insertadas: number;
   readonly autoAplicadas: number;
@@ -97,6 +100,19 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
       // `hoteles.property_config.timezone` (ya resuelto por
       // `runRateRecommendationSweep` vía `listActiveHotelProperties()`), este es el
       // ÚNICO punto que lo resuelve a un timezone usable.
+      // H-03: kill switch por property del agente de revenue (migracion 035). Compatible con la base sin migrar
+      // (`gate` devuelve null con SAVEPOINT -> activo) y fail-open ante un fallo de lectura de la compuerta.
+      let pausado = false;
+      try {
+        const agentes = deps.hotelesAgentesRepo ? deps.hotelesAgentesRepo(db) : new PostgresAgentesRepository(db);
+        pausado = agentRunState(await agentes.gate(propertyId, "revenue", currentUsageMonth(new Date()))) === "pausado";
+      } catch (err) {
+        console.warn("revenue-recommendations: compuerta del agente (H-03) fallo -- se continua:", err instanceof Error ? err.message : err);
+      }
+      if (pausado) {
+        return { organizationId, propertyId, skippedReason: "agente_pausado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, expiradas: 0, error: null };
+      }
+
       const today = hoyFechaNegocio(resolverZonaHorariaNegocio(propertyTimezone));
       const roomTypes = await repo.listRoomTypes(propertyId);
 

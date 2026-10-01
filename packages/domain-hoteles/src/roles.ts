@@ -216,3 +216,16 @@ export const STAFF_INVITE_ROLES: readonly HotelRole[] = ADMIN_ROLES;
 export const IDENTITY_CAPTURE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
 export const IDENTITY_REVEAL_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
 export const IDENTITY_ADMIN_ROLES: readonly HotelRole[] = ADMIN_ROLES;
+
+// H-03 (migracion 035) -- catalogo de agentes, guardrails, politicas, plantillas y cola de aprobaciones humanas.
+// Espejo, a nivel de aplicacion, de los helpers SQL hoteles.can_view_agents / can_manage_agents /
+// can_author_agent_content (la autoridad final es la base: si este espejo se desincroniza, la peor
+// consecuencia es un 403 de mas, nunca un acceso de mas).
+/** Ver el catalogo de agentes (estado, presupuesto, costo), guardrails, politicas, plantillas y la cola. */
+export const AGENT_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations", "accountant"];
+/** Pausar/reanudar agentes, fijar presupuesto, guardrails, politicas; aprobar/rechazar plantillas; ejecutar a mano. */
+export const AGENT_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm"];
+/** Proponer una accion para aprobacion (maker-checker) y redactar plantillas. */
+export const AGENT_AUTHOR_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+/** Ver la bitacora de la cola de aprobaciones: administrativa. */
+export const AGENT_AUDIT_ROLES: readonly HotelRole[] = ["owner", "gm"];

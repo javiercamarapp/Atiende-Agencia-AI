@@ -270,7 +270,7 @@ export function providerFailureReply(fnbOrderId: string | null): string {
  * `acknowledgeOnlyTurnHandler` sin tocar `whatsapp/inbound.ts` ni la ruta HTTP del
  * webhook.
  */
-export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gateway: LlmGateway, options: WhatsAppHotelesLlmAgentOptions): HotelesWhatsAppTurnHandler {
+export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gateway: Pick<LlmGateway, "complete">, options: WhatsAppHotelesLlmAgentOptions): HotelesWhatsAppTurnHandler {
   const maxToolUseTurns = options.maxToolUseTurns ?? 4;
   const turnBudgetMs = options.turnBudgetMs ?? 45_000;
 
