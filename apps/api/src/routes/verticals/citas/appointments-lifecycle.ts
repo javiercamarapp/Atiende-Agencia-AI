@@ -40,6 +40,7 @@ import {
   rescheduleAppointment,
   retryAppointmentCalendarSyncFromPanel,
   tryEnqueueAppointmentEmail,
+  tryEnqueueAppointmentWhatsapp,
   tryNotifyWaitlistOfFreedSlot,
   tryTriggerCalendarSync,
 } from "@atiende/domain-citas";
@@ -124,6 +125,8 @@ async function tryNotifyWaitlistAndEmail(deps: AppDeps, db: TenantDbSession, cit
   // Fase 6 §3 — arma el correo real (to/subject/html) a partir de la cita ya
   // reagendada; ya es best-effort internamente (tryEnqueueAppointmentEmail).
   await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.rescheduled", appointmentId, { previousStartsAt });
+  // C-04 -- aviso de WhatsApp opt-in (apagado por defecto); best-effort con SAVEPOINT.
+  await tryEnqueueAppointmentWhatsapp(citasRepo, organizationId, "appointment.rescheduled", appointmentId, { previousStartsAt });
   // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort del
   // correo recién encolado arriba, ver comentario de cabecera de email-dispatch.ts.
   // `db` (necesario para el SAVEPOINT del hotfix de auditoría a2) es el MISMO
@@ -212,6 +215,8 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         const appointment = await cancelAppointment(citasRepo, { organizationId: org.id, appointmentId });
         await tryNotifyWaitlistAfterCancel(citasRepo, org.id, appointment);
         await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.cancelled", appointment.id);
+        // C-04 -- aviso de WhatsApp opt-in (apagado por defecto); best-effort con SAVEPOINT.
+        await tryEnqueueAppointmentWhatsapp(citasRepo, org.id, "appointment.cancelled", appointment.id);
         await triggerCitasEmailDispatchInline(deps, db, citasRepo);
         // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
         // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
@@ -340,6 +345,8 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       });
 
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
+      // C-04 -- aviso de WhatsApp opt-in (apagado por defecto); best-effort con SAVEPOINT.
+      await tryEnqueueAppointmentWhatsapp(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
       // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
       // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
@@ -390,6 +397,8 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const appointment = await confirmAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.confirmed", appointment.id);
+      // C-04 -- aviso de WhatsApp opt-in (apagado por defecto); best-effort con SAVEPOINT.
+      await tryEnqueueAppointmentWhatsapp(citasRepo, organizationId, "appointment.confirmed", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
       // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
       // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo

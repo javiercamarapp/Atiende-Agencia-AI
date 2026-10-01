@@ -12,11 +12,12 @@
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
+import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, dentroDelHorarioDeEnvio, legacyReminderBody, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
+import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
 export const MAX_WAITLIST_NOTIFICATIONS = 3;
 
-const REMINDER_HORIZON_MS = 24 * 60 * 60 * 1000;
 // El cron real corre cada tantos minutos, no exactamente a las 24h — una ventana de
 // tolerancia evita que una cita se quede sin recordatorio por caer 2 minutos fuera
 // de un corte exacto, y evita mandarlo dos veces gracias a reminder24hSentAt.
@@ -47,6 +48,8 @@ export interface ConfirmacionCitaSummary {
   sentEmail: number;
   skippedNoPhone: number;
   skippedNoWhatsappConfig: boolean;
+  /** C-04 -- citas que se dejaron para despues porque ahora cae fuera del horario de envio configurado. */
+  skippedOutsideSendWindow: number;
   /** Auditoría a3 (hallazgo confirmado #7) — ids de citas cuyo procesamiento
    * lanzó un error REAL (no capturado por los best-effort internos de WhatsApp/
    * correo) dentro de esta corrida. Cada iteración corre bajo su propio
@@ -92,10 +95,13 @@ export interface ConfirmacionCitaSummary {
  * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, failedAppointmentIds: [], failedAppointmentErrors: [] };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, skippedOutsideSendWindow: 0, failedAppointmentIds: [], failedAppointmentErrors: [] };
 
-  const windowStart = new Date(now.getTime() + REMINDER_HORIZON_MS - REMINDER_WINDOW_TOLERANCE_MS);
-  const windowEnd = new Date(now.getTime() + REMINDER_HORIZON_MS + REMINDER_WINDOW_TOLERANCE_MS);
+  // C-04 -- anticipacion, horario de envio y texto editables desde el panel. Sin configuracion guardada (o con la base sin
+  // migrar: el metodo del repositorio degrada con SAVEPOINT a `null`) es exactamente el comportamiento de siempre: 24 h
+  // +- 30 min, a cualquier hora, con el texto de siempre.
+  const config = (await repo.getWhatsappMessageConfigForSend(organizationId)) ?? MENSAJES_CONFIG_POR_OMISION;
+  const { from: windowStart, to: windowEnd } = ventanaDeRecordatorio(now, config, REMINDER_WINDOW_TOLERANCE_MS);
 
   const pending = await repo.loadAppointmentsPendingReminder(organizationId, windowStart.toISOString(), windowEnd.toISOString());
   summary.processed = pending.length;
@@ -124,6 +130,8 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   // equivocada aun con "el fix de timezone" a medias. Cacheado por providerId
   // dentro de esta corrida para no repetir la resolución por cada cita.
   const timeZoneByProvider = new Map<string, string>();
+  const valoresCache = nuevoCacheValores();
+  const usaTextoDeSiempre = !textoPropio(config, "recordatorio") && config.reminderLeadHours === ANTICIPACION_POR_OMISION_HORAS;
 
   for (const apt of pending) {
     // Auditoría a3 (hallazgo confirmado #7) — TODO el cuerpo de esta iteración
@@ -147,28 +155,38 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       let sentLocal = 0;
       let sentEmailLocal = 0;
       let skippedNoPhoneLocal = 0;
+      let skippedOutsideWindowLocal = 0;
 
       await repo.runWithRowSavepoint(async () => {
         let remindedSomehow = false;
 
-        if (phoneNumberId) {
+        // La zona horaria se resuelve por cita (horario de envio y texto la necesitan, con o sin WhatsApp).
+        let timeZone = timeZoneByProvider.get(apt.providerId);
+        if (!timeZone) {
+          const provider = await repo.findProvider(organizationId, apt.providerId);
+          timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+          timeZoneByProvider.set(apt.providerId, timeZone);
+        }
+
+        // C-04 -- fuera del horario de envio la cita se deja pendiente: la siguiente corrida del cron (dentro del horario)
+        // la recoge porque `ventanaDeRecordatorio` ya amplia la busqueda hacia atras las horas cerradas.
+        if (!dentroDelHorarioDeEnvio(config, now, timeZone)) {
+          skippedOutsideWindowLocal += 1;
+          return;
+        }
+
+        if (phoneNumberId && config.reminderEnabled) {
           if (!apt.customerPhone) {
             skippedNoPhoneLocal += 1;
           } else {
-            let timeZone = timeZoneByProvider.get(apt.providerId);
-            if (!timeZone) {
-              const provider = await repo.findProvider(organizationId, apt.providerId);
-              timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
-              timeZoneByProvider.set(apt.providerId, timeZone);
-            }
-
-            const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(apt.startsAt));
-            const greeting = apt.customerName ? `Hola ${apt.customerName}, ` : "Hola, ";
+            const body = usaTextoDeSiempre
+              ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora)
+              : armarMensaje(config, "recordatorio", await resolverValoresCita(repo, organizationId, { providerId: apt.providerId, serviceId: apt.serviceId, startsAt: apt.startsAt, customerName: apt.customerName }, timeZone, valoresCache));
 
             await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
               to: apt.customerPhone,
               phone_number_id: phoneNumberId,
-              body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
+              body,
               buttons: appointmentReminderButtons(apt.appointmentId),
             });
             sentLocal += 1;
@@ -203,6 +221,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       summary.sent += sentLocal;
       summary.sentEmail += sentEmailLocal;
       summary.skippedNoPhone += skippedNoPhoneLocal;
+      summary.skippedOutsideSendWindow += skippedOutsideWindowLocal;
     } catch (err) {
       console.error(`reminders: la cita ${apt.appointmentId} falló con un error real de Postgres, aislada por SAVEPOINT -- se sigue con las demás citas de la organización:`, err);
       summary.failedAppointmentIds.push(apt.appointmentId);

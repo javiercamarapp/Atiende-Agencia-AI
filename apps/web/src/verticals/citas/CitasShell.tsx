@@ -1,6 +1,6 @@
 // Shell del panel de administración visual de citas — resuelve sesión +
 // propertyId UNA vez y le da a las páginas (Agenda/Proveedores/Servicios/Clientes/
-// Disponibilidad/Configuración/Staff/Auditoría/Privacidad) la misma nav.
+// Disponibilidad/Configuración/Staff/Mensajes de WhatsApp/Auditoría/Privacidad) la misma nav.
 //
 // PR-4 del plan de diseño-ux: vertical PILOTO del shell único. La sesión (lectura
 // persistida, SESSION_EXPIRED_EVENT, sucursales, sucursal activa, rol, logout) vive
@@ -19,6 +19,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   Lock,
+  MessageSquareText,
   Scissors,
   Settings,
   ShieldCheck,
@@ -110,6 +111,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
+        // C-04 -- mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
+        { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
         // FASE 3 (producto) — bitácora de auditoría del staff (ver
         // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
         // owner/admin la ven con datos reales -- `AuditoriaPage` misma gatea su
