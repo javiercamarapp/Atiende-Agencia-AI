@@ -96,7 +96,8 @@ async function renderRentas(rol: string) {
 
 /** El boton del header de ESCRITORIO (el del menu movil solo existe con la hoja abierta). */
 function botonChat(): HTMLButtonElement {
-  const desktop = rendered!.container.querySelector("div.hidden.md\\:block")!;
+  // Con el shell unico (VerticalShell) el primer `div.hidden.md:block` es la envoltura del Sidebar: se busca la del header.
+  const desktop = [...rendered!.container.querySelectorAll("div.hidden.md\\:block")].find((d) => d.querySelector("header"))!;
   return [...desktop.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement;
 }
 

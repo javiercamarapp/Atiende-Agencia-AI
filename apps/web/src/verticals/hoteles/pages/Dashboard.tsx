@@ -46,7 +46,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, BedDouble, CalendarCheck, CalendarClock, CircleDollarSign, PiggyBank, ShieldAlert, TrendingUp, UtensilsCrossed, Wallet, Wrench } from "lucide-react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, StatCard, Tabs, TabsList, TabsTrigger } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  PageContainer,
+  StatCard,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import { fetchPlSummary } from "../lib/pl-client.ts";
 import type { PlSummaryResponse } from "../lib/pl-client.ts";
 import { fetchReservations } from "../lib/reservas-client.ts";
@@ -57,6 +68,7 @@ import { fetchPedidosFnb } from "../lib/pedidos-fnb-client.ts";
 import type { FnbPedido } from "../lib/pedidos-fnb-client.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import { hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
+import { dineroMxConSigno } from "../lib/dinero.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 // Mismo conjunto exacto que `PL_ROLES` (domain-hoteles/src/roles.ts) — redeclarado a
@@ -93,10 +105,6 @@ function rangeForDays(days: PeriodDays): { desde: string; hasta: string } {
   const hasta = hoyFechaSolo();
   const desde = sumarDiasFechaSolo(hasta, -(days - 1));
   return { desde, hasta };
-}
-
-function formatMoney(n: number): string {
-  return n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
 }
 
 function formatPct(n: number): string {
@@ -145,16 +153,16 @@ function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShe
 
       {data && (
         <>
-          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+          <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
             <StatCard icon={BedDouble} label="Ocupación" value={formatPct(data.kpis.occupancyPct)} nota={`${data.kpis.occupiedRoomNights}/${data.kpis.availableRoomNights} noches-habitación`} />
-            <StatCard icon={CircleDollarSign} label="ADR" value={formatMoney(data.kpis.adr)} nota="tarifa promedio diaria" />
-            <StatCard icon={TrendingUp} label="RevPAR" value={formatMoney(data.kpis.revpar)} nota="ingreso por habitación disponible" />
+            <StatCard icon={CircleDollarSign} label="ADR" value={dineroMxConSigno(data.kpis.adr, 0)} nota="tarifa promedio diaria" />
+            <StatCard icon={TrendingUp} label="RevPAR" value={dineroMxConSigno(data.kpis.revpar, 0)} nota="ingreso por habitación disponible" />
           </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-            <StatCard icon={Wallet} label="Ingresos totales" value={formatMoney(data.total.ingresosTotales)} />
-            <StatCard icon={PiggyBank} label="GOP" value={formatMoney(data.total.gop)} nota={`${formatPct(data.total.gopMarginPct)} de margen`} />
-            <StatCard icon={TrendingUp} label="EBITDA" value={formatMoney(data.total.ebitda)} />
-            <StatCard icon={CircleDollarSign} label="Utilidad neta" value={formatMoney(data.total.utilidadNeta)} />
+          <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
+            <StatCard icon={Wallet} label="Ingresos totales" value={dineroMxConSigno(data.total.ingresosTotales, 0)} />
+            <StatCard icon={PiggyBank} label="GOP" value={dineroMxConSigno(data.total.gop, 0)} nota={`${formatPct(data.total.gopMarginPct)} de margen`} />
+            <StatCard icon={TrendingUp} label="EBITDA" value={dineroMxConSigno(data.total.ebitda, 0)} />
+            <StatCard icon={CircleDollarSign} label="Utilidad neta" value={dineroMxConSigno(data.total.utilidadNeta, 0)} />
           </div>
           <p className="text-xs text-muted-foreground">
             Periodo {data.periodo.desde} — {data.periodo.hasta}.
@@ -245,7 +253,7 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+      <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
         <Card>
           <CardContent className="p-4 flex flex-col gap-2.5">
             <p className="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">Reservas de hoy</p>
@@ -312,12 +320,12 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
 
 export function DashboardPage(ctx: HotelesShellContext) {
   return (
-    <div className="flex flex-col gap-5">
+    <PageContainer padding="none" className="gap-5">
       <div>
         <p className="text-sm text-muted-foreground">{saludoConNombre(ctx.staffFullName, ctx.staffEmail)}</p>
         <h1 className="text-xl font-display font-semibold text-foreground">Panel de {ctx.orgSlug}</h1>
       </div>
       {EXECUTIVE_ROLES.has(ctx.role) ? <ExecutiveSummary {...ctx} /> : <OperationalSummary {...ctx} />}
-    </div>
+    </PageContainer>
   );
 }

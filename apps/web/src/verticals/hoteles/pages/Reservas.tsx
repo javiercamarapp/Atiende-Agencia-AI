@@ -21,23 +21,18 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Badge,
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
   Tabs,
   TabsContent,
   TabsList,
@@ -61,16 +56,10 @@ import {
 import type { GuestOption, ReservationStatus, ReservationSummary, RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { dineroMx } from "../lib/dinero.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 const FILTERS: ReadonlyArray<ReservationStatus | "todas"> = ["todas", "confirmada", "check_in", "en_estancia", "check_out", "cerrada", "cancelada"];
-const selectClass =
-  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
 export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<ReservationStatus | "todas">("todas");
@@ -104,7 +93,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   // tarifas/huéspedes imposible sin SQL directo") — alta de huésped inline, sin
   // salir del formulario de "crear reserva". `showNewGuestForm` alterna un
   // formulario mínimo (nombre/email/teléfono); al crear, el huésped nuevo queda
-  // seleccionado de inmediato (mismo `guestId` que ya usaba el <select> existente).
+  // seleccionado de inmediato (mismo `guestId` que ya usaba el <NativeSelect> existente).
   const [showNewGuestForm, setShowNewGuestForm] = useState(false);
   const [newGuestName, setNewGuestName] = useState("");
   const [newGuestEmail, setNewGuestEmail] = useState("");
@@ -332,7 +321,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const visible = reservations?.filter((r) => filter === "todas" || r.estado === filter) ?? null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Reservas</h1>
         <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
@@ -347,7 +336,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
             <form onSubmit={handleCreate} className="flex flex-col gap-3">
               <div>
                 <Label htmlFor="res-tipo-habitacion">Tipo de habitación</Label>
-                <select id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required className={selectClass}>
+                <NativeSelect id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required>
                   <option value="" disabled>
                     {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
                   </option>
@@ -356,7 +345,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                       {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
                 {roomTypes !== null && roomTypes.length === 0 && (
                   <span className="block mt-1 text-xs text-destructive">Esta property todavía no tiene tipos de habitación configurados.</span>
                 )}
@@ -384,12 +373,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                   placeholder="Buscar huésped…"
                   className="mt-1"
                 />
-                <select
-                  value={guestId}
-                  onChange={(e) => setGuestId(e.target.value)}
-                  size={Math.min(5, guestOptions.length + 1)}
-                  className="mt-1.5 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
+                <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva" className="mt-1.5">
                   <option value="">Sin huésped asignado</option>
                   {guestOptions.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -398,7 +382,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                       {g.email ? ` · ${g.email}` : ""}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
                   alta real de huésped sin salir de este formulario. */}
@@ -457,7 +441,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                     <div className="flex justify-between flex-wrap gap-2">
                       <div>
                         <p className="font-semibold text-foreground">
-                          {r.checkInDate} → {r.checkOutDate} · {formatMoney(r.montoTotal)}
+                          {r.checkInDate} → {r.checkOutDate} · {dineroMx(r.montoTotal)}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
@@ -465,12 +449,12 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                         {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
                         <p className="mt-0.5 text-xs text-muted-foreground">{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
                       </div>
-                      <Badge variant={r.estado === "cancelada" ? "destructive" : "secondary"} className="self-start">
+                      <StatusBadge tone={r.estado === "cancelada" ? "danger" : "neutral"} className="self-start">
                         {RESERVATION_STATUS_LABELS[r.estado]}
-                      </Badge>
+                      </StatusBadge>
                     </div>
                     {r.penalizacionCancelacion != null && (
-                      <p className="mt-1.5 text-xs text-destructive">Penalización de cancelación: {formatMoney(r.penalizacionCancelacion)}</p>
+                      <p className="mt-1.5 text-xs text-destructive">Penalización de cancelación: {dineroMx(r.penalizacionCancelacion)}</p>
                     )}
                     <div className="flex gap-2 mt-2.5 flex-wrap">
                       <Button type="button" variant="outline" size="sm" onClick={() => void handleVerFolio(r)} disabled={busyId === r.id}>
@@ -496,10 +480,10 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                         selector inline, sin salir de la lista de reservas. */}
                     {assigningId === r.id && (
                       <div className="flex gap-2 items-center mt-2.5 flex-wrap">
-                        <select
+                        <NativeSelect
                           value={assigningRoomId ?? ""}
                           onChange={(e) => setAssigningRoomId(e.target.value || null)}
-                          className="flex h-9 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          size="sm" wrapperClassName="w-auto"
                         >
                           <option value="" disabled>
                             {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
@@ -509,7 +493,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                               {room.codigo} ({room.estado})
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                         {roomsByReservation[r.id]?.length === 0 && (
                           <span className="text-xs text-destructive">Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>
                         )}
@@ -526,35 +510,22 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={pendingCancel !== null} onOpenChange={(open) => { if (!open) setPendingCancel(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar reserva</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingCancel
-                ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.`
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pendingCancel !== null && busyId === pendingCancel.id}>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              // preventDefault: AlertDialogAction cierra solo por defecto -- este modal
-              // sigue controlado por `pendingCancel`/`busyId` (mismo criterio que antes de
-              // migrar de Dialog), no queremos que se cierre antes de que termine
-              // `handleConfirmCancel`.
-              onClick={(e) => {
-                e.preventDefault();
-                void handleConfirmCancel();
-              }}
-              disabled={pendingCancel !== null && busyId === pendingCancel.id}
-            >
-              Sí, cancelar reserva
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={pendingCancel !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingCancel(null);
+        }}
+        titulo="Cancelar reserva"
+        descripcion={
+          pendingCancel
+            ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.`
+            : ""
+        }
+        tono="danger"
+        confirmar="Sí, cancelar reserva"
+        cancelar="Volver"
+        onConfirm={handleConfirmCancel}
+      />
+    </PageContainer>
   );
 }

@@ -24,10 +24,15 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
   toast,
 } from "@atiende/ui";
 import {
@@ -50,18 +55,13 @@ import type {
   GuestReviewStayState,
   IndiceReputacion,
 } from "../lib/reputacion-client.ts";
+import { SENTIMIENTO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const SENTIMENT_FILTERS: ReadonlyArray<GuestReviewSentiment | "todas"> = ["todas", "muy_negativo", "negativo", "neutral", "positivo", "muy_positivo"];
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
-}
-
-function sentimentBadgeVariant(s: GuestReviewSentiment): "default" | "destructive" | "secondary" {
-  if (s === "muy_negativo" || s === "negativo") return "destructive";
-  if (s === "muy_positivo" || s === "positivo") return "default";
-  return "secondary";
 }
 
 export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
@@ -176,7 +176,7 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Reputación</h1>
         {tab === "resenas" && (
@@ -202,9 +202,9 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
               <CardContent>
                 <form className="flex flex-col gap-3" onSubmit={(e) => void handleCreate(e)}>
                   <Label htmlFor="resena-texto">Texto</Label>
-                  <textarea
+                  <Textarea
                     id="resena-texto"
-                    className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="min-h-[100px]"
                     value={formTexto}
                     onChange={(e) => setFormTexto(e.target.value)}
                     maxLength={4000}
@@ -216,9 +216,8 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="resena-source">Fuente</Label>
-                      <select
+                      <NativeSelect
                         id="resena-source"
-                        className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={formSource}
                         onChange={(e) => setFormSource(e.target.value as GuestReviewSource)}
                       >
@@ -227,20 +226,19 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                             {label}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="resena-stay">Estado de la estancia</Label>
-                      <select
+                      <NativeSelect
                         id="resena-stay"
-                        className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={formStayState}
                         onChange={(e) => setFormStayState(e.target.value as GuestReviewStayState)}
                       >
                         <option value="desconocido">Desconocido</option>
                         <option value="en_estancia">En estancia</option>
                         <option value="post_estancia">Post-estancia</option>
-                      </select>
+                      </NativeSelect>
                     </div>
                   </div>
                   {formError && <p className="text-sm text-destructive">{formError}</p>}
@@ -272,18 +270,18 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                       <div className="flex justify-between gap-2 flex-wrap">
                         <div>
                           <p className="text-sm text-foreground line-clamp-2">{r.texto}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {REVIEW_SOURCE_LABELS[r.source]} · {fmtDate(r.createdAt)} {r.calificacion ? `· ${r.calificacion}/5` : ""}
                           </p>
                         </div>
-                        <Badge variant={sentimentBadgeVariant(r.sentiment)} className="self-start">
+                        <StatusBadge tone={statusTone(SENTIMIENTO_TONES, r.sentiment)} className="self-start">
                           {SENTIMENT_LABELS[r.sentiment]}
-                        </Badge>
+                        </StatusBadge>
                       </div>
                       {r.topics.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {r.topics.map((t) => (
-                            <Badge key={t.topic} variant="outline" className="text-[10px]">
+                            <Badge key={t.topic} variant="outline" className="text-2xs">
                               {t.topic}
                             </Badge>
                           ))}
@@ -332,7 +330,7 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                                 {detail.respuestas.map((resp) => (
                                   <p key={resp.id} className="text-xs bg-muted/40 rounded-md p-2">
                                     {resp.texto}
-                                    <span className="block text-[10px] text-muted-foreground mt-1">{fmtDate(resp.createdAt)}</span>
+                                    <span className="block text-2xs text-muted-foreground mt-1">{fmtDate(resp.createdAt)}</span>
                                   </p>
                                 ))}
                                 <form className="flex gap-2" onSubmit={(e) => void handleRespond(e)}>
@@ -398,7 +396,7 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
                 <CardContent className="flex flex-wrap gap-3">
                   {(Object.keys(SENTIMENT_LABELS) as GuestReviewSentiment[]).map((s) => (
                     <div key={s} className="flex flex-col gap-1">
-                      <Badge variant={sentimentBadgeVariant(s)}>{SENTIMENT_LABELS[s]}</Badge>
+                      <StatusBadge tone={statusTone(SENTIMIENTO_TONES, s)}>{SENTIMENT_LABELS[s]}</StatusBadge>
                       <p className="text-xs text-muted-foreground text-center">
                         {indice.distribucionSentimiento[s]} ({indice.distribucionSentimientoPct[s]}%)
                       </p>
@@ -432,6 +430,6 @@ export function ReputacionPage({ apiBaseUrl, token, propertyId }: HotelesShellCo
           )}
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

@@ -5,7 +5,25 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AlertTriangle, Clock, LifeBuoy } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  useConfirm,
+} from "@atiende/ui";
 import {
   DEPARTAMENTO_LABELS,
   ESTADO_LABELS,
@@ -29,15 +47,10 @@ import {
   TICKET_MANAGE_ROLES,
 } from "../lib/tickets-client.ts";
 import type { ResenaPendiente, SlaEfectiva, TicketAccion, TicketDepartamento, TicketEvento, TicketListado, TicketPrioridad, TicketResumen } from "../lib/tickets-client.ts";
+import { SLA_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const ACCION_LABELS: Record<TicketAccion, string> = { iniciar: "Tomar", cerrar: "Cerrar", cancelar: "Cancelar", escalar: "Escalar a gerencia" };
-
-function slaVariant(estado: TicketResumen["estadoSla"]): "default" | "secondary" | "destructive" | "outline" {
-  if (estado === "vencido") return "destructive";
-  if (estado === "por_vencer") return "outline";
-  return "secondary";
-}
 
 export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
   const [listado, setListado] = useState<TicketListado | null>(null);
@@ -45,6 +58,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
   const [sla, setSla] = useState<readonly SlaEfectiva[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<"activos" | "escalados" | "resenas" | "sla">("activos");
   const [detalle, setDetalle] = useState<{ ticket: TicketResumen; bitacora: readonly TicketEvento[] } | null>(null);
@@ -85,9 +99,23 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
     }
   }
 
-  function handleAccion(t: TicketResumen, accion: TicketAccion) {
-    if (accion === "cancelar" && !window.confirm("Cancelar este ticket?")) return;
-    const nota = accion === "cerrar" ? (window.prompt("Nota de resolucion (opcional):") ?? "").trim() : "";
+  async function handleAccion(t: TicketResumen, accion: TicketAccion) {
+    if (accion === "cancelar") {
+      const ok = await confirmar({
+        titulo: "Cancelar este ticket",
+        descripcion: `Se cancelará el ticket: ${t.mensaje}`,
+        tono: "danger",
+        confirmar: "Cancelar ticket",
+        cancelar: "Volver",
+      });
+      if (!ok) return;
+    }
+    let nota = "";
+    if (accion === "cerrar") {
+      const texto = await pedirTexto({ titulo: "Cerrar el ticket", descripcion: t.mensaje, confirmar: "Cerrar ticket", campo: { etiqueta: "Nota de resolución", requerido: false, multilinea: true } });
+      if (texto === null) return;
+      nota = texto;
+    }
     void run(t.id, () => accionTicket(fetch, apiBaseUrl, token, propertyId, t.id, accion, nota ? { nota } : {}));
   }
 
@@ -130,16 +158,16 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
         <CardContent className="p-4 flex flex-col gap-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={t.prioridad === "alta" ? "destructive" : "secondary"}>{PRIORIDAD_LABELS[t.prioridad]}</Badge>
+              <StatusBadge tone={t.prioridad === "alta" ? "danger" : "neutral"}>{PRIORIDAD_LABELS[t.prioridad]}</StatusBadge>
               <Badge variant="outline">{DEPARTAMENTO_LABELS[t.departamento]}</Badge>
               <Badge variant="secondary">{ESTADO_LABELS[t.estado]}</Badge>
               {t.habitacion && <span className="text-xs text-muted-foreground">Hab. {t.habitacion}</span>}
               {t.resenaId && <span className="text-xs text-muted-foreground">Desde reseña</span>}
             </div>
-            <Badge variant={slaVariant(t.estadoSla)}>
+            <StatusBadge tone={statusTone(SLA_ESTADO_TONES, t.estadoSla)}>
               <Clock className="w-3 h-3 mr-1" strokeWidth={1.75} />
               {t.estadoSla === "cerrado" ? ESTADO_SLA_LABELS.cerrado : `${ESTADO_SLA_LABELS[t.estadoSla]} · ${formatearVencimiento(t.minutosParaVencer)}`}
-            </Badge>
+            </StatusBadge>
           </div>
           <p className="text-sm text-foreground">{t.mensaje}</p>
           {t.estado === "escalado" && (
@@ -150,7 +178,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
           )}
           <div className="flex flex-wrap gap-2 mt-1">
             {acciones.map((a) => (
-              <Button key={a} type="button" size="sm" variant={a === "iniciar" || a === "cerrar" ? "default" : "outline"} disabled={busy === t.id} onClick={() => handleAccion(t, a)}>
+              <Button key={a} type="button" size="sm" variant={a === "iniciar" || a === "cerrar" ? "default" : "outline"} disabled={busy === t.id} onClick={() => void handleAccion(t, a)}>
                 {ACCION_LABELS[a]}
               </Button>
             ))}
@@ -180,7 +208,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
           <LifeBuoy className="w-5 h-5" strokeWidth={1.75} />
@@ -264,7 +292,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
                   <Card key={r.id}>
                     <CardContent className="p-4 flex flex-col gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="destructive">{r.sentimiento === "muy_negativo" ? "Muy negativa" : "Negativa"}</Badge>
+                        <StatusBadge tone="danger">{r.sentimiento === "muy_negativo" ? "Muy negativa" : "Negativa"}</StatusBadge>
                         <span className="text-xs text-muted-foreground">
                           {r.fuente}
                           {r.calificacion != null ? ` · ${r.calificacion}/5` : ""}
@@ -372,6 +400,7 @@ export function TicketsPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
           </CardContent>
         </Card>
       )}
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

@@ -18,36 +18,25 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Button,
+  ConfirmDialog,
   EstadoCargando,
   EstadoError,
   Input,
+  NativeSelect,
+  PageContainer,
 } from "@atiende/ui";
 import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { dineroMx } from "../lib/dinero.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 export interface FolioPageProps extends HotelesShellContext {
   readonly folioId: string;
 }
 
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 const CHARGE_CONCEPTS: readonly AddChargeInput["concepto"][] = ["hospedaje", "ab", "extras", "ajuste", "propina", "otro"];
-const selectClass =
-  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
 export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: FolioPageProps) {
   const [folio, setFolio] = useState<FolioSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -173,7 +162,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
   const isOpen = folio.estado === "abierto";
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
+    <PageContainer padding="none" size="md" className="gap-4">
       <header>
         <div className="flex justify-between items-start gap-3 flex-wrap">
           <h1 className="text-xl font-display font-semibold text-foreground">Folio: {folio.etiqueta}</h1>
@@ -188,7 +177,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           {folio.esPrincipal ? "Folio principal" : "Folio secundario"} · Estado: {folio.estado}
           {folio.motivoCierre ? ` (${folio.motivoCierre})` : ""}
         </p>
-        <p className="mt-2.5 text-2xl font-semibold text-foreground">Saldo: {formatMoney(folio.saldo)}</p>
+        <p className="mt-2.5 text-2xl font-semibold text-foreground">Saldo: {dineroMx(folio.saldo)}</p>
       </header>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
@@ -203,10 +192,10 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
                 <p className="text-sm text-foreground">
                   {CHARGE_CONCEPT_LABELS[ch.concepto]} · {ch.descripcion}
                 </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">{new Date(ch.creadoEn).toLocaleString("es-MX")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{new Date(ch.creadoEn).toLocaleString("es-MX")}</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-foreground">{formatMoney(ch.monto + ch.impuesto)}</span>
+                <span className="text-sm font-semibold text-foreground">{dineroMx(ch.monto + ch.impuesto)}</span>
                 {isOpen && !ch.revertidoPor && ch.concepto !== "reverso" && (
                   <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs text-destructive border-destructive/40 hover:border-destructive" onClick={() => void handleReverse(ch.id)} disabled={busy}>
                     Reversar
@@ -224,13 +213,13 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           <div className="flex gap-2 flex-wrap">
             <Input placeholder="Descripción" value={chargeDesc} onChange={(e) => setChargeDesc(e.target.value)} className="flex-[2] min-w-[160px]" />
             <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} className="flex-1 min-w-[100px]" />
-            <select value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])} className={selectClass}>
+            <NativeSelect value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])}>
               {CHARGE_CONCEPTS.map((c) => (
                 <option key={c} value={c}>
                   {CHARGE_CONCEPT_LABELS[c]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Button type="submit" disabled={busy}>
               Agregar
             </Button>
@@ -248,7 +237,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
               Aplicar
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Un descuento por arriba del umbral de la property requiere autorización de un rol admin (owner/gm) — el servidor lo exige, este formulario no lo evita.</p>
+          <p className="text-xs text-muted-foreground">Un descuento por arriba del umbral de la property requiere autorización de un rol admin (owner/gm) — el servidor lo exige, este formulario no lo evita.</p>
         </form>
       )}
 
@@ -261,7 +250,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
               <span className="text-sm text-foreground">
                 {p.metodo} · {p.estado}
               </span>
-              <span className="text-sm font-semibold text-foreground">{formatMoney(p.monto)}</span>
+              <span className="text-sm font-semibold text-foreground">{dineroMx(p.monto)}</span>
             </div>
           ))}
         </div>
@@ -272,15 +261,15 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           <p className="text-sm font-semibold text-foreground">Registrar pago</p>
           <div className="flex gap-2 flex-wrap">
             <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="flex-1 min-w-[100px]" />
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")} className={selectClass}>
+            <NativeSelect value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
-            </select>
+            </NativeSelect>
             <Button type="submit" disabled={busy}>
               Registrar
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Pago con tarjeta no disponible en este panel: exige un token real de pasarela, nunca un número de tarjeta capturado a mano.</p>
+          <p className="text-xs text-muted-foreground">Pago con tarjeta no disponible en este panel: exige un token real de pasarela, nunca un número de tarjeta capturado a mano.</p>
         </form>
       )}
 
@@ -289,41 +278,28 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           <Button type="button" variant="outline" onClick={() => handleClose("saldo_cero")} disabled={busy}>
             Cerrar folio (saldo en cero)
           </Button>
-          <Button type="button" variant="outline" className="text-amber-700 border-amber-700/40 hover:border-amber-700 dark:text-amber-500" onClick={() => handleClose("cuenta_por_cobrar")} disabled={busy}>
+          <Button type="button" variant="outline" className="text-warning border-warning/40 hover:border-warning" onClick={() => handleClose("cuenta_por_cobrar")} disabled={busy}>
             Cerrar como cuenta por cobrar
           </Button>
         </div>
       )}
 
-      <AlertDialog open={pendingClose !== null} onOpenChange={(open) => { if (!open && !busy) setPendingClose(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingClose === "cuenta_por_cobrar"
-                ? `¿Cerrar este folio (saldo ${formatMoney(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
-                : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => {
-                // preventDefault: AlertDialogAction cierra solo por defecto -- este modal
-                // sigue controlado por `pendingClose`/`busy` (mismo criterio que antes de
-                // migrar de Dialog), no queremos que se cierre de golpe antes de que
-                // termine `handleConfirmClose` (que muestra un estado "busy" mientras corre).
-                e.preventDefault();
-                void handleConfirmClose();
-              }}
-              disabled={busy}
-            >
-              {pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={pendingClose !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPendingClose(null);
+        }}
+        titulo={pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}
+        descripcion={
+          pendingClose === "cuenta_por_cobrar"
+            ? `¿Cerrar este folio (saldo ${dineroMx(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
+            : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`
+        }
+        tono="danger"
+        confirmar={pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
+        cancelar="Volver"
+        onConfirm={handleConfirmClose}
+      />
+    </PageContainer>
   );
 }

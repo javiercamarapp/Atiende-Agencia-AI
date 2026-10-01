@@ -6,7 +6,25 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ClipboardCheck } from "lucide-react";
-import { Badge, Button, Card, CardContent, DataTable, EstadoCargando, EstadoError, Input, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, useConfirm } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  DataTable,
+  EstadoCargando,
+  EstadoError,
+  Input,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+  useConfirm,
+} from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import {
   ACCIONES,
@@ -198,7 +216,7 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
   const noDisponible = abiertas && !abiertas.disponible;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
           <ClipboardCheck className="w-5 h-5" strokeWidth={1.75} />
@@ -320,7 +338,7 @@ export function AprobacionesAgentesPage({ apiBaseUrl, token, propertyId, role }:
         </Card>
       )}
       {dialogo}
-    </div>
+    </PageContainer>
   );
 }
 

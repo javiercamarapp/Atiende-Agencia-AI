@@ -26,6 +26,7 @@ import type { FormEvent } from "react";
 import { Plus } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
@@ -35,6 +36,8 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
   Table,
   TableBody,
   TableCell,
@@ -58,6 +61,7 @@ import {
 } from "../lib/pl-client.ts";
 import type { PlExpenseEntry, PlFullResponse, UsaliDepartment, UsaliExpenseCategory } from "../lib/pl-client.ts";
 import { hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
+import { dineroMxConSigno } from "../lib/dinero.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 type PeriodDays = 7 | 30 | 90;
@@ -86,16 +90,9 @@ function rangeForDays(days: PeriodDays): { desde: string; hasta: string } {
   return { desde, hasta };
 }
 
-function formatMoney(n: number): string {
-  return n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 });
-}
-
 function formatPct(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(1)}%`;
 }
-
-const selectClass =
-  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /** Ingresos por departamento -> Utilidad departamental (los 3 departamentos operados,
  * los únicos con `revenue` propio — ver `USALI_REVENUE_DEPARTMENTS`). */
@@ -128,21 +125,21 @@ function DepartmentTable({ pl }: { pl: PlFullResponse["total"] }) {
               return (
                 <TableRow key={dept}>
                   <TableCell>{USALI_DEPARTMENT_LABELS[dept]}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.revenue)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.costOfSales)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.payroll)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.otherExpenses)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.totalExpenses)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row.departmentalProfit)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.revenue)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.costOfSales)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.payroll)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.otherExpenses)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.totalExpenses)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row.departmentalProfit)}</TableCell>
                   <TableCell className="text-right">{formatPct(row.profitMarginPct)}</TableCell>
                 </TableRow>
               );
             })}
             <TableRow className="font-bold bg-muted/50">
               <TableCell>Total</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.ingresosTotales)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.ingresosTotales)}</TableCell>
               <TableCell colSpan={4} />
-              <TableCell className="text-right">{formatMoney(pl.utilidadDepartamentalTotal)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.utilidadDepartamentalTotal)}</TableCell>
               <TableCell className="text-right">{pl.ingresosTotales > 0 ? formatPct((pl.utilidadDepartamentalTotal / pl.ingresosTotales) * 100) : "—"}</TableCell>
             </TableRow>
           </TableBody>
@@ -170,39 +167,39 @@ function SummaryStatement({ pl }: { pl: PlFullResponse["total"] }) {
               return (
                 <TableRow key={dept}>
                   <TableCell>{USALI_DEPARTMENT_LABELS[dept]}</TableCell>
-                  <TableCell className="text-right">{formatMoney(row?.amount ?? 0)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(row?.amount ?? 0)}</TableCell>
                 </TableRow>
               );
             })}
             <TableRow className="font-bold bg-muted/50">
               <TableCell>Total gastos no distribuidos</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.totalGastosNoDistribuidos)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.totalGastosNoDistribuidos)}</TableCell>
             </TableRow>
             <TableRow>
               <TableCell>Utilidad departamental total</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.utilidadDepartamentalTotal)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.utilidadDepartamentalTotal)}</TableCell>
             </TableRow>
             <TableRow className="font-bold bg-muted/50">
               <TableCell>GOP (Gross Operating Profit)</TableCell>
               <TableCell className="text-right">
-                {formatMoney(pl.gop)} <span className="font-normal text-muted-foreground">({formatPct(pl.gopMarginPct)})</span>
+                {dineroMxConSigno(pl.gop)} <span className="font-normal text-muted-foreground">({formatPct(pl.gopMarginPct)})</span>
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell>{USALI_DEPARTMENT_LABELS.cuota_administracion}</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.cuotaAdministracion)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.cuotaAdministracion)}</TableCell>
             </TableRow>
             <TableRow className="font-bold bg-muted/50">
               <TableCell>EBITDA</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.ebitda)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.ebitda)}</TableCell>
             </TableRow>
             <TableRow>
               <TableCell>{USALI_DEPARTMENT_LABELS.no_operativo}</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.gastosNoOperativos)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.gastosNoOperativos)}</TableCell>
             </TableRow>
             <TableRow className="font-bold bg-muted/50 text-base">
               <TableCell>Utilidad neta</TableCell>
-              <TableCell className="text-right">{formatMoney(pl.utilidadNeta)}</TableCell>
+              <TableCell className="text-right">{dineroMxConSigno(pl.utilidadNeta)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -219,7 +216,7 @@ function BreakevenAndAlerts({ data }: { data: PlFullResponse }) {
         <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Punto de equilibrio dinámico</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+        <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
           <div>
             <p className="text-sm text-muted-foreground">Ocupación real</p>
             <p className="mt-0.5 font-semibold text-foreground">{formatPct(be.actualOccupancyPct)}</p>
@@ -230,26 +227,26 @@ function BreakevenAndAlerts({ data }: { data: PlFullResponse }) {
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Brecha</p>
-            <p className={`mt-0.5 font-semibold ${be.occupancyGapPct != null && be.occupancyGapPct < 0 ? "text-destructive" : "text-green-700 dark:text-green-500"}`}>
+            <p className={`mt-0.5 font-semibold ${be.occupancyGapPct != null && be.occupancyGapPct < 0 ? "text-destructive" : "text-success"}`}>
               {be.occupancyGapPct == null ? "—" : `${be.occupancyGapPct >= 0 ? "+" : ""}${be.occupancyGapPct.toFixed(1)} pp`}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Margen de contribución/habitación</p>
-            <p className="mt-0.5 font-semibold text-foreground">{formatMoney(be.contributionMarginPerRoom)}</p>
+            <p className="mt-0.5 font-semibold text-foreground">{dineroMxConSigno(be.contributionMarginPerRoom)}</p>
           </div>
         </div>
         {data.ownersReport.alertas.length > 0 && (
           <div className="mt-3 flex flex-col gap-1.5">
             {data.ownersReport.alertas.map((alerta, i) => (
-              <p key={i} role="alert" className="text-sm text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-2.5 py-2">
+              <Callout key={i} tone="warning" role="alert" className="px-2.5 py-2">
                 {alerta}
-              </p>
+              </Callout>
             ))}
           </div>
         )}
         {data.alcance.pendiente.length > 0 && (
-          <p className="mt-3 text-[11px] text-muted-foreground">
+          <p className="mt-3 text-xs text-muted-foreground">
             Fuera de alcance de este P&amp;L todavía: {data.alcance.pendiente.map((p) => p.split(":")[0]).join(", ")}.
           </p>
         )}
@@ -294,24 +291,24 @@ function ExpenseForm({ apiBaseUrl, token, propertyId, defaultFecha, onCreated }:
           <p className="text-sm font-semibold text-foreground">Registrar gasto</p>
           <div>
             <Label htmlFor="pl-departamento">Departamento</Label>
-            <select id="pl-departamento" value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)} className={selectClass}>
+            <NativeSelect id="pl-departamento" value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)}>
               {USALI_ALL_DEPARTMENTS.map((d) => (
                 <option key={d} value={d}>
                   {USALI_DEPARTMENT_LABELS[d]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
               <Label htmlFor="pl-categoria">Categoría</Label>
-              <select id="pl-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)} className={selectClass}>
+              <NativeSelect id="pl-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)}>
                 {USALI_EXPENSE_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
                     {USALI_EXPENSE_CATEGORY_LABELS[c]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="flex-1">
               <Label htmlFor="pl-fecha">Fecha</Label>
@@ -364,7 +361,7 @@ function ExpenseHistory({ expenses, error }: { expenses: readonly PlExpenseEntry
                   <TableCell>{USALI_DEPARTMENT_LABELS[e.departamento]}</TableCell>
                   <TableCell>{USALI_EXPENSE_CATEGORY_LABELS[e.categoria]}</TableCell>
                   <TableCell>{e.descripcion}</TableCell>
-                  <TableCell className="text-right">{formatMoney(e.monto)}</TableCell>
+                  <TableCell className="text-right">{dineroMxConSigno(e.monto)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -422,11 +419,11 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <PageContainer padding="none" className="gap-5">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-display font-semibold text-foreground">P&amp;L — Estado de resultados USALI</h1>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Periodo {desde} — {hasta}. Formato-resumen 12ª edición: Ingresos por departamento → Utilidad departamental → Gastos no distribuidos → GOP → cuota de administración → EBITDA → Utilidad neta.
           </p>
         </div>
@@ -446,7 +443,7 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
 
       {data && (
         <>
-          <div className="grid gap-4 items-start" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+          <div className="grid gap-4 items-start grid-cols-[repeat(auto-fit,minmax(320px,1fr))]">
             <DepartmentTable pl={data.total} />
             <SummaryStatement pl={data.total} />
           </div>
@@ -466,6 +463,6 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
           <ExpenseHistory expenses={expenses} error={expensesError} />
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

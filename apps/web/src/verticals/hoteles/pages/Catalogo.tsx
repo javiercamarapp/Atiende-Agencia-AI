@@ -24,22 +24,31 @@
 // (mismo Card/rol que el resto de esta pantalla, owner/gm vía CATALOGO_NAV_ROLES en
 // HotelesShell.tsx -- configurar la zona horaria es la MISMA decisión
 // administrativa que gestionar el catálogo, ver migrations/
-// 030_zona_horaria_property.sql). El `<select>` solo ofrece los 6 timezones IANA
+// 030_zona_horaria_property.sql). El `<NativeSelect>` solo ofrece los 6 timezones IANA
 // más comunes de México (CONVENIENCIA de UI) -- el backend
 // (property-config.ts::requireTimeZoneOrNull) valida CUALQUIER timezone IANA real,
 // nunca restringe a esta lista.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoError, Input, Label, toast } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoError,
+  Input,
+  Label,
+  NativeSelect,
+  PageContainer,
+  toast,
+} from "@atiende/ui";
 import { createRateRange, createRoom, createRoomType, fetchAllRooms } from "../lib/catalogo-client.ts";
 import { fetchPropertyConfig, updatePropertyTimezone } from "../lib/property-config-client.ts";
 import type { PropertyConfigResult } from "../lib/property-config-client.ts";
 import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
-
-const selectClass =
-  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const TIMEZONES_MEXICO_COMUNES: readonly { readonly value: string; readonly label: string }[] = [
   { value: "America/Mexico_City", label: "Ciudad de México (centro, sur, sureste)" },
@@ -187,7 +196,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <PageContainer padding="none" className="gap-5">
       <header>
         <h1 className="text-xl font-display font-semibold text-foreground">Catálogo</h1>
         <p className="mt-1 text-sm text-muted-foreground">Tipos de habitación, habitaciones físicas y tarifas de esta property.</p>
@@ -214,14 +223,14 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
           <form onSubmit={handleGuardarZona} className="flex flex-col gap-3">
             <div>
               <Label htmlFor="cat-zona-horaria">Zona horaria IANA</Label>
-              <select id="cat-zona-horaria" value={zonaSeleccionada} onChange={(e) => setZonaSeleccionada(e.target.value)} className={selectClass}>
+              <NativeSelect id="cat-zona-horaria" value={zonaSeleccionada} onChange={(e) => setZonaSeleccionada(e.target.value)}>
                 <option value={ZONA_HORARIA_SIN_CONFIGURAR}>Sin configurar (usa el default de plataforma)</option>
                 {TIMEZONES_MEXICO_COMUNES.map((tz) => (
                   <option key={tz.value} value={tz.value}>
                     {tz.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             {errorZona && <p role="alert" className="text-sm text-destructive">{errorZona}</p>}
             <Button type="submit" disabled={guardandoZona}>
@@ -279,7 +288,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
           <form onSubmit={handleCrearHabitacion} className="flex flex-col gap-3">
             <div>
               <Label htmlFor="cat-tipo-habitacion">Tipo de habitación</Label>
-              <select id="cat-tipo-habitacion" value={roomTypeIdHabitacion} onChange={(e) => setRoomTypeIdHabitacion(e.target.value)} className={selectClass}>
+              <NativeSelect id="cat-tipo-habitacion" value={roomTypeIdHabitacion} onChange={(e) => setRoomTypeIdHabitacion(e.target.value)}>
                 <option value="" disabled>
                   Selecciona un tipo de habitación
                 </option>
@@ -288,7 +297,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
                     {rt.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div>
               <Label htmlFor="cat-codigo-habitacion">Código / número de cuarto</Label>
@@ -314,7 +323,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
           <form onSubmit={handleCrearTarifa} className="flex flex-col gap-3">
             <div>
               <Label htmlFor="cat-tipo-tarifa">Tipo de habitación</Label>
-              <select id="cat-tipo-tarifa" value={roomTypeIdTarifa} onChange={(e) => setRoomTypeIdTarifa(e.target.value)} className={selectClass}>
+              <NativeSelect id="cat-tipo-tarifa" value={roomTypeIdTarifa} onChange={(e) => setRoomTypeIdTarifa(e.target.value)}>
                 <option value="" disabled>
                   Selecciona un tipo de habitación
                 </option>
@@ -323,7 +332,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
                     {rt.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
@@ -346,6 +355,6 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
           </form>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
