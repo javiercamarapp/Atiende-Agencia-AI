@@ -14,7 +14,7 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -133,6 +133,10 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** PM PR-9 -- privacidad de restaurantes (ARCO, aviso, retencion; migracion 030). OPCIONAL: ausente =
+   * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
+   * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
+  readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
   readonly voiceProvider?: VoiceAgentProvider;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las

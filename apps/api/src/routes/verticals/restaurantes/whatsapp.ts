@@ -107,6 +107,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           body: message.text.body,
           phoneNumberId,
           propertyId: channel?.propertyId ?? null,
+          // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
+          ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
         });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`
