@@ -151,6 +151,8 @@ describe("motion y legados", () => {
   it("el brillo del skeleton solo se activa con data-theme=v2", () => {
     expect(css).toMatch(/:root\[data-theme="v2"\] \.ds-skeleton \{\s*animation: ds-shimmer/);
     expect(css).not.toMatch(/\n\.ds-skeleton \{/);
+    // Skeleton conserva animate-pulse (layer utilities): el shimmer v2 solo gana con !important.
+    expect(css).toMatch(/animation: ds-shimmer[^;]*!important;/);
   });
 
   it("se retiraron los tokens heredados del hotel (gold, terracotta, sand, olive, cream, gradientes, glow)", () => {

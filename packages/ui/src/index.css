@@ -146,7 +146,7 @@
  *     13/15 px, controles de 32/40 px): solo bajo <html data-theme="v2">, que
  *     nadie activa todavia (ver lib/tema-v2.ts). Modo oscuro v2:
  *     :root[data-theme="v2"].dark.
- * Contrastes WCAG verificados por packages/ui/tests/tokens-v2-contraste.spec.ts.
+ * Contrastes WCAG verificados por packages/ui/tests/tokens-v2.spec.ts.
  * ===========================================================================
  */
 @layer base {
@@ -452,9 +452,12 @@
 
   /* Skeleton v2: barrido de brillo en lugar del pulso. Clase .ds-skeleton la
      pone el componente Skeleton; sin data-theme="v2" sigue el animate-pulse
-     de siempre. Con reduced-motion el bloque global de abajo lo detiene. */
+     de siempre. Con reduced-motion el bloque global de abajo lo detiene.
+     animation lleva !important: Skeleton conserva animate-pulse (layer
+     utilities, que gana a components) y solo !important lo supera desde un
+     layer anterior. */
   :root[data-theme="v2"] .ds-skeleton {
-    animation: ds-shimmer 1.6s var(--ease-in-out) infinite;
+    animation: ds-shimmer 1.6s var(--ease-in-out) infinite !important;
     background-image: linear-gradient(
       90deg,
       hsl(var(--muted)) 0%,
