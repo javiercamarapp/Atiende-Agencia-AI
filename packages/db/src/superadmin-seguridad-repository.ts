@@ -321,11 +321,20 @@ export interface OrgAdminActionRow {
   readonly confirmadoPor: string | null;
   readonly confirmadoEnMs: number | null;
   readonly resultado: Readonly<Record<string, unknown>> | null;
+  /** SA-06: suspender con contrato vigente exige que un SEGUNDO superadmin la apruebe antes de confirmar. */
+  readonly requiereDobleControl: boolean;
+  /** SA-43: contrato (y version) vigente cuando se solicito suspender / cambiar plan; null si no habia. */
+  readonly contratoId: string | null;
+  readonly contratoVersion: number | null;
+  readonly aprobadoPor: string | null;
+  readonly aprobadoEnMs: number | null;
 }
 
 export interface OrgAdminRepository {
   request(callerId: string, tipo: OrgActionTipo, organizationId: string | null, payload: Record<string, unknown>, motivo: string): Promise<{ availability: SeguridadAvailability; action: OrgAdminActionRow | null }>;
   confirm(callerId: string, actionId: string): Promise<{ availability: SeguridadAvailability; action: OrgAdminActionRow | null }>;
+  /** Segundo control (doble control): lo aprueba un superadmin DISTINTO del solicitante. */
+  approve(callerId: string, actionId: string): Promise<{ availability: SeguridadAvailability; action: OrgAdminActionRow | null }>;
   cancel(callerId: string, actionId: string): Promise<{ availability: SeguridadAvailability; action: OrgAdminActionRow | null }>;
   list(callerId: string, limit?: number): Promise<{ availability: SeguridadAvailability; actions: readonly OrgAdminActionRow[] }>;
 }
@@ -343,6 +352,12 @@ interface OrgActionRaw {
   confirmado_por: string | null;
   confirmado_en: string | null;
   resultado: Record<string, unknown> | null;
+  // Columnas de 0038: una base con solo 0025 no las trae (se leen como ausentes).
+  requiere_doble_control?: boolean | null;
+  contrato_id?: string | null;
+  contrato_version?: number | null;
+  aprobado_por?: string | null;
+  aprobado_en?: string | null;
 }
 
 function mapOrgAction(r: OrgActionRaw): OrgAdminActionRow {
@@ -359,6 +374,11 @@ function mapOrgAction(r: OrgActionRaw): OrgAdminActionRow {
     confirmadoPor: r.confirmado_por,
     confirmadoEnMs: r.confirmado_en ? new Date(r.confirmado_en).getTime() : null,
     resultado: r.resultado,
+    requiereDobleControl: r.requiere_doble_control === true,
+    contratoId: r.contrato_id ?? null,
+    contratoVersion: r.contrato_version ?? null,
+    aprobadoPor: r.aprobado_por ?? null,
+    aprobadoEnMs: r.aprobado_en ? new Date(r.aprobado_en).getTime() : null,
   };
 }
 
@@ -385,6 +405,19 @@ export class PostgresOrgAdminRepository implements OrgAdminRepository {
         const { rows } = await this.db.query<OrgActionRaw>(`select * from core.confirm_org_admin_action($1, $2);`, [callerId, actionId]);
         const r = rows[0];
         if (!r) throw new Error("confirm_org_admin_action no devolvio fila");
+        return { availability: "available" as const, action: mapOrgAction(r) };
+      },
+      () => ({ availability: "not_migrated" as const, action: null }),
+    );
+  }
+
+  approve(callerId: string, actionId: string) {
+    return guarded(
+      this.db,
+      async () => {
+        const { rows } = await this.db.query<OrgActionRaw>(`select * from core.approve_org_admin_action($1, $2);`, [callerId, actionId]);
+        const r = rows[0];
+        if (!r) throw new Error("approve_org_admin_action no devolvio fila");
         return { availability: "available" as const, action: mapOrgAction(r) };
       },
       () => ({ availability: "not_migrated" as const, action: null }),
@@ -425,6 +458,8 @@ export class PostgresOrgAdminRepository implements OrgAdminRepository {
 const MAX_FAILED = 5;
 const LOCK_MS = 15 * 60_000;
 const ACTION_TTL_MS = 10 * 60_000;
+/** Doble control: una segunda persona necesita tiempo para revisar (0038). */
+const DOUBLE_CONTROL_TTL_MS = 60 * 60_000;
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,98}[a-z0-9])?$/u;
 const VERTICALES = new Set(["hoteles", "restaurantes", "rentas", "licitaciones", "citas", "despachos"]);
 
@@ -553,6 +588,8 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
   private readonly actions: OrgAdminActionRow[] = [];
   private readonly orgs = new Map<string, { vertical: string; name: string; slug: string; status: "trial" | "active" | "suspended" }>();
   private readonly superadmins = new Set<string>();
+  /** Contrato vigente por organizacion (reproduce core.org_contrato_vigente de 0038). */
+  private readonly contratos = new Map<string, { contractId: string; version: number }>();
   private idSeq = 0;
   constructor(private readonly clock: InMemoryClock = {}) {}
 
@@ -561,6 +598,12 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
   }
   seedSuperadmin(userId: string): void {
     this.superadmins.add(userId);
+  }
+  seedContract(organizationId: string, contract: { contractId: string; version: number }): void {
+    this.contratos.set(organizationId, { ...contract });
+  }
+  endContract(organizationId: string): void {
+    this.contratos.delete(organizationId);
   }
   seedOrganization(id: string, org: { vertical: string; name: string; slug: string; status: "trial" | "active" | "suspended" }): void {
     this.orgs.set(id, { ...org });
@@ -581,6 +624,8 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
     const m = motivo.trim();
     if (m.length < 20) throw new SuperadminSeguridadError("motivo obligatorio (minimo 20 caracteres)", "invalid");
     let finalPayload: Record<string, unknown> = {};
+    let dobleControl = false;
+    let contrato: { contractId: string; version: number } | undefined;
     if (tipo === "alta") {
       if (organizationId !== null) throw new SuperadminSeguridadError("alta no recibe organization_id", "invalid");
       const vertical = typeof payload.vertical === "string" ? payload.vertical : "";
@@ -592,15 +637,23 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
     } else {
       const org = organizationId ? this.orgs.get(organizationId) : undefined;
       if (!org) throw new SuperadminSeguridadError("la organizacion no existe", "not_found");
+      contrato = organizationId ? this.contratos.get(organizationId) : undefined;
       if (tipo === "suspender" && org.status === "suspended") throw new SuperadminSeguridadError("la organizacion ya esta suspendida", "conflict");
+      if (tipo === "suspender" && contrato) dobleControl = true;
       if (tipo === "reactivar" && org.status !== "suspended") throw new SuperadminSeguridadError("la organizacion no esta suspendida", "conflict");
       if (tipo === "cambiar_plan") {
         const plan = payload.plan;
         if (plan !== "trial" && plan !== "active") throw new SuperadminSeguridadError("cambiar_plan requiere payload {plan: trial|active}", "invalid");
         if (org.status === "suspended") throw new SuperadminSeguridadError("reactiva la organizacion antes de cambiar su plan", "conflict");
         if (org.status === plan) throw new SuperadminSeguridadError("la organizacion ya tiene ese plan", "conflict");
+        if (plan === "trial" && contrato) throw new SuperadminSeguridadError("una organizacion con contrato vigente no puede pasar a cuenta de prueba (enmienda o vence el contrato primero)", "conflict");
         finalPayload = { plan };
       }
+      if (tipo !== "suspender" && tipo !== "cambiar_plan") contrato = undefined;
+      // Como en SQL (0038): una pendiente ya vencida se marca vencida y no bloquea la solicitud nueva.
+      this.actions.forEach((a, i) => {
+        if (a.estado === "pending" && a.organizationId === organizationId && a.venceEnMs <= this.now()) this.actions[i] = { ...a, estado: "expired" };
+      });
       if (this.actions.some((a) => a.estado === "pending" && a.organizationId === organizationId)) throw new SuperadminSeguridadError("ya hay una accion pendiente para esta organizacion", "conflict");
     }
     this.idSeq += 1;
@@ -613,10 +666,15 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
       estado: "pending",
       creadoPor: callerId,
       creadoEnMs: this.now(),
-      venceEnMs: this.now() + ACTION_TTL_MS,
+      venceEnMs: this.now() + (dobleControl ? DOUBLE_CONTROL_TTL_MS : ACTION_TTL_MS),
       confirmadoPor: null,
       confirmadoEnMs: null,
       resultado: null,
+      requiereDobleControl: dobleControl,
+      contratoId: contrato?.contractId ?? null,
+      contratoVersion: contrato?.version ?? null,
+      aprobadoPor: null,
+      aprobadoEnMs: null,
     };
     this.actions.push(action);
     return { availability: "available" as const, action };
@@ -626,6 +684,19 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
     const index = this.actions.findIndex((a) => a.id === id);
     if (index < 0) throw new SuperadminSeguridadError("la accion no existe", "not_found");
     return { index, action: this.actions[index]! };
+  }
+
+  async approve(callerId: string, actionId: string) {
+    this.requireSuperadmin(callerId);
+    const { index, action } = this.find(actionId);
+    if (!action.requiereDobleControl) throw new SuperadminSeguridadError("esta accion no requiere doble control", "conflict");
+    if (action.creadoPor === callerId) throw new SuperadminSeguridadError("el doble control exige a un segundo superadmin distinto de quien solicito la accion", "forbidden");
+    if (action.estado !== "pending") throw new SuperadminSeguridadError(`la accion ya no esta pendiente (estado ${action.estado})`, "conflict");
+    if (action.venceEnMs <= this.now()) throw new SuperadminSeguridadError("la accion ya vencio", "conflict");
+    if (action.aprobadoPor !== null) throw new SuperadminSeguridadError("la accion ya fue aprobada", "conflict");
+    const approved: OrgAdminActionRow = { ...action, aprobadoPor: callerId, aprobadoEnMs: this.now() };
+    this.actions[index] = approved;
+    return { availability: "available" as const, action: approved };
   }
 
   async confirm(callerId: string, actionId: string) {
@@ -638,6 +709,8 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
       this.actions[index] = expired;
       return { availability: "available" as const, action: expired };
     }
+    if (action.requiereDobleControl && action.aprobadoPor === null) throw new SuperadminSeguridadError("falta la aprobacion de un segundo superadmin (doble control)", "conflict");
+    const contrato = action.organizationId ? this.contratos.get(action.organizationId) : undefined;
     let resultado: Record<string, unknown>;
     if (action.tipo === "alta") {
       const slug = String(action.payload.slug);
@@ -650,7 +723,8 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
       if (!org) throw new SuperadminSeguridadError("la organizacion ya no existe", "not_found");
       if (action.tipo === "suspender") {
         if (org.status === "suspended") throw new SuperadminSeguridadError("la organizacion ya esta suspendida", "conflict");
-        resultado = { status_previo: org.status, status: "suspended" };
+        if (contrato && !action.requiereDobleControl) throw new SuperadminSeguridadError("la organizacion ya tiene un contrato vigente; crea una solicitud nueva (requiere doble control)", "conflict");
+        resultado = { status_previo: org.status, status: "suspended", doble_control: action.requiereDobleControl, aprobado_por: action.aprobadoPor, contrato_id: contrato?.contractId ?? null, contrato_version: contrato?.version ?? null };
         org.status = "suspended";
       } else if (action.tipo === "reactivar") {
         if (org.status !== "suspended") throw new SuperadminSeguridadError("la organizacion ya no esta suspendida", "conflict");
@@ -665,7 +739,8 @@ export class InMemoryOrgAdminRepository implements OrgAdminRepository {
         if (org.status === "suspended") throw new SuperadminSeguridadError("la organizacion esta suspendida", "conflict");
         const plan = action.payload.plan as "trial" | "active";
         if (org.status === plan) throw new SuperadminSeguridadError("la organizacion ya tiene ese plan", "conflict");
-        resultado = { status_previo: org.status, status: plan };
+        if (plan === "trial" && contrato) throw new SuperadminSeguridadError("una organizacion con contrato vigente no puede pasar a cuenta de prueba", "conflict");
+        resultado = { status_previo: org.status, status: plan, contrato_id: contrato?.contractId ?? null, contrato_version: contrato?.version ?? null };
         org.status = plan;
       }
     }
