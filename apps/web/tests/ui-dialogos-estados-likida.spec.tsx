@@ -98,8 +98,8 @@ function ms(nombre: string): number {
 const espacioPx = (n: number) => n * 4;
 const dentro = (real: number, esperado: number) => Math.abs(real - esperado) <= 1;
 
-const clases = (el: Element | null) => (el?.getAttribute("class") ?? "").split(/\s+/);
-function tiene(el: Element | null, ...esperadas: string[]) {
+const clases = (el: Element | null | undefined) => (el?.getAttribute("class") ?? "").split(/\s+/);
+function tiene(el: Element | null | undefined, ...esperadas: string[]) {
   const c = clases(el);
   for (const e of esperadas) expect(c, `falta la clase ${e}`).toContain(e);
 }
