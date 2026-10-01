@@ -1,7 +1,7 @@
 // CLI del BAKE-OFF de reportes PDF / visuales (40 tareas x 4 brazos). Mismo contrato de seguridad que cli.ts:
 //   CI (sin costo): modelo guionado "oro":   npx vite-node scripts/eval-copiloto/bakeoff-cli.ts -- --tareas=40
 //   REAL (manual):  COPILOTO_EVAL_REAL=1 OPENROUTER_API_KEY_FILE=... npx vite-node scripts/eval-copiloto/bakeoff-cli.ts -- --modo=real --max-usd=8
-// Humo del runner: --tareas=1 --max-usd=0.4. --dry-run imprime el plan y la proyeccion. El tope de gasto es duro y nunca pasa de 45 USD.
+// Humo del runner: --tareas=1 --max-usd=0.4 (--sinteticos mide a Qwen 3.7 Flash sin ZDR, solo con datos sinteticos). --dry-run imprime el plan y la proyeccion. El tope de gasto es duro y nunca pasa de 45 USD.
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +48,10 @@ async function main(): Promise<void> {
   if (modo === "real") {
     const llave = leerLlave();
     const f = crearFabricaOpenRouter(llave);
-    fabrica = (m) => f(m, undefined as never, 1);
+    const sinteticos = args.has("sinteticos");
+    // --sinteticos: un modelo SIN host de EE.UU. (hoy Qwen 3.7 Flash) se enruta sin ZDR, solo para medir su calidad potencial con
+    // las tablas SINTETICAS del eval. Nunca es una autorizacion de uso en produccion.
+    fabrica = (m) => f(sinteticos && !m.hostEeuu ? { ...m, routing: { dataCollection: "deny", requireParameters: true, allowFallbacks: false } } : m, undefined as never, 1);
     juez = args.has("sin-juez") ? undefined : juezAnalisisDesde(crearJuezOpenRouter({ apiKey: llave, presupuesto, rubrica: RUBRICA_ANALISIS }));
   } else {
     fabrica = fabricaOroBakeoff();

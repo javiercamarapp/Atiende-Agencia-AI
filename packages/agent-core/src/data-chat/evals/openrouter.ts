@@ -11,6 +11,8 @@ export interface OpcionesFabricaOpenRouter {
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
   readonly maxRetries?: number;
+  /** Espera base del backoff en ms (por omision 1500: los modelos baratos devuelven 429 "temporalmente limitado" con frecuencia). */
+  readonly backoffBaseMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
@@ -23,7 +25,8 @@ export function crearProveedorCandidato(apiKey: string, modelo: ModeloCandidato,
     routing: modelo.routing,
     appName: "Atiende evals",
     timeoutMs: o.timeoutMs ?? 60_000,
-    maxRetries: o.maxRetries ?? 1,
+    maxRetries: o.maxRetries ?? 3,
+    backoffBaseMs: o.backoffBaseMs ?? 1_500,
     ...(o.baseUrl ? { baseUrl: o.baseUrl } : {}),
     ...(o.fetchImpl ? { fetchImpl: o.fetchImpl } : {}),
     ...(o.sleep ? { sleep: o.sleep } : {}),

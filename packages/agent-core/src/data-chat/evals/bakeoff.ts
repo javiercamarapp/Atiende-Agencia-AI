@@ -459,16 +459,17 @@ export function bakeoffMarkdown(res: ResultadoBakeoff): string {
   L.push(`- Tareas: ${res.tareas}; brazos: ${res.brazos.length}; gasto real (usage.cost): $${res.gastoUsd.toFixed(4)} de un tope de $${res.maxUsd.toFixed(2)}`);
   if (res.abortada) L.push(`- CORRIDA ABORTADA (${res.abortada}); reportes no corridos: ${res.noCorridos.length}`);
   L.push("");
-  L.push("| Brazo | Puertas | JSON | Cifras sin inventar | Inventadas | Cifras clave | Espanol | SVG | Analisis (juez 1-5) | USD/reporte | p50 ms | Evaluados |");
-  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|");
+  L.push("| Brazo | Puertas | JSON | Cifras sin inventar | Inventadas | Cifras clave | Espanol | SVG | Analisis (juez 1-5) | USD/reporte | p50 ms | Evaluados | Errores de proveedor |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const r of rs) {
-    L.push(`| ${r.etiqueta} | ${r.pasaPuertas ? "pasa" : "no"} | ${pct(r.tasaJson)} | ${pct(r.tasaCifrasSinInventar)} | ${r.inventadas} | ${pct(r.tasaCifrasClave)} | ${pct(r.tasaEspanol)} | ${pct(r.tasaSvg)} | ${r.notaAnalisis === null ? "n/d" : r.notaAnalisis.toFixed(2)} | ${r.costoPorReporteUsd.toFixed(4)} | ${r.latenciaP50Ms.toFixed(0)} | ${r.evaluados} |`);
+    L.push(`| ${r.etiqueta} | ${r.pasaPuertas ? "pasa" : "no"} | ${pct(r.tasaJson)} | ${pct(r.tasaCifrasSinInventar)} | ${r.inventadas} | ${pct(r.tasaCifrasClave)} | ${pct(r.tasaEspanol)} | ${pct(r.tasaSvg)} | ${r.notaAnalisis === null ? "n/d" : r.notaAnalisis.toFixed(2)} | ${r.costoPorReporteUsd.toFixed(4)} | ${r.latenciaP50Ms.toFixed(0)} | ${r.evaluados} | ${r.erroresProveedor} |`);
   }
   L.push("");
   L.push(`Puertas: JSON valido ${pct(PUERTAS_BAKEOFF.json)}, cifras sin inventar ${pct(PUERTAS_BAKEOFF.cifrasSinInventar)}, SVG ${pct(PUERTAS_BAKEOFF.svg)}, espanol ${pct(PUERTAS_BAKEOFF.espanol)}, cifras clave ${pct(PUERTAS_BAKEOFF.cifrasClave)}, analisis >= ${PUERTAS_BAKEOFF.notaAnalisis}.`);
   L.push("");
   L.push(`**Recomendacion**: ${recomendacionBakeoff(rs)}`);
   L.push("");
+  if (rs.some((r) => r.erroresProveedor > 0 && r.evaluados === 0)) L.push("Un brazo con 0 evaluados y errores de proveedor no tiene ruta EE.UU./ZDR (404 'No endpoints'): no es elegible; la politica no se relaja salvo con --sinteticos (solo datos sinteticos del eval, para medir su calidad potencial).\n");
   L.push("El juez de calidad del analisis es Qwen 3.7 Flash (nunca Sonnet). Con Gemini 3.8 Flash el precio se duplica el 1-ene-2027: reevaluar entonces.");
   return L.join("\n");
 }

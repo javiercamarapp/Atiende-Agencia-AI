@@ -71,22 +71,32 @@ export function crearJuezOpenRouter(o: OpcionesJuezOpenRouter): JuezEspanol {
       for (let i = rutaViva; i < proveedores.length; i += 1) {
         const reserva = o.presupuesto.reservar(JUEZ_ESPANOL_CADENA[i]!.id);
         let r: LlmCompletionResult | null = null;
-        try {
-          r = await proveedores[i]!.complete({
-            system: o.rubrica ?? RUBRICA_JUEZ,
-            messages: [{ role: "user", content: `Pregunta del usuario: ${pregunta}\nRespuesta a calificar: ${texto || "(vacia)"}` }],
-            maxOutputTokens: 400,
-          });
-        } catch (err) {
-          reserva.liberar(0);
-          const e = err instanceof OpenRouterError ? err : null;
-          // sin endpoint para esa politica: probar la siguiente ruta; cualquier otro error se propaga (cuenta, red).
-          if (e && (e.status === 400 || e.status === 404 || e.status === 422) && i < proveedores.length - 1) {
-            rutaViva = i + 1;
-            continue;
+        let transitorios = 0;
+        for (;;) {
+          try {
+            r = await proveedores[i]!.complete({
+              system: o.rubrica ?? RUBRICA_JUEZ,
+              messages: [{ role: "user", content: `Pregunta del usuario: ${pregunta}\nRespuesta a calificar: ${texto || "(vacia)"}` }],
+              maxOutputTokens: 400,
+            });
+            break;
+          } catch (err) {
+            const e = err instanceof OpenRouterError ? err : null;
+            if (e?.transient && transitorios < 2) {
+              transitorios += 1; // falla pasajera (red, 5xx, 429): reintenta la misma ruta, sin gastar mas reserva
+              continue;
+            }
+            reserva.liberar(0);
+            // sin endpoint para esa politica: probar la siguiente ruta; cualquier otro error se propaga (cuenta, red).
+            if (e && (e.status === 400 || e.status === 404 || e.status === 422) && i < proveedores.length - 1) {
+              rutaViva = i + 1;
+              r = null;
+              break;
+            }
+            return { nota: null, razon: "juez no disponible", modelo: JUEZ_ESPANOL_CADENA[i]!.etiqueta, costoUsd: 0 };
           }
-          return { nota: null, razon: "juez no disponible", modelo: JUEZ_ESPANOL_CADENA[i]!.etiqueta, costoUsd: 0 };
         }
+        if (r === null) continue;
         reserva.liberar(r.costUsd);
         const p = parsearNotaJuez(r.text);
         return { ...p, modelo: JUEZ_ESPANOL_CADENA[i]!.etiqueta, costoUsd: r.costUsd };
