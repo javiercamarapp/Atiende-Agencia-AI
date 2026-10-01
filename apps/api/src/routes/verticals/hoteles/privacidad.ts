@@ -53,7 +53,6 @@ import {
   type PrivacyEventRecord,
   type PrivacyIncidentRecord,
   type PrivacyNoticeRecord,
-  type PrivacyRepository,
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
