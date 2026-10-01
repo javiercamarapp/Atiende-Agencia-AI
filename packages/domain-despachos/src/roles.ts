@@ -160,6 +160,16 @@ export const CERRAR_PERIODO_ROLES: readonly DespachosRole[] = ["admin"];
  * VER_MIGRACION_CATALOGO_ROLES/VER_CIERRE_MENSUAL_ROLES). */
 export const VER_COBRANZA_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
 
+/** Dashboard gerencial (D-01): lectura pura de KPIs agregados del despacho/cliente —
+ * `auditor`/`readonly` SÍ pueden verlo, igual que ya ven cobranza, vencimientos y cierre
+ * mensual de los que se alimenta (nunca amplía lo que cada rol ya puede leer). */
+export const VER_DASHBOARD_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+
+/** Reportes de cliente (D-01: balanza/DIOT/nómina/impuestos) y su exportación a PDF/Excel:
+ * lectura + descarga de datos que esos mismos roles ya pueden consultar (CFDI, DIOT,
+ * vencimientos); no escribe nada. */
+export const VER_REPORTES_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+
 /** Quién puede registrar una cuenta por cobrar, marcarla pagada o generar/
  * registrar un recordatorio — mismo criterio que DECLARACIONES_ROLES/
  * CONCILIACION_ROLES: son los mismos operadores que preparan/ejecutan la

@@ -120,6 +120,8 @@ export {
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
   VER_CONFIGURACION_ROLES,
   GESTIONAR_CONFIGURACION_ROLES,
+  VER_DASHBOARD_ROLES,
+  VER_REPORTES_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -466,3 +468,30 @@ export type {
   CobranzaReminderStage,
 } from "./cobranza/engine.ts";
 export { formatMontoCobranza, renderRecordatorioCobranza, renderAsuntoRecordatorioCobranza } from "./cobranza/templates.ts";
+
+// ---- D-01: dashboard gerencial y reportes de cliente (balanza/DIOT/nómina/impuestos) ----
+export { calcularKpisCliente, consolidarKpisDespacho, DIAS_REVISION_ANTIGUA, DIAS_VENCIMIENTO_PROXIMO, SCORE_COBRANZA_BAJO } from "./dashboard/kpis.ts";
+export type {
+  AnomaliaDashboard,
+  CarteraEntrada,
+  CierreEntrada,
+  EntradaKpisCliente,
+  FuenteDashboard,
+  KpisCartera,
+  KpisCargaTrabajo,
+  KpisCfdiMes,
+  KpisCierres,
+  KpisCliente,
+  KpisDespacho,
+  NivelAtencion,
+  SeveridadAnomalia,
+} from "./dashboard/kpis.ts";
+export { construirDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
+export type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
+export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
+export type { EntradaReporte } from "./reportes/builders.ts";
+export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
+export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } from "./dashboard/lectura.ts";
+export type { ClienteDashboardRef } from "./dashboard/lectura.ts";
