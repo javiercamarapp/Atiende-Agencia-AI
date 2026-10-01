@@ -22,27 +22,10 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, CalendarDays, CircleDollarSign, Clock } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@atiende/ui";
+import { ArrowLeft, CalendarDays, CircleDollarSign, Clock } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatCard, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
+import { BORRADOR_ESTATUS_TONES, FACTURA_STATUS_TONES, VIABILIDAD_TONES } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { ContractNotFoundError, createContractInvoice, fetchContractInvoices, fetchReceivablesSummary, markContractInvoicePaid } from "../lib/contract-billing-client.ts";
 import type { ContractInvoiceRecord, ReceivablesSummary } from "../lib/contract-billing-client.ts";
@@ -64,54 +47,31 @@ const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"])
 // distinto de redactarlo o de decidir ir/no ir a una licitación).
 const INCONFORMIDAD_REVIEW_ROLES = new Set(["owner", "admin", "reviewer"]);
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
-
-/** Mismo ámbar de antes, sin hex sueltos: `outline` + tokens de Tailwind. */
-const AMBAR = "border-amber-500/60 text-amber-600 dark:text-amber-400";
-
-/** `<textarea>` sigue siendo nativo (el sistema no exporta un primitivo
- * propio): solo se restila con los tokens reales. */
-const CAMPO_NATIVO =
-  "flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-const INVOICE_STATUS_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
-  pendiente: { variant: "outline", className: AMBAR },
-  pagada: { variant: "default" },
-  vencida: { variant: "destructive" },
-};
 const INVOICE_STATUS_LABELS: Record<string, string> = { pendiente: "Pendiente", pagada: "Pagada", vencida: "Vencida" };
 
 function InvoiceStatusPill({ status }: { status: string }) {
-  const cfg = INVOICE_STATUS_BADGE[status] ?? { variant: "secondary" as const };
   return (
-    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+    <StatusBadge tone={statusTone(FACTURA_STATUS_TONES, status)} className="whitespace-nowrap">
       {INVOICE_STATUS_LABELS[status] ?? status}
-    </Badge>
+    </StatusBadge>
   );
 }
 
-const VIABILITY_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
-  alta: { variant: "default" },
-  media: { variant: "outline", className: AMBAR },
-  baja: { variant: "destructive" },
-};
 const VIABILITY_LABELS: Record<string, string> = { alta: "Alta", media: "Media", baja: "Baja" };
 
 function ViabilityPill({ viability }: { viability: string }) {
-  const cfg = VIABILITY_BADGE[viability] ?? { variant: "secondary" as const };
   return (
-    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+    <StatusBadge tone={statusTone(VIABILIDAD_TONES, viability)} className="whitespace-nowrap">
       Viabilidad: {VIABILITY_LABELS[viability] ?? viability}
-    </Badge>
+    </StatusBadge>
   );
 }
 
 function DraftStatusPill({ status }: { status: string }) {
-  const isRevisado = status === "revisado";
   return (
-    <Badge variant={isRevisado ? "default" : "secondary"} className="whitespace-nowrap">
-      {isRevisado ? "Revisado" : "Borrador"}
-    </Badge>
+    <StatusBadge tone={statusTone(BORRADOR_ESTATUS_TONES, status)} className="whitespace-nowrap">
+      {status === "revisado" ? "Revisado" : "Borrador"}
+    </StatusBadge>
   );
 }
 
@@ -331,14 +291,14 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
   if (!tender) return null;
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title}
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Post-adjudicación: cobranza e inconformidades</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Post-adjudicación: cobranza e inconformidades</h1>
+        <p className="text-sm text-muted-foreground">
           Seguimiento de pagos contra el contrato ya adjudicado y redacción de borradores de inconformidad contra el fallo. La presentación de escritos ante cualquier autoridad, y el alta del contrato mismo, no viven en esta pantalla.
         </p>
       </div>
@@ -361,14 +321,13 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
               {billingLoading && invoices === null && !contractMissing && <EstadoCargando lineas={2} etiqueta="Cargando facturación…" />}
 
               {contractMissing && (
-                <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-[13px] text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <Callout tone="warning" role="alert">
                   Esta convocatoria todavía no tiene un contrato registrado -- la cobranza requiere un contrato existente. El alta del contrato es una pantalla aparte (fuera de esta pieza).
-                </p>
+                </Callout>
               )}
 
               {billingError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {billingError}
                 </p>
               )}
@@ -384,7 +343,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
               {invoices && invoices.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   {invoices.map((inv) => (
-                    <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 text-[13px]">
+                    <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 text-sm">
                       <div className="flex-[1_1_220px]">
                         <p className="font-semibold text-foreground">
                           {inv.concepto} · ${inv.amount}
@@ -413,7 +372,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
               {invoices && invoices.length === 0 && <EstadoVacio mensaje="Todavía no hay facturas registradas contra este contrato." />}
 
               {markPaidError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {markPaidError}
                 </p>
               )}
@@ -458,7 +417,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
             <CardContent className="flex flex-col gap-3">
               {draftsLoading && drafts === null && <EstadoCargando lineas={2} etiqueta="Cargando borradores…" />}
               {draftsError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {draftsError}
                 </p>
               )}
@@ -468,7 +427,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                   {drafts.map((d) => (
                     <div key={d.id} className="flex flex-col gap-2 rounded-xl border border-border p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[13px] font-semibold text-foreground">
+                        <p className="text-sm font-semibold text-foreground">
                           {/* `fechaLimite` es "YYYY-MM-DD" (solo día) -- ver InconformidadPlazo. */}
                           Versión {d.version} · límite {formatFechaSolo(d.plazo.fechaLimite)} ({d.plazo.diasHabiles} días hábiles)
                         </p>
@@ -478,7 +437,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">{d.viabilityRecommendation}</p>
-                      <p className="text-[11px] italic text-destructive">{d.disclaimer}</p>
+                      <p className="text-xs italic text-destructive">{d.disclaimer}</p>
                       <details>
                         <summary className="cursor-pointer text-xs text-foreground">Ver hechos, agravios y fundamentos ({d.fundamentos.length})</summary>
                         <div className="mt-2 flex flex-col gap-2 text-xs">
@@ -526,7 +485,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                         </Button>
                       )}
                       {d.status === "revisado" && (
-                        <p className="text-[11px] font-medium text-green-600 dark:text-green-500">Revisado {d.reviewedAt ? formatDate(d.reviewedAt) : ""}.</p>
+                        <p className="text-xs font-medium text-success">Revisado {d.reviewedAt ? formatDate(d.reviewedAt) : ""}.</p>
                       )}
                     </div>
                   ))}
@@ -535,7 +494,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
               {drafts && drafts.length === 0 && <EstadoVacio mensaje="Todavía no se ha generado ningún borrador de inconformidad para esta convocatoria." />}
 
               {reviewError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {reviewError}
                 </p>
               )}
@@ -548,25 +507,22 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                   <p className="text-xs font-semibold text-foreground">Generar un nuevo borrador (cada envío crea una versión nueva, nunca edita una existente)</p>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="inc-hechos">Hechos (uno por línea)</Label>
-                    <textarea id="inc-hechos" value={hechosText} onChange={(e) => setHechosText(e.target.value)} rows={3} className={CAMPO_NATIVO} />
+                    <Textarea id="inc-hechos" value={hechosText} onChange={(e) => setHechosText(e.target.value)} rows={3} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="inc-agravios">Agravios (uno por línea)</Label>
-                    <textarea id="inc-agravios" value={agraviosText} onChange={(e) => setAgraviosText(e.target.value)} rows={3} className={CAMPO_NATIVO} />
+                    <Textarea id="inc-agravios" value={agraviosText} onChange={(e) => setAgraviosText(e.target.value)} rows={3} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="inc-pruebas">Pruebas (uno por línea, opcional -- sin pruebas la viabilidad se clasifica como "baja")</Label>
-                    <textarea id="inc-pruebas" value={pruebasText} onChange={(e) => setPruebasText(e.target.value)} rows={2} className={CAMPO_NATIVO} />
+                    <Textarea id="inc-pruebas" value={pruebasText} onChange={(e) => setPruebasText(e.target.value)} rows={2} />
                   </div>
                   <div className="flex flex-wrap items-end gap-3">
                     <div className="flex flex-[1_1_180px] flex-col gap-1.5">
                       <Label htmlFor="inc-fallo">Fecha de notificación del fallo</Label>
                       <Input id="inc-fallo" type="date" value={falloNotifiedOnText} onChange={(e) => setFalloNotifiedOnText(e.target.value)} />
                     </div>
-                    <label className="flex items-center gap-2 text-xs text-foreground">
-                      <input type="checkbox" checked={bajoTratados} onChange={(e) => setBajoTratados(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-                      Licitación pública internacional bajo cobertura de tratados (10 días hábiles en vez de 6)
-                    </label>
+                    <Checkbox label="Licitación pública internacional bajo cobertura de tratados (10 días hábiles en vez de 6)" checked={bajoTratados} onChange={(e) => setBajoTratados(e.target.checked)} />
                   </div>
                   {generateDraftError && (
                     <p role="alert" className="text-xs text-destructive">
@@ -584,6 +540,6 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

@@ -10,8 +10,10 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, Textarea } from "@atiende/ui";
+import type { StatusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea } from "@atiende/ui";
 import { addWarRoomEntry, createWarRoomItem, fetchWarRoom, importWarRoomRequirements, updateWarRoomItem } from "../lib/sala-guerra-client.ts";
+import { SEMAFORO_TONES } from "../lib/status-tones.ts";
 import type { DeadlineSemaphore, SemaphoreColor, WarRoomBoardResponse, WarRoomItem, WarRoomItemKind, WarRoomItemStatus, WarRoomSeverity } from "../lib/sala-guerra-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 import { JuntaAclaracionesSection } from "./JuntaAclaraciones.tsx";
@@ -22,7 +24,10 @@ const DECISION_ENTRY_ROLES = new Set(["owner", "admin", "analyst", "reviewer"]);
 
 export const DATE_TIME = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" });
 
-export const SEMAPHORE_VARIANT: Record<SemaphoreColor, "destructive" | "warning" | "success" | "outline"> = { rojo: "destructive", amarillo: "warning", verde: "success", gris: "outline" };
+/** Tono de <StatusBadge> de un color de semáforo (rojo/amarillo/verde/gris), compartido con la junta de aclaraciones. */
+export function semaphoreTone(color: SemaphoreColor): StatusTone {
+  return statusTone(SEMAFORO_TONES, color);
+}
 export const SEMAPHORE_TEXT: Record<SemaphoreColor, string> = { rojo: "Rojo", amarillo: "Amarillo", verde: "Verde", gris: "Sin urgencia" };
 
 export function semaphoreLabel(s: DeadlineSemaphore): string {
@@ -168,19 +173,19 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{KIND_LABEL[item.kind]}</Badge>
-              {item.severity && <Badge variant={item.severity === "critica" || item.severity === "alta" ? "destructive" : "warning"}>Severidad {SEVERITY_LABEL[item.severity].toLowerCase()}</Badge>}
+              <StatusBadge dot={false}>{KIND_LABEL[item.kind]}</StatusBadge>
+              {item.severity && <StatusBadge tone={item.severity === "critica" || item.severity === "alta" ? "danger" : "warning"}>Severidad {SEVERITY_LABEL[item.severity].toLowerCase()}</StatusBadge>}
               <span className={closed ? "font-semibold text-muted-foreground line-through" : "font-semibold text-foreground"}>{item.title}</span>
             </div>
-            {item.description && <p className="mt-1 whitespace-pre-line text-[12px] text-muted-foreground">{item.description}</p>}
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            {item.description && <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{item.description}</p>}
+            <p className="mt-1 text-xs text-muted-foreground">
               {item.responsibleUserId ? (item.responsibleUserId === data!.viewerUserId ? "Responsable: tú" : "Responsable: otra persona del equipo") : "Sin responsable"}
               {item.dueAt ? ` · Límite: ${DATE_TIME.format(new Date(item.dueAt))}` : " · Sin fecha límite"}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={SEMAPHORE_VARIANT[item.semaphore.color]}>{semaphoreLabel(item.semaphore)}</Badge>
-            <Badge variant="outline">{STATUS_LABEL[item.status]}</Badge>
+            <StatusBadge tone={semaphoreTone(item.semaphore.color)}>{semaphoreLabel(item.semaphore)}</StatusBadge>
+            <StatusBadge dot={false}>{STATUS_LABEL[item.status]}</StatusBadge>
           </div>
         </div>
         {canWrite && (
@@ -221,14 +226,14 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
   ];
 
   return (
-    <div className="flex max-w-[1000px] flex-col gap-5">
+    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           Convocatoria
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Sala de guerra · {data.tender.title}</h1>
-        <p className="max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Sala de guerra · {data.tender.title}</h1>
+        <p className="max-w-[720px] text-sm text-muted-foreground">
           Preparación de la propuesta y de la junta de aclaraciones. Esta pantalla no envía nada a ComprasMX ni a ningún portal: lo que se presenta lo presenta una persona por el canal oficial de la convocante.
         </p>
       </div>
@@ -243,12 +248,12 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
       </div>
 
       {actionError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
       {notice && (
-        <p role="status" className="text-[13px] text-foreground">
+        <p role="status" className="text-sm text-foreground">
           {notice}
         </p>
       )}
@@ -258,7 +263,7 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
       ) : (
         <>
           {!data.available && (
-            <div role="status" className="rounded-xl border border-warning/40 bg-warning-tint p-3 text-[13px] text-foreground">
+            <div role="status" className="rounded-xl border border-warning/40 bg-warning-tint p-3 text-sm text-foreground">
               La sala de guerra aún no esta disponible en esta base de datos (falta aplicar la migración 029). Se muestran los requisitos de las bases y las decisiones go/no-go que ya existen; no se pueden guardar items todavia.
             </div>
           )}
@@ -266,31 +271,31 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Resumen">
             <Card>
               <CardContent className="p-4">
-                <div className="text-[11px] uppercase text-muted-foreground">Semáforo general</div>
-                <Badge variant={SEMAPHORE_VARIANT[board.summary.semaforoGeneral]}>{SEMAPHORE_TEXT[board.summary.semaforoGeneral]}</Badge>
+                <div className="text-xs uppercase text-muted-foreground">Semáforo general</div>
+                <StatusBadge tone={semaphoreTone(board.summary.semaforoGeneral)}>{SEMAPHORE_TEXT[board.summary.semaforoGeneral]}</StatusBadge>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-[11px] uppercase text-muted-foreground">Avance</div>
+                <div className="text-xs uppercase text-muted-foreground">Avance</div>
                 <div className="text-lg font-semibold text-foreground">{board.summary.avancePct === null ? "Sin items" : `${board.summary.avancePct}%`}</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground">
                   Requisitos {board.summary.requisitos.listos}/{board.summary.requisitos.total} · Tareas {board.summary.tareas.listas}/{board.summary.tareas.total}
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-[11px] uppercase text-muted-foreground">Riesgos abiertos</div>
+                <div className="text-xs uppercase text-muted-foreground">Riesgos abiertos</div>
                 <div className="text-lg font-semibold text-foreground">{board.summary.riesgosAbiertos}</div>
-                <div className="text-[11px] text-muted-foreground">{board.summary.riesgosAltos} alta/critica · {board.summary.sinResponsable} sin responsable</div>
+                <div className="text-xs text-muted-foreground">{board.summary.riesgosAltos} alta/critica · {board.summary.sinResponsable} sin responsable</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-[11px] uppercase text-muted-foreground">Presentación de propuestas</div>
-                <div className="text-[13px] font-semibold text-foreground">{board.submissionDeadline.at ? DATE_TIME.format(new Date(board.submissionDeadline.at)) : "Sin fecha declarada"}</div>
-                <Badge variant={SEMAPHORE_VARIANT[board.submissionDeadline.semaphore.color]}>{semaphoreLabel(board.submissionDeadline.semaphore)}</Badge>
+                <div className="text-xs uppercase text-muted-foreground">Presentación de propuestas</div>
+                <div className="text-sm font-semibold text-foreground">{board.submissionDeadline.at ? DATE_TIME.format(new Date(board.submissionDeadline.at)) : "Sin fecha declarada"}</div>
+                <StatusBadge tone={semaphoreTone(board.submissionDeadline.semaphore.color)}>{semaphoreLabel(board.submissionDeadline.semaphore)}</StatusBadge>
               </CardContent>
             </Card>
           </section>
@@ -302,9 +307,9 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
             </CardHeader>
             <CardContent>
               {board.goNoGo ? (
-                <div className="flex flex-col gap-1 text-[13px]">
+                <div className="flex flex-col gap-1 text-sm">
                   <div>
-                    <Badge variant={board.goNoGo.decision === "go" ? "success" : "destructive"}>{board.goNoGo.decision === "go" ? "Go" : "No-go"}</Badge>{" "}
+                    <StatusBadge tone={board.goNoGo.decision === "go" ? "success" : "danger"}>{board.goNoGo.decision === "go" ? "Go" : "No-go"}</StatusBadge>{" "}
                     <span className="text-muted-foreground">{DATE_TIME.format(new Date(board.goNoGo.decidedAt))}</span>
                   </div>
                   <ul className="list-disc pl-5 text-muted-foreground">
@@ -316,7 +321,7 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
               ) : (
                 <EstadoVacio mensaje="Todavía no hay una decisión go/no-go registrada." />
               )}
-              <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="mt-2 inline-block text-[13px] text-foreground underline">
+              <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="mt-2 inline-block text-sm text-foreground underline">
                 Ir a la convocatoria
               </Link>
             </CardContent>
@@ -330,7 +335,7 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
               </CardHeader>
               <CardContent>
                 <form onSubmit={(e) => void onAddItem(e)} className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 text-[13px]">
+                  <label className="flex flex-col gap-1 text-sm">
                     Tipo
                     <NativeSelect aria-label="Tipo de item" value={kind} onChange={(e) => setKind(e.target.value as WarRoomItemKind)}>
                       <option value="requisito">Requisito</option>
@@ -338,12 +343,12 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
                       <option value="riesgo">Riesgo</option>
                     </NativeSelect>
                   </label>
-                  <label className="flex flex-col gap-1 text-[13px]">
+                  <label className="flex flex-col gap-1 text-sm">
                     Título
                     <Input aria-label="Título del item" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Recabar carta del fabricante" />
                   </label>
                   {kind === "riesgo" && (
-                    <label className="flex flex-col gap-1 text-[13px]">
+                    <label className="flex flex-col gap-1 text-sm">
                       Severidad
                       <NativeSelect aria-label="Severidad del riesgo" value={severity} onChange={(e) => setSeverity(e.target.value as WarRoomSeverity)}>
                         {(Object.keys(SEVERITY_LABEL) as WarRoomSeverity[]).map((s) => (
@@ -354,18 +359,15 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
                       </NativeSelect>
                     </label>
                   )}
-                  <label className="flex flex-col gap-1 text-[13px]">
+                  <label className="flex flex-col gap-1 text-sm">
                     Fecha límite
                     <Input aria-label="Fecha límite del item" type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
                   </label>
-                  <label className="flex flex-col gap-1 text-[13px] sm:col-span-2">
+                  <label className="flex flex-col gap-1 text-sm sm:col-span-2">
                     Descripción (opcional)
                     <Textarea aria-label="Descripción del item" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
                   </label>
-                  <label className="flex items-center gap-2 text-[13px]">
-                    <input type="checkbox" checked={assignToMe} onChange={(e) => setAssignToMe(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-                    Asignármelo
-                  </label>
+                  <Checkbox label="Asignármelo" checked={assignToMe} onChange={(e) => setAssignToMe(e.target.checked)} />
                   <div className="sm:col-span-2">
                     <Button type="submit" disabled={busy === "add-item" || title.trim().length < 3}>
                       {busy === "add-item" ? "Agregando…" : "Agregar al tablero"}
@@ -383,7 +385,7 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
                 <CardDescription>Extraídos de las bases de la convocatoria; impórtalos para darles responsable, fecha y seguimiento.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                <ul className="list-disc pl-5 text-[12px] text-muted-foreground">
+                <ul className="list-disc pl-5 text-xs text-muted-foreground">
                   {data.importableRequirements.slice(0, 8).map((r) => (
                     <li key={r.id}>{r.clause ? `${r.clause}: ` : ""}{r.text}</li>
                   ))}
@@ -437,10 +439,10 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
               )}
               {data.entries.length === 0 && <EstadoVacio mensaje="La bitácora está vacía." />}
               {data.entries.map((entry) => (
-                <div key={entry.id} className="rounded-xl border border-border p-3 text-[13px]">
+                <div key={entry.id} className="rounded-xl border border-border p-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <Badge variant={entry.entryKind === "decision" ? "info" : "outline"}>{ENTRY_LABEL[entry.entryKind]}</Badge>
-                    <span className="text-[11px] text-muted-foreground">{DATE_TIME.format(new Date(entry.createdAt))}</span>
+                    <StatusBadge tone={entry.entryKind === "decision" ? "info" : "neutral"} dot={false}>{ENTRY_LABEL[entry.entryKind]}</StatusBadge>
+                    <span className="text-xs text-muted-foreground">{DATE_TIME.format(new Date(entry.createdAt))}</span>
                   </div>
                   <p className="mt-1 whitespace-pre-line text-foreground">{entry.body}</p>
                 </div>
@@ -449,6 +451,6 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

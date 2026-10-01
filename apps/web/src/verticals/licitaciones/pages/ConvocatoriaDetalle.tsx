@@ -19,24 +19,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarClock, CircleDollarSign, FileCheck2, Flag } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  Label,
-  StatCard,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, PageContainer, StatCard, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, useConfirm } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
+import { RESULTADO_CUMPLIMIENTO_TONES } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingDetail } from "../lib/matching-client.ts";
 import type { MatchResult } from "../lib/matching-client.ts";
@@ -58,29 +43,16 @@ const RESOLUTION_ROLES = new Set(["owner", "admin", "analyst"]);
 // igual con 409); la validación real vive SIEMPRE en el servidor.
 const RESOLVABLE_FROM_STATUSES = new Set(["go", "in_progress", "submitted"]);
 
-/** Mismo semáforo verde/ámbar/rojo de antes, ahora sobre variantes de `Badge`
- * (el ámbar no tiene variante propia en el sistema: se resuelve con `outline`
- * + tokens, nunca con un hex suelto). */
-const RESULT_BADGE: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  verde: { variant: "default" },
-  ambar: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
-  rojo: { variant: "destructive" },
-};
-
 function ResultDot({ result }: { result: string }) {
-  const cfg = RESULT_BADGE[result] ?? { variant: "secondary" as const };
-  return (
-    <Badge variant={cfg.variant} className={cfg.className}>
-      {formatComplianceResult(result)}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(RESULTADO_CUMPLIMIENTO_TONES, result)}>{formatComplianceResult(result)}</StatusBadge>;
 }
 
-const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline";
+const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline";
 
 export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
   const [tender, setTender] = useState<TenderSummary | null>(null);
+  const { confirmar, dialogo } = useConfirm();
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [decisions, setDecisions] = useState<readonly GoNoGoDecision[]>([]);
   const [checklist, setChecklist] = useState<ChecklistSummary | null>(null);
@@ -134,6 +106,16 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
       setDecisionError("Escribe al menos un motivo (uno por línea).");
       return;
     }
+    // "No-go" descarta la convocatoria: Cancelar / cerrar el diálogo NO registra nada.
+    if (decision === "no_go") {
+      const ok = await confirmar({
+        titulo: `Marcar No-go: ${tender?.title ?? "esta convocatoria"}`,
+        descripcion: "La convocatoria sale del pipeline y la decisión queda en el historial con tus motivos.",
+        tono: "danger",
+        confirmar: "Marcar No-go",
+      });
+      if (!ok) return;
+    }
     setSubmitting(decision);
     try {
       await createGoNoGoDecision(fetch, apiBaseUrl, token, propertyId, tenderId, { decision, reasons });
@@ -154,6 +136,14 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
       setResolutionError("Escribe un motivo.");
       return;
     }
+    // Ganada / perdida es un estado terminal: Cancelar / cerrar el diálogo NO resuelve la convocatoria.
+    const ok = await confirmar({
+      titulo: `Marcar ${resolution === "won" ? "ganada" : "perdida"}: ${tender?.title ?? "esta convocatoria"}`,
+      descripcion: "Es un estado terminal: la convocatoria ya no admitirá una nueva resolución.",
+      tono: resolution === "won" ? "default" : "danger",
+      confirmar: resolution === "won" ? "Marcar ganada" : "Marcar perdida",
+    });
+    if (!ok) return;
     setResolvingAs(resolution);
     try {
       // El servidor SIEMPRE revalida la transición en vivo (`checkTenderResolution`,
@@ -176,14 +166,14 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
   if (!tender) return null;
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           Convocatorias
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">{tender.title}</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">{tender.title}</h1>
+        <p className="text-sm text-muted-foreground">
           {tender.contractingBody ?? "Entidad no declarada"} {tender.externalId ? `· ${tender.externalId}` : ""}
         </p>
         <div className="mt-2 flex flex-col gap-1">
@@ -242,7 +232,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {match.criteria.map((c) => (
-                    <div key={c.criterion} className="flex justify-between gap-3 border-b border-border pb-1 text-[13px]">
+                    <div key={c.criterion} className="flex justify-between gap-3 border-b border-border pb-1 text-sm">
                       <span className="text-muted-foreground">{c.explanation}</span>
                       <span className="shrink-0 font-semibold tabular-nums text-foreground">
                         {c.score}/{c.maxScore}
@@ -271,13 +261,13 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
               <CardDescription>Historial completo de decisiones y registro de una nueva.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              {decisions.length === 0 && <p className="text-[13px] text-muted-foreground">Sin decisiones registradas todavía.</p>}
+              {decisions.length === 0 && <p className="text-sm text-muted-foreground">Sin decisiones registradas todavía.</p>}
               {decisions.length > 0 && (
                 <div className="flex flex-col gap-2">
                   {decisions.map((d) => (
-                    <div key={d.id} className="rounded-xl border border-border p-3 text-[13px]">
+                    <div key={d.id} className="rounded-xl border border-border p-3 text-sm">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant={d.decision === "go" ? "default" : "destructive"}>{d.decision === "go" ? "GO" : "NO-GO"}</Badge>
+                        <StatusBadge tone={d.decision === "go" ? "success" : "danger"}>{d.decision === "go" ? "GO" : "NO-GO"}</StatusBadge>
                         <span className="text-xs text-muted-foreground">{formatDate(d.decidedAt)}</span>
                       </div>
                       <ul className="mt-1.5 list-disc pl-5 text-foreground">
@@ -285,7 +275,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
                           <li key={i}>{r}</li>
                         ))}
                       </ul>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      <p className="mt-1.5 text-xs text-muted-foreground">
                         Score al decidir: {d.matchScore} · elegibilidad: {formatEligibility(d.matchEligibilityStatus)}
                       </p>
                     </div>
@@ -296,15 +286,14 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
               {GO_NO_GO_ROLES.has(role) ? (
                 <div className="flex max-w-[460px] flex-col gap-2">
                   <Label htmlFor="go-no-go-motivos">Motivos (uno por línea)</Label>
-                  <textarea
+                  <Textarea
                     id="go-no-go-motivos"
                     value={reasonsText}
                     onChange={(e) => setReasonsText(e.target.value)}
                     rows={3}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   />
                   {decisionError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {decisionError}
                     </p>
                   )}
@@ -334,40 +323,39 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
               {resolutions.length > 0 && (
                 <div className="flex flex-col gap-2">
                   {resolutions.map((r) => (
-                    <div key={r.id} className="rounded-xl border border-border p-3 text-[13px]">
+                    <div key={r.id} className="rounded-xl border border-border p-3 text-sm">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant={r.resolution === "won" ? "default" : "destructive"}>{r.resolution === "won" ? "GANADA" : "PERDIDA"}</Badge>
+                        <StatusBadge tone={r.resolution === "won" ? "success" : "danger"}>{r.resolution === "won" ? "GANADA" : "PERDIDA"}</StatusBadge>
                         <span className="text-xs text-muted-foreground">{formatDate(r.resolvedAt)}</span>
                       </div>
                       <p className="mt-1.5 text-foreground">{r.reason}</p>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">Resuelta desde el estado "{formatTenderStatus(r.fromStatus)}".</p>
+                      <p className="mt-1.5 text-xs text-muted-foreground">Resuelta desde el estado "{formatTenderStatus(r.fromStatus)}".</p>
                     </div>
                   ))}
                 </div>
               )}
 
               {tender.status === "won" || tender.status === "lost" ? (
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Esta convocatoria ya se resolvió como {tender.status === "won" ? "ganada" : "perdida"} -- es un estado terminal, no admite una nueva resolución.
                 </p>
               ) : !RESOLUTION_ROLES.has(role) ? (
                 <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede marcar una convocatoria ganada/perdida (se requiere owner/admin/analyst).</p>
               ) : !RESOLVABLE_FROM_STATUSES.has(tender.status ?? "discovered") ? (
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Todavía no se puede resolver: se requiere una decisión "Go" primero (estado actual: "{formatTenderStatus(tender.status)}"). Nunca se salta directo de una convocatoria sin decisión a ganada/perdida.
                 </p>
               ) : (
                 <div className="flex max-w-[460px] flex-col gap-2">
                   <Label htmlFor="resolucion-motivo">Motivo</Label>
-                  <textarea
+                  <Textarea
                     id="resolucion-motivo"
                     value={resolutionReasonText}
                     onChange={(e) => setResolutionReasonText(e.target.value)}
                     rows={2}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   />
                   {resolutionError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {resolutionError}
                     </p>
                   )}
@@ -397,11 +385,11 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {checklist.items.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">Todavía no se ha corrido el checklist de esta convocatoria.</p>
+                  <p className="text-sm text-muted-foreground">Todavía no se ha corrido el checklist de esta convocatoria.</p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {checklist.items.map((item) => (
-                      <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-[13px]">
+                      <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-sm">
                         <div>
                           <p className="font-semibold text-foreground">{item.dimension}</p>
                           <p className="mt-0.5 text-muted-foreground">{item.notes}</p>
@@ -411,7 +399,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
                     ))}
                   </div>
                 )}
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Esta ficha solo muestra el último resultado ya corrido --{" "}
                   <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} className="font-semibold text-foreground hover:underline">
                     corre el checklist de nuevo o continúa el cierre aquí
@@ -423,6 +411,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
           </TabsContent>
         )}
       </Tabs>
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

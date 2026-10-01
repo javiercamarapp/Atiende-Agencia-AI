@@ -36,8 +36,9 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Check, FileUp, Pencil } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, cn } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, cn, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea, useConfirm } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
+import { CAMPO_CONTRATO_TONES, contratoStatusTone } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import {
   CONTRACT_DECISION_TRANSITIONS,
@@ -72,21 +73,14 @@ const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"])
 // (`assertVerticalRole(c, DECISION_ROLES)` en `contract/transition`).
 const DECISION_ROLES = new Set(["owner", "admin", "analyst"]);
 
-/** `<select>`/`<textarea>` siguen siendo nativos (el sistema no exporta un
- * primitivo propio): solo se restilan con los tokens reales. */
-const CAMPO_NATIVO =
-  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-const CONTRACT_ALERT_STATES = new Set(["penalizado", "rescindido", "en_inconformidad", "cerrado"]);
-
-function StatusBadge({ status }: { status: ContractStatus }) {
-  const alert = CONTRACT_ALERT_STATES.has(status);
-  return <Badge variant={alert ? "destructive" : "secondary"}>{formatContractStatus(status)}</Badge>;
+function ContractStatusBadge({ status }: { status: ContractStatus }) {
+  return <StatusBadge tone={contratoStatusTone(status)}>{formatContractStatus(status)}</StatusBadge>;
 }
 
 export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
   const [tender, setTender] = useState<TenderSummary | null>(null);
+  const { confirmar, dialogo } = useConfirm();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [history, setHistory] = useState<readonly ContractStatusHistoryRecord[]>([]);
   const [documents, setDocuments] = useState<readonly ContractDocumentRecord[]>([]);
@@ -254,6 +248,17 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
       setTransitionError("Escribe el código de tu app de autenticación (o un código de respaldo) para confirmar esta acción.");
       return;
     }
+    // Las transiciones de decisión (rescindir, penalizar, inconformidad, modificar) quedan en un historial append-only:
+    // Cancelar / cerrar el diálogo NO ejecuta nada.
+    if (CONTRACT_DECISION_TRANSITIONS.includes(toStatus as ContractStatus)) {
+      const ok = await confirmar({
+        titulo: `Pasar el contrato a «${formatContractStatus(toStatus as ContractStatus)}»`,
+        descripcion: "La transición queda registrada en el historial (append-only) y no se puede deshacer; el servidor la revalida.",
+        tono: "danger",
+        confirmar: "Aplicar transición",
+      });
+      if (!ok) return;
+    }
     setTransitioning(true);
     setTransitionError(null);
     try {
@@ -355,14 +360,14 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
   const allowedNextStates = contract ? (CONTRACT_TRANSITIONS[contract.status] ?? []) : [];
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title}
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Contrato</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Contrato</h1>
+        <p className="text-sm text-muted-foreground">
           Contratos + documentos del contrato firmado -- post-adjudicación. Cobranza, inconformidades, autopsia y renovaciones no viven en esta pantalla todavía.
         </p>
       </div>
@@ -370,14 +375,14 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
       {!contract ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
-            <p className="text-[13px] text-foreground">Todavía no se ha registrado ningún contrato para esta convocatoria.</p>
+            <p className="text-sm text-foreground">Todavía no se ha registrado ningún contrato para esta convocatoria.</p>
             {canWrite ? (
               <div>
                 <Button type="button" size="sm" onClick={() => void handleCreateContract()} disabled={creating}>
                   {creating ? "Registrando…" : "Registrar contrato"}
                 </Button>
                 {createError && (
-                  <p role="alert" className="mt-2 text-[13px] text-destructive">
+                  <p role="alert" className="mt-2 text-sm text-destructive">
                     {createError}
                   </p>
                 )}
@@ -392,8 +397,8 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
           <Card>
             <CardHeader className="flex-row flex-wrap items-center gap-3 space-y-0">
               <CardTitle className="text-base">Estatus</CardTitle>
-              <StatusBadge status={contract.status} />
-              <span className="text-[11px] text-muted-foreground">Actualizado {formatDate(contract.updatedAt)}</span>
+              <ContractStatusBadge status={contract.status} />
+              <span className="text-xs text-muted-foreground">Actualizado {formatDate(contract.updatedAt)}</span>
             </CardHeader>
             <CardContent>
               <form onSubmit={(e) => void handleSaveMetadata(e)} className="grid gap-3 sm:grid-cols-2">
@@ -405,30 +410,27 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                   <Label htmlFor="contrato-numero">Número de contrato</Label>
                   <Input id="contrato-numero" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} disabled={!canWrite} placeholder="Sin declarar" />
                 </div>
-                <label className="flex items-center gap-2 self-end text-[13px] text-foreground sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    checked={hasRenewalOption}
-                    onChange={(e) => setHasRenewalOption(e.target.checked)}
-                    disabled={!canWrite}
-                    className="h-4 w-4 accent-[hsl(var(--primary))]"
-                  />
-                  Tiene opción de renovación
-                </label>
+                <Checkbox
+                  label="Tiene opción de renovación"
+                  wrapperClassName="self-end sm:col-span-2"
+                  checked={hasRenewalOption}
+                  onChange={(e) => setHasRenewalOption(e.target.checked)}
+                  disabled={!canWrite}
+                />
                 <div className="flex flex-col gap-1.5 sm:col-span-2">
                   <Label htmlFor="contrato-notas">Notas de renovación</Label>
-                  <textarea id="contrato-notas" value={renewalOptionNotes} onChange={(e) => setRenewalOptionNotes(e.target.value)} disabled={!canWrite} rows={2} className={CAMPO_NATIVO} />
+                  <Textarea id="contrato-notas" value={renewalOptionNotes} onChange={(e) => setRenewalOptionNotes(e.target.value)} disabled={!canWrite} rows={2} />
                 </div>
                 {canWrite && (
                   <div className="flex items-center gap-3 sm:col-span-2">
                     <Button type="submit" size="sm" disabled={savingMetadata}>
                       {savingMetadata ? "Guardando…" : "Guardar metadatos"}
                     </Button>
-                    {metadataSaved && <span className="text-xs font-medium text-green-600 dark:text-green-500">Guardado.</span>}
+                    {metadataSaved && <span className="text-xs font-medium text-success">Guardado.</span>}
                   </div>
                 )}
                 {metadataError && (
-                  <p role="alert" className="text-[13px] text-destructive sm:col-span-2">
+                  <p role="alert" className="text-sm text-destructive sm:col-span-2">
                     {metadataError}
                   </p>
                 )}
@@ -444,12 +446,12 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {allowedNextStates.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">"{formatContractStatus(contract.status)}" es un estado terminal -- no hay transiciones disponibles.</p>
+                <p className="text-sm text-muted-foreground">"{formatContractStatus(contract.status)}" es un estado terminal -- no hay transiciones disponibles.</p>
               ) : (
                 <form onSubmit={(e) => void handleTransition(e)} className="flex max-w-[520px] flex-col gap-2.5">
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="contrato-nuevo-estado">Nuevo estado</Label>
-                    <select id="contrato-nuevo-estado" value={toStatus} onChange={(e) => setToStatus(e.target.value as ContractStatus)} className={`${CAMPO_NATIVO} h-11`}>
+                    <NativeSelect id="contrato-nuevo-estado" value={toStatus} onChange={(e) => setToStatus(e.target.value as ContractStatus)}>
                       <option value="">Selecciona…</option>
                       {allowedNextStates.map((s) => {
                         const requiresDecision = CONTRACT_DECISION_TRANSITIONS.includes(s);
@@ -461,11 +463,11 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                           </option>
                         );
                       })}
-                    </select>
+                    </NativeSelect>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="contrato-motivo">Motivo (obligatorio)</Label>
-                    <textarea id="contrato-motivo" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className={CAMPO_NATIVO} />
+                    <Textarea id="contrato-motivo" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="contrato-evidencia">Referencia de evidencia (opcional)</Label>
@@ -495,7 +497,7 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                     </p>
                   )}
                   {transitionError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {transitionError}
                     </p>
                   )}
@@ -512,9 +514,9 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
               )}
 
               <div>
-                <h3 className="mb-2 text-[13px] font-semibold text-foreground">Historial ({history.length})</h3>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">Historial ({history.length})</h3>
                 {history.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">Sin historial todavía.</p>
+                  <p className="text-sm text-muted-foreground">Sin historial todavía.</p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {history
@@ -561,7 +563,7 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                     <Input value={documentLabel} onChange={(e) => setDocumentLabel(e.target.value)} placeholder="Etiqueta del documento" aria-label="Etiqueta del documento" />
                   )}
                   {uploadError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {uploadError}
                     </p>
                   )}
@@ -575,7 +577,7 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
               )}
 
               <div>
-                <h3 className="mb-2 text-[13px] font-semibold text-foreground">Documentos subidos ({documents.length})</h3>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">Documentos subidos ({documents.length})</h3>
                 {documents.length === 0 ? (
                   <EstadoVacio mensaje="Todavía no se ha subido ningún documento del contrato." />
                 ) : (
@@ -587,14 +589,14 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                         onClick={() => setSelectedDocumentId(doc.id)}
                         aria-pressed={doc.id === selectedDocumentId}
                         className={cn(
-                          "flex justify-between gap-2 rounded-xl border p-2.5 text-left text-[13px] transition-colors",
+                          "flex justify-between gap-2 rounded-xl border p-2.5 text-left text-sm transition-colors",
                           doc.id === selectedDocumentId ? "border-primary bg-muted" : "border-border bg-card hover:bg-muted/50",
                         )}
                       >
                         <span className="text-foreground">
                           {doc.documentLabel} <span className="text-muted-foreground">· {doc.pageCount} pág.</span>
                         </span>
-                        <span className="text-[11px] text-muted-foreground">{formatDate(doc.createdAt)}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(doc.createdAt)}</span>
                       </button>
                     ))}
                   </div>
@@ -603,10 +605,10 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
 
               {selectedDocumentId && (
                 <div>
-                  <h3 className="mb-2 text-[13px] font-semibold text-foreground">Campos extraídos</h3>
+                  <h3 className="mb-2 text-sm font-semibold text-foreground">Campos extraídos</h3>
                   {fieldsLoading && <EstadoCargando lineas={2} etiqueta="Cargando campos extraídos…" />}
                   {fieldsError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {fieldsError}
                     </p>
                   )}
@@ -614,18 +616,13 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                   {fields && fields.length > 0 && (
                     <div className="flex flex-col gap-2">
                       {fields.map((field) => (
-                        <div key={field.id} className="rounded-xl border border-border p-2.5 text-[13px]">
+                        <div key={field.id} className="rounded-xl border border-border p-2.5 text-sm">
                           <div className="flex flex-wrap justify-between gap-2">
                             <strong className="text-foreground">{formatContractFieldKey(field.fieldKey)}</strong>
-                            <Badge
-                              variant={field.status === "sugerido" ? "outline" : "default"}
-                              className={field.status === "sugerido" ? "border-amber-500/60 text-amber-600 dark:text-amber-400" : undefined}
-                            >
-                              {formatContractFieldStatus(field.status)}
-                            </Badge>
+                            <StatusBadge tone={statusTone(CAMPO_CONTRATO_TONES, field.status, "success")}>{formatContractFieldStatus(field.status)}</StatusBadge>
                           </div>
                           <p className="mt-1.5 text-foreground">{field.extractedValue}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {field.sourcePage ? `pág. ${field.sourcePage}` : "página no determinada"}
                             {field.sourceClause ? ` · ${field.sourceClause}` : ""} · confianza {Math.round(field.confidence * 100)}%
                           </p>
@@ -654,7 +651,7 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                               </Button>
                             </div>
                           ) : field.status !== "sugerido" ? (
-                            <p className="mt-1.5 text-[11px] text-muted-foreground">
+                            <p className="mt-1.5 text-xs text-muted-foreground">
                               {field.status === "corregido" ? `Corregido a "${field.confirmedValue}"` : "Confirmado tal cual"} por {field.confirmedBy} el {field.confirmedAt ? formatDate(field.confirmedAt) : "—"}
                             </p>
                           ) : null}
@@ -668,6 +665,7 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
           </Card>
         </>
       )}
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

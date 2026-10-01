@@ -6,7 +6,7 @@
 // boton para el resto. Las fechas se muestran en hora del centro de Mexico.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
 import { acknowledgeDeadlineReminder, acknowledgeTenderChangeNotification, fetchDeadlineReminders, fetchTenderChangeNotifications } from "../lib/seguimiento-client.ts";
 import type { DeadlineReminder, TenderChangeNotification } from "../lib/seguimiento-client.ts";
 import { fetchTenders } from "../lib/tenders-client.ts";
@@ -93,21 +93,18 @@ export function SeguimientoPage({ apiBaseUrl, token, propertyId, orgSlug, role }
   const visibleChanges = (changes ?? []).filter((c) => !onlyPending || c.acknowledgedAt === null);
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Seguimiento</h1>
-        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Seguimiento</h1>
+        <p className="mt-1 max-w-[720px] text-sm text-muted-foreground">
           Plazos de presentación por vencer y cambios en las bases, junta de aclaraciones o anexos de una convocatoria. Reconocer un aviso significa &quot;ya lo vi&quot;; no cierra ni resuelve nada en la convocatoria.
         </p>
       </header>
 
-      <label className="flex items-center gap-2 text-[13px] text-foreground">
-        <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-        Mostrar solo pendientes
-      </label>
+      <Checkbox label="Mostrar solo pendientes" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
       {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) solo puede consultar; reconocer avisos requiere un rol de escritura.</p>}
       {actionError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
@@ -125,13 +122,13 @@ export function SeguimientoPage({ apiBaseUrl, token, propertyId, orgSlug, role }
             <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
               <div className="min-w-0">
                 {tenderLink(r.tenderId)}
-                <div className="text-[12px] text-muted-foreground">{r.message}</div>
-                <div className="text-[11px] text-muted-foreground">Cierre: {DATE_TIME.format(new Date(r.submissionDeadline))}</div>
+                <div className="text-xs text-muted-foreground">{r.message}</div>
+                <div className="text-xs text-muted-foreground">Cierre: {DATE_TIME.format(new Date(r.submissionDeadline))}</div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant={r.daysRemaining <= 1 ? "destructive" : "outline"}>{r.daysRemaining === 0 ? "Vence hoy" : `Faltan ${r.daysRemaining} d`}</Badge>
+                <StatusBadge tone={r.daysRemaining <= 1 ? "danger" : "neutral"}>{r.daysRemaining === 0 ? "Vence hoy" : `Faltan ${r.daysRemaining} d`}</StatusBadge>
                 {r.acknowledgedAt ? (
-                  <Badge variant="default">Reconocido</Badge>
+                  <StatusBadge tone="success">Reconocido</StatusBadge>
                 ) : (
                   canWrite && (
                     <Button type="button" size="sm" variant="outline" disabled={busyId === r.id} onClick={() => void ackReminder(r.id)}>
@@ -156,14 +153,14 @@ export function SeguimientoPage({ apiBaseUrl, token, propertyId, orgSlug, role }
           {visibleChanges.map((n) => (
             <div key={n.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
               <div className="min-w-0">
-                {tenderLink(n.tenderId)} <span className="text-[11px] text-muted-foreground">versión {n.tenderVersion}</span>
-                <div className="text-[12px] text-muted-foreground">{n.reason}</div>
-                {n.changedFieldNames.length > 0 && <div className="text-[11px] text-muted-foreground">Campos: {n.changedFieldNames.join(", ")}</div>}
-                {n.affectedSectionKeys.length > 0 && <div className="text-[11px] text-muted-foreground">Secciones afectadas: {n.affectedSectionKeys.join(", ")}</div>}
-                <div className="text-[11px] text-muted-foreground">Detectado: {DATE_TIME.format(new Date(n.createdAt))}</div>
+                {tenderLink(n.tenderId)} <span className="text-xs text-muted-foreground">versión {n.tenderVersion}</span>
+                <div className="text-xs text-muted-foreground">{n.reason}</div>
+                {n.changedFieldNames.length > 0 && <div className="text-xs text-muted-foreground">Campos: {n.changedFieldNames.join(", ")}</div>}
+                {n.affectedSectionKeys.length > 0 && <div className="text-xs text-muted-foreground">Secciones afectadas: {n.affectedSectionKeys.join(", ")}</div>}
+                <div className="text-xs text-muted-foreground">Detectado: {DATE_TIME.format(new Date(n.createdAt))}</div>
               </div>
               {n.acknowledgedAt ? (
-                <Badge variant="default">Reconocido</Badge>
+                <StatusBadge tone="success">Reconocido</StatusBadge>
               ) : (
                 canWrite && (
                   <Button type="button" size="sm" variant="outline" disabled={busyId === n.id} onClick={() => void ackChange(n.id)}>
@@ -175,6 +172,6 @@ export function SeguimientoPage({ apiBaseUrl, token, propertyId, orgSlug, role }
           ))}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
