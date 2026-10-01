@@ -8,6 +8,7 @@ import { actorHash } from "../rate-limit.ts";
 import { lookupCustomer } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
+import { matchesHighRiskOtherThan } from "./guards.ts";
 import { composeWithPrivacyNotice, privacyNoticeWhatsApp } from "../privacidad/aviso.ts";
 import type { PrivacidadRepository } from "../privacidad/repository.ts";
 import type { HandoffAgentGate } from "../conversaciones/repository.ts";
@@ -99,7 +100,9 @@ export async function handleInboundWhatsAppMessage(
       // el telefono que escribe (Meta lo autentica), nunca texto del mensaje. `null` = no es ARCO
       // (o la base no tiene la migracion 030): el turno sigue como antes. Corre tambien con una toma
       // de handoff abierta: es una obligacion legal y solo responde a frases explicitas de ARCO.
-      const arco = privacy ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
+      // Un mensaje que mezcla ARCO con otro motivo de alto riesgo (alergia, cobro, queja...) NO toma el
+      // fast-path: pasa al agente, cuyo clasificador de #226 escala al equipo con el texto completo.
+      const arco = privacy && !matchesHighRiskOtherThan(body, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, body, "whatsapp") : null;
 
       // R-21: con una toma de handoff abierta (pendiente o tomada) el agente calla; el mensaje del cliente ya
       // quedo guardado en el historial para quien atiende la conversacion.
