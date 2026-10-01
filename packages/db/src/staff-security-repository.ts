@@ -63,6 +63,25 @@ export class TotpNotEnrolledError extends Error {
   }
 }
 
+/** Una sesion viva del staff (`core.staff_session`, migracion 0033): un refresh token vigente. */
+export interface StaffSessionRow {
+  /** `jti` del refresh token vigente: es el identificador para cerrar la sesion. */
+  readonly id: string;
+  /** Inicio de la sesion (se hereda en cada rotacion del refresh token). */
+  readonly startedAt: string;
+  /** Emision del refresh token vigente (ultima actividad conocida). */
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+  readonly userAgent: string | null;
+}
+
+/** Identidad de Google vinculada a la cuenta (nunca incluye el `sub` de Google). */
+export interface GoogleIdentityRow {
+  readonly id: string;
+  readonly email: string;
+  readonly linkedAt: string;
+}
+
 export interface StaffSecurityRepository {
   getTotpStatus(staffId: string): Promise<TotpStatus>;
   /** `null` si nunca inicio un alta. */
@@ -84,6 +103,23 @@ export interface StaffSecurityRepository {
   consumePasswordResetToken(tokenHash: string, newPasswordHash: string): Promise<string | null>;
   createEmailVerificationToken(input: { readonly staffId: string; readonly tokenHash: string; readonly expiresAt: string }): Promise<void>;
   consumeEmailVerificationToken(tokenHash: string): Promise<string | null>;
+  /** Registra la sesion recien emitida (solo sistema). `replacesJti` = refresh token rotado, cuya fila se reemplaza. */
+  registerSession(input: {
+    readonly staffId: string;
+    readonly jti: string;
+    readonly expiresAt: string;
+    readonly userAgent: string | null;
+    readonly replacesJti?: string | null;
+  }): Promise<void>;
+  /** Sesiones vivas de la propia cuenta (no vencidas, no revocadas, posteriores al ultimo corte masivo). */
+  listSessions(staffId: string): Promise<StaffSessionRow[]>;
+  /** Cierra UNA sesion de la propia cuenta (revoca su refresh token). `false` si no existe o es de otra cuenta. */
+  revokeSession(staffId: string, sessionId: string): Promise<boolean>;
+  /** Corte por fecha (truncado a segundo) de TODAS las sesiones previas de la propia cuenta, incluso las no registradas. */
+  revokeAllSessions(staffId: string): Promise<void>;
+  listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]>;
+  /** Desvincula una identidad de Google de la propia cuenta. `false` si no existe o es de otra cuenta. */
+  unlinkGoogleIdentity(staffId: string, identityId: string): Promise<boolean>;
 }
 
 interface StatusRaw {
@@ -235,6 +271,65 @@ export class PostgresStaffSecurityRepository implements StaffSecurityRepository 
       return rows[0]?.id ?? null;
     });
   }
+
+  async registerSession(input: {
+    readonly staffId: string;
+    readonly jti: string;
+    readonly expiresAt: string;
+    readonly userAgent: string | null;
+    readonly replacesJti?: string | null;
+  }): Promise<void> {
+    await this.run(null, async (db) => {
+      await db.query(`select core.register_staff_session($1::uuid, $2::uuid, $3::timestamptz, $4::text, $5::uuid);`, [
+        input.staffId,
+        input.jti,
+        input.expiresAt,
+        input.userAgent,
+        input.replacesJti ?? null,
+      ]);
+    });
+  }
+
+  listSessions(staffId: string): Promise<StaffSessionRow[]> {
+    return this.run(staffId, async (db) => {
+      const { rows } = await db.query<{ id: string; started_at: string | Date; issued_at: string | Date; expires_at: string | Date; user_agent: string | null }>(
+        `select id, started_at, issued_at, expires_at, user_agent from core.list_staff_sessions($1);`,
+        [staffId],
+      );
+      return rows.map((r) => ({ id: r.id, startedAt: isoReq(r.started_at), issuedAt: isoReq(r.issued_at), expiresAt: isoReq(r.expires_at), userAgent: r.user_agent }));
+    });
+  }
+
+  revokeSession(staffId: string, sessionId: string): Promise<boolean> {
+    return this.run(staffId, async (db) => {
+      const { rows } = await db.query<{ ok: boolean }>(`select core.revoke_staff_session($1, $2) as ok;`, [staffId, sessionId]);
+      return rows[0]?.ok === true;
+    });
+  }
+
+  async revokeAllSessions(staffId: string): Promise<void> {
+    await this.run(staffId, async (db) => {
+      await db.query(`select core.revoke_all_staff_sessions($1);`, [staffId]);
+    });
+  }
+
+  listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]> {
+    return this.run(staffId, async (db) => {
+      const { rows } = await db.query<{ id: string; email: string; created_at: string | Date }>(`select id, email, created_at from core.list_google_identities($1);`, [staffId]);
+      return rows.map((r) => ({ id: r.id, email: r.email, linkedAt: isoReq(r.created_at) }));
+    });
+  }
+
+  unlinkGoogleIdentity(staffId: string, identityId: string): Promise<boolean> {
+    return this.run(staffId, async (db) => {
+      const { rows } = await db.query<{ ok: boolean }>(`select core.unlink_google_identity($1, $2) as ok;`, [staffId, identityId]);
+      return rows[0]?.ok === true;
+    });
+  }
+}
+
+function isoReq(v: string | Date): string {
+  return v instanceof Date ? v.toISOString() : new Date(v).toISOString();
 }
 
 function isP0001(err: unknown): boolean {

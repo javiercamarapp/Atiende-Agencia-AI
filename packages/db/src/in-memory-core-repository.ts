@@ -72,6 +72,7 @@ export interface SeedMembership {
 }
 
 export class InMemoryCoreRepository implements CoreRepository, CoreStaffRepository {
+  private readonly googleIdentities: Array<{ id: string; staffId: string; sub: string; email: string; linkedAt: string }> = [];
   private readonly staffById = new Map<string, StaffUserRow>();
   private readonly staffIdByEmail = new Map<string, string>();
   private readonly organizations = new Map<string, SeedOrganization>();
@@ -177,6 +178,11 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     const staff = this.staffById.get(staffId);
     if (!staff) return;
     this.staffById.set(staffId, { ...staff, passwordHash });
+    this.sessionsRevokedAtByUserId.set(staffId, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString());
+  }
+
+  /** Paridad en memoria de `core.revoke_all_staff_sessions`: corte truncado a segundo, sin tocar la contrasena. */
+  revokeSessionsAtSecond(staffId: string): void {
     this.sessionsRevokedAtByUserId.set(staffId, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString());
   }
 
@@ -451,7 +457,22 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   async linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
     const existingStaffId = this.staffIdByGoogleSub.get(input.sub);
     if (existingStaffId && existingStaffId !== input.staffId) return; // mismo criterio no-op que el `on conflict ... where` de Postgres.
+    if (!existingStaffId) this.googleIdentities.push({ id: randomUUID(), staffId: input.staffId, sub: input.sub, email: input.email, linkedAt: new Date().toISOString() });
     this.staffIdByGoogleSub.set(input.sub, input.staffId);
+  }
+
+  /** Paridad en memoria de `core.list_google_identities` (sin `sub`). */
+  listGoogleIdentitiesFor(staffId: string): Array<{ id: string; email: string; linkedAt: string }> {
+    return this.googleIdentities.filter((g) => g.staffId === staffId).map((g) => ({ id: g.id, email: g.email, linkedAt: g.linkedAt }));
+  }
+
+  /** Paridad en memoria de `core.unlink_google_identity`: solo borra una identidad de ESA cuenta. */
+  unlinkGoogleIdentityFor(staffId: string, identityId: string): boolean {
+    const i = this.googleIdentities.findIndex((g) => g.id === identityId && g.staffId === staffId);
+    if (i < 0) return false;
+    this.staffIdByGoogleSub.delete(this.googleIdentities[i]!.sub);
+    this.googleIdentities.splice(i, 1);
+    return true;
   }
 
   // ---- "Continuar con correo" sin contraseña — ver el contrato completo en

@@ -118,6 +118,7 @@ import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatchin
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
+import { RestablecerContrasenaPage as LicitacionesRestablecerContrasenaPage, VerificarCorreoPage as LicitacionesVerificarCorreoPage } from "./verticals/licitaciones/pages/CuentaEnlaces.tsx";
 import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
 import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
 import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
@@ -945,6 +946,9 @@ export function App() {
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
+        {/* L-02: enlaces del correo (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/licitaciones/restablecer-contrasena" element={<LicitacionesRestablecerContrasenaPage apiBaseUrl={API_BASE_URL} />} />
+        <Route path="/licitaciones/verificar-correo" element={<LicitacionesVerificarCorreoPage apiBaseUrl={API_BASE_URL} />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />

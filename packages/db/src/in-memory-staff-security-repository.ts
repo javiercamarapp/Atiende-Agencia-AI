@@ -13,7 +13,7 @@ import {
   TotpNoPendingEnrollmentError,
   TotpNotEnrolledError,
 } from "./staff-security-repository.ts";
-import type { StaffSecurityRepository, TotpSecretRow, TotpStatus } from "./staff-security-repository.ts";
+import type { GoogleIdentityRow, StaffSecurityRepository, StaffSessionRow, TotpSecretRow, TotpStatus } from "./staff-security-repository.ts";
 
 interface TotpRow {
   secretCiphertext: string;
@@ -34,6 +34,8 @@ export class InMemoryStaffSecurityRepository implements StaffSecurityRepository 
   private readonly backup = new Map<string, Map<string, boolean>>(); // staff -> hash -> usado
   private readonly resetTokens = new Map<string, { staffId: string; expiresAt: number; used: boolean }>();
   private readonly verifyTokens = new Map<string, { staffId: string; expiresAt: number; used: boolean }>();
+
+  private readonly sessions = new Map<string, { staffId: string; startedAt: number; issuedAt: number; expiresAt: number; userAgent: string | null }>();
 
   constructor(private readonly core: InMemoryCoreRepository) {}
 
@@ -160,5 +162,62 @@ export class InMemoryStaffSecurityRepository implements StaffSecurityRepository 
     t.used = true;
     this.core.markEmailVerified(t.staffId);
     return t.staffId;
+  }
+
+  async registerSession(input: { readonly staffId: string; readonly jti: string; readonly expiresAt: string; readonly userAgent: string | null; readonly replacesJti?: string | null }): Promise<void> {
+    this.guard();
+    const now = this.now();
+    let startedAt = now;
+    const replaced = input.replacesJti ? this.sessions.get(input.replacesJti) : undefined;
+    // Rotacion: solo reemplaza una sesion de LA MISMA cuenta (misma regla que la funcion SQL).
+    if (input.replacesJti && replaced && replaced.staffId === input.staffId) {
+      startedAt = replaced.startedAt;
+      this.sessions.delete(input.replacesJti);
+    }
+    for (const [id, row] of this.sessions) if (row.staffId === input.staffId && row.expiresAt <= now) this.sessions.delete(id);
+    if (!this.sessions.has(input.jti)) {
+      this.sessions.set(input.jti, { staffId: input.staffId, startedAt, issuedAt: now, expiresAt: new Date(input.expiresAt).getTime(), userAgent: input.userAgent ? input.userAgent.slice(0, 200) : null });
+    }
+    const mine = [...this.sessions.entries()].filter(([, r]) => r.staffId === input.staffId).sort((a, b) => b[1].issuedAt - a[1].issuedAt);
+    for (const [id] of mine.slice(50)) this.sessions.delete(id);
+  }
+
+  async listSessions(staffId: string): Promise<StaffSessionRow[]> {
+    this.guard();
+    const now = this.now();
+    const cutoff = (await this.core.findStaffById(staffId))?.sessionsRevokedAt;
+    const cutoffMs = cutoff ? new Date(cutoff).getTime() : null;
+    const out: StaffSessionRow[] = [];
+    for (const [id, r] of this.sessions) {
+      if (r.staffId !== staffId || r.expiresAt <= now) continue;
+      if (cutoffMs !== null && r.issuedAt < cutoffMs) continue;
+      if (await this.core.isRefreshTokenRevoked(id)) continue;
+      out.push({ id, startedAt: new Date(r.startedAt).toISOString(), issuedAt: new Date(r.issuedAt).toISOString(), expiresAt: new Date(r.expiresAt).toISOString(), userAgent: r.userAgent });
+    }
+    return out.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+  }
+
+  async revokeSession(staffId: string, sessionId: string): Promise<boolean> {
+    this.guard();
+    const row = this.sessions.get(sessionId);
+    if (!row || row.staffId !== staffId) return false;
+    this.sessions.delete(sessionId);
+    await this.core.revokeRefreshToken({ jti: sessionId, userId: staffId, expiresAt: new Date(row.expiresAt).toISOString() });
+    return true;
+  }
+
+  async revokeAllSessions(staffId: string): Promise<void> {
+    this.guard();
+    this.core.revokeSessionsAtSecond(staffId);
+  }
+
+  async listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]> {
+    this.guard();
+    return this.core.listGoogleIdentitiesFor(staffId);
+  }
+
+  async unlinkGoogleIdentity(staffId: string, identityId: string): Promise<boolean> {
+    this.guard();
+    return this.core.unlinkGoogleIdentityFor(staffId, identityId);
   }
 }
