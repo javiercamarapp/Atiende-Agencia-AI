@@ -235,3 +235,11 @@ export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<DespachosRole, "owner" | "ad
   auditor: "viewer",
   readonly: "viewer",
 };
+
+// D-24: libro contable (catálogo, pólizas, balanza). Ver = lectura de lo ya persistido; gestionar = registrar y revertir.
+export const VER_LIBRO_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+export const GESTIONAR_LIBRO_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+// D-25: pagos provisionales ISR/IVA (papel de trabajo, pagos de REP). Mismo criterio que el libro.
+export const VER_PAGOS_PROVISIONALES_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+export const GESTIONAR_PAGOS_PROVISIONALES_ROLES: readonly DespachosRole[] = ["admin", "contador"];

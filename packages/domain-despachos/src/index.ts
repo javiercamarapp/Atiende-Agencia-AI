@@ -146,6 +146,10 @@ export {
   VER_REPORTES_ROLES,
   VER_CARTERA_ROLES,
   GESTIONAR_CARTERA_ROLES,
+  VER_LIBRO_ROLES,
+  GESTIONAR_LIBRO_ROLES,
+  VER_PAGOS_PROVISIONALES_ROLES,
+  GESTIONAR_PAGOS_PROVISIONALES_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -608,3 +612,6 @@ export type {
   TipoFactorImpuesto,
 } from "./cfdi/modelo-cfdi.ts";
 export { EstadoSatNoDisponibleError, EstadoSatInvalidoError, InvoiceNoEncontradoError } from "./errors.ts";
+
+// D-24: libro contable persistido (catálogo por cliente, pólizas con folio, balanza derivada, póliza de un CFDI).
+export * from "./libro/index.ts";
