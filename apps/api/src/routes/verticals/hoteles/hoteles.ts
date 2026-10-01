@@ -13,6 +13,7 @@ import { hotelesFraudeRoutes } from "./fraude.ts";
 import { hotelesNightAuditRoutes } from "./night-audit.ts";
 import { hotelesHousekeepingRoutes } from "./housekeeping.ts";
 import { hotelesRecepcionRoutes } from "./recepcion.ts";
+import { hotelesHuespedesRoutes } from "./huespedes.ts";
 import { hotelesAdminDiscoveryRoutes } from "./admin-discovery.ts";
 import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 import { hotelesPlRoutes } from "./pl.ts";
@@ -52,6 +53,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesHousekeepingRoutes(deps));
   // H-28 -- recepcion / front desk: llegadas, salidas, en casa, rack, check-in/out de un clic y cambio de habitacion.
   app.route("/", hotelesRecepcionRoutes(deps));
+  // H-27 -- ficha de huesped (CRM): perfil, historial, notas, contactos, consentimiento y estado ARCO.
+  app.route("/", hotelesHuespedesRoutes(deps));
   // Fase 7 — descubrimiento de organización/property para el panel web de staff.
   app.route("/", hotelesAdminDiscoveryRoutes(deps));
   // Fase 8 — REQ-BO-024 (LFT art.132 fr.XXXIV): checador de asistencia inalterable.
