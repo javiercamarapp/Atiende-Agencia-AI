@@ -8,5 +8,6 @@ import { rutasHoteles } from "./hoteles.ts";
 import { rutasLicitaciones } from "./licitaciones.ts";
 import { rutasRentas } from "./rentas.ts";
 import { rutasRestaurantes } from "./restaurantes.ts";
+import { rutasSuperadmin } from "./superadmin.ts";
 
-export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasRestaurantes, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasLicitaciones, ...rutasCitas];
+export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasRestaurantes, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];
