@@ -8,6 +8,7 @@ export { EstadoVacio } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando } from "./components/EstadoCargando.js";
 export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
+export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
 export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
@@ -87,3 +88,33 @@ export {
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu.js";
 export { Toaster, toast } from "./components/ui/sonner.js";
+
+// Experiencia de voz (orbe, transcripción, vista previa de llamada) -- contrato
+// neutro de proveedor en components/voz/tipos.ts.
+export {
+  ESTADO_SESION_INICIAL,
+  MODOS_ORB,
+  sesionActiva,
+  type ErrorSesionVoz,
+  type LineaTranscripcion,
+  type ModoOrb,
+  type OpcionesIniciarSesionVoz,
+  type VoiceSessionController,
+  type VoiceSessionState,
+} from "./components/voz/tipos.js";
+export {
+  crearMedidorVolumen,
+  limitar01,
+  medirStream,
+  nivelDesdeMuestras,
+  suavizarConAtaque,
+  suavizarVolumen,
+  type AnalizadorMinimo,
+  type MedidorDeStream,
+  type MedidorVolumen,
+} from "./components/voz/medidor-volumen.js";
+export { CampoPixeles } from "./components/voz/CampoPixeles.js";
+export { TextoEscribiendose } from "./components/voz/TextoEscribiendose.js";
+export { ETIQUETA_MODO_ORB, OrbeAgente, volumenObjetivo, type OrbeAgenteProps } from "./components/voz/OrbeAgente.js";
+export { TranscripcionEnVivo, type TranscripcionEnVivoProps } from "./components/voz/TranscripcionEnVivo.js";
+export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/voz/VistaPreviaLlamada.js";

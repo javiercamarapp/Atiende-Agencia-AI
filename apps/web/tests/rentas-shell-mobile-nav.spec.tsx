@@ -17,6 +17,7 @@ import { RentasShell } from "../src/verticals/rentas/RentasShell.tsx";
 import type { PropertyOption } from "../src/verticals/rentas/lib/discovery-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
 
@@ -42,6 +43,7 @@ let rendered: RenderedComponent | undefined;
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
+  vi.unstubAllGlobals();
   fetchPropertiesMock.mockReset();
 });
 
@@ -98,5 +100,11 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader).toBeDefined();
     expect(desktopHeader!.parentElement!.className).toContain("hidden");
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
+  });
+
+  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+    rendered = await renderShell();
+    await cerrarSesionDesdeMenuMovil(rendered.container);
+    expect(window.localStorage.getItem("atiende.rentas.session")).toBeNull();
   });
 });
