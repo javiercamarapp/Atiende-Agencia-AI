@@ -109,6 +109,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           body: message.type === "location" ? formatLocationMessage(message.location) : message.text.body,
           phoneNumberId,
           propertyId: channel?.propertyId ?? null,
+          // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
+          handoffGate: deps.handoffGate?.(db),
         });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`

@@ -80,6 +80,21 @@ Estas 4 URLs override **estaban leídas** por `env.ts` pero **no documentadas** 
 | `RESEND_API_KEY` | Resend → API Keys | Sí | Envío real de correo — drena el canal `email` de `messaging_outbox` de citas/hoteles/restaurantes/despachos/licitaciones/rentas (`dispatchPendingEmailJobs` de cada dominio) | Cada job de correo falla explícito (nunca se marca `sent` sin que Resend lo haya aceptado) | No |
 | `RESEND_FROM_EMAIL` | tu remitente verificado en Resend | No | Encabezado `From:` de esos correos | Default `atiende <notificaciones@atiende.ai>` | No |
 
+## Alertas salientes (PL-04) — todas opcionales
+
+| Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
+|---|---|:-:|---|---|:-:|
+| `ALERTAS_EMAIL_DESTINATARIOS` | tú (correos separados por comas) | No | Aviso por correo (vía Resend, reusa `RESEND_API_KEY`) cuando un cron falla o el resumen diario detecta una alerta crítica | Canal de correo apagado | No |
+| `ALERTAS_WEBHOOK_URL` | tu sistema receptor (Slack/Make/n8n/propio) | Sí (la URL suele llevar el token) | POST JSON de la alerta; solo `https`, nunca hacia hosts privados/loopback | Canal de webhook apagado | No |
+| `ALERTAS_WEBHOOK_SECRETO` | tú (`openssl rand -hex 32`) | Sí | Firma `X-Atiende-Signature: sha256=HMAC(secreto, "<X-Atiende-Timestamp>.<cuerpo>")` | El webhook sale sin firma | No |
+| `SENTRY_DSN` | Sentry → Project Settings → Client Keys | Sí | Evento por la API HTTP de envelopes (sin SDK) | Sentry apagado | No |
+| `ALERTAS_LIMITE_POR_HORA` | tú | No | Máximo de avisos por (tipo de alerta, destino) en una hora; entero 1–60 | Default 2 | No |
+
+Los datos sensibles (correos, teléfonos, tokens, JWT, URIs con credenciales, claves por nombre) se redactan
+antes de salir por cualquier canal. El piso por hora usa Upstash Redis si `UPSTASH_REDIS_REST_URL/TOKEN`
+están configuradas (global entre instancias); sin Redis cuenta **por instancia serverless** (el tope real es
+entonces N por hora por instancia). Si Redis falla, el aviso sale (fail-open) en vez de perderse.
+
 ## Stripe (suscripción SaaS de Atiende + cobro a huésped en hoteles)
 
 Dos productos reales y distintos, **misma cuenta/key**:
