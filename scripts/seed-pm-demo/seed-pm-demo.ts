@@ -9,23 +9,13 @@
 //   node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts
 //   SEED_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/atiende_demo \
 //     node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --apply [--owner-email=correo@existente]
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPmSeedPlan, PmSeedError, renderPmSeedDoBlock, renderSchemaPreflightSql, type PmAgentFiles, type PmSeedData } from "../../packages/domain-restaurantes/src/seed/pm-demo.ts";
+import { buildPmSeedPlan, PmSeedError, renderPmSeedDoBlock, renderSchemaPreflightSql } from "../../packages/domain-restaurantes/src/seed/pm-demo.ts";
 import { assertPuedeAplicar, describirObjetivo, parseSeedArgs, SeedTargetError } from "../../packages/domain-restaurantes/src/seed/target-safety.ts";
+import { loadSeedInputs } from "./inputs.ts";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-
-export function loadSeedInputs(dataDir = path.join(HERE, "data")): { data: PmSeedData; agent: PmAgentFiles } {
-  const data = JSON.parse(readFileSync(path.join(dataDir, "pm-seed-data.json"), "utf8")) as PmSeedData;
-  const agent: PmAgentFiles = {
-    systemPrompt: readFileSync(path.join(dataDir, "agente", "system-prompt.txt"), "utf8"),
-    tools: JSON.parse(readFileSync(path.join(dataDir, "agente", "tools.json"), "utf8")),
-    evals: JSON.parse(readFileSync(path.join(dataDir, "agente", "evals.json"), "utf8")),
-  };
-  return { data, agent };
-}
+export { loadSeedInputs };
 
 const USO = `Uso: node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts [--demo] [--apply] [--confirm-host=<host>] [--owner-email=<correo>]
   --demo: carga la cuenta como DEMO (slug los-taquitos-de-pm-demo, marca is_demo; requiere la migracion 036)
