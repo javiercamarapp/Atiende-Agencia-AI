@@ -55,7 +55,7 @@ describe("<SeguridadPage />", () => {
     let enabled = false;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/auth/2fa/status")) return res({ available: true, enabled, pending: false, lockedUntil: null, backupCodesRemaining: enabled ? 2 : 0 });
-      if (url.endsWith("/auth/2fa/setup")) return res({ secret: "JBSWY3DPEHPK3PXP", otpauthUrl: "otpauth://totp/Atiende:ana" }, 201);
+      if (url.endsWith("/auth/2fa/setup")) return res({ secret: "CLAVE-DE-PRUEBA-2FA", otpauthUrl: "otpauth://totp/Atiende:ana" }, 201);
       if (url.endsWith("/auth/2fa/confirm")) {
         expect(JSON.parse(init!.body as string)).toEqual({ code: "123456" });
         enabled = true;
@@ -69,7 +69,7 @@ describe("<SeguridadPage />", () => {
     const activar = [...r.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Activar verificación"))!;
     click(activar);
     await settle();
-    expect(r.container.textContent).toContain("JBSWY3DPEHPK3PXP");
+    expect(r.container.textContent).toContain("CLAVE-DE-PRUEBA-2FA");
 
     changeValue(r.container.querySelector<HTMLInputElement>("#seguridad-confirmar")!, "123 456");
     await submitForm(r.container.querySelectorAll("form")[0]!);
