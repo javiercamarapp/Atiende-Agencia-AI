@@ -12,6 +12,8 @@ import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
+import { calcularBackoffFeedSegundos, type EventoBitacora, type OpcionesReclamo, type ResultadoReclamo } from "./lease.ts";
+import type { AlertaSyncRecord, ConflictoMonitorRecord, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface StoredFeedExterno {
@@ -27,6 +29,24 @@ interface StoredFeedExterno {
   ultimaModificacionHttpImport: string | null;
   driftUltimaReconciliacionCompleta: number;
   ultimoResumen: unknown;
+  /** Rn-01 -- espejo de las columnas de lease/backoff de la migración 024. */
+  leaseHasta: number | null;
+  leaseToken: string | null;
+  ultimoIntentoEn: number | null;
+  proximoIntentoEn: number | null;
+}
+
+interface StoredBitacora {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  unidadId: string;
+  feedId: string;
+  canalId: string;
+  evento: EventoBitacora;
+  creadoEn: string;
+  atendidaEn: string | null;
+  atendidaPor: string | null;
 }
 
 interface StoredEventoImportado {
@@ -57,6 +77,10 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
   private readonly eventosImportados = new Map<string, StoredEventoImportado>(); // key: unidadId:canalId:uid
   private readonly bloqueosExportados = new Map<string, StoredBloqueoExportado>(); // key: ocupacionId:canalId
   private readonly zonasHorarias = new Map<string, string>(); // key: propertyId
+  private readonly bitacora = new Map<string, StoredBitacora>();
+
+  /** Reloj inyectable (ms epoch) para probar lease/backoff de forma determinística. */
+  reloj: () => number = () => Date.now();
 
   /** Contadores de llamadas a los métodos BATCH de export -- expuestos para que los
    * tests de rendimiento (ver domain-rentas/tests/sync-motor.spec.ts) verifiquen que
@@ -120,6 +144,10 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
       ultimaModificacionHttpImport: null,
       driftUltimaReconciliacionCompleta: 0,
       ultimoResumen: null,
+      leaseHasta: null,
+      leaseToken: null,
+      ultimoIntentoEn: null,
+      proximoIntentoEn: null,
     });
     return { id };
   }
@@ -259,6 +287,155 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     for (const entrada of entradas) {
       this.bloqueosExportados.set(`${entrada.ocupacionId}:${canalId}`, { ocupacionId: entrada.ocupacionId, canalId, uidExportado: entrada.uidExportado, hashContenido: entrada.hashContenido, sequence: entrada.sequence });
     }
+  }
+
+  // ---- Rn-01: claim/lease por feed, backoff y bitácora (espejo de migrations/024) ----
+  /** Contador de llamadas a `reclamarFeeds` -- para pruebas de la orquestación. */
+  llamadasReclamarFeeds = 0;
+  /** Simula una base SIN la migración 024: `reclamarFeeds` devuelve `disponible: false`. */
+  migracion024Disponible = true;
+
+  async reclamarFeeds(opciones: OpcionesReclamo): Promise<ResultadoReclamo> {
+    this.llamadasReclamarFeeds += 1;
+    if (!this.migracion024Disponible) return { disponible: false };
+    const ahora = this.reloj();
+    const limite = Math.min(Math.max(opciones.limite, 1), 50);
+    const lease = Math.min(Math.max(opciones.leaseSegundos, 30), 900);
+    const minimo = Math.min(Math.max(opciones.intervaloMinimoSegundos, 0), 3600);
+    const candidatos = [...this.feeds.values()]
+      .filter(
+        (f) =>
+          f.activo &&
+          (f.leaseHasta === null || f.leaseHasta <= ahora) &&
+          (f.proximoIntentoEn === null || f.proximoIntentoEn <= ahora) &&
+          (f.ultimoIntentoEn === null || f.ultimoIntentoEn <= ahora - minimo * 1000),
+      )
+      .sort((a, b) => (a.ultimoIntentoEn ?? -Infinity) - (b.ultimoIntentoEn ?? -Infinity) || (a.id < b.id ? -1 : 1))
+      .slice(0, limite);
+    const feeds = candidatos.map((f) => {
+      f.leaseHasta = ahora + lease * 1000;
+      f.leaseToken = randomUUID();
+      f.ultimoIntentoEn = ahora;
+      return { feed: this.toRecord(f), leaseToken: f.leaseToken };
+    });
+    return { disponible: true, feeds };
+  }
+
+  async liberarFeed(feedId: string, leaseToken: string, exito: boolean): Promise<boolean> {
+    if (!this.migracion024Disponible) return false;
+    const f = this.feeds.get(feedId);
+    if (!f || f.leaseToken === null || f.leaseToken !== leaseToken) return false;
+    f.leaseHasta = null;
+    f.leaseToken = null;
+    f.proximoIntentoEn = exito ? null : this.reloj() + calcularBackoffFeedSegundos(f.estadoSync.intentosFallidosConsecutivos) * 1000;
+    return true;
+  }
+
+  async registrarEventoBitacora(feedId: string, evento: EventoBitacora): Promise<boolean> {
+    if (!this.migracion024Disponible) return false;
+    const f = this.feeds.get(feedId);
+    if (!f) throw new Error(`rentas.canal_feed_externo ${feedId} no existe`);
+    const id = randomUUID();
+    this.bitacora.set(id, { id, organizationId: f.organizationId, propertyId: f.propertyId, unidadId: f.unidadId, feedId, canalId: f.canalId, evento: { ...evento, detalle: evento.detalle.slice(0, 500) }, creadoEn: new Date(this.reloj()).toISOString(), atendidaEn: null, atendidaPor: null });
+    return true;
+  }
+
+  async reiniciarBackoffFeed(feedId: string): Promise<void> {
+    const f = this.feeds.get(feedId);
+    if (f) f.proximoIntentoEn = null;
+  }
+
+  // ---- Rn-01/Rn-02: monitor ----
+  private nombreUnidad(unidadId: string): string | null {
+    return this.calendarStore.unidades.get(unidadId)?.name ?? null;
+  }
+
+  private codigoCanal(canalId: string | null): string | null {
+    if (!canalId) return null;
+    return [...this.calendarStore.canales.values()].find((c) => c.id === canalId)?.codigo ?? null;
+  }
+
+  async listarFeedsMonitor(propertyId: string): Promise<FeedMonitorRecord[]> {
+    const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+    return [...this.feeds.values()]
+      .filter((f) => f.propertyId === propertyId)
+      .map((f) => ({
+        id: f.id,
+        unidadId: f.unidadId,
+        unidadNombre: this.nombreUnidad(f.unidadId),
+        canalCodigo: this.codigoCanal(f.canalId) ?? "desconocido",
+        activo: f.activo,
+        ultimaSincronizacionExitosaEn: f.estadoSync.ultimaSincronizacionExitosaEn,
+        enCuarentenaDesde: f.estadoSync.enCuarentenaDesde,
+        intentosFallidosConsecutivos: f.estadoSync.intentosFallidosConsecutivos,
+        motivoCuarentena: f.estadoSync.motivoCuarentena,
+        ultimoIntentoEn: this.migracion024Disponible ? iso(f.ultimoIntentoEn) : null,
+        proximoIntentoEn: this.migracion024Disponible ? iso(f.proximoIntentoEn) : null,
+        leaseHasta: this.migracion024Disponible ? iso(f.leaseHasta) : null,
+      }))
+      .sort((a, b) => (a.unidadNombre ?? "").localeCompare(b.unidadNombre ?? "") || a.canalCodigo.localeCompare(b.canalCodigo));
+  }
+
+  private ocupacionConflicto(id: string | null): OcupacionConflictoRecord | null {
+    if (!id) return null;
+    const o = this.calendarStore.getOcupacion(id);
+    if (!o) return null;
+    return { id: o.id, inicio: o.inicio, fin: o.fin, estado: o.estado, capa: o.capa, canalCodigo: this.codigoCanal(o.canalOrigenId) };
+  }
+
+  async listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos> {
+    const delaProperty = [...this.calendarStore.conflictos.values()].filter((k) => k.propertyId === propertyId);
+    const totalAbiertos = delaProperty.filter((k) => k.resueltoEn === null).length;
+    const conflictos: ConflictoMonitorRecord[] = [];
+    for (const k of delaProperty
+      .filter((c) => !opciones.soloAbiertos || c.resueltoEn === null)
+      .sort((a, b) => Number(a.resueltoEn !== null) - Number(b.resueltoEn !== null) || (a.detectadoEn < b.detectadoEn ? 1 : a.detectadoEn > b.detectadoEn ? -1 : a.id < b.id ? -1 : 1))
+      .slice(0, opciones.limite)) {
+      const a = this.ocupacionConflicto(k.ocupacionAId);
+      if (!a) continue;
+      conflictos.push({ id: k.id, unidadId: k.unidadId, unidadNombre: this.nombreUnidad(k.unidadId), tipo: k.tipo, detectadoEn: k.detectadoEn, resueltoEn: k.resueltoEn, resueltoPor: k.resueltoPor, ocupacionA: a, ocupacionB: this.ocupacionConflicto(k.ocupacionBId) });
+    }
+    return { conflictos, totalAbiertos };
+  }
+
+  async resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
+    if (!this.migracion024Disponible) return "no_disponible";
+    const k = this.calendarStore.conflictos.get(conflictoId);
+    if (!k || k.propertyId !== propertyId || k.resueltoEn !== null) return "no_encontrado";
+    k.resueltoEn = new Date(this.reloj()).toISOString();
+    k.resueltoPor = actorUserId;
+    return "resuelto";
+  }
+
+  async listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora> {
+    if (!this.migracion024Disponible) return { disponible: false, alertas: [] };
+    const alertas: AlertaSyncRecord[] = [...this.bitacora.values()]
+      .filter((b) => b.propertyId === propertyId && (!opciones.soloAlertasAbiertas || (b.atendidaEn === null && (b.evento.severidad === "aviso" || b.evento.severidad === "critica"))))
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : a.creadoEn > b.creadoEn ? -1 : a.id < b.id ? -1 : 1))
+      .slice(0, opciones.limite)
+      .map((b) => ({
+        id: b.id,
+        unidadId: b.unidadId,
+        unidadNombre: this.nombreUnidad(b.unidadId),
+        canalCodigo: this.codigoCanal(b.canalId) ?? "desconocido",
+        tipo: b.evento.tipo,
+        severidad: b.evento.severidad,
+        detalle: b.evento.detalle,
+        eventosAplicados: b.evento.eventosAplicados,
+        conflictos: b.evento.conflictos,
+        creadoEn: b.creadoEn,
+        atendidaEn: b.atendidaEn,
+      }));
+    return { disponible: true, alertas };
+  }
+
+  async atenderAlerta(propertyId: string, alertaId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
+    if (!this.migracion024Disponible) return "no_disponible";
+    const b = this.bitacora.get(alertaId);
+    if (!b || b.propertyId !== propertyId || b.atendidaEn !== null) return "no_encontrado";
+    b.atendidaEn = new Date(this.reloj()).toISOString();
+    b.atendidaPor = actorUserId;
+    return "resuelto";
   }
 
   /** Espejo del solape usado por reservas/bloqueos, expuesto por si alguna prueba de
