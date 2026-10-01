@@ -6,7 +6,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SuperAdminZonaCfoPage } from "../src/superadmin/pages/ZonaCfo.tsx";
 import type { EntradaBitacora, EstadoZona } from "../src/superadmin/pages/ZonaCfo.tsx";
-import { changeValue, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 
@@ -31,19 +31,22 @@ const entrada = (parche: Partial<EntradaBitacora> = {}): EntradaBitacora => ({
   filtros: { mes: "2026-09", nivel: "cliente", _ruta: "/superadmin/pyl/export.csv" }, ocurrioEnMs: Date.now(), ...parche,
 });
 
-function api(estado: EstadoZona, extra: Record<string, unknown> = {}) {
+function api(estado: EstadoZona, extra: Record<string, unknown> = {}, roles: unknown[] = []) {
   const llamadas: Array<{ url: string; init?: RequestInit }> = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     llamadas.push({ url, init });
     if (url.endsWith("/superadmin/zona-cfo/estado")) return json(estado);
     if (url.includes("/superadmin/zona-cfo/bitacora")) return json({ disponible: true, entradas: [entrada()], siguienteAntesDeSeq: null, ...extra });
-    if (url.endsWith("/superadmin/zona-cfo/roles")) return json({ disponible: true, roles: [] });
+    if (url.endsWith("/superadmin/zona-cfo/roles")) return json({ disponible: true, roles });
     if (url.includes("/superadmin/zona-cfo/roles/")) return json({ ok: true });
     throw new Error(`ruta inesperada ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
   return llamadas;
 }
+
+const dialogo = () => document.body.querySelector('[role="alertdialog"]');
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
 
 const pagina = () => renderComponent(<SuperAdminZonaCfoPage apiBaseUrl="https://api.test" token="tok" />);
 
@@ -110,5 +113,32 @@ describe("SuperAdminZonaCfoPage", () => {
     rendered = pagina();
     await esperar();
     expect(rendered.container.textContent).toContain("No se pudo cargar el estado de la zona CFO");
+  });
+
+  it("Retirar el rol pide confirmacion: Cancelar o cerrar NUNCA llama al PUT y confirmar si", async () => {
+    const llamadas = api(
+      { disponible: true, rol: "superadmin", soloLectura: false, mfaObligatoria: false },
+      {},
+      [{ usuarioId: "u-fin-1", correo: "cfo@atiende.ai", desdeMs: Date.now(), motivo: "Contador externo de la plataforma." }],
+    );
+    rendered = pagina();
+    await esperar();
+    const retirar = () => [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Retirar")!;
+    const puts = () => llamadas.filter((l) => l.init?.method === "PUT");
+    click(retirar());
+    await esperar();
+    expect(dialogo()).not.toBeNull();
+    expect(dialogo()!.textContent).toContain("cfo@atiende.ai");
+    click(botonDialogo("Cancelar"));
+    await esperar();
+    expect(dialogo()).toBeNull();
+    expect(puts()).toHaveLength(0);
+    click(retirar());
+    await esperar();
+    click(botonDialogo("Retirar rol"));
+    await esperar();
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0]!.url).toBe("https://api.test/superadmin/zona-cfo/roles/u-fin-1");
+    expect(JSON.parse(String(puts()[0]!.init!.body))).toEqual({ rol: null, motivo: "Retiro del rol finanzas desde la zona CFO." });
   });
 });

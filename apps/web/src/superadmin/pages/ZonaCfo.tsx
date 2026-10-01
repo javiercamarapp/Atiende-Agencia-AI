@@ -5,7 +5,7 @@
 // el API responde `disponible: false` y la pantalla lo dice, sin inventar nada.
 import { useEffect, useState, type FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, useConfirm } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 export interface EstadoZona {
@@ -73,6 +73,7 @@ const resumenFiltros = (f: Readonly<Record<string, unknown>>) =>
     .join(" · ") || "—";
 
 export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const { confirmar, dialogo } = useConfirm();
   const [estado, setEstado] = useState<EstadoZona | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bitacora, setBitacora] = useState<RespuestaBitacora | null>(null);
@@ -135,6 +136,18 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
     } finally {
       setGuardando(false);
     }
+  }
+
+  async function retirar(r: { readonly usuarioId: string; readonly correo: string }) {
+    // Retirar el rol cambia quién ve las finanzas de la plataforma: Cancelar / cerrar el diálogo NO ejecuta nada.
+    const ok = await confirmar({
+      titulo: `Retirar el rol de finanzas a ${r.correo}`,
+      descripcion: "Esa persona dejará de ver la zona CFO. El cambio queda en la bitácora.",
+      tono: "danger",
+      confirmar: "Retirar rol",
+    });
+    if (!ok) return;
+    await cambiarRol(r.usuarioId, null, "Retiro del rol finanzas desde la zona CFO.");
   }
 
   function asignar(e: FormEvent) {
@@ -243,7 +256,7 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
                             {r.motivo}
                           </TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm" disabled={guardando} onClick={() => void cambiarRol(r.usuarioId, null, "Retiro del rol finanzas desde la zona CFO.")}>
+                            <Button variant="outline" size="sm" disabled={guardando} onClick={() => void retirar(r)}>
                               Retirar
                             </Button>
                           </TableCell>
@@ -311,6 +324,7 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
           Tu rol es de solo lectura: puedes consultar Dashboard CFO, P&amp;L, Costos y margen, Planes y precios, Gasto de API y Facturación (resumen). La bitácora y la gestión de roles las ve un superadmin completo.
         </p>
       )}
+      {dialogo}
     </PageContainer>
   );
 }
