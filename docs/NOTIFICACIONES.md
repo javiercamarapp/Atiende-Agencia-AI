@@ -67,10 +67,10 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
-| `rentas.ical.sync_fallido` | salud | critica | owner/admin, admin_gestora, operador:acceso_total | RefreshCwOff | `/rentas/{orgSlug}/monitor-sync` | una por dia | 7 d | pendiente: cron ical-sync de rentas: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
-| `rentas.reserva.nueva_ical` | operacion | info | owner/admin, admin_gestora, operador:acceso_total, operador:calendario_mensajeria | CalendarPlus | `/rentas/{orgSlug}/calendario` | una por corrida de sincronizacion y dia | 5 d | pendiente: importacion iCal: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
-| `rentas.conflicto.detectado` | operacion | critica | owner/admin, admin_gestora, operador:acceso_total | CalendarX | `/rentas/{orgSlug}/calendario` | una por dia | 7 d | pendiente: deteccion de conflictos de calendario: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
-| `rentas.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, admin_gestora, operador:calendario_mensajeria | MessageSquareWarning | `/rentas/{orgSlug}/aprobaciones` | una por mensaje | 3 d | pendiente: cola de mensajeria con aprobacion humana: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `rentas.ical.sync_fallido` | salud | critica | owner/admin, admin_gestora, operador:acceso_total | RefreshCwOff | `/rentas/{orgSlug}/monitor-sync` | una por dia | 7 d | conectado: `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` |
+| `rentas.reserva.nueva_ical` | operacion | info | owner/admin, admin_gestora, operador:acceso_total, operador:calendario_mensajeria | CalendarPlus | `/rentas/{orgSlug}/calendario` | una por corrida de sincronizacion y dia | 5 d | conectado: `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` |
+| `rentas.conflicto.detectado` | operacion | critica | owner/admin, admin_gestora, operador:acceso_total | CalendarX | `/rentas/{orgSlug}/calendario` | una por dia | 7 d | conectado: `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` |
+| `rentas.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, admin_gestora, operador:calendario_mensajeria | MessageSquareWarning | `/rentas/{orgSlug}/aprobaciones` | una por mensaje | 3 d | conectado: `apps/api/src/routes/verticals/rentas/mensajeria-borradores.ts` |
 
 ### despachos
 
