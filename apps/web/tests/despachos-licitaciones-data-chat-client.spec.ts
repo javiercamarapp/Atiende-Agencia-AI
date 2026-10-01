@@ -111,6 +111,7 @@ describe("sugerencias dentro del catalogo (terminologia MX)", () => {
     expect(todo).toMatch(/go\/no-go/i);
     expect(todo).toMatch(/propuestas/i);
     expect(todo).toMatch(/contratos/i);
+    expect(todo).toMatch(/junta de aclaraciones/i);
     for (const s of SUGERENCIAS_LICITACIONES.filter((x) => /go\/no-go|vencen|terminan/.test(x))) expect(s).toMatch(/días|mes|semana/i);
   });
 });

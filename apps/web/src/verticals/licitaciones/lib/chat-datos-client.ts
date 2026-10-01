@@ -11,6 +11,7 @@ export const SUGERENCIAS_LICITACIONES: readonly string[] = [
   "¿Cómo va el semáforo de mis plazos?",
   "¿Qué decisiones go/no-go tomé este mes?",
   "¿Cuántas propuestas tengo por estado?",
+  "¿Qué preguntas de la junta de aclaraciones tengo pendientes?",
   "¿Qué contratos terminan su vigencia en los próximos 90 días?",
 ];
 

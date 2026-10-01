@@ -35,6 +35,7 @@ class FakeReader implements LicitacionesDataChatReader {
   async propuestasPorEstado() { return []; }
   async fallos() { return []; }
   async renovaciones() { return []; }
+  async preguntasJunta() { return []; }
 }
 
 interface Harness {
