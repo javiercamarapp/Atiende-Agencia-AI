@@ -136,7 +136,8 @@ describe("useVerticalSession", () => {
     let s = ultimo!;
     if (s.fase !== "listo") throw new Error("fase " + s.fase);
     expect(s.propertyId).toBe("p2");
-    act(() => s.selectBranch("p1"));
+    const seleccionar = s.selectBranch;
+    act(() => seleccionar("p1"));
     s = ultimo!;
     if (s.fase !== "listo") throw new Error("fase " + s.fase);
     expect(s.propertyId).toBe("p1");
@@ -174,14 +175,15 @@ describe("useVerticalSession", () => {
     expect(ultimo!.fase).toBe("sin-sesion");
   });
 
-  it("logout limpio aunque el endpoint falle: la sesion local se limpia igual y el error se propaga", async () => {
+  it("logout limpio aunque el endpoint falle: la sesion local se limpia igual y no hay promesa rechazada", async () => {
     storage.setItem(SESSION_KEY, JSON.stringify(SESSION));
     logout.mockRejectedValue(new Error("red caida"));
     await montar();
     onRequireLogin.mockClear();
     await act(async () => {
-      await expect(ultimo!.logout()).rejects.toThrow("red caida");
+      await expect(ultimo!.logout()).resolves.toBeUndefined();
     });
+    expect(logout).toHaveBeenCalledTimes(1);
     expect(storage.getItem(SESSION_KEY)).toBeNull();
     expect(onRequireLogin).toHaveBeenCalledTimes(1);
   });

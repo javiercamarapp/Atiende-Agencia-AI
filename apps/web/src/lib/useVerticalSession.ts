@@ -66,10 +66,12 @@ export interface VerticalSessionListo<B extends VerticalBranch> extends Vertical
   readonly hasRole: (allowed: Iterable<string>) => boolean;
 }
 
-export interface VerticalSessionPendiente extends VerticalSessionBase {
-  readonly fase: Exclude<VerticalSessionFase, "listo">;
-  readonly session: LoginSession | null;
-}
+type FasePendiente = Exclude<VerticalSessionFase, "listo">;
+
+/** Una variante por fase (union discriminada real): al descartar cada `fase`, TypeScript estrecha hasta `VerticalSessionListo`. */
+export type VerticalSessionPendiente = {
+  [F in FasePendiente]: VerticalSessionBase & { readonly fase: F; readonly session: LoginSession | null };
+}[FasePendiente];
 
 export type VerticalSession<B extends VerticalBranch = VerticalBranch> = VerticalSessionListo<B> | VerticalSessionPendiente;
 
@@ -127,10 +129,12 @@ export function useVerticalSession<B extends VerticalBranch>({ adapter, apiBaseU
     if (!session || cerrandoSesion.current) return;
     cerrandoSesion.current = true;
     setLoggingOut(true);
-    // Logout limpio: la llamada real a /auth/logout puede fallar (red, token ya vencido) y aun asi la sesion
-    // local se limpia y se redirige al login.
+    // Logout limpio: la llamada real a /auth/logout es best-effort (red caida, token ya vencido): si falla, la
+    // sesion local se limpia igual y se redirige al login; el error no se propaga (nadie lo atiende en un onClick).
     try {
       await adapter.logout(fetch, apiBaseUrl, session.refreshToken);
+    } catch {
+      // ignorado a proposito, ver arriba
     } finally {
       adapter.clearSession(window.localStorage);
       setSession(null);
