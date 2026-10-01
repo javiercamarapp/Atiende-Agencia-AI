@@ -13,7 +13,7 @@ function payload(messages: unknown[]) {
 const FROM = "5219991234567";
 
 describe("extractMetaInboundMessages", () => {
-  it("devuelve texto y ubicacion en el orden del payload", () => {
+  it("devuelve texto, ubicacion (como marcador estable) y la nota de archivo en el orden del payload", () => {
     const out = extractMetaInboundMessages(
       payload([
         { id: "m1", from: FROM, type: "text", text: { body: "hola" } },
@@ -21,11 +21,14 @@ describe("extractMetaInboundMessages", () => {
         { id: "m3", from: FROM, type: "image", image: { id: "x" } },
       ]),
     );
-    expect(out.map((m) => m.type)).toEqual(["text", "location"]);
-    expect(out[1]).toMatchObject({ id: "m2", location: { latitude: 21.0165, longitude: -89.596, name: "Mi casa" } });
+    expect(out.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+    expect(out[0]).toEqual({ id: "m1", from: FROM, body: "hola" });
+    expect(out[1]!.body).toBe(formatLocationMessage({ latitude: 21.0165, longitude: -89.596, name: "Mi casa", address: "Calle 5 x 6" }));
+    expect(parseSharedLocation(out[1]!.body)).toEqual({ lat: 21.0165, lng: -89.596 });
+    expect(out[2]!.body).toMatch(/archivo \(image\)/);
   });
 
-  it("descarta ubicaciones con coordenadas invalidas, fuera de rango o no numericas (nunca adivina)", () => {
+  it("ubicaciones con coordenadas invalidas, fuera de rango o no numericas NO producen marcador: cae a la nota honesta, nunca adivina", () => {
     const out = extractMetaInboundMessages(
       payload([
         { id: "a", from: FROM, type: "location", location: { latitude: 91, longitude: -89 } },
@@ -35,7 +38,11 @@ describe("extractMetaInboundMessages", () => {
         { id: "e", from: FROM, type: "location", location: { latitude: Number.NaN, longitude: 0 } },
       ]),
     );
-    expect(out).toEqual([]);
+    expect(out).toHaveLength(5);
+    for (const m of out) {
+      expect(parseSharedLocation(m.body)).toBeNull();
+      expect(m.body).toMatch(/compartió su ubicación/);
+    }
   });
 
   it("exige id y remitente validos tambien para ubicaciones", () => {

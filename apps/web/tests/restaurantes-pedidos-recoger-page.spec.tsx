@@ -134,7 +134,9 @@ describe("PedidosPage -- pedidos para recoger", () => {
     stubFetch({ preparando: [BASE] });
     rendered = renderComponent(<PedidosPage {...CTX} />);
     await esperarCarga();
-    const check = rendered.container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    // Hay mas checkboxes en la pantalla (auto-impresion del ticket de cocina): se ubica el del aviso por su etiqueta.
+    const etiqueta = [...rendered.container.querySelectorAll("label")].find((l) => l.textContent?.includes("Avisar al cliente por WhatsApp"))!;
+    const check = etiqueta.querySelector('input[type="checkbox"]') as HTMLInputElement;
     expect(check.checked).toBe(true);
     await act(async () => {
       check.click();

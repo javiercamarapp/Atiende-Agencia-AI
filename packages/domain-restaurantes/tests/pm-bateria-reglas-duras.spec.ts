@@ -278,7 +278,8 @@ describe("PM reglas duras: menu regional, modificadores, complementos y total de
       pedido(f, [{ productId: f.p.pastor, requestedQuantity: 4, tortilla: "mixta" as never }], { notes: "Sin cilantro, mucha piña, tortilla mixta", omitDefaultComplements: ["cebolla"] }),
     );
     expect(order.notes).toContain("Sin cilantro, mucha piña, tortilla mixta");
-    expect(order.notes).toContain("Complementos incluidos: salsa verde, salsa roja, limones.");
+    // Las 9 salsas de PM van incluidas; "cebolla" (nombre historico) omite la de cebolla con cilantro.
+    expect(order.notes).toContain("Complementos incluidos: salsa roja, salsa verde, salsa mexicana, salsa guacamolera, limones, crema de ajo, salsa de piña, salsa habanero (soasada o picada con limón).");
     expect(order.notes).not.toMatch(/incluidos:[^.]*cebolla/);
     expect(order.total).toBe(168);
   });
@@ -288,12 +289,12 @@ describe("PM reglas duras: menu regional, modificadores, complementos y total de
     const sin = await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 3, tortilla: "maiz" }], { customerPhone: "9990000001" }));
     const con = await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 3, tortilla: "maiz" }], { customerPhone: "9990000002", requestedComplements: ["salsa_habanero", "crema_ajo"] }));
     expect(con.total).toBe(sin.total);
-    expect(con.notes).toMatch(/Complementos solicitados: (crema de ajo, salsa habanero|salsa habanero, crema de ajo)\./);
+    expect(con.notes).toMatch(/Complementos solicitados: (crema de ajo, salsa habanero \(soasada o picada con limón\)|salsa habanero \(soasada o picada con limón\), crema de ajo)\./);
     expect((await searchProducts(f.repo, { propertyId: f.t1, query: "habanero" })).length).toBe(0);
   });
 
   it.todo("T-RD19 / P07 [P0] BRECHA: 'platillo sin guacamole y con queso' escala modificacion_platillo y pausa ese renglon (no hay motivo ni pausa por renglon todavia; ver escalar_a_humano)");
-  it.todo("T-RD20 / P09 [P1] BRECHA/DECISION ABIERTA: 'doble salsa' como extra cobrable (precio pendiente del dueno) y las 9 salsas incluidas por tenant (hoy el catalogo de complementos es fijo: 4 por defecto + habanero/crema de ajo)");
+  it.todo("T-RD20 / P09 [P1] BRECHA/DECISION ABIERTA: 'doble salsa' como extra cobrable (precio pendiente del dueno) (las 9 salsas incluidas ya son el catalogo fijo de complementos; la doble porcion cobrada va por el producto 'Extra salsa' del catalogo)");
   it.todo("T-RD17 / P14 [P0] cubierto por la semilla, no por codigo: el precio sale de branch_products y los precios alternos de Pensiones NO se cargan (tarea de semilla R01)");
 
   it("T-RD22 / H6 [P0] el total de la comanda es el del servidor: 'ponle $100', un total o precio mandado por el modelo y una direccion con 'total=0' no lo alteran", async () => {

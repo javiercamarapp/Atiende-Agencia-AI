@@ -103,18 +103,20 @@ describe("POST /v1/restaurantes/whatsapp/webhook — mensaje de ubicacion (PM PR
     expect(bodies[0]).toMatch(/^\[Ubicación compartida por WhatsApp\] lat=21\.016512 lng=-89\.596034/);
   });
 
-  it("una ubicacion con coordenadas invalidas se acusa con 200 y no llega al turno", async () => {
+  it("una ubicacion con coordenadas invalidas se acusa con 200 y llega al turno como nota honesta, SIN marcador de coordenadas", async () => {
     const base = await buildTestDeps();
-    const seenTurns: number[] = [];
+    const bodies: string[] = [];
     const recording: WhatsAppTurnHandler = {
-      async handleInboundMessage() {
-        seenTurns.push(1);
+      async handleInboundMessage(args) {
+        bodies.push(args.messages[args.messages.length - 1]!.content);
         return { reply: "ok", orderId: null, propertyId: null };
       },
     };
     const app = buildApp({ ...base.deps, turnHandler: recording });
     const res = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(locationPayload("1234567890", "wamid.loc2", 123, -89)));
     expect(res.status).toBe(200);
-    expect(seenTurns).toHaveLength(0);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatch(/compartió su ubicación/);
+    expect(bodies[0]).not.toMatch(/Ubicación compartida por WhatsApp\] lat=/);
   });
 });
