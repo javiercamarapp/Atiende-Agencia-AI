@@ -6,6 +6,7 @@ import type { InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryMfaRepository, InMemoryOrgAdminRepository, InMemoryPlatformSwitchRepository } from "@atiende/db";
 import type { MfaRepository, OrgAdminRepository, PlatformSwitchRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
@@ -24,9 +25,9 @@ export interface SeguridadSetup {
 
 export interface SeguridadSetupOptions {
   readonly env?: Partial<AppDeps["env"]>;
-  readonly mfaRepo?: (db: never) => MfaRepository;
-  readonly platformSwitchRepo?: (db: never) => PlatformSwitchRepository;
-  readonly orgAdminRepo?: (db: never) => OrgAdminRepository;
+  readonly mfaRepo?: (db: TenantDbSession) => MfaRepository;
+  readonly platformSwitchRepo?: (db: TenantDbSession) => PlatformSwitchRepository;
+  readonly orgAdminRepo?: (db: TenantDbSession) => OrgAdminRepository;
   readonly sinRepos?: boolean;
 }
 
