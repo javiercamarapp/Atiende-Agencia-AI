@@ -199,8 +199,8 @@ export function CalendarioVisual({ apiBaseUrl, token, propertyId, orgSlug, onGes
           >
             Hoy
           </Button>
-          <h2 aria-live="polite" className="m-0 ml-1 font-display text-lg font-semibold capitalize text-foreground">
-            {etiquetaMes(mes)}
+          <h2 aria-live="polite" className="m-0 ml-1 font-display text-lg font-semibold text-foreground">
+            {etiquetaMes(mes).replace(/^./, (c) => c.toUpperCase())}
           </h2>
         </div>
         <div role="group" aria-label="Tipo de vista" className="hidden gap-1.5 md:flex">
@@ -286,6 +286,7 @@ export function CalendarioVisual({ apiBaseUrl, token, propertyId, orgSlug, onGes
                 hoy={hoy}
                 elementos={visibles}
                 canales={canales}
+                nombreUnidad={nombreUnidad}
                 foco={focoEfectivo}
                 diaSeleccionado={diaSeleccionado}
                 moverFocoDom={focoPorTeclado}

@@ -47,10 +47,10 @@ export const MAX_CHIPS_POR_DIA = 3;
 
 /** Columnas de la línea de tiempo: literales completos para que Tailwind los vea (no se pueden construir con plantillas). */
 const GRID_DIAS: Readonly<Record<number, string>> = {
-  28: "grid-cols-[repeat(28,minmax(1.75rem,1fr))]",
-  29: "grid-cols-[repeat(29,minmax(1.75rem,1fr))]",
-  30: "grid-cols-[repeat(30,minmax(1.75rem,1fr))]",
-  31: "grid-cols-[repeat(31,minmax(1.75rem,1fr))]",
+  28: "grid-cols-[repeat(28,2.25rem)]",
+  29: "grid-cols-[repeat(29,2.25rem)]",
+  30: "grid-cols-[repeat(30,2.25rem)]",
+  31: "grid-cols-[repeat(31,2.25rem)]",
 };
 const COL_INICIO: readonly string[] = ["col-start-1", "col-start-2", "col-start-3", "col-start-4", "col-start-5", "col-start-6", "col-start-7", "col-start-8", "col-start-9", "col-start-10", "col-start-11", "col-start-12", "col-start-13", "col-start-[14]", "col-start-[15]", "col-start-[16]", "col-start-[17]", "col-start-[18]", "col-start-[19]", "col-start-[20]", "col-start-[21]", "col-start-[22]", "col-start-[23]", "col-start-[24]", "col-start-[25]", "col-start-[26]", "col-start-[27]", "col-start-[28]", "col-start-[29]", "col-start-[30]", "col-start-[31]"];
 // Indice = noches visibles (1..31); el 0 no se usa.
@@ -72,9 +72,9 @@ function claseBorde(e: ElementoCalendario): string {
   return "border";
 }
 
-function Chip({ e, canales }: { readonly e: ElementoCalendario; readonly canales: readonly string[] }) {
+function Chip({ e, canales, titulo }: { readonly e: ElementoCalendario; readonly canales: readonly string[]; readonly titulo?: string }) {
   return (
-    <span className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-2xs font-medium leading-tight", CLASE_TONO[tonoDeElemento(e, canales)], claseBorde(e), e.apagado && "opacity-60")}>
+    <span title={titulo} className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-2xs font-medium leading-tight", CLASE_TONO[tonoDeElemento(e, canales)], claseBorde(e), e.apagado && "opacity-60")}>
       <IconoElemento e={e} />
       <span className="truncate">{e.etiqueta}</span>
     </span>
@@ -115,6 +115,8 @@ export interface VistaMesProps {
   readonly hoy: FechaLocal;
   readonly elementos: readonly ElementoCalendario[];
   readonly canales: readonly string[];
+  /** Nombre de la unidad de un elemento: va en el tooltip de cada chip (la rejilla mezcla las unidades). */
+  readonly nombreUnidad: (id: string) => string;
   /** Día con tabindex 0 (parada de Tab de la rejilla). */
   readonly foco: FechaLocal;
   readonly diaSeleccionado: FechaLocal | null;
@@ -125,7 +127,7 @@ export interface VistaMesProps {
   readonly onCambiarMes: (mes: ClaveMes) => void;
 }
 
-export function VistaMes({ mes, hoy, elementos, canales, foco, diaSeleccionado, moverFocoDom, onFoco, onSeleccionarDia, onCambiarMes }: VistaMesProps) {
+export function VistaMes({ mes, hoy, elementos, canales, nombreUnidad, foco, diaSeleccionado, moverFocoDom, onFoco, onSeleccionarDia, onCambiarMes }: VistaMesProps) {
   const semanas = semanasDeRejilla(mes);
   const dias = semanas.flat();
   const contenido = contenidoPorDia(elementos, dias);
@@ -195,7 +197,7 @@ export function VistaMes({ mes, hoy, elementos, canales, foco, diaSeleccionado, 
                 >
                   <span className={cn("inline-flex size-6 items-center justify-center self-start rounded-full text-xs font-semibold", esHoy ? "bg-primary text-primary-foreground" : fuera ? "text-muted-foreground" : "text-foreground")}>{Number(dia.slice(8, 10))}</span>
                   {visibles.map((e) => (
-                    <Chip key={e.id} e={e} canales={canales} />
+                    <Chip key={e.id} e={e} canales={canales} titulo={`${nombreUnidad(e.unidadId)}: ${e.descripcion}`} />
                   ))}
                   {ocultos > 0 && <span className="px-1 text-2xs font-medium text-muted-foreground">+{ocultos} más</span>}
                   {salidas > 0 && (
@@ -236,10 +238,10 @@ export function VistaLinea({ mes, hoy, unidades, elementos, canales, seleccionad
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      <div className="min-w-max">
+      <div className="w-max min-w-full">
         <div className="flex border-b border-border bg-muted">
           <div className="sticky left-0 z-10 w-36 shrink-0 border-r border-border bg-muted px-3 py-1.5 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">Unidad</div>
-          <div aria-hidden="true" className={cn("grid flex-1", grid)}>
+          <div aria-hidden="true" className={cn("grid", grid)}>
             {dias.map((d, i) => (
               <div key={d} className={cn("py-1.5 text-center text-2xs", i === indiceHoy ? "font-bold text-primary" : "text-muted-foreground")}>
                 {Number(d.slice(8, 10))}
@@ -258,7 +260,7 @@ export function VistaLinea({ mes, hoy, unidades, elementos, canales, seleccionad
               <div className="sticky left-0 z-10 w-36 shrink-0 border-r border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
                 <span className="line-clamp-2">{u.nombre}</span>
               </div>
-              <div className="relative flex-1">
+              <div className="relative">
                 <div aria-hidden="true" className={cn("absolute inset-0 grid", grid)}>
                   {dias.map((d, i) => (
                     <div key={d} className={cn("border-r border-border/60", i === indiceHoy && "bg-primary/10")} />
