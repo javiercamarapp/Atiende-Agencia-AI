@@ -50,11 +50,15 @@ async function leer<T>(res: Response, fallback: string): Promise<T> {
   throw new DemoError(message, res.status, code, motivo);
 }
 
-/** Identificador efimero de la conversacion (16-64 caracteres seguros, lo que exige el servidor). */
+/** Identificador efimero de la conversacion (16-64 caracteres seguros, lo que exige el servidor). Siempre con aleatoriedad
+ * criptografica del navegador (`crypto`); sin ella no se inventa un id predecible: la demo no puede iniciar. */
 export function nuevaSesionDemo(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  const c = (globalThis as { crypto?: { randomUUID?: () => string; getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
   if (c?.randomUUID) return c.randomUUID();
-  return `demo${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`.padEnd(16, "0").slice(0, 64);
+  if (c?.getRandomValues) {
+    return Array.from(c.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  throw new Error("Este navegador no ofrece generador aleatorio seguro (crypto): no se puede iniciar la conversación de la demo.");
 }
 
 export function crearClienteDemo(apiBaseUrl: string, orgSlug: string, fetchImpl: typeof fetch = (...a) => fetch(...a)) {

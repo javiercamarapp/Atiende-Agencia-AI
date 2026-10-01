@@ -22,11 +22,11 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-// Mismo regex exacto que admin-staff.ts::EMAIL_RE y el CHECK de
-// restaurantes.orders.customer_email (migrations/011_email_outbox_dispatch.sql)
-// — validación deliberadamente laxa (formato, no existencia real del buzón):
-// suficiente para no encolar un correo con un valor obviamente inválido.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Formato del CHECK de restaurantes.orders.customer_email (migrations/011_email_outbox_dispatch.sql): algo@dominio.tld —
+// validación deliberadamente laxa (formato, no existencia real del buzón): suficiente para no encolar un correo con un valor
+// obviamente inválido. Se escribe SIN backtracking ambiguo (cada etiqueta del dominio excluye el punto), así que es lineal
+// (CodeQL js/polynomial-redos) y es igual o MÁS estricta que el CHECK: no admite etiquetas vacías ("a@b..c").
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 function toProductoEncontrado(product: { id: string; name: string; description: string | null; categoryName: string | null; price: number; noDomicilio?: boolean }): ProductoEncontrado {
   return {
