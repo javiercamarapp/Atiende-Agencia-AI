@@ -43,45 +43,36 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Check, Inbox, MessageSquarePlus, X } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Badge,
   Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  ConfirmDialog,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+  Textarea,
 } from "@atiende/ui";
+import type { StatusTone } from "@atiende/ui";
 import { aprobarBorrador, CANAL_LABELS, CANALES_MENSAJERIA, fetchBandejaAprobacion, fetchConversaciones, fetchUnidades, rechazarBorrador } from "../lib/mensajeria-client.ts";
 import type { BorradorRecord, CanalMensajeriaCodigo, ConversacionRecord, ItemBandeja, UnidadOption } from "../lib/mensajeria-client.ts";
 import { crearConversacion, generarBorrador, registrarMensajeEntrante } from "../lib/mensajeria-conversaciones-client.ts";
+import { BORRADOR_HISTORIAL_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const MENSAJERIA_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
 const NUEVA_CONVERSACION = "__nueva__";
 
-/** Mismos tokens que el <Input> de @atiende/ui aplicados a los controles nativos que
- * siguen siendo nativos a propósito: <select> de datos reales (unidad, conversación,
- * canal) con su estado `<option>Cargando…</option>`, y <textarea> (no hay primitivo
- * de textarea en packages/ui). */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const TEXTAREA_CLASES =
-  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function contextoLinea(item: ItemBandeja): string {
   const partes: string[] = [item.unidad.nombre, CANAL_LABELS[item.conversacion.canal]];
@@ -93,12 +84,11 @@ function contextoLinea(item: ItemBandeja): string {
   return partes.join(" · ");
 }
 
-/** Mismo criterio que la versión previa (enviado = principal, rechazado = destructivo,
- * resto = apagado), ahora sobre las variantes reales de <Badge>. */
-function historialBadge(b: BorradorRecord): { variante: "default" | "destructive" | "outline"; label: string } {
-  if (b.estado === "enviado") return { variante: "default", label: "Enviado" };
-  if (b.estado === "rechazado") return { variante: "destructive", label: "Rechazado" };
-  return { variante: "outline", label: "Aprobado" };
+/** Etiqueta y tono del borrador ya decidido (enviado = verde, rechazado = rojo, aprobado = azul). */
+function historialBadge(b: BorradorRecord): { tono: StatusTone; label: string } {
+  if (b.estado === "enviado") return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "enviado"), label: "Enviado" };
+  if (b.estado === "rechazado") return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "rechazado"), label: "Rechazado" };
+  return { tono: statusTone(BORRADOR_HISTORIAL_TONES, "aprobado"), label: "Aprobado" };
 }
 
 interface BorradorCardProps {
@@ -107,21 +97,12 @@ interface BorradorCardProps {
   readonly puedeEscribir: boolean;
   readonly busy: boolean;
   readonly onAprobar: (borradorId: string) => void;
-  readonly onRechazar: (borradorId: string, motivo: string) => void;
+  /** Debe rechazar la promesa si el servidor falla: asi el dialogo de rechazo queda abierto con el motivo escrito. */
+  readonly onRechazar: (borradorId: string, motivo: string) => Promise<void>;
 }
 
 function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar, onRechazar }: BorradorCardProps) {
   const [rechazando, setRechazando] = useState(false);
-  const [motivo, setMotivo] = useState("");
-  const [motivoError, setMotivoError] = useState<string | null>(null);
-
-  function confirmarRechazo() {
-    if (!motivo.trim()) {
-      setMotivoError("El motivo es requerido para rechazar un borrador.");
-      return;
-    }
-    onRechazar(borrador.id, motivo.trim());
-  }
 
   return (
     <Card className="border-dashed bg-muted/40">
@@ -130,7 +111,7 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
           <span className="text-xs text-muted-foreground">
             {borrador.generadoPor === "agente_llm" ? "Generado por agente IA" : "Generado por motor de plantillas"} · {new Date(borrador.creadoEn).toLocaleString("es-MX")}
           </span>
-          <Badge variant="secondary">Pendiente de aprobación</Badge>
+          <StatusBadge tone="warning">Pendiente de aprobación</StatusBadge>
         </div>
         <p className="m-0 text-sm text-foreground whitespace-pre-wrap">{borrador.texto}</p>
         {puedeEscribir ? (
@@ -146,68 +127,19 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
               </Button>
             </div>
 
-            {/* Paso 2 del rechazo: el motivo sigue siendo obligatorio y la llamada al
-                servidor solo sale de "Confirmar rechazo", igual que antes. */}
-            <AlertDialog
+            {/* Paso 2 del rechazo: el motivo sigue siendo obligatorio y la llamada al servidor solo sale de "Confirmar
+                rechazo"; Cancelar, Escape o clic fuera cierran sin rechazar nada. Si el servidor falla, el dialogo queda
+                abierto con el motivo escrito. */}
+            <ConfirmDialog
               open={rechazando}
-              onOpenChange={(abierto) => {
-                if (!abierto) {
-                  setRechazando(false);
-                  setMotivo("");
-                  setMotivoError(null);
-                }
-              }}
-            >
-              <AlertDialogContent className="max-w-md">
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Rechazar este borrador</AlertDialogTitle>
-                  <AlertDialogDescription>El motivo queda registrado en el historial de la conversación y es obligatorio.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <Label className={LABEL_CLASES}>
-                  Motivo del rechazo
-                  <textarea
-                    value={motivo}
-                    onChange={(e) => {
-                      setMotivo(e.target.value);
-                      setMotivoError(null);
-                    }}
-                    rows={3}
-                    className={TEXTAREA_CLASES}
-                    placeholder="Por qué se rechaza este borrador"
-                  />
-                </Label>
-                {motivoError && (
-                  <p role="alert" className="m-0 text-xs text-destructive">
-                    {motivoError}
-                  </p>
-                )}
-                <AlertDialogFooter>
-                  <AlertDialogCancel
-                    onClick={() => {
-                      setRechazando(false);
-                      setMotivo("");
-                      setMotivoError(null);
-                    }}
-                    disabled={busy}
-                  >
-                    Cancelar
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    // preventDefault: `confirmarRechazo` puede rechazar el intento (motivo
-                    // vacío -> `setMotivoError`, sin cerrar) -- el cierre solo lo decide
-                    // `onRechazar`/el estado `rechazando`, nunca el clic en sí.
-                    onClick={(e) => {
-                      e.preventDefault();
-                      confirmarRechazo();
-                    }}
-                    disabled={busy}
-                  >
-                    {busy ? "Rechazando…" : "Confirmar rechazo"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              onOpenChange={setRechazando}
+              tono="danger"
+              titulo="Rechazar este borrador"
+              descripcion="El motivo queda registrado en el historial de la conversación y es obligatorio."
+              confirmar="Confirmar rechazo"
+              campo={{ etiqueta: "Motivo del rechazo", multilinea: true, placeholder: "Por qué se rechaza este borrador" }}
+              onConfirm={(motivo) => onRechazar(borrador.id, motivo ?? "")}
+            />
           </>
         ) : (
           <p className="m-0 text-xs text-muted-foreground">
@@ -337,7 +269,7 @@ function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir
     return (
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-[15px] font-semibold">Simular mensaje entrante de huésped</CardTitle>
+          <CardTitle className="text-base font-semibold">Simular mensaje entrante de huésped</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <p className="m-0 text-xs text-muted-foreground">
@@ -351,7 +283,7 @@ function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-[15px] font-semibold">Simular mensaje entrante de huésped</CardTitle>
+        <CardTitle className="text-base font-semibold">Simular mensaje entrante de huésped</CardTitle>
         <CardDescription className="text-xs">
           Registro <strong>manual</strong>: no hay adaptador real de WhatsApp, Airbnb ni Vrbo conectado todavía. Usa esto para transcribir un mensaje que el huésped mandó por fuera
           de este panel y pedirle al agente un borrador de respuesta.
@@ -361,39 +293,39 @@ function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir
         <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
           <Label className={LABEL_CLASES}>
             Unidad
-            <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+            <NativeSelect value={unidadId} onChange={(e) => setUnidadId(e.target.value)} disabled={!unidades}>
               {!unidades && <option value="">Cargando…</option>}
               {unidades?.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nombre}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Label>
 
           <Label className={LABEL_CLASES}>
             Conversación
-            <select value={conversacionId} onChange={(e) => setConversacionId(e.target.value)} className={SELECT_CLASES} disabled={!conversaciones}>
+            <NativeSelect value={conversacionId} onChange={(e) => setConversacionId(e.target.value)} disabled={!conversaciones}>
               <option value={NUEVA_CONVERSACION}>+ Nueva conversación</option>
               {conversaciones?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {CANAL_LABELS[c.canal]} · {c.huespedNombre ?? "sin nombre de huésped"} ({c.id})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Label>
 
           {conversacionId === NUEVA_CONVERSACION && (
             <>
               <Label className={LABEL_CLASES}>
                 Canal
-                <select value={canal} onChange={(e) => setCanal(e.target.value as CanalMensajeriaCodigo)} className={SELECT_CLASES}>
+                <NativeSelect value={canal} onChange={(e) => setCanal(e.target.value as CanalMensajeriaCodigo)}>
                   {CANALES_MENSAJERIA.map((c) => (
                     <option key={c} value={c}>
                       {CANAL_LABELS[c]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </Label>
               <Label className={LABEL_CLASES}>
                 Nombre de la propiedad (para las plantillas del borrador)
@@ -404,11 +336,11 @@ function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir
 
           <Label className={LABEL_CLASES}>
             Mensaje del huésped
-            <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className={TEXTAREA_CLASES} placeholder="Ej. ¿Cuál es la clave del wifi?" />
+            <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} placeholder="Ej. ¿Cuál es la clave del wifi?" />
           </Label>
 
           {formError && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {formError}
             </p>
           )}
@@ -473,6 +405,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
       await cargar();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo rechazar el borrador.");
+      throw err; // el ConfirmDialog queda abierto con el motivo escrito
     } finally {
       setBusyId(null);
     }
@@ -481,10 +414,10 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
   const totalPendientes = items?.reduce((acc, item) => acc + item.pendientes.length, 0) ?? 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Bandeja de aprobación de mensajería</h1>
-        <p className="mt-1 mb-0 text-[13px] text-muted-foreground">
+        <p className="mt-1 mb-0 text-sm text-muted-foreground">
           Todo borrador generado para un huésped queda en <strong className="text-foreground">pendiente_aprobacion</strong> hasta que alguien lo aprueba o lo rechaza aquí — ningún
           proceso automático puede enviarlo (ver POST .../intento-automatico, que siempre es rechazado).
         </p>
@@ -506,14 +439,14 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
         }}
       />
 
-      {notice && <p className="m-0 rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-foreground">{notice}</p>}
+      {notice && <p className="m-0 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground">{notice}</p>}
       {error && <EstadoError mensaje={error} />}
       {!items && !error && <EstadoCargando lineas={2} />}
       {items && items.length === 0 && (
         <EstadoVacio icon={Inbox} titulo="Sin conversaciones" mensaje="No hay ninguna conversación con mensajería en esta propiedad todavía." />
       )}
       {items && items.length > 0 && (
-        <p className={totalPendientes > 0 ? "m-0 text-[13px] font-medium text-foreground" : "m-0 text-[13px] text-muted-foreground"}>
+        <p className={totalPendientes > 0 ? "m-0 text-sm font-medium text-foreground" : "m-0 text-sm text-muted-foreground"}>
           {totalPendientes > 0 ? `${totalPendientes} borrador(es) esperando aprobación.` : "No hay ningún borrador pendiente de aprobación en este momento."}
         </p>
       )}
@@ -524,7 +457,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
             <CardContent className="p-4 flex flex-col gap-2.5">
               <div className="flex justify-between flex-wrap gap-2">
                 <p className="m-0 text-sm font-semibold text-foreground">{contextoLinea(item)}</p>
-                {item.pendientes.length === 0 && <Badge variant="outline">Sin pendientes</Badge>}
+                {item.pendientes.length === 0 && <StatusBadge tone="neutral">Sin pendientes</StatusBadge>}
               </div>
 
               {item.pendientes.map((borrador) => (
@@ -558,10 +491,10 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
                           <Card key={b.id}>
                             <CardContent className="p-2.5">
                               <div className="flex justify-between gap-2 flex-wrap">
-                                <span className="text-[11px] text-muted-foreground">{new Date(b.creadoEn).toLocaleString("es-MX")}</span>
-                                <Badge variant={badge.variante}>{badge.label}</Badge>
+                                <span className="text-xs text-muted-foreground">{new Date(b.creadoEn).toLocaleString("es-MX")}</span>
+                                <StatusBadge tone={badge.tono}>{badge.label}</StatusBadge>
                               </div>
-                              <p className="mt-1 mb-0 text-[13px] text-foreground whitespace-pre-wrap">{b.texto}</p>
+                              <p className="mt-1 mb-0 text-sm text-foreground whitespace-pre-wrap">{b.texto}</p>
                               {b.estado === "rechazado" && b.motivoRechazo && <p className="mt-1 mb-0 text-xs text-destructive">Motivo: {b.motivoRechazo}</p>}
                             </CardContent>
                           </Card>
@@ -575,6 +508,6 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
           </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

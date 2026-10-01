@@ -43,7 +43,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { FileSpreadsheet, Mail, Plus, Search, Wallet } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -53,6 +52,10 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
@@ -90,18 +93,13 @@ import type {
   PortalInviteEmitida,
   UnidadOption,
 } from "../lib/finanzas-client.ts";
+import { CONCILIACION_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const FINANZAS_LECTURA_ROLES = new Set(["admin_gestora", "contador"]);
 const FINANZAS_ESCRITURA_ROLES = new Set(["admin_gestora"]);
 
-/** Mismos tokens que el <Input> de @atiende/ui aplicados a los <select> nativos: son
- * dropdowns de datos reales (unidad, reserva, canal, base de comisión) con estados
- * `<option>Cargando…</option>` / `<option>Sin reservas en esta unidad</option>` --
- * se quedan nativos y solo se re-estilan. */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 const NOTA_CLASES = "m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground";
 
 const TIPO_LINEA_LABELS: Record<string, string> = {
@@ -118,14 +116,6 @@ const ESTADO_CONCILIACION_LABELS: Record<string, string> = {
   discrepancia: "Discrepancia",
 };
 
-/** Mismo criterio semántico que la tabla previa en texto plano, ahora con <Badge>. */
-function varianteConciliacion(estado: string): "default" | "secondary" | "destructive" | "outline" {
-  if (estado === "conciliado") return "default";
-  if (estado === "discrepancia") return "destructive";
-  if (estado === "pendiente") return "secondary";
-  return "outline";
-}
-
 export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const puedeLeer = org ? FINANZAS_LECTURA_ROLES.has(org.rol) : false;
@@ -133,21 +123,21 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Finanzas</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso de lectura a Finanzas. Roles con acceso:{" "}
           <strong className="text-foreground">admin_gestora</strong> y <strong className="text-foreground">contador</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-[720px]">
+    <PageContainer padding="none" size="md" className="gap-6 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Finanzas</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Movimiento financiero por reserva, owner statements y payouts de canal.
           {!puedeEscribir && (
             <>
@@ -162,7 +152,7 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       <MovimientoSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <OwnerStatementsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <PayoutsSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
-    </div>
+    </PageContainer>
   );
 }
 
@@ -243,24 +233,24 @@ function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sec
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-[15px] font-semibold">Movimiento financiero por reserva</CardTitle>
+        <CardTitle className="text-base font-semibold">Movimiento financiero por reserva</CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-0 flex flex-col gap-3">
         <div className="flex gap-2.5 flex-wrap">
           <Label className={`${LABEL_CLASES} flex-1 min-w-[180px]`}>
             Unidad
-            <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+            <NativeSelect value={unidadId} onChange={(e) => setUnidadId(e.target.value)} disabled={!unidades}>
               {!unidades && <option>Cargando…</option>}
               {unidades?.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nombre}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Label>
           <Label className={`${LABEL_CLASES} flex-1 min-w-[220px]`}>
             Reserva
-            <select value={ocupacionId} onChange={(e) => setOcupacionId(e.target.value)} className={SELECT_CLASES} disabled={!ocupaciones || ocupaciones.length === 0}>
+            <NativeSelect value={ocupacionId} onChange={(e) => setOcupacionId(e.target.value)} disabled={!ocupaciones || ocupaciones.length === 0}>
               {!ocupaciones && <option>Cargando…</option>}
               {ocupaciones && ocupaciones.length === 0 && <option>Sin reservas en esta unidad</option>}
               {ocupaciones?.map((o) => (
@@ -268,7 +258,7 @@ function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sec
                   {o.rango.inicio} → {o.rango.fin} {o.huespedNombre ? `· ${o.huespedNombre}` : ""} ({o.estado})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Label>
         </div>
 
@@ -278,7 +268,7 @@ function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sec
         </Button>
 
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {error}
           </p>
         )}
@@ -301,7 +291,7 @@ function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sec
 
 function MovimientoResumen({ m }: { m: MovimientoDetalle }) {
   return (
-    <div className="flex flex-col gap-1 text-[13px] border-t border-border pt-2.5">
+    <div className="flex flex-col gap-1 text-sm border-t border-border pt-2.5">
       <Linea label="Ingreso bruto" valorCentavos={m.ingresoBrutoCentavos} moneda={m.moneda} />
       <Linea label={`Comisión de canal (${m.comisionCanalFuente})`} valorCentavos={-m.comisionCanalCentavos} moneda={m.moneda} />
       <Linea label="Monto recibido del canal" valorCentavos={m.montoRecibidoCentavos} moneda={m.moneda} />
@@ -451,15 +441,15 @@ function RegistrarMovimientoForm({
             </Label>
             <Label className={`${LABEL_CLASES} flex-1 min-w-[180px]`}>
               Base de la comisión de gestor
-              <select value={comisionGestorBase} onChange={(e) => setComisionGestorBase(e.target.value as BaseComisionGestor)} className={SELECT_CLASES}>
+              <NativeSelect value={comisionGestorBase} onChange={(e) => setComisionGestorBase(e.target.value as BaseComisionGestor)}>
                 <option value="bruto">Sobre el bruto</option>
                 <option value="neto_de_canal">Sobre el neto de comisión de canal</option>
-              </select>
+              </NativeSelect>
             </Label>
           </div>
 
           <div>
-            <p className="m-0 mb-1.5 text-[13px] text-foreground">Gastos (opcional)</p>
+            <p className="m-0 mb-1.5 text-sm text-foreground">Gastos (opcional)</p>
             {gastos.map((g) => (
               <div key={g.key} className="flex gap-2.5 flex-wrap mb-1.5">
                 <Input value={g.tipo} onChange={(e) => actualizarGasto(g.key, { tipo: e.target.value })} placeholder="Tipo (ej. limpieza)" className="flex-1 min-w-[140px]" />
@@ -481,7 +471,7 @@ function RegistrarMovimientoForm({
           </div>
 
           <div>
-            <p className="m-0 mb-1.5 text-[13px] text-foreground">Impuestos (opcional — siempre sujetos a revisión fiscal)</p>
+            <p className="m-0 mb-1.5 text-sm text-foreground">Impuestos (opcional — siempre sujetos a revisión fiscal)</p>
             {impuestos.map((i) => (
               <div key={i.key} className="flex gap-2.5 flex-wrap mb-1.5">
                 <Input value={i.tipo} onChange={(e) => actualizarImpuesto(i.key, { tipo: e.target.value })} placeholder="Tipo (ej. ISR retenido)" className="flex-1 min-w-[160px]" />
@@ -505,7 +495,7 @@ function RegistrarMovimientoForm({
           </div>
 
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {error}
             </p>
           )}
@@ -577,7 +567,7 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-[15px] font-semibold">Owner statements</CardTitle>
+        <CardTitle className="text-base font-semibold">Owner statements</CardTitle>
         <CardDescription className="text-xs">
           No hay un catálogo de propietarios en el backend todavía — ingresa el id del propietario (mismo que usa el portal del propietario).
         </CardDescription>
@@ -599,7 +589,7 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
         </div>
 
         {errorInvite && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {errorInvite}
           </p>
         )}
@@ -611,7 +601,7 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
         )}
 
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {error}
           </p>
         )}
@@ -655,7 +645,7 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
 
         {detalle && (
           <div className="border-t border-border pt-2.5 flex flex-col gap-2">
-            <p className="m-0 text-[13px] font-semibold text-foreground">
+            <p className="m-0 text-sm font-semibold text-foreground">
               Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin}
             </p>
             {detalle.motivoVersion && <p className="m-0 text-xs text-muted-foreground">Motivo de esta versión: {detalle.motivoVersion}</p>}
@@ -679,7 +669,7 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
                 ))}
               </TableBody>
             </Table>
-            <div className="flex flex-col gap-0.5 text-[13px]">
+            <div className="flex flex-col gap-0.5 text-sm">
               <Linea label="Ingresos brutos" valorCentavos={detalle.totales.ingresosBrutosCentavos} moneda={detalle.moneda} />
               <Linea label="Comisión de canal" valorCentavos={-detalle.totales.comisionCanalCentavos} moneda={detalle.moneda} />
               <Linea label="Comisión de gestor" valorCentavos={-detalle.totales.comisionGestorCentavos} moneda={detalle.moneda} />
@@ -778,7 +768,7 @@ function GenerarStatementForm({
             <Input value={motivoVersion} onChange={(e) => setMotivoVersion(e.target.value)} placeholder="Corrección de gastos de limpieza reportados tarde" />
           </Label>
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {error}
             </p>
           )}
@@ -825,7 +815,7 @@ function PayoutsSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sectio
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-[15px] font-semibold">Payouts de canal + conciliación</CardTitle>
+        <CardTitle className="text-base font-semibold">Payouts de canal + conciliación</CardTitle>
         <CardDescription className="text-xs">
           No hay un listado de payouts ya importados en el backend todavía — al crear uno aquí, su id queda precargado abajo para consultarlo.
         </CardDescription>
@@ -843,7 +833,7 @@ function PayoutsSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sectio
         </div>
 
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-destructive">
+          <p role="alert" className="m-0 text-sm text-destructive">
             {error}
           </p>
         )}
@@ -869,7 +859,7 @@ function PayoutsSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sectio
 function PayoutResumen({ detalle }: { detalle: PayoutDetalle }) {
   return (
     <div className="border-t border-border pt-2.5 flex flex-col gap-2">
-      <p className="m-0 text-[13px] text-foreground">
+      <p className="m-0 text-sm text-foreground">
         <strong>{detalle.canalCodigo}</strong> · {centavosAPesos(detalle.montoTotalCentavos)} {detalle.moneda} · pagado {detalle.fechaPayout}
         {detalle.referenciaExterna ? ` · ref. ${detalle.referenciaExterna}` : ""}
       </p>
@@ -894,7 +884,7 @@ function PayoutResumen({ detalle }: { detalle: PayoutDetalle }) {
               <TableCell className="p-2 text-xs text-right tabular-nums">{centavosAPesos(l.montoCentavos)}</TableCell>
               <TableCell className="p-2 text-xs text-right tabular-nums">{l.montoEsperadoCentavos !== null ? centavosAPesos(l.montoEsperadoCentavos) : "—"}</TableCell>
               <TableCell className="p-2 text-xs">
-                <Badge variant={varianteConciliacion(l.estado)}>{ESTADO_CONCILIACION_LABELS[l.estado] ?? l.estado}</Badge>
+                <StatusBadge tone={statusTone(CONCILIACION_TONES, l.estado)}>{ESTADO_CONCILIACION_LABELS[l.estado] ?? l.estado}</StatusBadge>
               </TableCell>
             </TableRow>
           ))}
@@ -965,13 +955,13 @@ function ImportarPayoutForm({ apiBaseUrl, token, propertyId, onCreado }: { apiBa
           <div className="flex gap-2.5 flex-wrap">
             <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
               Canal
-              <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} className={SELECT_CLASES}>
+              <NativeSelect value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)}>
                 {CANALES_PAYOUT.map((c) => (
                   <option key={c.codigo} value={c.codigo}>
                     {c.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={`${LABEL_CLASES} w-[90px]`}>
               Moneda
@@ -988,7 +978,7 @@ function ImportarPayoutForm({ apiBaseUrl, token, propertyId, onCreado }: { apiBa
           </div>
 
           <div>
-            <p className="m-0 mb-1.5 text-[13px] text-foreground">Líneas del payout (según el reporte del canal, ya normalizadas)</p>
+            <p className="m-0 mb-1.5 text-sm text-foreground">Líneas del payout (según el reporte del canal, ya normalizadas)</p>
             {lineas.map((l) => (
               <div key={l.key} className="flex gap-2.5 flex-wrap mb-1.5">
                 <Input
@@ -1018,7 +1008,7 @@ function ImportarPayoutForm({ apiBaseUrl, token, propertyId, onCreado }: { apiBa
           </div>
 
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {error}
             </p>
           )}

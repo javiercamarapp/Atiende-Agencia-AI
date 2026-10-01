@@ -27,7 +27,7 @@
 // RentasShell.tsx): reemplaza los `style={{...}}` hechos a mano por Card/Button/
 // Badge/EstadoVacio y clases de token (bg-card, text-muted-foreground, ...). CERO
 // cambios de lógica: mismas props, mismo estado, mismo onClick/aria-pressed.
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, PageContainer, StatusBadge } from "@atiende/ui";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -35,7 +35,7 @@ export function RentasDashboardPage({ orgSlug, properties, propertyId, setProper
   const org = session.organizations.find((o) => o.slug === orgSlug);
 
   return (
-    <div className="flex flex-col gap-4 max-w-[640px]">
+    <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
       <div>
         <p className="text-sm text-muted-foreground m-0 mb-1">{saludoConNombre(session.fullName, session.email)}</p>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">{org?.nombre ?? orgSlug}</h1>
@@ -48,7 +48,7 @@ export function RentasDashboardPage({ orgSlug, properties, propertyId, setProper
 
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-medium">
+          <CardTitle className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground font-medium">
             Propiedades ({properties.length})
           </CardTitle>
         </CardHeader>
@@ -68,9 +68,9 @@ export function RentasDashboardPage({ orgSlug, properties, propertyId, setProper
                   >
                     <span className="truncate">{p.nombre}</span>
                     {activa && (
-                      <Badge variant="secondary" className="shrink-0">
+                      <StatusBadge tone="neutral" dot={false} className="shrink-0">
                         activa
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </Button>
                 </li>
@@ -80,9 +80,9 @@ export function RentasDashboardPage({ orgSlug, properties, propertyId, setProper
         </CardContent>
       </Card>
 
-      <p className="text-[13px] text-muted-foreground m-0">
+      <p className="text-sm text-muted-foreground m-0">
         Elige una propiedad arriba (o desde el selector del panel lateral) para que Calendario, Precios, Aprobaciones, Finanzas y Mis tareas operen sobre ella. El calendario de reservas y bloqueos está disponible en "Calendario", y el cotizador con la configuración de pricing en "Precios".
       </p>
-    </div>
+    </PageContainer>
   );
 }

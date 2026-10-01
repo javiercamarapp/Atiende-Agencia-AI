@@ -5,7 +5,7 @@
 // cruzan meses se prorratean por noche: ningún peso ni noche se cuenta dos veces.
 import { useEffect, useState } from "react";
 import { Download, RefreshCcw } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import { descargarReporte, ETIQUETA_AGRUPACION, fetchReporte, formatearMoneda, formatearOcupacion } from "../lib/reportes-client.ts";
 import type { AgrupacionReporte, ReporteOcupacionIngresos } from "../lib/reportes-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
@@ -76,7 +76,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   const encabezado = (
     <header>
       <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Reportes de ocupación e ingresos</h1>
-      <p className="m-0 text-[13px] text-muted-foreground">
+      <p className="m-0 text-sm text-muted-foreground">
         Por unidad, propietario, canal y mes. Una reserva que cruza meses se prorratea por noche, así que ninguna noche ni ningún peso se cuenta dos veces. Montos en la moneda de la propiedad,
         sin conversión.
       </p>
@@ -85,13 +85,13 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         {encabezado}
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso a los reportes financieros. Roles con acceso: <strong className="text-foreground">admin_gestora</strong>{" "}
           y <strong className="text-foreground">contador</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -99,29 +99,29 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   const mostrarDisponibles = agrupar !== "canal";
 
   return (
-    <div className="flex flex-col gap-5 max-w-[1040px]">
+    <PageContainer padding="none" size="lg" className="gap-5 [&>*]:min-w-0">
       {encabezado}
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-4">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
             Desde
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="h-9 w-auto" />
+          </Label>
+          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
             Hasta (exclusivo)
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground" />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="h-9 w-auto" />
+          </Label>
+          <Label className="flex flex-col gap-1 text-xs font-normal text-muted-foreground">
             Agrupar por
-            <select value={agrupar} onChange={(e) => setAgrupar(e.target.value as AgrupacionReporte)} className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground">
+            <NativeSelect size="sm" value={agrupar} onChange={(e) => setAgrupar(e.target.value as AgrupacionReporte)}>
               {AGRUPACIONES.map((a) => (
                 <option key={a} value={a}>
                   {ETIQUETA_AGRUPACION[a]}
                 </option>
               ))}
-            </select>
-          </label>
+            </NativeSelect>
+          </Label>
           <Button type="button" variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>
             <RefreshCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Actualizar
           </Button>
@@ -165,7 +165,7 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
             ].map(([titulo, valor]) => (
               <Card key={titulo}>
                 <CardContent className="pt-4">
-                  <div className="text-[11px] text-muted-foreground">{titulo}</div>
+                  <div className="text-xs text-muted-foreground">{titulo}</div>
                   <div className="text-base font-semibold text-foreground">{valor}</div>
                 </CardContent>
               </Card>
@@ -176,9 +176,9 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 Por {ETIQUETA_AGRUPACION[agrupar].toLowerCase()}
-                <Badge variant="outline" className="text-[10px]">
+                <StatusBadge tone="neutral" dot={false} className="text-2xs">
                   {reporte.desde} → {reporte.hasta}
-                </Badge>
+                </StatusBadge>
               </CardTitle>
             </CardHeader>
             <CardContent className={grupos.length > 0 ? "p-0" : undefined}>
@@ -223,6 +223,6 @@ export function ReportesPage({ apiBaseUrl, token, propertyId, orgSlug, session }
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
