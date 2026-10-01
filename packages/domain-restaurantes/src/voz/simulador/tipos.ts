@@ -72,6 +72,8 @@ export interface GuionLlamada {
   readonly toolLenta?: { readonly nombre: string; readonly ms: number };
   /** Datos del cliente que NUNCA deben aparecer en los logs. */
   readonly sensibles?: readonly string[];
+  /** Depende de provocar fallas en el proveedor (solo el falso puede): se omite en la corrida real contra Gemini. */
+  readonly soloFalso?: boolean;
   readonly turnos: readonly TurnoGuion[];
   readonly esperado: Esperado;
 }

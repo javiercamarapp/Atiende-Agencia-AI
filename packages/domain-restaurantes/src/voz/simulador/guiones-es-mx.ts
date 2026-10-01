@@ -222,6 +222,7 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
   },
   {
     id: "V11-proveedor-cae-y-reanuda",
+    soloFalso: true,
     titulo: "El proveedor se cae a media llamada y la sesion se reanuda; el pedido se completa",
     rasgos: ["reconexion", "reanudacion de sesion"],
     sensibles: SENSIBLES,
@@ -240,6 +241,7 @@ export const GUIONES_ES_MX: readonly GuionLlamada[] = [
   },
   {
     id: "V12-proveedor-cae-y-no-reabre",
+    soloFalso: true,
     titulo: "El proveedor se cae y no reabre: pregrabado, callback y sin pedido",
     rasgos: ["proveedor caido", "mensaje pregrabado", "callback"],
     fallasAlReabrir: 1,
