@@ -2,10 +2,12 @@
 // apps/web que si lo hacen: la campana de notificaciones (useNotifications) y el
 // boton "Chatea con tus datos". Cada vertical migrada monta este componente en
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
+import { useState } from "react";
 import { NotificationBell, VerticalShell } from "@atiende/ui";
-import type { VerticalShellProps } from "@atiende/ui";
+import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
-import { BotonChatDatos } from "./BotonChatDatos.tsx";
+import { BotonChatDatos, useChatDatosDisponible } from "./BotonChatDatos.tsx";
+import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 
 export type VerticalShellConectadoProps = Omit<VerticalShellProps, "notificationBell" | "mobileNotificationBell" | "chatButton" | "mobileChatButton"> & {
@@ -17,6 +19,14 @@ export type VerticalShellConectadoProps = Omit<VerticalShellProps, "notification
 
 export function VerticalShellConectado({ apiBaseUrl, token, chat, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
+  // Pildora "Pregunta a tus datos" del pie del Sidebar (gemela de la de Likida): abre el MISMO panel real que el
+  // boton de la barra y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
+  const chatDisponible = useChatDatosDisponible(chat);
+  const [chatAbierto, setChatAbierto] = useState(false);
+  const pie: SidebarPiePildora[] = [
+    ...(shell.sidebarPie ?? []),
+    ...(chat && chatDisponible ? [{ label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
+  ];
   const campana = (className?: string) => (
     <NotificationBell
       className={className}
@@ -31,12 +41,16 @@ export function VerticalShellConectado({ apiBaseUrl, token, chat, ...shell }: Ve
     />
   );
   return (
-    <VerticalShell
-      {...shell}
-      notificationBell={campana()}
-      mobileNotificationBell={campana("w-10 h-10")}
-      chatButton={<BotonChatDatos chat={chat} />}
-      mobileChatButton={<BotonChatDatos className="h-10 w-full justify-center" chat={chat} />}
-    />
+    <>
+      <VerticalShell
+        {...shell}
+        sidebarPie={pie}
+        notificationBell={campana()}
+        mobileNotificationBell={campana("w-10 h-10")}
+        chatButton={<BotonChatDatos chat={chat} />}
+        mobileChatButton={<BotonChatDatos className="h-10 w-full justify-center" chat={chat} />}
+      />
+      {chatAbierto && chat && <PanelChateaConTusDatos onClose={() => setChatAbierto(false)} chat={chat} />}
+    </>
   );
 }
