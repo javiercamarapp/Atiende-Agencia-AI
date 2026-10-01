@@ -115,12 +115,15 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarS
   ];
 }
 
-/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
+/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones.
+ * Las etiquetas son cortas a propósito (cada lugar mide 75 px a 375 px y el e2e `shells-categorias` mide que ninguna se recorte,
+ * tampoco con la tipografía de respaldo de Linux): "Concursos" es la barra de "Convocatorias" y "Radar" la de "Radar de
+ * renovaciones"; los nombres completos son los de la hoja "Más" y del Sidebar. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
-    { to: `${base}/convocatorias`, label: "Licitaciones", icon: Gavel },
+    { to: `${base}/convocatorias`, label: "Concursos", icon: Gavel },
     { to: `${base}/radar-renovaciones`, label: "Radar", icon: Radar },
     { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
   ];
