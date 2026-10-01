@@ -36,7 +36,9 @@
 --      enlaces vigentes por property.
 --   4. Defensa en profundidad del archivo en la propia base (la API ya valida antes): tamaño 1 B..2 MiB,
 --      combinación tipo/mime cerrada, firma de bytes (%PDF-, PNG, JPEG), y para XML se rechazan
---      `<!DOCTYPE` y `<!ENTITY` (sin DTD ni entidades). Nada se ejecuta ni se interpreta aquí.
+--      `<!DOCTYPE` y `<!ENTITY` en mayúsculas (filtro de bytes sensible a mayúsculas y pensado para UTF-8;
+--      NO cubre otras codificaciones ni es una defensa completa contra entidades externas: la defensa
+--      real es la validación de la API, UTF-8 estricto y rechazo de `<!`). Nada se ejecuta ni se interpreta aquí.
 --   5. Topes de abuso: 300 documentos en bandeja por property, 30 documentos/hora por enlace, 30
 --      mensajes/hora del cliente por property (SQLSTATE 54000). Subida idempotente por (property,
 --      SHA-256): reenviar el mismo archivo no duplica la fila (replay).
@@ -148,7 +150,9 @@ begin
   return v;
 end;
 $$;
-revoke all on function despachos.portal_cliente_enlace_resolver(text) from public;
+-- Seguridad: revoke explícito también a anon/authenticated, por si los default privileges del entorno
+-- otorgan EXECUTE a funciones nuevas; solo lo invocan las funciones definer de abajo (mismo owner).
+revoke all on function despachos.portal_cliente_enlace_resolver(text) from public, anon, authenticated;
 
 -- 1) CLIENTE: resumen del portal (obligaciones, cierres, documentos y mensajes de SU property).
 create or replace function despachos.portal_cliente_resumen(p_token_hash text)

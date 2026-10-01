@@ -3,7 +3,7 @@
 Prueba contra Postgres REAL de `packages/domain-despachos/migrations/016_despachos_portal_cliente.sql`
 (portal del cliente final del despacho: tablas `portal_cliente_enlace`/`_documento`/`_mensaje` 8 funciones públicas y 1 helper interno).
 
-- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 80 escenarios):
+- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 81 escenarios):
   acceso por token de solo sistema (positivo), aislamiento cross-cliente y cross-tenant, token
   expirado/revocado/inexistente/mal formado (mismo error: sin oráculo de estado), revocación efectiva,
   staff con sub real y anon rechazados en las funciones del cliente, subida de archivos (firma, tamaño, DTD/entidades,

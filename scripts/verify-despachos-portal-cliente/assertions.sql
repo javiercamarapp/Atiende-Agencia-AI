@@ -689,3 +689,9 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
 select despachos.portal_cliente_enlace_resolver(repeat('1', 64)) as should_fail;
 rollback;
+
+\echo '81. el helper interno de resolucion NO es ejecutable por anon'
+begin;
+set local role anon;
+select despachos.portal_cliente_enlace_resolver(repeat('1', 64)) as should_fail;
+rollback;
