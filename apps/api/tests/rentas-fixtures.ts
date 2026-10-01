@@ -51,6 +51,9 @@ export interface RentasTestContext {
    * datos (`seedOwner`/`seedUnidad`/`seedOwnerStatement`/`seedCredential`/etc.) después
    * de construido el contexto. */
   readonly rentasOwnerPortalRepo: InMemoryRentasOwnerPortalRepository;
+  /** Almacén de calendario en memoria compartido por los repos de rentas -- para que un test
+   * pueda mover una ocupación (p. ej. cancelarla) sin pasar por la API. */
+  readonly calendarStore: InMemoryRentasCalendarStore;
   /** Fase 5 -- referencia tipada al bookkeeping de sincronización de calendario
    * (feeds/versión/anti-eco), mismo criterio que `rentasRepo` arriba. */
   readonly rentasCalendarSyncRepo: InMemoryRentasCalendarSyncRepository;
