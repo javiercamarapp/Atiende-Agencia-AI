@@ -86,13 +86,13 @@ export function hotelesHuespedesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const repo = repoOf(c);
     const hoy = hoyFechaNegocio(resolverZonaHorariaNegocio(await hoteles.findPropertyTimezone(propertyId)));
     const estancias = await guarded(() => repo.listarEstancias(propertyId, guestId, STAYS_LIMIT));
-    const [contactos, consentimientos, identidad, restriccionArco, notas] = await Promise.all([
-      guarded(() => repo.listarContactos(propertyId, claveTelefono(guest.phone), CONTACTS_LIMIT)),
-      guarded(() => repo.listarConsentimientos(propertyId, guestId)),
-      guarded(() => repo.tieneIdentidadActiva(propertyId, guestId)),
-      guarded(() => repo.tieneRestriccionArco(guestId)),
-      guarded(() => repo.listarNotas(propertyId, guestId)),
-    ]);
+    // SECUENCIAL a proposito: la sesion del request es UNA sola transaccion y cada lectura abre su SAVEPOINT; en paralelo los
+    // SAVEPOINT/RELEASE/ROLLBACK TO se intercalan y un ROLLBACK TO destruye los savepoints de las demas (base sin migrar -> 500).
+    const contactos = await guarded(() => repo.listarContactos(propertyId, claveTelefono(guest.phone), CONTACTS_LIMIT));
+    const consentimientos = await guarded(() => repo.listarConsentimientos(propertyId, guestId));
+    const identidad = await guarded(() => repo.tieneIdentidadActiva(propertyId, guestId));
+    const restriccionArco = await guarded(() => repo.tieneRestriccionArco(guestId));
+    const notas = await guarded(() => repo.listarNotas(propertyId, guestId));
     const resumen = resumirEstancias(estancias, hoy);
 
     return c.json({
