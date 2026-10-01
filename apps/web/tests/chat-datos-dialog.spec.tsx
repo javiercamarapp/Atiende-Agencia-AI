@@ -169,3 +169,76 @@ describe("BotonChatDatos con chat conectado", () => {
     expect(dialogo().querySelector("input")).toBeNull();
   });
 });
+
+describe("modo sin IA: botones de noAi.options", () => {
+  const SIN_IA = {
+    reason: "provider_down" as const,
+    options: [
+      { tool: "ventas_por_dia", label: "Ventas por día", description: "Ventas y pedidos por día." },
+      { tool: "productos_top", label: "Productos más vendidos", description: "Ranking de productos." },
+    ],
+  };
+  const sinIa = (): ChatDatosConexion["enviar"] => async () => ({ status: "unavailable", text: "La asistencia con IA no está disponible en este momento.", blocks: [], sources: [], noAi: SIN_IA });
+  const OK_DIRECTO = { status: "ok", text: "Ventas del periodo: $2,480.50 MXN en 20 pedidos.", blocks: [], sources: [{ source: "Pedidos", periodLabel: "últimos 30 días", scopeLabel: "todas tus sucursales" }] };
+
+  it("ChatDatosDialog pinta un boton por opcion y llama onEjecutarOpcion con la opcion elegida", () => {
+    const onEjecutarOpcion = vi.fn();
+    const mensajes: ChatDatosMensaje[] = [{ id: "a1", role: "assistant", text: "IA no disponible", status: "unavailable", noAi: SIN_IA }];
+    rendered = renderComponent(<ChatDatosDialog open onOpenChange={() => {}} mensajes={mensajes} enviando={false} onEnviar={() => {}} onEjecutarOpcion={onEjecutarOpcion} />);
+    const botones = [...dialogo().querySelectorAll('[role="group"] button')];
+    expect(botones.map((b) => b.textContent)).toEqual(["Ventas por día", "Productos más vendidos"]);
+    expect((botones[0] as HTMLButtonElement).title).toBe("Ventas y pedidos por día.");
+    click(botones[1] as HTMLButtonElement);
+    expect(onEjecutarOpcion).toHaveBeenCalledWith(SIN_IA.options[1]);
+  });
+
+  it("sin onEjecutarOpcion (conexion sin consulta directa) NO se muestran botones sin accion; con 'enviando' quedan deshabilitados", () => {
+    const mensajes: ChatDatosMensaje[] = [{ id: "a1", role: "assistant", text: "IA no disponible", status: "unavailable", noAi: SIN_IA }];
+    rendered = renderComponent(<ChatDatosDialog open onOpenChange={() => {}} mensajes={mensajes} enviando={false} onEnviar={() => {}} />);
+    expect(dialogo().querySelector('[role="group"]')).toBeNull();
+    rendered.rerender(<ChatDatosDialog open onOpenChange={() => {}} mensajes={mensajes} enviando onEnviar={() => {}} onEjecutarOpcion={() => {}} />);
+    expect([...dialogo().querySelectorAll('[role="group"] button')].every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("flujo completo: la IA cae, aparecen los botones y al tocar uno se llama al endpoint real (ejecutarOpcion) y se pinta su respuesta con fuente", async () => {
+    const ejecutarOpcion = vi.fn(async (_tool: string) => OK_DIRECTO);
+    rendered = renderComponent(<BotonChatDatos chat={conexion({ enviar: sinIa(), ejecutarOpcion })} />);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    click(boton());
+    changeValue(dialogo().querySelector("input") as HTMLInputElement, "¿Ventas?");
+    await submitForm(dialogo().querySelector("form") as HTMLFormElement);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const opcion = [...dialogo().querySelectorAll('[role="group"] button')].find((b) => b.textContent === "Ventas por día") as HTMLButtonElement;
+    click(opcion);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(ejecutarOpcion).toHaveBeenCalledWith("ventas_por_dia");
+    expect(dialogo().textContent).toContain("Ventas del periodo: $2,480.50 MXN en 20 pedidos.");
+    expect(dialogo().textContent).toContain("Periodo: últimos 30 días");
+  });
+
+  it("si la consulta directa falla, el panel muestra el aviso honesto del servidor (no inventa datos)", async () => {
+    const ejecutarOpcion = vi.fn(async (_tool: string) => ({ status: "unavailable", text: "No pude consultar tus datos en este momento.", blocks: [], sources: [] }));
+    rendered = renderComponent(<BotonChatDatos chat={conexion({ enviar: sinIa(), ejecutarOpcion })} />);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    click(boton());
+    changeValue(dialogo().querySelector("input") as HTMLInputElement, "¿Ventas?");
+    await submitForm(dialogo().querySelector("form") as HTMLFormElement);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    click([...dialogo().querySelectorAll('[role="group"] button')][0] as HTMLButtonElement);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(dialogo().textContent).toContain("No pude consultar tus datos en este momento.");
+    expect(dialogo().textContent).toContain("No disponible por ahora");
+  });
+});

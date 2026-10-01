@@ -81,6 +81,8 @@ export {
   type ChatDatosColumna,
   type ChatDatosFuente,
   type ChatDatosCell,
+  type ChatDatosSinIa,
+  type ChatDatosOpcionSinIa,
 } from "./components/ChatDatosDialog.js";
 export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 
