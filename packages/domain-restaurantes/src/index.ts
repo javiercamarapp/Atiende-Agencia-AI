@@ -135,6 +135,8 @@ export type { PreparedOrder, QuotePolicyInfo, QuotePromotionInfo } from "./order
 export {
   notifyCustomerOnOrderStatusChangeCore,
   tryNotifyCustomerOnOrderStatusChange,
+  PLANTILLAS_ESTADO_PEDIDO,
+  plantillaParaEstado,
   notifyStaffNewOrderCore,
   tryNotifyStaffNewOrder,
   notifyStaffOrderProblemCore,
