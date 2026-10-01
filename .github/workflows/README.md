@@ -150,6 +150,10 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-superadmin-cfo/` (dashboard ejecutivo CFO: lectura con
      caller-binding, entradas de alerta y foto mensual de solo-sistema, formula
      de ingreso sin inventar precios; ver `docs/SUPERADMIN_CFO.md`).
+   - `scripts/verify-superadmin-contratos/` (contrato por cliente: versiones
+     inmutables, vigencias traslapadas rechazadas en la base, enmiendas, rol
+     `finanzas` de solo lectura y sin acceso directo; ver
+     `docs/SUPERADMIN_CONTRATOS.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
