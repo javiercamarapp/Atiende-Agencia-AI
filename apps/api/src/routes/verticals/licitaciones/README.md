@@ -138,3 +138,10 @@ go/no-go), `GET junta`, `PUT junta/config`, `POST junta/questions` (409 si ya ex
 con `available: false` y las escrituras 503. `AppDeps.licitacionesSalaGuerraRepo` es opcional (lo
 cablea `production/deps.ts`); sin él las rutas responden 503 y el cron omite la junta.
 El cron `/internal/licitaciones/deadline-reminders` vigila también el límite de envío de preguntas.
+
+## L-05 — WhatsApp (`whatsapp.ts`)
+
+- `GET|POST /v1/licitaciones/whatsapp/webhook`: público, firmado (`X-Hub-Signature-256` sobre los bytes crudos, verificador compartido `@atiende/domain-citas::verifyMetaSignature`), tope de 256 KB y límite de ritmo. Solo atiende mensajes del número remitente `LICITACIONES_WHATSAPP_PHONE_NUMBER_ID`; sin él (o sin repositorio) acusa recibo sin procesar. `SI`/`BAJA` (opt-in/opt-out) y botones `lic-wa:<token>` (decisión go/no-go).
+- `GET|PUT /licitaciones/:propertyId/whatsapp/settings` y `POST .../whatsapp/opt-out`: el contacto del propio usuario.
+- `POST /licitaciones/:propertyId/tenders/:tenderId/whatsapp/request-decision` (`GO_NO_GO_ROLES`): emite tokens y encola el mensaje con botones Go / No-Go.
+- Base sin la migración 030: lecturas `available: false`, escrituras 503, webhook 200 sin procesar; nunca 500. El envío real sale por `POST /internal/whatsapp/dispatch` (ahora también drena `licitaciones`) y de forma inmediata best-effort tras encolar; nada de esto corre contra Graph API en tests ni en CI.
