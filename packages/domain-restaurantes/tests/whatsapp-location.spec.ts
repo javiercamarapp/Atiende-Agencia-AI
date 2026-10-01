@@ -47,6 +47,21 @@ describe("extractMetaInboundMessages", () => {
     }
   });
 
+  it("coordenadas numericas fuera de rango (lat=123) dan la nota de ubicacion invalida y no repiten las coordenadas ni mandan a buscar_sucursal_cercana", () => {
+    const out = extractMetaInboundMessages(
+      payload([
+        { id: "f", from: FROM, type: "location", location: { latitude: 123, longitude: -89.5 } },
+        { id: "g", from: FROM, type: "location", location: { latitude: 21, longitude: 400.25 } },
+      ]),
+    );
+    expect(out).toHaveLength(2);
+    for (const m of out) {
+      expect(m.body).toMatch(/no trae coordenadas utilizables/);
+      expect(m.body).not.toMatch(/buscar_sucursal_cercana/);
+      expect(m.body).not.toMatch(/123|400|89\.5|21/);
+    }
+  });
+
   it("exige id y remitente validos tambien para ubicaciones", () => {
     const out = extractMetaInboundMessages(
       payload([

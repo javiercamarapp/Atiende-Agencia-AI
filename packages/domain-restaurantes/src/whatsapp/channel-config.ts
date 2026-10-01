@@ -58,15 +58,14 @@ export type MetaInboundMessage = { readonly id: string; readonly from: string; r
 
 const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
 
-function unsupportedBody(type: string, message: { location?: { latitude?: unknown; longitude?: unknown } }): string {
+function unsupportedBody(type: string): string {
   if (type === "audio" || type === "voice") {
     return "[El cliente envió una nota de voz que este asistente no puede escuchar. Pídale amablemente que escriba su mensaje por texto.]";
   }
   if (type === "location") {
-    const lat = message.location?.latitude;
-    const lng = message.location?.longitude;
-    const coords = typeof lat === "number" && typeof lng === "number" ? ` (${lat}, ${lng})` : "";
-    return `[El cliente compartió su ubicación${coords}. ${coords ? "Úsela con buscar_sucursal_cercana (lat y lng) para asignar la sucursal." : "No trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto."}]`;
+    // Una ubicacion con coordenadas validas ya se convirtio en marcador (ver extractMetaInboundMessages); aqui solo
+    // llegan las invalidas (ausentes, no numericas o fuera de rango): nunca se repiten ni se mandan a buscar_sucursal_cercana.
+    return "[El cliente compartió su ubicación pero no trae coordenadas utilizables: pídale su colonia o una referencia cercana por texto.]";
   }
   return `[El cliente envió un archivo (${type}) que este asistente no puede abrir. Pídale amablemente que escriba su mensaje por texto.]`;
 }
@@ -100,7 +99,7 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           const { latitude, longitude } = message.location ?? {};
           result.push({ id: message.id, from: message.from, body: formatLocationMessage({ latitude: latitude as number, longitude: longitude as number }) });
         } else if (typeof message.type === "string" && UNSUPPORTED_KINDS.has(message.type)) {
-          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type, message) });
+          result.push({ id: message.id, from: message.from, body: unsupportedBody(message.type) });
         }
       }
     }
