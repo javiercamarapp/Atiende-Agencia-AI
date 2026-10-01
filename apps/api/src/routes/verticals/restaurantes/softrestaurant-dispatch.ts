@@ -6,8 +6,8 @@
 // Fail-closed: sin un adaptador REAL (`deps.softRestaurantPort.esReal`) responde 503 y NO
 // reclama nada (asi no se gastan intentos contra un POS inexistente). Cada comanda se
 // procesa en su PROPIA transaccion (`abrirUnidad`): un envio fallido nunca revierte a los
-// demas. Programarlo (vercel.json::crons o un scheduler externo) es un paso de despliegue
-// aparte, ver README de packages/domain-restaurantes/src/softrestaurant.
+// demas. Cron en vercel.json (cada 5 minutos, ver docs/CRONS.md); sin adaptador real
+// responde 503 en cada corrida (fail-closed, no reclama nada).
 import { Hono } from "hono";
 import { crearAlertaCapturaManual, crearResolverSucursalPos, drenarComandas, RESOLVER_SIN_CODIGOS } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";

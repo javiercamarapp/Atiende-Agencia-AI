@@ -87,3 +87,50 @@ describe('LlmGateway + CircuitBreaker integrados', () => {
     expect(r2.attempts[0]?.error).toContain('OPEN');
   });
 });
+
+describe('UpstashRestClient + RedisCircuitBreakerStore (breaker compartido entre instancias)', () => {
+  it('abre el breaker tras N fallas consecutivas hablando comandos crudos de Upstash; dos "instancias" comparten el estado', async () => {
+    const { UpstashRestClient } = await import('../../src/gateway/upstash-rest-client.js');
+    const { RedisCircuitBreakerStore, CircuitBreaker } = await import('../../src/gateway/circuit-breaker.js');
+    // Redis falso en memoria que entiende solo los comandos que usa el breaker.
+    const kv = new Map<string, string>();
+    const sent: unknown[][] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const cmd = JSON.parse(init.body as string) as (string | number)[];
+      sent.push(cmd);
+      const [op, key] = cmd as [string, string];
+      let result: unknown = null;
+      if (op === 'GET') result = kv.get(key) ?? null;
+      else if (op === 'SET') kv.set(key, String(cmd[2]));
+      else if (op === 'TTL') result = kv.has(key) ? 30 : -2;
+      else if (op === 'DEL') result = kv.delete(key) ? 1 : 0;
+      else if (op === 'EVAL') {
+        const k = String(cmd[3]);
+        const v = Number(kv.get(k) ?? 0) + 1;
+        kv.set(k, String(v));
+        result = v;
+      }
+      return { ok: true, status: 200, json: async () => ({ result }) } as Response;
+    }) as unknown as typeof fetch;
+    const client = new UpstashRestClient({ url: 'http://localhost:0', token: 'x', fetchImpl });
+    const a = new CircuitBreaker(new RedisCircuitBreakerStore(client), { failureThreshold: 2 });
+    const b = new CircuitBreaker(new RedisCircuitBreakerStore(client), { failureThreshold: 2 });
+
+    await a.reportFailure('openrouter:m', 'x');
+    await b.reportFailure('openrouter:m', 'x'); // otra instancia suma al MISMO contador
+    await expect(a.checkCircuit('openrouter:m')).rejects.toThrow(/OPEN/);
+    await expect(b.checkCircuit('openrouter:m')).rejects.toThrow(/OPEN/);
+    expect(sent.some((c) => c[0] === 'EVAL')).toBe(true);
+  });
+
+  it('si Upstash falla, el breaker es fail-open (nunca tumba la llamada al modelo)', async () => {
+    const { UpstashRestClient } = await import('../../src/gateway/upstash-rest-client.js');
+    const { RedisCircuitBreakerStore, CircuitBreaker } = await import('../../src/gateway/circuit-breaker.js');
+    const fetchImpl = (async () => {
+      throw new Error('red caida');
+    }) as unknown as typeof fetch;
+    const breaker = new CircuitBreaker(new RedisCircuitBreakerStore(new UpstashRestClient({ url: 'http://localhost:0', token: 'x', fetchImpl })));
+    await expect(breaker.checkCircuit('p')).resolves.toBeUndefined();
+    await expect(breaker.reportFailure('p', 'x')).resolves.toBeUndefined();
+  });
+});

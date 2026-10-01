@@ -32,6 +32,9 @@ import { rentasCalendarioRoutes } from "./calendario.ts";
 import { rentasLimpiezaRoutes } from "./limpieza.ts";
 import { rentasCheckoutSweepCronRoutes } from "./checkout-sweep-cron.ts";
 import { rentasAdminDataChatRoutes } from "./admin-data-chat.ts";
+import { rentasFinanzasReglasComisionRoutes } from "./finanzas-reglas-comision.ts";
+import { rentasAdminCatalogoRoutes } from "./admin-catalogo.ts";
+import { rentasAdminStaffRoutes } from "./admin-staff.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -73,6 +76,9 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasBloqueosRoutes(deps));
   app.route("/", rentasCotizacionesRoutes(deps));
   app.route("/", rentasFinanzasRoutes(deps));
+  // Rn-18 -- reglas de comisión de canal configurables (GET/POST/PATCH). Montadas ANTES de statements/payouts: comparten
+  // el prefijo `/rentas/:propertyId/finanzas/...` pero son rutas literales distintas.
+  app.route("/", rentasFinanzasReglasComisionRoutes(deps));
   app.route("/", rentasPricingConfigRoutes(deps));
   app.route("/", rentasFinanzasStatementsRoutes(deps));
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
@@ -104,6 +110,10 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasAdminDiscoveryRoutes(deps));
   // r5 — bitácora de auditoría del staff (GET .../admin/auditoria, solo admin_gestora).
   app.route("/", rentasAuditoriaRoutes(deps));
+  // Rn-19 -- alta y edición de propiedades, unidades y propietarios (admin_gestora).
+  app.route("/", rentasAdminCatalogoRoutes(deps));
+  // Rn-20 -- gestión del staff de rentas (invitar, cambiar rol, baja) con bitácora de membership.
+  app.route("/", rentasAdminStaffRoutes(deps));
   // Fase 13 — calendario visual del panel de staff: listado de unidades + listado
   // unificado de ocupaciones (reserva + bloqueo) por unidad.
   app.route("/", rentasCalendarioRoutes(deps));

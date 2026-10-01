@@ -94,9 +94,19 @@ export interface DataChatSource {
   readonly scopeLabel: string;
 }
 
+/** MODO SIN IA: cuando el asistente no puede usar el modelo (proveedor caido, tope de gasto agotado o
+ *  interruptor de plataforma apagado) la respuesta lo dice con claridad y devuelve el catalogo de
+ *  consultas deterministas disponibles, para que la UI las ofrezca como botones. Nunca incluye cifras. */
+export interface DataChatNoAi {
+  readonly reason: "provider_down" | "budget" | "kill_switch";
+  readonly options: readonly { readonly tool: string; readonly label: string; readonly description: string }[];
+}
+
 export interface DataChatAnswer {
   readonly status: DataChatStatus;
   readonly text: string;
+  /** Presente solo cuando la respuesta se dio sin IA (ver `DataChatNoAi`). */
+  readonly noAi?: DataChatNoAi;
   readonly blocks: readonly DataChatBlock[];
   /** Siempre de dónde salen las cifras y su periodo; vacío solo si no se consultó nada. */
   readonly sources: readonly DataChatSource[];

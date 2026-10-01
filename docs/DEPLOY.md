@@ -205,7 +205,7 @@ base vieja: la pantalla Tickets avisa que aún no está activa, las lecturas res
 escrituras 503 y el cron `/internal/hoteles/tickets-sla` omite las properties (`migracion_pendiente`).
 Orden: (1) despliega el código; (2) aplica la 034 (`supabase db push`; requiere 013 y 033 ya aplicadas);
 (3) verifica `GET /internal/hoteles/tickets-sla` con el secreto interno (debe reportar `omitida:null`);
-(4) cuando se decida, programa ese cron en `vercel.json` (p. ej. cada 15 minutos) — este PR NO lo programa.
+(4) el cron ya está en `vercel.json` (cada 10 minutos, ver `docs/CRONS.md`).
 Con la 034 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas
 nuevas. No hay variables de entorno nuevas.
 
@@ -216,8 +216,7 @@ lecturas responden `disponible:false`, las escrituras 503, el cron `/internal/ho
 omite las properties (`migracion_pendiente`), el turno de WhatsApp corre como siempre (la compuerta devuelve
 "activo" sin la 035) y el barrido de revenue no omite ninguna property. Orden: (1) despliega el código; (2) aplica
 la 035 (`supabase db push`; requiere 001 y 030 ya aplicadas); (3) verifica `GET /internal/hoteles/aprobaciones-expiracion`
-con el secreto interno (debe reportar `omitida:null`); (4) cuando se decida, programa ese cron en `vercel.json`
-(p. ej. cada hora) — este PR NO lo programa. Con la 035 aplicada y el código viejo en producción no se rompe nada:
+con el secreto interno (debe reportar `omitida:null`); (4) el cron ya está en `vercel.json` (cada hora, ver `docs/CRONS.md`). Con la 035 aplicada y el código viejo en producción no se rompe nada:
 ningún código viejo usa las tablas nuevas. No hay variables de entorno nuevas. Hoy el agente de WhatsApp no
 propone acciones sensibles por sí mismo (sus 3 herramientas no mueven dinero ni tarifas): la cola de aprobaciones
 recibe propuestas de personas y está lista para las del agente (`PostgresAgentesRepository.proposeAction`).
@@ -229,7 +228,7 @@ real. El código nuevo funciona contra la base vieja: las lecturas de `/hoteles/
 properties (`migracion_pendiente`). Orden: (1) despliega el código; (2) aplica la 036 (`supabase db push`; requiere 001,
 003, 005, 030 y 035 ya aplicadas); (3) verifica `GET /internal/hoteles/grupos-liberacion` con el secreto interno (debe
 reportar `omitida:null`). La liberación por cutoff es una función segura (`hoteles.group_release_due`, solo sesión de
-sistema) y una ruta interna invocable a mano: este PR NO la programa en `vercel.json` (decisión de producto). Con la 036
+sistema) y una ruta interna invocable a mano: ya está programada en `vercel.json` (diaria, 09:30 UTC; ver `docs/CRONS.md`). Con la 036
 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas nuevas. No hay variables de
 entorno nuevas. Los anticipos solo se REGISTRAN: no hay cobro ni pasarela.
 
@@ -377,7 +376,7 @@ Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local
 que pegarlas a mano o con `vercel env add`.
 
 **Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
-`vercel.json::crons` (21 crons diarios a la fecha, uno por cada dispatcher/reminder
+`vercel.json::crons` (29 crons; ver la tabla y las reglas en [`docs/CRONS.md`](./CRONS.md); antes eran 21 diarios, uno por cada dispatcher/reminder
 interno de cada vertical — citas, hoteles, restaurantes, despachos, rentas,
 licitaciones, más el dispatcher de WhatsApp de plataforma; corre
 `python3 -c "import json;print(len(json.load(open('vercel.json'))['crons']))"` para
@@ -386,8 +385,8 @@ confirmar el conteo vigente en cualquier momento) dispara un GET real a cada
 sin esa variable configurada, el cron sigue disparándose pero la ruta responde 401
 (fail-closed, nunca despacha nada sin autenticarse).
 
-**ADVERTENCIA sin verificar desde este repo — revisar en el dashboard antes de
-confiar en que estos 21 crons realmente corran:** la documentación pública de
+**ADVERTENCIA: estos 29 crons requieren Vercel Pro (Hobby: 2 crons diarios; el deploy falla con crons más frecuentes). Sin verificar desde este repo — revisar en el dashboard antes de
+confiar en que estos 29 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
 (máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un
 horario fijo diario) sino también el **número total de cron jobs por proyecto**
@@ -416,7 +415,7 @@ por sí solo.
 
 ## Rentas — sync iCal cada 15 minutos (Rn-01): propuesta de cron, DECISIÓN DE JAVIER
 
-**Estado real hoy:** `/internal/rentas/ical-sync` corre **una vez al día**
+**Estado histórico (ya cambiado; hoy corre `*/15 * * * *`, ver `docs/CRONS.md`):** `/internal/rentas/ical-sync` corría **una vez al día**
 (`vercel.json`: `45 14 * * *`). Entre dos corridas una reserva tomada en Airbnb/Booking/
 Vrbo no se refleja aquí hasta 24 h, y viceversa: esa ventana es el riesgo real de
 overbooking. **Este PR NO cambia `vercel.json` ni ninguna cadencia** (cambiarla es una
@@ -574,8 +573,7 @@ responde `financiero_disponible: false` con noches y ocupación (montos en cero)
    instrucciones. La política nace **apagada**: nada se libera hasta activarla.
 4. Agendar (o disparar a mano) el cron — ver abajo.
 
-**El cron NO está en `vercel.json`** (decisión tuya, igual que Rn-01): este PR no agrega
-ningún cron ni cambia ninguna cadencia. Endpoint listo: `GET|POST /internal/rentas/acceso-huesped`
+**El cron ya está en `vercel.json`** (cada hora, minuto 10; ver `docs/CRONS.md`). Endpoint listo: `GET|POST /internal/rentas/acceso-huesped`
 (mismo guard que `checkin-recordatorio`: `Authorization: Bearer $CRON_SECRET` o
 `x-atiende-internal-secret`). Una transacción por reserva, idempotente (`dedupe_key`
 `acceso:<reserva>` en el outbox + marca de liberación), tope de 50 reservas por corrida.
