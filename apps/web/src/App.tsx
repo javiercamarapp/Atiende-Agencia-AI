@@ -91,6 +91,8 @@ import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pag
 import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
 import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
+import { CatalogoPage as RentasCatalogoPage } from "./verticals/rentas/pages/Catalogo.tsx";
+import { EquipoPage as RentasEquipoPage } from "./verticals/rentas/pages/Equipo.tsx";
 import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
 import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
 import { OwnerPortalDashboardPage } from "./verticals/rentas/pages/OwnerPortalDashboard.tsx";
@@ -669,6 +671,9 @@ const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) 
  * RentasIcalSyncRoute; AuditoriaPage gatea su propio contenido por
  * AUDITORIA_LECTURA_ROLES (admin_gestora), igual que FinanzasPage/PreciosPage. */
 const RentasAuditoriaRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAuditoriaPage {...ctx} />);
+/** Rn-19 -- catálogo (propiedades, unidades, propietarios) y Rn-20 -- equipo (invitar, rol, baja). */
+const RentasCatalogoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCatalogoPage {...ctx} />);
+const RentasEquipoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasEquipoPage {...ctx} />);
 
 /** Portal de propietario (Fase 3 backend, UI de esta fase) — 3 rutas PÚBLICAS, fuera
  * de RentasShell a propósito: es una identidad completamente distinta de staff (su
@@ -977,6 +982,8 @@ export function App() {
         <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
         <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
+        <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
+        <Route path="/rentas/:orgSlug/equipo" element={<RentasEquipoRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
             segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
             declaración, así que "portal-propietario" nunca se confunde con un orgSlug

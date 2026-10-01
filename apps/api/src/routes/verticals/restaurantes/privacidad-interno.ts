@@ -2,9 +2,9 @@
 // el scheduler). Autenticacion: secreto interno (`INTERNAL_SECRET`) comparado en tiempo constante.
 //
 //   GET|POST /internal/restaurantes/privacidad-retencion
-//        purga por retencion de conversaciones de WhatsApp y transcripciones de voz (cron). NO esta
-//        registrado en vercel.json: programarlo es una decision de despliegue y solo tiene efecto
-//        despues de aplicar la migracion 030 (sin ella responde `disponible:false` y no toca nada).
+//        purga por retencion de conversaciones de WhatsApp y transcripciones de voz (cron diario en
+//        vercel.json, envuelto en `withHeartbeat`). Solo tiene efecto despues de aplicar la migracion 030
+//        (sin ella responde `disponible:false` y no toca nada).
 //   POST /internal/restaurantes/voz/privacidad/apertura
 //        guion de apertura de la llamada (asistente virtual + aviso simplificado + pregunta de
 //        grabacion) y registro de la evidencia de entrega del aviso por telefono-hash.
@@ -32,6 +32,7 @@ import {
 } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, internalOrCronSecretMatches, secretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { UUID_RE } from "./voz-admin.ts";
 
@@ -64,26 +65,28 @@ export function restaurantesPrivacidadInternoRoutes(deps: AppDeps): Hono {
 
   app.on(["GET", "POST"], "/internal/restaurantes/privacidad-retencion", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
-    let disponible = true;
-    let conversaciones = 0;
-    let turnosVoz = 0;
-    let llamadasAnonimizadas = 0;
-    let lotes = 0;
-    // Una transaccion POR lote: un lote con datos raros no revierte los ya purgados.
-    for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
-      const outcome = await deps.engine.withAppSession({ userId: null }, (db) => repoDe(db).purgeExpiredPrivacyData(PURGE_BATCH));
-      lotes += 1;
-      if (!outcome.disponible) {
-        disponible = false;
-        break;
+    return withHeartbeat(deps, "/internal/restaurantes/privacidad-retencion", async () => {
+      let disponible = true;
+      let conversaciones = 0;
+      let turnosVoz = 0;
+      let llamadasAnonimizadas = 0;
+      let lotes = 0;
+      // Una transaccion POR lote: un lote con datos raros no revierte los ya purgados.
+      for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
+        const outcome = await deps.engine.withAppSession({ userId: null }, (db) => repoDe(db).purgeExpiredPrivacyData(PURGE_BATCH));
+        lotes += 1;
+        if (!outcome.disponible) {
+          disponible = false;
+          break;
+        }
+        conversaciones += outcome.conversationsCleared;
+        turnosVoz += outcome.voiceTurnsDeleted;
+        llamadasAnonimizadas += outcome.voiceCallsAnonymized;
+        // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido.
+        if (outcome.conversationsCleared < PURGE_BATCH && outcome.voiceCallsAnonymized < PURGE_BATCH) break;
       }
-      conversaciones += outcome.conversationsCleared;
-      turnosVoz += outcome.voiceTurnsDeleted;
-      llamadasAnonimizadas += outcome.voiceCallsAnonymized;
-      // El lote se acota por tabla: si ninguna lleno su tope, ya no queda nada vencido.
-      if (outcome.conversationsCleared < PURGE_BATCH && outcome.voiceCallsAnonymized < PURGE_BATCH) break;
-    }
-    return c.json({ ok: true, disponible, lotes, conversacionesVaciadas: conversaciones, turnosDeVozBorrados: turnosVoz, llamadasAnonimizadas });
+      return c.json({ ok: true, disponible, lotes, conversacionesVaciadas: conversaciones, turnosDeVozBorrados: turnosVoz, llamadasAnonimizadas });
+    })();
   });
 
   app.post("/internal/restaurantes/voz/privacidad/apertura", async (c) => {

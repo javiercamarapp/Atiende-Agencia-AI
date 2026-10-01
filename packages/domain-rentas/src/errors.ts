@@ -22,7 +22,9 @@ export type RentasErrorCode =
   | "bloqueo_mantenimiento_sin_rango"
   // ---- onboarding self-serve (Fase 11, ver ./onboarding/captura.ts) ----
   | "onboarding_datos_invalidos"
-  | "onboarding_organizacion_duplicada";
+  | "onboarding_organizacion_duplicada"
+  // ---- finanzas (Rn-18, ver ./finanzas/regla-comision-por-defecto.ts) ----
+  | "regla_comision_no_configurada";
 
 export class RentasDomainError extends Error {
   readonly code: RentasErrorCode;
@@ -31,5 +33,25 @@ export class RentasDomainError extends Error {
     super(message);
     this.name = "RentasDomainError";
     this.code = code;
+  }
+}
+
+/**
+ * Rn-18 -- el canal de la reserva no tiene ninguna regla de comision (ni de la property ni
+ * global del tenant) y no existe un default seguro para ese canal. Es un error de NEGOCIO con
+ * accion clara (configurar la regla en Finanzas), no una excepcion generica: la ruta lo traduce
+ * a 409 `comision_canal_sin_regla`.
+ */
+export class ReglaComisionCanalNoConfiguradaError extends RentasDomainError {
+  readonly canalCodigo: string | null;
+
+  constructor(canalCodigo: string | null) {
+    super(
+      "regla_comision_no_configurada",
+      `No hay rentas.regla_comision_canal configurada para el canal "${canalCodigo ?? "desconocido"}" (ni específica de la property ni global del tenant). ` +
+        "Configura la comisión de ese canal en Finanzas > Comisiones de canal, o carga los valores sugeridos.",
+    );
+    this.name = "ReglaComisionCanalNoConfiguradaError";
+    this.canalCodigo = canalCodigo;
   }
 }

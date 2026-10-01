@@ -200,23 +200,17 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
 
   // ---- Proveedores LLM ----
   {
-    id: "llm-anthropic",
-    nombre: "Proveedor LLM — Anthropic",
-    habilita: "Entra a la escalera de LlmGateway (turn handlers de WhatsApp de citas/hoteles/restaurantes + extracción de requisitos de licitaciones) solo si API key Y modelo están AMBOS configurados.",
-    variables: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
+    id: "llm-openrouter",
+    nombre: "Proveedor LLM — OpenRouter (primario y único por defecto)",
+    habilita:
+      "Entra a la escalera de LlmGateway (data-chat de las 6 verticales, turn handlers de WhatsApp, extractores, borradores y conciliación) con SOLO la llave: los modelos por rol salen de apps/api/src/production/llm-models.ts y LLM_MODELS_JSON (opcional, aparte) los sobreescribe sin redeploy de código. Ver docs/LLM-GATEWAY.md. Sin llave (y sin el proveedor legado de OpenAI), el Copiloto/data-chat responde en modo sin IA y los turn handlers quedan notProductionReady.",
+    variables: ["OPENROUTER_API_KEY"],
   },
   {
     id: "llm-openai",
-    nombre: "Proveedor LLM — OpenAI",
-    habilita: "Mismo criterio que \"llm-anthropic\": entra a la escalera solo con API key Y modelo configurados.",
+    nombre: "Proveedor LLM — OpenAI directo (LEGADO)",
+    habilita: "Solo se usa si NO hay OPENROUTER_API_KEY: entra a la escalera con API key Y modelo configurados. El proveedor directo de Anthropic se retiró; los modelos Anthropic pasan por OpenRouter.",
     variables: ["OPENAI_API_KEY", "OPENAI_MODEL"],
-  },
-  {
-    id: "llm-openrouter",
-    nombre: "Proveedor LLM — OpenRouter",
-    habilita:
-      "Mismo criterio que los otros 2 proveedores LLM. OPENROUTER_COUNTRY_OF_RESIDENCE (variable aparte, no cuenta aquí) alimentaría un gate de residencia de datos que existe en packages/agent-core/src/gateway/residency.ts pero que HOY ningún caller real de este repo activa — configurarla o no es indistinto para el comportamiento actual.",
-    variables: ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"],
   },
 
   // ---- Redis distribuido (Upstash) ----
@@ -312,6 +306,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // escribe en cada sobre para la rotacion futura, nunca bloquea nada.
   "HOTELES_IDENTITY_KEY_VERSION",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
+  // Gateway LLM: modelos por rol (JSON) y ZDR global; opcionales, ver docs/LLM-GATEWAY.md.
+  "LLM_MODELS_JSON",
+  "OPENROUTER_ZDR",
   // Overrides de test/desarrollo únicamente (apuntan a un servidor OAuth falso
   // local en tests/support/fakeGoogleOAuth.ts) — con default a las URLs reales
   // de Google si se dejan vacías, ver apps/api/src/env.ts.

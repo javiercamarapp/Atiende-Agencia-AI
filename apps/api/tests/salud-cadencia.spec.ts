@@ -40,18 +40,21 @@ describe("minutosEsperadosDeCron", () => {
 });
 
 describe("cadenciaMinutosPorRuta / rutasDeCronDeclaradas", () => {
-  it("cubre los 22 crons reales de vercel.json, todos con cadencia diaria determinable", () => {
+  it("cubre los 29 crons reales de vercel.json, todos con cadencia determinable (> 0)", () => {
     const rutas = rutasDeCronDeclaradas();
-    expect(rutas.length).toBe(22);
+    expect(rutas.length).toBe(29);
 
     const mapa = cadenciaMinutosPorRuta();
     for (const ruta of rutas) {
-      expect(mapa[ruta]).toBe(24 * 60);
+      expect(mapa[ruta], ruta).toBeGreaterThan(0);
     }
   });
 
   it("incluye el cron de whatsapp/dispatch (el hueco documentado que dio origen a esta pantalla)", () => {
     const mapa = cadenciaMinutosPorRuta();
-    expect(mapa["/internal/whatsapp/dispatch"]).toBe(24 * 60);
+    expect(mapa["/internal/whatsapp/dispatch"]).toBe(5);
+    expect(mapa["/internal/citas/confirmacion-cita"]).toBe(30);
+    expect(mapa["/internal/rentas/ical-sync"]).toBe(15);
+    expect(mapa["/internal/hoteles/night-audit"]).toBe(24 * 60);
   });
 });

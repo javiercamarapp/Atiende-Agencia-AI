@@ -60,10 +60,20 @@ export interface LlmCompletionRequest {
   /** Fuerza que el modelo llame a ESTA herramienta (`tool_choice` de OpenAI/
    *  OpenRouter: `{type:'function', function:{name}}`). Solo tiene efecto si `tools`
    *  incluye una con ese nombre; omitirlo deja la elección al modelo (comportamiento
-   *  anterior). Los proveedores sin tool-calling (Anthropic adaptado aquí) lo ignoran. */
+   *  anterior). Todos los proveedores vigentes (OpenRouter, OpenAI) lo soportan. */
   toolChoice?: { name: string };
   maxOutputTokens?: number;
+  /** Se envia solo si el modelo concreto la acepta: varios modelos 2026 (GPT-6, Claude 5.x,
+   *  Gemini Flash-Lite) la rechazan o no la soportan, y con `require_parameters` un parametro no
+   *  soportado deja la ruta sin endpoints (ver OpenRouterProvider / docs/LLM-GATEWAY.md). */
   temperature?: number;
+  /** Salida estructurada (`response_format: json_schema` estricto) cuando el modelo la soporta.
+   *  El llamador valida igualmente el JSON contra su propio esquema. */
+  responseFormat?: { name: string; schema: Record<string, unknown> };
+  /** Streaming: si se pasa, el proveedor pide `stream: true` y llama aqui con cada trozo de texto.
+   *  El resultado final (herramientas, tokens, costo) llega igual en la promesa. Un fallo A MEDIO
+   *  STREAM no se reintenta ni cae al siguiente modelo (ya se emitio texto): sube como error. */
+  onTextDelta?: (delta: string) => void;
   signal?: AbortSignal;
 }
 
@@ -79,12 +89,20 @@ export interface LlmCompletionResult {
   model: string;
   tokensIn: number;
   tokensOut: number;
+  /** Tokens de entrada servidos desde la cache de prompt (incluidos en `tokensIn`). */
+  tokensCached?: number;
+  /** Tokens de razonamiento (incluidos en `tokensOut`). */
+  tokensReasoning?: number;
   costUsd: number;
+  /** De donde sale `costUsd`: 'provider' = costo real que reporta el proveedor (OpenRouter
+   *  usage accounting); 'table' = tabla de precios de respaldo; 'conservative' = modelo sin
+   *  precio ni costo reportado, se uso un tope conservador. */
+  costSource?: 'provider' | 'table' | 'conservative';
 }
 
 /**
- * Un proveedor plegable: cualquier backend de modelo (OpenRouter, Anthropic
- * directo, OpenAI directo, o uno nuevo mañana) implementa esta interfaz para
+ * Un proveedor plegable: cualquier backend de modelo (OpenRouter, OpenAI
+ * directo, o uno nuevo mañana) implementa esta interfaz para
  * entrar a la escalera de fallback del gateway. "Plegable" = se agrega o se
  * quita de la configuración sin tocar el motor del gateway.
  *
@@ -95,6 +113,9 @@ export interface LlmCompletionResult {
  */
 export interface LlmProvider {
   readonly id: string;
+  /** Modelo concreto al que apunta este escalon (si aplica): el estimador de costo lo usa para
+   *  reservar con el precio real del modelo en vez de un tope generico. */
+  readonly model?: string;
   /** ISO 3166-1 alpha-2, p.ej. 'US', 'DE', 'FR'. */
   readonly countryOfResidence: string;
   complete(req: LlmCompletionRequest): Promise<LlmCompletionResult>;
