@@ -30,13 +30,13 @@ export interface PageHeaderProps {
 }
 
 /**
- * Cabecera de pagina de DS v2 (4.5/4.7): migas opcionales, enlace "atras",
- * titulo (`<h1>`), descripcion, metadatos y acciones. Pensada para ser el unico
- * `<h1>` de la pantalla; `DashboardHeader` pasa a ser solo barra superior.
+ * Cabecera de pagina identica a `HeroSaludo` de Likida: `<h1>` de 20 px, descripcion
+ * `text-ui` y acciones a la derecha (debajo en movil), con migas y enlace "atras" opcionales.
+ * Es el unico `<h1>` de la pantalla; `BarraPagina` pinta el nombre de la pagina en un `<p>`.
  */
 export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, className }: PageHeaderProps) {
   return (
-    <header className={cn("grid gap-3", className)}>
+    <header className={cn("grid gap-2.5", className)}>
       {migas && migas.length > 0 && (
         <nav aria-label="Migas de pan">
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -71,13 +71,13 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
         </Link>
       )}
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-6">
-        <div className="min-w-0 grid gap-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">{titulo}</h1>
-          {descripcion !== undefined && <p className="max-w-prose text-sm text-muted-foreground">{descripcion}</p>}
+      <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between md:gap-3 min-w-0">
+        <div className="min-w-0">
+          <h1 className="font-display text-xl font-semibold truncate text-foreground">{titulo}</h1>
+          {descripcion !== undefined && <p className="text-ui text-muted-foreground mt-1 truncate">{descripcion}</p>}
           {meta !== undefined && <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
         </div>
-        {acciones !== undefined && <div className="flex shrink-0 flex-wrap items-center gap-2">{acciones}</div>}
+        {acciones !== undefined && <div className="flex shrink-0 flex-wrap items-center gap-2.5 md:pt-1">{acciones}</div>}
       </div>
     </header>
   );

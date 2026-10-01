@@ -53,6 +53,7 @@ export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from
 export {
   VerticalShell,
   VerticalShellEstado,
+  useTituloBarra,
   VerticalNoEncontrado,
   RutaBoundary,
   construirMigas,
@@ -62,7 +63,7 @@ export {
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
-export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
 export {
   ChatDatosDialog,
   formatChatCell,
