@@ -33,6 +33,7 @@ import { hotelesAgentesRoutes } from "./agentes.ts";
 import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts";
 import { hotelesGruposRoutes } from "./grupos.ts";
 import { hotelesGruposLiberacionCronRoutes } from "./grupos-liberacion-cron.ts";
+import { hotelesReservasAgenteRoutes } from "./reservas-agente.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -105,5 +106,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // sin cron programado).
   app.route("/", hotelesGruposRoutes(deps));
   app.route("/", hotelesGruposLiberacionCronRoutes(deps));
+  // H-25 (P0) -- agente de reservas (WhatsApp y voz): lado staff (holds, aprobacion, link de pago registrado, politica), migracion 037.
+  app.route("/", hotelesReservasAgenteRoutes(deps));
   return app;
 }
