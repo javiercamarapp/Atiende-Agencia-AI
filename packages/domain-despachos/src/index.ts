@@ -486,7 +486,7 @@ export type {
   NivelAtencion,
   SeveridadAnomalia,
 } from "./dashboard/kpis.ts";
-export { construirDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
 export type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
@@ -495,3 +495,5 @@ export type { EntradaReporte } from "./reportes/builders.ts";
 export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
 export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } from "./dashboard/lectura.ts";
 export type { ClienteDashboardRef } from "./dashboard/lectura.ts";
+export { construirDiotLayout, generarDiotTxt, generarDiotXml, redondearPesos, esRfcValidoDiot, DiotLayoutError, COLUMNAS_DIOT, LAYOUT_DIOT_VERSION } from "./declaraciones/diot-layout.ts";
+export type { DiotLayout, RenglonDiotLayout, DiotOmitido, DiotTipoTercero } from "./declaraciones/diot-layout.ts";
