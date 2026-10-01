@@ -10,7 +10,7 @@ import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from 
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
-import { applyPromotionToOrderTotal, normalizePromotionCode } from "./promotions.ts";
+import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
@@ -280,7 +280,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     // público, usado en muchos otros call-sites — ver el comentario de
     // cabecera de la migración 022.
     const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
-    const applied = applyPromotionToOrderTotal(total, promotion, new Date(), zonaHoraria);
+    const applied = applyPromotionToOrder({ promotion, orderTotal: total, items: orderItems, canal: normalizarCanal(payload.canal), now: new Date(), zonaHoraria });
     total = applied.total;
     discount = applied.discount;
     appliedPromotion = promotion;

@@ -9,10 +9,13 @@
 // `crearReservaConfirmada`/`modificarFechasReserva`/`cancelarOcupacion` de
 // `../aplicacion/reservas.ts` (ver ./motor.ts).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
+import type { EventoBitacora, OpcionesReclamo, ResultadoReclamo, TipoEventoBitacora, SeveridadBitacora } from "./lease.ts";
+import type { AlertaSyncRecord, ConflictoMonitorRecord, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface FeedRow {
@@ -297,6 +300,253 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
         entradas.map((e) => e.sequence),
       ],
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Rn-01: claim/lease por feed, backoff y bitácora (migrations/024). Cada método corre
+  // protegido por SAVEPOINT (runWithSavepointFallback): contra una base sin la migración
+  // el 42883/42P01/42703 NUNCA deja abortada la transacción compartida (si no, el COMMIT
+  // de `withAppSession` lanzaría AbortedTransactionCommitError).
+  // -------------------------------------------------------------------------
+  async reclamarFeeds(opciones: OpcionesReclamo): Promise<ResultadoReclamo> {
+    return runWithSavepointFallback<ResultadoReclamo>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_claim",
+      primary: async () => {
+        const reclamo = await this.db.query<{ feed_id: string; lease_token: string }>(`SELECT feed_id, lease_token FROM rentas.claim_ical_feeds($1, $2, $3)`, [opciones.limite, opciones.leaseSegundos, opciones.intervaloMinimoSegundos]);
+        if (reclamo.rows.length === 0) return { disponible: true, feeds: [] };
+        const tokens = new Map(reclamo.rows.map((r) => [r.feed_id, r.lease_token]));
+        const filas = await this.db.query<FeedRow>(`${SELECT_FEED} WHERE cfe.id = ANY($1::uuid[]) ORDER BY cfe.ultimo_intento_en NULLS FIRST, cfe.id`, [[...tokens.keys()]]);
+        return { disponible: true, feeds: filas.rows.map((f) => ({ feed: filaAFeedRecord(f), leaseToken: tokens.get(f.id)! })) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.claim_ical_feeds"),
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async liberarFeed(feedId: string, leaseToken: string, exito: boolean): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_liberar",
+      primary: async () => {
+        const fila = await this.db.query<{ liberado: boolean }>(`SELECT rentas.liberar_ical_feed($1, $2, $3) AS liberado`, [feedId, leaseToken, exito]);
+        return fila.rows[0]?.liberado === true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.liberar_ical_feed"),
+      fallback: async () => false,
+    });
+  }
+
+  async registrarEventoBitacora(feedId: string, evento: EventoBitacora): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_bitacora",
+      primary: async () => {
+        await this.db.query(`SELECT rentas.registrar_ical_sync_evento($1, $2, $3, $4, $5, $6)`, [feedId, evento.tipo, evento.severidad, evento.detalle, evento.eventosAplicados, evento.conflictos]);
+        return true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "rentas.registrar_ical_sync_evento"),
+      fallback: async () => false,
+    });
+  }
+
+  async reiniciarBackoffFeed(feedId: string): Promise<void> {
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_reinicio_backoff",
+      primary: async () => {
+        await this.db.query(`UPDATE rentas.canal_feed_externo SET proximo_intento_en = NULL WHERE id = $1`, [feedId]);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => undefined,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Rn-01/Rn-02: monitor (lecturas con la sesión RLS del staff por request).
+  // -------------------------------------------------------------------------
+  async listarFeedsMonitor(propertyId: string): Promise<FeedMonitorRecord[]> {
+    interface MonitorRow {
+      id: string;
+      unidad_id: string;
+      unidad_nombre: string | null;
+      canal_codigo: string;
+      activo: boolean;
+      ultima_sincronizacion_exitosa_en: string | null;
+      en_cuarentena_desde: string | null;
+      intentos_fallidos_consecutivos: number;
+      motivo_cuarentena: string | null;
+      ultimo_intento_en: string | null;
+      proximo_intento_en: string | null;
+      lease_hasta: string | null;
+    }
+    const base = `SELECT cfe.id, cfe.unidad_id, u.name AS unidad_nombre, c.codigo AS canal_codigo, cfe.activo,
+            cfe.ultima_sincronizacion_exitosa_en::text AS ultima_sincronizacion_exitosa_en, cfe.en_cuarentena_desde::text AS en_cuarentena_desde,
+            cfe.intentos_fallidos_consecutivos, cfe.motivo_cuarentena`;
+    const desde = `FROM rentas.canal_feed_externo cfe JOIN rentas.canal c ON c.id = cfe.canal_id JOIN rentas.unidad u ON u.id = cfe.unidad_id
+       WHERE cfe.property_id = $1 ORDER BY u.name, c.codigo`;
+    const filas = await runWithSavepointFallback<MonitorRow[]>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_monitor_feeds",
+      primary: async () =>
+        (await this.db.query<MonitorRow>(`${base}, cfe.ultimo_intento_en::text AS ultimo_intento_en, cfe.proximo_intento_en::text AS proximo_intento_en, cfe.lease_hasta::text AS lease_hasta ${desde}`, [propertyId])).rows,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () =>
+        (await this.db.query<MonitorRow>(`${base}, NULL::text AS ultimo_intento_en, NULL::text AS proximo_intento_en, NULL::text AS lease_hasta ${desde}`, [propertyId])).rows,
+    });
+    return filas.map((f) => ({
+      id: f.id,
+      unidadId: f.unidad_id,
+      unidadNombre: f.unidad_nombre,
+      canalCodigo: f.canal_codigo,
+      activo: f.activo,
+      ultimaSincronizacionExitosaEn: f.ultima_sincronizacion_exitosa_en,
+      enCuarentenaDesde: f.en_cuarentena_desde,
+      intentosFallidosConsecutivos: f.intentos_fallidos_consecutivos,
+      motivoCuarentena: f.motivo_cuarentena,
+      ultimoIntentoEn: f.ultimo_intento_en,
+      proximoIntentoEn: f.proximo_intento_en,
+      leaseHasta: f.lease_hasta,
+    }));
+  }
+
+  async listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos> {
+    interface ConflictoRow {
+      id: string;
+      unidad_id: string;
+      unidad_nombre: string | null;
+      tipo: "capa_cruzada" | "overbooking_confirmado";
+      detectado_en: string;
+      resuelto_en: string | null;
+      resuelto_por: string | null;
+      a_id: string;
+      a_inicio: string;
+      a_fin: string;
+      a_estado: string;
+      a_capa: string;
+      a_canal: string | null;
+      b_id: string | null;
+      b_inicio: string | null;
+      b_fin: string | null;
+      b_estado: string | null;
+      b_capa: string | null;
+      b_canal: string | null;
+    }
+    // Tablas de 001 (existen en cualquier base): sin fallback de migración.
+    const filas = await this.db.query<ConflictoRow>(
+      `SELECT k.id, k.unidad_id, u.name AS unidad_nombre, k.tipo, k.detectado_en::text AS detectado_en, k.resuelto_en::text AS resuelto_en, k.resuelto_por,
+              a.id AS a_id, lower(a.rango)::text AS a_inicio, upper(a.rango)::text AS a_fin, a.estado AS a_estado, a.capa AS a_capa, ca.codigo AS a_canal,
+              b.id AS b_id, lower(b.rango)::text AS b_inicio, upper(b.rango)::text AS b_fin, b.estado AS b_estado, b.capa AS b_capa, cb.codigo AS b_canal
+       FROM rentas.conflicto_calendario k
+       JOIN rentas.unidad u ON u.id = k.unidad_id
+       JOIN rentas.ocupacion a ON a.id = k.ocupacion_a_id
+       LEFT JOIN rentas.canal ca ON ca.id = a.canal_origen_id
+       LEFT JOIN rentas.ocupacion b ON b.id = k.ocupacion_b_id
+       LEFT JOIN rentas.canal cb ON cb.id = b.canal_origen_id
+       WHERE k.property_id = $1 AND ($2::boolean = false OR k.resuelto_en IS NULL)
+       ORDER BY (k.resuelto_en IS NOT NULL), k.detectado_en DESC, k.id
+       LIMIT $3`,
+      [propertyId, opciones.soloAbiertos, opciones.limite],
+    );
+    const total = await this.db.query<{ total: string }>(`SELECT count(*)::text AS total FROM rentas.conflicto_calendario WHERE property_id = $1 AND resuelto_en IS NULL`, [propertyId]);
+    const conflictos: ConflictoMonitorRecord[] = filas.rows.map((f) => ({
+      id: f.id,
+      unidadId: f.unidad_id,
+      unidadNombre: f.unidad_nombre,
+      tipo: f.tipo,
+      detectadoEn: f.detectado_en,
+      resueltoEn: f.resuelto_en,
+      resueltoPor: f.resuelto_por,
+      ocupacionA: { id: f.a_id, inicio: f.a_inicio, fin: f.a_fin, estado: f.a_estado, capa: f.a_capa, canalCodigo: f.a_canal },
+      ocupacionB: f.b_id && f.b_inicio && f.b_fin && f.b_estado && f.b_capa ? { id: f.b_id, inicio: f.b_inicio, fin: f.b_fin, estado: f.b_estado, capa: f.b_capa, canalCodigo: f.b_canal } : null,
+    }));
+    return { conflictos, totalAbiertos: Number(total.rows[0]?.total ?? 0) };
+  }
+
+  async resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
+    return runWithSavepointFallback<ResultadoMarcarResuelto>({
+      session: this.db,
+      savepointName: "sp_rentas_conflicto_resolver",
+      primary: async () => {
+        const fila = await this.db.query<{ id: string }>(
+          `UPDATE rentas.conflicto_calendario SET resuelto_en = now(), resuelto_por = $3
+           WHERE id = $2 AND property_id = $1 AND resuelto_en IS NULL RETURNING id`,
+          [propertyId, conflictoId, actorUserId],
+        );
+        return fila.rows.length > 0 ? "resuelto" : "no_encontrado";
+      },
+      // Antes de la 024, `authenticated` no tiene UPDATE sobre conflicto_calendario
+      // (SQLSTATE 42501 "permission denied"): una denegación de RLS NUNCA lanza (da 0
+      // filas), así que 42501 aquí solo significa "migración pendiente".
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42501",
+      fallback: async () => "no_disponible",
+    });
+  }
+
+  async listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora> {
+    interface BitacoraRow {
+      id: string;
+      unidad_id: string;
+      unidad_nombre: string | null;
+      canal_codigo: string;
+      tipo: TipoEventoBitacora;
+      severidad: SeveridadBitacora;
+      detalle: string;
+      eventos_aplicados: number;
+      conflictos: number;
+      creado_en: string;
+      atendida_en: string | null;
+    }
+    return runWithSavepointFallback<ListadoBitacora>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_bitacora_leer",
+      primary: async () => {
+        const filas = await this.db.query<BitacoraRow>(
+          `SELECT b.id, b.unidad_id, u.name AS unidad_nombre, c.codigo AS canal_codigo, b.tipo, b.severidad, b.detalle, b.eventos_aplicados, b.conflictos,
+                  b.creado_en::text AS creado_en, b.atendida_en::text AS atendida_en
+           FROM rentas.ical_sync_bitacora b
+           JOIN rentas.unidad u ON u.id = b.unidad_id
+           JOIN rentas.canal c ON c.id = b.canal_id
+           WHERE b.property_id = $1 AND ($2::boolean = false OR (b.atendida_en IS NULL AND b.severidad IN ('aviso', 'critica')))
+           ORDER BY b.creado_en DESC, b.id
+           LIMIT $3`,
+          [propertyId, opciones.soloAlertasAbiertas, opciones.limite],
+        );
+        const alertas: AlertaSyncRecord[] = filas.rows.map((f) => ({
+          id: f.id,
+          unidadId: f.unidad_id,
+          unidadNombre: f.unidad_nombre,
+          canalCodigo: f.canal_codigo,
+          tipo: f.tipo,
+          severidad: f.severidad,
+          detalle: f.detalle,
+          eventosAplicados: f.eventos_aplicados,
+          conflictos: f.conflictos,
+          creadoEn: f.creado_en,
+          atendidaEn: f.atendida_en,
+        }));
+        return { disponible: true, alertas };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, alertas: [] }),
+    });
+  }
+
+  async atenderAlerta(propertyId: string, alertaId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
+    return runWithSavepointFallback<ResultadoMarcarResuelto>({
+      session: this.db,
+      savepointName: "sp_rentas_ical_alerta_atender",
+      primary: async () => {
+        const fila = await this.db.query<{ id: string }>(
+          `UPDATE rentas.ical_sync_bitacora SET atendida_en = now(), atendida_por = $3
+           WHERE id = $2 AND property_id = $1 AND atendida_en IS NULL RETURNING id`,
+          [propertyId, alertaId, actorUserId],
+        );
+        return fila.rows.length > 0 ? "resuelto" : "no_encontrado";
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => "no_disponible",
+    });
   }
 }
 

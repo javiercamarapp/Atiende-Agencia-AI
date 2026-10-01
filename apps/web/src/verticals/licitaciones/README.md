@@ -382,3 +382,14 @@ pieza es una vista TRANSVERSAL en el nav lateral (mismo nivel que
   contempla 2+ organizaciones (`/seleccionar-organizacion`), pero esa ruta no
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo
   hueco preexistente que citas/restaurantes, no nuevo de esta fase.
+
+## L-03 — páginas del flujo (Panel, Fuentes, Seguimiento, Aprobaciones, Firmantes)
+
+Solo web, sobre rutas de API que ya existían (sin SQL ni endpoints nuevos):
+`/panel` (landing; cada cifra sale de una lectura real y una falla se muestra
+como "No disponible", nunca como 0), `/fuentes` (registro + frescura + corridas,
+solo lectura), `/seguimiento` (recordatorios de plazo y cambios de convocatoria,
+con "Reconocer"), `/aprobaciones` (datos de empresa pendientes: aprobar/rechazar)
+y `/firmantes` (redirige a la pestaña Firmantes de Datos de la empresa,
+`?tab=firmantes`). Fuera de alcance, pendientes: sala de guerra y preguntas de
+junta de aclaraciones (L-04), analítica de puntaje (L-11).

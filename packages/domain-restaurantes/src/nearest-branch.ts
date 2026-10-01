@@ -48,14 +48,21 @@ export function normalizeZoneText(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+/** Distancia Haversine real en km SIN redondear -- se usa para ORDENAR sucursales: ordenar por
+ * la distancia ya redondeada a 0.1 km inventaria empates falsos entre dos sucursales casi
+ * equidistantes (ver branch-assignment.ts). */
+export function haversineKmExact(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const cosArg = Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2) - toRad(lng1)) + Math.sin(toRad(lat1)) * Math.sin(toRad(lat2));
+  const clamped = Math.min(1, Math.max(-1, cosArg));
+  return 6371 * Math.acos(clamped);
+}
+
 /** Distancia Haversine real en km entre dos puntos lat/lng — mismo cálculo
  * que la función SQL del origen (radio de la Tierra 6371 km), redondeado a
  * un decimal igual que `round(..., 1)` en el SQL. */
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const cosArg = Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2) - toRad(lng1)) + Math.sin(toRad(lat1)) * Math.sin(toRad(lat2));
-  const clamped = Math.min(1, Math.max(-1, cosArg));
-  return Math.round(6371 * Math.acos(clamped) * 10) / 10;
+  return Math.round(haversineKmExact(lat1, lng1, lat2, lng2) * 10) / 10;
 }
 
 /**

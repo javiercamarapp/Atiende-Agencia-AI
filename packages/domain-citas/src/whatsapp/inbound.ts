@@ -27,23 +27,16 @@
 // existir, pero no evita las 2 llamadas al LLM ni una respuesta duplicada si el
 // traslape no aplica (p.ej. el cliente solo está platicando, o cancelando).
 import { ConversationStateMachine, DEFAULT_BOOKING_TRANSITIONS, InMemoryLockStore, InMemoryStateStore, RedisLockStore, withConversationLock, type BookingState, type LockStore } from "@atiende/core-conversation";
+import { runArcoFastPath } from "../arco-intent.ts";
 import { runCrisisGuardrail } from "../crisis-guardrail.ts";
 import { lookupCitasCustomer } from "../customers.ts";
 import { actorHash } from "../rate-limit.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
-// Hallazgo real de la auditoría adversarial del origen de restaurantes (3-sep-2026,
-// igual de aplicable aquí): un cliente puede compartir por accidente datos
-// sensibles (número de tarjeta, y en citas — potencialmente datos médicos en
-// `notes`) que se guardarían tal cual en texto plano si no se redactan antes de
-// persistir cualquier mensaje real.
-export function redactSensitiveInfo(text: string): string {
-  return text
-    .replace(/\b(?:\d[ -]?){13,19}\b/g, "[tarjeta oculta]")
-    .replace(/\b(?:cvv|cvc|c\.?v\.?v\.?)\s*:?\s*\d{3,4}\b/gi, "[cvv oculto]")
-    .replace(/\b\d{1,2}\/\d{2,4}\b/g, "[vencimiento oculto]");
-}
+import { redactSensitiveInfo } from "../redaction.ts";
+
+export { redactSensitiveInfo };
 
 export interface InboundMessageOutcome {
   readonly ok: boolean;
@@ -157,9 +150,18 @@ export async function handleInboundWhatsAppMessage(
           // quedó registrada, sin importar qué haría el turn handler con ese mismo
           // mensaje.
           const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
+          // C-02 -- fast-path ARCO (acceso/rectificación/cancelación/oposición):
+          // MISMA posición y filosofía que el guardrail de crisis (determinista, antes
+          // del LLM), pero DESPUÉS de él -- una crisis siempre tiene prioridad. Solo
+          // actúa sobre el teléfono que escribe (`phone` viene del webhook de Meta,
+          // nunca del texto). Sin la migración 024 aplicada devuelve `null` y el
+          // mensaje sigue al agente como antes (ver arco-intent.ts).
+          const arco = crisisCheck.triggered ? null : await runArcoFastPath(repo, organizationId, phone, body);
           const turn = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
-            : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
+            : arco
+              ? { reply: arco.reply, appointmentId: null, propertyId: null }
+              : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
 
           const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
           await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
