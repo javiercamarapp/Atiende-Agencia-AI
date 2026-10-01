@@ -16,6 +16,7 @@ let ctx: DespachosTestContext;
 let repo: InMemoryPortalClienteRepository;
 let deps: AppDeps;
 let propertyB: string;
+let appCache: ReturnType<typeof buildApp>;
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const PDF = enc("%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF");
@@ -35,6 +36,7 @@ beforeEach(async () => {
     obligaciones: [{ tipo: "IVA", periodo: "2026-07", fechaLimite: "2026-08-17", estado: "completado", fechaPresentacion: "2026-08-10" }],
   });
   deps = { ...ctx.deps, portalClienteRepo: () => repo };
+  appCache = buildApp(deps); // una sola vez por prueba: armar la app completa en cada peticion es lo caro
 });
 
 async function nuevoToken(propertyId = ctx.propertyId, dias = 30): Promise<string> {
@@ -43,7 +45,7 @@ async function nuevoToken(propertyId = ctx.propertyId, dias = 30): Promise<strin
   return token;
 }
 
-const app = () => buildApp(deps);
+const app = () => appCache;
 const conToken = (token: string | undefined, init: RequestInit = {}): RequestInit => ({ ...init, headers: { ...(token ? { "x-portal-token": token } : {}), ...(init.headers as Record<string, string> | undefined) } });
 
 function subir(token: string | undefined, bytes: Uint8Array | string, contentType: string, nombre = "archivo.xml", extra: Record<string, string> = {}) {
