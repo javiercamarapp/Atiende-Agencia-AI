@@ -90,6 +90,9 @@ export interface StoredConflicto {
   ocupacionBId: string | null;
   tipo: "capa_cruzada" | "overbooking_confirmado";
   detectadoEn: string;
+  /** Espejo de `rentas.conflicto_calendario.resuelto_en/resuelto_por` (Rn-01). */
+  resueltoEn: string | null;
+  resueltoPor: string | null;
 }
 
 interface StoredGuestMinimo {
@@ -465,6 +468,8 @@ export class InMemoryRentasCalendarStore {
       ocupacionBId: input.ocupacionBId,
       tipo: input.tipo,
       detectadoEn: new Date().toISOString(),
+      resueltoEn: null,
+      resueltoPor: null,
     });
     return { id };
   }

@@ -67,6 +67,7 @@ import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/p
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
+import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
 import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
 import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
@@ -519,6 +520,11 @@ const RentasMisTareasRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <
  * ruta hija que RentasCalendarioRoute/RentasPreciosRoute/.../RentasMisTareasRoute. */
 const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasIcalSyncPage {...ctx} />);
 
+/** Monitor de sincronización y conflictos de calendario (Rn-01/Rn-02): estado de cada
+ * feed iCal, alertas del sync y conflictos entre canales por resolver. Mismo patrón de
+ * ruta hija que RentasIcalSyncRoute. */
+const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
+
 /** Bitácora de auditoría del staff (r5) — cierra el hueco detectado al diseñar el
  * panel de superadmin: rentas no tenía ninguna pantalla que mostrara qué hizo cada
  * miembro del staff. Mismo patrón de ruta hija que RentasCalendarioRoute/.../
@@ -774,6 +780,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
+        <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
             segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
