@@ -50,7 +50,7 @@
 // `routes/verticals/{restaurantes,hoteles,citas}/whatsapp.ts`), nunca comparte
 // una sesión entre requests.
 import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
-import { PostgresAgentesRepository, PostgresHotelesRepository } from "@atiende/domain-hoteles";
+import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasAgenteRepository } from "@atiende/domain-hoteles";
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -168,6 +168,7 @@ function buildRealHotelesTurnHandler(engine: TenancyEngine, gateway: NonNullable
         buildGovernedHotelesTurnHandler({
           hoteles: new PostgresHotelesRepository(db),
           agentes: new PostgresAgentesRepository(db),
+          reservas: new PostgresReservasAgenteRepository(db),
           gateway,
           defaultRole: HOTELES_WHATSAPP_AGENT_ROLE,
           escalatedRole: HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
