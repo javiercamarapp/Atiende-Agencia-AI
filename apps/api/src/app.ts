@@ -32,6 +32,7 @@ import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
 import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
 import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
 import { superadminPlanesRoutes } from "./routes/superadmin-planes.ts";
+import { superadminZonaCfoRoutes } from "./routes/superadmin-zona-cfo.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -113,6 +114,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminCfoRoutes(deps));
   app.route("/", superadminPylRoutes(deps));
   app.route("/", superadminPlanesRoutes(deps));
+  app.route("/", superadminZonaCfoRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));

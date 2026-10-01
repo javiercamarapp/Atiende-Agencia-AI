@@ -25,6 +25,7 @@ import {
 } from "@atiende/core-authz";
 import { Errors } from "../errors.ts";
 import { stepUpMiddleware } from "../superadmin-seguridad/step-up.ts";
+import { zonaCfoMiddleware } from "../superadmin-seguridad/zona-cfo.ts";
 import type { AppDeps } from "../deps.ts";
 
 // Rate-limiter por-proceso, compartido por TODA la superficie `/superadmin/*`
@@ -235,6 +236,10 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // declaradas ahi exigen un token de step-up reciente CUANDO el superadmin ya
   // tiene un factor activo (o SUPERADMIN_MFA_REQUIRED=1). Montado aqui, una sola
   // vez, por el mismo motivo que el resto de middlewares de `/superadmin/*`.
+  // Zona CFO segura (superadmin-seguridad/zona-cfo.ts): corte por rol `finanzas` (solo lectura), step-up y
+  // bitacora de cada consulta financiera. Va ANTES del step-up comun para que una consulta rechazada por
+  // falta de step-up tambien quede registrada.
+  app.use("/superadmin/*", zonaCfoMiddleware(deps));
   app.use("/superadmin/*", stepUpMiddleware(deps));
 
   app.get("/superadmin/organizations", async (c) => {

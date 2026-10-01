@@ -5,7 +5,7 @@
 // `BotonChatDatos` (no aplica a un panel de plataforma, no de negocio).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, CalendarDays, Coins, DollarSign, ExternalLink, KeyRound, LayoutGrid, LineChart, ListChecks, Newspaper, Plug, Power, Receipt, ReceiptText, ShieldAlert, ShieldOff, Tags, TrendingUp } from "lucide-react";
+import { Activity, AlertOctagon, Building2, CalendarDays, Coins, DollarSign, ExternalLink, KeyRound, LayoutGrid, LineChart, ListChecks, Newspaper, Plug, Power, Receipt, ReceiptText, ShieldAlert, ShieldCheck, ShieldOff, Tags, TrendingUp } from "lucide-react";
 import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
@@ -37,6 +37,7 @@ const SECTIONS = [
       { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
       { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
       { to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign },
+      { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
       { to: "/superadmin/cfo", label: "Dashboard CFO", icon: LineChart },
       { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
       { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
