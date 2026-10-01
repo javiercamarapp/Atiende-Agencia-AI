@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import {
   IdentityAccessDeniedError,
+  IdentityBlockedError,
   IdentityConflictError,
   IdentityDoubleControlError,
   IdentityInvalidInputError,
@@ -14,12 +15,14 @@ import {
   IdentityUnavailableError,
 } from "./errors.ts";
 import type { IdentityRepository } from "./repository.ts";
+import { addDaysYmd } from "./service.ts";
 import type {
   IdentityAccessAction,
   IdentityAccessLogRecord,
   IdentityListResult,
   IdentityPurgeRequestRecord,
   IdentityPurgeStatus,
+  IdentityRetentionSweepResult,
   IdentityStatus,
   IdentityVaultRecord,
   MigratoryRegistrationRecord,
@@ -42,6 +45,29 @@ export class InMemoryIdentityRepository implements IdentityRepository {
   private tick = 0;
   /** Simula una base sin la migracion 031 (lecturas vacias, escrituras 503). */
   unavailable = false;
+  // Estado del bloqueo (migracion 032). El tiempo del adaptador en memoria es de NEGOCIO (YYYY-MM-DD).
+  private windowDays = 7;
+  private businessDate = "2026-01-01";
+  private readonly heldVaults = new Set<string>();
+  private readonly blockedAccess = new Map<string, { vaultId: string; requester: string }>();
+
+  /** Para tests: ventana de bloqueo de la property (3-30). */
+  setBlockWindowDays(days: number): void {
+    this.windowDays = days;
+  }
+  /** Para tests: fecha de negocio con la que se sellan los bloqueos hechos fuera del barrido (aprobar una purga). */
+  setBusinessDate(ymd: string): void {
+    this.businessDate = ymd;
+  }
+  /** Para tests: simula una retencion legal activa sobre la identidad (la purga no la toca). */
+  setLegalHold(vaultId: string, active: boolean): void {
+    if (active) this.heldVaults.add(vaultId);
+    else this.heldVaults.delete(vaultId);
+  }
+  /** Para tests: simula una aprobacion vigente de acceso excepcional (doble control resuelto). */
+  grantBlockedAccess(requestId: string, vaultId: string, requesterUserId: string): void {
+    this.blockedAccess.set(requestId, { vaultId, requester: requesterUserId });
+  }
 
   seedGuest(propertyId: string, guestId: string): void {
     this.guests.set(guestId, propertyId);
@@ -86,6 +112,7 @@ export class InMemoryIdentityRepository implements IdentityRepository {
       id: input.id, propertyId: input.propertyId, guestId: input.guestId, reservationId: input.reservationId, documentType: input.documentType,
       nationality: input.nationality, documentLast4: input.documentLast4, keyVersion: input.keyVersion, status: "activo",
       retentionUntil: input.retentionUntil, verifiedAt: null, verifiedBy: null, capturedBy: input.actorUserId, createdAt: this.now(), purgedAt: null,
+      blockedAt: null, blockedUntil: null, blockWindowDays: null, blockReason: null, blockedBy: null,
       payloadEnc: input.payloadEnc,
     };
     this.vault.set(entry.id, entry);
@@ -113,6 +140,7 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     this.assertAvailable("verify");
     const e = this.vault.get(vaultId);
     if (!e) throw new IdentityAccessDeniedError("verify");
+    if (e.status === "bloqueada") throw new IdentityBlockedError();
     if (e.status !== "activo") throw new IdentityPurgedError();
     this.vault.set(vaultId, { ...e, verifiedAt: this.now(), verifiedBy: actorUserId });
     this.record(e.propertyId, vaultId, actorUserId, "verificacion", null);
@@ -124,6 +152,7 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     if (!e) throw new IdentityAccessDeniedError("reveal");
     const r = reason.trim();
     if (r.length < 10 || r.length > 300) throw new IdentityInvalidInputError("el motivo debe tener entre 10 y 300 caracteres");
+    if (e.status === "bloqueada") throw new IdentityBlockedError();
     if (e.status !== "activo" || !e.payloadEnc) throw new IdentityPurgedError();
     this.record(e.propertyId, vaultId, actorUserId, "revelacion", r);
     return { envelope: e.payloadEnc, keyVersion: e.keyVersion };
@@ -141,6 +170,7 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     if (!e) throw new IdentityAccessDeniedError("purge-request");
     const r = reason.trim();
     if (r.length < 10 || r.length > 300) throw new IdentityInvalidInputError("el motivo debe tener entre 10 y 300 caracteres");
+    if (e.status === "bloqueada") throw new IdentityBlockedError("La identidad ya esta bloqueada y se purgara al vencer su ventana.");
     if (e.status !== "activo") throw new IdentityPurgedError();
     if ([...this.purges.values()].some((p) => p.vaultId === vaultId && p.status === "pendiente")) {
       throw new IdentityConflictError("Ya existe una solicitud de purga pendiente para esta identidad.");
@@ -166,7 +196,14 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     return p && p.propertyId === propertyId ? p : null;
   }
 
-  async decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada"> {
+  private blockEntry(e: VaultEntry, reason: NonNullable<IdentityVaultRecord["blockReason"]>, today: string, actorUserId: string | null, note: string | null): void {
+    this.vault.set(e.id, {
+      ...e, status: "bloqueada", blockedAt: this.now(), blockedUntil: addDaysYmd(today, this.windowDays), blockWindowDays: this.windowDays, blockReason: reason, blockedBy: actorUserId,
+    });
+    this.record(e.propertyId, e.id, actorUserId, "bloqueo", note ?? reason);
+  }
+
+  async decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada" | "en_bloqueo"> {
     this.assertAvailable("purge-decide");
     const p = this.purges.get(requestId);
     if (!p) throw new IdentityAccessDeniedError("purge-decide");
@@ -174,13 +211,13 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     if (p.requestedBy === actorUserId) throw new IdentityDoubleControlError();
     const decidedAt = this.now();
     if (approve) {
+      // Desde 032 aprobar NO purga: bloquea y la purga ocurre al vencer la ventana.
       const e = this.vault.get(p.vaultId);
-      if (e && e.status === "activo") {
-        this.vault.set(p.vaultId, { ...e, payloadEnc: null, documentLast4: null, nationality: null, status: "purgado", purgedAt: decidedAt });
-      }
-      this.purges.set(requestId, { ...p, status: "ejecutada", decidedBy: actorUserId, decidedAt, decisionNote: note });
+      if (e && e.status === "activo") this.blockEntry(e, "solicitud_purga", this.businessDate, actorUserId, note ?? p.reason);
+      const result = e?.status === "purgado" ? "ejecutada" : "en_bloqueo";
+      this.purges.set(requestId, { ...p, status: result, decidedBy: actorUserId, decidedAt, decisionNote: note });
       this.record(p.propertyId, p.vaultId, actorUserId, "purga_aprobada", note);
-      return "ejecutada";
+      return result;
     }
     this.purges.set(requestId, { ...p, status: "rechazada", decidedBy: actorUserId, decidedAt, decisionNote: note });
     this.record(p.propertyId, p.vaultId, actorUserId, "purga_rechazada", note);
@@ -191,16 +228,41 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     this.assertAvailable("purge-expired");
     let n = 0;
     for (const e of [...this.vault.values()]) {
-      if (e.propertyId !== propertyId || e.status !== "activo" || !(e.retentionUntil < today)) continue;
+      if (e.propertyId !== propertyId || e.status !== "bloqueada" || e.blockedUntil === null || e.blockedUntil > today || this.heldVaults.has(e.id)) continue;
       const at = this.now();
       this.vault.set(e.id, { ...e, payloadEnc: null, documentLast4: null, nationality: null, status: "purgado", purgedAt: at });
       for (const p of this.purges.values()) {
-        if (p.vaultId === e.id && p.status === "pendiente") this.purges.set(p.id, { ...p, status: "ejecutada", decidedAt: at, decisionNote: "purga por vencimiento de retencion" });
+        if (p.vaultId === e.id && (p.status === "pendiente" || p.status === "en_bloqueo")) {
+          this.purges.set(p.id, { ...p, status: "ejecutada", decidedAt: p.decidedAt ?? at, decisionNote: p.decisionNote ?? "purga al vencer la ventana de bloqueo" });
+        }
       }
-      this.record(propertyId, e.id, null, "purga_por_retencion", "retencion vencida");
+      this.record(propertyId, e.id, null, "purga_por_bloqueo_vencido", "ventana de bloqueo vencida");
       n += 1;
     }
     return n;
+  }
+
+  async sweepRetention(propertyId: string, today: string): Promise<IdentityRetentionSweepResult> {
+    this.assertAvailable("sweep");
+    let blocked = 0;
+    for (const e of [...this.vault.values()]) {
+      if (e.propertyId !== propertyId || e.status !== "activo" || !(e.retentionUntil < today)) continue;
+      this.blockEntry(e, "retencion_vencida", today, null, "retencion vencida");
+      blocked += 1;
+    }
+    const purged = await this.purgeExpired(propertyId, today);
+    return { blocked, purged, viaBloqueo: true };
+  }
+
+  async revealBlockedIdentity(accessRequestId: string, actorUserId: string): Promise<RevealedEnvelope> {
+    this.assertAvailable("reveal-blocked");
+    const grant = this.blockedAccess.get(accessRequestId);
+    if (!grant || grant.requester !== actorUserId) throw new IdentityAccessDeniedError("reveal-blocked");
+    const e = this.vault.get(grant.vaultId);
+    if (!e || e.status !== "bloqueada" || !e.payloadEnc) throw new IdentityPurgedError();
+    this.blockedAccess.delete(accessRequestId); // un solo uso
+    this.record(e.propertyId, e.id, actorUserId, "acceso_excepcional_revelacion", null);
+    return { envelope: e.payloadEnc, keyVersion: e.keyVersion };
   }
 
   async createMigratoryRegistration(input: { propertyId: string; reservationId: string; guestId: string; vaultId: string | null; actorUserId: string }): Promise<MigratoryRegistrationRecord> {

@@ -6,6 +6,7 @@ import {
   IdentityConflictError,
   IdentityDoubleControlError,
   IdentityInvalidInputError,
+  IdentityBlockedError,
   IdentityPurgedError,
   IdentityRequestResolvedError,
   IdentityUnavailableError,
@@ -156,18 +157,29 @@ describe("purga con doble control (adaptador en memoria)", () => {
     return { repo, service, rec };
   }
 
-  it("quien solicita no puede aprobar ni rechazar; otra persona aprueba y la identidad queda purgada e irrecuperable", async () => {
+  it("quien solicita no puede aprobar ni rechazar; otra persona aprueba y la identidad queda BLOQUEADA (no purgada) y se purga al vencer la ventana", async () => {
     const { repo, service, rec } = await captured();
     const requestId = await repo.requestPurge(rec.id, "Solicitud ARCO de cancelacion", OWNER);
     await expect(repo.decidePurge(requestId, true, null, OWNER)).rejects.toBeInstanceOf(IdentityDoubleControlError);
     await expect(repo.decidePurge(requestId, false, null, OWNER)).rejects.toBeInstanceOf(IdentityDoubleControlError);
     expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("activo");
 
-    expect(await repo.decidePurge(requestId, true, "Aprobada", GM)).toBe("ejecutada");
+    expect(await repo.decidePurge(requestId, true, "Aprobada", GM)).toBe("en_bloqueo");
+    const blocked = await repo.findIdentity(PROPERTY, rec.id);
+    expect(blocked).toMatchObject({ status: "bloqueada", blockReason: "solicitud_purga", blockWindowDays: 7, blockedBy: GM, blockedUntil: "2026-01-08" });
+    expect(repo.storedEnvelope(rec.id)).not.toBeNull(); // el sobre se conserva durante la ventana
+    // Sin acceso operativo mientras esta bloqueada.
+    await expect(service.reveal({ propertyId: PROPERTY, vaultId: rec.id, reason: "motivo suficientemente largo", actorUserId: GM })).rejects.toBeInstanceOf(IdentityBlockedError);
+    await expect(repo.verifyIdentity(rec.id, GM)).rejects.toBeInstanceOf(IdentityBlockedError);
+    await expect(repo.requestPurge(rec.id, "Otra solicitud sobre identidad bloqueada", OWNER)).rejects.toBeInstanceOf(IdentityBlockedError);
+    expect(await repo.purgeExpired(PROPERTY, "2026-01-07")).toBe(0); // ventana vigente
+
+    expect(await repo.purgeExpired(PROPERTY, "2026-01-08")).toBe(1);
     const after = await repo.findIdentity(PROPERTY, rec.id);
     expect(after).toMatchObject({ status: "purgado", documentLast4: null, nationality: null });
     expect(after?.purgedAt).not.toBeNull();
     expect(repo.storedEnvelope(rec.id)).toBeNull();
+    expect((await repo.findPurgeRequest(PROPERTY, requestId))?.status).toBe("ejecutada");
     await expect(service.reveal({ propertyId: PROPERTY, vaultId: rec.id, reason: "motivo suficientemente largo", actorUserId: GM })).rejects.toBeInstanceOf(IdentityPurgedError);
     await expect(repo.verifyIdentity(rec.id, GM)).rejects.toBeInstanceOf(IdentityPurgedError);
   });
@@ -181,17 +193,61 @@ describe("purga con doble control (adaptador en memoria)", () => {
     await expect(repo.decidePurge(requestId, true, null, GM)).rejects.toBeInstanceOf(IdentityRequestResolvedError);
   });
 
-  it("purgeExpired purga solo lo vencido de esa property, cierra solicitudes pendientes y deja huella con actor null", async () => {
+  it("el barrido BLOQUEA lo vencido (la solicitud pendiente sigue abierta) y solo purga al vencer la ventana; huella con actor null", async () => {
     const { repo, rec } = await captured();
     const requestId = await repo.requestPurge(rec.id, "Solicitud pendiente de prueba", OWNER);
-    expect(await repo.purgeExpired(PROPERTY, "2026-03-31")).toBe(0); // retention_until = 2026-03-31 NO es < hoy
-    expect(await repo.purgeExpired(OTHER_PROPERTY, "2030-01-01")).toBe(0);
-    expect(await repo.purgeExpired(PROPERTY, "2026-04-01")).toBe(1);
+    expect(await repo.sweepRetention(PROPERTY, "2026-03-31")).toEqual({ blocked: 0, purged: 0, viaBloqueo: true }); // retention_until = 2026-03-31 NO es < hoy
+    expect(await repo.sweepRetention(OTHER_PROPERTY, "2030-01-01")).toEqual({ blocked: 0, purged: 0, viaBloqueo: true });
+    expect(await repo.sweepRetention(PROPERTY, "2026-04-01")).toEqual({ blocked: 1, purged: 0, viaBloqueo: true });
+    expect(await repo.findIdentity(PROPERTY, rec.id)).toMatchObject({ status: "bloqueada", blockReason: "retencion_vencida", blockedBy: null, blockedUntil: "2026-04-08" });
+    expect((await repo.findPurgeRequest(PROPERTY, requestId))?.status).toBe("pendiente");
+    expect(await repo.sweepRetention(PROPERTY, "2026-04-07")).toEqual({ blocked: 0, purged: 0, viaBloqueo: true });
+    expect(await repo.sweepRetention(PROPERTY, "2026-04-08")).toEqual({ blocked: 0, purged: 1, viaBloqueo: true });
     expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("purgado");
     expect((await repo.findPurgeRequest(PROPERTY, requestId))?.status).toBe("ejecutada");
     const log = await repo.listAccessLog(PROPERTY, { vaultId: rec.id, limit: 10 });
-    expect(log.items[0]).toMatchObject({ action: "purga_por_retencion", actorUserId: null });
-    expect(await repo.purgeExpired(PROPERTY, "2030-01-01")).toBe(0);
+    expect(log.items[0]).toMatchObject({ action: "purga_por_bloqueo_vencido", actorUserId: null });
+    expect(await repo.sweepRetention(PROPERTY, "2030-01-01")).toEqual({ blocked: 0, purged: 0, viaBloqueo: true });
+  });
+
+  it("purgeExpired NUNCA purga una identidad activa aunque su retencion este vencida (la purga pasa por bloqueo)", async () => {
+    const { repo, rec } = await captured();
+    expect(await repo.purgeExpired(PROPERTY, "2035-01-01")).toBe(0);
+    expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("activo");
+  });
+
+  it("la ventana de bloqueo es editable por property y se respeta en el barrido", async () => {
+    const { repo, rec } = await captured();
+    repo.setBlockWindowDays(30);
+    await repo.sweepRetention(PROPERTY, "2026-04-01");
+    expect((await repo.findIdentity(PROPERTY, rec.id))).toMatchObject({ blockWindowDays: 30, blockedUntil: "2026-05-01" });
+    expect((await repo.sweepRetention(PROPERTY, "2026-04-30")).purged).toBe(0);
+    expect((await repo.sweepRetention(PROPERTY, "2026-05-01")).purged).toBe(1);
+  });
+
+  it("una retencion legal activa impide la purga mientras dure; al liberarla el siguiente barrido purga", async () => {
+    const { repo, rec } = await captured();
+    await repo.sweepRetention(PROPERTY, "2026-04-01");
+    repo.setLegalHold(rec.id, true);
+    expect((await repo.sweepRetention(PROPERTY, "2027-01-01")).purged).toBe(0);
+    expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("bloqueada");
+    expect(repo.storedEnvelope(rec.id)).not.toBeNull();
+    repo.setLegalHold(rec.id, false);
+    expect((await repo.sweepRetention(PROPERTY, "2027-01-01")).purged).toBe(1);
+  });
+
+  it("acceso excepcional a una identidad bloqueada: solo quien pidio la aprobacion la consume, una sola vez, y deja huella", async () => {
+    const { repo, service, rec } = await captured();
+    await repo.sweepRetention(PROPERTY, "2026-04-01");
+    const accessId = randomUUID();
+    repo.grantBlockedAccess(accessId, rec.id, OWNER);
+    await expect(repo.revealBlockedIdentity(accessId, GM)).rejects.toBeInstanceOf(IdentityAccessDeniedError);
+    const env = await repo.revealBlockedIdentity(accessId, OWNER);
+    expect(env.envelope).toBe(repo.storedEnvelope(rec.id));
+    await expect(repo.revealBlockedIdentity(accessId, OWNER)).rejects.toBeInstanceOf(IdentityAccessDeniedError);
+    const log = await repo.listAccessLog(PROPERTY, { vaultId: rec.id, limit: 10 });
+    expect(log.items.map((l) => l.action)).toContain("acceso_excepcional_revelacion");
+    void service;
   });
 });
 
@@ -284,13 +340,14 @@ describe("politica de retencion (informe MX: decision de producto, no mandato le
     repo.seedReservation(PROPERTY, reservationId, "2026-03-05", "2026-03-10");
     const rec = await service.capture({ propertyId: PROPERTY, actorUserId: FRONTDESK, today: "2026-03-05", checkOutDate: "2026-03-10", input: parseCaptureIdentityInput({ ...rawInput(), reservationId }) });
     const reg = await repo.createMigratoryRegistration({ propertyId: PROPERTY, reservationId, guestId: GUEST, vaultId: rec.id, actorUserId: FRONTDESK });
-    expect(await repo.purgeExpired(PROPERTY, "2026-04-09")).toBe(0); // retention_until = 2026-04-09 NO es < hoy
-    expect(await repo.purgeExpired(PROPERTY, "2026-04-10")).toBe(1);
+    expect((await repo.sweepRetention(PROPERTY, "2026-04-09")).blocked).toBe(0); // retention_until = 2026-04-09 NO es < hoy
+    expect(await repo.sweepRetention(PROPERTY, "2026-04-10")).toMatchObject({ blocked: 1, purged: 0 });
+    expect(await repo.sweepRetention(PROPERTY, "2026-04-17")).toMatchObject({ blocked: 0, purged: 1 });
     expect((await repo.findIdentity(PROPERTY, rec.id))?.status).toBe("purgado");
     const regs = await repo.listMigratoryRegistrations(PROPERTY, { limit: 10 });
     expect(regs.items).toHaveLength(1);
     expect(regs.items[0]).toMatchObject({ id: reg.id, nationality: "USA", arrivalDate: "2026-03-05", departureDate: "2026-03-10" });
     const log = await repo.listAccessLog(PROPERTY, { vaultId: rec.id, limit: 10 });
-    expect(log.items.map((l) => l.action)).toContain("purga_por_retencion");
+    expect(log.items.map((l) => l.action)).toContain("purga_por_bloqueo_vencido");
   });
 });
