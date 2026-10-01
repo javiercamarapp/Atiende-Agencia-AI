@@ -14,7 +14,7 @@ import { useEffect, useRef } from 'react';
  * gris (--g3), y alpha algo más alta — "más visual" pedido explícitamente,
  * el resto del algoritmo es idéntico.
  */
-export function CampoPixeles() {
+export function CampoPixeles({ color = 'hsl(var(--primary))' }: { color?: string } = {}) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -114,6 +114,6 @@ export function CampoPixeles() {
   return (
     <canvas ref={ref} aria-hidden
       className="absolute inset-0 h-full w-full pointer-events-none"
-      style={{ color: 'hsl(var(--primary))' }} />
+      style={{ color }} />
   );
 }
