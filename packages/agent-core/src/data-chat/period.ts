@@ -137,6 +137,15 @@ function build(from: Ymd, to: Ymd, tz: string, name: string): ResolvedPeriod {
 }
 
 /** Resuelve `periodo` o `desde`/`hasta`. Sin ninguno: pide aclaración (nunca asume un default). */
+/** Hallazgo del arnes de evaluacion (docs/EVAL-COPILOTO.md): modelos como GPT-6 Luna rellenan TODOS los parametros opcionales y
+ *  mandan `periodo` Y `desde`/`hasta` a la vez; con el rechazo duro la herramienta devolvia "no ambos" y el modelo repetia la
+ *  misma llamada hasta agotar las rondas (la pregunta terminaba en "no disponible"). Si las dos formas describen la MISMA ventana
+ *  no hay ambiguedad y se usa la del token; si se contradicen se sigue rechazando. */
+function samePeriodTwice(byToken: ResolvePeriodResult, byDates: ResolvePeriodResult): ResolvePeriodResult {
+  if (byToken.ok && byDates.ok && byToken.period.fromDate === byDates.period.fromDate && byToken.period.toDate === byDates.period.toDate) return byToken;
+  return { ok: false, kind: "invalid", message: "Usa 'periodo' o 'desde'/'hasta', no ambos." };
+}
+
 export function resolvePeriod(args: ParsedArgs, now: Date, timezone: string = DEFAULT_DATA_CHAT_TIMEZONE): ResolvePeriodResult {
   const tz = validTimezone(timezone);
   const lp = localDateParts(now, tz);
@@ -146,7 +155,7 @@ export function resolvePeriod(args: ParsedArgs, now: Date, timezone: string = DE
   const hasta = args["hasta"] as string | undefined;
 
   if (periodo !== undefined && (desde !== undefined || hasta !== undefined)) {
-    return { ok: false, kind: "invalid", message: "Usa 'periodo' o 'desde'/'hasta', no ambos." };
+    return samePeriodTwice(resolvePeriod({ periodo }, now, tz), resolvePeriod({ desde, hasta }, now, tz));
   }
   if (periodo === undefined && desde === undefined && hasta === undefined) {
     return { ok: false, kind: "needs_clarification", message: "No me dijiste de qué periodo quieres los datos. ¿Hoy, ayer, esta semana, este mes o unas fechas exactas?" };
@@ -230,7 +239,7 @@ export function resolveForwardPeriod(args: ParsedArgs, now: Date, timezone: stri
   const hasta = args["hasta"] as string | undefined;
 
   if (periodo !== undefined && (desde !== undefined || hasta !== undefined)) {
-    return { ok: false, kind: "invalid", message: "Usa 'periodo' o 'desde'/'hasta', no ambos." };
+    return samePeriodTwice(resolveForwardPeriod({ periodo }, now, tz), resolveForwardPeriod({ desde, hasta }, now, tz));
   }
   if (periodo === undefined && desde === undefined && hasta === undefined) {
     return { ok: false, kind: "needs_clarification", message: "No me dijiste de qué periodo quieres los datos. ¿Hoy, mañana, los próximos 7 días, esta semana o unas fechas exactas?" };
