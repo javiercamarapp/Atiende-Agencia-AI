@@ -3,7 +3,7 @@
 Pedido de producto: preguntarle a los datos del negocio en español ("¿cuánto vendí esta semana?") y
 recibir tablas/gráficas simples, siempre citando de qué datos salen y el periodo. Este documento explica el
 motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra vertical. Piloto: restaurantes;
-después se enchufaron hoteles y rentas vacacionales (ver "Catálogos por vertical").
+después se enchufaron hoteles, rentas vacacionales, despachos, licitaciones y citas (ver "Catálogos por vertical").
 
 ## Piezas
 
@@ -15,10 +15,11 @@ después se enchufaron hoteles y rentas vacacionales (ver "Catálogos por vertic
 | Catálogo de rentas vacacionales (7 herramientas) | `packages/domain-rentas/src/data-chat/` |
 | Catálogo de despachos (8 herramientas) | `packages/domain-despachos/src/data-chat/` |
 | Catálogo de licitaciones (7 herramientas) | `packages/domain-licitaciones/src/data-chat/` |
-| Rutas HTTP | restaurantes: `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts`; despachos y licitaciones: `.../despachos/chat-datos.ts` y `.../licitaciones/chat-datos.ts`; hoteles y rentas (por propiedad): `.../hoteles/admin-data-chat.ts` y `.../rentas/admin-data-chat.ts` sobre `apps/api/src/data-chat/vertical-routes.ts` (cuerpo y alcance compartidos en `apps/api/src/data-chat/`) |
+| Catálogo de citas (8 herramientas) | `packages/domain-citas/src/data-chat/` |
+| Rutas HTTP | restaurantes: `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts`; despachos y licitaciones: `.../despachos/chat-datos.ts` y `.../licitaciones/chat-datos.ts`; hoteles, rentas y citas (por propiedad): `.../hoteles/admin-data-chat.ts`, `.../rentas/admin-data-chat.ts` y `.../citas/admin-data-chat.ts` sobre `apps/api/src/data-chat/vertical-routes.ts` (cuerpo y alcance compartidos en `apps/api/src/data-chat/`) |
 | Bitácora de consultas | migración 0029 → `core.data_chat_query_log` + `core.record_data_chat_query` |
-| Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` (hoteles y rentas: `apps/web/src/lib/data-chat-client.ts` + `verticals/<vertical>/lib/data-chat-client.ts`) |
-| Verificación contra Postgres real | `scripts/verify-data-chat/` (restaurantes + bitácora), `scripts/verify-data-chat-hoteles/`, `scripts/verify-data-chat-rentas/`, `scripts/verify-data-chat-despachos-licitaciones/` (los corre el gate de CI) |
+| Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` (hoteles y rentas: `apps/web/src/lib/data-chat-client.ts` + `verticals/<vertical>/lib/data-chat-client.ts`; despachos, licitaciones y citas: `verticals/<vertical>/lib/chat-datos-client.ts`) |
+| Verificación contra Postgres real | `scripts/verify-data-chat/` (restaurantes + bitácora), `scripts/verify-data-chat-hoteles/`, `scripts/verify-data-chat-rentas/`, `scripts/verify-data-chat-despachos-licitaciones/`, `scripts/verify-data-chat-citas/` (los corre el gate de CI) |
 
 ## Catálogos por vertical
 
@@ -121,6 +122,42 @@ en `scripts/verify-data-chat-despachos-licitaciones/assertions.sql` (66 escenari
 cross-tenant en ambos sentidos, cross-cliente, `anon`, base sin migrar) y un guard de deriva en
 `tests/data-chat/sql-drift.spec.ts` de cada paquete.
 
+## Catálogo de citas (C-10)
+
+Solo lectura, parámetros tipados (periodo, sucursal por **nombre**, agrupación), periodos y días en la zona de la
+sucursal activa (`citas.property_config.timezone`; si no hay, `citas.tenant_config.default_timezone`), montos en MXN
+(el precio del servicio vive en centavos) y tope de 50 filas / 8 s. Ruta: `POST /citas/:propertyId/chat-datos` (más
+`GET .../estado`). Rol del gateway LLM: `citas:data_chat` (tope mensual por organización e interruptor de plataforma
+propios). Quién lo usa: solo `owner` y `admin` (`DATA_CHAT_ROLES`): el catálogo lee ingresos, tasas de cancelación por
+profesional y el estado de envío de recordatorios, y la RLS de las citas no distingue rol (un `staff` ve las citas de su
+sucursal), así que el candado de rol es la ruta y la función de la migración 027 repite la misma regla.
+Alcance: la membership (`resolveMembershipPropertyScope`); un admin acotado a una sucursal solo ve esa.
+
+`citas_por_dia` (por día, o semana/mes si el periodo es largo; pasado o ya agendado), `ocupacion` (por profesional o por
+sucursal: horas de atención configuradas, con las excepciones del día, frente a las horas con cita viva dentro de ese
+horario), `no_shows_y_cancelaciones` (por profesional, con tasas), `ingresos_por_periodo` e `ingresos_por_servicio`,
+`clientes_nuevos_vs_recurrentes` (solo conteos), `huecos_libres` (periodos futuros: horario de atención de ahora en
+adelante menos citas) y `recordatorios` (citas por atender sin recordatorio enviado + estado de envío por canal).
+Definiciones que el chat declara en su fuente: **ingreso** = precio de lista actual del servicio de las citas
+**completadas** (la base no registra cobros, descuentos ni propinas); **cita viva** = pendiente, confirmada o completada
+(una cancelada o no-show no bloquea horario); **cliente nuevo** = su primera cita viva dentro del alcance cae en el periodo.
+
+Lo que **no** tiene y el chat declara en vez de inventar: dinero cobrado, descuentos, y la duración de cada servicio al
+calcular huecos (un hueco corto puede no alcanzar para una cita). Las citas **sin sucursal asignada** (`property_id` nulo)
+solo cuentan para quien consulta sin filtro de sucursal; un usuario acotado a sucursales o que nombra una sucursal no las ve.
+
+**Migración 027** (`citas.data_chat_reminder_delivery`): el outbox de mensajes (`citas.messaging_outbox`) no es legible
+para `authenticated` y no guarda la sucursal. La función `security definer` devuelve solo conteos por canal y estado de los
+recordatorios de las citas del periodo (exige sesión y vertical_role owner/admin, aplica la cobertura por sucursal de las
+citas, `revoke` de public y anon). Sin la migración, `recordatorios` responde las citas pendientes y avisa que el detalle de
+envío todavía no está disponible; las otras siete herramientas no dependen de ella.
+
+SQL idéntico en `scripts/verify-data-chat-citas/assertions.sql` (47 escenarios contra Postgres real: cross-tenant en ambos
+sentidos, cross-sucursal, `anon`, día local de Mérida, la función de entrega y base sin migrar) y un guard de deriva en
+`packages/domain-citas/tests/data-chat/sql-drift.spec.ts`. La RLS de `citas.providers` y de las reglas de horario tiene una
+lectura pública (catálogo para reservar), así que las consultas de ocupación y huecos repiten dentro del SQL la cobertura de
+la membership en lugar de depender de ella.
+
 ## Cómo enchufar el catálogo de otra vertical
 
 1. **Herramientas.** En `packages/domain-<vertical>/src/data-chat/` crea un puerto de lectura (como
@@ -138,7 +175,7 @@ cross-tenant en ambos sentidos, cross-cliente, `anon`, base sin migrar) y un gua
    `tests/data-chat/sql-drift.spec.ts`.
 4. **Ruta.** Copia `admin-data-chat.ts`: misma cadena de auth, `scope` desde la membership, y
    `buildXDataChatCatalog(reader)`. Agrega `dataChat` equivalente a `AppDeps` (o extiende `DataChatDeps`).
-   Para verticales cuyo catálogo es por propiedad (como hoteles y rentas) no copies la ruta: llama a
+   Para verticales cuyo catálogo es por propiedad (como hoteles, rentas y citas) no copies la ruta: llama a
    `verticalDataChatRoutes(deps, { vertical, roles, catalog, completion, timezone })`
    (`apps/api/src/data-chat/vertical-routes.ts`) y agrega a `DataChatDeps` el lector y la `completion` de tu vertical
    como campos OPCIONALES (si faltan, la ruta responde "no disponible" en vez de fallar). Los parámetros de
@@ -154,7 +191,8 @@ cross-tenant en ambos sentidos, cross-cliente, `anon`, base sin migrar) y un gua
 
 ## Lo que NO cubre todavía
 
-- Restaurantes, hoteles, rentas, despachos y licitaciones tienen catálogo; citas sigue con el aviso honesto.
+- Restaurantes, hoteles, rentas, despachos, licitaciones y citas tienen catálogo.
+- Citas: el ingreso es precio de lista de citas completadas, no dinero cobrado; la zona horaria es la de la sucursal activa (una organización con sucursales en zonas distintas agrupa los días de todas con esa zona); sin recordatorios por otro canal que WhatsApp y correo.
 - Hoteles: no hay "reservas por canal" (`hoteles.reservation` no guarda el canal de origen: sin una migración
   que lo capture no se puede responder sin inventar) ni ocupación proyectada futura (solo noches ya cargadas por la
   auditoría nocturna; el día en curso puede aparecer incompleto). Solo owner/gm.

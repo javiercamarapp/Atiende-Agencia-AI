@@ -485,6 +485,27 @@ Orden recomendado:
 6. Verificación contra Postgres real (la corre el gate de CI): `node scripts/verify-real-postgres-ci/run-gate.mjs
    scripts/verify-data-chat-hoteles` y `.../verify-data-chat-rentas`.
 
+### Chatea con tus datos — citas (C-10) — migración 027
+
+Detalle en `docs/DATA-CHAT.md` ("Catálogo de citas"). Mergear el código NO exige aplicar la migración
+`packages/domain-citas/migrations/027_citas_data_chat_recordatorios.sql` (espejo
+`supabase/migrations/20240101000237_027_citas_data_chat_recordatorios.sql`): sin ella solo falta el detalle de
+recordatorios enviados/fallidos (la herramienta `recordatorios` lo avisa) y las otras siete herramientas funcionan igual.
+Orden recomendado:
+
+1. Desplegar el código (funciona contra la base sin migrar; cada consulta va en SAVEPOINT y responde "todavía no está
+   disponible" si falta una tabla, columna o función, sin abortar la transacción de la request).
+2. (La aplica Javier; es solo aditiva: una función nueva) Aplicar la migración 027. Con ella, `recordatorios` suma el
+   estado de envío por canal.
+3. (Opcional) Aplicar la migración 0029 si aún no está (bitácora `core.data_chat_query_log`, ya acepta la vertical `citas`).
+4. Tener un proveedor LLM configurado. El rol nuevo `citas:data_chat` cuenta contra `core.llm_org_budget` y queda en
+   `core.llm_usage_daily`.
+5. Quién lo ve: solo `owner` y `admin`; para `staff` `GET /citas/:propertyId/chat-datos/estado` responde 403 y el botón
+   sigue diciendo "Pronto".
+6. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `citas:data_chat`.
+7. Verificación contra Postgres real (la corre el gate de CI): `node scripts/verify-real-postgres-ci/run-gate.mjs
+   scripts/verify-data-chat-citas`.
+
 ## Resumen de costo por plataforma (tier free)
 
 | Plataforma | Gratis mientras... | Empieza a costar cuando... |
