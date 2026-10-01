@@ -4,17 +4,6 @@
 // forma en `outbox-port.ts` (ver ese archivo para el porqué de la validación ahí y
 // no aquí).
 
-/** Un mensaje de WhatsApp listo para enviar vía Graph API — el "to"/"body"/
- *  "phoneNumberId" ya resueltos, nada de lookups adicionales de este lado.
- *
- *  Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
- *  "soporte de plantillas HSM de WhatsApp ausente") — deliberadamente SIN ningún
- *  campo de plantilla (`templateName`/`templateLanguage`/`templateParams`): ver el
- *  comentario de cabecera de `providers/meta-graph-client.ts` para el gap completo
- *  (algunos envíos de este monorepo son proactivos, fuera de la ventana de 24h de
- *  Meta, y por eso exigirían una plantilla HSM pre-aprobada que este entorno no
- *  tiene forma de conseguir) y para los 3 pasos exactos que cerrarían esto el día
- *  que exista una plantilla real aprobada. */
 /** Botón de respuesta rápida con id propio (C-01): el `id` vuelve tal cual en el
  *  `button_reply.id` del webhook entrante, así el recordatorio puede atar el toque a
  *  UNA cita concreta (p. ej. `cita:confirmar:<appointmentId>`) en vez del `btn_N`
@@ -26,6 +15,28 @@ export interface OutboundButton {
   /** 1-20 caracteres (límite de Graph API para el título del botón). */
   readonly title: string;
 }
+
+/** Plantilla HSM de WhatsApp (R-27): un mensaje que el NEGOCIO inicia fuera de la ventana de 24 h de Meta solo
+ *  se entrega si es una plantilla PRE-APROBADA por Meta. `name`/`language` son los de la plantilla aprobada en
+ *  el Business Manager y `params` los valores de las variables `{{1}}`, `{{2}}`... de su cuerpo, en orden.
+ *
+ *  El encolador SOLO declara la plantilla que corresponde al evento; que se use de verdad lo decide el cliente
+ *  de Graph API segun las plantillas que el operador declaro aprobadas (`approvedTemplates` de
+ *  `MetaGraphWhatsAppClient`). Una plantilla no declarada aprobada NUNCA se envia como `type: "template"`:
+ *  el mensaje sale como texto libre (comportamiento anterior, valido solo dentro de la ventana de 24 h). */
+export interface OutboundTemplate {
+  /** Nombre de la plantilla en Meta: minusculas, digitos y guion bajo, 1-512 caracteres. */
+  readonly name: string;
+  /** Codigo de idioma de la plantilla en Meta (por ejemplo `es_MX`). */
+  readonly language: string;
+  /** Valores de las variables del cuerpo, en orden. Maximo 10; cada uno 1-1024 caracteres sin saltos de linea. */
+  readonly params: readonly string[];
+}
+
+export const TEMPLATE_NAME_PATTERN = /^[a-z0-9_]{1,512}$/;
+export const TEMPLATE_LANGUAGE_PATTERN = /^[a-z]{2,3}(_[A-Z]{2})?$/;
+export const MAX_TEMPLATE_PARAMS = 10;
+export const MAX_TEMPLATE_PARAM_LENGTH = 1024;
 
 export interface OutboundWhatsAppMessagePayload {
   /** Número del destinatario en formato E.164 con o sin "+" (Graph API acepta
@@ -40,6 +51,9 @@ export interface OutboundWhatsAppMessagePayload {
    *  hoy por el recordatorio 24h de citas (Confirmar/Cancelar/Reagendar). Sin
    *  botones, se manda como mensaje de texto plano. */
   readonly buttons?: readonly (string | OutboundButton)[];
+  /** Plantilla HSM opcional (ver `OutboundTemplate`). `body` sigue siendo obligatorio: es el texto libre de
+   *  respaldo cuando la plantilla no esta declarada como aprobada. */
+  readonly template?: OutboundTemplate;
 }
 
 export interface WhatsAppSendResult {

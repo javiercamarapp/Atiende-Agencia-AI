@@ -23,7 +23,8 @@
 import type { CircuitBreaker } from "@atiende/agent-core/gateway";
 import { WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
 import type { MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
-import type { OutboundButton, WhatsAppGraphClient } from "./types.ts";
+import { MAX_TEMPLATE_PARAM_LENGTH, MAX_TEMPLATE_PARAMS, TEMPLATE_LANGUAGE_PATTERN, TEMPLATE_NAME_PATTERN } from "./types.ts";
+import type { OutboundButton, OutboundTemplate, WhatsAppGraphClient } from "./types.ts";
 
 /** Tope de intentos antes de `dead` — nunca reintento infinito. */
 export const DEFAULT_MAX_ATTEMPTS = 5;
@@ -47,6 +48,29 @@ interface ValidWhatsAppOutboxPayload {
   readonly phone_number_id: string;
   readonly body: string;
   readonly buttons?: readonly (string | OutboundButton)[];
+  readonly template?: OutboundTemplate;
+}
+
+/** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
+ *  mensaje va a `dead`, nunca se reintenta ni se manda a Meta con un nombre/variables invalidos). */
+function parseTemplate(raw: unknown): OutboundTemplate {
+  if (typeof raw !== "object" || raw === null) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "template" invalido (debe ser un objeto)');
+  const t = raw as Record<string, unknown>;
+  if (typeof t.name !== "string" || !TEMPLATE_NAME_PATTERN.test(t.name)) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "template.name" invalido (minusculas, digitos y guion bajo)');
+  }
+  if (typeof t.language !== "string" || !TEMPLATE_LANGUAGE_PATTERN.test(t.language)) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "template.language" invalido (por ejemplo es_MX)');
+  }
+  if (!Array.isArray(t.params) || t.params.length > MAX_TEMPLATE_PARAMS) {
+    throw new WhatsAppInvalidPayloadError(`payload de messaging_outbox con "template.params" invalido (arreglo de maximo ${MAX_TEMPLATE_PARAMS} textos)`);
+  }
+  for (const v of t.params) {
+    if (typeof v !== "string" || v.length === 0 || v.length > MAX_TEMPLATE_PARAM_LENGTH || /[\r\n\t]/.test(v)) {
+      throw new WhatsAppInvalidPayloadError(`payload de messaging_outbox con un parametro de plantilla invalido (1-${MAX_TEMPLATE_PARAM_LENGTH} caracteres, sin saltos de linea ni tabuladores)`);
+    }
+  }
+  return { name: t.name, language: t.language, params: t.params as readonly string[] };
 }
 
 function isValidButton(b: unknown): boolean {
@@ -74,7 +98,8 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
   if (p.buttons !== undefined && (!Array.isArray(p.buttons) || p.buttons.some((b) => !isValidButton(b)))) {
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined };
+  const template = p.template === undefined || p.template === null ? undefined : parseTemplate(p.template);
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -183,7 +208,7 @@ export class WhatsAppOutboundDispatcher {
     }
 
     try {
-      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons });
+      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id);
       return { id: item.id, outcome: "sent" };
