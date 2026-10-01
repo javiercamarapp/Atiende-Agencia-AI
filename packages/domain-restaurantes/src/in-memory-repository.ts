@@ -53,6 +53,8 @@ import type {
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
   WhatsappChannelConfig,
+  StorefrontCatalogRow,
+  StorefrontTrackingResult,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -501,6 +503,56 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       });
     }
     return result;
+  }
+
+  async listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]> {
+    const rows: StorefrontCatalogRow[] = [];
+    for (const bp of this.branchProducts) {
+      if (bp.propertyId !== propertyId) continue;
+      const product = this.products.get(bp.productId);
+      if (!product) continue;
+      const category = product.categoryId ? this.categories.get(product.categoryId) : undefined;
+      rows.push({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: bp.price,
+        imageUrl: product.imageUrl,
+        isPopular: product.isPopular,
+        isAvailable: bp.isAvailable,
+        categoryId: product.categoryId,
+        categoryName: category?.name ?? null,
+        categoryDisplayOrder: category?.displayOrder ?? 0,
+        displayOrder: product.displayOrder,
+        noDomicilio: this.noDomicilioProducts.has(product.id) || (product.categoryId !== null && this.noDomicilioCategories.has(product.categoryId)),
+      });
+    }
+    return rows.sort((a, b) => a.categoryDisplayOrder - b.categoryDisplayOrder || (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~") || a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
+  }
+
+  /** Solo pruebas: simula una base sin la migracion 032 (`findStorefrontOrderTracking` -> no disponible). */
+  simulateStorefrontTrackingUnavailable(): void {
+    this.storefrontTrackingUnavailable = true;
+  }
+  private storefrontTrackingUnavailable = false;
+
+  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
+    if (this.storefrontTrackingUnavailable) return { disponible: false, pedido: null };
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
+    if (!order) return { disponible: true, pedido: null };
+    const notes = order.notes ?? "";
+    return {
+      disponible: true,
+      pedido: {
+        status: order.status,
+        branch: order.branch,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        canal: notes.includes("Canal: recoger en sucursal.") ? "recoger" : "domicilio",
+        createdAt: order.createdAt,
+        items: order.items.map((i) => ({ name: i.name, quantity: i.quantity, tortilla: i.tortilla ?? null })),
+      },
+    };
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {

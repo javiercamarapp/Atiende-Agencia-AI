@@ -49,6 +49,8 @@ import type {
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
   WhatsappChannelConfig,
+  StorefrontCatalogRow,
+  StorefrontTrackingResult,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -173,6 +175,12 @@ export interface RestaurantesRepository {
    * búsqueda de texto (searchProducts) como para resolución/cotización de renglones
    * de pedido (resolveOrderItemsAgainstProducts + buildOrderQuoteFromProducts). */
   listAvailableProductsForBranch(propertyId: string): Promise<readonly SearchableProduct[]>;
+  /** R-09: menu publico de la sucursal INCLUYENDO los productos de hoy no disponibles
+   * (para mostrarlos como "hoy no hay"). Precio y disponibilidad salen de `branch_products`. */
+  listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]>;
+  /** R-09: lectura publica y acotada de un pedido (migracion 032). Base sin migrar ->
+   * `{ disponible: false, pedido: null }` (SAVEPOINT + 42883). Nunca expone datos personales. */
+  findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult>;
 
   findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null>;
   /** Insert-or-update race-safe: nunca sobreescribe un nombre ya conocido con uno

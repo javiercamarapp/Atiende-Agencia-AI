@@ -4,6 +4,7 @@
 // (claim_whatsapp_conversation, evita que mensajes casi-simultáneos del mismo
 // teléfono corrompan el historial), append atómico (whatsapp_append_turn), y
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
+import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
 import { lookupCustomer } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -21,12 +22,7 @@ import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 // redacta esos patrones ANTES de guardar cualquier mensaje real, para que esa
 // afirmación sea cierta de verdad.
 export function redactSensitiveInfo(text: string): string {
-  return text
-    // \d(?:[ -]?\d){12,18}: 13-19 digitos sin comerse el separador final (si no, "[tarjeta oculta][cvv oculto]" quedaba pegado).
-    .replace(/\b\d(?:[ -]?\d){12,18}\b/g, "[tarjeta oculta]")
-    .replace(/\b(?:cvv|cvc|c\.?v\.?v\.?)\s*:?\s*\d{3,4}\b/gi, "[cvv oculto]")
-    // MM/AA o MM/AAAA con mes 01-12: "1/2 orden" o "1/4 de kilo" son fracciones de platillo, no un vencimiento.
-    .replace(/\b(?:0?[1-9]|1[0-2])\/(?:\d{4}|\d{2})\b/g, "[vencimiento oculto]");
+  return redactarDatosDePago(text);
 }
 
 export interface InboundMessageOutcome {
