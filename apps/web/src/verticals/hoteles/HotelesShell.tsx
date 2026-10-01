@@ -58,9 +58,10 @@ import {
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
-import { AtiendeWordmark, DashboardHeader, EstadoCargando, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
+import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoCargando, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
@@ -158,13 +159,8 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   // que un clic doble en un equipo compartido de recepción no dispare dos requests —
   // `logout()` es best-effort (nunca lanza, ver su comentario de cabecera en
   // apps/web/src/lib/auth-client.ts), así que esto es solo UX, no manejo de error.
-  // El indicador visual de "Cerrando sesión…" que leía este estado vivía en el
-  // `<header>` que este cambio reemplaza por `DashboardHeader` (sin slot para
-  // texto libre) — mismo criterio ya aplicado en CitasShell.tsx/LicitacionesShell.tsx
-  // al integrar el mismo header compartido. `setLoggingOut` se conserva (sigue
-  // siendo la UX de "no dispares un segundo POST /auth/logout con doble clic");
-  // solo se deja de leer el valor.
-  const [, setLoggingOut] = useState(false);
+  // El estado alimenta el botón "Cerrar sesión" del menú de cuenta móvil.
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const s = readPersistedHotelesSession(window.localStorage);
@@ -361,7 +357,10 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     <div className="min-h-screen bg-background flex w-full gap-3 p-3">
       <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={handleLogout} hotelSelector={hotelSelector} />
 
-      <MobileHeader title={<AtiendeWordmark className="scale-90 origin-left" />} action={hotelSelector} />
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={<MobileHeaderActions selector={hotelSelector} notif={notif} user={{ email: session.email, rol: role }} onLogout={handleLogout} loggingOut={loggingOut} />}
+      />
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="hidden md:block">
@@ -385,12 +384,25 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
             chatButton={<BotonChatDatos />}
           />
         </div>
-        <main className="flex-1 overflow-auto px-4 pt-20 pb-6 md:pt-4 md:px-6">
+        <main className="flex-1 overflow-auto px-4 pt-20 pb-24 md:pt-4 md:pb-6 md:px-6">
           <div key={propertyId} className="max-w-6xl mx-auto w-full">
             {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
           </div>
         </main>
       </div>
+
+      {/* Hoteles tiene hasta 13 destinos: la barra muestra los 4 de uso diario
+          (visibles para todos los roles) y "Más" abre TODAS las secciones del
+          mismo árbol que el Sidebar de escritorio (ya filtradas por rol). */}
+      <BottomNav
+        items={[
+          { to: base, label: "Inicio", icon: LayoutDashboard, end: true },
+          { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
+          { to: `${base}/mantenimiento`, label: "Mant.", icon: Wrench },
+          { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
+        ]}
+        moreSections={sections}
+      />
     </div>
   );
 }
