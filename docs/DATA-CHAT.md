@@ -11,7 +11,7 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
 | Motor (validación, alcance, límites, redacción de PII, bitácora, verificación de cifras) | `packages/agent-core/src/data-chat/` (export `@atiende/agent-core/data-chat`) |
 | Catálogo de restaurantes (8 herramientas, SQL de solo lectura) | `packages/domain-restaurantes/src/data-chat/` |
 | Ruta HTTP | `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts` |
-| Bitácora de consultas | migración `0028` → `core.data_chat_query_log` + `core.record_data_chat_query` |
+| Bitácora de consultas | migración 0029 → `core.data_chat_query_log` + `core.record_data_chat_query` |
 | Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` |
 | Verificación contra Postgres real | `scripts/verify-data-chat/` (lo corre el gate de CI) |
 

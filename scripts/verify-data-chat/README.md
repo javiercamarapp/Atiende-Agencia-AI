@@ -11,7 +11,7 @@ Verifica contra **Postgres real** (RLS + GRANT + `auth.uid()` reales) las dos pi
   locales = 02:30 UTC del dia siguiente), cancelados fuera de ventas, items jsonb malformados,
   clientes recurrentes sin PII, promociones inactivas de otra organizacion y `anon`.
 - **B. Bitacora** `core.data_chat_query_log` / `core.record_data_chat_query`
-  (migracion `packages/db/migrations/0028_data_chat_query_log.sql`): actor = `auth.uid()`,
+  (migracion `packages/db/migrations/0029_data_chat_query_log.sql`): actor = `auth.uid()`,
   cross-tenant y sesion de sistema rechazados, lectura solo owner/admin, INSERT directo
   rechazado, append-only, CHECKs de forma.
 - **C. Base sin migrar**: con la funcion/tabla eliminada dentro de la transaccion, el SQL real falla

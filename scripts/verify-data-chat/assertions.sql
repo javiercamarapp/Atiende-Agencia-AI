@@ -14,7 +14,7 @@
 --       4. cancelados fuera de ventas; items jsonb malformados no rompen la consulta; clientes
 --          recurrentes sin devolver nombre ni telefono; promociones inactivas de otra org invisibles.
 --       5. anon no puede leer nada.
---  B) core.data_chat_query_log / core.record_data_chat_query (migracion 0028): actor = auth.uid(),
+--  B) core.data_chat_query_log / core.record_data_chat_query (migracion 0029): actor = auth.uid(),
 --     cross-tenant rechazado, sesion de sistema y anon rechazados, lectura solo owner/admin de la
 --     organizacion, deny-by-default de INSERT directo, append-only (UPDATE/DELETE bloqueados),
 --     CHECKs de forma, vertical tomada de la organizacion.
@@ -783,7 +783,7 @@ rollback to savepoint sp_verify_data_chat_read;
 release savepoint sp_verify_data_chat_read;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 27. la bitacora con core.record_data_chat_query ELIMINADA (migracion 0028 pendiente): 42883 con la forma "function ... does not exist" y la transaccion se recupera ---'
+\echo '--- 27. la bitacora con core.record_data_chat_query ELIMINADA (migracion 0029 pendiente): 42883 con la forma "function ... does not exist" y la transaccion se recupera ---'
 begin;
 drop function core.record_data_chat_query(uuid, text, jsonb, text, integer, integer, text);
 set local role authenticated;

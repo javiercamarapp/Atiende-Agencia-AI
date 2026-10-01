@@ -1,5 +1,5 @@
 // Bitácora de "Chatea con tus datos" contra la base SIN MIGRAR: `core.record_data_chat_query` (migración
-// 0028) puede no existir todavía. Dentro de la transacción única de la request, un 42883 sin SAVEPOINT
+// 0029) puede no existir todavía. Dentro de la transacción única de la request, un 42883 sin SAVEPOINT
 // dejaría la transacción abortada (25P02) y el COMMIT se volvería ROLLBACK. AbortAwareFakeSession
 // reproduce ese estado abortado.
 import { describe, expect, it } from "vitest";
@@ -32,7 +32,7 @@ describe("PostgresDataChatAuditSink", () => {
     expect(seen[0]).toEqual([ENTRY.organizationId, "ventas_por_dia", '{"periodo":"hoy"}', "ok", 3, 12, null]);
   });
 
-  it("migración 0028 pendiente (42883): degrada a log estructurado, NO lanza y la transacción sigue utilizable (sin 25P02)", async () => {
+  it("migración 0029 pendiente (42883): degrada a log estructurado, NO lanza y la transacción sigue utilizable (sin 25P02)", async () => {
     const session = new AbortAwareFakeSession([
       { match: /select core\.record_data_chat_query/i, respond: () => pgError("42883", "function core.record_data_chat_query(uuid, text, jsonb, text, integer, integer, text) does not exist") },
       { match: /select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
