@@ -58,6 +58,18 @@ export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./c
 export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
+export {
+  VerticalShell,
+  VerticalShellEstado,
+  VerticalNoEncontrado,
+  RutaBoundary,
+  construirMigas,
+  VERTICAL_SHELL_MAIN_ID,
+  type VerticalMiga,
+  type VerticalNoEncontradoProps,
+  type VerticalShellEstadoProps,
+  type VerticalShellProps,
+} from "./components/VerticalShell.js";
 export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
 export {
   ChatDatosDialog,
