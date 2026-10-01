@@ -56,6 +56,33 @@ describe("POST /v1/restaurantes/:orgSlug/branches/nearest — buscar_sucursal_ce
     expect(body.encontrada).toBe(false);
     expect(body.mensaje).toMatch(/No reconozco esa colonia/);
   });
+
+  it("R-02: coordenadas (ubicación de WhatsApp) asignan la sucursal más cercana en km sin necesitar colonia", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/v1/restaurantes/los-taquitos-de-pm/branches/nearest", jsonRequestInit({ lat: 21.0186, lng: -89.6708 }, TOOL_SECRET_HEADERS));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { encontrada: boolean; estado: string; branch_slug?: string; via?: string; distancia_km?: number };
+    expect(body).toMatchObject({ encontrada: true, estado: "asignada", branch_slug: "fco-montejo", via: "coordenadas", distancia_km: 0 });
+  });
+
+  it("R-02: lat sin lng, coordenadas fuera de rango o max_km no numérico son 400", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    for (const body of [{ lat: 21.0 }, { lat: 91, lng: 0 }, { lat: "21", lng: "-89" }, { lat: 21, lng: -89, max_km: "10" }]) {
+      const res = await app.request("/v1/restaurantes/los-taquitos-de-pm/branches/nearest", jsonRequestInit(body, TOOL_SECRET_HEADERS));
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+  });
+
+  it("R-02: un punto más lejos que max_km es fuera_de_zona (encontrada:false), nunca una sucursal lejana", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/v1/restaurantes/los-taquitos-de-pm/branches/nearest", jsonRequestInit({ lat: 19.4326, lng: -99.1332, max_km: 15 }, TOOL_SECRET_HEADERS));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { encontrada: boolean; estado: string };
+    expect(body).toMatchObject({ encontrada: false, estado: "fuera_de_zona" });
+  });
 });
 
 describe("POST /v1/restaurantes/:orgSlug/products/search — buscar_producto", () => {

@@ -85,6 +85,8 @@ function buildPromotion(overrides: Partial<Promotion> = {}): Promotion {
     maxUses: null,
     timesUsed: 0,
     isActive: true,
+    channels: null,
+    productIds: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
