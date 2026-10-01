@@ -19,7 +19,8 @@
 #
 # Variables: DRILL_REPORT_DIR (default ./drill-report-<UTC>), RPO_TARGET_SECONDS (86400),
 # RTO_TARGET_SECONDS (7200), DRILL_STRICT_INVARIANTS=1 (violaciones preexistentes = FAIL; el modo
-# sintético lo activa), RESTORE_AGE_IDENTITY si el respaldo está cifrado con age.
+# sintético lo activa), DRILL_KEEP_BACKUP_DIR (conserva ahí una copia del respaldo sintético, para pruebas),
+# RESTORE_AGE_IDENTITY si el respaldo está cifrado con age.
 # Salida: 0 = PASS, 2 = FAIL (checks o RPO/RTO), 1 = error operativo del propio drill.
 set -uo pipefail
 # shellcheck source=scripts/respaldo/common.sh
@@ -34,8 +35,8 @@ case "${1:-}" in
   --synthetic) MODE=synthetic;;
   *) die "uso: drill.sh --latest [dir] | --backup <dir> | --synthetic";;
 esac
-need_bins node psql pg_dump pg_restore
 ensure_pg_bin
+need_bins node psql pg_dump pg_restore
 
 REPORT_DIR="${DRILL_REPORT_DIR:-./drill-report-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$REPORT_DIR"
@@ -67,6 +68,7 @@ if [ "$MODE" = synthetic ]; then
     BACKUP_DEST="$BACKUP_DEST_SYN" BACKUP_SYNTHETIC=1 BACKUP_ENCRYPT="${DRILL_SYNTHETIC_ENCRYPT:-none}" \
     "$RESPALDO_DIR/backup.sh" | tail -1
   )" || die "backup.sh falló sobre la base sintética"
+  if [ -n "${DRILL_KEEP_BACKUP_DIR:-}" ]; then mkdir -p "$DRILL_KEEP_BACKUP_DIR" && cp -R "$BACKUP_DIR" "$DRILL_KEEP_BACKUP_DIR/"; fi
   # Se apaga el origen: el drill restaura SOLO desde el respaldo, en una base distinta.
   pg_ctl -D "$SRC_DIR/data" -m fast stop >/dev/null 2>&1
   # El reloj del drill arranca aquí: el RTO mide recuperar, no fabricar la semilla.
