@@ -41,6 +41,8 @@ export function parsearNotaJuez(texto: string): { nota: number | null; razon: st
 
 export interface OpcionesJuezOpenRouter {
   readonly apiKey: string;
+  /** Rubrica alterna (el juez de calidad de analisis del bake-off); por omision la de espanol. */
+  readonly rubrica?: string;
   readonly presupuesto: PresupuestoDuro;
   readonly baseUrl?: string;
   readonly fetchImpl?: typeof fetch;
@@ -71,9 +73,9 @@ export function crearJuezOpenRouter(o: OpcionesJuezOpenRouter): JuezEspanol {
         let r: LlmCompletionResult | null = null;
         try {
           r = await proveedores[i]!.complete({
-            system: RUBRICA_JUEZ,
+            system: o.rubrica ?? RUBRICA_JUEZ,
             messages: [{ role: "user", content: `Pregunta del usuario: ${pregunta}\nRespuesta a calificar: ${texto || "(vacia)"}` }],
-            maxOutputTokens: 200,
+            maxOutputTokens: 400,
           });
         } catch (err) {
           reserva.liberar(0);
