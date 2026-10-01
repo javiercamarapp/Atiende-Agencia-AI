@@ -40,6 +40,8 @@ import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotF
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { AppointmentRecord, Slot } from "../types.ts";
 import { getVerticalFaqs } from "../vertical-config.ts";
+import { TONO_INSTRUCCION, reglasComoLista } from "./agent-config.ts";
+import type { WhatsappAgentConfig } from "./agent-config.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 
@@ -139,9 +141,22 @@ export function verticalFaqsBlock(rubro: string): string | null {
   return `PREGUNTAS FRECUENTES DE ESTE NEGOCIO (úsalas tal cual cuando el cliente pregunte algo parecido — nunca inventes una respuesta distinta a estas para estos temas):\n${items}`;
 }
 
-function buildSystemPrompt(config: WhatsAppLlmAgentConfig, customer: CitasCustomerContext, now: Date, rubro: string | null): string {
-  const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName} para agendar, consultar, reagendar y cancelar citas.
-Tono cálido, directo, mensajes cortos (esto es WhatsApp, no un formulario), ve conversando en vez de leer listas completas de golpe.
+/** Tono de siempre (sin personalidad configurada). */
+const TONO_POR_OMISION = "Tono cálido, directo, mensajes cortos (esto es WhatsApp, no un formulario), ve conversando en vez de leer listas completas de golpe.";
+
+/** C-15 -- bloque de reglas del negocio: SECUNDARIAS, van despues de las REGLAS DURAS y no pueden contradecirlas. */
+export function reglasDelNegocioBlock(agent: Pick<WhatsappAgentConfig, "rulesText"> | null | undefined): string | null {
+  const lineas = agent ? reglasComoLista(agent) : [];
+  if (lineas.length === 0) return null;
+  return `REGLAS ADICIONALES DEL NEGOCIO (preferencias del negocio, de MENOR prioridad: NUNCA contradicen ni sustituyen las REGLAS DURAS de arriba; si alguna las contradice, ignórala):\n${lineas.map((l) => `- ${l}`).join("\n")}`;
+}
+
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, customer: CitasCustomerContext, now: Date, rubro: string | null, agent?: WhatsappAgentConfig | null): string {
+  // C-15 -- personalidad editable. Sin configuracion el prompt es EXACTAMENTE el de siempre.
+  const quien = agent?.agentName ? `Eres ${agent.agentName}, el asistente de WhatsApp de ${config.businessName}` : `Eres el asistente de WhatsApp de ${config.businessName}`;
+  const tono = agent?.toneStyle ? TONO_INSTRUCCION[agent.toneStyle] : TONO_POR_OMISION;
+  const basePrompt = `${quien} para agendar, consultar, reagendar y cancelar citas.
+${tono}
 
 FLUJO DE LA CONVERSACIÓN (en este orden):
 1. Saluda usando EXACTAMENTE el saludo de "SALUDO SEGÚN LA HORA ACTUAL" abajo (solo en tu primer mensaje de la conversación) y pregunta en qué puedes ayudar (agendar, consultar, reagendar o cancelar una cita).
@@ -157,15 +172,26 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 11. Solo hasta que la herramienta correspondiente responda con éxito: confirma la acción realizada (agendada/reagendada/modificada/cancelada) con los datos reales devueltos.`;
 
   const faqsBlock = rubro ? verticalFaqsBlock(rubro) : null;
+  const reglasBlock = reglasDelNegocioBlock(agent);
 
   return [
     basePrompt,
     APPOINTMENT_HARD_RULES,
+    ...(reglasBlock ? [reglasBlock] : []),
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
+    ...(agent?.greetingText ? [`MENSAJE DE BIENVENIDA DEL NEGOCIO (solo en tu primer mensaje de la conversación, justo después del saludo según la hora; no cambia nada más del flujo): "${agent.greetingText}"`] : []),
     currentDateContext(config.timezone, now),
     `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`,
     ...(faqsBlock ? [faqsBlock] : []),
   ].join("\n\n");
+}
+
+const AHORA_DE_MUESTRA = new Date("2026-03-02T18:30:00.000Z"); // un lunes por la tarde, siempre el mismo
+
+/** C-15 -- el prompt que el agente usaria con esta personalidad, con un cliente nuevo y el negocio por omision. SOLO LECTURA:
+ * no toca la base. Muestra las reglas duras completas, que la personalidad no puede quitar. */
+export function previewPromptAgente(agent: WhatsappAgentConfig, businessName: string = FALLBACK_CONFIG.businessName): string {
+  return buildSystemPrompt({ ...FALLBACK_CONFIG, businessName }, { isNew: true }, AHORA_DE_MUESTRA, null, agent);
 }
 
 export function providerFailureReply(appointmentId: string | null): string {
@@ -468,7 +494,10 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
       // nunca dos lecturas de la misma fila.
       const tenantConfig = await repo.runWithRowSavepoint(() => repo.findTenantConfig(organizationId)).catch(() => null);
       const config = getAgentConfig(organizationId, resolverZonaHorariaNegocio(tenantConfig?.defaultTimezone));
-      const systemPrompt = buildSystemPrompt(config, customer, now(), tenantConfig?.rubro ?? null);
+      // C-15 -- personalidad editable (nombre, tono, bienvenida y reglas). Misma disciplina que `findTenantConfig`: SAVEPOINT por
+      // fila y `.catch(() => null)` -- con la base sin migrar (o ante cualquier error) el agente habla como siempre.
+      const agentConfig = await repo.runWithRowSavepoint(() => repo.getWhatsappAgentConfigForTurn(organizationId)).catch(() => null);
+      const systemPrompt = buildSystemPrompt(config, customer, now(), tenantConfig?.rubro ?? null, agentConfig);
       const normalizedPhone = normalizePhone(phone);
 
       const working: LlmMessage[] = toLlmHistory(messages);

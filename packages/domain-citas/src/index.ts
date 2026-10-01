@@ -37,6 +37,33 @@ export { AppointmentAlternativesError, AppointmentConflictError, AppointmentForb
 export { computeAvailableSlots, dayOfWeekInTimeZone, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 export type { ComputeAvailableSlotsInput } from "./availability.ts";
 
+export {
+  AGENTE_CONFIG_POR_OMISION,
+  AGENTE_LIMITES,
+  PHONE_NUMBER_ID_RE,
+  TONOS_AGENTE_CITAS,
+  TONO_ETIQUETAS,
+  TONO_INSTRUCCION,
+  configAgenteDesdeFila,
+  diferenciasConfigAgente,
+  estadoConexion,
+  fotoConfigAgente,
+  reglasComoLista,
+  validarConfigAgente,
+  validarPhoneNumberId,
+} from "./whatsapp/agent-config.ts";
+export type {
+  AgenteConfigGuardado,
+  ConectarNumeroResultado,
+  DesconectarNumeroResultado,
+  DiferenciaCampoAgente,
+  EstadoConexionWhatsapp,
+  TonoAgenteCitas,
+  WhatsappAgentConfig,
+  WhatsappAgentConfigRecord,
+  WhatsappConnection,
+} from "./whatsapp/agent-config.ts";
+export { previewPromptAgente, reglasDelNegocioBlock } from "./whatsapp/llm-turn-handler.ts";
 export { eventoRecordatorioFallido } from "./notification-events.ts";
 export type { EventoRecordatorioFallido, MotivoRecordatorioFallido, SeveridadNotificacion } from "./notification-events.ts";
 export { CITAS_ROLES, DATA_CHAT_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "./roles.ts";

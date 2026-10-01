@@ -7,6 +7,8 @@
 import { randomUUID } from "node:crypto";
 import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
 import { MENSAJES_CONFIG_POR_OMISION as MENSAJES_CONFIG_POR_OMISION_MEM, fotoConfigMensajes } from "./whatsapp/message-config.ts";
+import { AGENTE_CONFIG_POR_OMISION } from "./whatsapp/agent-config.ts";
+import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type {
   ConfirmDataRightsOutcome,
@@ -203,6 +205,10 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly whatsappMessageConfigHistoryByOrg = new Map<string, WhatsappMessageConfigHistoryEntry[]>();
   /** Solo para tests: `false` simula la base sin la migracion 026 (los metodos degradan igual que el adaptador de Postgres). */
   whatsappMessageConfigDisponible = true;
+  /** C-15 -- `false` simula la base sin la migracion 028. */
+  whatsappAgentConfigDisponible = true;
+  private readonly whatsappAgentConfigByOrg = new Map<string, WhatsappAgentConfigRecord>();
+  private readonly whatsappInactiveOrgs = new Set<string>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
@@ -1085,7 +1091,51 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+    if (this.whatsappInactiveOrgs.has(organizationId)) return null;
     return this.whatsappPhoneNumberIdByOrg.get(organizationId) ?? null;
+  }
+
+  // ---- C-15 -- personalidad del agente y conexion del numero ----
+
+  async getWhatsappAgentConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappAgentConfigRecord | null }> {
+    if (!this.whatsappAgentConfigDisponible) return { disponible: false, record: null };
+    return { disponible: true, record: this.whatsappAgentConfigByOrg.get(organizationId) ?? null };
+  }
+
+  async getWhatsappAgentConfigForTurn(organizationId: string): Promise<WhatsappAgentConfig | null> {
+    if (!this.whatsappAgentConfigDisponible) return null;
+    return this.whatsappAgentConfigByOrg.get(organizationId)?.config ?? null;
+  }
+
+  async saveWhatsappAgentConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappAgentConfig): Promise<AgenteConfigGuardado> {
+    if (!this.whatsappAgentConfigDisponible) return { status: "unavailable" };
+    const actual = this.whatsappAgentConfigByOrg.get(organizationId);
+    if (expectedVersion !== (actual?.version ?? 0)) return { status: "conflict" };
+    const version = (actual?.version ?? 0) + 1;
+    this.whatsappAgentConfigByOrg.set(organizationId, { config: accion === "restablecido" ? AGENTE_CONFIG_POR_OMISION : config, version, updatedAt: new Date().toISOString(), updatedBy: null });
+    return { status: "saved", version };
+  }
+
+  async getWhatsappConnection(organizationId: string): Promise<WhatsappConnection | null> {
+    const phoneNumberId = this.whatsappPhoneNumberIdByOrg.get(organizationId);
+    return phoneNumberId ? { phoneNumberId, isActive: !this.whatsappInactiveOrgs.has(organizationId) } : null;
+  }
+
+  async connectWhatsappNumber(organizationId: string, phoneNumberId: string, isActive: boolean): Promise<ConectarNumeroResultado> {
+    if (!this.whatsappAgentConfigDisponible) return { status: "unavailable" };
+    if (!/^[0-9]{5,40}$/.test(phoneNumberId)) return { status: "invalid" };
+    for (const [otherOrg, id] of this.whatsappPhoneNumberIdByOrg) if (otherOrg !== organizationId && id === phoneNumberId) return { status: "in_use" };
+    this.whatsappPhoneNumberIdByOrg.set(organizationId, phoneNumberId);
+    if (isActive) this.whatsappInactiveOrgs.delete(organizationId);
+    else this.whatsappInactiveOrgs.add(organizationId);
+    return { status: "connected", phoneNumberId };
+  }
+
+  async disconnectWhatsappNumber(organizationId: string): Promise<DesconectarNumeroResultado> {
+    if (!this.whatsappAgentConfigDisponible) return { status: "unavailable" };
+    const removed = this.whatsappPhoneNumberIdByOrg.delete(organizationId);
+    this.whatsappInactiveOrgs.delete(organizationId);
+    return { status: "disconnected", removed };
   }
 
   async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {

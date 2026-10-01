@@ -10,6 +10,7 @@
 // las lanza la capa de negocio (appointments.ts), nunca el adaptador. Esto reproduce
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
+import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type {
   AppointmentActorChannel,
@@ -862,4 +863,19 @@ export interface CitasRepository {
   saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado>;
   /** Historial (owner/admin) de la mas reciente a la mas antigua. `disponible: false` si la migracion no esta aplicada. */
   listWhatsappMessageConfigHistory(organizationId: string, limit: number): Promise<{ readonly disponible: boolean; readonly items: readonly WhatsappMessageConfigHistoryEntry[] }>;
+  // ---- C-15 -- personalidad del agente de WhatsApp y conexion del numero, ver migrations/028_citas_agente_whatsapp_config.sql y
+  // whatsapp/agent-config.ts. Ningun metodo lanza por una base sin migrar (SQLSTATE 42883/42P01/42703): con SAVEPOINT en la
+  // sesion compartida degradan a "no disponible" / "sin personalidad" (el agente habla como siempre). ----
+  /** Panel (owner/admin, RLS). `disponible: false` si la migracion 028 no esta aplicada; `record: null` si nunca se configuro. */
+  getWhatsappAgentConfig(organizationId: string): Promise<{ readonly disponible: boolean; readonly record: WhatsappAgentConfigRecord | null }>;
+  /** Para armar el prompt del turno (sesion de sistema o de staff de la organizacion). `null` = sin personalidad o migracion pendiente. */
+  getWhatsappAgentConfigForTurn(organizationId: string): Promise<WhatsappAgentConfig | null>;
+  /** Guarda (`actualizado`) o restablece (`restablecido`) con control de version optimista (`expectedVersion` = 0 si aun no hay fila). */
+  saveWhatsappAgentConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappAgentConfig): Promise<AgenteConfigGuardado>;
+  /** Numero conectado de la organizacion (staff, RLS de lectura de la tabla vigente desde siempre); `null` si no hay. */
+  getWhatsappConnection(organizationId: string): Promise<WhatsappConnection | null>;
+  /** Conecta, cambia o pausa el numero (owner/admin; la funcion SQL valida rol, formato y unicidad). */
+  connectWhatsappNumber(organizationId: string, phoneNumberId: string, isActive: boolean): Promise<ConectarNumeroResultado>;
+  /** Desconecta el numero (owner/admin). */
+  disconnectWhatsappNumber(organizationId: string): Promise<DesconectarNumeroResultado>;
 }
