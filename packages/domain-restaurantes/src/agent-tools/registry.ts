@@ -80,6 +80,9 @@ export interface AgentToolContext {
   /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
    * (camino legado: voz con secreto global sin token de llamada). */
   readonly flow?: OrderFlowRef;
+  /** Ultima ubicacion que el cliente COMPARTIO por WhatsApp (lat/lng reales del mensaje, no inventadas
+   * por el modelo). Alimenta `buscar_sucursal_cercana` cuando el modelo no manda coordenadas. */
+  readonly sharedLocation?: { readonly lat: number; readonly lng: number } | null;
 }
 
 export interface AgentToolOutcome {
@@ -574,8 +577,15 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "buscar_sucursal_cercana": {
-      const lat = typeof input.lat === "number" ? input.lat : undefined;
-      const lng = typeof input.lng === "number" ? input.lng : undefined;
+      let lat = typeof input.lat === "number" ? input.lat : undefined;
+      let lng = typeof input.lng === "number" ? input.lng : undefined;
+      // Ubicacion compartida por WhatsApp: se usa solo si el modelo no mando coordenadas ni una colonia
+      // explicita (una colonia dicha por el cliente despues de compartir manda).
+      const coloniaDicha = typeof input.colonia === "string" && input.colonia.trim() !== "";
+      if (lat === undefined && lng === undefined && !coloniaDicha && ctx.sharedLocation) {
+        lat = ctx.sharedLocation.lat;
+        lng = ctx.sharedLocation.lng;
+      }
       const match = await assignBranch(repo, {
         organizationId,
         colonia: typeof input.colonia === "string" ? input.colonia : undefined,

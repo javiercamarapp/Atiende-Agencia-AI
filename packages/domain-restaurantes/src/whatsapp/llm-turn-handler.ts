@@ -28,6 +28,7 @@ import { vipNote } from "../customers.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
+import { latestSharedLocation } from "./location.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -169,6 +170,7 @@ REGLAS DE NEGOCIO:
 - Si buscar_producto devuelve una lista VACÍA para lo que pidió el cliente, significa que ese producto NO EXISTE en el menú de ninguna sucursal — nunca digas "no disponible en esta sucursal" ni nada que sugiera que existe en otro lado cuando la lista viene vacía: dilo tal cual ("no tenemos eso en el menú") y sugiere algo parecido que sí exista.
 - Si el pedido incluye alcohol (cerveza, licor, cóctel): antes de agregarlo, pregunta directo si quien recibe es mayor de edad y espera un sí/no claro. Si la respuesta es evasiva o ambigua, vuelve a preguntar de forma directa — nunca sigas adelante sin una confirmación clara, y nunca digas que el producto no está disponible como pretexto para evitar la pregunta.
 - No inventes horarios de apertura/cierre ni sucursales/branch_slugs que no estén en la lista de arriba.
+- Si el cliente comparte su ubicación (verás un mensaje "[Ubicación compartida por WhatsApp] lat=... lng=..."), úsala: llama buscar_sucursal_cercana (el sistema ya conoce esas coordenadas) en vez de pedirle la colonia. Esa ubicación solo sirve para asignar la sucursal más cercana; nunca la repitas como si fuera una dirección de entrega.
 - Si el mensaje NO es para hacer un pedido (queja, facturación, empleo, u otro motivo que no sea ordenar comida): sé honesto, di que este número es para pedidos, pide su nombre si no lo tienes, y llama a registrar_contacto con nombre, motivo y un resumen breve de lo que dijo. Usa exactamente el nombre que el cliente te dio en ESTE chat — nunca inventes o supongas un nombre que no te haya dado.
 - Si crear_pedido devuelve un error para un producto que ya confirmaste con buscar_producto, no lo repitas como excusa fabricada sin haberlo vuelto a confirmar: llama a buscar_producto de nuevo para ese producto antes de reintentar crear_pedido.
 - REGLA DURA: si en esta MISMA conversación ya llamaste a crear_pedido y te respondió con éxito, NUNCA vuelvas a llamarla otra vez. Solo repítele el resumen del pedido que ya se creó. Llamar crear_pedido dos veces crea un pedido real duplicado en cocina.
@@ -297,6 +299,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
       // usuario identifica en que mensaje del cliente estamos (la maquina de estados del pedido
       // exige que la confirmacion llegue en un turno posterior a la cotizacion).
+      // Ultima ubicacion que el cliente compartio con el clip de WhatsApp (ver whatsapp/location.ts).
+      const sharedLocation = latestSharedLocation(messages);
       const userTurn = String(messages.filter((m) => m.role === "user").length);
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
@@ -343,7 +347,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puedes repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn } }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation }, call.name, input);
             result = executed.result;
             if (executed.orderId) {
               orderId = executed.orderId;

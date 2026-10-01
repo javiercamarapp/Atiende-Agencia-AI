@@ -8,6 +8,7 @@
 // firmas (ver restaurantes.whatsapp_channel_config en migrations/001).
 import type { RestaurantesRepository } from "../repository.ts";
 import type { WhatsAppChannelResolution } from "../types.ts";
+import { isValidCoordinate, type MetaLocationMessage } from "./location.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -43,6 +44,49 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
           message.text.body.length <= 4000
         ) {
           result.push(message as MetaTextMessage);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+export type MetaInboundMessage = MetaTextMessage | MetaLocationMessage;
+
+const MESSAGE_ID_OK = (id: unknown): id is string => typeof id === "string" && id.length >= 1 && id.length <= 255;
+const SENDER_OK = (from: unknown): from is string => typeof from === "string" && /^\d{7,20}$/.test(from);
+
+/**
+ * Como `extractMetaTextMessages`, pero ademas devuelve los mensajes de UBICACION (`type: "location"`
+ * con latitude/longitude numericas validas). Mantiene el orden del payload. Un mensaje de ubicacion
+ * con coordenadas fuera de rango se descarta (nunca se adivina). Los demas tipos (imagen, audio...)
+ * siguen ignorandose.
+ */
+export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage[] {
+  const root = payload as { entry?: unknown };
+  if (!Array.isArray(root?.entry)) return [];
+  const result: MetaInboundMessage[] = [];
+  for (const entry of root.entry) {
+    const changes = (entry as { changes?: unknown })?.changes;
+    if (!Array.isArray(changes)) continue;
+    for (const change of changes) {
+      const messages = (change as { value?: { messages?: unknown } })?.value?.messages;
+      if (!Array.isArray(messages)) continue;
+      for (const candidate of messages) {
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown; name?: unknown; address?: unknown } };
+        if (!MESSAGE_ID_OK(message.id) || !SENDER_OK(message.from)) continue;
+        if (message.type === "location") {
+          const { latitude, longitude, name, address } = message.location ?? {};
+          if (!isValidCoordinate(latitude, longitude)) continue;
+          result.push({
+            id: message.id,
+            from: message.from,
+            type: "location",
+            location: { latitude: latitude as number, longitude: longitude as number, ...(typeof name === "string" ? { name } : {}), ...(typeof address === "string" ? { address } : {}) },
+          });
+        } else {
+          const [text] = extractMetaTextMessages({ entry: [{ changes: [{ value: { messages: [candidate] } }] }] });
+          if (text) result.push(text);
         }
       }
     }

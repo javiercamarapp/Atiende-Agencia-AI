@@ -77,3 +77,44 @@ describe("POST /v1/restaurantes/whatsapp/webhook — un WhatsApp por sucursal", 
     expect(payloads.some((p) => p.phone_number_id === "pn-sucursal-b" && p.to === "+5219991234567")).toBe(true);
   });
 });
+
+describe("POST /v1/restaurantes/whatsapp/webhook — mensaje de ubicacion (PM PR-3)", () => {
+  function locationPayload(phoneNumberId: string, messageId: string, latitude: unknown, longitude: unknown) {
+    return {
+      entry: [
+        { changes: [{ value: { metadata: { phone_number_id: phoneNumberId }, messages: [{ id: messageId, from: "5219991234567", type: "location", location: { latitude, longitude, name: "Mi casa" } }] } }] },
+      ],
+    };
+  }
+
+  it("una ubicacion compartida llega al turno como marcador con lat/lng (antes se descartaba)", async () => {
+    const base = await buildTestDeps();
+    const bodies: string[] = [];
+    const recording: WhatsAppTurnHandler = {
+      async handleInboundMessage(args) {
+        bodies.push(args.messages[args.messages.length - 1]!.content);
+        return { reply: "ok", orderId: null, propertyId: null };
+      },
+    };
+    const app = buildApp({ ...base.deps, turnHandler: recording });
+    const res = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(locationPayload("1234567890", "wamid.loc1", 21.016512, -89.596034)));
+    expect(res.status).toBe(200);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatch(/^\[Ubicación compartida por WhatsApp\] lat=21\.016512 lng=-89\.596034/);
+  });
+
+  it("una ubicacion con coordenadas invalidas se acusa con 200 y no llega al turno", async () => {
+    const base = await buildTestDeps();
+    const seenTurns: number[] = [];
+    const recording: WhatsAppTurnHandler = {
+      async handleInboundMessage() {
+        seenTurns.push(1);
+        return { reply: "ok", orderId: null, propertyId: null };
+      },
+    };
+    const app = buildApp({ ...base.deps, turnHandler: recording });
+    const res = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(locationPayload("1234567890", "wamid.loc2", 123, -89)));
+    expect(res.status).toBe(200);
+    expect(seenTurns).toHaveLength(0);
+  });
+});
