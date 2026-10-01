@@ -28,6 +28,7 @@ import {
   FileDigit,
   FileSpreadsheet,
   FileText,
+  Contact,
   FolderInput,
   HandCoins,
   Landmark,
@@ -50,6 +51,7 @@ import { clearDespachosSession, logout, readPersistedDespachosSession } from "./
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -95,6 +97,7 @@ export interface DespachosShellProps {
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "dashboard", label: "Dashboard" },
   { to: "cierre-mensual", label: "Cierre mensual" },
+  { to: "cartera", label: "Cartera de clientes" },
   { to: "cfdi", label: "CFDI" },
   { to: "cobranza", label: "Cobranza" },
   { to: "vencimientos", label: "Vencimientos" },
@@ -129,6 +132,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
     {
       title: "Facturación",
       items: [
+        { ...item("cartera"), icon: Contact },
         { ...item("cfdi"), icon: FileText },
         { ...item("cobranza"), icon: HandCoins },
         { ...item("vencimientos"), icon: CalendarClock },
@@ -159,7 +163,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las
- * secciones fiscales/contables (los 16 destinos de `buildSidebarSections`, sin curarlos a ojo). */
+ * secciones fiscales/contables (los 17 destinos de `buildSidebarSections`, sin curarlos a ojo). */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/despachos/${orgSlug}`;
   return [
@@ -179,7 +183,14 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
   if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando contribuyentes…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este despacho todavía no tiene ningún contribuyente configurado." />;
+  if (s.fase === "vacio") {
+    // Un despacho sin ningun cliente no tiene contribuyente activo: quien puede dar de alta (admin/contador) captura el primero aqui.
+    const rolVacio = s.session?.organizations.find((o) => o.slug === orgSlug)?.rol;
+    if (s.session && (rolVacio === "admin" || rolVacio === "contador")) {
+      return <AltaPrimerCliente apiBaseUrl={apiBaseUrl} token={s.session.token} orgSlug={orgSlug} onCreado={s.reintentar} />;
+    }
+    return <VerticalShellEstado estado="vacio" mensaje="Este despacho todavía no tiene ningún contribuyente configurado. Pide a un administrador que lo dé de alta." />;
+  }
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
