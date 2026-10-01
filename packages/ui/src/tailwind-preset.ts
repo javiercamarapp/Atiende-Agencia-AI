@@ -1,5 +1,6 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
+import plugin from "tailwindcss/plugin";
 
 /**
  * Preset compartido, portado literalmente de atiende-restaurantes
@@ -192,7 +193,14 @@ const preset: Omit<Config, "content"> = {
       },
     },
   },
-  plugins: [tailwindcssAnimate],
+  plugins: [
+    tailwindcssAnimate,
+    // Variante `v2:` -- la regla solo aplica bajo <html data-theme="v2">, para
+    // que un cambio visual de DS v2 no altere la apariencia con la bandera apagada.
+    plugin(({ addVariant }) => {
+      addVariant("v2", ':root[data-theme="v2"] &');
+    }),
+  ],
 };
 
 export default preset;
