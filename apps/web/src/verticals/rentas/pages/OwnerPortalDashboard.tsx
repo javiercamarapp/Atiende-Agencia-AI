@@ -28,6 +28,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  PageContainer,
   CardTitle,
   EstadoCargando,
   EstadoError,
@@ -142,12 +143,12 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-[760px] p-6 flex flex-col gap-6">
+      <PageContainer size="md" className="gap-6 [&>*]:min-w-0">
         <header className="flex justify-between items-start gap-3">
           <div>
             <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Portal de propietario</h1>
             {me && (
-              <p className="m-0 text-[13px] text-muted-foreground">
+              <p className="m-0 text-sm text-muted-foreground">
                 {me.name} · {me.email ?? "sin correo registrado"}
               </p>
             )}
@@ -170,10 +171,10 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
         {me && me.organizaciones.length > 0 && (
           <Card>
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-[15px] font-semibold">Tus empresas gestoras</CardTitle>
+              <CardTitle className="text-base font-semibold">Tus empresas gestoras</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <ul className="m-0 pl-5 text-[13px] text-foreground list-disc">
+              <ul className="m-0 pl-5 text-sm text-foreground list-disc">
                 {me.organizaciones.map((o) => (
                   <li key={o.organizationId}>{o.name}</li>
                 ))}
@@ -184,7 +185,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
 
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Tus unidades</CardTitle>
+            <CardTitle className="text-base font-semibold">Tus unidades</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             {!unidades && <EstadoCargando lineas={2} etiqueta="Cargando tus unidades…" />}
@@ -212,7 +213,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
 
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Tus statements</CardTitle>
+            <CardTitle className="text-base font-semibold">Tus statements</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {!statements && <EstadoCargando lineas={2} etiqueta="Cargando tus statements…" />}
@@ -253,7 +254,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
             {detalle && (
               <Card className="border-dashed">
                 <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-[13px] font-semibold">
+                  <CardTitle className="text-sm font-semibold">
                     Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin} ({detalle.organizationName})
                   </CardTitle>
                   {detalle.motivoVersion && <CardDescription className="text-xs">Motivo de esta versión: {detalle.motivoVersion}</CardDescription>}
@@ -279,7 +280,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
                       ))}
                     </TableBody>
                   </Table>
-                  <div className="flex justify-between text-[13px] font-bold text-foreground">
+                  <div className="flex justify-between text-sm font-bold text-foreground">
                     <span>Neto</span>
                     <span className="tabular-nums">
                       {centavosAPesos(detalle.totales.netoCentavos)} {detalle.moneda}
@@ -290,7 +291,7 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     </main>
   );
 }
