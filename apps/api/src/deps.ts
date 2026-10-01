@@ -8,6 +8,7 @@ import type {
   MfaRepository,
   CfoRepository,
   PylRepository,
+  CfoZoneRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
@@ -523,6 +524,11 @@ export interface AppDeps {
    *  sesion del caller. OPCIONAL: ausente -> el P&L se calcula sin infra ("sin_infra_capturada") y la
    *  captura responde 503. El ingreso y el costo del P&L salen de `cfoRepo`. */
   readonly pylRepo?: (db: TenantDbSession) => PylRepository;
+  /** Zona CFO segura (SA-41): rol `finanzas` de solo lectura y bitacora de cada consulta financiera
+   *  (packages/db/migrations/0034_superadmin_zona_cfo.sql, ver superadmin-seguridad/zona-cfo.ts y
+   *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
+   *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
+  readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
   /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
    *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
   readonly platformSwitchGuard?: PlatformSwitchGuard;

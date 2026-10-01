@@ -11,7 +11,7 @@
 //   - Base sin migrar (0025 sin aplicar) o `mfaRepo` ausente: sin cambios, salvo
 //     SUPERADMIN_MFA_REQUIRED=1, que falla CERRADO con 503 (el operador pidio
 //     obligatoriedad: no se degrada en silencio a "sin MFA").
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { ApiError, TokenExpiredError, verifyStepUpToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import type { AppDeps } from "../deps.ts";
@@ -41,6 +41,11 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
   { method: "DELETE", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "quitar un limite de plan" },
   { method: "POST", pattern: /^\/superadmin\/planes\/asignaciones\/[^/]+\/confirmar$/, label: "confirmar asignacion de plan a una organizacion" },
+  // Zona CFO (SA-41): exportar datos financieros, asignar o retirar el rol `finanzas` y leer la bitacora de consultas.
+  { method: "GET", pattern: /^\/superadmin\/pyl\/export\.csv$/, label: "exportar el P&L en CSV" },
+  { method: "PUT", pattern: /^\/superadmin\/zona-cfo\/roles\/[^/]+$/, label: "asignar o retirar el rol finanzas" },
+  { method: "GET", pattern: /^\/superadmin\/zona-cfo\/bitacora$/, label: "leer la bitacora de consultas financieras" },
+  { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {
@@ -52,42 +57,45 @@ export function stepUpRequiredError(message = "Esta acción exige verificar tu c
   return new ApiError(403, "stepup_required", message);
 }
 
+/**
+ * Exige el step-up segun la politica de arriba. `obligatorio` = true (rol `finanzas` de la zona CFO,
+ * ver zona-cfo.ts) NO admite degradarse: sin repositorio MFA, con la migracion 0025 sin aplicar o sin
+ * factor activo la respuesta es 503/403 (falla CERRADO), porque ese rol no tiene un "camino anterior
+ * sin MFA" que preservar.
+ */
+export async function exigirStepUp(deps: AppDeps, c: Context<CoreAuthHonoEnv>, opciones: { readonly obligatorio: boolean }): Promise<void> {
+  const required = opciones.obligatorio || deps.env.superadminMfaRequired === true;
+  const userId = c.get("userId");
+
+  if (!deps.mfaRepo) {
+    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero no está disponible en este despliegue.");
+    return;
+  }
+  const mfaRepo = deps.mfaRepo;
+  const { availability, factor } = await deps.engine.withAppSession({ userId: null }, (db) => mfaRepo(db).getFactor(userId));
+  if (availability === "not_migrated") {
+    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero la migración 0025 aún no está aplicada.");
+    return;
+  }
+  if (factor?.status !== "active") {
+    if (required) throw new ApiError(403, "mfa_enrollment_required", "La MFA es obligatoria: enrola tu autenticador en Seguridad antes de ejecutar esta acción.");
+    return;
+  }
+
+  const stepUp = c.req.header(STEPUP_HEADER);
+  const bearer = c.req.header("authorization")?.slice("Bearer ".length).trim() ?? "";
+  if (!stepUp) throw stepUpRequiredError();
+  try {
+    await verifyStepUpToken(stepUp, bearer, userId, deps.env.jwtSecret);
+  } catch (err) {
+    if (err instanceof TokenExpiredError) throw new ApiError(403, "stepup_required", "Tu verificación MFA expiró. Verifica de nuevo y reintenta.");
+    throw stepUpRequiredError();
+  }
+}
+
 export function stepUpMiddleware(deps: AppDeps): MiddlewareHandler<CoreAuthHonoEnv> {
   return async (c, next) => {
-    if (!isSensitiveRoute(c.req.method, c.req.path)) {
-      await next();
-      return;
-    }
-    const required = deps.env.superadminMfaRequired === true;
-    const userId = c.get("userId");
-
-    if (!deps.mfaRepo) {
-      if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero no está disponible en este despliegue.");
-      await next();
-      return;
-    }
-    const mfaRepo = deps.mfaRepo;
-    const { availability, factor } = await deps.engine.withAppSession({ userId: null }, (db) => mfaRepo(db).getFactor(userId));
-    if (availability === "not_migrated") {
-      if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero la migración 0025 aún no está aplicada.");
-      await next();
-      return;
-    }
-    if (factor?.status !== "active") {
-      if (required) throw new ApiError(403, "mfa_enrollment_required", "La MFA es obligatoria: enrola tu autenticador en Seguridad antes de ejecutar esta acción.");
-      await next();
-      return;
-    }
-
-    const stepUp = c.req.header(STEPUP_HEADER);
-    const bearer = c.req.header("authorization")?.slice("Bearer ".length).trim() ?? "";
-    if (!stepUp) throw stepUpRequiredError();
-    try {
-      await verifyStepUpToken(stepUp, bearer, userId, deps.env.jwtSecret);
-    } catch (err) {
-      if (err instanceof TokenExpiredError) throw new ApiError(403, "stepup_required", "Tu verificación MFA expiró. Verifica de nuevo y reintenta.");
-      throw stepUpRequiredError();
-    }
+    if (isSensitiveRoute(c.req.method, c.req.path)) await exigirStepUp(deps, c, { obligatorio: false });
     await next();
   };
 }
