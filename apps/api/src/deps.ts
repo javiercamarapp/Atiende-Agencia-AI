@@ -21,7 +21,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -160,6 +160,10 @@ export interface AppDeps {
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
   readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
+  /** R-19 -- marca de organizacion demo (migracion 036) para el widget publico de chat sin Meta. OPCIONAL: sin ella el
+   * widget responde "no disponible" (404) en vez de atender cualquier organizacion. En produccion es
+   * `(db) => new PostgresDemoRepository(db)` (degrada con SAVEPOINT a "no es demo" contra la base sin migrar). */
+  readonly demoRepo?: (db: TenantDbSession) => DemoRepository;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
    *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los

@@ -39,6 +39,7 @@ import { privacidadOrgRoutes } from "./routes/privacidad-org.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
+import { restaurantesDemoWidgetRoutes } from "./routes/verticals/restaurantes/demo-widget.ts";
 import { restaurantesStorefrontRoutes } from "./routes/verticals/restaurantes/storefront.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
@@ -126,6 +127,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
   app.route("/", restaurantesStorefrontRoutes(deps));
+  // R-19: widget de chat WhatsApp para demos (sin Meta), solo organizaciones marcadas como demo.
+  app.route("/", restaurantesDemoWidgetRoutes(deps));
   app.route("/", restaurantesVoiceToolsRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));
   app.route("/", restaurantesRoutes(deps));
