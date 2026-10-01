@@ -533,6 +533,7 @@ export * from "./identity/index.ts";
 export * from "./housekeeping/index.ts";
 export * from "./tickets/index.ts";
 export * from "./agentes/index.ts";
+export * from "./grupos/index.ts";
 export * from "./privacy/index.ts";
 
 // "Chatea con tus datos" -- catalogo de hoteles (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.
