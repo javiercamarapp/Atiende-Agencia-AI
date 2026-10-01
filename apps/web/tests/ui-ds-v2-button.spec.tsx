@@ -141,4 +141,16 @@ describe("Button", () => {
     expect(a.className).toContain("rounded-full");
     expect(a.getAttribute("href")).toBe("/x");
   });
+
+  it("asChild deshabilitado: aria-disabled, fuera del orden de tab y sin eventos de puntero por clase", () => {
+    rendered = renderComponent(
+      <Button asChild disabled>
+        <a href="/x">Ir</a>
+      </Button>,
+    );
+    const a = rendered.container.querySelector("a")!;
+    expect(a.getAttribute("aria-disabled")).toBe("true");
+    expect(a.getAttribute("tabindex")).toBe("-1");
+    expect(a.className).toContain("aria-disabled:pointer-events-none");
+  });
 });

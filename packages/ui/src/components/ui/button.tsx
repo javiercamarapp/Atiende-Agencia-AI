@@ -14,7 +14,7 @@ import { cn } from "../../lib/utils";
 // de motion (nada de transition-all). Variantes retiradas por no tener ningún
 // uso en el repo: hero, terracotta, gold y el tamaño xl.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold tracking-[0.005em] ring-offset-background transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-fast ease-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold tracking-[0.005em] ring-offset-background transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-fast ease-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -63,7 +63,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const classes = cn(buttonVariants({ variant, size, className }));
     if (asChild) {
       return (
-        <Slot className={classes} ref={ref} aria-disabled={disabled || undefined} {...props}>
+        <Slot className={classes} ref={ref} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined} {...props}>
           {children}
         </Slot>
       );
