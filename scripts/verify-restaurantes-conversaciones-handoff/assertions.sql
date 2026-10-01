@@ -1085,6 +1085,16 @@ do $$ begin
 exception when sqlstate '42501' then null; end $$;
 rollback;
 
+\echo '=== G12. RECHAZADO: authenticated no puede sondear handoff_conversacion_valida (helper interno, sin EXECUTE) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+do $$ begin
+  perform restaurantes.handoff_conversacion_valida('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
 \echo '=== H1. BASE SIN MIGRAR: sin conversation_handoff el repositorio falla con 42P01 y el SAVEPOINT recupera la transaccion ==='
 begin;
 drop table restaurantes.conversation_note; drop table restaurantes.conversation_handoff cascade;

@@ -299,6 +299,10 @@ create policy "staff que tomo el handoff lee los turnos de voz" on restaurantes.
 
 -- Pertenencia de la conversacion a la organizacion y sucursal declaradas. Una conversacion de
 -- WhatsApp sin sucursal (numero de la organizacion) cuenta para cualquier sucursal de la org.
+-- Seguridad: es un helper INTERNO (definer, sin guard de pertenencia propio): solo la llaman otras funciones
+-- definer de esta migracion, que ya validaron al actor, y el dueno de la funcion siempre puede ejecutarla. Por
+-- eso NO se concede a authenticated ni a service_role: asi nadie puede sondear con UUIDs si una conversacion
+-- pertenece a una organizacion o sucursal.
 create or replace function restaurantes.handoff_conversacion_valida(
   p_organization_id uuid,
   p_property_id uuid,
@@ -326,8 +330,7 @@ begin
   return false;
 end;
 $$;
-revoke all on function restaurantes.handoff_conversacion_valida(uuid, uuid, text, uuid) from public, anon;
-grant execute on function restaurantes.handoff_conversacion_valida(uuid, uuid, text, uuid) to authenticated, service_role;
+revoke all on function restaurantes.handoff_conversacion_valida(uuid, uuid, text, uuid) from public, anon, authenticated, service_role;
 
 create or replace function restaurantes.handoff_tomar(
   p_organization_id uuid,
