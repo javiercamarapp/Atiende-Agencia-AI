@@ -64,6 +64,22 @@ export const call = (name: string, args: Record<string, unknown> | ((req: LlmCom
   toolCalls: [{ id: `call-${name}-${Math.random().toString(36).slice(2, 8)}`, name, argumentsJson: JSON.stringify(typeof args === "function" ? args(req) : args) }],
   ...base,
 });
+/** Variante de `call` que registra el resultado de la tool ANTERIOR en `seen` (para asertar despues, sin romper el guion). */
+export function callObserving(seen: unknown[], name: string, args: Record<string, unknown>): ScriptStep {
+  const inner = call(name, args);
+  return (req) => {
+    const hasTool = req.messages.some((m) => m.role === "tool");
+    if (hasTool) seen.push(lastTool(req));
+    return inner(req);
+  };
+}
+/** Registra el resultado de la ultima tool y responde texto. */
+export function sayObserving(seen: unknown[], text: string): ScriptStep {
+  return (req) => {
+    if (req.messages.some((m) => m.role === "tool")) seen.push(lastTool(req));
+    return { text, ...base };
+  };
+}
 /** Resultado JSON de la ULTIMA tool ejecutada, tal como lo leeria un modelo real en su contexto. */
 export function lastTool<T = Record<string, unknown>>(req: LlmCompletionRequest): T {
   const msg = [...req.messages].reverse().find((m) => m.role === "tool");
@@ -176,6 +192,17 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
   gateway.registerLadder("e2e-escalated", [new FakeLlmProvider({ id: "escalated-unused" })]);
 
   const conversaciones = new InMemoryConversacionesRepository({ actorUserId: ctx.staff.owner.id, actorEsAdministrador: true });
+  // La toma de handoff necesita la conversacion de WhatsApp (en Postgres la crea el webhook): se refleja aqui.
+  const gateBase = new InMemoryHandoffAgentGate(conversaciones);
+  const handoffGate = {
+    estadoParaAgente: (org: string, phone: string) => gateBase.estadoParaAgente(org, phone),
+    solicitarHumano: (input: { organizationId: string; propertyId: string | null; phone: string; motivo: string }) => {
+      if (!conversaciones.conversaciones.some((c) => c.telefono === input.phone)) {
+        conversaciones.conversaciones.push({ canal: "whatsapp", id: randomUUID(), organizationId: input.organizationId, propertyId: input.propertyId ?? propertyId, telefono: input.phone, mensajes: [], actividadAt: new Date().toISOString() });
+      }
+      return gateBase.solicitarHumano({ ...input, propertyId: input.propertyId ?? propertyId });
+    },
+  };
   const privacidad = new InMemoryPrivacidadRepository();
   const env = {
     ...TEST_ENV,
@@ -216,7 +243,7 @@ export async function startCicloStack(opts: { readonly now?: string } = {}): Pro
     whatsAppDispatcher: new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: E2E_SECRETS.accessToken, baseUrl: sim.baseUrl }) }),
     privacidadRepo: () => privacidad,
     conversacionesRepo: () => conversaciones,
-    handoffGate: () => new InMemoryHandoffAgentGate(conversaciones),
+    handoffGate: () => handoffGate,
   };
   holder.deps = deps;
 
