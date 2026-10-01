@@ -19,12 +19,12 @@ import { authMiddleware, generateInviteToken, hashInviteToken } from "@atiende/c
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { botonPildoraHtml, escapeHtml, renderCorreo } from "@atiende/core-email";
 import { hashPassword, StaffSecurityUnavailableError, verifyPassword } from "@atiende/db";
+import type { StaffSecurityRepository } from "@atiende/db";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import { logEvent } from "../logger.ts";
 import { issueSession } from "./auth.ts";
-import { orUnavailable, requireSecurityRepo } from "../second-factor.ts";
 import type { AppDeps } from "../deps.ts";
 
 const RESET_TTL_MS = 60 * 60_000;
@@ -42,6 +42,24 @@ const NOMBRE_VERTICAL: Record<Vertical, string> = {
   despachos: "atiende despachos",
 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Estas rutas NO son del segundo factor: con la migracion pendiente responden un 503 neutral (no el
+// mensaje de "verificacion en dos pasos" de `second-factor.ts`, que confundiria al usuario).
+function noDisponible() {
+  return Errors.serviceUnavailable("Esta función todavía no está disponible en este ambiente (migración pendiente).");
+}
+function securityRepo(deps: AppDeps): StaffSecurityRepository {
+  if (!deps.staffSecurityRepo) throw noDisponible();
+  return deps.staffSecurityRepo;
+}
+async function orNoDisponible<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof StaffSecurityUnavailableError) throw noDisponible();
+    throw err;
+  }
+}
 
 function parseVertical(v: unknown): Vertical {
   if (typeof v !== "string" || !(VERTICALS as readonly string[]).includes(v)) throw Errors.validation("vertical inválida o ausente.");
@@ -94,7 +112,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   /** Cambio de contrasena autenticado: exige la actual; corta las demas sesiones y devuelve una nueva. */
   app.use("/auth/change-password", authMiddleware(deps.env));
   app.post("/auth/change-password", async (c) => {
-    const repo = requireSecurityRepo(deps);
+    const repo = securityRepo(deps);
     const body = await readJsonCapped<{ currentPassword?: unknown; newPassword?: unknown }>(c.req.raw, 4 * 1024);
     if (typeof body.currentPassword !== "string" || body.currentPassword.length === 0) throw Errors.validation("currentPassword requerido.");
     const newPassword = parseNewPassword(body.newPassword, "newPassword");
@@ -107,7 +125,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const staff = await deps.coreRepo.findStaffById(userId);
     if (!staff || !(await verifyPassword(body.currentPassword, staff.passwordHash))) throw Errors.currentPasswordInvalid();
     const newHash = await hashPassword(newPassword);
-    await orUnavailable(() => repo.changePassword(userId, newHash));
+    await orNoDisponible(() => repo.changePassword(userId, newHash));
     return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName, { c }), 200);
   });
 
@@ -154,7 +172,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   /** Canje del enlace: fija la contrasena nueva, corta todas las sesiones. No inicia sesion. */
   app.post("/auth/password-reset/confirmar", async (c) => {
-    const repo = requireSecurityRepo(deps);
+    const repo = securityRepo(deps);
     const body = await readJsonCapped<{ token?: unknown; newPassword?: unknown }>(c.req.raw, 4 * 1024);
     if (typeof body.token !== "string" || body.token.length === 0 || body.token.length > 200) throw Errors.validation("token requerido");
     const newPassword = parseNewPassword(body.newPassword, "newPassword");
@@ -162,7 +180,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!allowed) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
 
     const passwordHash = await hashPassword(newPassword);
-    const staffId = await orUnavailable(() => repo.consumePasswordResetToken(hashInviteToken(body.token as string), passwordHash));
+    const staffId = await orNoDisponible(() => repo.consumePasswordResetToken(hashInviteToken(body.token as string), passwordHash));
     if (!staffId) throw Errors.validation("El enlace es inválido, ya se usó o expiró. Pide uno nuevo desde «Olvidé mi contraseña».");
     return c.json({ ok: true }, 200);
   });
@@ -170,7 +188,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   /** Reenvia el correo de verificacion al propio usuario autenticado. */
   app.use("/auth/email-verification/enviar", authMiddleware(deps.env));
   app.post("/auth/email-verification/enviar", async (c) => {
-    const repo = requireSecurityRepo(deps);
+    const repo = securityRepo(deps);
     const body = await readJsonCapped<{ vertical?: unknown }>(c.req.raw, 1024);
     const vertical = parseVertical(body.vertical ?? c.get("vertical"));
     const userId = c.get("userId");
@@ -181,7 +199,7 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (staff.emailVerifiedAt) return c.json({ ok: true, alreadyVerified: true }, 200);
 
     const { tokenPlain, tokenHash } = generateInviteToken();
-    await orUnavailable(() => repo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString() }));
+    await orNoDisponible(() => repo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString() }));
     const url = enlace(deps, vertical, "verificar-correo", tokenPlain);
     const nombre = NOMBRE_VERTICAL[vertical];
     const enviado = await enviarCorreo(deps, c, "email_verification", {
@@ -209,12 +227,12 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   /** Canje del enlace de verificacion (POST, para que un escaner de correo no lo consuma). */
   app.post("/auth/email-verification/confirmar", async (c) => {
-    const repo = requireSecurityRepo(deps);
+    const repo = securityRepo(deps);
     const body = await readJsonCapped<{ token?: unknown }>(c.req.raw, 1024);
     if (typeof body.token !== "string" || body.token.length === 0 || body.token.length > 200) throw Errors.validation("token requerido");
     const allowed = await rateLimit(`auth:email-verification-confirm:${requestActor(c.req.raw, body.token)}`, CANJE_RATE_LIMIT.max, CANJE_RATE_LIMIT.windowMs, { category: "auth:token-issue" });
     if (!allowed) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
-    const staffId = await orUnavailable(() => repo.consumeEmailVerificationToken(hashInviteToken(body.token as string)));
+    const staffId = await orNoDisponible(() => repo.consumeEmailVerificationToken(hashInviteToken(body.token as string)));
     if (!staffId) throw Errors.validation("El enlace es inválido, ya se usó o expiró. Pide uno nuevo desde Seguridad de tu cuenta.");
     return c.json({ ok: true }, 200);
   });
