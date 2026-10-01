@@ -201,9 +201,45 @@ describe("ConvocatoriaDetallePage (licitaciones)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
+    // "No-go" descarta la convocatoria: primero pide confirmación y no llama a la API.
+    const llamadaNoGo = () => fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(llamadaNoGo()).toBeUndefined();
+    const confirmar = [...document.body.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent?.includes("Marcar No-go"))!;
+    await act(async () => {
+      confirmar.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    const call = llamadaNoGo();
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ decision: "no_go", reasons: ["Fuera de nuestra capacidad"] });
+  });
+
+  it("Cancelar el diálogo de 'Marcar No-go' NUNCA registra la decisión", async () => {
+    stubFetch({ decisions: [] });
+    rendered = renderPage();
+    await esperarCarga();
+    await act(async () => {
+      irATabGoNoGo(rendered!.container);
+    });
+    changeValue(rendered.container.querySelector("#go-no-go-motivos") as HTMLTextAreaElement, "Fuera de nuestra capacidad");
+    const marcarNoGoBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Marcar No-go")!;
+    await act(async () => {
+      marcarNoGoBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    const cancelar = [...document.body.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent?.includes("Cancelar"))!;
+    await act(async () => {
+      cancelar.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(post).toBeUndefined();
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
   it("un rol sin permiso (viewer) NUNCA ve el formulario de decisión, solo el aviso de que no puede decidir", async () => {
