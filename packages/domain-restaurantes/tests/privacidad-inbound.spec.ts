@@ -124,6 +124,16 @@ describe("fast-path ARCO dentro del webhook", () => {
     expect(outcome.reply).toContain("CONFIRMO");
   });
 
+  it("ARCO mezclado con otro riesgo alto (alergia, queja) NO toma el fast-path: sigue al agente para no perder la escalacion al equipo", async () => {
+    const { send, handle, privacy } = setup();
+    await send("hola");
+    handle.mockClear();
+    await send("soy alergico al cacahuate y quiero acceso a mis datos personales");
+    await send("tengo una queja grave y quiero que borren mis datos personales");
+    expect(handle).toHaveBeenCalledTimes(2);
+    expect(privacy.requests).toHaveLength(0);
+  });
+
   it("un pedido normal que dice 'cancelar' sigue al agente (no es ARCO)", async () => {
     const { send, handle } = setup();
     await send("cancelar mi pedido por favor");
