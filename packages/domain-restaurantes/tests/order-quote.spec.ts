@@ -24,7 +24,7 @@ describe("buildOrderQuoteFromProducts", () => {
   });
 
   it("exige tortilla para productos cuyo nombre matchea /\\btacos?\\b/ y nunca la carga en productos que no la requieren", () => {
-    expect(() => buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3 }], [tacos])).toThrow(/maíz o harina/);
+    expect(() => buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3 }], [tacos])).toThrow(/maíz, harina o mixta/);
     const quote = buildOrderQuoteFromProducts([{ productId: "tacos", requestedQuantity: 3, tortilla: "maiz" }], [tacos]);
     expect(quote.lines[0]!.tortilla).toBe("maiz");
     const cocaQuote = buildOrderQuoteFromProducts([{ productId: "coca", requestedQuantity: 1, tortilla: "maiz" }], [coca]);
