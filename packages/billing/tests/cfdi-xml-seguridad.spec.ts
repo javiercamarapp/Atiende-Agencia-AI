@@ -15,7 +15,7 @@ describe('parseCfdiXml endurecido (D-29)', () => {
   it('un CFDI limpio sigue parseando (con y sin declaracion UTF-8 y con BOM)', () => {
     expect(parseCfdiXml(CUERPO).folioFiscal).toBe('11111111-2222-3333-4444-555555555555');
     expect(parseCfdiXml(`<?xml version="1.0" encoding="UTF-8"?>\n${CUERPO}`).total).toBe(1160);
-    expect(parseCfdiXml(`﻿<?xml version="1.0" encoding="utf-8"?>${CUERPO}`).total).toBe(1160);
+    expect(parseCfdiXml(`\uFEFF<?xml version="1.0" encoding="utf-8"?>${CUERPO}`).total).toBe(1160);
   });
 
   it('rechaza DOCTYPE con entidad externa', () => {
