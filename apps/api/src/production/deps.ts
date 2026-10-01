@@ -90,6 +90,7 @@ import {
   PostgresCfoRepository,
   PostgresPylRepository,
   PostgresCfoZoneRepository,
+  PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
   PostgresCostosPlanesRepository,
   PostgresOrgAdminRepository,
@@ -500,6 +501,7 @@ export function buildProductionDeps(): AppDeps {
     cfoRepo: (db) => new PostgresCfoRepository(db),
     pylRepo: (db) => new PostgresPylRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
+    contratosRepo: (db) => new PostgresContratosRepository(db),
     privacidadPlataformaRepo: (db) => new PostgresPlataformaPrivacidadRepository(db),
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.

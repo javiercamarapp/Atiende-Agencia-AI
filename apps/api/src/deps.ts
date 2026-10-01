@@ -9,6 +9,7 @@ import type {
   CfoRepository,
   PylRepository,
   CfoZoneRepository,
+  ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
   OrgAdminRepository,
@@ -532,6 +533,11 @@ export interface AppDeps {
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
    *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
   readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
+  /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
+   *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
+   *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,
+   *  nunca un 500. */
+  readonly contratosRepo?: (db: TenantDbSession) => ContratosRepository;
   /** Privacidad de plataforma y por organizacion (PL-13): solicitudes ARCO unificadas, retencion, bloqueo y registro
    *  de purgas y aviso versionado (packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql, ver
    *  routes/superadmin-privacidad.ts, routes/privacidad-org.ts y routes/internal/plataforma-retencion.ts). Fabrica por

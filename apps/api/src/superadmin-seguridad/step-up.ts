@@ -41,6 +41,9 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
   { method: "DELETE", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "quitar un limite de plan" },
   { method: "POST", pattern: /^\/superadmin\/planes\/asignaciones\/[^/]+\/confirmar$/, label: "confirmar asignacion de plan a una organizacion" },
+  // Contrato por cliente (SA-43): cambiar las condiciones comerciales de una organizacion.
+  { method: "POST", pattern: /^\/superadmin\/contratos$/, label: "dar de alta el contrato de una organizacion" },
+  { method: "POST", pattern: /^\/superadmin\/contratos\/[^/]+\/enmiendas$/, label: "enmendar el contrato de una organizacion" },
   // Zona CFO (SA-41): exportar datos financieros, asignar o retirar el rol `finanzas` y leer la bitacora de consultas.
   { method: "GET", pattern: /^\/superadmin\/pyl\/export\.csv$/, label: "exportar el P&L en CSV" },
   { method: "PUT", pattern: /^\/superadmin\/zona-cfo\/roles\/[^/]+$/, label: "asignar o retirar el rol finanzas" },
