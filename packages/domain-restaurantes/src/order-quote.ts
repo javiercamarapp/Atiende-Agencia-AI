@@ -89,18 +89,18 @@ export function buildComplementNotes(
   requested: readonly RequestedComplement[] = [],
   omitted: readonly DefaultComplement[] = [],
 ): string {
+  // Las 9 salsas (incluidas habanero y crema de ajo) ya van incluidas sin costo por omision, asi que pedir
+  // habanero/crema de ajo NO agrega una linea "solicitados" aparte (apareceria a la vez como incluido y
+  // solicitado). Si el cliente la pide expresamente, esa peticion gana sobre una omision contradictoria.
+  const requestedSet = new Set<DefaultComplement>(requested);
   const omittedSet = new Set(omitted.map(canonicalComplement));
-  const included = DEFAULT_COMPLEMENTS.filter((item) => !omittedSet.has(item));
-  const uniqueRequested = [...new Set(requested)];
+  const included = DEFAULT_COMPLEMENTS.filter((item) => requestedSet.has(item) || !omittedSet.has(item));
   const lines = [notes?.trim()].filter(Boolean) as string[];
   lines.push(
     included.length > 0
       ? `Complementos incluidos: ${included.map((item) => COMPLEMENT_LABELS[item]).join(", ")}.`
       : "No enviar complementos de cortesía.",
   );
-  if (uniqueRequested.length > 0) {
-    lines.push(`Complementos solicitados: ${uniqueRequested.map((item) => COMPLEMENT_LABELS[item]).join(", ")}.`);
-  }
   return lines.join("\n");
 }
 

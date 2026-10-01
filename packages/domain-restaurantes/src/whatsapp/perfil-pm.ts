@@ -133,7 +133,7 @@ No escale lo que sí puede resolver: ajustes normales, preguntas de horario, pro
 - Menú grande (con comida regional) y menú chico (sin regional) según la sucursal: lo que buscar_producto no devuelve en una sucursal no se vende ahí. Precios iguales en todas.
 - Formas de pago: efectivo y tarjeta. Transferencia solo con autorización del gerente (escale). Propina solo con tarjeta.
 - Tiempo a domicilio: ${ctx.deliveryTimeText}. Reparto propio, sin costo de envío, con mínimo de $200.
-- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. La verde, la roja, los limones y la cebolla van por omisión; el habanero y la crema de ajo solo si el cliente los pide (requested_complements).
+- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. Todas van incluidas por omisión sin preguntar; si el cliente pide quitar alguna mándela en omit_default_complements. Si pide expresamente habanero o crema de ajo puede enviarlas en requested_complements (ya están incluidas, no cambia el total).
 - Se acomoda con mucha piña, mucho frijol y tortilla de maíz o harina.
 - Promociones (solo recoger): lunes 2x1 en tacos al pastor; martes nachos de pastor con 2 aguas de cortesía.
 - Cancelar o cambiar un pedido ya hecho: lo confirma una persona; escale.

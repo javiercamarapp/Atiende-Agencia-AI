@@ -61,9 +61,15 @@ describe("buildComplementNotes", () => {
     const notes = buildComplementNotes(undefined, [], [...DEFAULT_COMPLEMENTS]);
     expect(notes).toMatch(/No enviar complementos de cortesía/);
   });
-  it("agrega los complementos solicitados sin duplicar", () => {
-    const notes = buildComplementNotes(undefined, ["salsa_habanero", "salsa_habanero"], []);
-    expect(notes.match(/Complementos solicitados: salsa habanero[^,]*\.$/m)).not.toBeNull();
-    expect(notes.match(/solicitados/g)).toHaveLength(1);
+  it("habanero/crema de ajo solicitados no aparecen a la vez como incluidos y solicitados", () => {
+    const notes = buildComplementNotes(undefined, ["salsa_habanero", "salsa_habanero", "crema_ajo"], []);
+    expect(notes).toBe(buildComplementNotes(undefined, [], []));
+    expect(notes).not.toMatch(/solicitados/i);
+  });
+  it("una peticion expresa de habanero gana sobre una omision contradictoria", () => {
+    const notes = buildComplementNotes(undefined, ["salsa_habanero"], ["salsa_habanero", "salsa_verde"]);
+    expect(notes).toContain("salsa habanero");
+    expect(notes).not.toContain("salsa verde");
+    expect(notes).not.toMatch(/solicitados/i);
   });
 });

@@ -289,7 +289,8 @@ describe("PM reglas duras: menu regional, modificadores, complementos y total de
     const sin = await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 3, tortilla: "maiz" }], { customerPhone: "9990000001" }));
     const con = await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 3, tortilla: "maiz" }], { customerPhone: "9990000002", requestedComplements: ["salsa_habanero", "crema_ajo"] }));
     expect(con.total).toBe(sin.total);
-    expect(con.notes).toMatch(/Complementos solicitados: (crema de ajo, salsa habanero \(soasada o picada con limón\)|salsa habanero \(soasada o picada con limón\), crema de ajo)\./);
+    expect(con.notes).toBe(sin.notes);
+    expect(con.notes).not.toMatch(/solicitados/i);
     expect((await searchProducts(f.repo, { propertyId: f.t1, query: "habanero" })).length).toBe(0);
   });
 
