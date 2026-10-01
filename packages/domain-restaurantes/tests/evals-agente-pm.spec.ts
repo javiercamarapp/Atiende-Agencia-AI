@@ -194,3 +194,14 @@ describe("los graders rechazan al agente malo", () => {
     falla(await mutar("L01", (m) => void (comandaMutable(m).pago = "tarjeta")), "G_COMANDA");
   });
 });
+
+describe("modo LLM real (opt-in, nunca en CI)", () => {
+  it("se niega a correr sin la variable explicita, la llave, el modelo o con topes invalidos (antes de cualquier red)", async () => {
+    const { opcionesRealDesdeEntorno } = await import("../src/evals/agente-pm/real.ts");
+    expect(() => opcionesRealDesdeEntorno({})).toThrow(/PM_EVALS_REAL=1/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1" })).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k" })).toThrow(/PM_EVALS_MODEL/);
+    expect(() => opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k", PM_EVALS_MODEL: "m", PM_EVALS_MAX_USD: "0" })).toThrow(/MAX_USD/);
+    expect(opcionesRealDesdeEntorno({ PM_EVALS_REAL: "1", ANTHROPIC_API_KEY: "k", PM_EVALS_MODEL: "m" })).toMatchObject({ maxUsd: 2, k: 1 });
+  });
+});
