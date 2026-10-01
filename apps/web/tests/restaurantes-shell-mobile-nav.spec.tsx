@@ -110,6 +110,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Promociones",
       "Sucursales",
       "Clientes",
+      "Primeros pasos",
       "Staff",
       "Auditoría",
       "Configuración",
