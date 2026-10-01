@@ -10,8 +10,9 @@
 // Cada lectura falla por separado (Promise.allSettled): si la base aun no tiene
 // una tabla, esa seccion muestra "no disponible aun" y el resto sigue operando.
 import { useEffect, useState } from "react";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
 import { SOURCE_STATE_LABELS, fetchSourceConnectors, fetchSourceFreshness, fetchSourceRuns, formatAge } from "../lib/sources-client.ts";
+import { CORRIDA_FUENTE_TONES } from "../lib/status-tones.ts";
 import type { SourceConnectorInfo, SourceFreshness, SourceRun } from "../lib/sources-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -55,10 +56,10 @@ export function FuentesFrescuraPage({ apiBaseUrl, token, propertyId }: Licitacio
   const staleCount = (freshness ?? []).filter((f) => f.stale).length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Fuentes y frescura</h1>
-        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Fuentes y frescura</h1>
+        <p className="mt-1 max-w-[720px] text-sm text-muted-foreground">
           De dónde salen las convocatorias (CompraNet/ComprasMX, portales estatales con estándar OCDS y alta manual) y qué tan al día está cada fuente. Una fuente sin corridas exitosas se marca como obsoleta:
           nunca se presenta como si estuviera actualizada. Una fuente &quot;verificada&quot; solo lo es si se probó en vivo con evidencia.
         </p>
@@ -78,54 +79,78 @@ export function FuentesFrescuraPage({ apiBaseUrl, token, propertyId }: Licitacio
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            {connectors.length === 0 ? (
-              <EstadoVacio mensaje="No hay fuentes registradas." />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fuente</TableHead>
-                      <TableHead>Verificación en vivo</TableHead>
-                      <TableHead>Último estado</TableHead>
-                      <TableHead>Último éxito</TableHead>
-                      <TableHead>Frescura</TableHead>
-                      <TableHead>Cadencia declarada</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {connectors.map((c) => {
-                      const fr = freshnessById.get(c.id);
-                      return (
-                        <TableRow key={c.id}>
-                          <TableCell className="p-3">
-                            <div className="font-semibold text-foreground">{c.label}</div>
-                            <div className="text-[11px] text-muted-foreground">{c.kind === "manual" ? "Manual" : "Automática"} · {c.id}</div>
-                          </TableCell>
-                          <TableCell className="p-3">
-                            <Badge variant={c.liveVerification.verified ? "default" : "outline"}>{c.liveVerification.verified ? "Verificada" : "Sin verificar"}</Badge>
-                            <div className="mt-1 max-w-[260px] text-[11px] text-muted-foreground">{c.liveVerification.note}</div>
-                          </TableCell>
-                          <TableCell className="p-3 text-muted-foreground">{fr ? (fr.lastRunState ? SOURCE_STATE_LABELS[fr.lastRunState] : "Sin corridas") : "—"}</TableCell>
-                          <TableCell className="p-3 text-muted-foreground">{fr ? when(fr.lastSuccessAt) : "—"}</TableCell>
-                          <TableCell className="p-3">
-                            {fr ? (
-                              <>
-                                <Badge variant={fr.stale ? "destructive" : "default"}>{fr.stale ? "Obsoleta" : "Al día"}</Badge>
-                                <div className="mt-1 text-[11px] text-muted-foreground">{formatAge(fr.staleForMs)}</div>
-                              </>
-                            ) : (
-                              <span className="text-muted-foreground">No disponible</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="p-3 text-[12px] text-muted-foreground">{c.cadence.minIntervalMinutes === 0 ? "A demanda" : `Cada ${c.cadence.minIntervalMinutes} min`} — {c.cadence.note}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+            <DataTable
+              etiqueta="Fuentes registradas"
+              obtenerId={(c) => c.id}
+              filas={connectors}
+              paginacion={false}
+              vacio={{ mensaje: "No hay fuentes registradas." }}
+              columnas={[
+                {
+                  id: "fuente",
+                  encabezado: "Fuente",
+                  principal: true,
+                  celda: (c) => (
+                    <>
+                      <div className="font-semibold text-foreground">{c.label}</div>
+                      <div className="text-xs font-normal text-muted-foreground">
+                        {c.kind === "manual" ? "Manual" : "Automática"} · {c.id}
+                      </div>
+                    </>
+                  ),
+                },
+                {
+                  id: "verificacion",
+                  encabezado: "Verificación en vivo",
+                  celda: (c) => (
+                    <>
+                      <StatusBadge tone={c.liveVerification.verified ? "success" : "neutral"}>{c.liveVerification.verified ? "Verificada" : "Sin verificar"}</StatusBadge>
+                      <div className="mt-1 max-w-64 text-xs font-normal text-muted-foreground">{c.liveVerification.note}</div>
+                    </>
+                  ),
+                },
+                {
+                  id: "estado",
+                  encabezado: "Último estado",
+                  celda: (c) => {
+                    const fr = freshnessById.get(c.id);
+                    return <span className="text-muted-foreground">{fr ? (fr.lastRunState ? SOURCE_STATE_LABELS[fr.lastRunState] : "Sin corridas") : "—"}</span>;
+                  },
+                },
+                {
+                  id: "exito",
+                  encabezado: "Último éxito",
+                  celda: (c) => {
+                    const fr = freshnessById.get(c.id);
+                    return <span className="text-muted-foreground">{fr ? when(fr.lastSuccessAt) : "—"}</span>;
+                  },
+                },
+                {
+                  id: "frescura",
+                  encabezado: "Frescura",
+                  celda: (c) => {
+                    const fr = freshnessById.get(c.id);
+                    return fr ? (
+                      <>
+                        <StatusBadge tone={fr.stale ? "danger" : "success"}>{fr.stale ? "Obsoleta" : "Al día"}</StatusBadge>
+                        <div className="mt-1 text-xs font-normal text-muted-foreground">{formatAge(fr.staleForMs)}</div>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">No disponible</span>
+                    );
+                  },
+                },
+                {
+                  id: "cadencia",
+                  encabezado: "Cadencia declarada",
+                  celda: (c) => (
+                    <span className="text-xs text-muted-foreground">
+                      {c.cadence.minIntervalMinutes === 0 ? "A demanda" : `Cada ${c.cadence.minIntervalMinutes} min`} — {c.cadence.note}
+                    </span>
+                  ),
+                },
+              ]}
+            />
           </CardContent>
         </Card>
       )}
@@ -137,40 +162,37 @@ export function FuentesFrescuraPage({ apiBaseUrl, token, propertyId }: Licitacio
         </CardHeader>
         <CardContent className="p-0">
           {errors.runs && <div className="p-4"><EstadoError mensaje={errors.runs} onReintentar={() => void load()} /></div>}
-          {runs && runs.length === 0 && <EstadoVacio mensaje="Todavía no hay corridas registradas." />}
-          {runs && runs.length > 0 && (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fuente</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Inicio</TableHead>
-                    <TableHead>Cobertura</TableHead>
-                    <TableHead>Evidencia</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {runs.map((run, i) => (
-                    <TableRow key={run.id || `${run.source}-${run.startedAt}-${i}`}>
-                      <TableCell className="p-3 font-medium text-foreground">{labelById.get(run.source) ?? run.source}</TableCell>
-                      <TableCell className="p-3">
-                        <Badge variant={run.state === "ok" ? "default" : "destructive"}>{SOURCE_STATE_LABELS[run.state]}</Badge>
-                      </TableCell>
-                      <TableCell className="p-3 text-muted-foreground">{when(run.startedAt)}</TableCell>
-                      <TableCell className="p-3 tabular-nums text-muted-foreground">{run.evidence.coverage ? `${run.evidence.coverage.obtained} de ${run.evidence.coverage.expected}` : "—"}</TableCell>
-                      <TableCell className="p-3 text-[12px] text-muted-foreground">
-                        {run.evidence.message}
-                        {run.notPersistedReason && <div className="text-[11px] text-destructive">No persistida: {run.notPersistedReason}</div>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          {runs && (
+            <DataTable
+              etiqueta="Corridas recientes"
+              obtenerId={(run) => run.id || `${run.source}-${run.startedAt}`}
+              filas={runs}
+              paginacion={false}
+              vacio={{ mensaje: "Todavía no hay corridas registradas." }}
+              columnas={[
+                { id: "fuente", encabezado: "Fuente", principal: true, celda: (run) => <span className="font-medium text-foreground">{labelById.get(run.source) ?? run.source}</span> },
+                { id: "estado", encabezado: "Estado", celda: (run) => <StatusBadge tone={statusTone(CORRIDA_FUENTE_TONES, run.state, "danger")}>{SOURCE_STATE_LABELS[run.state]}</StatusBadge> },
+                { id: "inicio", encabezado: "Inicio", celda: (run) => <span className="text-muted-foreground">{when(run.startedAt)}</span> },
+                {
+                  id: "cobertura",
+                  encabezado: "Cobertura",
+                  celda: (run) => <span className="tabular-nums text-muted-foreground">{run.evidence.coverage ? `${run.evidence.coverage.obtained} de ${run.evidence.coverage.expected}` : "—"}</span>,
+                },
+                {
+                  id: "evidencia",
+                  encabezado: "Evidencia",
+                  celda: (run) => (
+                    <span className="text-xs text-muted-foreground">
+                      {run.evidence.message}
+                      {run.notPersistedReason && <div className="text-xs text-destructive">No persistida: {run.notPersistedReason}</div>}
+                    </span>
+                  ),
+                },
+              ]}
+            />
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

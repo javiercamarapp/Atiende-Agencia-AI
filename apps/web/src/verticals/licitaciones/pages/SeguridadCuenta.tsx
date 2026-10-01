@@ -4,7 +4,7 @@
 // base sin migrar (`available: false`), lo dice honestamente en vez de fingir que funciona.
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, Input, Label, StatusBadge, useConfirm } from "@atiende/ui";
 import {
   cambiarContrasena,
   cerrarOtrasSesiones,
@@ -62,13 +62,13 @@ export function CorreoCard({ apiBaseUrl, token, estado, onAviso, onError }: Cuen
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           Correo
-          <Badge variant={estado.emailVerified ? "secondary" : "outline"}>{estado.emailVerified ? "Verificado" : "Sin verificar"}</Badge>
+          <StatusBadge tone={estado.emailVerified ? "success" : "neutral"}>{estado.emailVerified ? "Verificado" : "Sin verificar"}</StatusBadge>
         </CardTitle>
         <CardDescription>{estado.email}</CardDescription>
       </CardHeader>
       {!estado.emailVerified && (
         <CardContent className="flex flex-col gap-2">
-          <p className="text-[13px] text-muted-foreground">Confirma que este correo es tuyo: te enviamos un enlace de un solo uso.</p>
+          <p className="text-sm text-muted-foreground">Confirma que este correo es tuyo: te enviamos un enlace de un solo uso.</p>
           <Button size="sm" variant="outline" className="self-start" onClick={() => void enviar()} disabled={ocupado}>
             {ocupado ? "Enviando…" : "Enviar correo de verificación"}
           </Button>
@@ -215,13 +215,13 @@ export function GoogleCard({ apiBaseUrl, token, orgSlug, estado, onAviso, onErro
         <CardDescription>Vincula tu cuenta de Google para entrar con «Continuar con Google».</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {!estado.available && <p className="text-[13px] text-muted-foreground">La vinculación con Google todavía no está disponible en este ambiente.</p>}
-        {estado.available && available && identities.length === 0 && <p className="text-[13px] text-muted-foreground">Todavía no hay ninguna cuenta de Google vinculada.</p>}
+        {!estado.available && <p className="text-sm text-muted-foreground">La vinculación con Google todavía no está disponible en este ambiente.</p>}
+        {estado.available && available && identities.length === 0 && <p className="text-sm text-muted-foreground">Todavía no hay ninguna cuenta de Google vinculada.</p>}
         {identities.map((g) => (
           <div key={g.id} className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-[13px] font-medium text-foreground">{g.email}</p>
+                <p className="text-sm font-medium text-foreground">{g.email}</p>
                 <p className="text-xs text-muted-foreground">Vinculada el {fechaHora(g.linkedAt)}</p>
               </div>
               {quitando !== g.id && (
@@ -272,8 +272,11 @@ export function SesionesCard({
   onCambio,
 }: CuentaCardProps & { readonly sesiones: SesionesEstado | null; readonly onCambio: () => Promise<void> }) {
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const { confirmar, dialogo } = useConfirm();
 
-  async function ejecutar(clave: string, fn: () => Promise<void>, exito: string) {
+  async function ejecutar(clave: string, fn: () => Promise<void>, exito: string, confirmacion: { readonly titulo: string; readonly descripcion: string; readonly confirmar: string }) {
+    // Cerrar sesiones es destructivo (el dispositivo pierde el acceso): Cancelar / cerrar el diálogo NO ejecuta nada.
+    if (!(await confirmar({ ...confirmacion, tono: "danger" }))) return;
     setOcupado(clave);
     onError(null);
     onAviso(null);
@@ -300,21 +303,27 @@ export function SesionesCard({
       <CardContent className="flex flex-col gap-3">
         {sesiones.available ? (
           <>
-            {sesiones.sessions.length === 0 && <p className="text-[13px] text-muted-foreground">No hay sesiones registradas todavía. Aparecerán la próxima vez que inicies sesión.</p>}
+            {sesiones.sessions.length === 0 && <p className="text-sm text-muted-foreground">No hay sesiones registradas todavía. Aparecerán la próxima vez que inicies sesión.</p>}
             <ul className="flex flex-col gap-2">
               {sesiones.sessions.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
                   <div>
-                    <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
                       {describirDispositivo(s.userAgent)}
-                      {s.current && <Badge variant="secondary">Este dispositivo</Badge>}
+                      {s.current && <StatusBadge tone="info">Este dispositivo</StatusBadge>}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Iniciada el {fechaHora(s.startedAt)} · actividad {fechaHora(s.issuedAt)}
                     </p>
                   </div>
                   {!s.current && (
-                    <Button size="sm" variant="outline" onClick={() => void ejecutar(s.id, () => cerrarSesion(fetch, apiBaseUrl, token, s.id), "Sesión cerrada.")} disabled={ocupado !== null}>
+                    <Button size="sm" variant="outline" onClick={() =>
+                      void ejecutar(s.id, () => cerrarSesion(fetch, apiBaseUrl, token, s.id), "Sesión cerrada.", {
+                        titulo: `Cerrar la sesión de ${describirDispositivo(s.userAgent)}`,
+                        descripcion: "Ese dispositivo perderá el acceso y tendrá que iniciar sesión de nuevo.",
+                        confirmar: "Cerrar sesión",
+                      })
+                    } disabled={ocupado !== null}>
                       {ocupado === s.id ? "Cerrando…" : "Cerrar sesión"}
                     </Button>
                   )}
@@ -325,7 +334,13 @@ export function SesionesCard({
               size="sm"
               variant="outline"
               className="self-start"
-              onClick={() => void ejecutar("todas", () => cerrarOtrasSesiones(fetch, apiBaseUrl, token), "Se cerraron tus otras sesiones.")}
+              onClick={() =>
+                void ejecutar("todas", () => cerrarOtrasSesiones(fetch, apiBaseUrl, token), "Se cerraron tus otras sesiones.", {
+                  titulo: "Cerrar todas las demás sesiones",
+                  descripcion: `Se cerrarán ${otras.length} sesión(es) en otros dispositivos; esta sesión no se interrumpe.`,
+                  confirmar: "Cerrar todas las demás",
+                })
+              }
               disabled={ocupado !== null || otras.length === 0}
             >
               {ocupado === "todas" ? "Cerrando…" : "Cerrar todas las demás"}
@@ -333,18 +348,25 @@ export function SesionesCard({
           </>
         ) : (
           <>
-            <p className="text-[13px] text-muted-foreground">La lista de dispositivos todavía no está disponible en este ambiente, pero puedes cerrar tus otras sesiones.</p>
+            <p className="text-sm text-muted-foreground">La lista de dispositivos todavía no está disponible en este ambiente, pero puedes cerrar tus otras sesiones.</p>
             <Button
               size="sm"
               variant="outline"
               className="self-start"
-              onClick={() => void ejecutar("todas", () => revokeOtherSessions(fetch, apiBaseUrl, token), "Se cerraron tus otras sesiones. Esta sesión sigue activa hasta que expire.")}
+              onClick={() =>
+                void ejecutar("todas", () => revokeOtherSessions(fetch, apiBaseUrl, token), "Se cerraron tus otras sesiones. Esta sesión sigue activa hasta que expire.", {
+                  titulo: "Cerrar mis otras sesiones",
+                  descripcion: "Los demás dispositivos perderán el acceso; esta sesión sigue activa hasta que expire.",
+                  confirmar: "Cerrar mis otras sesiones",
+                })
+              }
               disabled={ocupado !== null}
             >
               {ocupado === "todas" ? "Cerrando…" : "Cerrar mis otras sesiones"}
             </Button>
           </>
         )}
+        {dialogo}
       </CardContent>
     </Card>
   );

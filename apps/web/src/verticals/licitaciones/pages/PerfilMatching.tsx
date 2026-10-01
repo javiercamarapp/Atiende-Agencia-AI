@@ -16,7 +16,7 @@
 // `EstadoCargando`/`EstadoError`. Cero cambios de lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, PageContainer, Textarea } from "@atiende/ui";
 import { fetchMatchingProfile, saveMatchingProfile } from "../lib/matching-profile-client.ts";
 import type { MatchingProfile } from "../lib/matching-profile-client.ts";
 import { formatDate } from "../lib/format.ts";
@@ -60,12 +60,6 @@ function profileToForm(profile: MatchingProfile): FormState {
     budgetMax: profile.budgetMax === null ? "" : String(profile.budgetMax),
   };
 }
-
-/** `<textarea>` sigue siendo nativo (el sistema no exporta un primitivo
- * propio): solo se restila con los tokens reales, mismo anillo de foco que
- * `Input`. */
-const CAMPO_NATIVO =
-  "flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const [profile, setProfile] = useState<MatchingProfile | null>(null);
@@ -140,10 +134,10 @@ export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: Lici
   }
 
   return (
-    <div className="flex max-w-[680px] flex-col gap-4">
+    <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Perfil de matching</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Perfil de matching</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Estos 7 criterios alimentan el score y la elegibilidad de la columna "Score" en Convocatorias. Sin configurar al menos uno, la elegibilidad de todas las convocatorias es siempre "No evaluable".
         </p>
       </header>
@@ -170,66 +164,61 @@ export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: Lici
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="perfil-keywords">Palabras clave (una por línea)</Label>
-                <textarea
+                <Textarea
                   id="perfil-keywords"
                   disabled={!canWrite}
                   value={form.keywords}
                   onChange={(e) => setForm({ ...form, keywords: e.target.value })}
                   rows={4}
                   placeholder="mantenimiento de flotilla vehicular&#10;servicio de limpieza"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="perfil-excluidas">Palabras clave excluyentes (una por línea)</Label>
-                <textarea
+                <Textarea
                   id="perfil-excluidas"
                   disabled={!canWrite}
                   value={form.excludedKeywords}
                   onChange={(e) => setForm({ ...form, excludedKeywords: e.target.value })}
                   rows={3}
                   placeholder="obra pública"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="perfil-codigos">Códigos clasificadores / CPV (uno por línea)</Label>
-                <textarea
+                <Textarea
                   id="perfil-codigos"
                   disabled={!canWrite}
                   value={form.classifierCodes}
                   onChange={(e) => setForm({ ...form, classifierCodes: e.target.value })}
                   rows={3}
                   placeholder="50111100"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="perfil-entidades">Entidades convocantes de interés (una por línea)</Label>
-                <textarea
+                <Textarea
                   id="perfil-entidades"
                   disabled={!canWrite}
                   value={form.entities}
                   onChange={(e) => setForm({ ...form, entities: e.target.value })}
                   rows={3}
                   placeholder="Secretaría de Movilidad"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="perfil-estados">Estados de interés (uno por línea)</Label>
-                <textarea
+                <Textarea
                   id="perfil-estados"
                   disabled={!canWrite}
                   value={form.states}
                   onChange={(e) => setForm({ ...form, states: e.target.value })}
                   rows={3}
                   placeholder="Jalisco&#10;Ciudad de México"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
@@ -245,13 +234,13 @@ export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: Lici
               </div>
 
               {saveError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {saveError}
                 </p>
               )}
 
               {savedAt !== null && !saveError && (
-                <p role="status" className="text-[13px] font-medium text-green-600 dark:text-green-500">
+                <p role="status" className="text-sm font-medium text-success">
                   Perfil guardado.
                 </p>
               )}
@@ -265,6 +254,6 @@ export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: Lici
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

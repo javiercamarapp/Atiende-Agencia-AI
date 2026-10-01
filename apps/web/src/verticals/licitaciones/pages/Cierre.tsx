@@ -34,25 +34,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Download, ListChecks, Package, Plus, X } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
+import { PAQUETE_CIERRE_TONES, RESULTADO_CUMPLIMIENTO_TONES } from "../lib/status-tones.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
 import type { RequirementItemRecord } from "../lib/requirements-client.ts";
@@ -103,41 +87,25 @@ const KNOWN_SECTION_KEYS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "economic:anexo", label: "Económica — Anexo económico" },
 ];
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
-
-/** Mismo ámbar de antes, sin hex sueltos: `outline` + tokens de Tailwind. */
-const AMBAR = "border-amber-500/60 text-amber-600 dark:text-amber-400";
-
-const RESULT_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
-  verde: { variant: "default" },
-  ambar: { variant: "outline", className: AMBAR },
-  rojo: { variant: "destructive" },
-};
-
 function ResultDot({ result }: { result: string }) {
-  const cfg = RESULT_BADGE[result] ?? { variant: "secondary" as const };
   return (
-    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+    <StatusBadge tone={statusTone(RESULTADO_CUMPLIMIENTO_TONES, result)} className="whitespace-nowrap">
       {formatComplianceResult(result)}
-    </Badge>
+    </StatusBadge>
   );
 }
 
 function StatusPill({ status }: { status: "draft" | "ready" }) {
   return (
-    <Badge variant={status === "ready" ? "default" : "outline"} className={status === "ready" ? "whitespace-nowrap" : `${AMBAR} whitespace-nowrap`}>
+    <StatusBadge tone={statusTone(PAQUETE_CIERRE_TONES, status)} className="whitespace-nowrap">
       {status === "ready" ? "Listo" : "Borrador"}
-    </Badge>
+    </StatusBadge>
   );
 }
 
-/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
- * solo se restila con los tokens reales. */
-const SELECT_NATIVO =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-/** Panel de advertencia (antes ámbar #fffbeb hardcodeado). */
-const PANEL_ALERTA = "rounded-xl border border-amber-500/40 bg-amber-500/10 p-3";
-const TEXTO_ALERTA = "text-amber-700 dark:text-amber-400";
+/** Panel de advertencia (tokens de advertencia del DS v2). */
+const PANEL_ALERTA = "rounded-xl border border-warning/30 bg-warning-tint p-3";
+const TEXTO_ALERTA = "font-medium text-foreground";
 
 interface PendingFileRow {
   readonly key: string;
@@ -408,22 +376,22 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
   if (!tender) return null;
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
         <Link
           to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`}
-          className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title} · propuesta técnica/económica
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Cierre del expediente</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Cierre del expediente</h1>
+        <p className="text-sm text-muted-foreground">
           Corre el checklist de integridad, aprueba el expediente y ensambla/descarga el paquete final antes de presentarlo ante el portal oficial. La declaración de que YA se presentó no vive en esta pantalla todavía.
         </p>
         <Link
           to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`}
-          className="mt-2 inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline"
+          className="mt-2 inline-flex w-fit items-center gap-1 text-sm font-semibold text-foreground no-underline hover:underline"
         >
           Cobranza del contrato e inconformidades (post-adjudicación) →
         </Link>
@@ -451,7 +419,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               {checklist && checklist.items.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   {checklist.items.map((item) => (
-                    <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-[13px]">
+                    <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-sm">
                       <div>
                         <p className="font-semibold text-foreground">{item.dimension}</p>
                         <p className="mt-0.5 text-muted-foreground">{item.notes}</p>
@@ -531,15 +499,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                             aria-label={`Rol de la firma ${index + 1}`}
                             className="h-9 flex-[1_1_200px]"
                           />
-                          <label className="flex items-center gap-2 text-xs text-foreground">
-                            <input
-                              type="checkbox"
-                              checked={s.userConfirmedSigned}
-                              onChange={(e) => updateSignatureRow(index, { userConfirmedSigned: e.target.checked })}
-                              className="h-4 w-4 accent-[hsl(var(--primary))]"
-                            />
-                            Ya se firmó (fuera del sistema)
-                          </label>
+                          <Checkbox label="Ya se firmó (fuera del sistema)" checked={s.userConfirmedSigned} onChange={(e) => updateSignatureRow(index, { userConfirmedSigned: e.target.checked })} />
                           <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeSignatureRow(index)} disabled={signatures.length <= 1}>
                             <X />
                             Quitar
@@ -564,15 +524,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                         {requiredAnnexes.map((item) => {
                           const ref = item.topicKey ?? item.id;
                           return (
-                            <label key={item.id} className="flex items-start gap-2 text-xs text-foreground">
-                              <input
-                                type="checkbox"
-                                checked={presentAnnexRefs.has(ref)}
-                                onChange={() => toggleAnnexPresent(ref)}
-                                className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
-                              />
-                              <span>{item.text}</span>
-                            </label>
+                            <Checkbox key={item.id} label={item.text} checked={presentAnnexRefs.has(ref)} onChange={() => toggleAnnexPresent(ref)} />
                           );
                         })}
                       </div>
@@ -580,7 +532,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                   </div>
 
                   {checklistError && (
-                    <p role="alert" className="text-[13px] text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {checklistError}
                     </p>
                   )}
@@ -616,12 +568,12 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               )}
 
               {expedienteApprovalError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {expedienteApprovalError}
                 </p>
               )}
               {expedienteApprovalResult && (
-                <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                <p role="status" className="text-xs font-medium text-success">
                   Aprobado {formatDate(expedienteApprovalResult.decidedAt)} · estatus {expedienteApprovalResult.status}.
                 </p>
               )}
@@ -630,13 +582,13 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                 <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
                   <div className="flex flex-[1_1_260px] flex-col gap-1.5">
                     <Label htmlFor="cierre-seccion">Aprobación granular por sección (revisión incremental, no gatea "listo")</Label>
-                    <select id="cierre-seccion" value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)} className={SELECT_NATIVO}>
+                    <NativeSelect id="cierre-seccion" value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)}>
                       {KNOWN_SECTION_KEYS.map((s) => (
                         <option key={s.value} value={s.value}>
                           {s.label}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </div>
                   <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
                     {approvingSection ? "Aprobando…" : "Aprobar sección"}
@@ -644,12 +596,12 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                 </div>
               )}
               {sectionApprovalError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {sectionApprovalError}
                 </p>
               )}
               {sectionApprovalResult && (
-                <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                <p role="status" className="text-xs font-medium text-success">
                   Sección "{sectionApprovalResult.scopeRef}" aprobada {formatDate(sectionApprovalResult.decidedAt)}.
                 </p>
               )}
@@ -673,7 +625,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
 
               {latestPackage && latestPackage.status === "draft" && latestPackage.draftReasons.length > 0 && (
                 <div className={PANEL_ALERTA}>
-                  <p className={`mb-1.5 text-[13px] font-semibold ${TEXTO_ALERTA}`}>Motivos por los que sigue en borrador:</p>
+                  <p className={`mb-1.5 text-sm font-semibold ${TEXTO_ALERTA}`}>Motivos por los que sigue en borrador:</p>
                   <ul className={`list-disc pl-5 text-xs ${TEXTO_ALERTA}`}>
                     {latestPackage.draftReasons.map((r, i) => (
                       <li key={i}>{r}</li>
@@ -684,7 +636,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               )}
 
               {latestPackage && latestPackage.status === "ready" && (
-                <p className="text-xs font-medium text-green-600 dark:text-green-500">
+                <p className="text-xs font-medium text-success">
                   Generado {formatDate(latestPackage.generatedAt)}. {latestPackage.notice}
                 </p>
               )}
@@ -705,12 +657,12 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               </div>
 
               {assembleError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {assembleError}
                 </p>
               )}
               {downloadError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {downloadError}
                 </p>
               )}
@@ -718,6 +670,6 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

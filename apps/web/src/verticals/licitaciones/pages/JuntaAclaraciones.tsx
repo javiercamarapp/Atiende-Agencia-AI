@@ -8,7 +8,7 @@
 // captura una persona. Aprobar exige rol de decision (owner/admin/analyst) en el servidor.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, Textarea } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, StatusBadge, statusTone, Textarea } from "@atiende/ui";
 import {
   acknowledgeJuntaReminder,
   captureJuntaQuestion,
@@ -19,12 +19,12 @@ import {
   updateJuntaQuestion,
 } from "../lib/sala-guerra-client.ts";
 import type { CaptureResult, DraftResult, JuntaQuestion, JuntaQuestionPriority, JuntaQuestionStatus, JuntaQuestionTopic, JuntaResponse, TransitionInput } from "../lib/sala-guerra-client.ts";
-import { DATE_TIME, SEMAPHORE_VARIANT, WRITE_ROLES, isoToLocalInput, localToIso, semaphoreLabel } from "./SalaGuerra.tsx";
+import { PREGUNTA_JUNTA_TONES } from "../lib/status-tones.ts";
+import { DATE_TIME, semaphoreTone, WRITE_ROLES, isoToLocalInput, localToIso, semaphoreLabel } from "./SalaGuerra.tsx";
 
 const DECISION_ROLES = new Set(["owner", "admin", "analyst"]);
 
 const STATUS_LABEL: Record<JuntaQuestionStatus, string> = { borrador: "Borrador", aprobada: "Aprobada", enviada: "Enviada", respondida: "Respondida", descartada: "Descartada" };
-const STATUS_VARIANT: Record<JuntaQuestionStatus, "outline" | "info" | "warning" | "success" | "secondary"> = { borrador: "outline", aprobada: "info", enviada: "warning", respondida: "success", descartada: "secondary" };
 const TOPIC_LABEL: Record<JuntaQuestionTopic, string> = { administrativo: "Administrativo", legal: "Legal", tecnico: "Técnico", economico: "Económico", otro: "Otro" };
 const PRIORITY_LABEL: Record<JuntaQuestionPriority, string> = { alta: "Alta", media: "Media", baja: "Baja" };
 
@@ -163,11 +163,11 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
     return (
       <div key={q.id} className="flex flex-col gap-2 rounded-xl border border-border p-3" data-testid={`question-${q.id}`}>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={STATUS_VARIANT[q.status]}>{STATUS_LABEL[q.status]}</Badge>
-          <Badge variant={q.priority === "alta" ? "destructive" : "outline"}>Prioridad {PRIORITY_LABEL[q.priority].toLowerCase()}</Badge>
-          <Badge variant="outline">{TOPIC_LABEL[q.topic]}</Badge>
-          {q.origin === "agente" && <Badge variant="info">Borrador del asistente</Badge>}
-          {q.baseReference && <span className="text-[11px] text-muted-foreground">Bases: {q.baseReference}</span>}
+          <StatusBadge tone={statusTone(PREGUNTA_JUNTA_TONES, q.status)}>{STATUS_LABEL[q.status]}</StatusBadge>
+          <StatusBadge tone={q.priority === "alta" ? "danger" : "neutral"} dot={false}>Prioridad {PRIORITY_LABEL[q.priority].toLowerCase()}</StatusBadge>
+          <StatusBadge dot={false}>{TOPIC_LABEL[q.topic]}</StatusBadge>
+          {q.origin === "agente" && <StatusBadge tone="info">Borrador del asistente</StatusBadge>}
+          {q.baseReference && <span className="text-xs text-muted-foreground">Bases: {q.baseReference}</span>}
         </div>
         {isEditing ? (
           <div className="flex flex-col gap-2">
@@ -182,22 +182,22 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-line text-[13px] text-foreground">{q.questionText}</p>
+          <p className="whitespace-pre-line text-sm text-foreground">{q.questionText}</p>
         )}
-        {q.draftMissingData.length > 0 && <p className="text-[11px] text-muted-foreground">Datos que le faltaron al asistente: {q.draftMissingData.join("; ")}</p>}
+        {q.draftMissingData.length > 0 && <p className="text-xs text-muted-foreground">Datos que le faltaron al asistente: {q.draftMissingData.join("; ")}</p>}
         {q.sentAt && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Marcada como enviada: {DATE_TIME.format(new Date(q.sentAt))}
             {q.sentReference ? ` · ${q.sentReference}` : ""}
           </p>
         )}
         {q.status === "respondida" && (
-          <div className="rounded-lg bg-muted/40 p-2 text-[12px]">
+          <div className="rounded-lg bg-muted/40 p-2 text-xs">
             <div className="font-semibold text-foreground">Respuesta del acta{q.answerActaReference ? ` (${q.answerActaReference})` : ""}</div>
             <p className="whitespace-pre-line text-muted-foreground">{q.answerText}</p>
           </div>
         )}
-        {q.discardReason && q.status === "descartada" && <p className="text-[11px] text-muted-foreground">Motivo: {q.discardReason}</p>}
+        {q.discardReason && q.status === "descartada" && <p className="text-xs text-muted-foreground">Motivo: {q.discardReason}</p>}
 
         {canWrite && !isEditing && (
           <div className="flex flex-wrap gap-2">
@@ -243,7 +243,7 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
           <div className="flex flex-col gap-2 rounded-lg border border-border p-2">
             {confirming === "enviada" && (
               <>
-                <p className="text-[12px] text-muted-foreground">Confirma que ya presentaste esta pregunta por el canal oficial de la convocante. Este sistema no la envía.</p>
+                <p className="text-xs text-muted-foreground">Confirma que ya presentaste esta pregunta por el canal oficial de la convocante. Este sistema no la envía.</p>
                 <Input aria-label="Folio o acuse del envío" value={pendingText} onChange={(e) => setPendingText(e.target.value)} placeholder="Folio o acuse (opcional)" />
               </>
             )}
@@ -292,17 +292,17 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
   return (
     <div className="flex flex-col gap-5">
       {!data.available && (
-        <div role="status" className="rounded-xl border border-warning/40 bg-warning-tint p-3 text-[13px] text-foreground">
+        <div role="status" className="rounded-xl border border-warning/40 bg-warning-tint p-3 text-sm text-foreground">
           La junta de aclaraciones aún no está disponible en esta base de datos (falta aplicar la migración 029). No se pueden guardar preguntas todavía.
         </div>
       )}
       {actionError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
       {notice && (
-        <p role="status" className="text-[13px] text-foreground">
+        <p role="status" className="text-sm text-foreground">
           {notice}
         </p>
       )}
@@ -313,14 +313,14 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
           <CardDescription>Captura las fechas tal como las fijan las bases; el sistema no las deduce. Recordaremos el límite de envío mientras haya preguntas sin enviar.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
-            <Badge variant={SEMAPHORE_VARIANT[data.summary.questionsDeadline.semaphore.color]}>{semaphoreLabel(data.summary.questionsDeadline.semaphore)}</Badge>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <StatusBadge tone={semaphoreTone(data.summary.questionsDeadline.semaphore.color)}>{semaphoreLabel(data.summary.questionsDeadline.semaphore)}</StatusBadge>
             <span className="text-muted-foreground">
               Límite para enviar preguntas: {data.summary.questionsDeadline.at ? DATE_TIME.format(new Date(data.summary.questionsDeadline.at)) : "sin fecha declarada"} · Junta: {data.summary.meetingAt ? DATE_TIME.format(new Date(data.summary.meetingAt)) : "sin fecha declarada"}
             </span>
           </div>
           {activeReminders.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-[12px]">
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
               <span>
                 {r.message} <span className="text-muted-foreground">(faltan {r.daysRemaining} d)</span>
               </span>
@@ -333,15 +333,15 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
           ))}
           {canWrite && data.available && (
             <form onSubmit={(e) => void onSaveConfig(e)} className="grid gap-3 sm:grid-cols-3">
-              <label className="flex flex-col gap-1 text-[13px]">
+              <label className="flex flex-col gap-1 text-sm">
                 Límite para enviar preguntas
                 <Input aria-label="Límite para enviar preguntas" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
               </label>
-              <label className="flex flex-col gap-1 text-[13px]">
+              <label className="flex flex-col gap-1 text-sm">
                 Fecha de la junta
                 <Input aria-label="Fecha de la junta" type="datetime-local" value={meeting} onChange={(e) => setMeeting(e.target.value)} />
               </label>
-              <label className="flex flex-col gap-1 text-[13px]">
+              <label className="flex flex-col gap-1 text-sm">
                 Folio o referencia del acta
                 <Input aria-label="Referencia del acta" value={acta} onChange={(e) => setActa(e.target.value)} placeholder="Opcional" />
               </label>
@@ -364,15 +364,15 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
             </CardHeader>
             <CardContent>
               <form onSubmit={(e) => void onCapture(e)} className="grid gap-3 sm:grid-cols-3">
-                <label className="flex flex-col gap-1 text-[13px] sm:col-span-3">
+                <label className="flex flex-col gap-1 text-sm sm:col-span-3">
                   Pregunta
                   <Textarea aria-label="Texto de la pregunta nueva" rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ej. En el numeral 6.2, ¿la fianza de cumplimiento se presenta antes de la firma del contrato?" />
                 </label>
-                <label className="flex flex-col gap-1 text-[13px]">
+                <label className="flex flex-col gap-1 text-sm">
                   Numeral o cláusula de las bases
                   <Input aria-label="Referencia a las bases" value={baseRef} onChange={(e) => setBaseRef(e.target.value)} placeholder="Opcional" />
                 </label>
-                <label className="flex flex-col gap-1 text-[13px]">
+                <label className="flex flex-col gap-1 text-sm">
                   Tema
                   <NativeSelect aria-label="Tema de la pregunta" value={topic} onChange={(e) => setTopic(e.target.value as JuntaQuestionTopic)}>
                     {(Object.keys(TOPIC_LABEL) as JuntaQuestionTopic[]).map((t) => (
@@ -382,7 +382,7 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
                     ))}
                   </NativeSelect>
                 </label>
-                <label className="flex flex-col gap-1 text-[13px]">
+                <label className="flex flex-col gap-1 text-sm">
                   Prioridad
                   <NativeSelect aria-label="Prioridad de la pregunta" value={priority} onChange={(e) => setPriority(e.target.value as "" | JuntaQuestionPriority)}>
                     <option value="">Sugerida por el sistema</option>
@@ -400,7 +400,7 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
                 </div>
               </form>
               {capture && (
-                <div className="mt-3 flex flex-col gap-1 text-[12px] text-muted-foreground" data-testid="capture-result">
+                <div className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground" data-testid="capture-result">
                   <p>
                     Prioridad {capture.question.priority}
                     {capture.suggestion.reasons.length > 0 ? ` — ${capture.suggestion.reasons.join("; ")}` : " — sin factores de urgencia detectados"}.
@@ -437,7 +437,7 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
                 </Button>
               </form>
               {draft && (
-                <div className="mt-3 flex flex-col gap-1 text-[12px] text-muted-foreground" data-testid="draft-result">
+                <div className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground" data-testid="draft-result">
                   <p>
                     {draft.created.length} borrador(es) creado(s), {draft.skippedDuplicates.length} omitido(s) por duplicados, {draft.rejected.length} descartado(s) por las reglas de seguridad.
                   </p>

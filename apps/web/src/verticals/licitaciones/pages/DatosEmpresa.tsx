@@ -21,24 +21,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger, useConfirm } from "@atiende/ui";
 import {
   createApprovedRate,
   createCompanyCapability,
@@ -56,23 +39,19 @@ import {
   updateCompanyExperience,
   updateCompanySigner,
 } from "../lib/company-data-client.ts";
+import { APROBACION_DATO_TONES } from "../lib/status-tones.ts";
 import type { ApprovedRate, CompanyCapability, CompanyDataApprovalStatus, CompanyDocument, CompanyExperienceItem, CompanySigner } from "../lib/company-data-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-const APPROVAL_BADGE: Record<CompanyDataApprovalStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string; label: string }> = {
-  aprobado: { variant: "default", label: "Aprobado" },
-  pendiente_aprobacion: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400", label: "Pendiente de aprobación" },
-  rechazado: { variant: "destructive", label: "Rechazado" },
-};
+const APPROVAL_LABELS: Record<CompanyDataApprovalStatus, string> = { aprobado: "Aprobado", pendiente_aprobacion: "Pendiente de aprobación", rechazado: "Rechazado" };
 
 function ApprovalBadge({ status }: { status: CompanyDataApprovalStatus }) {
-  const c = APPROVAL_BADGE[status];
   return (
-    <Badge variant={c.variant} className={c.className ? `${c.className} whitespace-nowrap` : "whitespace-nowrap"}>
-      {c.label}
-    </Badge>
+    <StatusBadge tone={statusTone(APROBACION_DATO_TONES, status)} className="whitespace-nowrap">
+      {APPROVAL_LABELS[status]}
+    </StatusBadge>
   );
 }
 
@@ -96,7 +75,7 @@ function isoToDateOnly(iso: string | null): string {
 
 /** Fila de una tabla de datos de empresa: contenido a la izquierda, estado +
  * acciones a la derecha. Antes era `rowStyle` inline. */
-const FILA = "flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2 text-[13px]";
+const FILA = "flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2 text-sm";
 /** Formulario de alta al pie de cada sección. Antes era un `style` inline. */
 const FORM_ALTA = "flex flex-wrap items-end gap-2 pt-1";
 
@@ -104,6 +83,7 @@ const TABS_VALIDAS: ReadonlySet<string> = new Set(["documentos", "tarifas", "cap
 
 export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canWrite = WRITE_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
   // `?tab=firmantes` (etc.) abre directo esa pestaña -- lo usan /firmantes y el Panel; un valor desconocido cae a "documentos".
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -167,20 +147,35 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
     }
   }
 
+  async function toggleSigner(s: CompanySigner) {
+    // Revocar la autorización de un firmante es destructivo (sin firmante autorizado no se puede firmar una propuesta):
+    // Cancelar / cerrar el diálogo NO la revoca.
+    if (s.authorized) {
+      const ok = await confirmar({
+        titulo: `Revocar la autorización de ${s.name}`,
+        descripcion: "Dejará de poder firmar propuestas. Puedes volver a autorizarlo después.",
+        tono: "danger",
+        confirmar: "Revocar autorización",
+      });
+      if (!ok) return;
+    }
+    await withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined));
+  }
+
   if (loading && documents.length === 0 && rates.length === 0) return <EstadoCargando etiqueta="Cargando datos de la empresa…" />;
 
   return (
-    <div className="flex max-w-[860px] flex-col gap-4">
+    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Datos de la empresa</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Datos de la empresa</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Documentos, tarifas aprobadas, capacidades, experiencia y firmantes autorizados. Las propuestas técnica y económica solo usan lo que aquí está en estado "Aprobado" y vigente -- un dato ausente o sin aprobar queda "PENDIENTE" en la propuesta, nunca inventado.
         </p>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {actionError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
@@ -450,7 +445,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                     <strong>{s.name}</strong> — {s.role}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={s.authorized ? "default" : "destructive"}>{s.authorized ? "Autorizado" : "No autorizado"}</Badge>
+                    <StatusBadge tone={s.authorized ? "success" : "danger"}>{s.authorized ? "Autorizado" : "No autorizado"}</StatusBadge>
                     {canWrite && (
                       <Button
                         type="button"
@@ -458,7 +453,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
                         size="sm"
                         className={s.authorized ? "text-destructive" : undefined}
                         disabled={submittingSection !== null}
-                        onClick={() => void withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined))}
+                        onClick={() => void toggleSigner(s)}
                       >
                         {s.authorized ? "Revocar" : "Autorizar"}
                       </Button>
@@ -495,6 +490,7 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

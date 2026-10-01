@@ -23,16 +23,17 @@
 //
 // Fase "sistema de diseño real" (contenido) — los `sectionCardStyle`/
 // `inputStyle`/`primaryButtonStyle` inline pasan a `Card`/`Input`/`Button` de
-// @atiende/ui, el pill de estatus a `Badge` y los estados de carga/error a
+// @atiende/ui, el pill de estatus a `StatusBadge` y los estados de carga/error a
 // `EstadoCargando`/`EstadoError`. Cero cambios de lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { createFalloAutopsy, fetchFalloAutopsies, fetchLessonsLearned, OWN_PROPOSAL_STATUSES } from "../lib/autopsia-client.ts";
+import { PROPUESTA_PROPIA_TONES } from "../lib/status-tones.ts";
 import type { CompanyLessonLearnedRecord, CriteriaComparisonItem, FalloAutopsyRecord, OwnProposalStatus } from "../lib/autopsia-client.ts";
 import { formatDate, formatMoney, formatOwnProposalStatus } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -43,25 +44,8 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 // `falloAutopsy.ts`).
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-/** `<select>`/`<textarea>` siguen siendo nativos (el sistema no exporta un
- * primitivo propio para ellos): solo se restilan con los tokens reales. */
-const CAMPO_NATIVO =
-  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-
-const OWN_PROPOSAL_STATUS_VARIANTS: Record<OwnProposalStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  ganadora: { variant: "default" },
-  desechada: { variant: "destructive" },
-  no_presentada: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
-  desconocido: { variant: "secondary" },
-};
-
-function StatusBadge({ status }: { status: OwnProposalStatus }) {
-  const cfg = OWN_PROPOSAL_STATUS_VARIANTS[status];
-  return (
-    <Badge variant={cfg.variant} className={cfg.className}>
-      {formatOwnProposalStatus(status)}
-    </Badge>
-  );
+function ProposalStatusBadge({ status }: { status: OwnProposalStatus }) {
+  return <StatusBadge tone={statusTone(PROPUESTA_PROPIA_TONES, status)}>{formatOwnProposalStatus(status)}</StatusBadge>;
 }
 
 function emptyCriteriaRow(): CriteriaComparisonItem {
@@ -174,14 +158,14 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
   const canWrite = WRITE_ROLES.has(role);
 
   return (
-    <div className="flex max-w-[900px] flex-col gap-5">
+    <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <div className="flex flex-col gap-1">
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground no-underline hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
           {tender.title}
         </Link>
-        <h1 className="text-xl font-semibold text-foreground">Autopsia del fallo</h1>
-        <p className="text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Autopsia del fallo</h1>
+        <p className="text-sm text-muted-foreground">
           Por qué se perdió esta convocatoria y qué lección deja -- las lecciones quedan vinculadas al perfil de la empresa, consultables en cualquier convocatoria futura.
         </p>
       </div>
@@ -196,24 +180,23 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
             <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="autopsia-estatus">Estatus de nuestra propuesta</Label>
-                <select id="autopsia-estatus" value={ownProposalStatus} onChange={(e) => setOwnProposalStatus(e.target.value as OwnProposalStatus)} className={`${CAMPO_NATIVO} h-11`}>
+                <NativeSelect id="autopsia-estatus" value={ownProposalStatus} onChange={(e) => setOwnProposalStatus(e.target.value as OwnProposalStatus)}>
                   {OWN_PROPOSAL_STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {formatOwnProposalStatus(s)}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="autopsia-motivo">Motivo de desechamiento (si aplica)</Label>
-                <textarea
+                <Textarea
                   id="autopsia-motivo"
                   value={disqualificationReason}
                   onChange={(e) => setDisqualificationReason(e.target.value)}
                   rows={2}
                   placeholder="Se deja «no disponible» si no se capturó nada"
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
@@ -241,7 +224,7 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
               </div>
 
               <div>
-                <p className="mb-1.5 text-[13px] font-semibold text-foreground">Comparación por criterio (opcional)</p>
+                <p className="mb-1.5 text-sm font-semibold text-foreground">Comparación por criterio (opcional)</p>
                 <div className="flex flex-col gap-2">
                   {criteria.map((row, index) => (
                     <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
@@ -263,18 +246,17 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="autopsia-lecciones">Lecciones aprendidas (una por línea)</Label>
-                <textarea
+                <Textarea
                   id="autopsia-lecciones"
                   value={lessonsText}
                   onChange={(e) => setLessonsText(e.target.value)}
                   rows={3}
                   placeholder={"Ej.: pedir la constancia de cumplimiento con 2 semanas de anticipación"}
-                  className={CAMPO_NATIVO}
                 />
               </div>
 
               {submitError && (
-                <p role="alert" className="text-[13px] text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {submitError}
                 </p>
               )}
@@ -294,17 +276,17 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
         </CardHeader>
         <CardContent>
           {autopsies.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">Todavía no se ha registrado ninguna autopsia para esta convocatoria.</p>
+            <p className="text-sm text-muted-foreground">Todavía no se ha registrado ninguna autopsia para esta convocatoria.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {autopsies
                 .slice()
                 .reverse()
                 .map((a) => (
-                  <div key={a.id} className="rounded-xl border border-border p-3 text-[13px]">
+                  <div key={a.id} className="rounded-xl border border-border p-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <StatusBadge status={a.ownProposalStatus} />
-                      <span className="text-[11px] text-muted-foreground">{formatDate(a.createdAt)}</span>
+                      <ProposalStatusBadge status={a.ownProposalStatus} />
+                      <span className="text-xs text-muted-foreground">{formatDate(a.createdAt)}</span>
                     </div>
                     <p className="mt-1.5 text-foreground">
                       <strong>Motivo:</strong> {a.disqualificationReason}
@@ -344,22 +326,22 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
         </CardHeader>
         <CardContent>
           {lessons.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">Todavía no hay lecciones registradas.</p>
+            <p className="text-sm text-muted-foreground">Todavía no hay lecciones registradas.</p>
           ) : (
             <ul className="flex list-disc flex-col gap-1.5 pl-5">
               {lessons
                 .slice()
                 .reverse()
                 .map((l) => (
-                  <li key={l.id} className="text-[13px] text-foreground">
+                  <li key={l.id} className="text-sm text-foreground">
                     {l.lessonText}
-                    <span className="text-[11px] text-muted-foreground"> — {formatDate(l.createdAt)}</span>
+                    <span className="text-xs text-muted-foreground"> — {formatDate(l.createdAt)}</span>
                   </li>
                 ))}
             </ul>
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

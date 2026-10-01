@@ -31,28 +31,11 @@
 // parseo de umbrales, mismos fetch, mismas ramas.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import type { StatusTone } from "@atiende/ui";
 import { RadarIcon } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
 import { acknowledgeRenewalAlert, fetchRenewalAlerts, scanRenewalAlerts } from "../lib/renewal-radar-client.ts";
+import { ALERTA_RENOVACION_TONES, URGENCIA_RENOVACION_TONES } from "../lib/status-tones.ts";
 import type { RenewalAlertRecord, ScanRenewalAlertsResult } from "../lib/renewal-radar-client.ts";
 import { fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
@@ -106,20 +89,14 @@ function daysUntil(isoDate: string): number {
  * "seguimiento", cualquier intermedio es "próxima". Duplicado aquí a
  * propósito (mismo criterio de aislamiento que el resto de lib/*-client.ts:
  * este panel no depende de @atiende/domain-licitaciones). */
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
-
-function urgencyFor(leadDays: number, sortedDistinctLeadDays: readonly number[]): { label: string; variant: BadgeVariant; className?: string } {
+function urgencyFor(leadDays: number, sortedDistinctLeadDays: readonly number[]): { label: string; tone: StatusTone } {
   const idx = sortedDistinctLeadDays.indexOf(leadDays);
-  if (idx <= 0) return { label: "Urgente", variant: "destructive" };
-  if (idx === sortedDistinctLeadDays.length - 1) return { label: "Seguimiento", variant: "secondary" };
-  return { label: "Próxima", variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" };
+  if (idx <= 0) return { label: "Urgente", tone: URGENCIA_RENOVACION_TONES.urgente };
+  if (idx === sortedDistinctLeadDays.length - 1) return { label: "Seguimiento", tone: URGENCIA_RENOVACION_TONES.seguimiento };
+  return { label: "Próxima", tone: URGENCIA_RENOVACION_TONES.proxima };
 }
 
 const STATUS_LABELS: Record<RenewalAlertRecord["status"], string> = { pendiente: "Pendiente", reconocida: "Reconocida" };
-const STATUS_BADGE: Record<RenewalAlertRecord["status"], { variant: BadgeVariant; className?: string }> = {
-  pendiente: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
-  reconocida: { variant: "default" },
-};
 
 export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const [alerts, setAlerts] = useState<readonly RenewalAlertRecord[] | null>(null);
@@ -210,16 +187,16 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
   const pendingCount = (alerts ?? []).filter((a) => a.status === "pendiente").length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Radar de renovaciones</h1>
-        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Radar de renovaciones</h1>
+        <p className="mt-1 max-w-[720px] text-sm text-muted-foreground">
           Detecta contratos propios cerca de su fecha de fin para anticipar una renovación o una nueva licitación por la misma necesidad. Vista transversal de la organización, no de una sola
           convocatoria. Límite documentado: NO cruza convocatorias históricas de la misma entidad -- solo evalúa contratos que ya tienen fecha de fin registrada (ver Contrato.tsx).
         </p>
       </header>
 
-      <Card className="max-w-[600px]">
+      <Card className="max-w-xl">
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <div className="min-w-0">
             <CardTitle className="text-base">Escanear ahora</CardTitle>
@@ -241,12 +218,12 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
           )}
           {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede correr el escaneo ni reconocer alertas -- solo consultarlas.</p>}
           {scanError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {scanError}
             </p>
           )}
           {lastScan && !scanError && (
-            <p className="text-[13px] font-medium text-green-600 dark:text-green-500">
+            <p className="text-sm font-medium text-success">
               Último escaneo: {lastScan.evaluatedContracts} contrato(s) evaluado(s), {lastScan.alertsCreated} alerta(s) nueva(s).
             </p>
           )}
@@ -255,7 +232,7 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {ackError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {ackError}
         </p>
       )}
@@ -265,10 +242,7 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
       {alerts && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-[13px] text-foreground">
-              <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-              Mostrar solo pendientes ({pendingCount})
-            </label>
+            <Checkbox label={`Mostrar solo pendientes (${pendingCount})`} checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
             <span className="text-xs text-muted-foreground">{alerts.length} alerta(s) en total.</span>
           </div>
 
@@ -277,77 +251,89 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
           {alerts.length > 0 && sorted.length === 0 && <EstadoVacio mensaje="No hay alertas pendientes." />}
 
           {sorted.length > 0 && (
-            <div className="rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Convocatoria</TableHead>
-                    <TableHead>Entidad</TableHead>
-                    <TableHead>Fin de contrato previsto</TableHead>
-                    <TableHead>Antelación</TableHead>
-                    <TableHead>Confianza</TableHead>
-                    <TableHead>Estatus</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sorted.map((alert) => {
+            <DataTable
+              etiqueta="Alertas de renovación"
+              obtenerId={(alert) => alert.id}
+              filas={sorted}
+              paginacion={false}
+              columnas={[
+                {
+                  id: "convocatoria",
+                  encabezado: "Convocatoria",
+                  principal: true,
+                  celda: (alert) => {
                     const tender = tenderById.get(alert.tenderId);
-                    const urgency = urgencyFor(alert.leadDays, sortedDistinctLeadDays);
-                    const remaining = daysUntil(alert.predictedDate);
-                    const statusBadge = STATUS_BADGE[alert.status];
                     return (
-                      <TableRow key={alert.id}>
-                        <TableCell className="p-3">
-                          {tender ? (
-                            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tender.id}`} className="font-semibold text-foreground no-underline hover:underline">
-                              {tender.title}
-                            </Link>
-                          ) : (
-                            <span className="text-muted-foreground">Convocatoria {alert.tenderId} (no encontrada)</span>
-                          )}
-                          <div className="text-[11px] text-muted-foreground">Contrato {alert.contractId}</div>
-                        </TableCell>
-                        <TableCell className="p-3 text-muted-foreground">{tender?.contractingBody ?? "—"}</TableCell>
-                        <TableCell className="p-3 text-muted-foreground">
-                          {formatDateOnly(alert.predictedDate)}
-                          <div className={remaining < 0 ? "text-[11px] text-destructive" : "text-[11px] text-muted-foreground"}>
-                            {remaining < 0 ? `Venció hace ${Math.abs(remaining)} día(s)` : `Faltan ${remaining} día(s)`}
-                          </div>
-                        </TableCell>
-                        <TableCell className="p-3">
-                          <span className="inline-flex items-center gap-2">
-                            <Badge variant={urgency.variant} className={urgency.className}>
-                              {urgency.label}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{alert.leadDays}d</span>
-                          </span>
-                        </TableCell>
-                        <TableCell className="p-3 tabular-nums text-muted-foreground">{Math.round(alert.confidence * 100)}%</TableCell>
-                        <TableCell className="p-3">
-                          <Badge variant={statusBadge.variant} className={statusBadge.className}>
-                            {STATUS_LABELS[alert.status]}
-                          </Badge>
-                          {alert.status === "reconocida" && alert.acknowledgedAt && (
-                            <div className="mt-1 text-[11px] text-muted-foreground">{formatTimestamp(alert.acknowledgedAt)}</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="p-3">
-                          {alert.status === "pendiente" && canWrite && (
-                            <Button type="button" variant="outline" size="sm" className="whitespace-nowrap" onClick={() => void handleAcknowledge(alert.id)} disabled={acknowledgingId === alert.id}>
-                              {acknowledgingId === alert.id ? "Reconociendo…" : "Reconocer"}
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                      <>
+                        {tender ? (
+                          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tender.id}`} className="font-semibold text-foreground no-underline hover:underline">
+                            {tender.title}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">Convocatoria {alert.tenderId} (no encontrada)</span>
+                        )}
+                        <div className="text-xs font-normal text-muted-foreground">Contrato {alert.contractId}</div>
+                      </>
                     );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                  },
+                },
+                { id: "entidad", encabezado: "Entidad", celda: (alert) => <span className="text-muted-foreground">{tenderById.get(alert.tenderId)?.contractingBody ?? "—"}</span> },
+                {
+                  id: "fin",
+                  encabezado: "Fin de contrato previsto",
+                  celda: (alert) => {
+                    const remaining = daysUntil(alert.predictedDate);
+                    return (
+                      <span className="text-muted-foreground">
+                        {formatDateOnly(alert.predictedDate)}
+                        <div className={remaining < 0 ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                          {remaining < 0 ? `Venció hace ${Math.abs(remaining)} día(s)` : `Faltan ${remaining} día(s)`}
+                        </div>
+                      </span>
+                    );
+                  },
+                },
+                {
+                  id: "antelacion",
+                  encabezado: "Antelación",
+                  celda: (alert) => {
+                    const urgency = urgencyFor(alert.leadDays, sortedDistinctLeadDays);
+                    return (
+                      <span className="inline-flex items-center gap-2">
+                        <StatusBadge tone={urgency.tone}>{urgency.label}</StatusBadge>
+                        <span className="text-xs text-muted-foreground">{alert.leadDays}d</span>
+                      </span>
+                    );
+                  },
+                },
+                { id: "confianza", encabezado: "Confianza", celda: (alert) => <span className="tabular-nums text-muted-foreground">{Math.round(alert.confidence * 100)}%</span> },
+                {
+                  id: "estatus",
+                  encabezado: "Estatus",
+                  celda: (alert) => (
+                    <>
+                      <StatusBadge tone={statusTone(ALERTA_RENOVACION_TONES, alert.status)}>{STATUS_LABELS[alert.status]}</StatusBadge>
+                      {alert.status === "reconocida" && alert.acknowledgedAt && <div className="mt-1 text-xs font-normal text-muted-foreground">{formatTimestamp(alert.acknowledgedAt)}</div>}
+                    </>
+                  ),
+                },
+                {
+                  id: "acciones",
+                  encabezado: <span className="sr-only">Acciones</span>,
+                  etiqueta: "Acciones",
+                  ocultarEnTarjeta: false,
+                  celda: (alert) =>
+                    alert.status === "pendiente" && canWrite ? (
+                      <Button type="button" variant="outline" size="sm" className="whitespace-nowrap" onClick={() => void handleAcknowledge(alert.id)} disabled={acknowledgingId === alert.id}>
+                        {acknowledgingId === alert.id ? "Reconociendo…" : "Reconocer"}
+                      </Button>
+                    ) : null,
+                },
+              ]}
+            />
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -7,18 +7,18 @@
 // migracion 030 o sin numero remitente configurado lo dice, en vez de fingir que funciona.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, useConfirm } from "@atiende/ui";
 import { fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchWhatsAppSettings, optOutWhatsApp, requestWhatsAppDecision, saveWhatsAppSettings } from "../lib/whatsapp-client.ts";
 import type { DecisionRequestResult, WhatsAppContactStatus, WhatsAppSettings } from "../lib/whatsapp-client.ts";
+import { CONTACTO_WHATSAPP_TONES } from "../lib/status-tones.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 // Espejo cosmetico de GO_NO_GO_ROLES (domain-licitaciones/roles.ts); el servidor es la unica barrera.
 const GO_NO_GO_ROLES = new Set(["owner", "admin", "analyst", "reviewer"]);
 
 const STATUS_TEXT: Record<WhatsAppContactStatus, string> = { pendiente: "Pendiente de confirmar", activo: "Activo", baja: "Dado de baja" };
-const STATUS_VARIANT: Record<WhatsAppContactStatus, "warning" | "success" | "outline"> = { pendiente: "warning", activo: "success", baja: "outline" };
 
 const EVENT_TEXT: Record<string, string> = {
   consentimiento_solicitado: "Se envió la confirmación de WhatsApp",
@@ -49,6 +49,7 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
   const [tenderId, setTenderId] = useState("");
   const [resultado, setResultado] = useState<DecisionRequestResult | null>(null);
   const puedeDecidir = GO_NO_GO_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
 
   function aplicar(s: WhatsAppSettings) {
     setSettings(s);
@@ -112,8 +113,16 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
     });
   }
 
-  function darDeBaja() {
-    void ejecutar(async () => {
+  async function darDeBaja() {
+    // Dejar de recibir avisos es destructivo para el flujo (se pierde la confirmación SI): Cancelar / cerrar NO ejecuta nada.
+    const ok = await confirmar({
+      titulo: "Dejar de recibir avisos por WhatsApp",
+      descripcion: "Dejarás de recibir plazos, convocatorias, fallos y solicitudes de decisión. Para volver a activarlos tendrás que contestar SI de nuevo.",
+      tono: "danger",
+      confirmar: "Dejar de recibir avisos",
+    });
+    if (!ok) return;
+    await ejecutar(async () => {
       await optOutWhatsApp(fetch, apiBaseUrl, token, propertyId);
       aplicar(await fetchWhatsAppSettings(fetch, apiBaseUrl, token, propertyId));
       setAviso("Dejarás de recibir avisos por WhatsApp.");
@@ -134,9 +143,9 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
   const contacto = settings.contact;
 
   return (
-    <div className="space-y-4">
+    <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
       <div>
-        <h1 className="text-xl font-semibold">WhatsApp</h1>
+        <h1 className="font-display text-xl font-semibold text-foreground">WhatsApp</h1>
         <p className="text-sm text-muted-foreground">Avisos de plazos, convocatorias y fallos, y decisiones go / no-go con un toque. Tú decides qué recibir y puedes salir cuando quieras.</p>
       </div>
 
@@ -158,7 +167,7 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Mi WhatsApp
-              {contacto ? <Badge variant={STATUS_VARIANT[contacto.status]}>{STATUS_TEXT[contacto.status]}</Badge> : null}
+              {contacto ? <StatusBadge tone={statusTone(CONTACTO_WHATSAPP_TONES, contacto.status)}>{STATUS_TEXT[contacto.status]}</StatusBadge> : null}
             </CardTitle>
             <CardDescription>Usamos tu número solo para estos avisos. Para activarlos contesta SI al mensaje de confirmación; para salir, contesta BAJA o usa el botón de abajo.</CardDescription>
           </CardHeader>
@@ -180,7 +189,7 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
                   {contacto ? "Guardar cambios" : "Guardar y confirmar por WhatsApp"}
                 </Button>
                 {contacto && contacto.status !== "baja" ? (
-                  <Button type="button" variant="outline" disabled={ocupado} onClick={darDeBaja}>
+                  <Button type="button" variant="outline" disabled={ocupado} onClick={() => void darDeBaja()}>
                     Dejar de recibir avisos
                   </Button>
                 ) : null}
@@ -247,6 +256,7 @@ export function WhatsappPage({ apiBaseUrl, token, propertyId, role }: Licitacion
           </CardContent>
         </Card>
       ) : null}
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

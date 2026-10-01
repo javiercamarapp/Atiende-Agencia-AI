@@ -8,7 +8,7 @@
 // propuesta es por convocatoria (pagina Cierre), no se duplica aqui.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge } from "@atiende/ui";
 import {
   fetchApprovedRates,
   fetchCompanyCapabilities,
@@ -94,10 +94,10 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   const rejected = (items ?? []).filter((i) => i.status === "rechazado");
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" size="md" className="gap-4 [&>*]:min-w-0">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Aprobaciones</h1>
-        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">Aprobaciones</h1>
+        <p className="mt-1 max-w-[720px] text-sm text-muted-foreground">
           Datos de la empresa que esperan aprobación antes de poder usarse en una propuesta. Un dato pendiente o rechazado nunca se rellena ni se cita en la propuesta. La aprobación del expediente y de cada sección
           de la propuesta se hace dentro de cada convocatoria (pestaña Cierre). Para editar un dato ve a{" "}
           <Link to={`/licitaciones/${orgSlug}/datos-empresa`} className="underline">
@@ -109,7 +109,7 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
       {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) solo puede consultar; aprobar o rechazar requiere un rol de escritura.</p>}
       {actionError && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
@@ -130,10 +130,10 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
               <div key={item.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{KIND_LABEL[item.kind]}</Badge>
+                    <StatusBadge dot={false}>{KIND_LABEL[item.kind]}</StatusBadge>
                     <span className="font-semibold text-foreground">{item.title}</span>
                   </div>
-                  <div className="text-[12px] text-muted-foreground">{item.detail}</div>
+                  <div className="text-xs text-muted-foreground">{item.detail}</div>
                 </div>
                 {canWrite && (
                   <div className="flex gap-2">
@@ -162,10 +162,10 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
               <div key={item.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <Badge variant="destructive">{KIND_LABEL[item.kind]}</Badge>
+                    <StatusBadge tone="danger" dot={false}>{KIND_LABEL[item.kind]}</StatusBadge>
                     <span className="font-semibold text-foreground">{item.title}</span>
                   </div>
-                  <div className="text-[12px] text-muted-foreground">{item.detail}</div>
+                  <div className="text-xs text-muted-foreground">{item.detail}</div>
                 </div>
                 {canWrite && (
                   <Button type="button" size="sm" variant="outline" disabled={busyKey !== null} onClick={() => void decide(item, "aprobado")}>
@@ -177,6 +177,6 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
 import {
   confirmTwoFactorSetup,
   disableTwoFactor,
@@ -158,15 +158,15 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
   const disponible = status.available;
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-4">
+    <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
       <header className="flex items-center gap-2">
         <ShieldCheck className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} />
-        <h1 className="text-lg font-semibold text-foreground">Seguridad de la cuenta</h1>
+        <h1 className="font-display text-lg font-semibold text-foreground">Seguridad de la cuenta</h1>
       </header>
 
       {error && <EstadoError mensaje={error} />}
       {aviso && (
-        <p role="status" className="text-[13px] text-foreground">
+        <p role="status" className="text-sm text-foreground">
           {aviso}
         </p>
       )}
@@ -175,7 +175,7 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             Verificación en dos pasos
-            {disponible && <Badge variant={status.enabled ? "secondary" : "outline"}>{status.enabled ? "Activa" : status.pending ? "Pendiente" : "Inactiva"}</Badge>}
+            {disponible && <StatusBadge tone={status.enabled ? "success" : status.pending ? "warning" : "neutral"}>{status.enabled ? "Activa" : status.pending ? "Pendiente" : "Inactiva"}</StatusBadge>}
           </CardTitle>
           <CardDescription>
             Rescindir, penalizar, modificar o marcar el pago de un contrato pide un código de tu app de autenticación (Google Authenticator, 1Password, Authy…).
@@ -183,7 +183,7 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {!disponible && (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               La verificación en dos pasos todavía no está disponible en este ambiente. Mientras tanto, las acciones sensibles siguen protegidas solo por tu rol.
             </p>
           )}
@@ -196,8 +196,8 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
 
           {disponible && setup && (
             <form onSubmit={confirmar} className="flex flex-col gap-3">
-              <p className="text-[13px] text-foreground">1. En tu app de autenticación agrega una cuenta con esta clave (captura manual, tipo «basada en tiempo»):</p>
-              <code className="select-all break-all rounded-md border border-border bg-muted px-3 py-2 text-[13px]">{setup.secret}</code>
+              <p className="text-sm text-foreground">1. En tu app de autenticación agrega una cuenta con esta clave (captura manual, tipo «basada en tiempo»):</p>
+              <code className="select-all break-all rounded-md border border-border bg-muted px-3 py-2 text-sm">{setup.secret}</code>
               <p className="text-xs text-muted-foreground">
                 Desde un teléfono con la app instalada también puedes abrir{" "}
                 <a href={setup.otpauthUrl} className="underline underline-offset-2">
@@ -217,9 +217,9 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
 
           {backupCodes && (
             <div role="status" className="flex flex-col gap-2 rounded-md border border-border bg-muted/50 p-3">
-              <p className="text-[13px] font-semibold text-foreground">Guarda tus códigos de respaldo</p>
+              <p className="text-sm font-semibold text-foreground">Guarda tus códigos de respaldo</p>
               <p className="text-xs text-muted-foreground">Cada uno sirve una sola vez si pierdes tu teléfono. No volverán a mostrarse.</p>
-              <ul className="grid grid-cols-2 gap-1 font-mono text-[13px]">
+              <ul className="grid grid-cols-2 gap-1 font-mono text-sm">
                 {backupCodes.map((c) => (
                   <li key={c}>{c}</li>
                 ))}
@@ -229,7 +229,7 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
 
           {disponible && status.enabled && (
             <>
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Te quedan {status.backupCodesRemaining} códigos de respaldo.
                 {status.lockedUntil && ` Verificación bloqueada por intentos fallidos hasta ${new Date(status.lockedUntil).toLocaleTimeString("es-MX")}.`}
               </p>
@@ -264,6 +264,6 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
       <ContrasenaCard apiBaseUrl={apiBaseUrl} token={token} estado={cuenta ?? CARGANDO} onAviso={setAviso} onError={setError} />
       <GoogleCard apiBaseUrl={apiBaseUrl} token={token} orgSlug={orgSlug} estado={cuenta ?? CARGANDO} onAviso={setAviso} onError={setError} onCambio={recargarCuenta} />
       <SesionesCard apiBaseUrl={apiBaseUrl} token={token} sesiones={sesiones} onAviso={setAviso} onError={setError} onCambio={recargarCuenta} />
-    </div>
+    </PageContainer>
   );
 }
