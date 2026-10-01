@@ -267,3 +267,121 @@
 @media (prefers-reduced-motion: reduce) {
   .atiende-glifo-animado .atiende-linea { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Experiencia de voz (components/voz/*). Reemplaza las 3 animaciones que el
+   panel original hacía con framer-motion (fade de pantalla, burbuja que sube,
+   avatar de voz que gira) por CSS puro, y define el orbe reactivo. El nivel de
+   audio llega por la variable --vol (0..1) que OrbeAgente escribe en rAF sin
+   pasar por el estado de React.
+   --------------------------------------------------------------------------- */
+@keyframes voz-aparece {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.voz-aparece { animation: voz-aparece 0.2s ease-out both; }
+
+@keyframes voz-burbuja {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.voz-burbuja { animation: voz-burbuja 0.25s ease-out both; }
+
+@keyframes voz-gira {
+  to { transform: rotate(360deg); }
+}
+/* Avatar de voz mientras suena su muestra: 360deg en 2 s, lineal, infinito. */
+.voz-avatar-gira { animation: voz-gira 2s linear infinite; }
+
+@keyframes voz-cursor {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.voz-cursor { animation: voz-cursor 1s steps(1) infinite; }
+
+@keyframes voz-orbe-respira {
+  0%, 100% { transform: scale(0.97); }
+  50%      { transform: scale(1); }
+}
+@keyframes voz-orbe-pulso {
+  0%, 100% { transform: scale(0.96); opacity: 0.85; }
+  50%      { transform: scale(1.04); opacity: 1; }
+}
+
+.voz-orbe {
+  --vol: 0;
+  --orbe-c1: #1d4ed8;
+  --orbe-c2: #0ea5e9;
+  position: relative;
+  border-radius: 9999px;
+  isolation: isolate;
+}
+.voz-orbe[data-modo="error"] {
+  --orbe-c1: hsl(var(--destructive));
+  --orbe-c2: hsl(var(--destructive) / 0.6);
+}
+.voz-orbe__halo {
+  position: absolute;
+  inset: -14%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, var(--orbe-c2) 0%, transparent 68%);
+  opacity: calc(0.18 + var(--vol) * 0.62);
+  transform: scale(calc(1 + var(--vol) * 0.3));
+  transition: opacity 80ms linear, transform 80ms linear;
+  z-index: -1;
+}
+.voz-orbe__nucleo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, var(--orbe-c2), var(--orbe-c1) 70%);
+  box-shadow: 0 0 60px -10px color-mix(in srgb, var(--orbe-c1) 55%, transparent);
+  transform: scale(calc(1 + var(--vol) * 0.1));
+  transition: transform 80ms linear;
+}
+.voz-orbe[data-modo="reposo"] .voz-orbe__nucleo { animation: voz-orbe-respira 4.2s ease-in-out infinite; }
+.voz-orbe[data-modo="pensando"] .voz-orbe__nucleo { animation: voz-orbe-pulso 1.1s ease-in-out infinite; }
+.voz-orbe__onda {
+  position: absolute;
+  inset: -20%;
+  border-radius: 9999px;
+  mix-blend-mode: screen;
+  opacity: calc(0.35 + var(--vol) * 0.5);
+  animation: voz-gira 9s linear infinite;
+  transition: opacity 80ms linear;
+}
+.voz-orbe__onda--a { background: conic-gradient(from 0deg, transparent 0 25%, #ffffff55 40%, transparent 60% 100%); }
+.voz-orbe__onda--b { background: conic-gradient(from 180deg, transparent 0 30%, var(--orbe-c2) 50%, transparent 70% 100%); animation-duration: 13s; animation-direction: reverse; }
+.voz-orbe[data-modo="escuchando"] .voz-orbe__onda { animation-duration: 6s; }
+.voz-orbe[data-modo="hablando"] .voz-orbe__onda { animation-duration: 3.5s; }
+.voz-orbe[data-modo="hablando"] .voz-orbe__onda--b { animation-duration: 5s; }
+.voz-orbe[data-modo="reposo"] .voz-orbe__onda,
+.voz-orbe[data-modo="error"] .voz-orbe__onda { animation-play-state: paused; }
+.voz-orbe__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.voz-orbe[data-video="visible"] .voz-orbe__video { opacity: 1; }
+.voz-orbe__anillo {
+  position: absolute;
+  inset: -4%;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-top-color: var(--orbe-c2);
+  border-right-color: var(--orbe-c2);
+  opacity: 0;
+  animation: voz-gira 1.2s linear infinite;
+}
+.voz-orbe[data-modo="conectando"] .voz-orbe__anillo { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .voz-orbe__halo, .voz-orbe__nucleo { transform: none; transition: none; }
+  .voz-orbe__onda { animation: none; }
+  .voz-orbe[data-modo="reposo"] .voz-orbe__nucleo,
+  .voz-orbe[data-modo="pensando"] .voz-orbe__nucleo { animation: none; }
+}

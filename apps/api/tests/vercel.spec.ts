@@ -39,11 +39,14 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     expect(typeof handler.fetch).toBe("function");
   });
 
-  it("responde /health con la firma Fetch estándar (Request -> Response) que hono/vercel produce", async () => {
+  // /health ya NO es un `{ok:true}` fijo: sondea la BD (`select 1`). Con el
+  // DATABASE_URL falso de arriba la BD no responde, así que lo que valida este
+  // smoke es la firma Fetch Y que degrada a 503 en vez de mentir con 200.
+  it("responde /health con la firma Fetch estándar (Request -> Response) y degrada a 503 con la BD inalcanzable", async () => {
     const { default: handler } = await import("../src/vercel.ts");
     const res = await handler.fetch(new Request("https://example.com/health"));
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({ ok: false, status: "degradado" });
   });
 
   it("coreRepo/engine están conectados a un motor de Postgres real (ManagedPostgresEngine) — no en memoria", async () => {

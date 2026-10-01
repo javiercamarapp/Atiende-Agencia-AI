@@ -18,7 +18,9 @@ import {
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
+import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
 import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -156,6 +158,18 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
           await triggerRestaurantesEmailDispatchInline(deps, db, repo);
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
+          // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
+          // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.
+          const voiceInput = mapCreateOrderBody(org.id, incoming, "voice");
+          const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
+            order: outcome.raw as unknown as Parameters<typeof encolarComandaParaPedido>[1]["order"],
+            tipo: voiceInput.canal,
+            colonia: voiceInput.colonia,
+            propina: voiceInput.propina,
+          });
+          if (comanda.modo === "activo") {
+            return c.json({ order: outcome.raw, comanda: { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } });
+          }
           return c.json({ order: outcome.raw });
         } catch (err) {
           if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
@@ -175,6 +189,14 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
       try {
         const order = await createOrder(repo, input);
         await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+        // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
+        // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
+        // ni cambia el resultado del pedido (ver softrestaurant/outbox-service.ts).
+        const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), { order, tipo: input.canal, colonia: input.colonia, propina: input.propina });
+        if (comanda.modo === "activo") {
+          // El agente solo puede decir un folio si el POS lo devolvio; si no, "pendiente de confirmar".
+          return c.json({ order, comanda: { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } });
+        }
         return c.json({ order });
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
