@@ -64,3 +64,21 @@ techo mínimo de roles.
 - `ical-monitor.ts`: `GET /rentas/:propertyId/sync-monitor`, `GET .../conflictos`,
   `POST .../conflictos/:id/resolver`, `POST .../sync-alertas/:id/atender`.
 
+## Reportes de ocupación e ingresos (Rn-03)
+
+- `reportes.ts`: `GET /rentas/:propertyId/reportes/ocupacion-ingresos` (`?desde&hasta` periodo
+  `[desde, hasta)` o mes en curso en la zona de la property, `&agrupar=unidad|propietario|canal|mes`,
+  `&formato=json|csv|pdf`, filtros `unidad_id`/`propietario_id`/`canal`). Roles
+  `FINANZAS_LECTURA_ROLES` (admin_gestora, contador). Solo lectura sobre tablas de 001/003: no
+  requiere migración. Cálculo y anti doble conteo en `@atiende/domain-rentas` (`src/reportes/`).
+
+## Acceso al huésped (Rn-04) y confirmar bloqueo (Rn-05)
+
+- `acceso-huesped.ts`: política por property, instrucciones por unidad (el secreto, con
+  `Cache-Control: no-store`), pago confirmado por reserva y bitácora (roles `ACCESO_HUESPED_ROLES`),
+  más el cron `GET|POST /internal/rentas/acceso-huesped` (migración 025; NO está en `vercel.json`,
+  ver `docs/DEPLOY.md`). Contra la base sin migrar responde `disponible: false`/409 y el cron `ok`
+  sin hacer nada.
+- `limpieza.ts`: `POST .../unidades/:unidadId/incidencias/:incidenciaId/confirmar-bloqueo` confirma el
+  bloqueo de mantenimiento de una incidencia grave (solo roles de gestión; nunca cancela reservas).
+

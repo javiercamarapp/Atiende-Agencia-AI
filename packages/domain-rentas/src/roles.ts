@@ -138,6 +138,13 @@ export const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES: readonly RentasVerticalRole[] = [
 // comparten alcance por ahora.
 export const LIMPIEZA_CREACION_MANUAL_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 
+// Acceso al huésped (Rn-04): las instrucciones de acceso (código de cerradura, dirección
+// exacta) son el secreto físico de la propiedad. Solo admin_gestora y operador:acceso_total
+// las configuran/leen y confirman el pago que habilita su liberación -- espejo de
+// rentas.can_manage_acceso (migración 025), que es la autoridad real. contador, limpieza y
+// los operadores de calendario ven la reserva, no la llave.
+export const ACCESO_HUESPED_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total"];
+
 export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RentasVerticalRole, "owner" | "admin" | "member" | "viewer"> = {
   admin_gestora: "owner",
   "operador:acceso_total": "member",
