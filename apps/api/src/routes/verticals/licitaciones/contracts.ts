@@ -8,15 +8,22 @@
 //
 // Transiciones sensibles (rescindir/penalizar/marcar en inconformidad/
 // registrar una modificación, `CONTRACT_DECISION_TRANSITIONS`) exigen
-// `DECISION_ROLES` (más estricto que `WRITE_ROLES`) -- ver el comentario de
-// cabecera de `contract-lifecycle.ts` sobre por qué esto reemplaza al
-// step-up/2FA del repo original (esta fase no tiene esa infraestructura).
+// `DECISION_ROLES` (más estricto que `WRITE_ROLES`).
+//
+// L-01 (step-up): ADEMÁS, las transiciones de `CONTRACT_STEP_UP_TRANSITIONS`
+// (rescindir, penalizar, marcar en inconformidad, modificar y marcar pago)
+// exigen un token de step-up vigente (header `X-Step-Up-Token`, emitido por
+// `POST /auth/step-up` tras un código TOTP o de respaldo) cuando la base ya
+// tiene la migración de 2FA. Con la base sin migrar (o sin puerto de
+// seguridad) NO se exige: queda el control por rol de siempre, nunca un 500
+// (ver `requireStepUp` en `apps/api/src/second-factor.ts`).
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { WRITE_ROLES, DECISION_ROLES, CONTRACT_DECISION_TRANSITIONS, ContractTransitionRejectedError, isContractStatus } from "@atiende/domain-licitaciones";
+import { WRITE_ROLES, DECISION_ROLES, CONTRACT_DECISION_TRANSITIONS, CONTRACT_STEP_UP_TRANSITIONS, ContractTransitionRejectedError, isContractStatus } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { requireStepUp } from "../../../second-factor.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface ContractMetadataBody {
@@ -139,6 +146,11 @@ export function licitacionesContractRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     // Enforcement de aplicación, ADEMÁS de RLS: transiciones sensibles
     // exigen DECISION_ROLES, el resto solo WRITE_ROLES.
     assertVerticalRole(c, CONTRACT_DECISION_TRANSITIONS.includes(toStatus) ? DECISION_ROLES : WRITE_ROLES);
+
+    // Segunda capa (L-01): segundo factor reciente para las transiciones sensibles.
+    if (CONTRACT_STEP_UP_TRANSITIONS.includes(toStatus)) {
+      await requireStepUp(deps, { userId: actorId, organizationId, scope: "contract_sensitive", token: c.req.header("x-step-up-token") });
+    }
 
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");

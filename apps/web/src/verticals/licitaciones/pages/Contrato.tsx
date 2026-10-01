@@ -55,6 +55,8 @@ import {
   updateContractMetadata,
 } from "../lib/contract-client.ts";
 import type { ContractDocumentRecord, ContractExtractedFieldRecord, ContractRecord, ContractStatus, ContractStatusHistoryRecord } from "../lib/contract-client.ts";
+import { CONTRACT_STEP_UP_TRANSITIONS, TWO_FACTOR_UNAVAILABLE, fetchTwoFactorStatus, requestStepUpToken, secondFactorFromText } from "../lib/two-factor-client.ts";
+import type { TwoFactorStatus } from "../lib/two-factor-client.ts";
 import { formatContractFieldKey, formatContractFieldStatus, formatContractStatus, formatDate } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -110,6 +112,10 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
   const [evidenceRef, setEvidenceRef] = useState("");
   const [transitioning, setTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
+  // L-01 (step-up): estado del segundo factor del usuario. `TWO_FACTOR_UNAVAILABLE` (base sin
+  // migrar o consulta fallida) NO exige codigo: el servidor tampoco lo exigira en ese caso.
+  const [twoFactor, setTwoFactor] = useState<TwoFactorStatus>(TWO_FACTOR_UNAVAILABLE);
+  const [stepUpCode, setStepUpCode] = useState("");
 
   // Documentos del contrato.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -162,6 +168,17 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
   useEffect(() => {
     if (tenderId) void load(tenderId);
   }, [apiBaseUrl, token, propertyId, tenderId]);
+
+  // L-01: `fetchTwoFactorStatus` nunca lanza (base sin migrar/red caida => "no disponible").
+  useEffect(() => {
+    let vivo = true;
+    void fetchTwoFactorStatus(fetch, apiBaseUrl, token).then((s) => {
+      if (vivo) setTwoFactor(s);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl, token]);
 
   useEffect(() => {
     if (!tenderId || !selectedDocumentId) {
@@ -230,14 +247,24 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
       setTransitionError("Escribe el motivo de la transición.");
       return;
     }
+    // L-01: transicion sensible con 2FA activo -> pedir el codigo ANTES de enviar.
+    const needsStepUp = CONTRACT_STEP_UP_TRANSITIONS.includes(toStatus) && twoFactor.available && twoFactor.enabled;
+    const factor = needsStepUp ? secondFactorFromText(stepUpCode) : null;
+    if (needsStepUp && !factor) {
+      setTransitionError("Escribe el código de tu app de autenticación (o un código de respaldo) para confirmar esta acción.");
+      return;
+    }
     setTransitioning(true);
     setTransitionError(null);
     try {
+      const stepUpToken = factor ? await requestStepUpToken(fetch, apiBaseUrl, token, "contract_sensitive", factor) : null;
       const updated = await transitionContract(fetch, apiBaseUrl, token, propertyId, tenderId, {
         toStatus,
         reason: reason.trim(),
         evidenceRef: evidenceRef.trim().length > 0 ? evidenceRef.trim() : null,
+        stepUpToken,
       });
+      setStepUpCode("");
       applyContract(updated);
       setToStatus("");
       setReason("");
@@ -246,6 +273,8 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
       setHistory(historyData);
     } catch (err) {
       setTransitionError(err instanceof Error ? err.message : "No se pudo aplicar la transición.");
+      // Si el servidor pidio step-up y la pantalla aun no lo sabia, refresca el estado para mostrar el campo.
+      void fetchTwoFactorStatus(fetch, apiBaseUrl, token).then(setTwoFactor);
     } finally {
       setTransitioning(false);
     }
@@ -442,6 +471,29 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
                     <Label htmlFor="contrato-evidencia">Referencia de evidencia (opcional)</Label>
                     <Input id="contrato-evidencia" value={evidenceRef} onChange={(e) => setEvidenceRef(e.target.value)} placeholder="Folio, acta, oficio…" />
                   </div>
+                  {toStatus && CONTRACT_STEP_UP_TRANSITIONS.includes(toStatus) && twoFactor.available && twoFactor.enabled && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="contrato-stepup">Código de verificación en dos pasos</Label>
+                      <Input
+                        id="contrato-stepup"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={stepUpCode}
+                        onChange={(e) => setStepUpCode(e.target.value)}
+                        placeholder="6 dígitos, o un código de respaldo"
+                      />
+                      <p className="text-xs text-muted-foreground">Esta acción es sensible: confirma tu identidad con tu app de autenticación.</p>
+                    </div>
+                  )}
+                  {toStatus && CONTRACT_STEP_UP_TRANSITIONS.includes(toStatus) && twoFactor.available && !twoFactor.enabled && (
+                    <p className="text-xs text-muted-foreground">
+                      Esta acción exige verificación en dos pasos y todavía no la activaste.{" "}
+                      <Link to={`/licitaciones/${orgSlug}/seguridad`} className="font-semibold text-foreground underline underline-offset-2">
+                        Actívala en Seguridad
+                      </Link>
+                      .
+                    </p>
+                  )}
                   {transitionError && (
                     <p role="alert" className="text-[13px] text-destructive">
                       {transitionError}

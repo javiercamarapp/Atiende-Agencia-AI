@@ -15,7 +15,7 @@
 // mismo listener de SESSION_EXPIRED_EVENT.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Building2, FileText, Gavel, Radar, Target, Users } from "lucide-react";
+import { Building2, FileText, Gavel, Radar, ShieldCheck, Target, Users } from "lucide-react";
 import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
@@ -187,6 +187,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
         { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
         { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
+        { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
       ],
     },
   ];

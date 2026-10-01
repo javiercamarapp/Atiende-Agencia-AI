@@ -212,7 +212,7 @@ export type {
 export type { TenderChangeNotificationRecord, RecordTenderVersionResult } from "./repository.ts";
 
 // ---- Fase 6: seguimiento post-adjudicación (REQ-051..055) ----
-export { CONTRACT_STATES, CONTRACT_INITIAL_STATUS, CONTRACT_TERMINAL_STATES, CONTRACT_TRANSITIONS, CONTRACT_ALERT_STATES, CONTRACT_DECISION_TRANSITIONS, isContractStatus, checkTransition } from "./contract-lifecycle.ts";
+export { CONTRACT_STATES, CONTRACT_INITIAL_STATUS, CONTRACT_TERMINAL_STATES, CONTRACT_TRANSITIONS, CONTRACT_ALERT_STATES, CONTRACT_DECISION_TRANSITIONS, CONTRACT_STEP_UP_TRANSITIONS, isContractStatus, checkTransition } from "./contract-lifecycle.ts";
 export type { ContractStatus, TransitionCheckResult } from "./contract-lifecycle.ts";
 
 export { addBusinessDays, daysBetween as businessDaysBetween, CALENDAR_LIMITATION_NOTE } from "./business-days.ts";

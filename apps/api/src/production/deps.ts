@@ -86,6 +86,7 @@ import {
   PostgresMfaRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
+  PostgresStaffSecurityRepository,
 } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
@@ -276,6 +277,8 @@ export function buildProductionDeps(): AppDeps {
     // con `auth.uid()` = el staff autenticado que invita, para que la policy RLS de
     // `core.staff_invite` (owner/admin de la organización) sea la autoridad real.
     coreStaffRepo: (db) => new PostgresCoreRepository(db),
+    // L-01/L-02 — una transacción propia por método (ver staff-security-repository.ts).
+    staffSecurityRepo: new PostgresStaffSecurityRepository(engine),
     restaurantesRepo: (db) => new PostgresRestaurantesRepository(db),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),

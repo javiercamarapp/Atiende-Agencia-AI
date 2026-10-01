@@ -2,6 +2,7 @@ import type {
   AuthzAuditRepository,
   CoreRepository,
   CoreStaffRepository,
+  StaffSecurityRepository,
   ImpersonationRepository,
   LlmUsageRepository,
   MfaRepository,
@@ -104,6 +105,15 @@ export interface AppDeps {
    * lado del INVITADO, sin sesión todavía) se quedan en `coreRepo` de arriba, mismo
    * criterio que login. */
   readonly coreStaffRepo: (db: TenantDbSession) => CoreStaffRepository;
+  /** L-01/L-02 — segundo factor TOTP/step-up, cambio/reset de contraseña y verificación
+   * de correo (`@atiende/db::StaffSecurityRepository`). Objeto fijo: cada método abre SU
+   * PROPIA transacción (ver el contrato en `staff-security-repository.ts`), así que el
+   * conteo de intentos fallidos sobrevive al 4xx de la ruta y un SQLSTATE de migración
+   * pendiente se traduce a `StaffSecurityUnavailableError` sin abortar la sesión del
+   * request. OPCIONAL a propósito: ausente (fixtures viejos) = comportamiento previo
+   * (sin 2FA); las rutas de 2FA responden 503 "no disponible aún" y las transiciones
+   * sensibles del contrato siguen exigiendo solo `DECISION_ROLES`. */
+  readonly staffSecurityRepo?: StaffSecurityRepository;
   readonly engine: TenancyEngine;
   readonly restaurantesRepo: (db: TenantDbSession) => RestaurantesRepository;
   /** SoftRestaurant (POS de PM): adaptador hacia el POS. OPCIONAL y sin default de

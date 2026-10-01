@@ -175,6 +175,18 @@ como parámetro plano.
   `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
   en la misma rama, despliega el caller primero.
 
+**Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
+contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
+código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
+transiciones sensibles del contrato siguen exigiendo solo el rol y las rutas `/auth/2fa/*`
+responden 503 "no disponible aún"). Dos efectos a tener en cuenta DESPUÉS de aplicarla:
+(1) rescindir, penalizar, modificar, marcar en inconformidad y marcar pago de un contrato
+pasan a exigir que el usuario tenga 2FA activo (Seguridad de la cuenta) y un código
+reciente; avisa a los usuarios antes de aplicarla. (2) El secreto TOTP se guarda cifrado con
+una clave derivada de `JWT_SECRET`: rotar `JWT_SECRET` deja ilegibles los secretos TOTP ya
+dados de alta (cada usuario tendría que desactivar —con un código de respaldo— y volver a
+activar el 2FA).
+
 **Además de lo de abajo, desde el 19-sep-2026 `.github/workflows/ci-checks.yml`
 corre en cada `pull_request`/`push` a `main` que toque `apps/**`, `packages/**`,
 `docs/DEPLOY.md`, `supabase/migrations/README.md` o cualquier archivo fuera
