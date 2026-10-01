@@ -94,7 +94,7 @@ describe("pedidos programados contra la base SIN migrar (SAVEPOINT)", () => {
 
 describe("pedidos programados contra la base migrada", () => {
   it("promoteDueScheduledOrders manda (org, ahora, anticipacion, sucursales) y mapea las filas", async () => {
-    let params: readonly unknown[] = [];
+    let params: unknown[] = [];
     const session = new AbortAwareFakeSession([
       {
         match: /promover_pedidos_programados/,
@@ -102,7 +102,7 @@ describe("pedidos programados contra la base migrada", () => {
       },
     ]);
     const original = session.query.bind(session);
-    session.query = (async (sql: string, p?: readonly unknown[]) => {
+    session.query = (async (sql: string, p?: unknown[]) => {
       params = p ?? [];
       return original(sql, p);
     }) as typeof session.query;
