@@ -122,7 +122,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", fecha: fechaCortaEsMx() }}
+      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", fecha: fechaCortaEsMx(), resumenTo: "/superadmin" }}
       notificationBell={campana()}
       mobileNotificationBell={campana("w-10 h-10")}
     >

@@ -75,7 +75,7 @@ export interface HotelesShellContext {
    * assertVerticalRole en pedidosFnb.ts, son SIEMPRE el enforcement real). */
   readonly role: string;
   /** Nombre completo y correo del staff en sesión — expuestos a las páginas hijas
-   * (header compartido, DashboardHeader/NotificationBell) solo para pintar el
+   * (header compartido, BarraPagina/NotificationBell) solo para pintar el
    * saludo real (`saludoConNombre`, ver pages/Dashboard.tsx); antes este contexto
    * no exponía nada de identidad del staff más allá de lo que ya necesitaba `role`. */
   readonly staffFullName: string | undefined;
@@ -240,7 +240,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       user={{ email: session.email, rol: role }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <BedDouble className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, fecha: fechaCortaEsMx() }}
+      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/hoteles/${orgSlug}` }}
       branchSelector={hotelSelector}
       mobileSelector={branches.length > 1 ? hotelSelector : null}
       contentKey={propertyId}
