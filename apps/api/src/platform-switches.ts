@@ -13,6 +13,8 @@ import type { BlockedSwitch, SwitchScope } from "@atiende/db";
 export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:whatsapp_agent",
   "restaurantes:data_chat",
+  "despachos:data_chat",
+  "licitaciones:data_chat",
   "hoteles:whatsapp_agent",
   "citas:whatsapp_agent",
   "licitaciones:requirement_extractor",

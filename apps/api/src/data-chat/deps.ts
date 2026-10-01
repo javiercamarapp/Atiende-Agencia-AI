@@ -9,14 +9,20 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError, runWithSavepointFallback } from "@atiende/db";
 import { RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
 import { PostgresRestaurantesDataChatReader, type RestaurantesDataChatReader } from "@atiende/domain-restaurantes";
+import { PostgresDespachosDataChatReader, type DespachosDataChatReader } from "@atiende/domain-despachos";
+import { PostgresLicitacionesDataChatReader, type LicitacionesDataChatReader } from "@atiende/domain-licitaciones";
 
 
 export interface DataChatDeps {
   readonly restaurantesReader: (db: TenantDbSession) => RestaurantesDataChatReader;
+  /** Lectores de despachos y licitaciones. OPCIONALES: sin ellos sus rutas responden "no disponible" (nunca 500). */
+  readonly despachosReader?: (db: TenantDbSession) => DespachosDataChatReader;
+  readonly licitacionesReader?: (db: TenantDbSession) => LicitacionesDataChatReader;
   readonly audit: (db: TenantDbSession) => DataChatAuditSink;
   readonly rateLimiter: DataChatRateLimiter;
-  /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". */
-  readonly completion: ((organizationId: string) => DataChatCompletion) | undefined;
+  /** undefined = ningun proveedor LLM configurado: el chat responde "no disponible". `role` es el rol del gateway
+   *  de la vertical (`<vertical>:data_chat`); sin el cae al de restaurantes (el piloto). */
+  readonly completion: ((organizationId: string, role?: string) => DataChatCompletion) | undefined;
 }
 
 /** Limitador compartido entre instancias (Upstash) o en memoria; categoria cerrada: un blip de Redis NIEGA, no abre el gasto. */
@@ -72,8 +78,10 @@ export class PostgresDataChatAuditSink implements DataChatAuditSink {
 export function buildProductionDataChat(gateway: LlmGateway | undefined): DataChatDeps {
   return {
     restaurantesReader: (db) => new PostgresRestaurantesDataChatReader(db),
+    despachosReader: (db) => new PostgresDespachosDataChatReader(db),
+    licitacionesReader: (db) => new PostgresLicitacionesDataChatReader(db),
     audit: (db) => new PostgresDataChatAuditSink(db),
     rateLimiter: dataChatRateLimiter,
-    completion: gateway ? (organizationId) => gatewayCompletion(gateway, { tenantId: organizationId, role: RESTAURANTES_DATA_CHAT_ROLE }) : undefined,
+    completion: gateway ? (organizationId, role = RESTAURANTES_DATA_CHAT_ROLE) => gatewayCompletion(gateway, { tenantId: organizationId, role }) : undefined,
   };
 }

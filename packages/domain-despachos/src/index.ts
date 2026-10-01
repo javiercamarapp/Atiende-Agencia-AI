@@ -547,3 +547,6 @@ export {
 export type { EfosSituacion, EfosContribuyente, EfosConsulta, EfosListadoParseado, EfosFilaDescartada, HallazgoEfos } from "./cfdi/efos.ts";
 export type { EfosEstadoLista, EfosInvoiceAfectado, EfosAfectadosResultado, EfosIngestaResultado } from "./repository.ts";
 export { EfosUnavailableError } from "./errors.ts";
+
+// "Chatea con tus datos": catalogo cerrado de herramientas de solo lectura (ver docs/DATA-CHAT.md).
+export * from "./data-chat/index.ts";

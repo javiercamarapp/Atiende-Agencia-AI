@@ -10,10 +10,12 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
 |---|---|
 | Motor (validación, alcance, límites, redacción de PII, bitácora, verificación de cifras) | `packages/agent-core/src/data-chat/` (export `@atiende/agent-core/data-chat`) |
 | Catálogo de restaurantes (8 herramientas, SQL de solo lectura) | `packages/domain-restaurantes/src/data-chat/` |
-| Ruta HTTP | `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts` |
+| Catálogo de despachos (8 herramientas) | `packages/domain-despachos/src/data-chat/` |
+| Catálogo de licitaciones (7 herramientas) | `packages/domain-licitaciones/src/data-chat/` |
+| Rutas HTTP | `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts`, `.../despachos/chat-datos.ts`, `.../licitaciones/chat-datos.ts` (cuerpo y alcance compartidos en `apps/api/src/data-chat/`) |
 | Bitácora de consultas | migración 0029 → `core.data_chat_query_log` + `core.record_data_chat_query` |
 | Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` |
-| Verificación contra Postgres real | `scripts/verify-data-chat/` (lo corre el gate de CI) |
+| Verificación contra Postgres real | `scripts/verify-data-chat/` (restaurantes) y `scripts/verify-data-chat-despachos-licitaciones/` (los corre el gate de CI) |
 
 ## Flujo de un turno
 
@@ -61,6 +63,39 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
   "esa información todavía no está disponible", sin abortar la transacción de la request. La bitácora degrada a
   log estructurado. Cubierto con `AbortAwareFakeSession` y con SQLSTATE reales en `verify-data-chat`.
 
+## Catálogos de despachos y licitaciones
+
+Ambos son de solo lectura, con parámetros tipados (periodo, cliente por **nombre**, horizonte en días, límite),
+periodos y "hoy" en la zona del negocio (`America/Merida` por defecto), montos en MXN y tope de 50 filas / 8 s.
+Rutas: `POST /despachos/:propertyId/chat-datos` y `POST /licitaciones/:propertyId/chat-datos` (más `GET .../estado`).
+Roles del gateway LLM: `despachos:data_chat` y `licitaciones:data_chat` (tope mensual por organización e
+interruptor de plataforma propios). La bitácora `core.data_chat_query_log` ya acepta ambas verticales: **sin
+migración nueva**.
+
+**Despachos** (alcance: los clientes de la membership; un cliente = una `core.property`; rol: `VER_DASHBOARD_ROLES`):
+`cartera_por_cliente`, `cobranza_antiguedad` (vigente, 1-30, 31-60, 61-90, más de 90 días), `cfdi_por_periodo`,
+`impuestos_del_mes` (IVA acreditable de CFDI tipo Ingreso válidos, misma convención que la DIOT del sistema),
+`obligaciones_fiscales` (ISR, IVA, DIOT, Nómina por fecha límite; "vencido" se calcula contra hoy),
+`cierres_pendientes`, `alertas_efos` (lista 69-B del SAT, solo por las funciones `security definer` de la
+migración 014: si la lista no está cargada responde "no disponible", nunca "sin riesgo") y `carga_de_trabajo`.
+Lo que el modelo **no** tiene y el chat declara en vez de inventar: CFDI **emitidos** por el cliente (IVA
+trasladado, saldo a cargo, ISR) y el **contador responsable** de cada pendiente (la carga es por cliente, no por
+contador).
+
+**Licitaciones** (alcance: la organización completa; cualquier rol de la vertical, igual que la RLS de lectura):
+`convocatorias_abiertas` (con `vencen_en_dias` para "por vencer"), `plazos_semaforo` (rojo ≤ 3 días, amarillo
+≤ 7, verde > 7, vencida sin presentar, sin fecha), `go_no_go`, `propuestas_por_estado`, `fallos`,
+`renovaciones` (horizonte inclusivo, por defecto 90 días) y `preguntas_junta_pendientes` (L-04, #240: borrador,
+aprobada sin enviar o enviada sin respuesta; nunca respuestas ni actas). Los días restantes se cuentan en fecha
+**local** (`licitaciones.tenant_config.timezone`, si no hay, `America/Merida`). El monto solo se muestra si la
+convocatoria está en MXN (no se convierte moneda); en `fallos` es el presupuesto de la convocatoria, no el
+importe adjudicado. Terminología: ComprasMX, LAASSP, fallo, junta de aclaraciones.
+
+Ambos corren con la sesión RLS del usuario y repiten `organization_id = $1` en cada JOIN; el SQL idéntico vive
+en `scripts/verify-data-chat-despachos-licitaciones/assertions.sql` (66 escenarios contra Postgres real:
+cross-tenant en ambos sentidos, cross-cliente, `anon`, base sin migrar) y un guard de deriva en
+`tests/data-chat/sql-drift.spec.ts` de cada paquete.
+
 ## Cómo enchufar el catálogo de otra vertical
 
 1. **Herramientas.** En `packages/domain-<vertical>/src/data-chat/` crea un puerto de lectura (como
@@ -87,7 +122,10 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
 
 ## Lo que NO cubre todavía
 
-- Solo restaurantes tiene catálogo; las demás verticales siguen con el aviso honesto.
+- Restaurantes, despachos y licitaciones tienen catálogo; hoteles, citas y rentas siguen con el aviso honesto.
+- Despachos: sin CFDI emitidos ni carga por contador (el modelo no los guarda); la consulta 69-B revisa a lo
+  más 40 clientes por pregunta (lo declara en la respuesta) y toda tabla trae a lo más 50 filas.
+- Licitaciones: sin montos por propuesta ni conversión de moneda.
 - La conversación no se guarda en servidor (el historial vive en la ventana del navegador).
 - Las ventas del chat excluyen pedidos cancelados; los tableros de KPIs hoy suman todos los estados: las cifras
   pueden diferir y cada respuesta lo dice en su fuente.
