@@ -238,8 +238,9 @@ function agregar(clave: string, filas: readonly FilaPyl[], infraDisponible: bool
 export function armarPyl(e: EntradaPyl): Pyl {
   const fx = e.mxnPorUsd;
   if (fx !== null && (!Number.isFinite(fx) || fx <= 0)) throw new Error(`mxnPorUsd invalido (${fx}).`);
-  // Solo entran organizaciones con algo que reportar: ingreso conocido o costo del mes.
-  const orgs = e.orgs.filter((o) => (o.ingresoMxn ?? 0) > 0 || o.ingresoRazon !== null || totalMicro(o.costo) > 0);
+  // Solo entran organizaciones con algo que reportar: ingreso positivo, costo del mes o un ingreso
+  // desconocido por falta de plan/precio. Una organizacion sin foto del mes y sin costo no aporta nada.
+  const orgs = e.orgs.filter((o) => (o.ingresoMxn ?? 0) > 0 || totalMicro(o.costo) > 0 || (o.ingresoRazon !== null && o.ingresoRazon !== 'sin_foto_del_mes'));
   const infraCent = e.infra === null ? [] : e.infra.filter((c) => c.montoMxnCentavos > 0);
   const hayInfra = e.infra !== null && e.infra.length > 0;
   const totalInfraCent = infraCent.reduce((s, c) => s + c.montoMxnCentavos, 0);

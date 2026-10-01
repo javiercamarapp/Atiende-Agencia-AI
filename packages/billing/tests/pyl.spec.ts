@@ -116,6 +116,12 @@ describe('armarPyl', () => {
     expect(p.porCliente.map((f) => f.organizationId)).toEqual(['y']);
   });
 
+  it('un mes cerrado: la organizacion sin foto y sin costo se omite; con costo se conserva con ingreso null', () => {
+    const p = armarPyl({ mes: '2026-08', orgs: [org('n', 'citas', null, {}, 'sin_foto_del_mes'), org('m', 'citas', null, { llm: 1_000_000 }, 'sin_foto_del_mes')], mxnPorUsd: 20, infra: null });
+    expect(p.porCliente.map((f) => f.organizationId)).toEqual(['m']);
+    expect(p.porCliente[0]!.ingresoRazon).toBe('sin_foto_del_mes');
+  });
+
   it('un costo sin ingreso (0) da contribucion negativa y pct null (no divide entre 0)', () => {
     const p = armarPyl({ mes: '2026-09', orgs: [org('a', 'citas', 0, { llm: 2_000_000 })], mxnPorUsd: 20, infra: null });
     expect(p.porCliente[0]!.contribucionMxn).toBe(-40);
@@ -199,17 +205,17 @@ describe('CSV', () => {
   it('por cliente: una cifra sin fuente va vacia con su nota; nombre malicioso neutralizado', () => {
     const p = armarPyl({ mes: '2026-09', orgs: [{ ...org('a', 'citas', 100, { llm: 1_000_000 }), nombre: '=cmd|x' }, org('b', 'rentas', null, {}, 'precio_no_configurado')], mxnPorUsd: 20, infra: null });
     const csv = pylACsv(p, 'cliente');
-    const lineas = csv.replace('﻿', '').trim().split('\r\n');
+    const lineas = csv.replace('\uFEFF', '').trim().split('\r\n');
     expect(lineas[0]).toContain('ingreso_reconocido_mxn');
     expect(lineas[1]).toContain(`'=cmd|x`);
     expect(lineas[1]).toContain('sin infra capturada');
     expect(lineas[2]).toContain('plan sin precio configurado');
     expect(lineas[2]).toContain('2026-09,' + 'b,Org b,rentas,,'); // ingreso vacio, no 0
-    expect(csv.startsWith('﻿')).toBe(true);
+    expect(csv.startsWith('\uFEFF')).toBe(true);
   });
   it('por vertical incluye la fila total', () => {
     const p = armarPyl({ mes: '2026-09', orgs: [org('a', 'citas', 100)], mxnPorUsd: null, infra: null });
-    const lineas = pylACsv(p, 'vertical').replace('﻿', '').trim().split('\r\n');
+    const lineas = pylACsv(p, 'vertical').replace('\uFEFF', '').trim().split('\r\n');
     expect(lineas).toHaveLength(3);
     expect(lineas[2]!.startsWith('2026-09,total,1,100.00')).toBe(true);
     expect(lineas[2]).toContain('sin tipo de cambio');
