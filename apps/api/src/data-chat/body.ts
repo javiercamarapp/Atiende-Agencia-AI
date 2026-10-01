@@ -33,3 +33,12 @@ export function parseDataChatBody(raw: unknown): { question: string; history: Da
   if (typeof body["question"] !== "string") throw Errors.validation("question: se esperaba texto.");
   return { question: body["question"], history };
 }
+
+/** Lee y valida el cuerpo de la peticion. UNICO punto para las seis rutas del chat: mismo mensaje de JSON invalido y
+ *  mismas reglas de campos, para que ninguna vertical se desvie. */
+export async function parseDataChatRequest(c: { req: { json(): Promise<unknown> } }): Promise<{ question: string; history: DataChatHistoryTurn[]; tool?: string }> {
+  const raw: unknown = await c.req.json().catch(() => {
+    throw Errors.validation("Cuerpo inválido: se esperaba JSON.");
+  });
+  return parseDataChatBody(raw);
+}

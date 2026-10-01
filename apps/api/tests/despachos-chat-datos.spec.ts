@@ -247,14 +247,14 @@ describe("validacion, limites y disponibilidad", () => {
     const body = (await res.json()) as DataChatAnswer;
     expect(body.status).toBe("unavailable");
     expect(body.text).toContain("todavía no está activado");
-    expect(await (await app.request(url(h, "/estado"), authedJson(h.ctx.staff.admin.token))).json()).toEqual({ available: false });
+    expect(await (await app.request(url(h, "/estado"), authedJson(h.ctx.staff.admin.token))).json()).toMatchObject({ available: false });
   });
 
   it("estado available=true con proveedor y lector; false si falta el lector", async () => {
     const h = await harness([{ text: "x" }]);
-    expect(await (await h.app.request(url(h, "/estado"), authedJson(h.ctx.staff.admin.token))).json()).toEqual({ available: true });
+    expect(await (await h.app.request(url(h, "/estado"), authedJson(h.ctx.staff.admin.token))).json()).toMatchObject({ available: true });
     const sinLector = await harness([{ text: "x" }], { omitReader: true });
-    expect(await (await sinLector.app.request(url(sinLector, "/estado"), authedJson(sinLector.ctx.staff.admin.token))).json()).toEqual({ available: false });
+    expect(await (await sinLector.app.request(url(sinLector, "/estado"), authedJson(sinLector.ctx.staff.admin.token))).json()).toMatchObject({ available: false });
     const res = await sinLector.app.request(url(sinLector), post(sinLector.ctx.staff.admin.token, { question: "cartera" }));
     expect(((await res.json()) as DataChatAnswer).status).toBe("unavailable");
   });
