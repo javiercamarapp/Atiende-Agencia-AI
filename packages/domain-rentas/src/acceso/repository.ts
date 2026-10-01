@@ -2,7 +2,7 @@
 // propósito (mismo criterio que RentasCalendarSyncRepository): tablas nuevas de la
 // migración 025, que pueden no existir todavía en la base real.
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
-import type { EventoAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
+import type { EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
 
 export interface RentasAccesoRepository {
   // ---- staff (sesión del request, RLS real) ----
@@ -14,6 +14,8 @@ export interface RentasAccesoRepository {
   guardarInstruccion(organizationId: string, propertyId: string, unidadId: string, entrada: EntradaInstruccion, actorId: string): Promise<ResultadoAcceso<InstruccionAcceso | null>>;
   confirmarPago(ocupacionId: string, confirmado: boolean): Promise<ResultadoConfirmarPago>;
   listarBitacora(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly EventoAccesoRecord[]>>;
+  /** Reservas confirmadas con check-out de hoy en adelante (día de negocio de la property), con su estado de pago y liberación. */
+  listarReservasProximas(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly ReservaAccesoRecord[]>>;
 
   // ---- sistema (cron: sesión con auth.uid() NULL, una transacción por reserva) ----
   /** La siguiente reserva a liberar ahora; `null` si no hay más. Lanza (SQLSTATE 42883/42P01/42703) contra una base sin migrar. */

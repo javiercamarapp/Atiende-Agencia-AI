@@ -5,6 +5,7 @@
 // la RLS de la migración 025 -- rentas.can_manage_acceso -- lo vuelve a exigir):
 //   GET/PUT /rentas/:propertyId/acceso-huesped/politica
 //   GET     /rentas/:propertyId/acceso-huesped/bitacora?limite=
+//   GET     /rentas/:propertyId/acceso-huesped/reservas   reservas próximas con estado de pago/liberación
 //   GET/PUT /rentas/:propertyId/unidades/:unidadId/acceso-instrucciones
 //   POST    /rentas/:propertyId/reservas/:ocupacionId/pago-confirmado   { confirmado: boolean }
 // Cron (guard de secreto interno/Vercel Cron, igual que checkin-recordatorio.ts):
@@ -60,6 +61,7 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   const rutas = [
     "/rentas/:propertyId/acceso-huesped/politica",
     "/rentas/:propertyId/acceso-huesped/bitacora",
+    "/rentas/:propertyId/acceso-huesped/reservas",
     "/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones",
     "/rentas/:propertyId/reservas/:ocupacionId/pago-confirmado",
   ];
@@ -92,6 +94,29 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const r = await accesoRepo(c.get("db")).listarBitacora(c.req.param("propertyId"), limite);
     if (!r.disponible) return c.json({ disponible: false, eventos: [] }, 200);
     return c.json({ disponible: true, eventos: r.valor.map((e) => ({ id: e.id, reserva_id: e.ocupacionId, evento: e.evento, canal: e.canal, creado_en: e.creadoEn })) }, 200);
+  });
+
+  app.get("/rentas/:propertyId/acceso-huesped/reservas", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const r = await accesoRepo(c.get("db")).listarReservasProximas(c.req.param("propertyId"), 100);
+    if (!r.disponible) return c.json({ disponible: false, reservas: [] }, 200);
+    return c.json(
+      {
+        disponible: true,
+        reservas: r.valor.map((x) => ({
+          reserva_id: x.ocupacionId,
+          unidad_id: x.unidadId,
+          unidad_nombre: x.unidadNombre,
+          canal: x.canal,
+          check_in: x.checkIn,
+          check_out: x.checkOut,
+          huesped_nombre: x.huespedNombre,
+          pago_confirmado: x.pagoConfirmado,
+          liberada: x.liberada,
+        })),
+      },
+      200,
+    );
   });
 
   app.get("/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones", async (c) => {

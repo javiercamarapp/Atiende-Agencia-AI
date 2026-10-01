@@ -31,11 +31,13 @@ describe("PostgresRentasAccesoRepository (staff) sobre base sin migrar", () => {
       { match: /from rentas\.unidad/, respond: () => [{ "?column?": 1 }] },
       { match: /rentas\.acceso_instruccion/, respond: () => pgError("42P01") },
       { match: /rentas\.acceso_bitacora/, respond: () => pgError("42P01") },
+      { match: /left join rentas\.acceso_reserva/, respond: () => pgError("42P01") },
     ]);
     const repo = new PostgresRentasAccesoRepository(db);
     expect(await repo.obtenerInstruccion("p1", "u1")).toEqual({ disponible: false });
     expect(await repo.guardarInstruccion("o1", "p1", "u1", { direccionExacta: "x", codigoAcceso: null, instrucciones: null }, "a1")).toEqual({ disponible: false });
     expect(await repo.listarBitacora("p1", 10)).toEqual({ disponible: false });
+    expect(await repo.listarReservasProximas("p1", 10)).toEqual({ disponible: false });
   });
 
   it("confirmarPago distingue 'no existe' (P0002) de 'migración pendiente' y no deja la sesión abortada", async () => {

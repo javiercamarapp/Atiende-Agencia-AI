@@ -5,7 +5,7 @@
 // disponibilidad de la migración.
 import type { RentasAccesoRepository } from "./repository.ts";
 import { POLITICA_ACCESO_POR_DEFECTO } from "./tipos.ts";
-import type { EventoAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
+import type { EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
 
 export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
@@ -67,6 +67,13 @@ export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
   async listarBitacora(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly EventoAccesoRecord[]>> {
     if (!this.migracion025Disponible) return { disponible: false };
     return { disponible: true, valor: this.bitacora.filter((b) => b.propertyId === propertyId).slice(-limite).reverse() };
+  }
+
+  readonly reservasProximas: Omit<ReservaAccesoRecord, "pagoConfirmado" | "liberada">[] = [];
+
+  async listarReservasProximas(_propertyId: string, limite: number): Promise<ResultadoAcceso<readonly ReservaAccesoRecord[]>> {
+    if (!this.migracion025Disponible) return { disponible: false };
+    return { disponible: true, valor: this.reservasProximas.slice(0, limite).map((r) => ({ ...r, pagoConfirmado: this.pagosConfirmados.has(r.ocupacionId), liberada: this.liberadas.has(r.ocupacionId) })) };
   }
 
   async siguienteLiberacion(excluir: readonly string[]): Promise<LiberacionPendiente | null> {

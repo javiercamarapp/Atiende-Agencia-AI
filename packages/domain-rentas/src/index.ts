@@ -307,7 +307,7 @@ export type { AccesoCorreoDatos } from "./emails/acceso-templates.ts";
 export { EVENTO_OUTBOX_ACCESO, MAX_LIBERACIONES_POR_CORRIDA, ejecutarLiberacionAcceso } from "./acceso/liberacion.ts";
 export type { ContextoLiberacion, ResumenLiberacionAcceso, WithLiberacionTx } from "./acceso/liberacion.ts";
 export { HORAS_ANTES_MAX, HORAS_ANTES_MIN, POLITICA_ACCESO_POR_DEFECTO } from "./acceso/tipos.ts";
-export type { EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./acceso/tipos.ts";
+export type { EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ReservaAccesoRecord, ResultadoAcceso, ResultadoConfirmarPago } from "./acceso/tipos.ts";
 export { validarInstruccion, validarPolitica } from "./acceso/validacion.ts";
 export type { EntradaInstruccion, EntradaPolitica } from "./acceso/validacion.ts";
 export type { RentasAccesoRepository } from "./acceso/repository.ts";

@@ -53,6 +53,19 @@ export interface EventoAccesoRecord {
   readonly creadoEn: string;
 }
 
+/** Reserva próxima (o en curso) con su estado de pago confirmado y de liberación, para el panel de staff. */
+export interface ReservaAccesoRecord {
+  readonly ocupacionId: string;
+  readonly unidadId: string;
+  readonly unidadNombre: string;
+  readonly canal: string;
+  readonly checkIn: string;
+  readonly checkOut: string;
+  readonly huespedNombre: string | null;
+  readonly pagoConfirmado: boolean;
+  readonly liberada: boolean;
+}
+
 /** Resultado de una operación de staff contra una base que puede no tener aún la migración 025. */
 export type ResultadoAcceso<T> = { readonly disponible: true; readonly valor: T } | { readonly disponible: false };
 

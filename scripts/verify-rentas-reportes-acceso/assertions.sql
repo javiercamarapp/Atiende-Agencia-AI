@@ -399,6 +399,29 @@ insert into rentas.acceso_reserva (ocupacion_id, organization_id, property_id, l
 values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', now(), 'email') returning 1 as should_fail;
 rollback;
 
+\echo '--- 34b. el panel de staff lista las reservas proximas con su estado de pago/liberacion (misma consulta que PostgresRentasAccesoRepository.listarReservasProximas): el admin A ve sus 3 reservas confirmadas y refleja el pago confirmado ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.confirmar_pago_reserva('00000000-0000-0000-0000-0000000000d1');
+select count(*) filter (where ar.pago_confirmado_en is not null) * 10 + count(*) as reservas_y_pago_deberia_ser_13
+from rentas.ocupacion o
+join rentas.unidad u on u.id = o.unidad_id
+left join rentas.property_config pc on pc.property_id = o.property_id
+left join rentas.acceso_reserva ar on ar.ocupacion_id = o.id
+where o.property_id = '00000000-0000-0000-0000-0000000000b1' and o.capa = 'reserva' and o.estado = 'confirmado'
+  and upper(o.rango) >= (now() at time zone coalesce(pc.zona_horaria, 'America/Mexico_City'))::date;
+rollback;
+
+\echo '--- 34c. cross-tenant: el admin B no ve ninguna reserva de la property A en esa consulta ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000013', true);
+select count(*) as reservas_ajenas_deberia_ser_0
+from rentas.ocupacion o
+where o.property_id = '00000000-0000-0000-0000-0000000000b1' and o.capa = 'reserva' and o.estado = 'confirmado';
+rollback;
+
 \echo ''
 \echo '=== D. Rn-04: ventana de liberacion y pago (funcion de sistema, zona America/Merida UTC-6) ==='
 \echo ''

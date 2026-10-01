@@ -132,6 +132,21 @@ describe("POST .../reservas/:ocupacionId/pago-confirmado", () => {
   });
 });
 
+describe("GET .../acceso-huesped/reservas", () => {
+  it("lista las reservas próximas con su estado de pago y liberación; solo admin_gestora/operador:acceso_total; base sin migrar -> disponible:false", async () => {
+    const { ctx, app, acceso, base } = await preparar();
+    acceso.reservasProximas.push({ ocupacionId: OCUPACION, unidadId: ctx.unidadId, unidadNombre: "Depa de Prueba", canal: "manual", checkIn: "2027-03-10", checkOut: "2027-03-12", huespedNombre: "Ana" });
+    acceso.pagosConfirmados.add(OCUPACION);
+    const t = ctx.staff.adminGestora.token;
+    const r = (await (await app.request(`${base}/acceso-huesped/reservas`, authedJson(t, undefined, {}, "GET"))).json()) as { disponible: boolean; reservas: Record<string, unknown>[] };
+    expect(r.reservas).toEqual([expect.objectContaining({ reserva_id: OCUPACION, pago_confirmado: true, liberada: false, check_in: "2027-03-10", canal: "manual" })]);
+    expect((await app.request(`${base}/acceso-huesped/reservas`, authedJson(ctx.staff.limpieza.token, undefined, {}, "GET"))).status).toBe(403);
+    expect((await app.request(`${base}/acceso-huesped/reservas`, authedJson(ctx.staff.contador.token, undefined, {}, "GET"))).status).toBe(403);
+    acceso.migracion025Disponible = false;
+    expect(await (await app.request(`${base}/acceso-huesped/reservas`, authedJson(t, undefined, {}, "GET"))).json()).toEqual({ disponible: false, reservas: [] });
+  });
+});
+
 describe("GET /internal/rentas/acceso-huesped (cron)", () => {
   it("rechaza sin el secreto interno", async () => {
     const { app } = await preparar();

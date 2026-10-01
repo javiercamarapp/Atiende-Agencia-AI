@@ -10,7 +10,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { RentasAccesoRepository } from "./repository.ts";
-import type { EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
+import type { EventoAccesoRecord, ReservaAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
 
 interface PoliticaRow {
@@ -119,6 +119,48 @@ export class PostgresRentasAccesoRepository implements RentasAccesoRepository {
         [propertyId, limite],
       );
       return rows.map((r) => ({ id: r.id, ocupacionId: r.ocupacion_id, evento: r.evento, canal: r.canal, creadoEn: r.creado_en }));
+    });
+  }
+
+  listarReservasProximas(propertyId: string, limite: number): Promise<ResultadoAcceso<readonly ReservaAccesoRecord[]>> {
+    return this.conDegradacion("reservas_proximas", async () => {
+      const { rows } = await this.db.query<{
+        id: string;
+        unidad_id: string;
+        unidad_nombre: string;
+        canal: string;
+        check_in: string;
+        check_out: string;
+        huesped_nombre: string | null;
+        pago_confirmado: boolean;
+        liberada: boolean;
+      }>(
+        `select o.id, o.unidad_id, u.name as unidad_nombre, coalesce(c.codigo, 'manual') as canal,
+                to_char(lower(o.rango), 'YYYY-MM-DD') as check_in, to_char(upper(o.rango), 'YYYY-MM-DD') as check_out,
+                g.nombre as huesped_nombre, (ar.pago_confirmado_en is not null) as pago_confirmado, (ar.liberado_en is not null) as liberada
+         from rentas.ocupacion o
+         join rentas.unidad u on u.id = o.unidad_id
+         left join rentas.property_config pc on pc.property_id = o.property_id
+         left join rentas.canal c on c.id = o.canal_origen_id
+         left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+         left join rentas.acceso_reserva ar on ar.ocupacion_id = o.id
+         where o.property_id = $1 and o.capa = 'reserva' and o.estado = 'confirmado'
+           and upper(o.rango) >= (now() at time zone coalesce(pc.zona_horaria, 'America/Mexico_City'))::date
+         order by lower(o.rango), o.id
+         limit $2;`,
+        [propertyId, limite],
+      );
+      return rows.map((r) => ({
+        ocupacionId: r.id,
+        unidadId: r.unidad_id,
+        unidadNombre: r.unidad_nombre,
+        canal: r.canal,
+        checkIn: r.check_in,
+        checkOut: r.check_out,
+        huespedNombre: r.huesped_nombre,
+        pagoConfirmado: r.pago_confirmado,
+        liberada: r.liberada,
+      }));
     });
   }
 
