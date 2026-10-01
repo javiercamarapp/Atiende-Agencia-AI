@@ -131,7 +131,7 @@ export type {
 } from "./authz-audit-repository.ts";
 export { PostgresAuthzAuditRepository, InMemoryAuthzAuditRepository } from "./authz-audit-repository.ts";
 
-export type { StaffSecurityRepository, TotpStatus, TotpSecretRow } from "./staff-security-repository.ts";
+export type { StaffSecurityRepository, TotpStatus, TotpSecretRow, StaffSessionRow, GoogleIdentityRow } from "./staff-security-repository.ts";
 export {
   PostgresStaffSecurityRepository,
   StaffSecurityUnavailableError,
