@@ -112,7 +112,9 @@ export interface TransporteHttpOpciones {
 /** Transporte HTTP del worker: mismas rutas que el manifiesto del registro (`VOICE_TOOL_HTTP_PATHS`), sin secretos en el cuerpo. */
 export function transporteHttp(opts: TransporteHttpOpciones): TransporteTools {
   const fetchFn = opts.fetchFn ?? fetch;
-  const raiz = `${opts.baseUrl.replace(/\/+$/, "")}/v1/restaurantes/${encodeURIComponent(opts.orgSlug)}`;
+  let base = opts.baseUrl;
+  while (base.endsWith("/")) base = base.slice(0, -1);
+  const raiz = `${base}/v1/restaurantes/${encodeURIComponent(opts.orgSlug)}`;
   return async (nombre, args, senal) => {
     const respuesta = await fetchFn(`${raiz}${VOICE_TOOL_HTTP_PATHS[nombre]}`, {
       method: "POST",

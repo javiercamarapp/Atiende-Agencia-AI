@@ -8,7 +8,7 @@ import type { CallbacksAdaptador, CambioEstado } from "../src/verticals/restaura
 import type { SesionPreviewVoz } from "../src/verticals/restaurantes/lib/voz-client.ts";
 import type { LineaTranscripcion } from "@atiende/ui";
 
-const SESION: SesionPreviewVoz = { sesionId: "s-1", proveedor: "gemini-3.8-live", modelo: "gemini-3.8-live", voiceId: "Kore", websocketUrl: "wss://gemini.test/ws", tokenProveedor: "tok efimero/1", tokenPreview: "x", expiraEn: "2026-10-01T12:00:00Z" };
+const SESION: SesionPreviewVoz = { sesionId: "s-1", proveedor: "gemini-3.8-live", modelo: "gemini-3.8-live", voiceId: "Kore", websocketUrl: "wss://gemini.test/ws", tokenProveedor: "token de prueba", tokenPreview: "x", expiraEn: "2026-10-01T12:00:00Z" };
 
 class SocketFalso implements SocketPreview {
   onopen: SocketPreview["onopen"] = null;
@@ -96,7 +96,7 @@ describe("AdaptadorGeminiLive", () => {
   it("abre el socket con el token efimero (sin API key), manda setup y pasa a escuchando", async () => {
     const m = montar();
     await m.adaptador.iniciar();
-    expect(m.sockets[0]!.url).toBe("wss://gemini.test/ws?access_token=tok%20efimero%2F1");
+    expect(m.sockets[0]!.url).toBe("wss://gemini.test/ws?access_token=token%20de%20prueba");
     expect(m.sockets[0]!.url).not.toMatch(/key=/);
     expect((m.sockets[0]!.enviados[0] as { setup: { model: string } }).setup.model).toBe("models/gemini-3.8-live");
     expect(ultimoModo(m.cambios)).toBe("escuchando");
