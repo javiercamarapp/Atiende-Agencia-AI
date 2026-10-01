@@ -100,6 +100,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_ACCESS_TOKEN"],
   },
 
+  // ---- Hoteles: bóveda de identidad (H-01) ----
+  {
+    id: "hoteles-boveda-identidad",
+    nombre: "Hoteles — bóveda de identidad (llave de cifrado)",
+    habilita:
+      "Cifrado AES-256-GCM de los documentos de identidad de huéspedes de hoteles (routes/verticals/hoteles/identidad.ts). Opcional para arrancar: sin HOTELES_IDENTITY_KEY, capturar y revelar una identidad responde 503 explícito (nunca se guarda en claro) y la lista avisa llaveConfigurada:false. Perder la llave vuelve ilegibles las identidades ya capturadas.",
+    variables: ["HOTELES_IDENTITY_KEY"],
+  },
+
   // ---- Google ----
   {
     id: "google-staff-login",
@@ -247,6 +256,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS",
   "RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS",
   "RESEND_FROM_EMAIL",
+  // H-01 -- version de la llave de la boveda de identidad (default 1): metadato que se
+  // escribe en cada sobre para la rotacion futura, nunca bloquea nada.
+  "HOTELES_IDENTITY_KEY_VERSION",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
   // Overrides de test/desarrollo únicamente (apuntan a un servidor OAuth falso
   // local en tests/support/fakeGoogleOAuth.ts) — con default a las URLs reales
