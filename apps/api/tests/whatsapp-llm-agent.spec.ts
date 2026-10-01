@@ -271,7 +271,14 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
           // exacto, costo aceptado y documentado del diseño.
           return toolCallTurn("call_4", "buscar_producto", { query: "bistec", branch_slug: "altabrisa" });
         case 5: {
-          const productos = lastToolResult(request) as ProductToolResultItem[];
+          // El servidor exige que el cliente haya confirmado el resumen en un mensaje POSTERIOR a la
+          // cotizacion (maquina de estados del pedido): sin este paso crear_pedido se rechaza.
+          lastToolResult(request);
+          return toolCallTurn("call_5a", "confirmar_resumen", {});
+        }
+        case 6: {
+          expect((lastToolResult(request) as { confirmado: boolean }).confirmado).toBe(true);
+          const productos = [{ id: tacosBistecId, name: "Tacos de Bistec de Res (orden de 3)" }];
           return toolCallTurn("call_5", "crear_pedido", {
             branch_slug: "altabrisa",
             customer_name: "Cliente E2E",
@@ -280,7 +287,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
             payment_method: "efectivo",
           });
         }
-        case 6: {
+        case 7: {
           const created = lastToolResult(request) as OrderToolResult;
           expect(created.order.status).toBe("pending");
           expect(created.order.total).toBe(164);
@@ -369,7 +376,9 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       script: (request) => {
         escalatedCalls.push("escalated");
         const failed = lastToolResult(request) as { error: string };
-        expect(failed.error).toMatch(/no disponible/i);
+        // Sin cotizacion/confirmacion previas el servidor lo rechaza (maquina de estados); el producto
+        // fantasma tambien se rechazaria. Lo que prueba este caso es que CUALQUIER fallo de crear_pedido escala.
+        expect(failed.error).toMatch(/no disponible|cotizaci[oó]n/i);
         return textTurn("Se me complicó ese producto, ¿puedes confirmarlo de nuevo?");
       },
     });
