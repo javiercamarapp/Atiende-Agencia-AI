@@ -192,3 +192,5 @@ export {
 } from "./superadmin-costos-planes-repository.ts";
 export type { BillingSnapshotRow, CfoOrgRow, CfoRepository } from "./superadmin-cfo-repository.ts";
 export { InMemoryCfoRepository, PostgresCfoRepository } from "./superadmin-cfo-repository.ts";
+export type { InfraCostRow, PylRepository } from "./superadmin-pyl-repository.ts";
+export { InMemoryPylRepository, PostgresPylRepository } from "./superadmin-pyl-repository.ts";

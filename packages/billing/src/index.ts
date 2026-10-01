@@ -9,6 +9,7 @@ export * from './iva.ts';
 export * from './per-seat.ts';
 export * from './cost-margin.ts';
 export * from './cfo.ts';
+export * from './pyl.ts';
 
 export * as cfdiCatalogs from './cfdi/catalogs.ts';
 export * from './cfdi/rfc.ts';
