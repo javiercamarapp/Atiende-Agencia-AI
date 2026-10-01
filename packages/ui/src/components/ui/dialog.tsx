@@ -33,15 +33,20 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-full max-w-lg gap-4 overflow-y-auto border bg-background p-6 shadow-lg data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out sm:rounded-lg",
+        // Material de la ventana flotante de Likida (spec UNI-3c, 6.5): hairline, bg-card,
+        // radio 16, sombra de elevacion y p-4. En < md es una hoja inferior (rounded-t-2xl,
+        // con el hueco de safe-area abajo) que sube con sheet-up; en >= md, centrado con modal-in.
+        "fixed inset-0 z-50 m-auto grid h-fit max-h-[calc(100dvh-2rem)] w-full max-w-lg gap-3 overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-elevated data-[state=open]:animate-modal-in data-[state=closed]:animate-modal-out",
+        "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:m-0 max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:pb-[calc(1rem+var(--safe-area-bottom))] max-md:data-[state=open]:animate-sheet-up max-md:data-[state=closed]:animate-sheet-down",
         className,
       )}
       {...props}
     >
       {children}
       {!hideDefaultClose && (
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-accent data-[state=open]:text-muted-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-          <X className="h-4 w-4" />
+        // Cierre de 44 px solo en movil (objetivo tactil); en escritorio 32 px como los botones de icono de Likida.
+        <DialogPrimitive.Close className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-canvas hover:text-foreground disabled:pointer-events-none md:size-8">
+          <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
           <span className="sr-only">Cerrar</span>
         </DialogPrimitive.Close>
       )}
@@ -51,12 +56,12 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
+  <div className={cn("flex min-w-0 flex-col gap-1 pr-10 text-left", className)} {...props} />
 );
 DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} {...props} />
+  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />
 );
 DialogFooter.displayName = "DialogFooter";
 
@@ -64,7 +69,7 @@ const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props} />
+  <DialogPrimitive.Title ref={ref} className={cn("text-sm font-semibold", className)} {...props} />
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
@@ -72,7 +77,7 @@ const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
+  <DialogPrimitive.Description ref={ref} className={cn("text-ui text-muted-foreground", className)} {...props} />
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 

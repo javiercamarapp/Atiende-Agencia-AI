@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 
-import { cn } from "../lib/utils";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -73,7 +72,7 @@ export function validarCampoConfirm(campo: ConfirmCampo, valor: string): string 
 /**
  * Confirmacion modal (AlertDialog de Radix: foco atrapado, Escape cancela, role
  * "alertdialog"). Sustituye a `window.confirm` / `window.prompt`. Con `tono="danger"`
- * el boton de confirmar es destructivo y, sin campo, el foco inicial cae en Cancelar.
+ * el boton de confirmar es el de peligro de Likida (tinte + texto destructivo) y, sin campo, el foco inicial cae en Cancelar.
  */
 export function ConfirmDialog({
   open,
@@ -145,7 +144,7 @@ export function ConfirmDialog({
             : undefined
         }
       >
-        <form onSubmit={enviar} className="grid gap-4" noValidate>
+        <form onSubmit={enviar} className="grid gap-3" noValidate>
           <AlertDialogHeader>
             <AlertDialogTitle>{titulo}</AlertDialogTitle>
             {descripcion !== undefined ? (
@@ -190,12 +189,12 @@ export function ConfirmDialog({
             </FormField>
           )}
 
-          <AlertDialogFooter className={cn("gap-2 sm:space-x-0")}>
+          <AlertDialogFooter>
             {/* AlertDialogCancel recibe el foco inicial de Radix (opcion segura) y cierra via onOpenChange. */}
-            <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso} className="mt-0">
+            <AlertDialogCancel type="button" data-confirm-cancelar="" disabled={enCurso}>
               {cancelar}
             </AlertDialogCancel>
-            <Button type="submit" variant={tono === "danger" ? "destructive" : "default"} disabled={bloqueado} aria-busy={enCurso || undefined}>
+            <Button type="submit" variant={tono === "danger" ? "danger" : "default"} disabled={bloqueado} aria-busy={enCurso || undefined}>
               {enCurso && <Loader2 aria-hidden="true" className="animate-spin" />}
               {confirmar}
             </Button>
