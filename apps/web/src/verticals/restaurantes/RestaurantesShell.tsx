@@ -17,6 +17,7 @@ import {
   History,
   Clock,
   LayoutDashboard,
+  ListChecks,
   Lock,
   MessageSquare,
   Mic,
@@ -124,6 +125,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
     sections.push({
       title: "Equipo",
       items: [
+        // R-33: checklist de onboarding calculado con datos reales (mismo umbral owner/admin).
+        { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ListChecks },
         { to: `${base}/staff`, label: "Staff", icon: UserCog },
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas, mismo

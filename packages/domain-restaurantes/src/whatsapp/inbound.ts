@@ -30,6 +30,10 @@ export interface InboundMessageOutcome {
   /** true si Meta debe reintentar el batch firmado completo (ver diseño Fase 1 §4.3c). */
   readonly retryable: boolean;
   readonly reply?: string;
+  /** Pedido que el turno creo (si lo hubo). */
+  readonly orderId?: string | null;
+  /** El agente pidio una persona y se abrio la toma de handoff en este turno. */
+  readonly escalated?: boolean;
 }
 
 /**
@@ -56,9 +60,13 @@ export async function handleInboundWhatsAppMessage(
     /** PM PR-9: privacidad (aviso simplificado + asistente virtual en el primer mensaje, fast-path
      * ARCO determinista). Ausente = comportamiento anterior, sin aviso ni fast-path. */
     readonly privacy?: PrivacidadRepository;
+    /** `false` = NO encola la respuesta en el outbox de WhatsApp (nada sale hacia Meta): la respuesta solo se guarda en
+     * la conversacion y se devuelve en `outcome.reply`. Lo usa el widget demo (R-19); por omision `true` (webhook real). */
+    readonly deliverReply?: boolean;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, body, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -143,14 +151,16 @@ export async function handleInboundWhatsAppMessage(
       // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
       // solo se guardaba en el historial de la conversación y nunca llegaba de
       // verdad al cliente (ver @atiende/whatsapp-gateway/README.md).
-      await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
-        to: phone,
-        phone_number_id: phoneNumberId,
-        body: reply,
-      });
+      if (deliverReply) {
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+          to: phone,
+          phone_number_id: phoneNumberId,
+          body: reply,
+        });
+      }
 
       await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-      return { ok: true, retryable: false, reply };
+      return { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) };
     });
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";

@@ -22,11 +22,11 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-// Mismo regex exacto que admin-staff.ts::EMAIL_RE y el CHECK de
-// restaurantes.orders.customer_email (migrations/011_email_outbox_dispatch.sql)
-// — validación deliberadamente laxa (formato, no existencia real del buzón):
-// suficiente para no encolar un correo con un valor obviamente inválido.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Formato del CHECK de restaurantes.orders.customer_email (migrations/011_email_outbox_dispatch.sql): algo@dominio.tld —
+// validación deliberadamente laxa (formato, no existencia real del buzón): suficiente para no encolar un correo con un valor
+// obviamente inválido. Se escribe SIN backtracking ambiguo (cada etiqueta del dominio excluye el punto), así que es lineal
+// (CodeQL js/polynomial-redos) y es igual o MÁS estricta que el CHECK: no admite etiquetas vacías ("a@b..c").
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 function toProductoEncontrado(product: { id: string; name: string; description: string | null; categoryName: string | null; price: number; noDomicilio?: boolean }): ProductoEncontrado {
   return {
@@ -214,7 +214,13 @@ export interface PreparedOrder {
 /** Cotiza un pedido completo contra el catálogo real, SIN persistir — usado también
  * por el modo de vista previa. Precio y disponibilidad siempre vienen de
  * branch_products, la fuente real por sucursal. */
-export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput: CreateOrderInput): Promise<PreparedOrder> {
+export async function prepareCreateOrder(
+  repo: RestaurantesRepository,
+  rawInput: CreateOrderInput,
+  /** `asOf`: instante contra el que se evaluan horario y promociones. SOLO para cargar pedidos historicos de una
+   * demo (seed de volumen, R-20) con las mismas reglas del motor real; ningun flujo de produccion lo pasa. */
+  options: { readonly asOf?: Date } = {},
+): Promise<PreparedOrder> {
   const payload = validateCreateOrderPayload(rawInput);
 
   const branch = await repo.findBranch(payload.organizationId, { slug: payload.branchSlug, name: payload.branchName });
@@ -225,7 +231,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
   // R-11: pedido programado -- el horario y las promociones se evaluan en la hora ELEGIDA (no en este instante).
   const programado = payload.programadoPara ? new Date(payload.programadoPara) : null;
   if (programado) validarVentanaProgramacion(payload.programadoPara!, new Date());
-  const instanteDelPedido = programado ?? new Date();
+  const instanteDelPedido = programado ?? options.asOf ?? new Date();
 
   const resolved = await resolveBranchOrderItems(
     repo,
@@ -299,7 +305,9 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     source: payload.source,
     ...(programado
       ? { now: programado, exigirAbierto: true, mensajeCerrado: mensajeCerradoProgramado(branch.name, payload.programadoPara!) }
-      : {}),
+      : options.asOf
+        ? { now: options.asOf }
+        : {}),
   });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
