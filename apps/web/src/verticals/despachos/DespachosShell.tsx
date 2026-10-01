@@ -44,6 +44,7 @@ import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -89,14 +90,13 @@ export interface DespachosShellProps {
   readonly children: (ctx: DespachosShellContext) => ReactNode;
 }
 
-// Mismos 12 destinos/etiquetas/rutas exactos que antes (ningún link se agrega,
-// quita ni renombra) — solo se agrupan por dominio contable para el `Sidebar` real
-// y cada uno gana un ícono de lucide-react. El primer grupo ("Panel") se deja
-// `siempreAbierto` (sin acordeón) porque el cierre mensual es la vista de entrada
-// natural de un despacho; el resto sigue el mismo acordeón "uno abierto a la vez"
-// que ya trae `Sidebar`.
+// Mismos destinos y rutas que antes (ningún link se agrega ni se quita; "Dashboard" ahora se llama "Resumen", como en las
+// demás consolas) — solo se agrupan por dominio contable para el `Sidebar` real y cada uno gana un ícono de lucide-react.
+// UNI-6: categorías en el orden de Likida (Facturación, Fiscal, Contabilidad, Clientes y equipo) con "Resumen" y "Cierre
+// mensual" como raíz sin título (el cierre mensual es la vista de entrada natural de un despacho); el resto sigue el mismo
+// acordeón "uno abierto a la vez" que trae `Sidebar`.
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "dashboard", label: "Dashboard" },
+  { to: "dashboard", label: "Resumen" },
   { to: "cierre-mensual", label: "Cierre mensual" },
   { to: "cartera", label: "Cartera de clientes" },
   { to: "cfdi", label: "CFDI" },
@@ -124,7 +124,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
   };
   return [
     {
-      title: "Panel",
+      title: "Resumen",
       siempreAbierto: true,
       items: [
         { ...item("dashboard"), icon: LayoutDashboard },
@@ -134,7 +134,6 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
     {
       title: "Facturación",
       items: [
-        { ...item("cartera"), icon: Contact },
         { ...item("cfdi"), icon: FileText },
         { ...item("cobranza"), icon: HandCoins },
         { ...item("cola-cobranza"), icon: ClipboardList },
@@ -142,21 +141,27 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
       ],
     },
     {
-      title: "Fiscal y contable",
+      title: "Fiscal",
       items: [
         { ...item("declaraciones"), icon: FileSpreadsheet },
-        { ...item("nomina"), icon: Wallet },
-        { ...item("conciliacion"), icon: Landmark },
         { ...item("contabilidad-electronica"), icon: FileDigit },
         { ...item("devolucion-iva"), icon: Undo2 },
+        { ...item("nomina"), icon: Wallet },
+      ],
+    },
+    {
+      title: "Contabilidad",
+      items: [
+        { ...item("conciliacion"), icon: Landmark },
         { ...item("bookkeeping"), icon: BookOpen },
         { ...item("reportes"), icon: FileBarChart },
         { ...item("migracion-catalogo"), icon: FolderInput },
       ],
     },
     {
-      title: "Equipo",
+      title: "Clientes y equipo",
       items: [
+        { ...item("cartera"), icon: Contact },
         { ...item("portal-cliente"), icon: Link2 },
         { ...item("staff"), icon: UsersRound },
         { ...item("configuracion"), icon: Settings },
@@ -165,15 +170,15 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
   ];
 }
 
-/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las
- * secciones fiscales/contables (los 17 destinos de `buildSidebarSections`, sin curarlos a ojo). */
+/** Barra inferior móvil: los 4 destinos de uso diario (etiquetas completas); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista
+ * TODAS las secciones fiscales/contables (los 18 destinos de `buildSidebarSections`, sin curarlos a ojo). */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/despachos/${orgSlug}`;
   return [
+    { to: `${base}/dashboard`, label: "Resumen", icon: LayoutDashboard },
     { to: `${base}/cierre-mensual`, label: "Cierre", icon: CalendarCheck },
     { to: `${base}/cfdi`, label: "CFDI", icon: FileText },
     { to: `${base}/cobranza`, label: "Cobranza", icon: HandCoins },
-    { to: `${base}/vencimientos`, label: "Vencim.", icon: CalendarClock },
   ];
 }
 
@@ -230,7 +235,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       vertical="despachos"
       sections={buildSidebarSections(orgSlug)}
       mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role }}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx(), resumenTo: `/despachos/${orgSlug}/dashboard` }}
