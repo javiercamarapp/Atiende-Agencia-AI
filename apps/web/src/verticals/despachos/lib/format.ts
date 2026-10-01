@@ -1,16 +1,16 @@
 // Helpers de formato del panel de despachos (Fase 9) — mismo criterio que
 // licitaciones/lib/format.ts: funciones puras, sin estado, probadas con vitest
 // aparte de cualquier componente.
+import { formatMoney as formatMoneyUi } from "@atiende/ui";
 import type { ClosePeriodStatus, TaskCategory, TaskStatus } from "./cierre-mensual-client.ts";
 import type { EstadoVencimiento, PrioridadVencimiento } from "./vencimientos-client.ts";
 import type { DiotTipoOperacion, TablaAplicadaIsr } from "./declaraciones-client.ts";
 import type { EstadoMapeoMigracion, TipoMatchMigracion } from "./migracion-catalogo-client.ts";
 
-const MXN_FORMATTER = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-
+/** Monto en pesos (`$1,160.00`); `null` -> guion largo, nunca `$0`. El formato numérico vive en `formatMoney` de @atiende/ui. */
 export function formatMoney(value: number | null): string {
   if (value === null) return "—";
-  return MXN_FORMATTER.format(value);
+  return `${value < 0 ? "-" : ""}$${formatMoneyUi(Math.abs(value))}`;
 }
 
 const MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
