@@ -44,7 +44,11 @@ export function despachosEfosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get("/despachos/:propertyId/efos/alertas", async (c) => {
     assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
-    const [estado, afectados] = await Promise.all([repo.estadoEfos(), repo.listarInvoicesEfosAfectados(c.req.param("propertyId"))]);
+    // SECUENCIAL a propósito: ambos métodos abren su propio SAVEPOINT sobre la MISMA conexión
+    // (`c.get("db")`); en paralelo los SAVEPOINT/RELEASE se intercalan (3B001, y en la base sin
+    // migrar el ROLLBACK TO de uno deshace el otro).
+    const estado = await repo.estadoEfos();
+    const afectados = await repo.listarInvoicesEfosAfectados(c.req.param("propertyId"));
     return c.json({ lista: estado, estado: afectados.estado, alertas: afectados.items });
   });
 
