@@ -110,6 +110,11 @@ export const LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE = "licitaciones:proposal_dra
  *  argumento que RENTAS_MENSAJERIA_AGENT_ROLE: una sugerencia de match es UNA sola
  *  invocación por movimiento, nunca un loop de varios turnos. */
 export const DESPACHOS_CONCILIACION_LLM_ROLE = "despachos:conciliacion_llm_agent";
+/** L-04 -- borradores de preguntas para la junta de aclaraciones de licitaciones (ver
+ *  @atiende/domain-licitaciones::junta-question-draft-agent.ts::DEFAULT_JUNTA_QUESTION_AGENT_ROLE,
+ *  que este nombre DEBE coincidir exacto). Sin rol *_escalated propio, mismo argumento que
+ *  LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE: una sola invocacion por solicitud. */
+export const LICITACIONES_JUNTA_QUESTION_AGENT_ROLE = "licitaciones:junta_question_agent";
 
 export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
@@ -123,6 +128,7 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RENTAS_MENSAJERIA_AGENT_ROLE,
   LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE,
   DESPACHOS_CONCILIACION_LLM_ROLE,
+  LICITACIONES_JUNTA_QUESTION_AGENT_ROLE,
 ];
 
 /** Topes conservadores de defensa en profundidad, no una promesa de costo real

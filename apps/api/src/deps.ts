@@ -34,7 +34,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
+import type { LicitacionesRepository, SalaGuerraRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
@@ -255,6 +255,8 @@ export interface AppDeps {
    * un dominio público real siga resolviendo igual mañana. */
   readonly citasCaldavUrlValidator: (url: string) => Promise<{ readonly permitida: boolean; readonly motivo?: string }>;
   readonly licitacionesRepo: (db: TenantDbSession) => LicitacionesRepository;
+  /** L-04: sala de guerra + junta de aclaraciones. `production/deps.ts` lo cablea a `PostgresSalaGuerraRepository`; las pruebas de esta pieza inyectan la version en memoria. OPCIONAL a proposito para no tocar cada fixture de AppDeps: si falta, las rutas responden 503 ("no configurado") y el barrido de recordatorios de junta se omite. */
+  readonly licitacionesSalaGuerraRepo?: (db: TenantDbSession) => SalaGuerraRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
    * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un
