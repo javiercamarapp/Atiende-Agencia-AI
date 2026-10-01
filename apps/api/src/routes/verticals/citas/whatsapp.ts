@@ -11,7 +11,7 @@
 // del que Meta realmente firmó). Por eso este archivo nunca importa ni usa
 // `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-citas";
+import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-citas";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerCitasWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -99,7 +99,9 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
         return c.json({ ok: true });
       }
 
-      const incomingMessages = extractMetaTextMessages(payload);
+      // C-01 -- incluye respuestas a botones/listas (antes solo `text`: el toque a
+      // Confirmar/Cancelar/Reagendar del recordatorio se descartaba).
+      const incomingMessages = extractMetaInboundMessages(payload);
       if (incomingMessages.length === 0) {
         return c.json({ ok: true });
       }
@@ -110,7 +112,8 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
           organizationId,
           messageId: message.id,
           phone: `+${message.from}`,
-          body: message.text.body,
+          body: message.body,
+          interactive: message.interactive,
           phoneNumberId,
         });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:

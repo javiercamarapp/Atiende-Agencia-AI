@@ -17,6 +17,7 @@ import {
   CalendarClock,
   CalendarRange,
   ClipboardList,
+  LayoutDashboard,
   Lock,
   Scissors,
   Settings,
@@ -89,7 +90,11 @@ function buildSections(orgSlug: string): SidebarSection[] {
     {
       title: "Agenda",
       siempreAbierto: true,
-      items: [{ to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck }],
+      items: [
+        // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
+        { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
+        { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
+      ],
     },
     {
       title: "Negocio",

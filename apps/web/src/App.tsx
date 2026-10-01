@@ -92,6 +92,7 @@ import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
 import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
+import { ResumenPage as CitasResumenPage } from "./verticals/citas/pages/Resumen.tsx";
 import { ProveedorFichaPage, ProveedoresListPage } from "./verticals/citas/pages/Proveedores.tsx";
 import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Servicios.tsx";
 import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
@@ -653,13 +654,15 @@ function CitasLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/citas/:orgSlug` a secas — la agenda es la landing real
- * del panel (mismo criterio de "página de entrada" que un dashboard de KPIs en
- * otras verticales, pero citas no tiene KPIs todavía, ver README). */
+/** Redirección al abrir `/citas/:orgSlug` a secas — C-05: el Resumen (citas hoy/semana,
+ * pendientes, no-shows, clientes nuevos) es ahora la página de entrada, igual que el dashboard
+ * de KPIs de otras verticales; la agenda queda a un clic desde el propio Resumen. */
 function CitasRootRedirect() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/citas/${orgSlug}/agenda`} replace />;
+  return <Navigate to={`/citas/${orgSlug}/resumen`} replace />;
 }
+
+const CitasResumenRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasResumenPage {...ctx} />);
 
 const CitasAgendaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <AgendaPage {...ctx} />);
 const CitasProveedoresRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ProveedoresListPage {...ctx} />);
@@ -921,6 +924,7 @@ export function App() {
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
+        <Route path="/citas/:orgSlug/resumen" element={<CitasResumenRoute />} />
         <Route path="/citas/:orgSlug/agenda" element={<CitasAgendaRoute />} />
         <Route path="/citas/:orgSlug/proveedores" element={<CitasProveedoresRoute />} />
         <Route path="/citas/:orgSlug/proveedores/:providerId" element={<CitasProveedorFichaRoute />} />

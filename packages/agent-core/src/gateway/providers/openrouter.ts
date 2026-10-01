@@ -26,7 +26,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import type { LlmCompletionRequest, LlmCompletionResult, LlmProvider } from '../types.js';
-import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
+import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireToolChoice, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
 
 export interface OpenRouterProviderOptions {
   apiKey: string;
@@ -77,6 +77,7 @@ export class OpenRouterProvider implements LlmProvider {
         provider: { data_collection: 'deny' },
         usage: { include: true },
         ...(toOpenAiWireTools(request.tools) ? { tools: toOpenAiWireTools(request.tools) } : {}),
+        ...(toOpenAiWireToolChoice(request.tools, request.toolChoice) ? { tool_choice: toOpenAiWireToolChoice(request.tools, request.toolChoice) } : {}),
       }),
     });
 

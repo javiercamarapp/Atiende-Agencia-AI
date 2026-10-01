@@ -53,6 +53,18 @@ export function toOpenAiWireTools(tools: readonly LlmToolDefinition[] | undefine
   return tools.map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.parameters } }));
 }
 
+/** `tool_choice` forzado a una herramienta concreta. Devuelve `undefined` (no se
+ *  manda el campo) cuando no se pidió, o cuando la herramienta pedida no está en
+ *  `tools` -- un `tool_choice` que nombra una función ausente lo rechaza el proveedor
+ *  con un 400, así que se degrada a "el modelo decide" en vez de romper el turno. */
+export function toOpenAiWireToolChoice(
+  tools: readonly LlmToolDefinition[] | undefined,
+  toolChoice: { name: string } | undefined,
+): { type: 'function'; function: { name: string } } | undefined {
+  if (!toolChoice || !tools || !tools.some((t) => t.name === toolChoice.name)) return undefined;
+  return { type: 'function', function: { name: toolChoice.name } };
+}
+
 export function fromOpenAiWireToolCalls(toolCalls: readonly OpenAiWireToolCall[] | undefined): LlmToolCall[] | undefined {
   if (!toolCalls || toolCalls.length === 0) return undefined;
   return toolCalls.map((tc) => ({ id: tc.id, name: tc.function.name, argumentsJson: tc.function.arguments }));

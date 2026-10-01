@@ -23,7 +23,7 @@
 import type { CircuitBreaker } from "@atiende/agent-core/gateway";
 import { WhatsAppInvalidPayloadError, WhatsAppSendError } from "./errors.ts";
 import type { MessagingOutboxItem, MessagingOutboxPort } from "./outbox-port.ts";
-import type { WhatsAppGraphClient } from "./types.ts";
+import type { OutboundButton, WhatsAppGraphClient } from "./types.ts";
 
 /** Tope de intentos antes de `dead` — nunca reintento infinito. */
 export const DEFAULT_MAX_ATTEMPTS = 5;
@@ -46,7 +46,14 @@ interface ValidWhatsAppOutboxPayload {
   readonly to: string;
   readonly phone_number_id: string;
   readonly body: string;
-  readonly buttons?: readonly string[];
+  readonly buttons?: readonly (string | OutboundButton)[];
+}
+
+function isValidButton(b: unknown): boolean {
+  if (typeof b === "string") return true;
+  if (typeof b !== "object" || b === null) return false;
+  const o = b as Record<string, unknown>;
+  return typeof o.id === "string" && typeof o.title === "string";
 }
 
 /** El payload es opaco (`jsonb`) desde el punto de vista del outbox — este
@@ -64,10 +71,10 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
   if (typeof p.to !== "string" || p.to.length === 0) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox sin "to" válido');
   if (typeof p.phone_number_id !== "string" || p.phone_number_id.length === 0) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox sin "phone_number_id" válido');
   if (typeof p.body !== "string" || p.body.length === 0) throw new WhatsAppInvalidPayloadError('payload de messaging_outbox sin "body" válido');
-  if (p.buttons !== undefined && (!Array.isArray(p.buttons) || p.buttons.some((b) => typeof b !== "string"))) {
-    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[])');
+  if (p.buttons !== undefined && (!Array.isArray(p.buttons) || p.buttons.some((b) => !isValidButton(b)))) {
+    throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly string[] | undefined };
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {

@@ -45,6 +45,30 @@ describe("MetaGraphWhatsAppClient", () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
+  it("C-01: un botón {id,title} viaja con su id propio (ata el toque a una cita) y el string suelto conserva el id posicional", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { interactive: { action: { buttons: { type: string; reply: { id: string; title: string } }[] } } };
+      expect(body.interactive.action.buttons).toEqual([
+        { type: "reply", reply: { id: "cita:confirmar:abc", title: "Confirmar" } },
+        { type: "reply", reply: { id: "btn_1", title: "Cancelar" } },
+      ]);
+      return jsonResponse({ messages: [{ id: "wamid.ids" }] });
+    });
+    const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await client.sendMessage({ to: "+52999", phoneNumberId: "p1", body: "x", buttons: [{ id: "cita:confirmar:abc", title: "Confirmar" }, "Cancelar"] });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("C-01: rechaza ids de botón vacíos, de más de 256 caracteres o repetidos, sin llamar a la red", async () => {
+    const fetchImpl = vi.fn();
+    const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
+    const base = { to: "+52999", phoneNumberId: "p1", body: "x" };
+    await expect(client.sendMessage({ ...base, buttons: [{ id: "", title: "Ok" }] })).rejects.toThrow(WhatsAppInvalidPayloadError);
+    await expect(client.sendMessage({ ...base, buttons: [{ id: "x".repeat(257), title: "Ok" }] })).rejects.toThrow(WhatsAppInvalidPayloadError);
+    await expect(client.sendMessage({ ...base, buttons: [{ id: "a", title: "Uno" }, { id: "a", title: "Dos" }] })).rejects.toThrow(WhatsAppInvalidPayloadError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("rechaza más de 3 botones sin llamar a la red", async () => {
     const fetchImpl = vi.fn();
     const client = new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: fetchImpl as unknown as typeof fetch });
