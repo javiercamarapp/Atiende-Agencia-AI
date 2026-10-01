@@ -420,7 +420,7 @@ describe("PM telefono y memoria del cliente (X16-X20, P23)", () => {
     const f = pmFixture();
     await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 4, tortilla: "maiz" }]));
     const memoria = await lookupCustomer(f.repo, f.organizationId, "9991234567");
-    expect(memoria.isNew).toBe(false);
+    if (memoria.isNew) throw new Error("el cliente debia ser conocido");
     expect(memoria.lastOrderItems).toEqual([{ name: "Taco al Pastor (individual)", quantity: 4 }]);
     await f.repo.upsertBranchProductState(f.t1, f.p.pastor, 50, true); // sube el precio
     const hoy = await cotizar(f, [item(f.p.pastor, 4, "maiz")], { canal: "recoger" });
@@ -433,6 +433,7 @@ describe("PM telefono y memoria del cliente (X16-X20, P23)", () => {
     f.repo.seedBranchPolicy(f.t1, { pedidoMinimoDomicilio: 200 });
     await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 3, tortilla: "maiz" }, { productId: f.p.sol, requestedQuantity: 2 }], { canal: "recoger", adultConfirmed: true }));
     const memoria = await lookupCustomer(f.repo, f.organizationId, "9991234567");
+    if (memoria.isNew) throw new Error("el cliente debia ser conocido");
     expect(memoria.lastOrderItems?.map((i) => i.name).sort()).toEqual(["Sol", "Taco al Pastor (individual)"]);
     await expect(cotizar(f, [item(f.p.pastor, 3, "maiz"), item(f.p.sol, 2)], { adultConfirmed: true })).rejects.toThrow(/no se vende a domicilio/);
   });
