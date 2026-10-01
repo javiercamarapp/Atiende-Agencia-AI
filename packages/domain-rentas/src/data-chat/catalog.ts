@@ -12,7 +12,6 @@ import {
   resolvePropertySelection,
   roundMoney,
   type DataChatCatalog,
-  type DataChatColumn,
   type DataChatTool,
   type DataChatToolContext,
   type DataChatToolResult,
