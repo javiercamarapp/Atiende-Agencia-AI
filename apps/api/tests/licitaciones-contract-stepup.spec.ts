@@ -1,7 +1,7 @@
 // L-01 -- transiciones sensibles del contrato exigen step-up (segundo factor reciente) cuando
 // la base tiene la migracion de 2FA; con la base sin migrar caen al control por rol de siempre.
 import { describe, expect, it } from "vitest";
-import { computeTotp, signStepUpToken } from "@atiende/core-auth";
+import { computeTotp, signContractStepUpToken } from "@atiende/core-auth";
 import { InMemoryStaffSecurityRepository } from "@atiende/db";
 import type { InMemoryCoreRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
@@ -75,9 +75,9 @@ describe("transiciones sensibles del contrato con step-up (L-01)", () => {
   it("token de otro usuario, de otro alcance, vencido o basura -> 403 step_up_required", async () => {
     const { ctx, app, base } = await setup();
     await enrollAndStepUp(app, ctx.staff.owner.token);
-    const forOther = await signStepUpToken({ userId: ctx.staff.admin.id, organizationId: ctx.organizationId, scope: "contract_sensitive" }, TEST_ENV.jwtSecret);
-    const otherOrg = await signStepUpToken({ userId: ctx.staff.owner.id, organizationId: "00000000-0000-0000-0000-000000000000", scope: "contract_sensitive" }, TEST_ENV.jwtSecret);
-    const expired = await signStepUpToken({ userId: ctx.staff.owner.id, organizationId: ctx.organizationId, scope: "contract_sensitive" }, TEST_ENV.jwtSecret, -5);
+    const forOther = await signContractStepUpToken({ userId: ctx.staff.admin.id, organizationId: ctx.organizationId, scope: "contract_sensitive" }, TEST_ENV.jwtSecret);
+    const otherOrg = await signContractStepUpToken({ userId: ctx.staff.owner.id, organizationId: "00000000-0000-0000-0000-000000000000", scope: "contract_sensitive" }, TEST_ENV.jwtSecret);
+    const expired = await signContractStepUpToken({ userId: ctx.staff.owner.id, organizationId: ctx.organizationId, scope: "contract_sensitive" }, TEST_ENV.jwtSecret, -5);
     for (const token of [forOther, otherOrg, expired, "basura", ctx.staff.owner.token]) {
       const res = await app.request(`${base}/transition`, authedJson(ctx.staff.owner.token, rescindir, { "x-step-up-token": token }));
       expect(res.status).toBe(403);

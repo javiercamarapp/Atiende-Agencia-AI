@@ -10,7 +10,7 @@ import {
   decryptStaffTotpSecret,
   hashBackupCode,
   normalizeBackupCode,
-  verifyStepUpToken,
+  verifyContractStepUpToken,
   verifyStaffTotp,
 } from "@atiende/core-auth";
 import type { StepUpScope } from "@atiende/core-auth";
@@ -102,7 +102,7 @@ export async function requireStepUp(
   if (!enrolled) throw Errors.stepUpEnrollmentRequired();
   if (!input.token) throw Errors.stepUpRequired();
   try {
-    await verifyStepUpToken(input.token, deps.env.jwtSecret, { userId: input.userId, organizationId: input.organizationId, scope: input.scope });
+    await verifyContractStepUpToken(input.token, deps.env.jwtSecret, { userId: input.userId, organizationId: input.organizationId, scope: input.scope });
   } catch {
     throw Errors.stepUpRequired("La confirmación de identidad expiró o no corresponde a esta acción. Vuelve a confirmar con tu código.");
   }

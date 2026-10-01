@@ -16,7 +16,7 @@ import {
   generateTotpSecret,
   hashBackupCode,
   decryptStaffTotpSecret,
-  signStepUpToken,
+  signContractStepUpToken,
   STEP_UP_TTL_SECONDS,
   verifyStaffTotp,
 } from "@atiende/core-auth";
@@ -131,7 +131,7 @@ export function auth2faRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const status = result === "locked" ? await orUnavailable(() => requireSecurityRepo(deps).getTotpStatus(userId)) : null;
       throwForSecondFactor(result, status?.lockedUntil ?? undefined);
     }
-    const token = await signStepUpToken({ userId, organizationId: c.get("organizationId"), scope: scope as StepUpScope }, deps.env.jwtSecret);
+    const token = await signContractStepUpToken({ userId, organizationId: c.get("organizationId"), scope: scope as StepUpScope }, deps.env.jwtSecret);
     return c.json({ stepUpToken: token, expiresInSeconds: STEP_UP_TTL_SECONDS }, 200);
   });
 

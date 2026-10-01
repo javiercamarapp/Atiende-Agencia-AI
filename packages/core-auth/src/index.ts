@@ -72,4 +72,4 @@ export {
 } from "./staff-totp.ts";
 
 export type { StepUpScope, StepUpClaims } from "./step-up.ts";
-export { STEP_UP_TTL_SECONDS, signStepUpToken, verifyStepUpToken } from "./step-up.ts";
+export { STEP_UP_TTL_SECONDS, signContractStepUpToken, verifyContractStepUpToken } from "./step-up.ts";

@@ -11,12 +11,12 @@ import {
   hashBackupCode,
   normalizeBackupCode,
   signAccessToken,
-  signStepUpToken,
+  signContractStepUpToken,
   TokenExpiredError,
   TokenInvalidError,
   totpTimeStep,
   verifyAccessToken,
-  verifyStepUpToken,
+  verifyContractStepUpToken,
   verifyStaffTotp,
 } from "../src/index.ts";
 
@@ -110,25 +110,25 @@ describe("token de step-up", () => {
   const expected = { userId: "u1", organizationId: "o1", scope: "contract_sensitive" } as const;
 
   it("emite y verifica un token atado a usuario, organizacion y alcance", async () => {
-    const t = await signStepUpToken(expected, secret);
-    const claims = await verifyStepUpToken(t, secret, expected);
+    const t = await signContractStepUpToken(expected, secret);
+    const claims = await verifyContractStepUpToken(t, secret, expected);
     expect(claims.sub).toBe("u1");
     expect(claims.org).toBe("o1");
   });
 
   it("rechaza otro usuario, otra organizacion, otro secreto y un token vencido", async () => {
-    const t = await signStepUpToken(expected, secret);
-    await expect(verifyStepUpToken(t, secret, { ...expected, userId: "u2" })).rejects.toBeInstanceOf(TokenInvalidError);
-    await expect(verifyStepUpToken(t, secret, { ...expected, organizationId: "o2" })).rejects.toBeInstanceOf(TokenInvalidError);
-    await expect(verifyStepUpToken(t, "otro".repeat(12), expected)).rejects.toBeInstanceOf(TokenInvalidError);
-    const vencido = await signStepUpToken(expected, secret, -10);
-    await expect(verifyStepUpToken(vencido, secret, expected)).rejects.toBeInstanceOf(TokenExpiredError);
+    const t = await signContractStepUpToken(expected, secret);
+    await expect(verifyContractStepUpToken(t, secret, { ...expected, userId: "u2" })).rejects.toBeInstanceOf(TokenInvalidError);
+    await expect(verifyContractStepUpToken(t, secret, { ...expected, organizationId: "o2" })).rejects.toBeInstanceOf(TokenInvalidError);
+    await expect(verifyContractStepUpToken(t, "otro".repeat(12), expected)).rejects.toBeInstanceOf(TokenInvalidError);
+    const vencido = await signContractStepUpToken(expected, secret, -10);
+    await expect(verifyContractStepUpToken(vencido, secret, expected)).rejects.toBeInstanceOf(TokenExpiredError);
   });
 
   it("un access token no sirve como step-up ni al reves", async () => {
     const access = await signAccessToken({ sub: "u1", org_id: "o1", vertical: "licitaciones", property_ids: null, email: "a@b.mx" }, secret, 60);
-    await expect(verifyStepUpToken(access, secret, expected)).rejects.toBeInstanceOf(TokenInvalidError);
-    const stepUp = await signStepUpToken(expected, secret);
+    await expect(verifyContractStepUpToken(access, secret, expected)).rejects.toBeInstanceOf(TokenInvalidError);
+    const stepUp = await signContractStepUpToken(expected, secret);
     await expect(verifyAccessToken(stepUp, secret)).rejects.toBeInstanceOf(TokenInvalidError);
   });
 });

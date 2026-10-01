@@ -1,7 +1,7 @@
 // Token de step-up: prueba de que el usuario acaba de pasar un segundo factor (TOTP o
 // codigo de respaldo) para UNA clase de accion sensible. JWT HS256 con `type:
 // "step_up"`, distinto de "access"/"refresh" (`verifyAccessToken` lo rechaza por su
-// claim `type`, y `verifyStepUpToken` rechaza access/refresh), vida corta (5 min).
+// claim `type`, y `verifyContractStepUpToken` rechaza access/refresh), vida corta (5 min).
 //
 // Atado a: usuario (`sub`), organizacion (`org`) y alcance (`scope`). Un token de
 // step-up emitido para el contrato de una organizacion no sirve en otra ni para otro
@@ -27,7 +27,7 @@ function key(secret: string): Uint8Array {
   return new TextEncoder().encode(`step-up:${secret}`);
 }
 
-export async function signStepUpToken(
+export async function signContractStepUpToken(
   input: { readonly userId: string; readonly organizationId: string; readonly scope: StepUpScope },
   secret: string,
   ttlSeconds: number = STEP_UP_TTL_SECONDS,
@@ -41,7 +41,7 @@ export async function signStepUpToken(
 }
 
 /** Lanza `TokenInvalidError`/`TokenExpiredError`; nunca devuelve claims de otro usuario/org/alcance. */
-export async function verifyStepUpToken(
+export async function verifyContractStepUpToken(
   token: string,
   secret: string,
   expected: { readonly userId: string; readonly organizationId: string; readonly scope: StepUpScope },
