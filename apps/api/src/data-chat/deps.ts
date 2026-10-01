@@ -7,6 +7,7 @@ import type { LlmGateway } from "@atiende/agent-core";
 import { rateLimit } from "@atiende/core-ratelimit";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError, runWithSavepointFallback } from "@atiende/db";
+import type { ConversacionesRepository } from "./conversaciones.ts";
 import { RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
 import { PostgresRestaurantesDataChatReader, type RestaurantesDataChatReader } from "@atiende/domain-restaurantes";
 import { PostgresHotelesDataChatReader, type HotelesDataChatReader } from "@atiende/domain-hoteles";
@@ -34,6 +35,9 @@ export interface DataChatDeps {
    *  `usoHoyPct: null` ("sin medir"), nunca una cifra inventada. Corre en SAVEPOINT sobre la sesion RLS del request. */
   readonly usageTodayPct?: (db: TenantDbSession, organizationId: string, userId: string) => Promise<number | null>;
   readonly completion: ((organizationId: string, role?: string) => DataChatCompletion) | undefined;
+  /** Repositorio de conversaciones guardadas (CHAT-04) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de
+   *  Postgres (`PostgresConversacionesRepository`); existe para inyectar uno en memoria en pruebas. */
+  readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
 }
 
 /** Limitador compartido entre instancias (Upstash) o en memoria; categoria cerrada: un blip de Redis NIEGA, no abre el gasto. */

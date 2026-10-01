@@ -18,19 +18,20 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { isDataChatAbortedError, type DataChatAnswer, type DataChatPasoEvento } from "@atiende/agent-core/data-chat";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { AppDeps } from "../deps.ts";
+import type { PersistedDataChatAnswer } from "./conversaciones.ts";
 
 export const NDJSON_CONTENT_TYPE = "application/x-ndjson; charset=utf-8";
 
 export type DataChatStreamEvent =
   | DataChatPasoEvento
-  | { readonly t: "fin"; readonly respuesta: DataChatAnswer }
+  | { readonly t: "fin"; readonly respuesta: DataChatAnswer; readonly conversacionId?: string; readonly seq?: number }
   | { readonly t: "error"; readonly status: "error"; readonly mensaje: string };
 
 /** Mensaje fijo del evento `error`: jamas el texto de la excepcion (puede traer detalles internos). */
 export const NDJSON_ERROR_MENSAJE = "No pude completar la consulta en este momento. Inténtalo de nuevo en un momento.";
 
 /** Corre un turno con la sesion RLS que se le da y reporta pasos. */
-export type DataChatTurnRunner = (db: TenantDbSession, onEvento: (e: DataChatPasoEvento) => void, signal: AbortSignal) => Promise<DataChatAnswer>;
+export type DataChatTurnRunner = (db: TenantDbSession, onEvento: (e: DataChatPasoEvento) => void, signal: AbortSignal) => Promise<PersistedDataChatAnswer>;
 
 /** Respuesta fija cuando el asistente no esta activado para la cuenta (sin proveedor de IA o sin lector de la vertical). */
 export const DATA_CHAT_NOT_ACTIVATED: DataChatAnswer = {
@@ -85,7 +86,8 @@ export function respondDataChat(c: Context<CoreAuthHonoEnv>, deps: AppDeps, run:
         .withAppSession({ userId: userId ?? null }, (db) => run(db, (e) => send(e), abort.signal))
         .then(
           (respuesta) => {
-            send({ t: "fin", respuesta });
+            // Con conversacion guardada, el evento `fin` lleva su id y el seq (contrato de CopilotoTransporte).
+            send({ t: "fin", respuesta, ...(respuesta.conversationId ? { conversacionId: respuesta.conversationId } : {}), ...(respuesta.seq !== undefined ? { seq: respuesta.seq } : {}) });
             finish();
           },
           (err: unknown) => {
