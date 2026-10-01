@@ -232,4 +232,30 @@ describe("Tabs", () => {
     expect(c).not.toContain("inline-flex");
     expect(c).toContain("overflow-x-auto");
   });
+
+  it("className flex-wrap de pantallas existentes envuelve en filas (h-auto, overflow visible) en vez de recortar", () => {
+    rendered = renderComponent(
+      <Tabs defaultValue="a">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="a">Uno</TabsTrigger>
+        </TabsList>
+      </Tabs>,
+    );
+    const c = q("[role=tablist]").className;
+    expect(c).toContain("flex-wrap");
+    expect(c).toContain("[&.flex-wrap]:h-auto");
+    expect(c).toContain("[&.flex-wrap]:overflow-visible");
+  });
+
+  it("TabsContent no pinta un segundo indicador de foco (usa el outline global)", () => {
+    rendered = renderComponent(
+      <Tabs defaultValue="a">
+        <TabsList><TabsTrigger value="a">Uno</TabsTrigger></TabsList>
+        <TabsContent value="a">A</TabsContent>
+      </Tabs>,
+    );
+    const c = q("[role=tabpanel]").className;
+    expect(c).not.toContain("ring-");
+    expect(c).not.toContain("outline-none");
+  });
 });
