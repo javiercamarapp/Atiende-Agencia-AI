@@ -5,11 +5,14 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { campoBase } from "./field-styles";
 
+// py-0: con h-9 (36 px), borde de 1 px y text-ui de 19.5 px de interlineado, un py-2
+// dejaba solo 18 px de contenido y el texto salia recortado (hallazgo del revisor de #296,
+// restaurantes-staff-movil); el <select> centra su texto en vertical por si solo.
 const nativeSelectVariants = cva(`${campoBase} appearance-none pr-9`, {
   variants: {
     size: {
-      sm: "h-[var(--control-sm)] py-1",
-      md: "h-[var(--control-md)] py-2",
+      sm: "h-[var(--control-sm)] py-0",
+      md: "h-[var(--control-md)] py-0",
     },
   },
   defaultVariants: { size: "md" },
