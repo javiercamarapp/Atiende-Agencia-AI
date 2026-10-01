@@ -17,17 +17,31 @@ import { changeValue, flushMicrotasks, renderComponent, submitForm, type Rendere
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
-// `vi.stubGlobal` (mismo mecanismo que ya usa `fetch` en el resto de este
-// archivo) en vez de `vi.spyOn(window, "confirm")`: la firma real de
-// `window.confirm` (con sus sobrecargas) no infiere bien contra el tipo de
-// retorno de `vi.spyOn` en este entorno de tipos -- `vi.fn()` sin generic
-// explícito evita el problema y sigue siendo un mock real e inspeccionable.
+// PR-4 (shell unico, UX-04): las confirmaciones destructivas ya no usan
+// `window.confirm` sino el <ConfirmDialog> de @atiende/ui via `useConfirm`. Se
+// espia `window.confirm` para AFIRMAR que nunca se llama.
 let confirmMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   confirmMock = vi.fn(() => true);
   vi.stubGlobal("confirm", confirmMock);
 });
+
+/** Diálogo de confirmación abierto (Radix AlertDialog, montado en el portal de document.body). */
+function dialogoConfirmacion(): HTMLElement | null {
+  return document.body.querySelector('[role="alertdialog"]');
+}
+
+/** Pulsa un botón del diálogo de confirmación por su texto exacto y deja correr las promesas. */
+async function pulsarEnDialogo(texto: string): Promise<void> {
+  const boton = [...dialogoConfirmacion()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto)!;
+  await act(async () => {
+    boton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+  });
+}
 
 afterEach(() => {
   rendered?.unmount();
@@ -169,6 +183,7 @@ describe("AgendaPage (citas)", () => {
     });
 
     expect(confirmMock).not.toHaveBeenCalled();
+    expect(dialogoConfirmacion()).toBeNull();
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/confirm" && init?.method === "POST");
     expect(call).toBeDefined();
     // La recarga real: la cita ya viene con status "confirmed" -- solo las
@@ -178,8 +193,7 @@ describe("AgendaPage (citas)", () => {
     expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Confirmar"))).toBe(false);
   });
 
-  it("'Cancelar' pide confirmación real del navegador antes de llamar a la API; si se rechaza, NUNCA llama a la API", async () => {
-    confirmMock.mockReturnValue(false);
+  it("'Cancelar' abre el diálogo de confirmación (nunca window.confirm) y si se elige 'Volver' NUNCA llama a la API", async () => {
     stubFetch({ appointments: [CITA_PENDING] });
     rendered = renderPage();
     await esperarCarga();
@@ -190,12 +204,15 @@ describe("AgendaPage (citas)", () => {
       await flushMicrotasks();
     });
 
-    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining("¿Cancelar esta cita?"));
+    expect(dialogoConfirmacion()!.textContent).toContain("¿Cancelar esta cita?");
+    expect(dialogoConfirmacion()!.textContent).toContain("Esta acción no se puede deshacer.");
+    await pulsarEnDialogo("Volver");
+    expect(dialogoConfirmacion()).toBeNull();
+    expect(confirmMock).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/cancel"))).toBe(false);
   });
 
   it("'Cancelar' con confirmación aceptada llama POST .../appointments/apt-1/cancel", async () => {
-    confirmMock.mockReturnValue(true);
     stubFetch({ appointments: [CITA_PENDING] });
     rendered = renderPage();
     await esperarCarga();
@@ -204,11 +221,38 @@ describe("AgendaPage (citas)", () => {
     await act(async () => {
       cancelarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
     });
+    await pulsarEnDialogo("Cancelar cita");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/cancel" && init?.method === "POST");
     expect(call).toBeDefined();
+    expect(confirmMock).not.toHaveBeenCalled();
+  });
+
+  it("'No-show' pide confirmación con diálogo; al aceptar llama a la API, al cerrarlo con Escape no", async () => {
+    stubFetch({ appointments: [{ ...CITA_PENDING, status: "confirmed" }] });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const noShowBtn = [...rendered.container.querySelectorAll("button")].find((b) => /no.?show/i.test(b.textContent ?? ""))!;
+    await act(async () => {
+      noShowBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    expect(dialogoConfirmacion()!.textContent).toContain("¿Marcar esta cita como no-show?");
+    await act(async () => {
+      dialogoConfirmacion()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/no-show") || url.endsWith("/no_show"))).toBe(false);
+
+    await act(async () => {
+      noShowBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    await pulsarEnDialogo("Marcar no-show");
+    expect(fetchMock.mock.calls.some(([url, init]) => /no.?show/.test(url) && init?.method === "POST")).toBe(true);
   });
 
   it("crear cita manual: POST /v1/citas/properties/prop-1/appointments con snake_case real (provider_id/service_id/customer_name/starts_at)", async () => {
@@ -262,9 +306,10 @@ describe("AgendaPage (citas)", () => {
     await act(async () => {
       avisarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
-      await flushMicrotasks();
-      await flushMicrotasks();
     });
+    // El aviso real de WhatsApp exige confirmar en el diálogo.
+    expect(dialogoConfirmacion()!.textContent).toContain("¿Avisar a la lista de espera?");
+    await pulsarEnDialogo("Enviar aviso");
   }
 
   it("'Avisar a la lista de espera' con queued:true real muestra 'Aviso encolado para N candidatos' — nunca una cifra inventada", async () => {

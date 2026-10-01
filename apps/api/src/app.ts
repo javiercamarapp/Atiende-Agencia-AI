@@ -27,6 +27,7 @@ import { superadminMfaRoutes } from "./routes/superadmin-mfa.ts";
 import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores.ts";
 import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
 import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
+import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
 import { superadminPlanesRoutes } from "./routes/superadmin-planes.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
@@ -46,6 +47,7 @@ import { rentasRoutes } from "./routes/verticals/rentas/rentas.ts";
 import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
 import { resumenDiarioRoutes } from "./routes/internal/resumen-diario.ts";
 import { superadminMantenimientoRoutes } from "./routes/internal/superadmin-mantenimiento.ts";
+import { superadminAlertasCfoRoutes } from "./routes/internal/superadmin-alertas-cfo.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -97,6 +99,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminInterruptoresRoutes(deps));
   app.route("/", superadminOrganizacionesRoutes(deps));
   app.route("/", superadminCostosRoutes(deps));
+  app.route("/", superadminCfoRoutes(deps));
   app.route("/", superadminPlanesRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
@@ -122,6 +125,8 @@ export function buildApp(deps: AppDeps): Hono {
   // Automatizaciones seguras del back office de plataforma -- mismo criterio
   // que resumenDiarioRoutes de arriba.
   app.route("/", superadminMantenimientoRoutes(deps));
+  // Foto mensual de ingreso + alertas proactivas del CFO -- mismo criterio.
+  app.route("/", superadminAlertasCfoRoutes(deps));
 
   return app;
 }

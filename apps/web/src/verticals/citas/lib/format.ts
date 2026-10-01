@@ -2,9 +2,12 @@
 // restaurantes/dashboard-client.ts: nunca inventa un cero/"—"/etiqueta cuando el
 // dato real no vino, y nunca formatea con más precisión de la que el dato tiene.
 
+import { formatMoney } from "@atiende/ui";
+
 export function formatMoneyFromCents(cents: number | null): string {
   if (cents === null) return "Sin precio";
-  return `$${(cents / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Una sola implementación del formato es-MX (separador de miles, 2 decimales): la de @atiende/ui.
+  return `$${formatMoney(cents / 100)}`;
 }
 
 // NOTA (revisión de PR #164, "no bloqueante" #3): `formatDateLong` la usa

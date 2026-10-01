@@ -18,6 +18,8 @@ import type {
   Branch,
   BranchProductState,
   BranchPolicy,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
   CanalPedido,
   BranchSummary,
   BranchTimezoneConfig,
@@ -58,7 +60,7 @@ import type {
   StorefrontOrderTracking,
   StorefrontTrackingResult,
 } from "./types.ts";
-import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { EMPTY_BRANCH_POLICY, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
   ChannelStatsRow,
@@ -2090,6 +2092,60 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   // SAVEPOINT obligatorio); toda escritura lanza RestaurantesConfigUnavailableError.
   // ---------------------------------------------------------------------------
 
+  // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
+  async findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    // Lectura dentro de la transaccion unica del turno: una base sin migrar (42P01/42703/42501/42883)
+    // NO puede abortarla; con SAVEPOINT cae a "sin config" y el turno sigue con el agente generico.
+    return runWithSavepointFallback<WhatsAppAgentConfigRow | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_read",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `select property_id, perfil, agent_name, business_name, tone_style, delivery_time_text
+             from restaurantes.whatsapp_agent_config
+            where organization_id = $1 and enabled = true and (property_id = $2 or property_id is null)
+            order by (property_id is null) asc
+            limit 1;`,
+          [organizationId, propertyId],
+        );
+        return rows[0] ? mapWhatsAppAgentConfigRow(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+  }
+
+  async upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow> {
+    return runWithSavepointFallback<WhatsAppAgentConfigRow>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_write",
+      primary: async () => {
+        // Dos indices unicos parciales (organizacion / sucursal): `on conflict` necesita el predicado exacto.
+        const conflict = propertyId === null ? "(organization_id) where property_id is null" : "(organization_id, property_id) where property_id is not null";
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, enabled, updated_at)
+           values ($1, $2, $3, $4, $5, $6, $7, true, now())
+           on conflict ${conflict} do update set
+             perfil = excluded.perfil,
+             agent_name = excluded.agent_name,
+             business_name = excluded.business_name,
+             tone_style = excluded.tone_style,
+             delivery_time_text = excluded.delivery_time_text,
+             enabled = true,
+             updated_at = excluded.updated_at
+           returning property_id, perfil, agent_name, business_name, tone_style, delivery_time_text;`,
+          [organizationId, propertyId, config.perfil, config.agentName, config.businessName, config.toneStyle, config.deliveryTimeText],
+        );
+        return mapWhatsAppAgentConfigRow(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("whatsapp_agent_config", err, "029_whatsapp_agent_config.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return runWithSavepointFallback<BranchPolicy>({
       session: this.db,
@@ -2310,6 +2366,27 @@ function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
     pedidoMinimoDomicilio: row.pedido_minimo_domicilio === null ? null : Number(row.pedido_minimo_domicilio),
     pedidoMinimoRecoger: row.pedido_minimo_recoger === null ? null : Number(row.pedido_minimo_recoger),
     propinaPolitica: propina === "nunca" || propina === "siempre" || propina === "solo_tarjeta" ? propina : null,
+  };
+}
+
+interface WhatsAppAgentConfigRowSql {
+  property_id: string | null;
+  perfil: string;
+  agent_name: string | null;
+  business_name: string | null;
+  tone_style: string | null;
+  delivery_time_text: string | null;
+}
+
+function mapWhatsAppAgentConfigRow(row: WhatsAppAgentConfigRowSql): WhatsAppAgentConfigRow {
+  return {
+    propertyId: row.property_id,
+    // Un valor desconocido (fila escrita por una version futura) cae al perfil generico: nunca rompe el turno.
+    perfil: row.perfil === "taqueria_pm" ? "taqueria_pm" : "generico",
+    agentName: row.agent_name,
+    businessName: row.business_name,
+    toneStyle: (TONOS_AGENTE_WHATSAPP as readonly string[]).includes(row.tone_style ?? "") ? (row.tone_style as TonoAgenteWhatsApp) : null,
+    deliveryTimeText: row.delivery_time_text,
   };
 }
 

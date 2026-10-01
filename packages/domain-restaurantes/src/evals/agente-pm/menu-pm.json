@@ -1,0 +1,2013 @@
+{
+ "nota": "Menu provisional de Los Taquitos de PM (fuente: repo, no SoftRestaurant; ver pm-datos.json del dueno). Solo para el arnes de evaluacion: nunca se usa en produccion. pack_size se infiere del nombre '(orden de N)', igual que el servidor (orders.ts); 'Orden de 2 tacos' en la descripcion no es un paquete.",
+ "productos": [
+  {
+   "nombre": "Taco Al Pastor (individual)",
+   "categoria": "Tacos",
+   "precio_mxn": 42,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Taco de Rajas (individual)",
+   "categoria": "Tacos",
+   "precio_mxn": 37,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Taco de Champiñones (individual)",
+   "categoria": "Tacos",
+   "precio_mxn": 38,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Chorizo (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 150,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Bistec de Res (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 194,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Pechuga de Pollo (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 184,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Chuleta de Cerdo (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 184,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Costilla de Res (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 189,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Arrachera (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 254,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Poc-Chuc (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 189,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos de Bistec Encebollado (orden de 3)",
+   "categoria": "Tacos",
+   "precio_mxn": 202,
+   "pack_size": 3,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Pastor",
+   "categoria": "Gringas",
+   "precio_mxn": 194,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Bistec",
+   "categoria": "Gringas",
+   "precio_mxn": 224,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Pechuga de Pollo",
+   "categoria": "Gringas",
+   "precio_mxn": 212,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Chuleta",
+   "categoria": "Gringas",
+   "precio_mxn": 212,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Costilla",
+   "categoria": "Gringas",
+   "precio_mxn": 217,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Arrachera",
+   "categoria": "Gringas",
+   "precio_mxn": 299,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Gringa de Poc-Chuc",
+   "categoria": "Gringas",
+   "precio_mxn": 217,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Pastor",
+   "categoria": "Mestizas",
+   "precio_mxn": 168,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Poc-Chuc",
+   "categoria": "Mestizas",
+   "precio_mxn": 175,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Bistec",
+   "categoria": "Mestizas",
+   "precio_mxn": 194,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Pechuga",
+   "categoria": "Mestizas",
+   "precio_mxn": 184,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Chuleta",
+   "categoria": "Mestizas",
+   "precio_mxn": 184,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Costilla",
+   "categoria": "Mestizas",
+   "precio_mxn": 189,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Mestiza de Arrachera",
+   "categoria": "Mestizas",
+   "precio_mxn": 269,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Pastor",
+   "categoria": "Alambre",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Bistec",
+   "categoria": "Alambre",
+   "precio_mxn": 283,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Pechuga",
+   "categoria": "Alambre",
+   "precio_mxn": 269,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Chuleta",
+   "categoria": "Alambre",
+   "precio_mxn": 269,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Costilla",
+   "categoria": "Alambre",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre de Arrachera",
+   "categoria": "Alambre",
+   "precio_mxn": 343,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Pastor",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 247,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Bistec",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 291,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Chuleta",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 284,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Pechuga",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 284,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Costilla",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 284,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 373,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Poc-Chuc",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 284,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Chorizo",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 209,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suizo de Chile Poblano",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 204,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Pastor",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Bistec",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 314,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Pechuga",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Chuleta",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Costilla",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alambre Suizo de Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 371,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos Suizos de Chile Poblano y Bistec",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 328,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio_mxn": 378,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Boyo-Hamburguesa Sencilla",
+   "categoria": "Boyo-Hamburguesas",
+   "precio_mxn": 194,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Boyo-Hamburguesa con Queso",
+   "categoria": "Boyo-Hamburguesas",
+   "precio_mxn": 224,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Boyo-Hamburguesa con Queso y Tocino",
+   "categoria": "Boyo-Hamburguesas",
+   "precio_mxn": 238,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Pastor",
+   "categoria": "Chetacos",
+   "precio_mxn": 291,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Champiñón",
+   "categoria": "Chetacos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Bistec de Res",
+   "categoria": "Chetacos",
+   "precio_mxn": 314,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Chuleta de Cerdo",
+   "categoria": "Chetacos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Pechuga",
+   "categoria": "Chetacos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Costilla de Res",
+   "categoria": "Chetacos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Poc-Chuc",
+   "categoria": "Chetacos",
+   "precio_mxn": 306,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chetaco de Arrachera",
+   "categoria": "Chetacos",
+   "precio_mxn": 373,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Tradicional",
+   "categoria": "Papas de PM",
+   "precio_mxn": 204,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Pastor",
+   "categoria": "Papas de PM",
+   "precio_mxn": 262,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Bistec",
+   "categoria": "Papas de PM",
+   "precio_mxn": 283,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Chuleta",
+   "categoria": "Papas de PM",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Pechuga",
+   "categoria": "Papas de PM",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Costilla",
+   "categoria": "Papas de PM",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papa Arrachera",
+   "categoria": "Papas de PM",
+   "precio_mxn": 352,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Pastor",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 262,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Champiñón",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 262,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Bistec de Res",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 283,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Chuleta de Cerdo",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Pechuga",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Costilla de Res",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Poc-Chuc",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 276,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Francés Suizo de Arrachera",
+   "categoria": "Francés Suizo",
+   "precio_mxn": 352,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijol con Tostada",
+   "categoria": "Entradas",
+   "precio_mxn": 93,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Guacamole",
+   "categoria": "Entradas",
+   "precio_mxn": 142,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Carbolla",
+   "categoria": "Entradas",
+   "precio_mxn": 106,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Cebollas Cambray",
+   "categoria": "Entradas",
+   "precio_mxn": 135,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chicharrón de Queso",
+   "categoria": "Entradas",
+   "precio_mxn": 172,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Alitas de Pollo",
+   "categoria": "Entradas",
+   "precio_mxn": 204,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Papas a la Francesa",
+   "categoria": "Entradas",
+   "precio_mxn": 113,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros Normal",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 123,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros Normal (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 82,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros con Queso",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 142,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros con Queso (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 106,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros Especiales",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 178,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Frijoles Charros Especiales (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio_mxn": 136,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesadilla de Natural",
+   "categoria": "Quesadillas",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesadilla de Rajas",
+   "categoria": "Quesadillas",
+   "precio_mxn": 124,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesadilla de Champiñones",
+   "categoria": "Quesadillas",
+   "precio_mxn": 127,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesadilla de Chorizo",
+   "categoria": "Quesadillas",
+   "precio_mxn": 135,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Fundido Natural",
+   "categoria": "Queso Fundido",
+   "precio_mxn": 160,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Fundido Rajas",
+   "categoria": "Queso Fundido",
+   "precio_mxn": 175,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Fundido Champiñones",
+   "categoria": "Queso Fundido",
+   "precio_mxn": 175,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Fundido Tocino",
+   "categoria": "Queso Fundido",
+   "precio_mxn": 179,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Fundido Chorizo",
+   "categoria": "Queso Fundido",
+   "precio_mxn": 179,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Pastor",
+   "categoria": "Nachos",
+   "precio_mxn": 328,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Pastor (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 232,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Champiñón",
+   "categoria": "Nachos",
+   "precio_mxn": 320,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Champiñón (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 232,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Bistec",
+   "categoria": "Nachos",
+   "precio_mxn": 373,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Bistec (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 262,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Pechuga",
+   "categoria": "Nachos",
+   "precio_mxn": 363,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Pechuga (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 249,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Chuleta",
+   "categoria": "Nachos",
+   "precio_mxn": 358,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Chuleta (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 249,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Costilla",
+   "categoria": "Nachos",
+   "precio_mxn": 367,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Costilla (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 255,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Arrachera",
+   "categoria": "Nachos",
+   "precio_mxn": 433,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Nachos de Arrachera (1/2 orden)",
+   "categoria": "Nachos",
+   "precio_mxn": 299,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Queso",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 206,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Pastor",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 232,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Bistec",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 254,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Pollo",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 247,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Chuleta de Cerdo",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 247,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Costilla de Res",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 247,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich de Arrachera",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 291,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Quesobich Vegetariana",
+   "categoria": "Pizza Quesobich",
+   "precio_mxn": 212,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Crujientes de Pechuga de Pollo",
+   "categoria": "Platillos PM",
+   "precio_mxn": 329,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Pastor",
+   "categoria": "Platillos PM",
+   "precio_mxn": 335,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Bistec",
+   "categoria": "Platillos PM",
+   "precio_mxn": 404,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Pechuga de Pollo",
+   "categoria": "Platillos PM",
+   "precio_mxn": 378,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Chuleta de Cerdo",
+   "categoria": "Platillos PM",
+   "precio_mxn": 378,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Costilla de Res",
+   "categoria": "Platillos PM",
+   "precio_mxn": 388,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Arrachera",
+   "categoria": "Platillos PM",
+   "precio_mxn": 492,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Platillo de Poc-Chuc",
+   "categoria": "Platillos PM",
+   "precio_mxn": 368,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Fajitas de Bistec",
+   "categoria": "Platillos PM",
+   "precio_mxn": 404,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Fajitas de Pechuga",
+   "categoria": "Platillos PM",
+   "precio_mxn": 393,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Fajitas de Arrachera",
+   "categoria": "Platillos PM",
+   "precio_mxn": 492,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Parrillada para 2",
+   "categoria": "Platillos PM",
+   "precio_mxn": 612,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Parrillada para 4",
+   "categoria": "Platillos PM",
+   "precio_mxn": 1045,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 225,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 450,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 675,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 900,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 275,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 550,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 825,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 287.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 575,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 862.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1150,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 350,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 700,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1050,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1400,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Crema Española",
+   "categoria": "Postres",
+   "precio_mxn": 83,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Crema de Coco",
+   "categoria": "Postres",
+   "precio_mxn": 83,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Flan",
+   "categoria": "Postres",
+   "precio_mxn": 83,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Queso Napolitano",
+   "categoria": "Postres",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Coca-Cola",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Coca-Cola Light",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Coca-Cola sin Azúcar",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Toronja Cristal",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Fanta",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Sprite",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Sprite Cero",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Sidral Mundet",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Agua Mineral Cristal",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Agua Purificada",
+   "categoria": "Refrescos",
+   "precio_mxn": 53,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Topo Chico",
+   "categoria": "Refrescos",
+   "precio_mxn": 74,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Limonada",
+   "categoria": "Refrescos",
+   "precio_mxn": 60,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Limonada con Soda",
+   "categoria": "Refrescos",
+   "precio_mxn": 73,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Limonada con Topo Chico",
+   "categoria": "Refrescos",
+   "precio_mxn": 100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Naranjada",
+   "categoria": "Refrescos",
+   "precio_mxn": 60,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Naranjada con Soda",
+   "categoria": "Refrescos",
+   "precio_mxn": 73,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Naranjada con Topo Chico",
+   "categoria": "Refrescos",
+   "precio_mxn": 100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suero con Soda",
+   "categoria": "Refrescos",
+   "precio_mxn": 79,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Suero con Topo Chico",
+   "categoria": "Refrescos",
+   "precio_mxn": 95,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Agua de Jamaica",
+   "categoria": "Aguas Frescas",
+   "precio_mxn": 60,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Horchata",
+   "categoria": "Aguas Frescas",
+   "precio_mxn": 60,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Té",
+   "categoria": "Aguas Frescas",
+   "precio_mxn": 60,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Sol",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Superior",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Tecate Light",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Heineken 0.0",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Heineken",
+   "categoria": "Cervezas",
+   "precio_mxn": 90,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Heineken Silver",
+   "categoria": "Cervezas",
+   "precio_mxn": 90,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Indio",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "XX Lager",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "XX Ámbar",
+   "categoria": "Cervezas",
+   "precio_mxn": 80,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Amstel Ultra",
+   "categoria": "Cervezas",
+   "precio_mxn": 90,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Bohemia Clara",
+   "categoria": "Cervezas",
+   "precio_mxn": 90,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Bohemia Oscura",
+   "categoria": "Cervezas",
+   "precio_mxn": 90,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ceiba Dorada Premium",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ceiba Light Lager",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ceiba Mestiza",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ceiba Stout",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Patito Oscura",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Patito Lager",
+   "categoria": "Cervezas",
+   "precio_mxn": 120,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ojo Rojo",
+   "categoria": "Cervezas",
+   "precio_mxn": 44,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Vaso de Chelada",
+   "categoria": "Cervezas",
+   "precio_mxn": 22,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Vaso de Michelada",
+   "categoria": "Cervezas",
+   "precio_mxn": 30,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ron Appleton Especial",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 117,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ron Bacardí Añejo",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 113,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ron Bacardí Blanco",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 106,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Ron Bacardí Solera",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 128,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Tequila Don Julio Reposado",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 168,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Tequila Herradura Reposado",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 139,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Tequila Jimador",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 106,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Tequila Tradicional",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 113,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Vodka Absolut",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 123,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Vodka Smirnoff",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Whisky Buchanan's",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 178,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Whisky Chivas Regal",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 156,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Whisky J.W. Etiqueta Negra",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 190,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Caribe Cooler",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 110,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Conga",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 114,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Conga sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 105,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Daiquiri",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Daiquiri sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 96,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Limonada Eléctrica",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Margarita",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 109,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Margarita sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Piñada",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 100,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Piña Colada",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 112,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Sangría",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 112,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Sangría sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Vino Tinto Selección (copa)",
+   "categoria": "Licores y Cocktails",
+   "precio_mxn": 102,
+   "pack_size": 1,
+   "es_alcohol": true,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Champiñón",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 35,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Chile Poblano",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 35,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Chorizo",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 36,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Guacamole",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 49,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Rajas",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 35,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Tocino",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 36,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Orden Tortilla de Harina",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 24,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Orden Tortilla de Maíz",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 22,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Queso",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 52,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Ensalada de PM",
+   "categoria": "Entradas",
+   "precio_mxn": 206,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": true
+  },
+  {
+   "nombre": "Sopa de Lima",
+   "categoria": "Comida Regional",
+   "precio_mxn": 170,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": true
+  },
+  {
+   "nombre": "Papadzules (orden de 5)",
+   "categoria": "Comida Regional",
+   "precio_mxn": 194,
+   "pack_size": 5,
+   "es_alcohol": false,
+   "regional": true
+  },
+  {
+   "nombre": "Platillo de Cochinita",
+   "categoria": "Comida Regional",
+   "precio_mxn": 283,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": true
+  },
+  {
+   "nombre": "Tacos de Cochinita (orden de 4)",
+   "categoria": "Comida Regional",
+   "precio_mxn": 179,
+   "pack_size": 4,
+   "es_alcohol": false,
+   "regional": true
+  },
+  {
+   "nombre": "Francés de Cochinita",
+   "categoria": "Comida Regional",
+   "precio_mxn": 224,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": true
+  }
+ ]
+}

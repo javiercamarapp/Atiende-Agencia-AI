@@ -43,8 +43,9 @@ import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
+import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
-import { Toaster } from "@atiende/ui";
+import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
@@ -56,6 +57,7 @@ import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
+import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -373,6 +375,15 @@ function SuperAdminGestionOrganizacionesRoute() {
   );
 }
 
+function SuperAdminCfoDashboardRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
 function SuperAdminCostosMargenRoute() {
   const navigate = useNavigate();
   return (
@@ -458,6 +469,8 @@ function HotelesFolioRoute() {
 const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <MantenimientoPage {...ctx} />);
 // H-04 — housekeeping completo (tablero, tareas, inspección, fuera de servicio, reporte).
 const HotelesHousekeepingRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HousekeepingPage {...ctx} />);
+// H-05 — tickets de huésped con SLA, escalación y bitácora (cualquier rol hotelero; el servidor filtra por rol).
+const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <TicketsPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -678,6 +691,15 @@ const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasSt
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 
+/** 404 DENTRO del shell de citas (PR-4): una ruta desconocida bajo `/citas/:orgSlug/` conserva la navegación y
+ * ofrece volver a la agenda. `/citas/login/...` no es un negocio: cae al 404 global. */
+const CitasNoEncontradoShellRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <VerticalNoEncontrado volverA={`/citas/${ctx.orgSlug}/agenda`} volverEtiqueta="Volver a la agenda" />);
+function CitasNoEncontradoRoute() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (orgSlug === "login") return <NotFoundPage />;
+  return <CitasNoEncontradoShellRoute />;
+}
+
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -826,6 +848,7 @@ export function App() {
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
+        <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
@@ -840,6 +863,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/housekeeping" element={<HotelesHousekeepingRoute />} />
+        <Route path="/hoteles/:orgSlug/tickets" element={<HotelesTicketsRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />
@@ -884,6 +908,7 @@ export function App() {
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
+        <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
