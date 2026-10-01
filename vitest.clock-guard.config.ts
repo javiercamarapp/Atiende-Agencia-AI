@@ -13,6 +13,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/core-tenancy/tests/fecha-negocio.spec.ts",
   "packages/core-tenancy/tests/reloj-simulado-fronteras.spec.ts",
   "packages/domain-hoteles/tests/postgres-repository-fecha-negocio-param.spec.ts",
+  "packages/domain-hoteles/tests/reservas-agente/escenarios-adversariales.spec.ts",
   "packages/domain-licitaciones/tests/postgres-repository-fecha-negocio-param.spec.ts",
   "packages/domain-rentas/tests/postgres-repository-fecha-negocio-param.spec.ts",
   "packages/domain-citas/tests/whatsapp-llm-turn-handler-zona-horaria.spec.ts",

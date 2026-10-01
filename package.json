@@ -26,7 +26,9 @@
     "audit:deps": "npm audit --audit-level=high",
     "verify:migration-versions": "node --experimental-strip-types scripts/verify-migration-versions/check-migration-versions.ts",
     "smoke:post-deploy": "node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts",
-    "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts"
+    "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts",
+    "test:e2e": "npm run test:e2e -w @atiende/web --",
+    "test:e2e:ui": "npm run test:e2e:ui -w @atiende/web --"
   },
   "devDependencies": {
     "@atiende/core-ratelimit": "*",

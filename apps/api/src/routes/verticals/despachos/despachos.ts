@@ -27,6 +27,7 @@ import { despachosEfosRoutes } from "./efos.ts";
 import { despachosChatDatosRoutes } from "./chat-datos.ts";
 import { despachosPortalClienteRoutes } from "./portal-cliente.ts";
 import { despachosCarteraRoutes } from "./cartera.ts";
+import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -75,5 +76,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosPortalClienteRoutes(deps));
   // D-21 -- cartera de clientes: alta y ficha fiscal de contribuyente por property (migracion 018), ver cartera.ts.
   app.route("/", despachosCarteraRoutes(deps));
+  // D-11 -- cola de cobranza: gestiones por factura/cliente, reporte PDF de cartera y outbox de WhatsApp (opt-in/opt-out, sin envio).
+  app.route("/", despachosColaCobranzaRoutes(deps));
   return app;
 }

@@ -143,6 +143,7 @@ import { CarteraPage } from "./verticals/despachos/pages/Cartera.tsx";
 import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
 import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
+import { ColaCobranzaPage } from "./verticals/despachos/pages/ColaCobranza.tsx";
 import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
@@ -865,6 +866,7 @@ const DespachosCarteraRoute = shellRoute(DespachosShell, "/despachos/login", (ct
 const DespachosCfdiRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiPage {...ctx} />);
 const DespachosCfdiDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiDetallePage {...ctx} />);
 const DespachosCobranzaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CobranzaPage {...ctx} />);
+const DespachosColaCobranzaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ColaCobranzaPage {...ctx} />);
 const DespachosVencimientosRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <VencimientosPage {...ctx} />);
 const DespachosDeclaracionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DeclaracionesPage {...ctx} />);
 const DespachosNominaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NominaPage {...ctx} />);
@@ -1039,6 +1041,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
         <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
+        <Route path="/despachos/:orgSlug/cola-cobranza" element={<DespachosColaCobranzaRoute />} />
         <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />

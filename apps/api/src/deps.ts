@@ -23,7 +23,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -38,7 +38,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -181,6 +181,9 @@ export interface AppDeps {
    *  en produccion no se define y las rutas usan `PostgresGruposRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los
    *  tests lo sobreescriben con el repo en memoria. */
   readonly hotelesGruposRepo?: (db: TenantDbSession) => GruposRepository;
+  /** H-25 -- agente de reservas (migracion 037): holds, aprobacion, politica. OPCIONAL: en produccion no se define y las rutas (staff y voz) usan
+   *  `PostgresReservasAgenteRepository` (RLS real, SAVEPOINT contra base sin migrar); solo las pruebas HTTP inyectan el espejo en memoria. */
+  readonly hotelesReservasAgenteRepo?: (db: TenantDbSession) => ReservasAgenteRepository;
   /** H-02 -- privacidad de hoteles (aviso, consentimientos, ARCO, retencion legal, incidentes). OPCIONAL:
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
@@ -280,6 +283,8 @@ export interface AppDeps {
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
   /** D-21 -- cartera de clientes (ficha fiscal por property, migracion 018). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresCarteraRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
+  /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
    * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un
    * mapeo de migración de catálogo (migracion-catalogo.ts). Implementa
