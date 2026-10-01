@@ -15,6 +15,7 @@ import type { BranchOption } from "../src/verticals/licitaciones/lib/admin-clien
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -105,6 +106,21 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(hrefs).toEqual(
       expect.arrayContaining(["/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad"]),
     );
+  });
+
+  // UNI-6: marco de Likida -- Resumen raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
+  it("el Sidebar agrupa los 13 destinos del owner en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Oportunidades", "Inteligencia", "Organización"]);
+    expect(categoriasAbiertas(root)).toEqual(["Oportunidades"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Convocatorias", "Seguimiento", "Radar de renovaciones"]);
+    abrirCategoria(root, "Inteligencia");
+    expect(categoriasAbiertas(root)).toEqual(["Inteligencia"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Fuentes y frescura", "KYC proveedores (69-B)", "Perfil de matching"]);
+    abrirCategoria(root, "Organización");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Datos de la empresa", "Días inhábiles", "Aprobaciones", "Staff", "WhatsApp", "Seguridad"]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Owner Demo", rol: "Propietario" });
   });
 
   it("un rol sin gestión de staff no ve Staff (cosmético; el servidor es la barrera) y Más trae los otros 12", async () => {

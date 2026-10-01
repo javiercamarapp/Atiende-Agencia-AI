@@ -19,6 +19,7 @@ import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -72,28 +73,37 @@ export interface LicitacionesShellProps {
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 
-// Mismos destinos/etiquetas/rutas exactos que antes (ningún link se agrega, quita ni renombra):
-// 5 en "Licitaciones" + 5-6 en "Organización" (Staff solo para owner/admin). "Más" de la barra
-// móvil lista TODOS (las mismas secciones del Sidebar), nada queda inalcanzable en móvil.
+// Mismos destinos y rutas que antes (ningún link se agrega ni se quita; "Panel" ahora se llama "Resumen", como en las demás
+// consolas) — UNI-6: categorías en el orden de Likida (Oportunidades, Inteligencia, Organización) con "Resumen" como raíz sin
+// título; Staff solo para owner/admin. "Más" de la barra móvil lista TODOS (las mismas secciones del Sidebar), nada queda
+// inalcanzable en móvil.
 function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarSection[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     {
-      title: "Licitaciones",
+      title: "Resumen",
       siempreAbierto: true,
+      items: [{ to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard }],
+    },
+    {
+      title: "Oportunidades",
       items: [
-        { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
         { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
         { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
         { to: `${base}/radar-renovaciones`, label: "Radar de renovaciones", icon: Radar },
+      ],
+    },
+    {
+      title: "Inteligencia",
+      items: [
         { to: `${base}/fuentes`, label: "Fuentes y frescura", icon: Database },
         { to: `${base}/kyc-69b`, label: "KYC proveedores (69-B)", icon: ShieldAlert },
+        { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
       ],
     },
     {
       title: "Organización",
       items: [
-        { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
         { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
         { to: `${base}/dias-inhabiles`, label: "Días inhábiles", icon: CalendarOff },
         { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
@@ -109,7 +119,7 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarS
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
-    { to: `${base}/panel`, label: "Panel", icon: LayoutDashboard },
+    { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
     { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
     { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
     { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
@@ -151,7 +161,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="licitaciones"
       sections={buildSidebarSections(orgSlug, puedeVerStaff)}
       mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role }}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/licitaciones/${orgSlug}/panel` }}
