@@ -98,6 +98,10 @@ import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatchin
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
 import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaciones/pages/Seguridad.tsx";
+import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
+import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
+import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
+import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -627,12 +631,17 @@ function LicitacionesLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/licitaciones/:orgSlug` a secas — convocatorias es la
- * landing real del panel (Fase 7, mismo criterio que CitasRootRedirect: aún no
- * hay dashboard de KPIs para este vertical). */
+/** Redirección al abrir `/licitaciones/:orgSlug` a secas — la landing es el
+ * Panel (L-03: resumen con métricas reales; desde ahí se llega a convocatorias). */
 function LicitacionesRootRedirect() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/licitaciones/${orgSlug}/convocatorias`} replace />;
+  return <Navigate to={`/licitaciones/${orgSlug}/panel`} replace />;
+}
+
+/** `/firmantes` abre la pestaña de firmantes de Datos de la empresa (no hay una segunda pantalla que mantener). */
+function LicitacionesFirmantesRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/licitaciones/${orgSlug}/datos-empresa?tab=firmantes`} replace />;
 }
 
 const LicitacionesConvocatoriasRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <ConvocatoriasPage {...ctx} />);
@@ -647,6 +656,10 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 // L-01: verificación en dos pasos + cierre de otras sesiones.
+const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesPanelPage {...ctx} />);
+const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
+const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SeguimientoPage {...ctx} />);
+const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <AprobacionesPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -813,6 +826,11 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
+        <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
+        <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
+        <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />
+        <Route path="/licitaciones/:orgSlug/aprobaciones" element={<LicitacionesAprobacionesRoute />} />
+        <Route path="/licitaciones/:orgSlug/firmantes" element={<LicitacionesFirmantesRedirect />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
