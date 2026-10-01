@@ -360,7 +360,7 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   async function resolveDate(c: Context<CoreAuthHonoEnv>, raw: unknown): Promise<string> {
     const explicit = parseOptionalDate(raw, "fecha");
     if (explicit) return explicit;
-    const tz = await deps.hotelesRepo(c.get("db")).findPropertyTimezone(c.req.param("propertyId"));
+    const tz = await deps.hotelesRepo(c.get("db")).findPropertyTimezone(c.req.param("propertyId") ?? "");
     return hoyFechaNegocio(resolverZonaHorariaNegocio(tz));
   }
 
@@ -480,7 +480,7 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     run: (repo: HousekeepingRepository, task: HousekeepingTaskRecord, body: Record<string, unknown>) => Promise<HousekeepingTaskRecord | null>,
   ) {
     assertVerticalRole(c, HOUSEKEEPING_TASK_ROLES);
-    const propertyId = c.req.param("propertyId");
+    const propertyId = c.req.param("propertyId") ?? "";
     const taskId = requireUuid(c.req.param("taskId"), "taskId");
     const body = await readBody(c);
     const repo = hkRepo(c);
