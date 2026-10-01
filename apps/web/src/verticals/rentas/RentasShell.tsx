@@ -83,6 +83,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
+  BarChart3,
   CalendarDays,
   ClipboardCheck,
   ClipboardList,
@@ -138,6 +139,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: ruta("precios"), label: "Precios", icon: Tag },
         { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
+        { to: ruta("reportes"), label: "Reportes", icon: BarChart3 },
         // r5 -- bitácora de auditoría del staff (cierra el hueco detectado al diseñar
         // el panel de superadmin). AuditoriaPage gatea su propio contenido por
         // admin_gestora, igual que Finanzas/Precios.
