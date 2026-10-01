@@ -3,8 +3,10 @@
 // cada caso verifica (1) el vacio honesto / error 503-409-403 correcto y (2) que la MISMA sesion sigue viva.
 import { describe, expect, it } from "vitest";
 import {
+  ConversacionesConflictoError,
   ConversacionesNoDisponibleError,
   ConversacionesRechazadaError,
+  ConversacionesValidacionError,
   HandoffYaTomadoError,
   PostgresConversacionesRepository,
   PostgresHandoffAgentGate,
@@ -100,16 +102,26 @@ describe("escrituras contra la base sin migrar: ConversacionesNoDisponibleError 
     await sesionSigueViva(s);
   });
 
-  it("un fallo a mitad de reemplazarTurnos (FK 23503) revierte al savepoint y deja la sesion viva", async () => {
+  const turnoT1 = [{ nombre: "T1", dias: [1], inicia: "12:00", termina: "18:00", miembros: [{ userId: ID, orden: 1 }] }];
+
+  it("un fallo a mitad de reemplazarTurnos (FK 23503) revierte al savepoint, deja la sesion viva y es un error de validacion (no 403)", async () => {
     const s = new AbortAwareFakeSession([
       { match: /delete from restaurantes\.branch_shift/i, respond: () => [] },
       { match: /insert into restaurantes\.branch_shift \(/i, respond: () => [{ id: ID }] },
       { match: /insert into restaurantes\.branch_shift_member/i, respond: () => pgError("23503", "fk") },
       SIGUIENTE,
     ]);
-    await expect(
-      new PostgresConversacionesRepository(s).reemplazarTurnos(ORG, PROP, [{ nombre: "T1", dias: [1], inicia: "12:00", termina: "18:00", miembros: [{ userId: ID, orden: 1 }] }]),
-    ).rejects.toBeInstanceOf(ConversacionesRechazadaError);
+    await expect(new PostgresConversacionesRepository(s).reemplazarTurnos(ORG, PROP, turnoT1)).rejects.toBeInstanceOf(ConversacionesValidacionError);
+    await sesionSigueViva(s);
+  });
+
+  it("un nombre de turno repetido (unicidad 23505) es un conflicto (409), no un rechazo de permisos", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /delete from restaurantes\.branch_shift/i, respond: () => [] },
+      { match: /insert into restaurantes\.branch_shift \(/i, respond: () => pgError("23505", "duplicate key") },
+      SIGUIENTE,
+    ]);
+    await expect(new PostgresConversacionesRepository(s).reemplazarTurnos(ORG, PROP, turnoT1)).rejects.toBeInstanceOf(ConversacionesConflictoError);
     await sesionSigueViva(s);
   });
 });
@@ -123,6 +135,12 @@ describe("gate del agente de WhatsApp contra la base sin migrar: el agente sigue
 
   it("solicitarHumano -> null sin romper la transaccion", async () => {
     const s = new AbortAwareFakeSession([{ match: /handoff_solicitar_whatsapp/i, respond: () => sinFuncion("handoff_solicitar_whatsapp") }, SIGUIENTE]);
+    expect(await new PostgresHandoffAgentGate(s).solicitarHumano({ organizationId: ORG, propertyId: PROP, phone: "+521", motivo: "queja" })).toBeNull();
+    await sesionSigueViva(s);
+  });
+
+  it("solicitarHumano con el numero que no coincide con la sucursal de la conversacion (42501) -> null, no lanza", async () => {
+    const s = new AbortAwareFakeSession([{ match: /handoff_solicitar_whatsapp/i, respond: () => pgError("42501", "conversacion fuera de la sucursal") }, SIGUIENTE]);
     expect(await new PostgresHandoffAgentGate(s).solicitarHumano({ organizationId: ORG, propertyId: PROP, phone: "+521", motivo: "queja" })).toBeNull();
     await sesionSigueViva(s);
   });

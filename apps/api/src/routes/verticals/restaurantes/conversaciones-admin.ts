@@ -21,6 +21,7 @@ import {
   CALLBACK_RESULTADOS,
   CONVERSACION_CANALES,
   ConversacionesNoDisponibleError,
+  ConversacionesConflictoError,
   ConversacionesRechazadaError,
   ConversacionesValidacionError,
   HANDOFF_ESTADOS,
@@ -70,6 +71,7 @@ function aHttp(err: unknown): never {
   if (err instanceof ConversacionesNoDisponibleError) throw Errors.serviceUnavailable(err.message);
   if (err instanceof HandoffYaTomadoError) throw Errors.conflict(err.message);
   if (err instanceof SinNumeroWhatsappError) throw Errors.conflict(err.message);
+  if (err instanceof ConversacionesConflictoError) throw Errors.conflict(err.message);
   if (err instanceof ConversacionesRechazadaError) throw Errors.forbidden(err.message);
   if (err instanceof ConversacionesValidacionError) throw Errors.validation(err.message);
   throw err;

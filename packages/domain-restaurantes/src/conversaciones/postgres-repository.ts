@@ -10,6 +10,7 @@ import type { ConversacionesRepository, HandoffAgentGate } from "./repository.ts
 import {
   CALLBACK_RESULTADOS,
   ConversacionesNoDisponibleError,
+  ConversacionesConflictoError,
   ConversacionesRechazadaError,
   ConversacionesValidacionError,
   HANDOFF_ESTADOS,
@@ -71,6 +72,8 @@ function aError(err: unknown): never {
   if (c === "55006") throw new HandoffYaTomadoError();
   if (c === "P0002") throw new SinNumeroWhatsappError();
   if (c === "22023" || c === "23514") throw new ConversacionesValidacionError("Dato fuera de rango (revisa el texto, el turno o el resultado).");
+  if (c === "23505") throw new ConversacionesConflictoError();
+  if (c === "23503") throw new ConversacionesValidacionError("Referencia inexistente (revisa la persona o la sucursal indicada).");
   throw new ConversacionesRechazadaError();
 }
 
@@ -363,9 +366,12 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
         const { rows } = await this.db.query<{ id: string | null }>(`select restaurantes.handoff_solicitar_whatsapp($1::uuid, $2::uuid, $3::text, $4::text) as id;`, [input.organizationId, input.propertyId, input.phone, input.motivo]);
         return rows[0]?.id ?? null;
       },
-      isRecoverable: esBaseSinMigrar,
+      // 42501: el numero que recibio el mensaje no coincide con la sucursal ya guardada en la conversacion. No es
+      // recuperable reintentando (Meta reintentaria y volveria a correr el LLM): el gate degrada a null y el aviso
+      // de callback existente sigue su camino.
+      isRecoverable: (err) => esBaseSinMigrar(err) || code(err) === "42501",
       fallback: async (err) => {
-        advertirNoDisponible(err);
+        if (esBaseSinMigrar(err)) advertirNoDisponible(err);
         return null;
       },
     });
