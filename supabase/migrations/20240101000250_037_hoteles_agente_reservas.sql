@@ -149,17 +149,15 @@ begin
   raise exception 'la bitacora de holds es inmutable' using errcode = '42501';
 end;
 $$;
-create trigger booking_hold_event_no_update before update or delete on hoteles.booking_hold_event
+create trigger booking_hold_event_no_update before update on hoteles.booking_hold_event
   for each row execute function hoteles.booking_hold_event_immutable();
 
--- Anti-tamper (segunda capa; el cliente tampoco tiene GRANT de escritura): lo cotizado, las fechas, el contacto y la
+-- Anti-tamper (segunda capa; el cliente tampoco tiene GRANT de escritura ni de DELETE: un hold no se borra, se cancela,
+-- expira o rechaza; el DELETE no lleva trigger para no bloquear el borrado en cascada de una property): lo cotizado, las fechas, el contacto y la
 -- llave de idempotencia son INMUTABLES una vez creado el hold -- lo que el humano aprueba es exactamente lo que se retuvo.
 create or replace function hoteles.booking_hold_guard()
 returns trigger language plpgsql set search_path = pg_catalog as $$
 begin
-  if tg_op = 'DELETE' then
-    raise exception 'un hold no se borra: se cancela, expira o rechaza' using errcode = '42501';
-  end if;
   if new.organization_id is distinct from old.organization_id or new.property_id is distinct from old.property_id
      or new.room_type_id is distinct from old.room_type_id or new.check_in_date is distinct from old.check_in_date
      or new.check_out_date is distinct from old.check_out_date or new.nights is distinct from old.nights
@@ -177,7 +175,7 @@ begin
   return new;
 end;
 $$;
-create trigger booking_hold_guard_trg before update or delete on hoteles.booking_hold
+create trigger booking_hold_guard_trg before update on hoteles.booking_hold
   for each row execute function hoteles.booking_hold_guard();
 
 -- ---------------------------------------------------------------------------
@@ -540,8 +538,10 @@ begin
     raise exception 'solo un hold pendiente de aprobacion se decide (estado: %)', h.status using errcode = '55000';
   end if;
   if h.expires_at <= now() then
+    -- Vence y devuelve el hold ya en estado 'expirado' (sin excepcion: un RAISE revertiria la liberacion del inventario).
     perform hoteles.booking_hold_expire_core(h.property_id, now());
-    raise exception 'el hold ya vencio' using errcode = '55000';
+    select * into h from hoteles.booking_hold where id = p_hold_id;
+    return h;
   end if;
   if p_decision = 'rechazar' then
     perform hoteles.booking_hold_release_inventory(h);
@@ -591,7 +591,8 @@ begin
   end if;
   if h.expires_at <= now() then
     perform hoteles.booking_hold_expire_core(h.property_id, now());
-    raise exception 'el hold ya vencio' using errcode = '55000';
+    select * into h from hoteles.booking_hold where id = p_hold_id;
+    return h;
   end if;
   insert into hoteles.reservation (organization_id, property_id, room_type_id, check_in_date, check_out_date, status, total_amount, idempotency_key)
   values (h.organization_id, h.property_id, h.room_type_id, h.check_in_date, h.check_out_date, 'confirmada', h.net_cents::numeric / 100, 'hold-' || h.id::text)
