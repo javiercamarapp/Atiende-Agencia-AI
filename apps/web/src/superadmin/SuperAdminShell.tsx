@@ -31,7 +31,7 @@ const SECTIONS: SidebarSection[] = [
     title: "Plataforma",
     siempreAbierto: true,
     items: [
-      { to: "/superadmin", label: "Organizaciones", icon: Building2 },
+      { to: "/superadmin", label: "Organizaciones", icon: Building2, end: true },
       { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
       { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
       { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },

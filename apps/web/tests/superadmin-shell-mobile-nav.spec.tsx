@@ -28,11 +28,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderShell(onRequireLogin: () => void = () => {}): Promise<RenderedComponent> {
+async function renderShell(onRequireLogin: () => void = () => {}, ruta = "/superadmin"): Promise<RenderedComponent> {
   installMatchMediaStub();
   installMemoryLocalStorage().setItem("atiende.superadmin.session", JSON.stringify(SESSION));
   const result = renderComponent(
-    <MemoryRouter initialEntries={["/superadmin"]}>
+    <MemoryRouter initialEntries={[ruta]}>
       <SuperAdminShell apiBaseUrl="https://api.test" onRequireLogin={onRequireLogin}>
         {() => <div>child</div>}
       </SuperAdminShell>
@@ -60,6 +60,12 @@ describe("SuperAdminShell — nav móvil", () => {
       "/superadmin/salud",
       "/superadmin/acciones",
     ]);
+  });
+
+  it("el item raíz «Organizaciones» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
+    rendered = await renderShell(() => {}, "/superadmin/planes");
+    const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
+    expect(activos).toEqual(["/superadmin/planes"]);
   });
 
   it("un solo <main> con skip link (VerticalShell) y el contenido de la página dentro de él", async () => {
