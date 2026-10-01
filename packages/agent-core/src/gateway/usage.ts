@@ -38,6 +38,10 @@ export interface LlmUsageEvent {
   readonly model: string;
   readonly tokensIn: number;
   readonly tokensOut: number;
+  /** Tokens de entrada servidos desde cache del proveedor (si lo reporta). */
+  readonly tokensCached?: number;
+  /** Tokens de razonamiento (incluidos en los de salida; si lo reporta). */
+  readonly tokensReasoning?: number;
   /** Costo real reportado por el proveedor, en MICRO-USD (1 USD = 1_000_000),
    *  entero SIEMPRE — nunca un float de dólares (ver `usdToMicroUsd`). */
   readonly costMicroUsd: number;

@@ -50,6 +50,8 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
           lane: event.lane,
           tokensIn: event.tokensIn,
           tokensOut: event.tokensOut,
+          ...(event.tokensCached !== undefined ? { tokensCached: event.tokensCached } : {}),
+          ...(event.tokensReasoning !== undefined ? { tokensReasoning: event.tokensReasoning } : {}),
           costMicroUsd: event.costMicroUsd,
           fallbackUsed: event.fallbackUsed,
         }),

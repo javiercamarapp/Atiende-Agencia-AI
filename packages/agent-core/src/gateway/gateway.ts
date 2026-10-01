@@ -253,6 +253,8 @@ export class LlmGateway {
             model: result.model,
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
+            ...(result.tokensCached !== undefined ? { tokensCached: result.tokensCached } : {}),
+            ...(result.tokensReasoning !== undefined ? { tokensReasoning: result.tokensReasoning } : {}),
             costMicroUsd: actualMicroUsd,
             fallbackUsed: i > 0,
             occurredAt: new Date().toISOString(),
