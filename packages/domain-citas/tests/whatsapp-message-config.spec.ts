@@ -15,10 +15,9 @@ import {
   textoPorOmision,
   validarConfigMensajes,
   validarTextoMensaje,
+  reservaMuyReciente,
   ventanaDeRecordatorio,
 } from "../src/whatsapp/message-config.ts";
-
-const TOL = 30 * 60 * 1000;
 
 describe("validarTextoMensaje", () => {
   it("acepta un texto con variables validas y lo recorta", () => {
@@ -197,27 +196,38 @@ describe("horario de envio", () => {
   });
 });
 
-describe("ventanaDeRecordatorio", () => {
+describe("ventanaDeRecordatorio (C-14)", () => {
   const now = new Date("2026-09-13T16:00:00.000Z");
 
-  it("con la configuracion de fabrica es exactamente 24 h +- 30 min (igual que antes de C-04)", () => {
-    const { from, to } = ventanaDeRecordatorio(now, MENSAJES_CONFIG_POR_OMISION, TOL);
-    expect(from.toISOString()).toBe("2026-09-14T15:30:00.000Z");
-    expect(to.toISOString()).toBe("2026-09-14T16:30:00.000Z");
+  it("con la configuracion de fabrica es (ahora, ahora + 24 h]: ya no es una franja de 1 h alrededor de las 24 h", () => {
+    const { from, to } = ventanaDeRecordatorio(now, MENSAJES_CONFIG_POR_OMISION);
+    expect(from.toISOString()).toBe("2026-09-13T16:00:00.000Z");
+    expect(to.toISOString()).toBe("2026-09-14T16:00:00.000Z");
   });
 
-  it("anticipacion distinta mueve la ventana", () => {
-    const { from, to } = ventanaDeRecordatorio(now, { ...MENSAJES_CONFIG_POR_OMISION, reminderLeadHours: 2 }, TOL);
-    expect(from.toISOString()).toBe("2026-09-13T17:30:00.000Z");
-    expect(to.toISOString()).toBe("2026-09-13T18:30:00.000Z");
+  it("anticipacion distinta mueve solo el final de la ventana", () => {
+    const { from, to } = ventanaDeRecordatorio(now, { ...MENSAJES_CONFIG_POR_OMISION, reminderLeadHours: 2 });
+    expect(from.toISOString()).toBe("2026-09-13T16:00:00.000Z");
+    expect(to.toISOString()).toBe("2026-09-13T18:00:00.000Z");
   });
 
-  it("con horario de envio se amplia hacia atras las horas cerradas, y nunca antes de ahora", () => {
-    const cfg = { reminderLeadHours: 24, sendWindowStart: 9, sendWindowEnd: 20 }; // 13 horas cerradas
-    const { from } = ventanaDeRecordatorio(now, cfg, TOL);
-    expect(from.toISOString()).toBe("2026-09-14T02:30:00.000Z"); // 24h - 30min - 13h
-    const corta = ventanaDeRecordatorio(now, { reminderLeadHours: 1, sendWindowStart: 9, sendWindowEnd: 20 }, TOL);
-    expect(corta.from.getTime()).toBe(now.getTime()); // nunca incluye citas que ya empezaron
+  it("nunca incluye citas que ya empezaron, tenga o no horario de envio", () => {
+    expect(ventanaDeRecordatorio(now, { reminderLeadHours: 1 }).from.getTime()).toBe(now.getTime());
+  });
+});
+
+describe("reservaMuyReciente (C-14)", () => {
+  const now = new Date("2026-09-13T16:00:00.000Z");
+  it("una reserva de hace menos de 1 h es reciente; de hace 1 h o mas, no", () => {
+    expect(reservaMuyReciente("2026-09-13T15:30:00.000Z", now)).toBe(true);
+    expect(reservaMuyReciente("2026-09-13T15:00:00.000Z", now)).toBe(false);
+    expect(reservaMuyReciente("2026-09-12T10:00:00.000Z", now)).toBe(false);
+  });
+  it("sin fecha, ilegible o fechada en el futuro no cuenta como reciente (nunca bloquea un recordatorio por un dato raro)", () => {
+    expect(reservaMuyReciente(null, now)).toBe(false);
+    expect(reservaMuyReciente(undefined, now)).toBe(false);
+    expect(reservaMuyReciente("no-es-fecha", now)).toBe(false);
+    expect(reservaMuyReciente("2026-09-13T17:00:00.000Z", now)).toBe(false);
   });
 });
 

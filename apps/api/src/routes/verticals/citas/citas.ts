@@ -16,6 +16,7 @@ import { citasCalendarProvidersRoutes } from "./calendar-providers.ts";
 import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { citasAuditoriaRoutes } from "./auditoria.ts";
 import { citasPrivacidadRoutes } from "./privacidad.ts";
+import { citasWhatsappAgenteRoutes } from "./whatsapp-agente.ts";
 import { citasWhatsappMensajesRoutes } from "./whatsapp-mensajes.ts";
 import { citasAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { citasOnboardingRoutes } from "./onboarding.ts";
@@ -48,6 +49,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasPrivacidadRoutes(deps));
   // C-04 -- mensajes de WhatsApp editables (ver packages/domain-citas/migrations/026_citas_whatsapp_mensajes_config.sql).
   app.route("/", citasWhatsappMensajesRoutes(deps));
+  app.route("/", citasWhatsappAgenteRoutes(deps));
   // C-10 -- "Chatea con tus datos" (catalogo en packages/domain-citas/src/data-chat; ver docs/DATA-CHAT.md).
   app.route("/", citasAdminDataChatRoutes(deps));
   // C-06 -- checklist de onboarding derivado en el servidor (solo lectura, sin migracion).

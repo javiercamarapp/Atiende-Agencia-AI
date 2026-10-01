@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
+  Bot,
   CalendarCheck,
   CalendarClock,
   CalendarRange,
@@ -116,6 +117,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
         // C-04 -- mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
+        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
         { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
         // FASE 3 (producto) — bitácora de auditoría del staff (ver
         // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
