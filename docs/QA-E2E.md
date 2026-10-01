@@ -88,7 +88,7 @@ propietarios de rentas y el portal de cliente de despachos, y la mayor parte de 
 | `vigilante.ts` | consola y red: `pageerror`, `console.error` y respuestas 5xx fallan; 4xx sin fixture se anotan |
 | `navegacion.ts` | Sidebar de escritorio (acordeon de grupos) y barra movil + hoja "Mas": `seccionesDelPanel`, `irASeccion` |
 | `dialogos.ts` | `afirmarCancelarNoEscribe`: Cancelar y Escape cierran y **no** disparan ninguna escritura |
-| `ds.ts` | un solo `<main>`, skip link, `?ds=v2`/`?ds=off` (`html[data-theme]`), claro/oscuro (`html.dark`), sin scroll horizontal |
+| `ds.ts` | un solo `<main>`, skip link, claro/oscuro (`html.dark`), sin scroll horizontal |
 | `humo.ts` | `recorrerSecciones`: plantilla del recorrido humo de una vertical |
 
 ## Agregar un recorrido

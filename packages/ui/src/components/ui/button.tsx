@@ -8,9 +8,8 @@ import { cn } from "../../lib/utils";
 // Anatomía de píldora (rounded-full en todos los tamaños), feedback de press
 // global vía CSS (:active { scale(.97) }) en index.css.
 //
-// Atiende DS v2: el alto sale de --control-sm/md/lg (index.css). Hoy valen
-// 44/44/48 px (igual que el h-11 / h-12 de siempre); con <html data-theme="v2">
-// pasan a 32/40/44 px y a 44 px en <md. Transiciones enumeradas con los tokens
+// El alto sale de --control-sm/md/lg (index.css): 32/36/40 px, los h-8/h-9/h-10
+// de Likida, en todos los anchos. Transiciones enumeradas con los tokens
 // de motion (nada de transition-all). Variantes retiradas por no tener ningún
 // uso en el repo: hero, terracotta, gold y el tamaño xl.
 const buttonVariants = cva(
