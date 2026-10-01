@@ -77,6 +77,14 @@ procedimiento con su asesor jurídico. Todo vive en `src/privacidad/` y en un `P
 - **Minimización del prompt**: el prompt del agente de WhatsApp y el resultado de `buscar_cliente` que ve el
   modelo ya no llevan el texto de la dirección del cliente (solo cuántas direcciones hay y su etiqueta).
 - Verificación contra Postgres real: `scripts/verify-restaurantes-privacidad-arco/`.
+
+## Agente de WhatsApp de Los Taquitos de PM
+
+- Perfil por organizacion/sucursal: tabla `restaurantes.whatsapp_agent_config` (migracion 029) y `GET/PUT /v1/restaurantes/:propertyId/admin/config/agente-whatsapp` (owner/admin). Sin fila o con la base sin migrar el agente es el generico de siempre (SAVEPOINT + 42P01/42703/42883/42501).
+- Prompt del perfil: `src/whatsapp/perfil-pm.ts` (usted, orden del cuestionario, reglas duras H1-H12), con los nombres del registro unico de tools.
+- Comanda de SoftRestaurant tambien desde WhatsApp: opcion `encolarComanda` del handler (mismo helper que voz/web).
+- Evaluaciones: `src/evals/agente-pm/README.md`.
+
 ## Conversaciones, handoff a humano y turnos (R-21, migración 028)
 
 `src/conversaciones/`: bandeja por sucursal (WhatsApp y llamadas), toma de la conversación por una persona (mientras

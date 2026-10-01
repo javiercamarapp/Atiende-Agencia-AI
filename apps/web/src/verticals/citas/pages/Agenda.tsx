@@ -27,9 +27,11 @@
 // agenda para no duplicar el selector de proveedor.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import type { OpcionesConfirmar } from "@atiende/ui";
 import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserX, X } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
+  statusTone,
   Button,
   Card,
   CardContent,
@@ -48,10 +50,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useConfirm,
   Tabs,
   TabsList,
   TabsTrigger,
 } from "@atiende/ui";
+import { CITA_STATUS_TONES } from "../lib/status-tones.ts";
 import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
@@ -139,15 +143,9 @@ type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sy
 const SELECT_CLASS =
   "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
-/** Estado de la cita -> variante real de `Badge` (nada de hex artesanales). */
-function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "cancelled") return "destructive";
-  if (status === "completed") return "default";
-  if (status === "no_show") return "outline";
-  return "secondary";
-}
-
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
+  // Confirmaciones destructivas con el diálogo de @atiende/ui (antes `window.confirm`, que el navegador puede bloquear).
+  const { confirmar, dialogo } = useConfirm();
   const [view, setView] = useState<ViewMode>("month");
   // Bug real (revisión r6, punto 2 -- el fix de PR #164 solo corrigió la ETIQUETA):
   // `anchor` alimenta `startOfWeek`/`computeRange` (ambos con getters/setters `UTC*`,
@@ -235,7 +233,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   }, [apiBaseUrl, token, propertyId, providerFilter, waitlistServiceFilter]);
 
   async function handleBroadcastWaitlist() {
-    if (!window.confirm("¿Avisar a la lista de espera que un horario se liberó? Se les manda un mensaje real de WhatsApp.")) return;
+    const aceptado = await confirmar({
+      titulo: "¿Avisar a la lista de espera?",
+      descripcion: "Un horario se liberó. Se les manda un mensaje real de WhatsApp.",
+      confirmar: "Enviar aviso",
+      cancelar: "Volver",
+    });
+    if (!aceptado) return;
     setBroadcasting(true);
     setWaitlistError(null);
     setBroadcastSummary(null);
@@ -281,8 +285,8 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     return subscribeToAppointmentChanges(orgId, token, () => setRealtimeNonce((n) => n + 1));
   }, [orgId, token]);
 
-  async function runLifecycleAction(appointmentId: string, action: LifecycleAction, confirmMessage: string | null, run: () => Promise<AppointmentSummary>, errorFallback: string) {
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
+  async function runLifecycleAction(appointmentId: string, action: LifecycleAction, confirmacion: OpcionesConfirmar | null, run: () => Promise<AppointmentSummary>, errorFallback: string) {
+    if (confirmacion && !(await confirmar(confirmacion))) return;
     setPendingAction({ id: appointmentId, action });
     setError(null);
     try {
@@ -296,7 +300,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   }
 
   async function handleCancel(appointmentId: string) {
-    await runLifecycleAction(appointmentId, "cancel", "¿Cancelar esta cita? Esta acción no se puede deshacer.", () => cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo cancelar la cita.");
+    await runLifecycleAction(appointmentId, "cancel", { titulo: "¿Cancelar esta cita?", descripcion: "Esta acción no se puede deshacer.", tono: "danger", confirmar: "Cancelar cita", cancelar: "Volver" }, () => cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo cancelar la cita.");
   }
 
   async function handleConfirm(appointmentId: string) {
@@ -311,7 +315,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     await runLifecycleAction(
       appointmentId,
       "no_show",
-      "¿Marcar esta cita como no-show? El cliente no se presentó y el horario del proveedor queda libre de inmediato.",
+      {
+        titulo: "¿Marcar esta cita como no-show?",
+        descripcion: "El cliente no se presentó y el horario del proveedor queda libre de inmediato.",
+        tono: "danger",
+        confirmar: "Marcar no-show",
+        cancelar: "Volver",
+      },
       () => markAppointmentNoShow(fetch, apiBaseUrl, token, propertyId, appointmentId),
       "No se pudo marcar la cita como no-show.",
     );
@@ -521,7 +531,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusBadgeVariant(apt.status)}>{formatAppointmentStatus(apt.status)}</Badge>
+                  <StatusBadge tone={statusTone(CITA_STATUS_TONES, apt.status)}>{formatAppointmentStatus(apt.status)}</StatusBadge>
                   {apt.googleSyncStatus === "invalid" && (
                     <Button variant="outline" size="sm" onClick={() => void handleRetrySync(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <RefreshCw aria-hidden />
@@ -661,6 +671,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
           )}
         </CardContent>
       </Card>
+      {dialogo}
     </div>
   );
 }

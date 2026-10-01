@@ -16,7 +16,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Lock, Send, ShieldCheck, Users } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
+  statusTone,
   Button,
   Card,
   CardContent,
@@ -35,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@atiende/ui";
+import { INVITE_STATUS_TONES } from "../lib/status-tones.ts";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
@@ -60,13 +62,6 @@ function statusLabel(status: string): string {
   if (status === "revoked") return "Revocada";
   if (status === "expired") return "Expirada";
   return status;
-}
-
-/** Estado de la invitación -> variante real de `Badge`. */
-function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "revoked" || status === "expired") return "destructive";
-  if (status === "accepted") return "default";
-  return "secondary";
 }
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellContext) {
@@ -235,7 +230,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                       </TableCell>
                       <TableCell className="text-[13px] text-muted-foreground">{ROLE_LABELS[inv.verticalRole]}</TableCell>
                       <TableCell>
-                        <Badge variant={statusBadgeVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        <StatusBadge tone={statusTone(INVITE_STATUS_TONES, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
