@@ -188,6 +188,17 @@ se aplica 032 la purga deja de ser inmediata: una identidad vencida o con purga 
 de bloqueo (7 días por defecto, 3 a 30). No hay variables de entorno nuevas ni cambios en `vercel.json`.
 Los plazos son decisiones de producto, no asesoría legal: ver `packages/domain-hoteles/README.md` §H-02.
 
+**Restaurantes R-13 (migración 035, KPI de voz, costo por día y alertas) — orden de despliegue.** Mergear NO aplica
+`20240101000246_035_restaurantes_voz_kpi_alertas_costo.sql` a la base real. El código nuevo funciona contra la base
+vieja: la pestaña Indicadores del agente de voz muestra "no disponibles todavía", las lecturas responden
+`disponible:false`, las escrituras (umbrales, eventos) 503 y no se rompe ningún flujo existente (cada consulta degrada con
+SAVEPOINT). Orden: (1) despliega el código; (2) aplica la 035 (`supabase db push`; requiere 019, 022, 025 y 028 y las
+tablas de costos `core.fx_rate`/`core.usage_cost_event`/`core.llm_usage_daily`); (3) captura un tipo de cambio en
+`core.fx_rate` (sin él el costo en pesos sale "—"); (4) el servicio de voz debe empezar a reportar eventos a
+`POST /internal/restaurantes/voz/eventos` (herramientas con latencia y errores de proveedor): hasta entonces el p95 y los
+errores salen en cero / "—". Con la 035 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa
+las tablas ni funciones nuevas. No hay variables de entorno nuevas ni cambios en `vercel.json`.
+
 **Hoteles H-05 (migración 034, tickets de huésped con SLA) — orden de despliegue.** Mergear NO aplica
 `20240101000218_034_guest_ticket_sla_escalacion.sql` a la base real. El código nuevo funciona contra la
 base vieja: la pantalla Tickets avisa que aún no está activa, las lecturas responden `disponible:false`, las

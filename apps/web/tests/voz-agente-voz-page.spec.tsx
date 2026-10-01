@@ -94,10 +94,10 @@ async function irA(nombre: string) {
 }
 
 describe("<AgenteVozPage /> pestañas", () => {
-  it("tiene las 7 pestañas en orden y abre en Resumen", async () => {
+  it("tiene las 8 pestañas en orden y abre en Resumen", async () => {
     await pintar();
     const nombres = Array.from(rendered!.container.querySelectorAll('[role="tab"]')).map((t) => t.textContent);
-    expect(nombres).toEqual(["Resumen", "Voz", "Conocimiento", "Comportamiento", "Mensaje inicial", "Herramientas", "Conversaciones"]);
+    expect(nombres).toEqual(["Resumen", "Voz", "Conocimiento", "Comportamiento", "Mensaje inicial", "Herramientas", "Conversaciones", "Indicadores"]);
     expect(pestana("Resumen").getAttribute("aria-selected")).toBe("true");
     await irA("Voz");
     expect(pestana("Voz").getAttribute("aria-selected")).toBe("true");

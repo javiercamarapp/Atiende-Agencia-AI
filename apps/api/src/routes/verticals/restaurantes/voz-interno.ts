@@ -8,6 +8,7 @@
 //   POST /internal/restaurantes/voz/conversaciones/:id/turnos      registra un turno (idempotente por seq)
 //   POST /internal/restaurantes/voz/conversaciones/:id/cerrar      cierra (la base calcula duración/costo/p95)
 //   POST /internal/restaurantes/voz/previews/consumir              verifica el token HMAC y lo consume UNA vez
+//   POST /internal/restaurantes/voz/eventos                        reporta llamada a herramienta (latencia) o error de proveedor (R-13, migración 035)
 //
 // Cada operación corre en una sesión de sistema (`userId: null`): las funciones SQL exigen
 // `auth.uid() is null` y validan que sucursal/conversación/pedido pertenezcan a la organización
@@ -16,7 +17,9 @@
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import {
+  VOZ_EVENTO_TIPOS,
   VOZ_PROVEEDORES,
+  VOZ_PROVEEDORES_FALLO,
   VOZ_RESULTADOS,
   VOZ_ROLES_TURNO,
   VOZ_TURNO_TEXTO_MAX,
@@ -25,7 +28,7 @@ import {
   redactarTranscripcion,
   verificarPreviewToken,
 } from "@atiende/domain-restaurantes";
-import type { VozCanal, VozProveedorId, VozRepository, VozResultado, VozRolTurno } from "@atiende/domain-restaurantes";
+import type { VozCanal, VozEventoTipo, VozProveedorFallo, VozProveedorId, VozRepository, VozResultado, VozRolTurno } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -162,6 +165,41 @@ export function restaurantesVozInternoRoutes(deps: AppDeps): Hono {
         const consumida = await repoDe(db).consumirPreview({ sessionId: sid, organizationId: org, propertyId: prop });
         if (!consumida) throw Errors.conflict("La sesión de preview ya fue usada o expiró.");
         return c.json({ valido: true, sessionId: sid, organizationId: org, propertyId: prop, voiceId: vid, proveedor: prov });
+      } catch (err) {
+        return mapErrorDeVoz(err);
+      }
+    });
+  });
+
+  // R-13 (migración 035): el servicio de voz reporta la latencia de una herramienta o un error de proveedor.
+  // Alimenta el p95 de herramientas y la tasa de error del panel de KPI. Sin mensajes del proveedor (solo un código corto).
+  app.post(`${base}/eventos`, async (c) => {
+    exigirSecreto(deps, c.req.raw);
+    const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 4 * 1024);
+    const organizationId = uuid(body.organizationId, "organizationId");
+    const propertyId = uuid(body.propertyId, "propertyId");
+    const conversationId = body.conversationId === undefined || body.conversationId === null ? null : uuid(body.conversationId, "conversationId");
+    if (typeof body.tipo !== "string" || !(VOZ_EVENTO_TIPOS as readonly string[]).includes(body.tipo)) throw Errors.validation(`tipo: debe ser uno de ${VOZ_EVENTO_TIPOS.join(", ")}.`);
+    const tipo = body.tipo as VozEventoTipo;
+    let proveedor: VozProveedorFallo | null = null;
+    let herramienta: string | null = null;
+    const latenciaMs = enteroOpcional(body.latenciaMs, "latenciaMs", MAX_DURACION_MS);
+    if (tipo === "error_proveedor") {
+      if (typeof body.proveedor !== "string" || !(VOZ_PROVEEDORES_FALLO as readonly string[]).includes(body.proveedor)) throw Errors.validation(`proveedor: debe ser uno de ${VOZ_PROVEEDORES_FALLO.join(", ")}.`);
+      proveedor = body.proveedor as VozProveedorFallo;
+    } else {
+      if (typeof body.herramienta !== "string" || body.herramienta.length < 1 || body.herramienta.length > 80) throw Errors.validation("herramienta: se esperaba texto de 1 a 80 caracteres.");
+      if (latenciaMs === null) throw Errors.validation("latenciaMs: obligatorio en tool_call.");
+      herramienta = body.herramienta;
+    }
+    if (body.codigo !== undefined && body.codigo !== null && (typeof body.codigo !== "string" || body.codigo.length < 1 || body.codigo.length > 80)) throw Errors.validation("codigo: se esperaba texto de 1 a 80 caracteres.");
+    const ocurridoAt = fechaOpcional(body.ocurridoAt, "ocurridoAt");
+
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      if (!deps.vozKpiRepo) throw Errors.serviceUnavailable("Los KPI de voz no están disponibles en este despliegue.");
+      try {
+        await deps.vozKpiRepo(db).registrarEvento({ organizationId, propertyId, conversationId, tipo, proveedor, herramienta, latenciaMs, codigo: typeof body.codigo === "string" ? body.codigo : null, ocurridoAt });
+        return c.json({ registrado: true }, 201);
       } catch (err) {
         return mapErrorDeVoz(err);
       }

@@ -4,7 +4,12 @@
 // organizacion y bitacora inmutable. Mismo principio rector que
 // docs/SUPERADMIN_ACCIONES.md: ningun efecto real con un solo POST.
 //
-// `POST .../acciones/:id/confirmar` esta en la lista de acciones sensibles
+// Doble control (SA-06): suspender una organizacion con contrato vigente (SA-43) exige ademas
+// `POST .../acciones/:id/aprobar` de un SEGUNDO superadmin; sin esa aprobacion confirmar falla.
+// Pasar a cuenta de prueba una organizacion con contrato vigente se rechaza, y el cambio de plan
+// registra el contrato y la version vigentes. La logica vive en SQL (migracion 0038).
+//
+// `POST .../acciones/:id/confirmar` y `.../aprobar` estan en la lista de acciones sensibles
 // (step-up MFA, ver superadmin-seguridad/step-up.ts). Suspender corta el acceso del
 // STAFF al panel de esa organizacion (core-auth: 403 organization_suspended); NO toca
 // Stripe ni core.organization_billing, ni detiene los canales publicos de cara al
@@ -19,10 +24,11 @@ import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
 const NO_DISPONIBLE = "La gestión de organizaciones todavía no está disponible en este despliegue (falta aplicar la migración 0025_superadmin_mfa_switches_orgs).";
+const NO_DISPONIBLE_DOBLE_CONTROL = "El doble control todavía no está disponible en este despliegue (falta aplicar la migración 0038_superadmin_gestion_organizaciones).";
 const MUTACION_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 const TIPOS = new Set<OrgActionTipo>(["alta", "suspender", "reactivar", "cambiar_plan"]);
 
-function serialize(a: OrgAdminActionRow) {
+function serialize(a: OrgAdminActionRow, callerId: string) {
   return {
     id: a.id,
     tipo: a.tipo,
@@ -36,6 +42,13 @@ function serialize(a: OrgAdminActionRow) {
     confirmadoPor: a.confirmadoPor,
     confirmadoEnMs: a.confirmadoEnMs,
     resultado: a.resultado,
+    requiereDobleControl: a.requiereDobleControl,
+    contratoId: a.contratoId,
+    contratoVersion: a.contratoVersion,
+    aprobadoPor: a.aprobadoPor,
+    aprobadoEnMs: a.aprobadoEnMs,
+    // La pantalla decide con esto quien ve Confirmar (el solicitante) y quien ve Aprobar (otro superadmin).
+    esSolicitante: a.creadoPor === callerId,
   };
 }
 
@@ -59,7 +72,7 @@ export function superadminOrganizacionesRoutes(deps: AppDeps): Hono<CoreAuthHono
     const repo = deps.orgAdminRepo;
     const callerId = c.get("userId");
     const { availability, actions } = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).list(callerId, 100));
-    return c.json({ disponible: availability === "available", acciones: actions.map(serialize) });
+    return c.json({ disponible: availability === "available", acciones: actions.map((a) => serialize(a, callerId)) });
   });
 
   // Primer paso: NUNCA ejecuta nada, solo registra la solicitud (vence en 10 min).
@@ -81,7 +94,7 @@ export function superadminOrganizacionesRoutes(deps: AppDeps): Hono<CoreAuthHono
     try {
       const result = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).request(callerId, tipo, organizationId, payload, motivo));
       if (result.availability === "not_migrated" || !result.action) throw Errors.serviceUnavailable(NO_DISPONIBLE);
-      return c.json({ accion: serialize(result.action) }, 201);
+      return c.json({ accion: serialize(result.action, callerId) }, 201);
     } catch (err) {
       return traducirErrorSeguridad(err);
     }
@@ -97,7 +110,22 @@ export function superadminOrganizacionesRoutes(deps: AppDeps): Hono<CoreAuthHono
       const result = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).confirm(callerId, c.req.param("id")));
       if (result.availability === "not_migrated" || !result.action) throw Errors.serviceUnavailable(NO_DISPONIBLE);
       if (result.action.estado === "expired") throw Errors.conflict("Esta solicitud ya venció: créala de nuevo.");
-      return c.json({ accion: serialize(result.action) });
+      return c.json({ accion: serialize(result.action, callerId) });
+    } catch (err) {
+      return traducirErrorSeguridad(err);
+    }
+  });
+
+  // Segundo control: otro superadmin (distinto del solicitante) aprueba; NO ejecuta nada. Base sin 0038 -> 503.
+  app.post("/superadmin/organizaciones/acciones/:id/aprobar", async (c) => {
+    if (!deps.orgAdminRepo) throw Errors.serviceUnavailable(NO_DISPONIBLE_DOBLE_CONTROL);
+    const repo = deps.orgAdminRepo;
+    const callerId = c.get("userId");
+    await limitar(c, callerId, "orgs-aprobar");
+    try {
+      const result = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).approve(callerId, c.req.param("id")));
+      if (result.availability === "not_migrated" || !result.action) throw Errors.serviceUnavailable(NO_DISPONIBLE_DOBLE_CONTROL);
+      return c.json({ accion: serialize(result.action, callerId) });
     } catch (err) {
       return traducirErrorSeguridad(err);
     }
@@ -110,7 +138,7 @@ export function superadminOrganizacionesRoutes(deps: AppDeps): Hono<CoreAuthHono
     try {
       const result = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).cancel(callerId, c.req.param("id")));
       if (result.availability === "not_migrated" || !result.action) throw Errors.serviceUnavailable(NO_DISPONIBLE);
-      return c.json({ accion: serialize(result.action) });
+      return c.json({ accion: serialize(result.action, callerId) });
     } catch (err) {
       return traducirErrorSeguridad(err);
     }
