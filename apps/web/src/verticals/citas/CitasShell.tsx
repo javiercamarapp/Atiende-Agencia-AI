@@ -188,6 +188,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/citas/${orgSlug}/notificaciones`}
       vertical="citas"
       sections={buildSections(orgSlug)}
       mobileItems={buildMobileItems(orgSlug)}

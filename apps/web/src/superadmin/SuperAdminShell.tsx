@@ -131,17 +131,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
 
   const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
   const campana = (className?: string) => (
-    <NotificationBell
-      className={className}
-      items={notif.items}
-      unreadCount={notif.unreadCount}
-      loading={notif.loading}
-      onOpenChange={(open) => {
-        if (open) notif.refetch();
-      }}
-      onMarkRead={notif.onMarkRead}
-      onMarkAllRead={notif.onMarkAllRead}
-    />
+    <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
 
   return (

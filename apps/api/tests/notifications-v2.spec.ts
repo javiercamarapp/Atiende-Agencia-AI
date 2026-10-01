@@ -88,3 +88,25 @@ describe("estado leido por usuario", () => {
     expect(await core.countUnreadNotificationsForStaff(otro)).toBe(1);
   });
 });
+
+describe("GET /notifications/unread-count (sondeo de la campana)", () => {
+  it("devuelve solo el numero de no leidas del propio usuario y baja al leer", async () => {
+    const { app, core, ownerId, auth } = await login();
+    const id1 = randomUUID();
+    core.addNotification(ownerId, { ...base, id: id1, titulo: "A", createdAt: "2026-10-01T10:00:00.000Z" });
+    core.addNotification(ownerId, { ...base, id: randomUUID(), titulo: "B", createdAt: "2026-10-01T11:00:00.000Z" });
+    core.addNotification(randomUUID(), { ...base, id: randomUUID(), titulo: "Ajena", createdAt: "2026-10-01T11:00:00.000Z" });
+
+    const leer = async () => (await (await app.request("/notifications/unread-count", { headers: auth })).json()) as Record<string, unknown>;
+    expect(await leer()).toEqual({ unreadCount: 2 });
+    await app.request(`/notifications/${id1}/read`, { method: "POST", headers: auth });
+    expect(await leer()).toEqual({ unreadCount: 1 });
+    await app.request("/notifications/read-all", { method: "POST", headers: auth });
+    expect(await leer()).toEqual({ unreadCount: 0 });
+  });
+
+  it("exige sesion", async () => {
+    const { app } = await login();
+    expect((await app.request("/notifications/unread-count")).status).toBe(401);
+  });
+});

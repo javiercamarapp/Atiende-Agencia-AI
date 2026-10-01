@@ -222,12 +222,18 @@ describe("MobileAccountMenu", () => {
 });
 
 describe("MobileHeaderActions", () => {
-  const notif = { items: [], unreadCount: 3, loading: false, refetch: () => {}, onMarkRead: () => {}, onMarkAllRead: () => {} };
+  const notif = { unreadCount: 3, hayNoLeidas: true, refetch: () => {} };
 
-  it("expone campana con contador, chat (marcado Pronto) y cerrar sesión", () => {
+  it("expone la campana (enlace con punto rojo sin número), chat (marcado Pronto) y cerrar sesión", () => {
     const onLogout = vi.fn();
-    rendered = renderComponent(<MobileHeaderActions notif={notif} user={{ email: "a@b.com", rol: "admin" }} onLogout={onLogout} />);
-    expect(rendered.container.querySelector('button[aria-label="Notificaciones: 3 sin leer"]')).not.toBeNull();
+    rendered = renderComponent(
+      <MemoryRouter>
+        <MobileHeaderActions notif={notif} notificacionesHref="/v/demo/notificaciones" user={{ email: "a@b.com", rol: "admin" }} onLogout={onLogout} />
+      </MemoryRouter>,
+    );
+    const campana = rendered.container.querySelector('a[aria-label="Notificaciones: hay avisos sin leer"]');
+    expect(campana?.getAttribute("href")).toBe("/v/demo/notificaciones");
+    expect(campana?.textContent).toBe("");
     click(rendered.container.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect(hoja.textContent).toContain("Chatea con tus datos");
@@ -236,7 +242,11 @@ describe("MobileHeaderActions", () => {
   });
 
   it("conChat=false (superadmin) no muestra Chatea con tus datos", () => {
-    rendered = renderComponent(<MobileHeaderActions notif={notif} user={null} onLogout={() => {}} conChat={false} />);
+    rendered = renderComponent(
+      <MemoryRouter>
+        <MobileHeaderActions notif={notif} notificacionesHref="/v/demo/notificaciones" user={null} onLogout={() => {}} conChat={false} />
+      </MemoryRouter>,
+    );
     click(rendered.container.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     expect(document.body.querySelector('[role="dialog"]')!.textContent).not.toContain("Chatea con tus datos");
   });

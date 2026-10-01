@@ -13,11 +13,13 @@ import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 export type VerticalShellConectadoProps = Omit<VerticalShellProps, "notificationBell" | "mobileNotificationBell" | "chatButton" | "mobileChatButton"> & {
   readonly apiBaseUrl: string;
   readonly token: string;
+  /** Pagina de notificaciones de la consola (`/<vertical>/<orgSlug>/notificaciones`): a donde lleva la campana. */
+  readonly notificacionesHref: string;
   /** Conexion real al chat de la vertical (solo restaurantes por ahora); sin ella el boton dice "Pronto". */
   readonly chat?: ChatDatosConexion;
 };
 
-export function VerticalShellConectado({ apiBaseUrl, token, chat, ...shell }: VerticalShellConectadoProps) {
+export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
   // Pildora "Pregunta a tus datos" del pie del Sidebar (gemela de la de Likida): abre el MISMO panel real que el
   // boton de la barra y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
@@ -28,17 +30,7 @@ export function VerticalShellConectado({ apiBaseUrl, token, chat, ...shell }: Ve
     ...(chat && chatDisponible ? [{ label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
   ];
   const campana = (className?: string) => (
-    <NotificationBell
-      className={className}
-      items={notif.items}
-      unreadCount={notif.unreadCount}
-      loading={notif.loading}
-      onOpenChange={(open) => {
-        if (open) notif.refetch();
-      }}
-      onMarkRead={notif.onMarkRead}
-      onMarkAllRead={notif.onMarkAllRead}
-    />
+    <NotificationBell className={className} href={notificacionesHref} hayNoLeidas={notif.hayNoLeidas} />
   );
   return (
     <>

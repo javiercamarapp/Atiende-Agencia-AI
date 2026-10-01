@@ -231,6 +231,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/despachos/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="despachos"
       sections={buildSidebarSections(orgSlug)}

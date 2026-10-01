@@ -426,6 +426,30 @@
   }
 }
 
+/* Odometro (contador retro de Likida, admin/contador-retro.tsx): tablero oscuro con los tokens
+   --odometro-*, raya central y hoja que gira 420 ms (reloj-flip, globals.css:259-263). */
+.odometro-digito {
+  background: linear-gradient(180deg, var(--odometro-a), var(--odometro-b));
+  color: #f2f2f0;
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.odometro-raya { background: var(--odometro-raya); }
+.odometro-hoja {
+  background: linear-gradient(180deg, var(--odometro-a), var(--odometro-b));
+  transform-origin: center;
+  animation: reloj-flip 420ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes reloj-flip {
+  0%   { transform: rotateX(0deg); opacity: 1; }
+  60%  { opacity: 1; }
+  100% { transform: rotateX(-100deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .odometro-hoja { animation: none; opacity: 0; }
+}
+
 @keyframes atiende-respira {
   0%, 100% { opacity: 0.35; transform: scale(0.985); }
   50%      { opacity: 1;    transform: scale(1); }

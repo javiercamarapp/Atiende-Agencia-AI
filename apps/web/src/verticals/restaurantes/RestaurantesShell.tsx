@@ -224,6 +224,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/restaurantes/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="restaurantes"
       sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role))}

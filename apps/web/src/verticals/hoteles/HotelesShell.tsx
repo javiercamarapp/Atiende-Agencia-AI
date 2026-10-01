@@ -255,6 +255,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     <VerticalShellConectado
       apiBaseUrl={apiBaseUrl}
       token={session.token}
+      notificacionesHref={`/hoteles/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="hoteles"
       sections={sections}
