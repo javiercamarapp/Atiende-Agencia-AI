@@ -14,7 +14,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, normalizePromotionCode, PROMOTION_CODE_PATTERN } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, normalizePromotionCode, PROMOTION_CODE_PATTERN, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
 import type { CanalPedido, Promotion, PromotionType, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { UUID_PATTERN } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -52,8 +52,8 @@ function optionalNullableString(value: unknown, field: string, maxLength: number
 }
 
 function requireType(value: unknown): PromotionType {
-  if (value !== "percentage" && value !== "fixed" && value !== "bogo") {
-    throw Errors.validation('type: se esperaba "percentage", "fixed" o "bogo" (2x1).');
+  if (value !== "percentage" && value !== "fixed" && value !== "bogo" && value !== "cortesia") {
+    throw Errors.validation('type: se esperaba "percentage", "fixed", "bogo" (2x1) o "cortesia" (combo de cortesía).');
   }
   return value;
 }
@@ -62,9 +62,9 @@ function requireType(value: unknown): PromotionType {
  * (mismo CHECK que migrations/010), un fijo no tiene techo aquí (lo acota el total
  * real del pedido en promotions.ts::computePromotionDiscount, nunca aquí). */
 function requireValue(value: unknown, type: PromotionType): number {
-  // 2x1: el valor no se usa; la tabla exige value = 1 (migracion 027). Se acepta omitido o 1.
-  if (type === "bogo") {
-    if (value !== undefined && value !== 1) throw Errors.validation("value: un 2x1 (bogo) no lleva valor; omítalo o envíe 1.");
+  // 2x1 y cortesia: el valor no se usa; la tabla exige value = 1 (migraciones 027 y 028). Se acepta omitido o 1.
+  if (type === "bogo" || type === "cortesia") {
+    if (value !== undefined && value !== 1) throw Errors.validation(`value: ${type === "bogo" ? "un 2x1 (bogo)" : "un combo de cortesía"} no lleva valor; omítalo o envíe 1.`);
     return 1;
   }
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -134,17 +134,65 @@ function optionalNullableChannels(value: unknown): readonly CanalPedido[] | null
 
 /** Ids de producto elegibles: UUID válidos, máximo 50 y TODOS de esta organización (el arreglo de la
  * base no tiene FK, así que la pertenencia se comprueba aquí). */
-async function optionalNullableProductIds(value: unknown, repo: RestaurantesRepository, organizationId: string): Promise<readonly string[] | null | undefined> {
+async function optionalNullableProductIds(value: unknown, repo: RestaurantesRepository, organizationId: string, field = "productIds"): Promise<readonly string[] | null | undefined> {
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (!Array.isArray(value) || value.length === 0 || value.length > 50 || value.some((v) => typeof v !== "string" || !UUID_PATTERN.test(v))) {
-    throw Errors.validation("productIds: se esperaba un arreglo de 1 a 50 ids de producto (UUID) o null (todos los productos).");
+    throw Errors.validation(`${field}: se esperaba un arreglo de 1 a 50 ids de producto (UUID) o null.`);
   }
   const ids = [...new Set(value as string[])];
   for (const id of ids) {
-    if (!(await repo.findProduct(organizationId, id))) throw Errors.validation(`productIds: el producto ${id} no existe en esta organización.`);
+    if (!(await repo.findProduct(organizationId, id))) throw Errors.validation(`${field}: el producto ${id} no existe en esta organización.`);
   }
   return ids;
+}
+
+function optionalCourtesyQuantity(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 10) {
+    throw Errors.validation("courtesyQuantity: se esperaba un entero de 1 a 10 (piezas de cortesía por cada producto de la promoción) o null.");
+  }
+  return value;
+}
+
+/** Reglas cruzadas de la forma FINAL de una promocion (ya mezclado el parche con lo existente). Mismas
+ * condiciones que los CHECK de la migracion 028, con un mensaje accionable en vez de un 500/23514. */
+function assertPromotionShape(p: {
+  readonly type: PromotionType;
+  readonly autoApply: boolean;
+  readonly channels: readonly CanalPedido[] | null;
+  readonly productIds: readonly string[] | null;
+  readonly courtesyProductIds: readonly string[] | null;
+  readonly courtesyQuantity: number | null;
+}): void {
+  if (p.autoApply && (!p.channels || p.channels.length === 0)) {
+    throw Errors.validation('autoApply: una promoción automática exige channels explícito (por ejemplo ["recoger"]); así nunca se aplica a un canal por omisión.');
+  }
+  if (p.type === "cortesia") {
+    if (!p.productIds || p.productIds.length === 0) throw Errors.validation("productIds: un combo de cortesía necesita los productos que lo disparan.");
+    if (!p.courtesyProductIds || p.courtesyProductIds.length === 0) throw Errors.validation("courtesyProductIds: un combo de cortesía necesita la lista de productos de cortesía.");
+    if (p.courtesyQuantity === null) throw Errors.validation("courtesyQuantity: un combo de cortesía necesita las piezas de cortesía por producto.");
+    const disparadores = new Set(p.productIds);
+    if (p.courtesyProductIds.some((id) => disparadores.has(id))) {
+      throw Errors.validation("courtesyProductIds: un producto no puede ser a la vez disparador y de cortesía.");
+    }
+  } else if (p.courtesyProductIds !== null || p.courtesyQuantity !== null) {
+    throw Errors.validation('courtesyProductIds/courtesyQuantity: solo aplican a promociones de tipo "cortesia".');
+  }
+}
+
+/** Base sin las migraciones 027/028: las escrituras de campos nuevos (2x1, canales, automaticas, cortesia) lanzan
+ * `RestaurantesConfigUnavailableError` -> 503 honesto con el motivo, nunca un 500. */
+async function conCompatibilidad<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof RestaurantesConfigUnavailableError) {
+      throw Errors.serviceUnavailable("Las promociones 2x1, por canal, automáticas y de cortesía todavía no están disponibles en esta base de datos (falta aplicar las migraciones 027 y 028).");
+    }
+    throw err;
+  }
 }
 
 function serializePromotion(p: Promotion) {
@@ -166,6 +214,9 @@ function serializePromotion(p: Promotion) {
     isActive: p.isActive,
     channels: p.channels,
     productIds: p.productIds,
+    autoApply: p.autoApply,
+    courtesyProductIds: p.courtesyProductIds,
+    courtesyQuantity: p.courtesyQuantity,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -187,6 +238,15 @@ interface PromotionBody {
   readonly isActive?: unknown;
   readonly channels?: unknown;
   readonly productIds?: unknown;
+  readonly autoApply?: unknown;
+  readonly courtesyProductIds?: unknown;
+  readonly courtesyQuantity?: unknown;
+}
+
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: se esperaba true o false.`);
+  return value;
 }
 
 export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -223,13 +283,24 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     const isActive = raw.isActive === undefined ? undefined : Boolean(raw.isActive);
     const channels = optionalNullableChannels(raw.channels);
     const productIds = await optionalNullableProductIds(raw.productIds, repo, c.get("organizationId"));
+    const autoApply = optionalBoolean(raw.autoApply, "autoApply");
+    const courtesyProductIds = await optionalNullableProductIds(raw.courtesyProductIds, repo, c.get("organizationId"), "courtesyProductIds");
+    const courtesyQuantity = optionalCourtesyQuantity(raw.courtesyQuantity);
+    assertPromotionShape({
+      type,
+      autoApply: autoApply ?? false,
+      channels: channels ?? null,
+      productIds: productIds ?? null,
+      courtesyProductIds: courtesyProductIds ?? null,
+      courtesyQuantity: courtesyQuantity ?? null,
+    });
 
     const existing = await repo.listPromotions(c.get("organizationId"));
     if (existing.some((p) => p.code === code)) {
       throw Errors.validation(`Ya existe una promoción con el código "${code}" en esta organización.`);
     }
 
-    const created = await repo.createPromotion(c.get("organizationId"), {
+    const created = await conCompatibilidad(() => repo.createPromotion(c.get("organizationId"), {
       code,
       name,
       type,
@@ -245,7 +316,10 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       ...(isActive !== undefined ? { isActive } : {}),
       ...(channels !== undefined ? { channels } : {}),
       ...(productIds !== undefined ? { productIds } : {}),
-    });
+      ...(autoApply !== undefined ? { autoApply } : {}),
+      ...(courtesyProductIds !== undefined ? { courtesyProductIds } : {}),
+      ...(courtesyQuantity !== undefined ? { courtesyQuantity } : {}),
+    }));
     logEvent(c, "info", "restaurantes_admin_promocion_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), promotionId: created.id, code });
 
     // FASE 3 (producto) — alta de promoción (ver
@@ -257,9 +331,9 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       action: "promocion.creada",
       entityType: "promocion",
       entityId: created.id,
-      campo: "code,type,value,isActive,channels,productIds",
+      campo: "code,type,value,isActive,channels,productIds,autoApply,courtesyProductIds,courtesyQuantity",
       antes: null,
-      despues: `${created.code} (${created.type} ${created.value}${created.type === "percentage" ? "%" : ""}, activa=${created.isActive}, canales=${created.channels?.join("|") ?? "todos"}, productos=${created.productIds?.length ?? "todos"})`,
+      despues: `${created.code} (${created.type} ${created.value}${created.type === "percentage" ? "%" : ""}, activa=${created.isActive}, canales=${created.channels?.join("|") ?? "todos"}, productos=${created.productIds?.length ?? "todos"}, automatica=${created.autoApply}${created.type === "cortesia" ? `, cortesia=${created.courtesyQuantity}x${created.courtesyProductIds?.length ?? 0} productos` : ""})`,
     });
 
     return c.json({ promotion: serializePromotion(created) }, 201);
@@ -284,10 +358,10 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     }
     const type = raw.type !== undefined ? requireType(raw.type) : undefined;
     // Cambiar el tipo sin mandar el valor dejaría el valor del tipo anterior (p. ej. 1 de un 2x1 como 1%).
-    if (type !== undefined && type !== existing.type && type !== "bogo" && raw.value === undefined) {
+    if (type !== undefined && type !== existing.type && type !== "bogo" && type !== "cortesia" && raw.value === undefined) {
       throw Errors.validation("value: al cambiar el tipo de la promoción envíe también el valor.");
     }
-    const value = raw.value !== undefined || type === "bogo" ? requireValue(raw.value, type ?? existing.type) : undefined;
+    const value = raw.value !== undefined || type === "bogo" || type === "cortesia" ? requireValue(raw.value, type ?? existing.type) : undefined;
     const startsAt = optionalNullableIsoDate(raw.startsAt, "startsAt");
     const endsAt = optionalNullableIsoDate(raw.endsAt, "endsAt");
     const effectiveStartsAt = startsAt !== undefined ? startsAt : existing.startsAt;
@@ -295,6 +369,21 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     if (effectiveStartsAt && effectiveEndsAt && effectiveEndsAt < effectiveStartsAt) {
       throw Errors.validation("endsAt no puede ser anterior a startsAt.");
     }
+
+    const channels = optionalNullableChannels(raw.channels);
+    const productIds = await optionalNullableProductIds(raw.productIds, repo, organizationId);
+    const autoApply = optionalBoolean(raw.autoApply, "autoApply");
+    const courtesyProductIds = await optionalNullableProductIds(raw.courtesyProductIds, repo, organizationId, "courtesyProductIds");
+    const courtesyQuantity = optionalCourtesyQuantity(raw.courtesyQuantity);
+    // Forma FINAL (parche sobre lo existente): la combinacion es la que debe ser valida, no cada campo suelto.
+    assertPromotionShape({
+      type: type ?? existing.type,
+      autoApply: autoApply ?? existing.autoApply,
+      channels: channels !== undefined ? channels : existing.channels,
+      productIds: productIds !== undefined ? productIds : existing.productIds,
+      courtesyProductIds: courtesyProductIds !== undefined ? courtesyProductIds : existing.courtesyProductIds,
+      courtesyQuantity: courtesyQuantity !== undefined ? courtesyQuantity : existing.courtesyQuantity,
+    });
 
     const patch = {
       code,
@@ -310,10 +399,13 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       endTime: optionalNullableTime(raw.endTime, "endTime"),
       maxUses: optionalNullablePositiveInt(raw.maxUses, "maxUses"),
       isActive: raw.isActive === undefined ? undefined : Boolean(raw.isActive),
-      channels: optionalNullableChannels(raw.channels),
-      productIds: await optionalNullableProductIds(raw.productIds, repo, organizationId),
+      channels,
+      productIds,
+      autoApply,
+      courtesyProductIds,
+      courtesyQuantity,
     };
-    const updated = await repo.updatePromotion(organizationId, promotionId, patch);
+    const updated = await conCompatibilidad(() => repo.updatePromotion(organizationId, promotionId, patch));
     if (!updated) throw Errors.notFound("Promoción no encontrada.");
     logEvent(c, "info", "restaurantes_admin_promocion_actualizada", { actorUserId: c.get("userId"), organizationId, promotionId });
 

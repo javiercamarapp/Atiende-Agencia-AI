@@ -213,6 +213,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
         colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
         propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
+        hora_recogida: { type: "string", description: "Solo canal 'recoger': hora a la que el cliente pasará, en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00)." },
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
@@ -422,6 +423,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
+    horaRecogida: str(input.hora_recogida),
   };
   if (lenient) return base;
   // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).

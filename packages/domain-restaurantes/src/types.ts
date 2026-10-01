@@ -187,7 +187,7 @@ export interface CreateOrderInput {
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
-  /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger"; debe ser futura. */
+  /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger". */
   readonly horaRecogida?: string;
 }
 
