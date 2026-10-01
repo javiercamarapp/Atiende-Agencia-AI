@@ -136,6 +136,10 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
   productores marcados `conectado`.
+- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 37 eventos y 34 con productor conectado. Los que se agregaron
+  (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`, `despachos.rep.incoherente`,
+  `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
+  del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

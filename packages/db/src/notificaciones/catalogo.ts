@@ -61,8 +61,6 @@ export interface EventoNotificacion {
   readonly productor: ProductorNotificacion;
 }
 
-const PEND_ORIGEN = "no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen";
-
 export const CATALOGO_NOTIFICACIONES: readonly EventoNotificacion[] = [
   // ---- Restaurantes -------------------------------------------------------------------------------
   { id: "restaurantes.pedido.nuevo", ambito: "restaurantes", categoria: "operacion", severidad: "info", roles: ["staff"], icono: "ShoppingBag", titulo: "Pedido nuevo por atender", cuerpo: null, parametros: [], enlace: "/restaurantes/{orgSlug}/pedidos", dedupe: "un aviso por pedido (clave = id del pedido)", venceDias: 7, productor: { estado: "conectado", archivo: "packages/domain-restaurantes/src/postgres-repository.ts" } },
