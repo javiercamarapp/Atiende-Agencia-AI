@@ -42,6 +42,7 @@ export {
   dbSession,
   requirePropertyMembership,
   assertVerticalRole,
+  organizationSuspendedError,
 } from "./middleware.ts";
 
 export type { OAuthStateClaims, GoogleTokenResponse, GoogleIdTokenClaims } from "./google-oauth.ts";

@@ -852,5 +852,77 @@ select core.confirm_org_admin_action('00000000-0000-0000-0000-0000000d0100', (se
 select count(*) as deberia_ser_1 from core.list_superadmin_security_events('00000000-0000-0000-0000-0000000d0100', 'org', 50) where event = 'org_action_executed';
 rollback;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- D) Enforcement de la suspension en la consulta REAL de membership
+--    (packages/core-auth/src/middleware.ts::requirePropertyMembership y
+--    packages/core-authz/src/admin-middleware.ts::requireOrganizationMembership):
+--    un miembro (rol authenticated + RLS reales) debe poder leer el status de SU
+--    organizacion en el join nuevo, y ver 'suspended' cuando aplica.
+-- ═══════════════════════════════════════════════════════════════════════════
+insert into core.property (id, organization_id, vertical, name) values
+  ('00000000-0000-0000-0000-0000000d3000', '00000000-0000-0000-0000-0000000d1000', 'restaurantes', 'Sucursal A'),
+  ('00000000-0000-0000-0000-0000000d3002', '00000000-0000-0000-0000-0000000d1002', 'citas', 'Sucursal C')
+on conflict do nothing;
+insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
+  ('00000000-0000-0000-0000-0000000d0102', '00000000-0000-0000-0000-0000000d1002', null, 'owner', 'staff')
+on conflict do nothing;
+
+\echo 'D1. requirePropertyMembership: la consulta con el join a core.organization devuelve la fila y status active para el miembro (RLS real)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0102', true);
+select count(*) as deberia_ser_1
+from (
+  select m.organization_id, m.platform_role, m.vertical_role, o.status as organization_status
+  from core.membership m
+  join core.property p on p.organization_id = m.organization_id
+  join core.organization o on o.id = m.organization_id
+  where p.id = '00000000-0000-0000-0000-0000000d3000'
+    and m.user_id = auth.uid()
+    and (m.property_ids is null or p.id = any(m.property_ids))
+) q where q.organization_status = 'active';
+rollback;
+
+\echo 'D2. requirePropertyMembership: la organizacion suspendida se ve como suspended (el middleware responde 403 organization_suspended)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0102', true);
+select count(*) as deberia_ser_1
+from (
+  select m.organization_id, o.status as organization_status
+  from core.membership m
+  join core.property p on p.organization_id = m.organization_id
+  join core.organization o on o.id = m.organization_id
+  where p.id = '00000000-0000-0000-0000-0000000d3002'
+    and m.user_id = auth.uid()
+    and (m.property_ids is null or p.id = any(m.property_ids))
+) q where q.organization_status = 'suspended';
+rollback;
+
+\echo 'D3. un NO miembro no obtiene filas del join (el aislamiento entre organizaciones se conserva)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0101', true);
+select count(*) as deberia_ser_0
+from core.membership m
+join core.property p on p.organization_id = m.organization_id
+join core.organization o on o.id = m.organization_id
+where p.id = '00000000-0000-0000-0000-0000000d3000' and m.user_id = auth.uid();
+rollback;
+
+\echo 'D4. requireOrganizationMembership: misma consulta por organizacion devuelve el status'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0102', true);
+select count(*) as deberia_ser_1
+from (
+  select m.organization_id, m.platform_role, m.vertical_role, o.status as organization_status
+  from core.membership m
+  join core.organization o on o.id = m.organization_id
+  where m.organization_id = '00000000-0000-0000-0000-0000000d1002'
+    and m.user_id = auth.uid()
+) q where q.organization_status = 'suspended';
+rollback;
+
 \echo ''
 \echo '=== Fin. Los escenarios "should_fail"/"deberia_ser_N" los evalua scripts/verify-real-postgres-ci/run-gate.mjs; a mano, cada should_fail debe terminar en ERROR y cada deberia_ser_N en su valor. ==='

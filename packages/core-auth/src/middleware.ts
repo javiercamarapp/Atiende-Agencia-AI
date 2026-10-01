@@ -17,7 +17,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import type { PlatformRole, TenancyEngine } from "@atiende/core-tenancy";
-import { Errors } from "./errors.ts";
+import { ApiError, Errors } from "./errors.ts";
 import { verifyAccessToken, TokenExpiredError } from "./jwt.ts";
 import type { CoreAuthEnv, CoreAuthHonoEnv } from "./types.ts";
 
@@ -121,6 +121,16 @@ interface MembershipRow {
   readonly organization_id: string;
   readonly platform_role: PlatformRole;
   readonly vertical_role: string;
+  /** `core.organization.status` -- ausente en dobles de prueba antiguos (se trata
+   *  como "no suspendida"). */
+  readonly organization_status?: string;
+}
+
+/** Una organizacion suspendida por el back office de plataforma (core.org_admin_action
+ *  tipo `suspender`) pierde el acceso del STAFF a su panel. Codigo propio para que
+ *  el frontend pueda mostrar un mensaje claro en vez de un 403 generico. */
+export function organizationSuspendedError(): ApiError {
+  return new ApiError(403, "organization_suspended", "Esta organización está suspendida. Contacta a soporte de Atiende para reactivarla.");
 }
 
 /**
@@ -148,9 +158,10 @@ export function requirePropertyMembership(
 
     const db = c.get("db");
     const { rows } = await db.query<MembershipRow>(
-      `select m.organization_id, m.platform_role, m.vertical_role
+      `select m.organization_id, m.platform_role, m.vertical_role, o.status as organization_status
        from core.membership m
        join core.property p on p.organization_id = m.organization_id
+       join core.organization o on o.id = m.organization_id
        where p.id = $1
          and m.user_id = auth.uid()
          and (m.property_ids is null or p.id = any(m.property_ids));`,
@@ -161,6 +172,7 @@ export function requirePropertyMembership(
       throw Errors.forbidden("No perteneces al staff de esta property.");
     }
     const row = rows[0]!;
+    if (row.organization_status === "suspended") throw organizationSuspendedError();
     if (allowedRoles && !allowedRoles.includes(row.platform_role)) {
       throw Errors.forbidden(`Tu rol (${row.platform_role}) no puede realizar esta acción.`);
     }
