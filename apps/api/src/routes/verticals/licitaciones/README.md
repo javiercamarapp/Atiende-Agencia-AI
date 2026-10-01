@@ -145,3 +145,10 @@ El cron `/internal/licitaciones/deadline-reminders` vigila también el límite d
 - `GET|PUT /licitaciones/:propertyId/whatsapp/settings` y `POST .../whatsapp/opt-out`: el contacto del propio usuario.
 - `POST /licitaciones/:propertyId/tenders/:tenderId/whatsapp/request-decision` (`GO_NO_GO_ROLES`): emite tokens y encola el mensaje con botones Go / No-Go.
 - Base sin la migración 030: lecturas `available: false`, escrituras 503, webhook 200 sin procesar; nunca 500. El envío real sale por `POST /internal/whatsapp/dispatch` (ahora también drena `licitaciones`) y de forma inmediata best-effort tras encolar; nada de esto corre contra Graph API en tests ni en CI.
+
+## L-08 — KYC negativo 69-B del SAT (`kyc69b.ts`)
+
+- `GET /licitaciones/:propertyId/kyc-69b`: fichas de proveedores y competidores con semáforo, alertas (proveedor propio presunto/definitivo) y estado de la lista (cualquier rol).
+- `POST .../kyc-69b/consultar` (`WRITE_ROLES`): `{ rfcs: string[] }` (1 a 50; el RFC viaja en el cuerpo, nunca en la URL ni en los logs). Un RFC inválido o genérico rechaza todo el lote (400); tope diario por organización → 429; ritmo por usuario 20/min.
+- `POST .../kyc-69b/fichas` y `DELETE .../kyc-69b/fichas/:id` (`WRITE_ROLES`); `GET .../kyc-69b/consultas` (`DECISION_ROLES`): bitácora privada de la organización.
+- La lista 69-B no se duplica: la migración 031 expone un lector definer sobre `despachos.efos_*`. Base sin la 031 (o sin la 014 de despachos): lecturas `available: false`, escrituras 503; nunca 500. `AppDeps.licitacionesKycRepo` es opcional (lo cablea `production/deps.ts`).
