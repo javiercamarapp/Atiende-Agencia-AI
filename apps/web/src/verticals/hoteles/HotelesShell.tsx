@@ -48,6 +48,7 @@ import {
   BedDouble,
   CalendarCheck,
   ClipboardCheck,
+  Fingerprint,
   Gauge,
   LayoutDashboard,
   Receipt,
@@ -137,6 +138,12 @@ const REVENUE_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accounta
 // "Reputación" del nav para quien el servidor rechazaría de todas formas (403 en
 // reputacion.ts); housekeeping/maintenance/fnb nunca lo ven.
 const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
+
+// H-01 — bóveda de identidad: mismo `IDENTITY_CAPTURE_ROLES` exacto que
+// domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
+// arriba) — solo oculta el link "Identidad" del nav para quien el servidor rechazaría de
+// todas formas (403 en identidad.ts); housekeeping/maintenance/fnb/accountant nunca lo ven.
+const IDENTIDAD_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   useDocumentTitle("Hoteles");
@@ -315,6 +322,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
         ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
         ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
+        ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
       ],
     },
     {

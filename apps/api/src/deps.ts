@@ -4,6 +4,9 @@ import type {
   CoreStaffRepository,
   ImpersonationRepository,
   LlmUsageRepository,
+  MfaRepository,
+  OrgAdminRepository,
+  PlatformSwitchRepository,
   ResumenDiarioRepository,
   SaludRepository,
   SuperadminAccionesRepository,
@@ -12,7 +15,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, IdentityRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -45,6 +48,7 @@ import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
+import type { PlatformSwitchGuard } from "./platform-switches.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -121,6 +125,10 @@ export interface AppDeps {
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
   readonly voiceProvider?: VoiceAgentProvider;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
+  /** H-01 -- boveda de identidad de hoteles. OPCIONAL: en produccion no se define y las
+   *  rutas usan `PostgresIdentityRepository` (fabrica por-request, RLS real); solo los
+   *  tests lo sobreescriben con `InMemoryIdentityRepository`. */
+  readonly hotelesIdentidadRepo?: (db: TenantDbSession) => IdentityRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de
@@ -428,4 +436,20 @@ export interface AppDeps {
    * "no bloquea", ver su comentario de cabecera), solo pierde ese cruce
    * adicional de defensa en profundidad. */
   readonly saasBillingCustomerLookup?: CustomerLookup | null;
+  /** MFA TOTP del superadmin (packages/db/migrations/0025_...sql, ver
+   *  routes/superadmin-mfa.ts). Fabrica por sesion: las funciones que reciben el
+   *  resultado de la verificacion se llaman en `withAppSession({ userId: null })`
+   *  (SOLO sistema); reset/bitacora en la sesion del caller. OPCIONAL (`?:`, mismo
+   *  criterio que `whatsAppDispatcher`): ausente -> las rutas responden 503 honesto
+   *  y el step-up no se exige (salvo SUPERADMIN_MFA_REQUIRED, que entonces es
+   *  fail-closed). */
+  readonly mfaRepo?: (db: TenantDbSession) => MfaRepository;
+  /** Interruptores de plataforma (routes/superadmin-interruptores.ts). Fabrica por
+   *  sesion del caller para set/list; `getBlocked` (sistema) lo usa el guard. */
+  readonly platformSwitchRepo?: (db: TenantDbSession) => PlatformSwitchRepository;
+  /** Gestion de organizaciones con solicitar -> confirmar (routes/superadmin-organizaciones.ts). */
+  readonly orgAdminRepo?: (db: TenantDbSession) => OrgAdminRepository;
+  /** Guard con cache que consultan el gateway LLM (via GatewayKillSwitch) y
+   *  `salud/with-heartbeat.ts` antes de correr un cron. Ausente = nada se detiene. */
+  readonly platformSwitchGuard?: PlatformSwitchGuard;
 }

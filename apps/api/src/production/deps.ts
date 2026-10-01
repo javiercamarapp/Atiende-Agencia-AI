@@ -78,7 +78,15 @@ import {
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
 } from "@atiende/domain-rentas";
-import { openManagedPostgres, PostgresAuthzAuditRepository, PostgresCoreRepository, PostgresImpersonationRepository } from "@atiende/db";
+import {
+  openManagedPostgres,
+  PostgresAuthzAuditRepository,
+  PostgresCoreRepository,
+  PostgresImpersonationRepository,
+  PostgresMfaRepository,
+  PostgresOrgAdminRepository,
+  PostgresPlatformSwitchRepository,
+} from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
@@ -96,6 +104,7 @@ import { ProductionResumenDiarioRepository } from "./resumen-diario-repository.t
 import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
+import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -232,14 +241,22 @@ export function buildProductionDeps(): AppDeps {
   // sola vez aquí (esta función entera ya está cacheada en `cached` de arriba) y
   // se comparte entre los 3 turn handlers de WhatsApp y (vía `AppDeps.llmGateway`)
   // la ruta de extracción de requisitos de licitaciones.
-  const llmGateway = buildProductionLlmGateway(env, engine);
+  // Interruptores de plataforma (kill switches): un solo guard con cache de 10 s,
+  // compartido por el gateway LLM y por `withHeartbeat` de los crons. Lee en
+  // sesion de SISTEMA (core.get_blocked_platform_switches); base sin migrar ->
+  // lista vacia (nada bloqueado), nunca un error.
+  const platformSwitchGuard = createPlatformSwitchGuard(async () =>
+    (await engine.withAppSession({ userId: null }, (db) => new PostgresPlatformSwitchRepository(db).getBlocked())).blocked,
+  );
+  const gatewayKillSwitch = { blockedBy: (role: string) => platformSwitchGuard.agentBlockedBy(role) };
+  const llmGateway = buildProductionLlmGateway(env, engine, gatewayKillSwitch);
 
   // Gateway LLM DEDICADO al resumen diario -- SEPARADO del gateway de arriba
   // a propósito (nunca ata la narrativa del resumen a un `organization_id`
   // real, ver el comentario largo de `../resumen-diario/redaccion.ts` y
   // `./llm-gateway.ts::buildResumenDiarioLlmGateway`). Mismo criterio
   // fail-closed: `undefined` sin ningún proveedor configurado.
-  const resumenDiarioLlmGateway = buildResumenDiarioLlmGateway(env);
+  const resumenDiarioLlmGateway = buildResumenDiarioLlmGateway(env, gatewayKillSwitch);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -433,6 +450,14 @@ export function buildProductionDeps(): AppDeps {
     // arriba: `core.list_authz_audit_log_for_superadmin` exige
     // `auth.uid() = p_caller_id`.
     authzAuditRepo: (db) => new PostgresAuthzAuditRepository(db),
+    // MFA TOTP del superadmin, interruptores de plataforma y gestion de
+    // organizaciones (packages/db/migrations/0025_superadmin_mfa_switches_orgs.sql):
+    // fabricas por-request/por-sesion (el llamador elige sesion de SISTEMA o del
+    // caller segun el metodo, ver packages/db/src/superadmin-seguridad-repository.ts).
+    mfaRepo: (db) => new PostgresMfaRepository(db),
+    platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
+    orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
+    platformSwitchGuard,
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

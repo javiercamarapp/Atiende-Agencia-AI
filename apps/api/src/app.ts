@@ -21,6 +21,9 @@ import { superadminFacturacionRoutes } from "./routes/superadmin-facturacion.ts"
 import { superadminSaludRoutes } from "./routes/superadmin-salud.ts";
 import { superadminResumenRoutes } from "./routes/superadmin-resumen.ts";
 import { superadminAccionesRoutes } from "./routes/superadmin-acciones.ts";
+import { superadminMfaRoutes } from "./routes/superadmin-mfa.ts";
+import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores.ts";
+import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -81,6 +84,11 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminSaludRoutes(deps));
   app.route("/", superadminResumenRoutes(deps));
   app.route("/", superadminAccionesRoutes(deps));
+  // MFA TOTP + step-up, interruptores de plataforma y gestion de organizaciones del
+  // superadmin (autenticacion/gateo/step-up montados una vez en routes/superadmin.ts).
+  app.route("/", superadminMfaRoutes(deps));
+  app.route("/", superadminInterruptoresRoutes(deps));
+  app.route("/", superadminOrganizacionesRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
