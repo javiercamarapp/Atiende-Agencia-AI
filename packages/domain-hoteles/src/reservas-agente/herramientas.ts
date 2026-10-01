@@ -126,7 +126,7 @@ export interface ReservasToolContext {
   readonly hotelesRepo: HotelesRepository;
   readonly organizationId: string;
   readonly propertyId: string;
-  /** Telefono del canal (WhatsApp: el remitente; voz: el numero de la llamada). */
+  /** Telefono del canal (WhatsApp: el remitente; voz: el numero de la llamada; vacio si la llamada no lo entrego: solo consultas). */
   readonly contactPhone: string;
   readonly channel: "whatsapp" | "voz";
   /** Identificador del turno/llamada: la misma peticion repetida dentro del turno es idempotente. */
@@ -255,7 +255,7 @@ async function handoff(ctx: ReservasToolContext, reason: string, summary: string
   await registerContactoNoOperativo(ctx.hotelesRepo, {
     organizationId: ctx.organizationId,
     propertyId: ctx.propertyId,
-    guestPhone: ctx.contactPhone,
+    guestPhone: ctx.contactPhone || null,
     guestName: null,
     reason: `reservas: ${reason}`.slice(0, 500),
     message: summary,

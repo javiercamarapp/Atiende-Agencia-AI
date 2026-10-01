@@ -7,6 +7,8 @@ export interface ReservasAgenteRepository {
   // ---- agente (sistema) ----
   /** Disponibilidad + cotizacion por tipo de cuarto. Vacio honesto (`disponible:false`) sin la migracion 037. */
   stayOptions(propertyId: string, checkInDate: string, checkOutDate: string, now?: Date): Promise<StayOptionsResult>;
+  /** Politica efectiva para el agente (sesion de sistema). Sin la migracion 037: `disponible:false` y el agente NO expone herramientas de reservas. */
+  agentPolicy(propertyId: string): Promise<BookingPolicyResult>;
   /** Crea (o devuelve, si ya existe por llave o por el mismo contacto/tipo/fechas) el hold. Lanza `ReservasAgenteError`. */
   createHold(input: CreateHoldInput): Promise<HoldRecord>;
   /** Solo con id + telefono del contacto. Lanza `no_encontrada` si no coincide. */

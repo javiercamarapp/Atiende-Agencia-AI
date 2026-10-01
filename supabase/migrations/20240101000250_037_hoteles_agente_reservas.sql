@@ -303,6 +303,26 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 4) Funciones del AGENTE (solo sesion de sistema: auth.uid() is null).
 -- ---------------------------------------------------------------------------
+-- Politica efectiva para el AGENTE (sesion de sistema: la RLS de la tabla solo deja leerla a staff). Solo devuelve los topes y si
+-- los holds estan habilitados; el agente la consulta al inicio de cada turno y, si los holds no estan habilitados, no expone
+-- ninguna herramienta de reservas (comportamiento anterior intacto).
+create or replace function hoteles.agent_booking_policy(p_property_id uuid)
+returns table (holds_enabled boolean, mode text, hold_ttl_minutes integer, max_nights integer, max_guests integer, max_advance_days integer, max_active_holds integer)
+language plpgsql stable security definer set search_path = core, hoteles, pg_temp as $$
+declare
+  pol hoteles.booking_agent_policy;
+begin
+  if auth.uid() is not null then
+    raise exception 'solo la sesion de sistema (agente) consulta la politica' using errcode = '42501';
+  end if;
+  if not exists (select 1 from core.property pr where pr.id = p_property_id and pr.vertical = 'hoteles') then
+    raise exception 'property no encontrada' using errcode = 'P0002';
+  end if;
+  pol := hoteles.booking_policy_of(p_property_id);
+  return query select pol.holds_enabled, pol.mode, pol.hold_ttl_minutes, pol.max_nights, pol.max_guests, pol.max_advance_days, pol.max_active_holds;
+end;
+$$;
+
 create or replace function hoteles.agent_stay_options(p_property_id uuid, p_check_in date, p_check_out date, p_now timestamptz default null)
 returns table (room_type_id uuid, room_type_name text, max_occupancy integer, free_rooms integer, status text,
                net_cents bigint, iva_cents bigint, ish_cents bigint, total_cents bigint, nightly jsonb)
@@ -672,6 +692,7 @@ revoke all on function hoteles.agent_quote_core(uuid, uuid, date, date) from pub
 revoke all on function hoteles.booking_hold_release_inventory(hoteles.booking_hold) from public, anon, authenticated;
 revoke all on function hoteles.booking_hold_expire_core(uuid, timestamptz) from public, anon, authenticated;
 revoke all on function hoteles.booking_hold_lock(uuid) from public, anon, authenticated;
+revoke all on function hoteles.agent_booking_policy(uuid) from public, anon;
 revoke all on function hoteles.agent_stay_options(uuid, date, date, timestamptz) from public, anon;
 revoke all on function hoteles.booking_hold_create(uuid, uuid, date, date, integer, text, text, text, text, bigint, timestamptz) from public, anon;
 revoke all on function hoteles.booking_hold_status_for_contact(uuid, uuid, text, timestamptz) from public, anon;
@@ -684,6 +705,7 @@ revoke all on function hoteles.booking_hold_staff_cancel(uuid, text) from public
 
 -- La sesion de sistema de la API corre como el rol de la conexion (authenticated con auth.uid() null, igual que 022/035/036):
 -- por eso las funciones del agente tambien llevan EXECUTE para authenticated y se protegen con el guard auth.uid() is null.
+grant execute on function hoteles.agent_booking_policy(uuid) to authenticated, service_role;
 grant execute on function hoteles.agent_stay_options(uuid, date, date, timestamptz) to authenticated, service_role;
 grant execute on function hoteles.booking_hold_create(uuid, uuid, date, date, integer, text, text, text, text, bigint, timestamptz) to authenticated, service_role;
 grant execute on function hoteles.booking_hold_status_for_contact(uuid, uuid, text, timestamptz) to authenticated, service_role;

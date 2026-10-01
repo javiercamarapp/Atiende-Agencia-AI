@@ -259,6 +259,12 @@ export class InMemoryReservasAgenteRepository implements ReservasAgenteRepositor
     return { disponible: true, checkInDate, checkOutDate, nights, opciones };
   }
 
+  async agentPolicy(propertyId: string): Promise<BookingPolicyResult> {
+    if (!this.migrationApplied) return { disponible: false, politica: { propertyId, ...DEFAULT_BOOKING_POLICY, configured: false } };
+    this.requireSystem();
+    return { disponible: true, politica: this.prop(propertyId).policy };
+  }
+
   async createHold(input: CreateHoldInput): Promise<HoldRecord> {
     this.requireMigration("createHold");
     this.requireSystem();

@@ -346,8 +346,8 @@ select public.verify_hold('hold-tope-000001', '5215550000009', p_rt => '00000000
 select public.verify_su();
 update hoteles.availability set total_rooms = 10 where room_type_id = '00000000-0000-0000-0000-0000000d0001';
 select public.verify_as('');
-select public.verify_hold('hold-tope-000002', '5215550000009');
-select public.verify_expect_error($q$select public.verify_hold('hold-tope-000003', '5215550000009')$q$, '55000');
+select public.verify_hold('hold-tope-000002', '5215550000009', p_in => '2031-06-11', p_out => '2031-06-12', p_total => 178500);
+select public.verify_expect_error($q$select public.verify_hold('hold-tope-000003', '5215550000009', p_in => '2031-06-13', p_out => '2031-06-14', p_total => 178500)$q$, '55000');
 select public.verify_expect_error($q$select public.verify_hold('hold-tope-000004', '5215550000008', p_guests => 3)$q$, '22023');
 select public.verify_expect_error($q$select public.verify_hold('hold-tope-000005', '5215550000008', p_guests => 0)$q$, '22023');
 select public.verify_expect_error($q$select public.verify_hold('hold-tope-000006', '12')$q$, '22023');
@@ -653,12 +653,12 @@ rollback;
 begin;
 select public.verify_su();
 select public.verify_assert((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write')) and p.prosecdef and p.proconfig is null) = 0, 'definer sin search_path');
+   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_booking_policy', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write')) and p.prosecdef and p.proconfig is null) = 0, 'definer sin search_path');
 select public.verify_assert((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write'))
+   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_booking_policy', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write'))
      and (has_function_privilege('anon', p.oid, 'execute') or p.proacl is null or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0))) = 0, 'anon/public sin execute');
-select count(*) as funciones_deberia_ser_19 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write'));
+select count(*) as funciones_deberia_ser_20 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'hoteles' and (p.proname like 'booking_hold%' or p.proname like 'booking_policy%' or p.proname in ('agent_stay_options', 'agent_booking_policy', 'agent_quote_core', 'agent_validate_stay', 'booking_agent_policy_before_write'));
 rollback;
 
 \echo '=== 36. redondeo half-up exacto en centavos: tarifa 1333.335 => 133334 centavos por noche; IVA/ISH redondeados a centavo entero ==='
@@ -709,6 +709,20 @@ select public.verify_as('');
 select public.verify_hold('hold-guardia-0002', p_rt => '00000000-0000-0000-0000-0000000d0002', p_total => 1190000, p_guests => 4);
 select public.verify_su();
 select count(*) as suite_dentro_de_guardia_deberia_ser_1 from hoteles.booking_hold where total_cents = 1190000;
+rollback;
+
+\echo '=== 40. politica para el agente (sistema): sin fila = holds deshabilitados con topes por defecto; habilitada la refleja; staff/anon (42501), property inexistente (P0002) ==='
+begin;
+select public.verify_as('');
+select public.verify_assert((select holds_enabled from hoteles.agent_booking_policy('00000000-0000-0000-0000-0000000a1a01')) = false, 'por defecto deshabilitada');
+select public.verify_assert((select max_nights from hoteles.agent_booking_policy('00000000-0000-0000-0000-0000000a1a01')) = 14, 'tope por defecto');
+select public.verify_expect_error($q$select * from hoteles.agent_booking_policy(gen_random_uuid())$q$, 'P0002');
+select public.verify_as('00000000-0000-0000-0000-0000000a0a01');
+select public.verify_expect_error($q$select * from hoteles.agent_booking_policy('00000000-0000-0000-0000-0000000a1a01')$q$, '42501');
+select public.verify_anon();
+select public.verify_expect_error($q$select * from hoteles.agent_booking_policy('00000000-0000-0000-0000-0000000a1a01')$q$, '42501');
+select public.verify_enable('link_pago');
+select count(*) as politica_habilitada_deberia_ser_1 from hoteles.agent_booking_policy('00000000-0000-0000-0000-0000000a1a01') where holds_enabled and mode = 'link_pago';
 rollback;
 
 \echo 'Escenarios en los que verify_expect_error confirma el SQLSTATE exacto; los de valor terminan en deberia_ser_N.'

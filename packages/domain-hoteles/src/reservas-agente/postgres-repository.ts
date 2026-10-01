@@ -171,6 +171,22 @@ export class PostgresReservasAgenteRepository implements ReservasAgenteRepositor
     );
   }
 
+  agentPolicy(propertyId: string): Promise<BookingPolicyResult> {
+    return this.read<BookingPolicyResult>(
+      "agentPolicy",
+      async () => {
+        const { rows } = await this.db.query<AgentPolicyRow>(
+          `select holds_enabled, mode, hold_ttl_minutes, max_nights, max_guests, max_advance_days, max_active_holds from hoteles.agent_booking_policy($1);`,
+          [propertyId],
+        );
+        const r = rows[0];
+        if (!r) return { disponible: true, politica: { propertyId, ...DEFAULT_BOOKING_POLICY, configured: false } };
+        return { disponible: true, politica: mapPolicy({ property_id: propertyId, ...r }) };
+      },
+      () => ({ disponible: false, politica: { propertyId, ...DEFAULT_BOOKING_POLICY, configured: false } }),
+    );
+  }
+
   createHold(input: CreateHoldInput): Promise<HoldRecord> {
     return this.write("createHold", async () => {
       const { rows } = await this.db.query<HoldRow>(
@@ -288,6 +304,7 @@ interface PolicyRow {
   property_id: string; holds_enabled: boolean; mode: "aprobacion_humana" | "link_pago"; hold_ttl_minutes: number; max_nights: number; max_guests: number;
   max_advance_days: number; max_active_holds: number;
 }
+type AgentPolicyRow = Omit<PolicyRow, "property_id">;
 function mapPolicy(r: PolicyRow): BookingPolicyRecord {
   return {
     propertyId: r.property_id, holdsEnabled: r.holds_enabled, mode: r.mode, holdTtlMinutes: Number(r.hold_ttl_minutes), maxNights: Number(r.max_nights),
