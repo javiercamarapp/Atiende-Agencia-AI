@@ -5,7 +5,7 @@
 // el <Sidebar> compartido de @atiende/ui es `hidden md:flex`, y en viewport
 // móvil el usuario depende de <MobileHeader> + <BottomNav> (4 destinos
 // curados + "Más", ver buildMobileItems en CitasShell.tsx). Protege que el fix se
-// mantenga y que la curación siga siendo Agenda/Proveedores/Servicios/Clientes.
+// mantenga y que la curación siga siendo Resumen/Agenda/Proveedores/Clientes.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -14,6 +14,7 @@ import type { BranchOption } from "../src/verticals/citas/lib/admin-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -87,7 +88,7 @@ describe("CitasShell — nav móvil", () => {
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Agenda", "Proveedores", "Servicios", "Clientes"]);
+    expect(labels).toEqual(["Resumen", "Agenda", "Proveedores", "Clientes"]);
     const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
     expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
     click(mas);
@@ -100,13 +101,28 @@ describe("CitasShell — nav móvil", () => {
       "Servicios",
       "Clientes",
       "Disponibilidad",
-      "Configuración",
-      "Staff",
       "Agente de WhatsApp",
       "Mensajes de WhatsApp",
+      "Configuración",
+      "Staff",
       "Auditoría",
       "Privacidad",
     ]);
+  });
+
+  // UNI-6: marco de Likida -- Resumen, Agenda y Primeros pasos raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
+  it("el Sidebar agrupa los 13 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Negocio", "Comunicación", "Administrar"]);
+    expect(categoriasAbiertas(root)).toEqual(["Negocio"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Agenda", "Primeros pasos", "Proveedores", "Servicios", "Clientes", "Disponibilidad"]);
+    abrirCategoria(root, "Comunicación");
+    expect(categoriasAbiertas(root)).toEqual(["Comunicación"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Agenda", "Primeros pasos", "Agente de WhatsApp", "Mensajes de WhatsApp"]);
+    abrirCategoria(root, "Administrar");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Agenda", "Primeros pasos", "Configuración", "Staff", "Auditoría", "Privacidad"]);
+    expect(tarjetaUsuario(root).rol).toBe("Propietario");
   });
 
   it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical citas", async () => {
