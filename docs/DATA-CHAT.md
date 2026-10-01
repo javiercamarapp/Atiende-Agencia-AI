@@ -2,7 +2,8 @@
 
 Pedido de producto: preguntarle a los datos del negocio en español ("¿cuánto vendí esta semana?") y
 recibir tablas/gráficas simples, siempre citando de qué datos salen y el periodo. Este documento explica el
-motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra vertical. Piloto: restaurantes.
+motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra vertical. Piloto: restaurantes;
+después se enchufaron hoteles y rentas vacacionales (ver "Catálogos por vertical").
 
 ## Piezas
 
@@ -10,10 +11,32 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
 |---|---|
 | Motor (validación, alcance, límites, redacción de PII, bitácora, verificación de cifras) | `packages/agent-core/src/data-chat/` (export `@atiende/agent-core/data-chat`) |
 | Catálogo de restaurantes (8 herramientas, SQL de solo lectura) | `packages/domain-restaurantes/src/data-chat/` |
-| Ruta HTTP | `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts` |
+| Catálogo de hoteles (6 herramientas) | `packages/domain-hoteles/src/data-chat/` |
+| Catálogo de rentas vacacionales (7 herramientas) | `packages/domain-rentas/src/data-chat/` |
+| Ruta HTTP | restaurantes: `apps/api/src/routes/verticals/restaurantes/admin-data-chat.ts`; hoteles y rentas: `.../hoteles/admin-data-chat.ts` y `.../rentas/admin-data-chat.ts` sobre `apps/api/src/data-chat/vertical-routes.ts` |
 | Bitácora de consultas | migración 0029 → `core.data_chat_query_log` + `core.record_data_chat_query` |
-| Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` |
-| Verificación contra Postgres real | `scripts/verify-data-chat/` (lo corre el gate de CI) |
+| Diálogo (UI) | `@atiende/ui` → `ChatDatosDialog`; conexión en `apps/web/src/components/BotonChatDatos.tsx` (hoteles y rentas: `apps/web/src/lib/data-chat-client.ts` + `verticals/<vertical>/lib/data-chat-client.ts`) |
+| Verificación contra Postgres real | `scripts/verify-data-chat/` (restaurantes + bitácora), `scripts/verify-data-chat-hoteles/`, `scripts/verify-data-chat-rentas/` (los corre el gate de CI) |
+
+## Catálogos por vertical
+
+Todos: solo lectura, SQL parametrizado sobre la sesión RLS del usuario, tope de 50 filas / 8 s, montos MXN,
+periodo en la zona de la propiedad (`America/Merida` por defecto, o la configurada), propiedad pedida por
+*nombre* y resuelta solo entre las que el usuario ve, y "no hay datos" / "todavía no disponible" cuando toca.
+
+**Hoteles** (`owner`/`gm`; `hoteles:data_chat`): `ocupacion_adr_revpar`, `ingresos_por_periodo`,
+`llegadas_y_salidas` (acepta periodos futuros), `cancelaciones`, `tickets_abiertos_sla`, `housekeeping_pendiente`.
+Ocupación/ADR/RevPAR salen de las mismas fuentes que el P&L USALI (cargos de hospedaje vigentes = noche ocupada;
+`hoteles.availability.total_rooms` = noches disponibles), agregadas en CTE separados y unidas después.
+Solo owner/gm: leen dinero (RLS `can_access_money`) y tickets de todos los departamentos; un rol operativo vería
+una vista parcial que parecería completa.
+
+**Rentas** (`admin_gestora`/`contador`; `rentas:data_chat`): `ocupacion_por_unidad` (pasado y futuro ya
+reservado; la noche se evalúa una vez por unidad y día con `EXISTS`), `ingresos_por_canal`,
+`ingresos_por_propietario` (reservas confirmadas atribuidas por su llegada; solo MXN se suma),
+`conflictos_calendario_abiertos`, `tareas_pendientes` (sin periodo = todo lo programado hasta hoy, con rezago),
+`liquidaciones_propietarios` (solo la última versión de cada liquidación), `pagos_de_canal` (cabecera y líneas
+en CTE separados). Solo admin_gestora/contador: lo financiero lo protege la RLS `can_read_finanzas`.
 
 ## Flujo de un turno
 
@@ -78,6 +101,13 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
    `tests/data-chat/sql-drift.spec.ts`.
 4. **Ruta.** Copia `admin-data-chat.ts`: misma cadena de auth, `scope` desde la membership, y
    `buildXDataChatCatalog(reader)`. Agrega `dataChat` equivalente a `AppDeps` (o extiende `DataChatDeps`).
+   Para verticales cuyo catálogo es por propiedad (como hoteles y rentas) no copies la ruta: llama a
+   `verticalDataChatRoutes(deps, { vertical, roles, catalog, completion, timezone })`
+   (`apps/api/src/data-chat/vertical-routes.ts`) y agrega a `DataChatDeps` el lector y la `completion` de tu vertical
+   como campos OPCIONALES (si faltan, la ruta responde "no disponible" en vez de fallar). Los parámetros de
+   propiedad se piden por nombre con `propertyParam(...)`/`resolvePropertySelection(...)` de
+   `@atiende/agent-core/data-chat`; periodos hacia adelante o mixtos: `FORWARD_PERIOD_PARAMS`/`resolveForwardPeriod`
+   y `MIXED_PERIOD_PARAMS`/`resolveMixedPeriod`.
 5. **Gateway y apagado.** Registra el rol `<vertical>:data_chat` en `ALL_PRODUCTION_ROLES`
    (`apps/api/src/production/llm-gateway.ts`) y en `SWITCHABLE_AGENT_ROLES`
    (`apps/api/src/platform-switches.ts`; un test exige que coincidan).
@@ -87,7 +117,13 @@ motor compartido, su modelo de seguridad y cómo enchufar el catálogo de otra v
 
 ## Lo que NO cubre todavía
 
-- Solo restaurantes tiene catálogo; las demás verticales siguen con el aviso honesto.
+- Restaurantes, hoteles y rentas tienen catálogo; citas, despachos y licitaciones siguen con el aviso honesto.
+- Hoteles: no hay "reservas por canal" (`hoteles.reservation` no guarda el canal de origen: sin una migración
+  que lo capture no se puede responder sin inventar) ni ocupación proyectada futura (solo noches ya cargadas por la
+  auditoría nocturna; el día en curso puede aparecer incompleto). Solo owner/gm.
+- Rentas: la ocupación cuenta solo reservas `confirmado` (no provisionales ni en conflicto) y los ingresos se
+  atribuyen por la fecha de llegada (una reserva que cruza de mes cuenta entera en el mes de su llegada). Lo que
+  esté en otra moneda se avisa y no se suma. Solo admin_gestora/contador.
 - La conversación no se guarda en servidor (el historial vive en la ventana del navegador).
 - Las ventas del chat excluyen pedidos cancelados; los tableros de KPIs hoy suman todos los estados: las cifras
   pueden diferir y cada respuesta lo dice en su fuente.
