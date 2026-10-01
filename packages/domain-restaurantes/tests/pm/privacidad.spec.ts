@@ -65,7 +65,7 @@ describe("E.9 saneo: dirección y nombre que llegan a la comanda", () => {
     const order = await f.repo.findOrderById(f.organizationId, out.orderId!);
     expect(order!.total).toBe(90);
     // eslint-disable-next-line no-control-regex
-    expect(order!.customerAddress).not.toMatch(/[\u0000-\u001f\u007f‪-\u202e]/);
+    expect(order!.customerAddress).not.toMatch(/[\u0000-\u001f\u007f\u202a-\u202e]/);
     // eslint-disable-next-line no-control-regex
     expect(order!.customerName).not.toMatch(/[\u0000-\u001f\u007f]/);
   });
