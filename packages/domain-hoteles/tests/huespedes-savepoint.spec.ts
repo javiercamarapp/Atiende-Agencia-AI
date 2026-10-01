@@ -104,11 +104,11 @@ describe("escrituras de notas", () => {
   it("archivar: devuelve la nota, null si ya estaba archivada, y 503 sin migracion", async () => {
     const fila = { id: N, kind: "nota", body: "x", created_by: null, created_at: "2026-12-02T10:00:00Z" };
     const ok = new AbortAwareFakeSession([{ match: /update hoteles\.guest_note/i, respond: () => [fila] }]);
-    await expect(new PostgresHuespedesRepository(ok).archivarNota(P, N)).resolves.toMatchObject({ id: N });
+    await expect(new PostgresHuespedesRepository(ok).archivarNota(P, G, N)).resolves.toMatchObject({ id: N });
     const vacio = new AbortAwareFakeSession([{ match: /update hoteles\.guest_note/i, respond: () => [] }]);
-    await expect(new PostgresHuespedesRepository(vacio).archivarNota(P, N)).resolves.toBeNull();
+    await expect(new PostgresHuespedesRepository(vacio).archivarNota(P, G, N)).resolves.toBeNull();
     const sinMigrar = new AbortAwareFakeSession([{ match: /update hoteles\.guest_note/i, respond: () => pgError("42P01", "no existe") }]);
-    await expect(new PostgresHuespedesRepository(sinMigrar).archivarNota(P, N)).rejects.toBeInstanceOf(HuespedesUnavailableError);
+    await expect(new PostgresHuespedesRepository(sinMigrar).archivarNota(P, G, N)).rejects.toBeInstanceOf(HuespedesUnavailableError);
   });
 });
 

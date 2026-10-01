@@ -146,10 +146,10 @@ export function hotelesHuespedesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.post("/hoteles/:propertyId/huespedes/:guestId/notas/:noteId/archivar", async (c) => {
     assertVerticalRole(c, GUEST_CRM_ROLES);
     const propertyId = c.req.param("propertyId");
-    guestIdOf(c);
+    const guestId = guestIdOf(c);
     const noteId = c.req.param("noteId") ?? "";
     if (!UUID_RE.test(noteId)) throw Errors.validation("noteId: se esperaba un UUID.");
-    const archived = await guarded(() => repoOf(c).archivarNota(propertyId, noteId));
+    const archived = await guarded(() => repoOf(c).archivarNota(propertyId, guestId, noteId));
     if (!archived) throw Errors.notFound("Nota no encontrada o ya archivada.");
     return c.json(serializeNote(archived));
   });

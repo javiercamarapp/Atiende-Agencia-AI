@@ -132,6 +132,10 @@ describe("notas y preferencias", () => {
     const f = await json<Ficha>(await get(s, "/ficha", s.ctx.staff.owner.token));
     expect(f.notas.items.map((n) => n.tipo).sort()).toEqual(["nota", "preferencia"]);
 
+    // la nota pertenece a OTRO huesped que el de la URL -> 404 y no se archiva
+    const otroHuesped = await s.app.request(`/hoteles/${s.ctx.propertyId}/huespedes/${randomUUID()}/notas/${creada.id}/archivar`, authedJson(s.ctx.staff.frontdesk.token, {}));
+    expect(otroHuesped.status).toBe(404);
+    expect((await json<Ficha>(await get(s, "/ficha", s.ctx.staff.owner.token))).notas.items).toHaveLength(2);
     expect((await post(s, `/notas/${creada.id}/archivar`, s.ctx.staff.frontdesk.token, {})).status).toBe(200);
     expect((await post(s, `/notas/${creada.id}/archivar`, s.ctx.staff.frontdesk.token, {})).status).toBe(404);
     const despues = await json<Ficha>(await get(s, "/ficha", s.ctx.staff.owner.token));

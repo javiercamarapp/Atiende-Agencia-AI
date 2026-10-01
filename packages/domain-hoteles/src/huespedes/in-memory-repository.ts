@@ -124,10 +124,10 @@ export class InMemoryHuespedesRepository implements HuespedesRepository {
     return { id: note.id, kind: note.kind, body: note.body, createdBy: note.createdBy, createdAt: note.createdAt };
   }
 
-  async archivarNota(propertyId: string, noteId: string): Promise<GuestNoteRecord | null> {
+  async archivarNota(propertyId: string, guestId: string, noteId: string): Promise<GuestNoteRecord | null> {
     if (!this.migrated) throw new HuespedesUnavailableError("archivar notas del huesped");
     const note = this.notes.get(noteId);
-    if (!note || note.propertyId !== propertyId || note.archivedAt !== null) return null;
+    if (!note || note.propertyId !== propertyId || note.guestId !== guestId || note.archivedAt !== null) return null;
     note.archivedAt = new Date().toISOString();
     return { id: note.id, kind: note.kind, body: note.body, createdBy: note.createdBy, createdAt: note.createdAt };
   }

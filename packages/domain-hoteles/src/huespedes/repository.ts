@@ -19,5 +19,5 @@ export interface HuespedesRepository {
   /** Agrega una nota. Lanza los errores de dominio `Huespedes*` (nunca un 500 crudo). */
   agregarNota(input: { readonly propertyId: string; readonly guestId: string; readonly kind: GuestNoteKind; readonly body: string }): Promise<GuestNoteRecord>;
   /** Archiva una nota activa. `null` si no existe o ya estaba archivada. */
-  archivarNota(propertyId: string, noteId: string): Promise<GuestNoteRecord | null>;
+  archivarNota(propertyId: string, guestId: string, noteId: string): Promise<GuestNoteRecord | null>;
 }

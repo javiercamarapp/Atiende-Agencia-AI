@@ -212,13 +212,13 @@ export class PostgresHuespedesRepository implements HuespedesRepository {
     });
   }
 
-  async archivarNota(propertyId: string, noteId: string): Promise<GuestNoteRecord | null> {
+  async archivarNota(propertyId: string, guestId: string, noteId: string): Promise<GuestNoteRecord | null> {
     return runWithSavepointFallback({
       session: this.db,
       primary: async () => {
         const { rows } = await this.db.query<NoteRow>(
-          `update hoteles.guest_note set archived_at = now() where id = $1 and property_id = $2 and archived_at is null returning ${NOTE_COLS};`,
-          [noteId, propertyId],
+          `update hoteles.guest_note set archived_at = now() where id = $1 and property_id = $2 and guest_id = $3 and archived_at is null returning ${NOTE_COLS};`,
+          [noteId, propertyId, guestId],
         );
         const row = rows[0];
         return row ? mapNote(row) : null;
