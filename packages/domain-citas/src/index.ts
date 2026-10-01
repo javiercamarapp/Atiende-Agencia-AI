@@ -142,8 +142,8 @@ export type { CitasCustomerContext, UpcomingAppointmentContext } from "./custome
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
-export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export { extractMetaInboundMessages, extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export type { MetaInboundMessage, MetaInteractiveReply, MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createCitasMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
