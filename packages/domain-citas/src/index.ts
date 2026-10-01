@@ -143,6 +143,8 @@ export type { CitasCustomerContext, UpcomingAppointmentContext } from "./custome
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
+export { computeCitasResumen, RESUMEN_HORIZONTE_PENDIENTES_DIAS, RESUMEN_VENTANA_DIAS } from "./resumen.ts";
+export type { CitasResumen, ResumenPorEstado } from "./resumen.ts";
 export { isUrgentCancellationMessage } from "./whatsapp/urgent-cancellation.ts";
 export { appointmentReminderButtons, buildAppointmentButtonId, parseAppointmentButtonId } from "./whatsapp/appointment-button-ids.ts";
 export type { AppointmentButtonAction } from "./whatsapp/appointment-button-ids.ts";

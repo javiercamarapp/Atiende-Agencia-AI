@@ -13,6 +13,7 @@
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentStatus,
   AppointmentSource,
   AvailabilityOverride,
   AvailabilityOverrideInput,
@@ -497,6 +498,11 @@ export interface CitasRepository {
    * regla de negocio nueva, mismo criterio que `listActiveServices`/
    * `listActiveProviders` (Fase 2 §1.2/§1.3): "listar lo que el dominio ya
    * calcula", nunca decide nada nuevo sobre el cliente. */
+  /** C-05 -- conteo de citas por estado con `starts_at` en [fromIso, toIso) (agregado SQL,
+   * nunca una lista truncada por `limit`). Todos los estados vienen presentes (0 si no hay). */
+  countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>>;
+  /** C-05 -- clientes dados de alta (`created_at`) desde `sinceIso` (inclusive). */
+  countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number>;
   listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;
   /** Fase 6 §2 (seguimiento) — captura/edición del correo OPCIONAL de un cliente
    * YA existente desde la ficha de Clientes del panel (`citas.customers.email`

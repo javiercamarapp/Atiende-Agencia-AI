@@ -34,7 +34,7 @@ const appointment: AppointmentRecord = {
   reminder24hSentAt: null,
   createdAt: "2029-12-01T00:00:00.000Z",
   googleEventId: null,
-  googleSyncStatus: "not_applicable",
+  googleSyncStatus: "skipped",
   googleSyncAttempts: 0,
   googleSyncNextRetryAt: null,
   googleSyncError: null,

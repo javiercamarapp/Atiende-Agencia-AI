@@ -318,7 +318,7 @@ function appointmentRow(status: string) {
     reminder_24h_sent_at: null,
     created_at: "2029-12-01T00:00:00.000Z",
     google_event_id: null,
-    google_sync_status: "not_applicable",
+    google_sync_status: "skipped",
     google_sync_attempts: 0,
     google_sync_next_retry_at: null,
     google_sync_error: null,

@@ -22,6 +22,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
   AvailabilityRule,
@@ -586,6 +587,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       }
       const created: CustomerRecord = { id: randomUUID(), organizationId, fullName: name, phone, email: email ?? null };
       this.customers.set(created.id, created);
+      this.customerCreatedAt.set(created.id, new Date().toISOString());
       this.customerIdByOrgPhone.set(key, created.id);
       return created;
     });
@@ -607,6 +609,30 @@ export class InMemoryCitasRepository implements CitasRepository {
     this.llamadasFindCustomersByIds += 1;
     const idSet = new Set(customerIds);
     return [...this.customers.values()].filter((c) => c.organizationId === organizationId && idSet.has(c.id));
+  }
+
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+    const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+    const from = Date.parse(fromIso);
+    const to = Date.parse(toIso);
+    for (const a of this.appointments.values()) {
+      const t = Date.parse(a.startsAt);
+      if (a.organizationId === organizationId && t >= from && t < to) result[a.status] += 1;
+    }
+    return result;
+  }
+
+  /** Solo para tests: fecha de alta de un cliente (en Postgres es `created_at`). */
+  readonly customerCreatedAt = new Map<string, string>();
+
+  async countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number> {
+    const since = Date.parse(sinceIso);
+    let n = 0;
+    for (const c of this.customers.values()) {
+      if (c.organizationId !== organizationId) continue;
+      if (Date.parse(this.customerCreatedAt.get(c.id) ?? new Date().toISOString()) >= since) n += 1;
+    }
+    return n;
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {

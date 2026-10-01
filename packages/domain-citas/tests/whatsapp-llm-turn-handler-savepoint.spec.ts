@@ -58,7 +58,7 @@ describe("createLlmWhatsAppTurnHandler (citas) — SAVEPOINT por tool call, cont
       { match: /from citas\.customers/, respond: () => [{ id: customerId, organization_id: organizationId, full_name: "Cliente de prueba", phone: "9990000000", email: null }] },
       {
         match: /from citas\.appointments where id/,
-        respond: () => [{ id: appointmentId, organization_id: organizationId, property_id: null, provider_id: randomUUID(), service_id: randomUUID(), customer_id: customerId, starts_at: "2030-01-01T16:00:00.000Z", ends_at: "2030-01-01T16:30:00.000Z", status: "completed", source: "web", notes: null, dedupe_fingerprint: null, idempotency_key: null, reminder_24h_sent_at: null, created_at: "2029-12-01T00:00:00.000Z", google_event_id: null, google_sync_status: "not_applicable", google_sync_attempts: 0, google_sync_next_retry_at: null, google_sync_error: null }],
+        respond: () => [{ id: appointmentId, organization_id: organizationId, property_id: null, provider_id: randomUUID(), service_id: randomUUID(), customer_id: customerId, starts_at: "2030-01-01T16:00:00.000Z", ends_at: "2030-01-01T16:30:00.000Z", status: "completed", source: "web", notes: null, dedupe_fingerprint: null, idempotency_key: null, reminder_24h_sent_at: null, created_at: "2029-12-01T00:00:00.000Z", google_event_id: null, google_sync_status: "skipped", google_sync_attempts: 0, google_sync_next_retry_at: null, google_sync_error: null }],
       },
       { match: /citas\.cancel_appointment_idempotent/, respond: () => at409() },
       { match: /select 1/, respond: () => [] },

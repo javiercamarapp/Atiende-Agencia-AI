@@ -27,6 +27,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
   AvailabilityRule,
@@ -659,6 +660,21 @@ export class PostgresCitasRepository implements CitasRepository {
       [organizationId, customerIds],
     );
     return rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
+  }
+
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+    const { rows } = await this.db.query<{ status: AppointmentStatus; count: string }>(
+      `select status, count(*)::text as count from citas.appointments where organization_id = $1 and starts_at >= $2 and starts_at < $3 group by status;`,
+      [organizationId, fromIso, toIso],
+    );
+    const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+    for (const row of rows) if (row.status in result) result[row.status] = Number(row.count);
+    return result;
+  }
+
+  async countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number> {
+    const { rows } = await this.db.query<{ count: string }>(`select count(*)::text as count from citas.customers where organization_id = $1 and created_at >= $2;`, [organizationId, sinceIso]);
+    return Number(rows[0]?.count ?? "0");
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {
