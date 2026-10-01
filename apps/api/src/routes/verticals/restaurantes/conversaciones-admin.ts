@@ -109,8 +109,9 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
   }
 
   async function zonaDe(c: Context<CoreAuthHonoEnv>, organizationId: string, propertyId: string): Promise<string | null> {
-    const branch = await deps.restaurantesRepo(c.get("db")).findBranchById(organizationId, propertyId);
-    return branch?.zonaHoraria ?? null;
+    // Degrada a `null` (default de plataforma) contra la base sin la migración 022; nunca lanza.
+    void organizationId;
+    return (await deps.restaurantesRepo(c.get("db")).findBranchZonaHoraria(propertyId)).zonaHoraria;
   }
 
   function serializeItem(i: BandejaItem, escalacion: ReturnType<typeof calcularEscalacion>) {
