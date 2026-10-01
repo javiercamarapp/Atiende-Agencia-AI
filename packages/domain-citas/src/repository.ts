@@ -34,6 +34,17 @@ import type {
   ServicePatch,
   ServiceRecord,
 } from "./types.ts";
+import type {
+  ConfirmDataRightsOutcome,
+  DataRightsEventRow,
+  DataRightsPaginacion,
+  DataRightsRequestsFiltro,
+  DataRightsRequestsPage,
+  DataRightStaffTargetStatus,
+  DataRightType,
+  RegisterDataRightsOutcome,
+  UpdateDataRightsStatusResult,
+} from "./data-rights.ts";
 
 export interface NewAppointmentInput {
   readonly organizationId: string;
@@ -793,4 +804,20 @@ export interface CitasRepository {
    *  42883/42P01/42703, base sin migrar) -- ver
    *  `PostgresCitasRepository.registrarAuditoria`. */
   listAuditoria(organizationId: string, filtro: CitasAuditLogFiltro, paginacion: CitasAuditLogPaginacion): Promise<CitasAuditLogPagina>;
+
+  // ---- C-02 -- solicitudes de derechos ARCO, ver migrations/024_citas_data_rights.sql
+  // y arco-intent.ts. Todos los métodos se degradan (NUNCA lanzan por una base sin
+  // migrar, SQLSTATE 42883/42P01/42703) con SAVEPOINT en la sesión compartida. ----
+  /** SOLO sesión de sistema (webhook de WhatsApp). `available: false` si la
+   *  migración 024 no está aplicada. El teléfono es el que autentica el canal. */
+  registerDataRightsRequestAsSystem(input: { readonly organizationId: string; readonly customerPhone: string; readonly rightType: DataRightType; readonly detail: string | null }): Promise<RegisterDataRightsOutcome>;
+  /** SOLO sesión de sistema: el titular confirma (`true`) o retira (`false`) su
+   *  solicitud pendiente vigente. `found: false` si no hay ninguna. */
+  resolveDataRightsConfirmationAsSystem(organizationId: string, customerPhone: string, confirm: boolean): Promise<ConfirmDataRightsOutcome>;
+  /** Staff owner/admin (RLS). `disponible: false` si la migración no está aplicada. */
+  listDataRightsRequests(organizationId: string, filtro: DataRightsRequestsFiltro, paginacion: DataRightsPaginacion): Promise<DataRightsRequestsPage>;
+  /** Bitácora de una solicitud; `null` si la migración no está aplicada. */
+  listDataRightsEvents(organizationId: string, requestId: string): Promise<readonly DataRightsEventRow[] | null>;
+  /** Staff owner/admin: la función SQL valida rol, organización y transición. */
+  updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult>;
 }

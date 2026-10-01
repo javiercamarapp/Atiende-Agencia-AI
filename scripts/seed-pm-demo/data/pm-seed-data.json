@@ -1,0 +1,2424 @@
+{
+ "version": "2026-09-30",
+ "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos",
+ "organizacion": {
+  "nombre": "Los Taquitos de PM",
+  "slug": "los-taquitos-de-pm",
+  "ciudad": "Mérida, Yucatán",
+  "zona_horaria": "America/Merida"
+ },
+ "sucursales": [
+  {
+   "id": "T1",
+   "nombre": "Prolongación Montejo",
+   "slug": "prol-montejo",
+   "direccion": "Calle 34 No. 382-C x 35 y 37, Col. Emiliano Zapata Norte, Mérida",
+   "telefono": "999 944 0342",
+   "lat": 21.028,
+   "lng": -89.61,
+   "menu": "grande",
+   "activa": true,
+   "zona_cliente": "zona centro y norte"
+  },
+  {
+   "id": "T2",
+   "nombre": "Francisco de Montejo",
+   "slug": "fco-montejo",
+   "direccion": "Calle 50 No. 329 x 53-B, Fracc. Francisco de Montejo, Mérida",
+   "telefono": "999 953 7122",
+   "lat": 21.035,
+   "lng": -89.605,
+   "menu": "chico",
+   "activa": true,
+   "zona_cliente": "norponiente"
+  },
+  {
+   "id": "T3",
+   "nombre": "Pensiones",
+   "slug": "pensiones",
+   "direccion": "Calle 11 No. 371 x Av. 32, San Damián, Mérida",
+   "telefono": "999 987 5410",
+   "lat": null,
+   "lng": null,
+   "menu": "chico",
+   "activa": true,
+   "zona_cliente": "poniente"
+  },
+  {
+   "id": "T4",
+   "nombre": "T4 (pendiente de datos)",
+   "slug": "t4-pendiente",
+   "direccion": null,
+   "telefono": null,
+   "lat": null,
+   "lng": null,
+   "menu": null,
+   "activa": false,
+   "nota": "Sucursal registrada sin direccion ni telefono (el cuestionario la lista con 0 pedidos). Se carga INACTIVA y sin menu hasta que el dueño confirme su identidad."
+  },
+  {
+   "id": "T7",
+   "nombre": "Victory Platz (García Lavín)",
+   "slug": "garcia-lavin",
+   "direccion": "Calle 32 No. 352 local 16 x 36 Diagonal, Fracc. Xaman Tan, Plaza Victory Platz, Mérida",
+   "telefono": "999 518 2637",
+   "lat": 21.0205,
+   "lng": -89.615,
+   "menu": "grande",
+   "activa": true,
+   "zona_cliente": "norte"
+  },
+  {
+   "id": "T8",
+   "nombre": "Victory Altabrisa",
+   "slug": "altabrisa",
+   "direccion": "Calle 7 No. 270 local 20, entre Periférico Norte y Calle 4, Vista Alegre, Plaza Victory Altabrisa, Mérida",
+   "telefono": "999 518 2857",
+   "lat": 21.0156,
+   "lng": -89.5982,
+   "menu": "grande",
+   "activa": true,
+   "zona_cliente": "nororiente"
+  }
+ ],
+ "horario_general": {
+  "abre": "12:00",
+  "cierra": "01:00",
+  "dias": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "nota": "12 pm a 1 am, doble turno de personal. La hora del cambio de turno no esta definida: no se inventa, se modela una sola franja."
+ },
+ "reglas": {
+  "pedido_minimo_domicilio": 200,
+  "pedido_minimo_recoger": null,
+  "propina_politica": "solo_tarjeta"
+ },
+ "categorias": [
+  "Tacos",
+  "Gringas",
+  "Mestizas",
+  "Alambre",
+  "Tacos Suizos",
+  "Boyo-Hamburguesas",
+  "Chetacos",
+  "Papas de PM",
+  "Francés Suizo",
+  "Entradas",
+  "Frijoles Charros",
+  "Quesadillas",
+  "Queso Fundido",
+  "Nachos",
+  "Pizza Quesobich",
+  "Platillos PM",
+  "Kilos a Domicilio",
+  "Postres",
+  "Refrescos",
+  "Aguas Frescas",
+  "Cervezas",
+  "Licores y Cocktails",
+  "Guarniciones Extra",
+  "Comida Regional"
+ ],
+ "productos": [
+  {
+   "nombre": "Taco Al Pastor (individual)",
+   "categoria": "Tacos",
+   "precio": 42,
+   "descripcion": "Orden individual",
+   "es_alcohol": false,
+   "popular": true,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Taco de Rajas (individual)",
+   "categoria": "Tacos",
+   "precio": 37,
+   "descripcion": "Orden individual",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Taco de Champiñones (individual)",
+   "categoria": "Tacos",
+   "precio": 38,
+   "descripcion": "Orden individual",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Chorizo (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 150,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Bistec de Res (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 194,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Pechuga de Pollo (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 184,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Chuleta de Cerdo (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 184,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Costilla de Res (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 189,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Arrachera (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 254,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Poc-Chuc (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 189,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos de Bistec Encebollado (orden de 3)",
+   "categoria": "Tacos",
+   "precio": 202,
+   "descripcion": "Orden de 3 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Pastor",
+   "categoria": "Gringas",
+   "precio": 194,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Bistec",
+   "categoria": "Gringas",
+   "precio": 224,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Pechuga de Pollo",
+   "categoria": "Gringas",
+   "precio": 212,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Chuleta",
+   "categoria": "Gringas",
+   "precio": 212,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Costilla",
+   "categoria": "Gringas",
+   "precio": 217,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Arrachera",
+   "categoria": "Gringas",
+   "precio": 299,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Gringa de Poc-Chuc",
+   "categoria": "Gringas",
+   "precio": 217,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Pastor",
+   "categoria": "Mestizas",
+   "precio": 168,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Poc-Chuc",
+   "categoria": "Mestizas",
+   "precio": 175,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Bistec",
+   "categoria": "Mestizas",
+   "precio": 194,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Pechuga",
+   "categoria": "Mestizas",
+   "precio": 184,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Chuleta",
+   "categoria": "Mestizas",
+   "precio": 184,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Costilla",
+   "categoria": "Mestizas",
+   "precio": 189,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Mestiza de Arrachera",
+   "categoria": "Mestizas",
+   "precio": 269,
+   "descripcion": "Orden de 2 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Pastor",
+   "categoria": "Alambre",
+   "precio": 276,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Bistec",
+   "categoria": "Alambre",
+   "precio": 283,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Pechuga",
+   "categoria": "Alambre",
+   "precio": 269,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Chuleta",
+   "categoria": "Alambre",
+   "precio": 269,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Costilla",
+   "categoria": "Alambre",
+   "precio": 276,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre de Arrachera",
+   "categoria": "Alambre",
+   "precio": 343,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Pastor",
+   "categoria": "Tacos Suizos",
+   "precio": 247,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Bistec",
+   "categoria": "Tacos Suizos",
+   "precio": 291,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Chuleta",
+   "categoria": "Tacos Suizos",
+   "precio": 284,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Pechuga",
+   "categoria": "Tacos Suizos",
+   "precio": 284,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Costilla",
+   "categoria": "Tacos Suizos",
+   "precio": 284,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio": 373,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Poc-Chuc",
+   "categoria": "Tacos Suizos",
+   "precio": 284,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Chorizo",
+   "categoria": "Tacos Suizos",
+   "precio": 209,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suizo de Chile Poblano",
+   "categoria": "Tacos Suizos",
+   "precio": 204,
+   "descripcion": "Orden de 5 tacos",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Pastor",
+   "categoria": "Tacos Suizos",
+   "precio": 306,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Bistec",
+   "categoria": "Tacos Suizos",
+   "precio": 314,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Pechuga",
+   "categoria": "Tacos Suizos",
+   "precio": 306,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Chuleta",
+   "categoria": "Tacos Suizos",
+   "precio": 306,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Costilla",
+   "categoria": "Tacos Suizos",
+   "precio": 306,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alambre Suizo de Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio": 371,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos Suizos de Chile Poblano y Bistec",
+   "categoria": "Tacos Suizos",
+   "precio": 328,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
+   "categoria": "Tacos Suizos",
+   "precio": 378,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Boyo-Hamburguesa Sencilla",
+   "categoria": "Boyo-Hamburguesas",
+   "precio": 194,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Boyo-Hamburguesa con Queso",
+   "categoria": "Boyo-Hamburguesas",
+   "precio": 224,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Boyo-Hamburguesa con Queso y Tocino",
+   "categoria": "Boyo-Hamburguesas",
+   "precio": 238,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Pastor",
+   "categoria": "Chetacos",
+   "precio": 291,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Champiñón",
+   "categoria": "Chetacos",
+   "precio": 306,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Bistec de Res",
+   "categoria": "Chetacos",
+   "precio": 314,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Chuleta de Cerdo",
+   "categoria": "Chetacos",
+   "precio": 306,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Pechuga",
+   "categoria": "Chetacos",
+   "precio": 306,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Costilla de Res",
+   "categoria": "Chetacos",
+   "precio": 306,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Poc-Chuc",
+   "categoria": "Chetacos",
+   "precio": 306,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chetaco de Arrachera",
+   "categoria": "Chetacos",
+   "precio": 373,
+   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Tradicional",
+   "categoria": "Papas de PM",
+   "precio": 204,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Pastor",
+   "categoria": "Papas de PM",
+   "precio": 262,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Bistec",
+   "categoria": "Papas de PM",
+   "precio": 283,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Chuleta",
+   "categoria": "Papas de PM",
+   "precio": 276,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Pechuga",
+   "categoria": "Papas de PM",
+   "precio": 276,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Costilla",
+   "categoria": "Papas de PM",
+   "precio": 276,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papa Arrachera",
+   "categoria": "Papas de PM",
+   "precio": 352,
+   "descripcion": "Papa rellena",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Pastor",
+   "categoria": "Francés Suizo",
+   "precio": 262,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Champiñón",
+   "categoria": "Francés Suizo",
+   "precio": 262,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Bistec de Res",
+   "categoria": "Francés Suizo",
+   "precio": 283,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Chuleta de Cerdo",
+   "categoria": "Francés Suizo",
+   "precio": 276,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Pechuga",
+   "categoria": "Francés Suizo",
+   "precio": 276,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Costilla de Res",
+   "categoria": "Francés Suizo",
+   "precio": 276,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Poc-Chuc",
+   "categoria": "Francés Suizo",
+   "precio": 276,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Francés Suizo de Arrachera",
+   "categoria": "Francés Suizo",
+   "precio": 352,
+   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijol con Tostada",
+   "categoria": "Entradas",
+   "precio": 93,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Guacamole",
+   "categoria": "Entradas",
+   "precio": 142,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Carbolla",
+   "categoria": "Entradas",
+   "precio": 106,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Cebollas Cambray",
+   "categoria": "Entradas",
+   "precio": 135,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chicharrón de Queso",
+   "categoria": "Entradas",
+   "precio": 172,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Alitas de Pollo",
+   "categoria": "Entradas",
+   "precio": 204,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Papas a la Francesa",
+   "categoria": "Entradas",
+   "precio": 113,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros Normal",
+   "categoria": "Frijoles Charros",
+   "precio": 123,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros Normal (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio": 82,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros con Queso",
+   "categoria": "Frijoles Charros",
+   "precio": 142,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros con Queso (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio": 106,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros Especiales",
+   "categoria": "Frijoles Charros",
+   "precio": 178,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Frijoles Charros Especiales (1/2 orden)",
+   "categoria": "Frijoles Charros",
+   "precio": 136,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesadilla de Natural",
+   "categoria": "Quesadillas",
+   "precio": 109,
+   "descripcion": "De maíz o harina",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesadilla de Rajas",
+   "categoria": "Quesadillas",
+   "precio": 124,
+   "descripcion": "De maíz o harina",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesadilla de Champiñones",
+   "categoria": "Quesadillas",
+   "precio": 127,
+   "descripcion": "De maíz o harina",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesadilla de Chorizo",
+   "categoria": "Quesadillas",
+   "precio": 135,
+   "descripcion": "De maíz o harina",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Fundido Natural",
+   "categoria": "Queso Fundido",
+   "precio": 160,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Fundido Rajas",
+   "categoria": "Queso Fundido",
+   "precio": 175,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Fundido Champiñones",
+   "categoria": "Queso Fundido",
+   "precio": 175,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Fundido Tocino",
+   "categoria": "Queso Fundido",
+   "precio": 179,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Fundido Chorizo",
+   "categoria": "Queso Fundido",
+   "precio": 179,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Pastor",
+   "categoria": "Nachos",
+   "precio": 328,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Pastor (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 232,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Champiñón",
+   "categoria": "Nachos",
+   "precio": 320,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Champiñón (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 232,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Bistec",
+   "categoria": "Nachos",
+   "precio": 373,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Bistec (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 262,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Pechuga",
+   "categoria": "Nachos",
+   "precio": 363,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Pechuga (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 249,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Chuleta",
+   "categoria": "Nachos",
+   "precio": 358,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Chuleta (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 249,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Costilla",
+   "categoria": "Nachos",
+   "precio": 367,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Costilla (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 255,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Arrachera",
+   "categoria": "Nachos",
+   "precio": 433,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Nachos de Arrachera (1/2 orden)",
+   "categoria": "Nachos",
+   "precio": 299,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Queso",
+   "categoria": "Pizza Quesobich",
+   "precio": 206,
+   "descripcion": "Pizza individual, orilla rellena de queso",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Pastor",
+   "categoria": "Pizza Quesobich",
+   "precio": 232,
+   "descripcion": "Pastor con piña",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Bistec",
+   "categoria": "Pizza Quesobich",
+   "precio": 254,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Pollo",
+   "categoria": "Pizza Quesobich",
+   "precio": 247,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Chuleta de Cerdo",
+   "categoria": "Pizza Quesobich",
+   "precio": 247,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Costilla de Res",
+   "categoria": "Pizza Quesobich",
+   "precio": 247,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich de Arrachera",
+   "categoria": "Pizza Quesobich",
+   "precio": 291,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Quesobich Vegetariana",
+   "categoria": "Pizza Quesobich",
+   "precio": 212,
+   "descripcion": "Champiñones, cebolla y rajas de chile poblano",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Crujientes de Pechuga de Pollo",
+   "categoria": "Platillos PM",
+   "precio": 329,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Pastor",
+   "categoria": "Platillos PM",
+   "precio": 335,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Bistec",
+   "categoria": "Platillos PM",
+   "precio": 404,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Pechuga de Pollo",
+   "categoria": "Platillos PM",
+   "precio": 378,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Chuleta de Cerdo",
+   "categoria": "Platillos PM",
+   "precio": 378,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Costilla de Res",
+   "categoria": "Platillos PM",
+   "precio": 388,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Arrachera",
+   "categoria": "Platillos PM",
+   "precio": 492,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Platillo de Poc-Chuc",
+   "categoria": "Platillos PM",
+   "precio": 368,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Fajitas de Bistec",
+   "categoria": "Platillos PM",
+   "precio": 404,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Fajitas de Pechuga",
+   "categoria": "Platillos PM",
+   "precio": 393,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Fajitas de Arrachera",
+   "categoria": "Platillos PM",
+   "precio": 492,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Parrillada para 2",
+   "categoria": "Platillos PM",
+   "precio": 612,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Parrillada para 4",
+   "categoria": "Platillos PM",
+   "precio": 1045,
+   "descripcion": "* No incluye guarniciones estándar",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pastor — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 225,
+   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pastor — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 450,
+   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pastor — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 675,
+   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pastor — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 900,
+   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 275,
+   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 550,
+   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 825,
+   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 1100,
+   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 287.5,
+   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 575,
+   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 862.5,
+   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 1150,
+   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 237.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 475,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 712.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 950,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pechuga de Pollo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 237.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pechuga de Pollo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 475,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pechuga de Pollo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 712.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Pechuga de Pollo — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 950,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Poc-Chuc — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 237.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Poc-Chuc — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 475,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Poc-Chuc — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 712.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Poc-Chuc — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 950,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Arrachera — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 350,
+   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Arrachera — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 700,
+   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Arrachera — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 1050,
+   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Arrachera — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 1400,
+   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Costilla de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 237.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Costilla de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 475,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Costilla de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio": 712.5,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Costilla de Res — 1 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio": 950,
+   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Crema Española",
+   "categoria": "Postres",
+   "precio": 83,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Crema de Coco",
+   "categoria": "Postres",
+   "precio": 83,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Flan",
+   "categoria": "Postres",
+   "precio": 83,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Queso Napolitano",
+   "categoria": "Postres",
+   "precio": 109,
+   "descripcion": "Receta de la casa",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Coca-Cola",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Botella o lata",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Coca-Cola Light",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Botella o lata",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Coca-Cola sin Azúcar",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Botella o lata",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Toronja Cristal",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Fanta",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Botella",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sprite",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Lata",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sprite Cero",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Lata",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sidral Mundet",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "Botella",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Agua Mineral Cristal",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "300ml",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Agua Purificada",
+   "categoria": "Refrescos",
+   "precio": 53,
+   "descripcion": "600ml",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Topo Chico",
+   "categoria": "Refrescos",
+   "precio": 74,
+   "descripcion": "355ml",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Limonada",
+   "categoria": "Refrescos",
+   "precio": 60,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Limonada con Soda",
+   "categoria": "Refrescos",
+   "precio": 73,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Limonada con Topo Chico",
+   "categoria": "Refrescos",
+   "precio": 100,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Naranjada",
+   "categoria": "Refrescos",
+   "precio": 60,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Naranjada con Soda",
+   "categoria": "Refrescos",
+   "precio": 73,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Naranjada con Topo Chico",
+   "categoria": "Refrescos",
+   "precio": 100,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suero con Soda",
+   "categoria": "Refrescos",
+   "precio": 79,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Suero con Topo Chico",
+   "categoria": "Refrescos",
+   "precio": 95,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Agua de Jamaica",
+   "categoria": "Aguas Frescas",
+   "precio": 60,
+   "descripcion": "Rellenable una vez",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Horchata",
+   "categoria": "Aguas Frescas",
+   "precio": 60,
+   "descripcion": "Rellenable una vez",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Té",
+   "categoria": "Aguas Frescas",
+   "precio": 60,
+   "descripcion": "Rellenable una vez",
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sol",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Superior",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tecate Light",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Heineken 0.0",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Heineken",
+   "categoria": "Cervezas",
+   "precio": 90,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Heineken Silver",
+   "categoria": "Cervezas",
+   "precio": 90,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Indio",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "XX Lager",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "XX Ámbar",
+   "categoria": "Cervezas",
+   "precio": 80,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Amstel Ultra",
+   "categoria": "Cervezas",
+   "precio": 90,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bohemia Clara",
+   "categoria": "Cervezas",
+   "precio": 90,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Bohemia Oscura",
+   "categoria": "Cervezas",
+   "precio": 90,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ceiba Dorada Premium",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ceiba Light Lager",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ceiba Mestiza",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ceiba Stout",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Patito Oscura",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Patito Lager",
+   "categoria": "Cervezas",
+   "precio": 120,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ojo Rojo",
+   "categoria": "Cervezas",
+   "precio": 44,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Vaso de Chelada",
+   "categoria": "Cervezas",
+   "precio": 22,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Vaso de Michelada",
+   "categoria": "Cervezas",
+   "precio": 30,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ron Appleton Especial",
+   "categoria": "Licores y Cocktails",
+   "precio": 117,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ron Bacardí Añejo",
+   "categoria": "Licores y Cocktails",
+   "precio": 113,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ron Bacardí Blanco",
+   "categoria": "Licores y Cocktails",
+   "precio": 106,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ron Bacardí Solera",
+   "categoria": "Licores y Cocktails",
+   "precio": 128,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tequila Don Julio Reposado",
+   "categoria": "Licores y Cocktails",
+   "precio": 168,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tequila Herradura Reposado",
+   "categoria": "Licores y Cocktails",
+   "precio": 139,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tequila Jimador",
+   "categoria": "Licores y Cocktails",
+   "precio": 106,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Tequila Tradicional",
+   "categoria": "Licores y Cocktails",
+   "precio": 113,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Vodka Absolut",
+   "categoria": "Licores y Cocktails",
+   "precio": 123,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Vodka Smirnoff",
+   "categoria": "Licores y Cocktails",
+   "precio": 109,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Whisky Buchanan's",
+   "categoria": "Licores y Cocktails",
+   "precio": 178,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Whisky Chivas Regal",
+   "categoria": "Licores y Cocktails",
+   "precio": 156,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Whisky J.W. Etiqueta Negra",
+   "categoria": "Licores y Cocktails",
+   "precio": 190,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Caribe Cooler",
+   "categoria": "Licores y Cocktails",
+   "precio": 110,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Conga",
+   "categoria": "Licores y Cocktails",
+   "precio": 114,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Conga sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio": 105,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Daiquiri",
+   "categoria": "Licores y Cocktails",
+   "precio": 109,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Daiquiri sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio": 96,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Limonada Eléctrica",
+   "categoria": "Licores y Cocktails",
+   "precio": 109,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Margarita",
+   "categoria": "Licores y Cocktails",
+   "precio": 109,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Margarita sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio": 100,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Piñada",
+   "categoria": "Licores y Cocktails",
+   "precio": 100,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Piña Colada",
+   "categoria": "Licores y Cocktails",
+   "precio": 112,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sangría",
+   "categoria": "Licores y Cocktails",
+   "precio": 112,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Sangría sin Alcohol",
+   "categoria": "Licores y Cocktails",
+   "precio": 100,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Vino Tinto Selección (copa)",
+   "categoria": "Licores y Cocktails",
+   "precio": 102,
+   "descripcion": null,
+   "es_alcohol": true,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Champiñón",
+   "categoria": "Guarniciones Extra",
+   "precio": 35,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Chile Poblano",
+   "categoria": "Guarniciones Extra",
+   "precio": 35,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Chorizo",
+   "categoria": "Guarniciones Extra",
+   "precio": 36,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Guacamole",
+   "categoria": "Guarniciones Extra",
+   "precio": 49,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Rajas",
+   "categoria": "Guarniciones Extra",
+   "precio": 35,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Tocino",
+   "categoria": "Guarniciones Extra",
+   "precio": 36,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Orden Tortilla de Harina",
+   "categoria": "Guarniciones Extra",
+   "precio": 24,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Orden Tortilla de Maíz",
+   "categoria": "Guarniciones Extra",
+   "precio": 22,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Extra Queso",
+   "categoria": "Guarniciones Extra",
+   "precio": 52,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "todas"
+  },
+  {
+   "nombre": "Ensalada de PM",
+   "categoria": "Entradas",
+   "precio": 206,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  },
+  {
+   "nombre": "Sopa de Lima",
+   "categoria": "Comida Regional",
+   "precio": 170,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  },
+  {
+   "nombre": "Papadzules (orden de 5)",
+   "categoria": "Comida Regional",
+   "precio": 194,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  },
+  {
+   "nombre": "Platillo de Cochinita",
+   "categoria": "Comida Regional",
+   "precio": 283,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  },
+  {
+   "nombre": "Tacos de Cochinita (orden de 4)",
+   "categoria": "Comida Regional",
+   "precio": 179,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  },
+  {
+   "nombre": "Francés de Cochinita",
+   "categoria": "Comida Regional",
+   "precio": 224,
+   "descripcion": null,
+   "es_alcohol": false,
+   "popular": false,
+   "alcance": "grandes"
+  }
+ ],
+ "promociones": [
+  {
+   "codigo": "LUNES2X1PM",
+   "nombre": "Lunes 2x1 en tacos al pastor",
+   "tipo": "bogo",
+   "dias": [
+    1
+   ],
+   "canales": [
+    "recoger"
+   ],
+   "productos": [
+    "Taco Al Pastor (individual)"
+   ],
+   "descripcion": "2x1 en tacos al pastor, solo para recoger (las promociones de PM no aplican a domicilio)."
+  }
+ ],
+ "promociones_no_modeladas": [
+  {
+   "id": "PROMO-MAR",
+   "nombre": "Martes nachos de pastor con 2 aguas de cortesía",
+   "motivo": "Es un combo con articulos de cortesia (2 aguas gratis, aun sin definir cuales): requiere un tipo de promocion distinto al 2x1. No se carga."
+  }
+ ],
+ "agente": {
+  "voice_id": "Kore",
+  "saludo": "Buenas tardes, gracias por llamar a Los Taquitos de PM, sucursal {sucursal}. Le atiende su asistente virtual.",
+  "secciones_comportamiento": [
+   "# VOZ Y TRATO",
+   "# REGLAS DURAS",
+   "# SEGURIDAD",
+   "# DATOS DEL NEGOCIO"
+  ]
+ }
+}

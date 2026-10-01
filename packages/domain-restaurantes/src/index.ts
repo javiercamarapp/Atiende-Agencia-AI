@@ -62,7 +62,7 @@ export type { TurnoHorario, HorarioSucursal, EstadoApertura } from "./horarios.t
 export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
 export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
-export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, PROMOTION_CODE_PATTERN } from "./promotions.ts";
+export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, applyPromotionToOrder, computeBogoDiscount, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
 export { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 
@@ -141,6 +141,8 @@ export { registerCallbackRequest } from "./callback-requests.ts";
 
 export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
 export type { NearestBranchResult } from "./nearest-branch.ts";
+export { assignBranch, rankBranchesByKm, FUERA_DE_ZONA_MENSAJE } from "./branch-assignment.ts";
+export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBranch } from "./branch-assignment.ts";
 
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 

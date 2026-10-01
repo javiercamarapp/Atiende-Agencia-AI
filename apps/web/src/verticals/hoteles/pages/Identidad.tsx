@@ -1,5 +1,6 @@
 // Identidad — bóveda de identidad cifrada, registro migratorio y purga con doble control
-// (H-01, P0). Consume apps/api/src/routes/verticals/hoteles/identidad.ts. Mismo shell y
+// (H-01, P0) + pestaña "Privacidad" (H-02: aviso, consentimientos, ARCO, bloqueo previo a la
+// purga, retención legal e incidentes; ver Privacidad.tsx). Consume apps/api/src/routes/verticals/hoteles/identidad.ts. Mismo shell y
 // mismos componentes de @atiende/ui que el resto del panel de hoteles (Fraude/Catálogo).
 //
 // Reglas de la pantalla (el servidor es la barrera real, esto solo ordena la UX):
@@ -19,6 +20,7 @@ import {
   IMAGEN_RETENCION_DIAS_MAX,
   IMAGEN_RETENCION_DIAS_MIN,
   MIGRATORIO_ESTADO_LABELS,
+  MOTIVO_BLOQUEO_LABELS,
   PURGA_ESTADO_LABELS,
   REVEAL_ROLES,
   captureIdentidad,
@@ -34,11 +36,14 @@ import {
   verifyIdentidad,
 } from "../lib/identidad-client.ts";
 import type { DocumentoRevelado, DocumentType, IdentidadList, IdentidadSummary, MigratorioSummary, PurgaSummary } from "../lib/identidad-client.ts";
+import { CONSENT_CANALES, CONSENT_METODOS_ESCRITOS, CONSENT_METODO_LABELS, blockIdentidad, fetchAvisos, placeRetencion, requestAccesoExcepcional } from "../lib/privacidad-client.ts";
+import type { AvisoSummary } from "../lib/privacidad-client.ts";
+import { PrivacidadTab } from "./Privacidad.tsx";
 import { fetchReservations, searchGuests } from "../lib/reservas-client.ts";
 import type { GuestOption, ReservationSummary } from "../lib/reservas-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
-type Tab = "boveda" | "purgas" | "migratorio";
+type Tab = "boveda" | "purgas" | "migratorio" | "privacidad";
 
 const SELECT_CLASS = "block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground";
 
@@ -62,6 +67,7 @@ export function IdentidadPage({ apiBaseUrl, token, propertyId, role }: HotelesSh
           <TabsTrigger value="boveda">Bóveda</TabsTrigger>
           {isAdmin && <TabsTrigger value="purgas">Purgas</TabsTrigger>}
           <TabsTrigger value="migratorio">Registro migratorio</TabsTrigger>
+          <TabsTrigger value="privacidad">Privacidad</TabsTrigger>
         </TabsList>
         <TabsContent value="boveda" className="mt-4">
           <BovedaTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canReveal={canReveal} isAdmin={isAdmin} />
@@ -73,6 +79,9 @@ export function IdentidadPage({ apiBaseUrl, token, propertyId, role }: HotelesSh
         )}
         <TabsContent value="migratorio" className="mt-4">
           <MigratorioTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+        </TabsContent>
+        <TabsContent value="privacidad" className="mt-4">
+          <PrivacidadTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>
@@ -142,9 +151,56 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
     setBusyId(item.id);
     try {
       await requestPurga(fetch, apiBaseUrl, token, propertyId, item.id, motivo);
-      toast.success("Solicitud de purga creada; falta la aprobación de otra persona.");
+      toast.success("Solicitud de purga creada; falta la aprobación de otra persona (al aprobarla, la identidad se bloquea antes de purgarse).");
     } catch (err) {
       toast.error(errorMessage(err, "No se pudo solicitar la purga."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleBlock(item: IdentidadSummary) {
+    const motivo = window.prompt("Motivo del bloqueo (mínimo 10 caracteres). La identidad pierde el acceso operativo y se purgará al vencer la ventana, salvo retención legal:");
+    if (motivo === null) return;
+    setBusyId(item.id);
+    try {
+      await blockIdentidad(fetch, apiBaseUrl, token, propertyId, item.id, motivo);
+      toast.success("Identidad bloqueada.");
+      await load();
+    } catch (err) {
+      toast.error(errorMessage(err, "No se pudo bloquear la identidad."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleHold(item: IdentidadSummary) {
+    const folio = window.prompt("Folio del caso (carpeta de investigación, expediente o folio de incidente):");
+    if (folio === null) return;
+    const motivo = window.prompt("Motivo de la retención legal (10 a 300 caracteres). Impide la purga mientras dure el caso:");
+    if (motivo === null) return;
+    const autorizacion = window.prompt("Quién autoriza la retención (oficio, área jurídica o dirección):");
+    if (autorizacion === null) return;
+    setBusyId(item.id);
+    try {
+      await placeRetencion(fetch, apiBaseUrl, token, propertyId, item.id, { folio, motivo, autorizacion });
+      toast.success("Retención legal aplicada: la identidad no se purgará mientras dure el caso.");
+    } catch (err) {
+      toast.error(errorMessage(err, "No se pudo aplicar la retención legal."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleExceptionalAccess(item: IdentidadSummary) {
+    const motivo = window.prompt("Motivo del acceso excepcional (10 a 300 caracteres). Otra persona con rol owner/gm deberá aprobarlo:");
+    if (motivo === null) return;
+    setBusyId(item.id);
+    try {
+      await requestAccesoExcepcional(fetch, apiBaseUrl, token, propertyId, item.id, motivo);
+      toast.success("Acceso excepcional solicitado; falta la aprobación de otra persona (pestaña Privacidad > Retención y bloqueo).");
+    } catch (err) {
+      toast.error(errorMessage(err, "No se pudo solicitar el acceso excepcional."));
     } finally {
       setBusyId(null);
     }
@@ -175,9 +231,14 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
                   </p>
                 </div>
                 <Badge variant={it.estado === "activo" ? "default" : "secondary"} className="self-start">
-                  {it.estado === "activo" ? "Activa" : "Purgada"}
+                  {it.estado === "activo" ? "Activa" : it.estado === "bloqueada" ? "Bloqueada" : "Purgada"}
                 </Badge>
               </div>
+              {it.estado === "bloqueada" && (
+                <p className="text-xs text-muted-foreground" data-testid="identidad-bloqueada">
+                  Bloqueada{it.motivoBloqueo ? ` (${MOTIVO_BLOQUEO_LABELS[it.motivoBloqueo]})` : ""}: sin acceso operativo; se purgará después del {it.bloqueadaHasta ?? "fin de la ventana"}, salvo retención legal. Solo hay acceso excepcional con doble control.
+                </p>
+              )}
               {revealed?.id === it.id && (
                 <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm flex flex-col gap-1" data-testid="documento-revelado">
                   <p>
@@ -204,6 +265,16 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
                   </div>
                 </div>
               )}
+              {it.estado === "bloqueada" && isAdmin && (
+                <div className="flex gap-2 flex-wrap mt-1">
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleExceptionalAccess(it)} disabled={busyId === it.id}>
+                    Acceso excepcional
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleHold(it)} disabled={busyId === it.id}>
+                    Retención legal
+                  </Button>
+                </div>
+              )}
               {it.estado === "activo" && (
                 <div className="flex gap-2 flex-wrap mt-1">
                   {canReveal && (
@@ -214,6 +285,16 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
                   {canReveal && !it.verificadaEn && (
                     <Button type="button" size="sm" variant="outline" onClick={() => void handleVerify(it)} disabled={busyId === it.id}>
                       Marcar verificada
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleHold(it)} disabled={busyId === it.id}>
+                      Retención legal
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleBlock(it)} disabled={busyId === it.id}>
+                      Bloquear
                     </Button>
                   )}
                   {isAdmin && (
@@ -244,6 +325,14 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
   const [retentionDays, setRetentionDays] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Consentimiento ligado a la captura (H-02): aviso vigente + finalidades + canal + evidencia.
+  const [aviso, setAviso] = useState<AvisoSummary | null>(null);
+  const [registrarConsent, setRegistrarConsent] = useState(false);
+  const [aceptadasObl, setAceptadasObl] = useState<ReadonlySet<string>>(new Set());
+  const [aceptadasOpc, setAceptadasOpc] = useState<ReadonlySet<string>>(new Set());
+  const [canal, setCanal] = useState("mostrador");
+  const [metodo, setMetodo] = useState("casilla_electronica");
+  const [sensibles, setSensibles] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
@@ -263,9 +352,33 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
     };
   }, [apiBaseUrl, token, propertyId]);
 
+  useEffect(() => {
+    let cancelado = false;
+    fetchAvisos(fetch, apiBaseUrl, token, propertyId)
+      .then((r) => {
+        if (cancelado) return;
+        const vigente = r.disponible ? (r.items.find((a) => a.vigente) ?? null) : null;
+        setAviso(vigente);
+        setRegistrarConsent(vigente !== null);
+      })
+      .catch(() => undefined); // sin aviso/ledger la captura sigue como antes (el consentimiento es opcional)
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId]);
+
   const guestReservations = useMemo(() => reservations.filter((r) => r.guestId === guestId), [reservations, guestId]);
   const checkOutDate = guestReservations.find((r) => r.id === reservationId)?.checkOutDate ?? null;
   const plan = planRetencionImagen(retentionDays, checkOutDate);
+  const faltanObligatorias = aviso !== null && aviso.finalidadesObligatorias.some((f) => !aceptadasObl.has(f));
+  const consentIncompleto = registrarConsent && aviso !== null && (faltanObligatorias || (sensibles && !CONSENT_METODOS_ESCRITOS.has(metodo)));
+
+  function toggle(set: ReadonlySet<string>, value: string, on: boolean): ReadonlySet<string> {
+    const next = new Set(set);
+    if (on) next.add(value);
+    else next.delete(value);
+    return next;
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -273,10 +386,14 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
       setError(plan.mensaje);
       return;
     }
+    if (consentIncompleto) {
+      setError("El consentimiento exige aceptar todas las finalidades obligatorias del aviso y, con datos sensibles, firma o mecanismo de autenticación.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await captureIdentidad(fetch, apiBaseUrl, token, propertyId, {
+      const resultado = await captureIdentidad(fetch, apiBaseUrl, token, propertyId, {
         guestId,
         reservationId: reservationId || undefined,
         documentType,
@@ -285,8 +402,21 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
         documentNumber,
         birthDate: birthDate || undefined,
         retentionDays: retentionDays.trim() === "" ? undefined : Number(retentionDays),
+        consentimiento:
+          registrarConsent && aviso
+            ? { avisoId: aviso.id, finalidadesObligatorias: [...aceptadasObl], finalidadesOpcionales: [...aceptadasOpc], canal, metodo, datosSensibles: sensibles || undefined }
+            : undefined,
       });
-      toast.success("Identidad capturada y cifrada.");
+      toast.success(
+        resultado.consentimiento?.estado === "registrado"
+          ? `Identidad capturada y cifrada; consentimiento registrado (aviso ${resultado.consentimiento.versionAviso ?? aviso?.version}).`
+          : resultado.consentimiento?.estado === "no_disponible"
+            ? "Identidad capturada y cifrada; el ledger de consentimientos aún no está disponible en esta base."
+            : "Identidad capturada y cifrada.",
+      );
+      setAceptadasObl(new Set());
+      setAceptadasOpc(new Set());
+      setSensibles(false);
       setFullName("");
       setDocumentNumber("");
       setBirthDate("");
@@ -376,11 +506,75 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
               El registro de huéspedes sin imagen (nacionalidad, fechas de llegada y salida) se conserva por separado, 365 días por defecto, y no se purga junto con el documento.
             </p>
             <p className="mt-1">
-              Antes de capturar, el huésped debe haber recibido el aviso de privacidad y su consentimiento debe quedar registrado. Esta pantalla aún no lo registra: el consentimiento formal está pendiente (H-02). Estos plazos son una decisión de producto, no una asesoría legal: confírmalos con tu abogado.
+              Antes de capturar, el huésped debe haber recibido el aviso de privacidad; registra su consentimiento aquí abajo (queda ligado a esta captura, con la versión del aviso, finalidades, canal y quién lo capturó). Estos plazos son una decisión de producto, no una asesoría legal: confírmalos con tu abogado.
             </p>
           </div>
+          <fieldset className="sm:col-span-2 rounded-lg border border-border p-3 flex flex-col gap-2" aria-label="Consentimiento y aviso de privacidad">
+            <legend className="px-1 text-xs font-medium text-foreground">Consentimiento y aviso de privacidad</legend>
+            {!aviso && <p className="text-xs text-muted-foreground">No hay un aviso de privacidad vigente (o el ledger aún no está disponible): publícalo en Privacidad &gt; Aviso y consentimientos para registrar el consentimiento junto con la captura.</p>}
+            {aviso && (
+              <>
+                <label className="flex items-center gap-2 text-xs text-foreground">
+                  <input type="checkbox" checked={registrarConsent} onChange={(e) => setRegistrarConsent(e.target.checked)} />
+                  Registrar el consentimiento del huésped (aviso {aviso.version})
+                </label>
+                {registrarConsent && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="sm:col-span-2 text-xs text-muted-foreground" data-testid="aviso-simplificado">
+                      {aviso.textoSimplificado}
+                      {aviso.urlIntegral ? ` Aviso integral: ${aviso.urlIntegral}` : ""}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-foreground">Finalidades obligatorias (todas)</span>
+                      {aviso.finalidadesObligatorias.map((f) => (
+                        <label key={f} className="flex items-center gap-2 text-xs text-foreground">
+                          <input type="checkbox" checked={aceptadasObl.has(f)} onChange={(e) => setAceptadasObl(toggle(aceptadasObl, f, e.target.checked))} />
+                          {f}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-foreground">Finalidades opcionales (casilla distinta, sin marcar)</span>
+                      {aviso.finalidadesOpcionales.length === 0 && <span className="text-xs text-muted-foreground">Este aviso no tiene finalidades opcionales.</span>}
+                      {aviso.finalidadesOpcionales.map((f) => (
+                        <label key={f} className="flex items-center gap-2 text-xs text-foreground">
+                          <input type="checkbox" checked={aceptadasOpc.has(f)} onChange={(e) => setAceptadasOpc(toggle(aceptadasOpc, f, e.target.checked))} />
+                          {f}
+                        </label>
+                      ))}
+                    </div>
+                    <div>
+                      <Label htmlFor="consent-canal">Canal</Label>
+                      <select id="consent-canal" className={SELECT_CLASS} value={canal} onChange={(e) => setCanal(e.target.value)}>
+                        {CONSENT_CANALES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="consent-metodo">Evidencia del consentimiento</Label>
+                      <select id="consent-metodo" className={SELECT_CLASS} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                        {Object.keys(CONSENT_METODO_LABELS).map((m) => (
+                          <option key={m} value={m}>
+                            {CONSENT_METODO_LABELS[m]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <label className="sm:col-span-2 flex items-center gap-2 text-xs text-foreground">
+                      <input type="checkbox" checked={sensibles} onChange={(e) => setSensibles(e.target.checked)} />
+                      Incluye datos sensibles (p. ej. biométricos): exige consentimiento expreso y por escrito (firma o mecanismo de autenticación)
+                    </label>
+                    {consentIncompleto && <p className="sm:col-span-2 text-xs text-destructive" role="alert">Falta aceptar todas las finalidades obligatorias o usar firma/autenticación con datos sensibles.</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </fieldset>
           <div className="flex items-end">
-            <Button type="submit" disabled={saving || !guestId || !plan.valido}>
+            <Button type="submit" disabled={saving || !guestId || !plan.valido || consentIncompleto}>
               {saving ? "Cifrando…" : "Capturar identidad"}
             </Button>
           </div>
@@ -416,12 +610,12 @@ function PurgasTab({ apiBaseUrl, token, propertyId }: TabProps) {
   }, [apiBaseUrl, token, propertyId]);
 
   async function handleDecide(p: PurgaSummary, aprobar: boolean) {
-    const nota = window.prompt(aprobar ? "Nota de aprobación (opcional). La purga es irreversible:" : "Motivo del rechazo (opcional):");
+    const nota = window.prompt(aprobar ? "Nota de aprobación (opcional). La identidad quedará bloqueada y se purgará (irreversible) al vencer la ventana:" : "Motivo del rechazo (opcional):");
     if (nota === null) return;
     setBusyId(p.id);
     try {
       const r = await decidePurga(fetch, apiBaseUrl, token, propertyId, p.id, aprobar, nota || undefined);
-      toast.success(r === "ejecutada" ? "Purga ejecutada." : "Solicitud rechazada.");
+      toast.success(r === "ejecutada" ? "Purga ejecutada." : r === "en_bloqueo" ? "Purga aprobada: la identidad quedó bloqueada y se purgará al vencer la ventana." : "Solicitud rechazada.");
       await load();
     } catch (err) {
       // Doble control: si quien decide es quien solicitó, el servidor responde 403 con el motivo.
@@ -433,7 +627,7 @@ function PurgasTab({ apiBaseUrl, token, propertyId }: TabProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground">Doble control: quien solicita una purga no puede aprobarla; debe decidirla otra persona con rol owner/gm. La purga borra el documento cifrado y es irreversible.</p>
+      <p className="text-xs text-muted-foreground">Doble control: quien solicita una purga no puede aprobarla; debe decidirla otra persona con rol owner/gm. Aprobarla bloquea la identidad (sin acceso operativo, con la ventana configurada); la purga borra el documento cifrado, es irreversible y ocurre solo al vencer la ventana y si no hay retención legal.</p>
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
       {!data && !error && <EstadoCargando etiqueta="Cargando solicitudes…" />}
       {data && !data.disponible && <NoDisponible mensaje="Las solicitudes de purga aún no están disponibles en esta base (migración pendiente de aplicar)." />}
@@ -446,7 +640,7 @@ function PurgasTab({ apiBaseUrl, token, propertyId }: TabProps) {
                 <p className="font-medium text-foreground">Identidad {p.identidadId}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{p.motivo}</p>
               </div>
-              <Badge variant={p.estado === "pendiente" ? "default" : "secondary"} className="self-start">
+              <Badge variant={p.estado === "pendiente" || p.estado === "en_bloqueo" ? "default" : "secondary"} className="self-start">
                 {PURGA_ESTADO_LABELS[p.estado]}
               </Badge>
             </div>

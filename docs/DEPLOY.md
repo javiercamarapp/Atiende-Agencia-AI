@@ -175,6 +175,19 @@ como parámetro plano.
   `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
   en la misma rama, despliega el caller primero.
 
+**Hoteles H-02 (migración 032, consentimiento/ARCO/bloqueo/incidentes) — orden de despliegue.**
+Mergear NO aplica `20240101000201_032_hoteles_consentimiento_arco_incidentes.sql` a la base real
+(ver arriba) y esa migración **requiere la 031 (`20240101000200_031_hoteles_boveda_identidad.sql`)
+ya aplicada**. El código nuevo funciona contra la base vieja (sin 031 o con 031 pero sin 032): las
+lecturas de privacidad responden `disponible:false`, las escrituras 503, la captura de identidad sigue
+sin ledger y el cron de retención cae a la purga directa de 031. Orden: (1) despliega el código; (2)
+aplica 031 si falta y después 032 (`supabase db push`); (3) verifica `GET /internal/hoteles/identidad-purga`
+(debe reportar `via_bloqueo:true`). Con 032 aplicada y el código viejo todavía en producción nada se
+rompe: `purge_expired_identities` solo purga identidades ya bloqueadas con la ventana vencida. Desde que
+se aplica 032 la purga deja de ser inmediata: una identidad vencida o con purga aprobada espera la ventana
+de bloqueo (7 días por defecto, 3 a 30). No hay variables de entorno nuevas ni cambios en `vercel.json`.
+Los plazos son decisiones de producto, no asesoría legal: ver `packages/domain-hoteles/README.md` §H-02.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las

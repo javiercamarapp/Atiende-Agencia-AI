@@ -10,6 +10,7 @@ import type {
   IdentityListResult,
   IdentityPurgeRequestRecord,
   IdentityPurgeStatus,
+  IdentityRetentionSweepResult,
   IdentityStatus,
   IdentityVaultRecord,
   MigratoryRegistrationRecord,
@@ -30,9 +31,17 @@ export interface IdentityRepository {
   requestPurge(vaultId: string, reason: string, actorUserId: string): Promise<string>;
   listPurgeRequests(propertyId: string, filters: { readonly status?: IdentityPurgeStatus; readonly limit: number }): Promise<IdentityListResult<IdentityPurgeRequestRecord>>;
   findPurgeRequest(propertyId: string, requestId: string): Promise<IdentityPurgeRequestRecord | null>;
-  decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada">;
-  /** Solo sesion de sistema: purga las identidades vencidas de UNA property. */
+  /** Aprobar ya NO purga (migracion 032): bloquea la identidad y devuelve `en_bloqueo`. En una base sin 032
+   *  el resultado es `ejecutada` (purga directa de 031). */
+  decidePurge(requestId: string, approve: boolean, note: string | null, actorUserId: string): Promise<"ejecutada" | "rechazada" | "en_bloqueo">;
+  /** Solo sesion de sistema. Con 031: purga las identidades vencidas de UNA property. Con 032 SOLO purga las
+   *  bloqueadas con ventana vencida y sin retencion legal. */
   purgeExpired(propertyId: string, today: string): Promise<number>;
+  /** Solo sesion de sistema (cron): bloquea lo vencido y purga lo bloqueado con ventana vencida (032). En una base
+   *  sin 032 cae a `purgeExpired` (camino anterior, sin bloqueo). */
+  sweepRetention(propertyId: string, today: string): Promise<IdentityRetentionSweepResult>;
+  /** Acceso excepcional a una identidad BLOQUEADA: consume una aprobacion vigente del propio llamador (doble control). */
+  revealBlockedIdentity(accessRequestId: string, actorUserId: string): Promise<RevealedEnvelope>;
   createMigratoryRegistration(input: { readonly propertyId: string; readonly reservationId: string; readonly guestId: string; readonly vaultId: string | null; readonly actorUserId: string }): Promise<MigratoryRegistrationRecord>;
   listMigratoryRegistrations(propertyId: string, filters: { readonly status?: MigratoryStatus; readonly limit: number }): Promise<IdentityListResult<MigratoryRegistrationRecord>>;
   /** `null` si no existe en esa property. */

@@ -1280,6 +1280,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       maxUses: input.maxUses ?? null,
       timesUsed: 0,
       isActive: input.isActive ?? true,
+      channels: input.channels ?? null,
+      productIds: input.productIds ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1305,6 +1307,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       endTime: patch.endTime !== undefined ? patch.endTime : existing.endTime,
       maxUses: patch.maxUses !== undefined ? patch.maxUses : existing.maxUses,
       isActive: patch.isActive ?? existing.isActive,
+      channels: patch.channels !== undefined ? patch.channels : existing.channels,
+      productIds: patch.productIds !== undefined ? patch.productIds : existing.productIds,
       updatedAt: new Date().toISOString(),
     };
     this.promotions.set(promotionId, updated);

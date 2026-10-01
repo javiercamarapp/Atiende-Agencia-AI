@@ -15,6 +15,7 @@ import { citasAdminStaffRoutes } from "./admin-staff.ts";
 import { citasCalendarProvidersRoutes } from "./calendar-providers.ts";
 import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { citasAuditoriaRoutes } from "./auditoria.ts";
+import { citasPrivacidadRoutes } from "./privacidad.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -40,5 +41,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-citas/migrations/023_citas_audit_log.sql).
   app.route("/", citasAuditoriaRoutes(deps));
+  // C-02 -- seguimiento de solicitudes ARCO (ver packages/domain-citas/migrations/024_citas_data_rights.sql).
+  app.route("/", citasPrivacidadRoutes(deps));
   return app;
 }
