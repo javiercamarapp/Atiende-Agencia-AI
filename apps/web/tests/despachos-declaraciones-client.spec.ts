@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot } from "../src/verticals/despachos/lib/declaraciones-client.ts";
+import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot, fetchDiotLayout } from "../src/verticals/despachos/lib/declaraciones-client.ts";
 import type { DiotAgregado, IsrResultado } from "../src/verticals/despachos/lib/declaraciones-client.ts";
 
 const ISR_PF_RESULT: IsrResultado = {
@@ -100,5 +100,16 @@ describe("fetchDiot", () => {
   it("400 (periodo con formato inválido) -> propaga el mensaje real del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "periodo: se esperaba el formato YYYY-MM." }), { status: 400 })) as unknown as typeof fetch;
     await expect(fetchDiot(fetchImpl, "http://api.local", "tok", "prop-1", "marzo-2026")).rejects.toThrow("YYYY-MM");
+  });
+});
+
+describe("fetchDiotLayout", () => {
+  it("pide GET .../declaraciones/diot/:periodo/layout y devuelve el layout tal cual", async () => {
+    const layout = { version: "v", periodo: "2026-03", rfcContribuyente: "AAA010101AAA", renglones: [], omitidos: [], advertencias: ["a"], txt: "", xml: "" };
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/despachos/prop-1/declaraciones/diot/2026-03/layout");
+      return new Response(JSON.stringify(layout), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await fetchDiotLayout(fetchImpl, "http://api.local", "tok", "prop-1", "2026-03")).toEqual(layout);
   });
 });

@@ -8,7 +8,7 @@
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, FileUp, Upload, X } from "lucide-react";
+import { Check, FileUp, ShieldAlert, Upload, X } from "lucide-react";
 import {
   Badge,
   Button,
@@ -31,6 +31,8 @@ import {
 } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
+import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
+import type { EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatMoney } from "../lib/format.ts";
@@ -71,6 +73,10 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [notaDrafts, setNotaDrafts] = useState<Record<string, string>>({});
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+
+  // D-04: alertas de la lista 69-B (EFOS) del SAT sobre los CFDI ya ingeridos de la property.
+  const [efos, setEfos] = useState<EfosAlertasRespuesta | null>(null);
+  const [efosError, setEfosError] = useState<string | null>(null);
 
   const [importando, setImportando] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -113,6 +119,11 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
 
   useEffect(() => {
     void loadRevisiones();
+  }, [apiBaseUrl, token, propertyId]);
+
+  useEffect(() => {
+    setEfosError(null);
+    fetchEfosAlertas(fetch, apiBaseUrl, token, propertyId).then(setEfos, (err: unknown) => setEfosError(err instanceof Error ? err.message : "No se pudo consultar la lista 69-B."));
   }, [apiBaseUrl, token, propertyId]);
 
   async function handleResolver(reviewId: string, decision: "aprobar" | "rechazar") {
@@ -211,6 +222,44 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           {importOk}
         </p>
       )}
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
+          <CardTitle className="flex items-center gap-1.5 text-sm">
+            <ShieldAlert className="h-4 w-4" strokeWidth={1.75} />
+            Lista 69-B del SAT (EFOS)
+          </CardTitle>
+          {efos?.lista.periodo && <span className="text-xs text-muted-foreground">Edición {efos.lista.periodo}</span>}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          {efosError && (
+            <p role="alert" className="text-destructive text-sm">
+              {efosError}
+            </p>
+          )}
+          {efos && (
+            <p role="status" className={resumenEfos(efos).tono === "alerta" ? "text-sm font-medium text-destructive" : "text-sm text-muted-foreground"}>
+              {resumenEfos(efos).mensaje}
+            </p>
+          )}
+          {efos && efos.alertas.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {efos.alertas.map((a) => (
+                <li key={a.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[13px]">
+                  <span>
+                    <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+                      {a.emisorNombre ?? a.rfcEmisor}
+                    </Link>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span>
+                    <span className="ml-2 tabular-nums text-muted-foreground">{formatMoney(a.total)}</span>
+                  </span>
+                  <Badge variant={a.situacion === "definitivo" ? "destructive" : "outline"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">

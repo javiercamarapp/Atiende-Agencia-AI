@@ -23,6 +23,7 @@ import type {
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
@@ -35,6 +36,35 @@ export interface InvoicePage {
   readonly total: number;
   readonly nextOffset: number | null;
 }
+
+/** Estado de la lista 69-B vigente. `no_disponible` = base sin migración 014 o sin ninguna
+ * edición ingerida: NUNCA debe leerse como "sin emisores riesgosos". */
+export interface EfosEstadoLista {
+  readonly estado: "disponible" | "no_disponible";
+  readonly periodo: string | null;
+  readonly filas: number | null;
+  readonly ingestadoEn: string | null;
+}
+
+/** Invoice ya ingerido cuyo emisor figura HOY como presunto/definitivo (re-evaluación contra
+ * la lista vigente, por property). */
+export interface EfosInvoiceAfectado {
+  readonly invoiceId: string;
+  readonly folioFiscal: string;
+  readonly rfcEmisor: string;
+  readonly emisorNombre: string | null;
+  readonly fecha: string;
+  readonly total: number;
+  readonly situacion: "presunto" | "definitivo";
+  readonly periodoLista: string;
+}
+
+export interface EfosAfectadosResultado {
+  readonly estado: "disponible" | "no_disponible";
+  readonly items: readonly EfosInvoiceAfectado[];
+}
+
+export type EfosIngestaResultado = "insertada" | "sin_cambios" | "reemplazada";
 
 export interface DespachosRepository {
   // ---- Fase 9 (paridad de UI del panel web): resolución de organización/property
@@ -256,6 +286,17 @@ export interface DespachosRepository {
    * todavía no tiene la migración 012 aplicada -- la ruta HTTP lo traduce a un 503
    * honesto, nunca un 500 crudo ni un upsert silenciosamente perdido. */
   upsertPropertyConfigZonaHoraria(propertyId: string, organizationId: string, zonaHoraria: string | null): Promise<DespachosPropertyConfigRecord>;
+
+  // ---- D-04: lista 69-B del SAT (EFOS), migración 014 ----
+  /** Consulta RFC contra la edición MÁS RECIENTE ingerida. Compat con la base sin migrar:
+   * el adaptador de Postgres degrada a `EFOS_NO_DISPONIBLE` en 42883/42P01/42703 dentro de
+   * un SAVEPOINT (la ingesta de CFDI corre en la transacción compartida del request). */
+  consultarEfos(rfcs: readonly string[]): Promise<EfosConsulta>;
+  estadoEfos(): Promise<EfosEstadoLista>;
+  listarInvoicesEfosAfectados(propertyId: string): Promise<EfosAfectadosResultado>;
+  /** SOLO sesión de sistema (la función SQL exige `auth.uid() is null`). Idempotente por
+   * periodo y SHA. Lanza `EfosUnavailableError` si la migración 014 no está aplicada. */
+  ingestarListaEfos(periodo: string, fuenteSha256: string, filas: readonly EfosContribuyente[]): Promise<EfosIngestaResultado>;
 
   // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----
   /** Lectura PAGINADA de `despachos.audit_log` (008_despachos_audit_log.sql), más

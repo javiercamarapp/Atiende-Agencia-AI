@@ -5,8 +5,10 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, isNoUniqueOrExclusionConstraintError, runWithSavepointFallback } from "@atiende/db";
 import type { HallazgoCfdi } from "@atiende/billing";
-import { DespachosConfigUnavailableError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
+import { DespachosConfigUnavailableError, EfosUnavailableError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
+import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
+import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
+import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EfosInvoiceAfectado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CategoriaContable,
   CollectionEventChannel,
@@ -381,6 +383,10 @@ function mapDespachosAuditLogRow(row: DespachosAuditLogRawRow) {
     createdAt: row.created_at,
   };
 }
+
+// Un 42883 solo es "migración pendiente" si nombra una función despachos.efos_*; uno dentro del cuerpo
+// (p. ej. core.has_property_access ausente) es un bug real y se repropaga.
+const EFOS_FN_PREFIX = "despachos.efos_";
 
 export class PostgresDespachosRepository implements DespachosRepository {
   constructor(private readonly db: TenantDbSession) {}
@@ -1110,4 +1116,132 @@ export class PostgresDespachosRepository implements DespachosRepository {
       },
     });
   }
+
+  // ---- D-04: lista 69-B (EFOS), migración 014 ----
+  // REGLA DURA de compatibilidad: `consultarEfos` corre dentro de la ingesta de CFDI (misma
+  // transacción del request, que sigue con `insertInvoice`/`createReview`). Un 42883/42P01
+  // sin SAVEPOINT la dejaría abortada (25P02) y el commit devolvería ROLLBACK; por eso las
+  // tres lecturas usan `runWithSavepointFallback` y degradan a "no disponible" (jamás a
+  // "emisor limpio" ni a un 500).
+  async consultarEfos(rfcs: readonly string[]): Promise<EfosConsulta> {
+    if (rfcs.length === 0) return EFOS_NO_DISPONIBLE;
+    return runWithSavepointFallback<EfosConsulta>({
+      session: this.db,
+      savepointName: "sp_despachos_efos_consultar",
+      primary: async () => {
+        const { rows } = await this.db.query<EfosConsultaRow>(`select * from despachos.efos_consultar($1::text[]);`, [[...rfcs]]);
+        if (rows.length > 0) {
+          return { estado: "disponible", periodoLista: rows[0]!.out_periodo, coincidencias: rows.map(mapEfosRow) };
+        }
+        // Sin coincidencias: distinguir "lista vigente y limpio" de "nunca se ingirió".
+        const estado = await this.db.query<{ out_periodo: string }>(`select out_periodo from despachos.efos_estado();`);
+        return estado.rows[0] ? { estado: "disponible", periodoLista: estado.rows[0].out_periodo, coincidencias: [] } : EFOS_NO_DISPONIBLE;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
+      fallback: async () => EFOS_NO_DISPONIBLE,
+    });
+  }
+
+  async estadoEfos(): Promise<EfosEstadoLista> {
+    return runWithSavepointFallback<EfosEstadoLista>({
+      session: this.db,
+      savepointName: "sp_despachos_efos_estado",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_periodo: string; out_filas: number; out_ingestado_en: string }>(`select out_periodo, out_filas, out_ingestado_en from despachos.efos_estado();`);
+        const r = rows[0];
+        return r ? { estado: "disponible", periodo: r.out_periodo, filas: Number(r.out_filas), ingestadoEn: r.out_ingestado_en } : { estado: "no_disponible", periodo: null, filas: null, ingestadoEn: null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
+      fallback: async () => ({ estado: "no_disponible", periodo: null, filas: null, ingestadoEn: null }),
+    });
+  }
+
+  async listarInvoicesEfosAfectados(propertyId: string): Promise<EfosAfectadosResultado> {
+    return runWithSavepointFallback<EfosAfectadosResultado>({
+      session: this.db,
+      savepointName: "sp_despachos_efos_afectados",
+      primary: async () => {
+        const { rows } = await this.db.query<EfosAfectadoRow>(`select * from despachos.efos_invoices_afectados($1);`, [propertyId]);
+        if (rows.length > 0) return { estado: "disponible", items: rows.map(mapEfosAfectadoRow) };
+        const estado = await this.db.query<{ out_periodo: string }>(`select out_periodo from despachos.efos_estado();`);
+        return { estado: estado.rows[0] ? "disponible" : "no_disponible", items: [] };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
+      fallback: async () => ({ estado: "no_disponible", items: [] }),
+    });
+  }
+
+  async ingestarListaEfos(periodo: string, fuenteSha256: string, filas: readonly EfosContribuyente[]): Promise<EfosIngestaResultado> {
+    const payload = filas.map((f) => ({
+      rfc: f.rfc,
+      nombre: f.nombre,
+      situacion: f.situacion,
+      oficio_presuncion: f.oficioPresuncion,
+      fecha_presuncion_sat: f.fechaPresuncionSat,
+      fecha_desvirtuado_sat: f.fechaDesvirtuadoSat,
+      fecha_definitivo_sat: f.fechaDefinitivoSat,
+      fecha_sentencia_favorable_sat: f.fechaSentenciaFavorableSat,
+    }));
+    return runWithSavepointFallback<EfosIngestaResultado>({
+      session: this.db,
+      savepointName: "sp_despachos_efos_ingestar",
+      primary: async () => {
+        const { rows } = await this.db.query<{ r: EfosIngestaResultado }>(`select despachos.efos_ingestar_periodo($1, $2, $3::jsonb) as r;`, [periodo, fuenteSha256, JSON.stringify(payload)]);
+        return rows[0]!.r;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, EFOS_FN_PREFIX),
+      fallback: () => {
+        throw new EfosUnavailableError();
+      },
+    });
+  }
+}
+
+interface EfosConsultaRow {
+  out_periodo: string;
+  out_rfc: string;
+  out_nombre: string;
+  out_situacion: EfosContribuyente["situacion"];
+  out_oficio_presuncion: string | null;
+  out_fecha_presuncion_sat: string | null;
+  out_fecha_desvirtuado_sat: string | null;
+  out_fecha_definitivo_sat: string | null;
+  out_fecha_sentencia_favorable_sat: string | null;
+}
+
+function mapEfosRow(r: EfosConsultaRow): EfosContribuyente {
+  return {
+    rfc: r.out_rfc,
+    nombre: r.out_nombre,
+    situacion: r.out_situacion,
+    oficioPresuncion: r.out_oficio_presuncion,
+    fechaPresuncionSat: r.out_fecha_presuncion_sat,
+    fechaDesvirtuadoSat: r.out_fecha_desvirtuado_sat,
+    fechaDefinitivoSat: r.out_fecha_definitivo_sat,
+    fechaSentenciaFavorableSat: r.out_fecha_sentencia_favorable_sat,
+  };
+}
+
+interface EfosAfectadoRow {
+  out_invoice_id: string;
+  out_folio_fiscal: string;
+  out_rfc_emisor: string;
+  out_emisor_nombre: string | null;
+  out_fecha: string;
+  out_total: string;
+  out_situacion: "presunto" | "definitivo";
+  out_periodo_lista: string;
+}
+
+function mapEfosAfectadoRow(r: EfosAfectadoRow): EfosInvoiceAfectado {
+  return {
+    invoiceId: r.out_invoice_id,
+    folioFiscal: r.out_folio_fiscal,
+    rfcEmisor: r.out_rfc_emisor,
+    emisorNombre: r.out_emisor_nombre,
+    fecha: r.out_fecha,
+    total: Number(r.out_total),
+    situacion: r.out_situacion,
+    periodoLista: r.out_periodo_lista,
+  };
 }

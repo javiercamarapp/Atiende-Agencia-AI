@@ -112,3 +112,12 @@ export class DespachosConfigUnavailableError extends Error {
     this.name = "DespachosConfigUnavailableError";
   }
 }
+
+/** La lista 69-B (migración 014) todavía no existe en la base -- la ingesta no puede
+ * degradar a una base vieja (no hay dónde guardar), así que se traduce a un 503 honesto. */
+export class EfosUnavailableError extends Error {
+  constructor(message = "La lista 69-B (EFOS) todavía no está disponible en esta base -- aplica la migración 014 (despachos.efos_*).") {
+    super(message);
+    this.name = "EfosUnavailableError";
+  }
+}
