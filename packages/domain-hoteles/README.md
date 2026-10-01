@@ -430,3 +430,21 @@ lecturas degradan (`disponible: false`) y las escrituras responden 503 (`runWith
 Verificación contra Postgres real: `scripts/verify-hoteles-tickets-sla/`. Fuera de esta entrega: ingesta
 automática desde WhatsApp/voz/QR (el canal queda declarado en el modelo), notificación activa (correo/push)
 al escalar, y escalación por activo crítico de mantenimiento.
+
+## Catálogo de agentes, aprobaciones humanas, plantillas y guardrails (H-03)
+
+Código en `src/agentes/` (`guardrails.ts` reglas puras con casos de borde —topes inclusivos, palabras bloqueadas
+como palabra completa sin acentos ni mayúsculas, ventana de envío en la hora local de la property—,
+`gobernanza.ts` compuerta de agente: kill switch + presupuesto + registro de costo fail-open, `tipos.ts`,
+`repository.ts` puerto, `postgres-repository.ts` e `in-memory-repository.ts`); modelo SQL en
+`migrations/035_hoteles_agentes_aprobaciones.sql` (`hoteles.agent_config`, `agent_usage_monthly`,
+`agent_guardrail`, `agent_action_policy`, `agent_approval_request`, `agent_wa_template` y la bitácora
+`agent_event` escrita por funciones/triggers). El agente PROPONE (sesión de sistema) y una persona con rol
+decide con motivo; sin política configurada toda acción sensible exige humano, vence a las 24 h y la deciden
+owner/gm. Lo propuesto es inmutable, una aprobación se consume una sola vez, quien propone no decide lo suyo y
+un guardrail endurecido después de aprobar también frena la ejecución. Solo el dueño puede permitir ejecución
+automática bajo umbral (y nunca para respuestas a reseñas ni mensajes masivos). Los relojes que recibe una
+función solo se respetan en sesión de sistema (un usuario no puede rebobinar la expiración). Verificación
+contra Postgres real: `scripts/verify-hoteles-agentes-aprobaciones/`. Fuera de esta entrega: ejecutores
+automáticos de descuento/reembolso/cargo/mensaje masivo (hoy una persona aplica el cambio y registra la
+referencia), envío real de plantillas a Meta, y que el agente de WhatsApp proponga acciones sensibles.
