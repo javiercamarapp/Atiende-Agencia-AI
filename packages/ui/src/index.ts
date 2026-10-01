@@ -33,6 +33,7 @@ export {
 export { pedidosPorImprimir, type PedidoParaCola } from "./lib/colaImpresionCocina.js";
 export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, type TicketCocinaVistaProps } from "./components/TicketCocinaDialog.js";
 
+export { GoogleIcon } from "./components/GoogleIcon.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { StatCard, TrendStatCard } from "./components/StatCard.js";
