@@ -134,9 +134,8 @@ describe("ReportesPage (despachos)", () => {
       await esperar();
       await act(async () => {
         click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Descargar Excel"))!);
-        await flushMicrotasks();
-        await flushMicrotasks();
-        await flushMicrotasks();
+        // `Response.blob()` resuelve en una tarea posterior a los microtasks; en CI (más lento) no basta con vaciarlos.
+        await vi.waitFor(() => expect(descargas.length).toBe(1), { timeout: 3000 });
       });
       const llamada = fetchMock.mock.calls.find(([u]) => String(u).includes("formato=xlsx"))!;
       expect(llamada[1]?.headers).toMatchObject({ authorization: "Bearer tok-123" });
