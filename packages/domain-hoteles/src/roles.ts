@@ -229,3 +229,14 @@ export const AGENT_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm"];
 export const AGENT_AUTHOR_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
 /** Ver la bitacora de la cola de aprobaciones: administrativa. */
 export const AGENT_AUDIT_ROLES: readonly HotelRole[] = ["owner", "gm"];
+
+// H-28 -- recepcion / front desk. Ver el tablero del dia (llegadas, salidas, en casa, rack) es de quien gestiona
+// reservas; operar (check-in, check-out, asignar o cambiar habitacion) es MAS estricto y coincide con
+// `rolesAllowedForTransition` de confirmada->check_in y en_estancia->check_out y con la funcion SQL
+// `hoteles.change_reservation_room` (migracion 038): owner/gm/frontdesk. Espejo de aplicacion: la autoridad final es la base.
+export const RECEPCION_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+export const RECEPCION_OPERATE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
+
+// H-27 -- ficha de huesped (CRM). Notas, preferencias y estancias: mismo conjunto que gestiona reservas
+// (espejo de `hoteles.can_manage_reservations`, migracion 038 guest_note).
+export const GUEST_CRM_ROLES: readonly HotelRole[] = MANAGE_RESERVATIONS_ROLES;
