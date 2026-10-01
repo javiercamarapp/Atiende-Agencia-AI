@@ -161,3 +161,11 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
+
+/* Texto sobre la lámina con foto (siempre oscura por el velo): blanco fijo, no depende del tema. */
+.login-lamina-texto {
+  color: white;
+}
+.login-lamina-texto .login-kicker {
+  color: color-mix(in srgb, white 70%, transparent);
+}

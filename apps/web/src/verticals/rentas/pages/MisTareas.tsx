@@ -17,15 +17,14 @@
 // Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
 // Label/EstadoCargando/EstadoVacio/EstadoError + clases de token en vez de los
 // `style={{...}}` hechos a mano. El formulario "Nueva tarea manual" pasa a
-// <ModalFormularioLateral> (mismo submit, mismas validaciones locales, mismo
+// <FormDialog> (mismo submit, mismas validaciones locales, mismo
 // `handleSeleccionar` tras crear). CERO cambios de lógica ni de gates de rol; la
 // tarjeta de tarea conserva su accesibilidad de teclado exacta (role=button +
 // tabIndex + onKeyDown con el guardia `e.target !== e.currentTarget`).
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { AlertTriangle, ClipboardList, Plus } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoVacio, Input, Label, cn } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Textarea, cn } from "@atiende/ui";
 import {
   asignarTarea,
   completarChecklistItem,
@@ -44,6 +43,7 @@ import {
   TIPO_TAREA_LABELS,
 } from "../lib/limpieza-client.ts";
 import type { IncidenciaMantenimiento, ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
+import { ESTADO_TAREA_TONES } from "../lib/status-tones.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"]);
@@ -57,15 +57,7 @@ const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES = new Set(["admin_gestora", "operador:acc
 // Incidencias graves cuyo bloqueo de mantenimiento aún no se confirmó ni se cerró.
 const ESTADOS_BLOQUEO_PENDIENTE = new Set(["abierta", "en_revision", "bloqueo_propuesto"]);
 
-/** Mismos tokens que el <Input> de @atiende/ui aplicados a los controles nativos que
- * siguen siendo nativos a propósito: <select> de datos reales (unidad, tipo,
- * prioridad, severidad, ítem de inventario) y <textarea> (no hay primitivo de
- * textarea en packages/ui). */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const TEXTAREA_CLASES =
-  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function formatFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -104,10 +96,10 @@ function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; 
       }}
     >
       <div className="flex justify-between gap-2">
-        <strong className="text-[13px] text-foreground">
+        <strong className="text-sm text-foreground">
           {TIPO_TAREA_LABELS[tarea.tipo]} — {tarea.unidadNombre}
         </strong>
-        {vencida ? <Badge variant="destructive">SLA vencido</Badge> : <Badge variant="outline">{ESTADO_TAREA_LABELS[tarea.estado]}</Badge>}
+        {vencida ? <StatusBadge tone="danger">SLA vencido</StatusBadge> : <StatusBadge tone={statusTone(ESTADO_TAREA_TONES, tarea.estado)}>{ESTADO_TAREA_LABELS[tarea.estado]}</StatusBadge>}
       </div>
       <span className="text-xs text-muted-foreground">
         Programada: {tarea.programadaPara} · Prioridad: {PRIORIDAD_LABELS[tarea.prioridad]}
@@ -394,25 +386,25 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
   if (!puedeOperar) {
     return (
-      <div className="flex flex-col gap-4 max-w-[640px]">
+      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Mis tareas</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no opera el módulo de limpieza/mantenimiento. Roles con acceso:{" "}
           <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
           <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">limpieza</strong>.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   const checklistCompleto = detalle ? detalle.checklist.every((c) => c.completado) : true;
 
   return (
-    <div className="flex flex-col gap-6 max-w-[960px]">
+    <PageContainer padding="none" size="lg" className="gap-6 [&>*]:min-w-0">
       <header className="flex justify-between items-start gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Mis tareas</h1>
-          <p className="m-0 text-[13px] text-muted-foreground">Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
+          <p className="m-0 text-sm text-muted-foreground">Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
         </div>
         {puedeCrearManual && (
           <Button type="button" size="sm" onClick={() => setMostrarFormNueva((v) => !v)}>
@@ -423,13 +415,13 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       </header>
 
       {listaError && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {listaError}
         </p>
       )}
 
       {puedeCrearManual && (
-        <ModalFormularioLateral
+        <FormDialog
           open={mostrarFormNueva}
           onOpenChange={(abierto) => {
             setMostrarFormNueva(abierto);
@@ -444,53 +436,53 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
         >
           <div className="flex flex-col gap-2.5">
             {nuevaError && (
-              <p role="alert" className="m-0 text-[13px] text-destructive">
+              <p role="alert" className="m-0 text-sm text-destructive">
                 {nuevaError}
               </p>
             )}
             <Label className={LABEL_CLASES}>
               Unidad
-              <select value={nuevaUnidadId} onChange={(e) => setNuevaUnidadId(e.target.value)} className={SELECT_CLASES}>
+              <NativeSelect value={nuevaUnidadId} onChange={(e) => setNuevaUnidadId(e.target.value)}>
                 <option value="">Selecciona una unidad…</option>
                 {unidades.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={LABEL_CLASES}>
               Tipo
-              <select value={nuevaTipo} onChange={(e) => setNuevaTipo(e.target.value as TipoTareaOperativa)} className={SELECT_CLASES}>
+              <NativeSelect value={nuevaTipo} onChange={(e) => setNuevaTipo(e.target.value as TipoTareaOperativa)}>
                 {(Object.keys(TIPO_TAREA_LABELS) as TipoTareaOperativa[]).map((t) => (
                   <option key={t} value={t}>
                     {TIPO_TAREA_LABELS[t]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={LABEL_CLASES}>
               Prioridad
-              <select value={nuevaPrioridad} onChange={(e) => setNuevaPrioridad(e.target.value as PrioridadTareaOperativa)} className={SELECT_CLASES}>
+              <NativeSelect value={nuevaPrioridad} onChange={(e) => setNuevaPrioridad(e.target.value as PrioridadTareaOperativa)}>
                 {(Object.keys(PRIORIDAD_LABELS) as PrioridadTareaOperativa[]).map((p) => (
                   <option key={p} value={p}>
                     {PRIORIDAD_LABELS[p]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={LABEL_CLASES}>
               Programada para
               <Input type="date" value={nuevaProgramadaPara} onChange={(e) => setNuevaProgramadaPara(e.target.value)} />
             </Label>
           </div>
-        </ModalFormularioLateral>
+        </FormDialog>
       )}
 
       <div className="flex gap-4 flex-wrap">
         <Card className="flex-[1_1_320px]">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Mis tareas de hoy</CardTitle>
+            <CardTitle className="text-base font-semibold">Mis tareas de hoy</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {misTareas === null && <EstadoCargando lineas={2} />}
@@ -501,7 +493,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
         <Card className="flex-[1_1_320px]">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Sin asignar (tómala)</CardTitle>
+            <CardTitle className="text-base font-semibold">Sin asignar (tómala)</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {sinAsignar === null && <EstadoCargando lineas={2} />}
@@ -536,11 +528,11 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       {tareaSeleccionadaId && (
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Detalle de la tarea</CardTitle>
+            <CardTitle className="text-base font-semibold">Detalle de la tarea</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {detalleError && (
-              <p role="alert" className="m-0 text-[13px] text-destructive">
+              <p role="alert" className="m-0 text-sm text-destructive">
                 {detalleError}
               </p>
             )}
@@ -548,27 +540,25 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
             {!detalle && !detalleError && <EstadoCargando lineas={2} />}
             {detalle && (
               <>
-                <p className="m-0 text-[13px] text-foreground">
+                <p className="m-0 text-sm text-foreground">
                   <strong>{detalle.unidadNombre}</strong> · {TIPO_TAREA_LABELS[detalle.tipo]} · Programada: {detalle.programadaPara} · SLA vence: {formatFecha(detalle.slaVenceEn)}
                 </p>
-                <p className="m-0 text-[13px] text-foreground">
+                <p className="m-0 text-sm text-foreground">
                   Estado: <strong>{ESTADO_TAREA_LABELS[detalle.estado]}</strong>
                 </p>
 
                 <div>
-                  <h3 className="text-[13px] font-semibold text-foreground mt-0 mb-2">Checklist</h3>
-                  {detalle.checklist.length === 0 && <p className="m-0 text-[13px] text-muted-foreground">Esta tarea no tiene checklist.</p>}
+                  <h3 className="text-sm font-semibold text-foreground mt-0 mb-2">Checklist</h3>
+                  {detalle.checklist.length === 0 && <p className="m-0 text-sm text-muted-foreground">Esta tarea no tiene checklist.</p>}
                   <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
                     {detalle.checklist.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2 text-[13px]">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-border accent-[hsl(var(--primary))]"
+                      <li key={item.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
                           checked={item.completado}
                           disabled={item.completado || accionEnCurso || detalle.estado === "completada" || detalle.estado === "cancelada"}
                           onChange={() => void handleToggleChecklistItem(item.id)}
+                          label={<span className={item.completado ? "line-through text-muted-foreground" : "text-foreground"}>{item.descripcion}</span>}
                         />
-                        <span className={item.completado ? "line-through text-muted-foreground" : "text-foreground"}>{item.descripcion}</span>
                       </li>
                     ))}
                   </ul>
@@ -576,20 +566,20 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
                 {detalle.estado !== "completada" && detalle.estado !== "cancelada" && (
                   <div className="flex flex-col gap-2">
-                    <h3 className="text-[13px] font-semibold text-foreground m-0">Consumo de inventario al completar (opcional)</h3>
+                    <h3 className="text-sm font-semibold text-foreground m-0">Consumo de inventario al completar (opcional)</h3>
                     {consumos.map((c, i) => (
                       <div key={i} className="flex gap-2 items-center">
-                        <select
+                        <NativeSelect
                           value={c.itemInventarioId}
                           onChange={(e) => setConsumos((prev) => prev.map((x, xi) => (xi === i ? { ...x, itemInventarioId: e.target.value } : x)))}
-                          className={`${SELECT_CLASES} flex-[2]`}
+                          wrapperClassName="flex-[2]"
                         >
                           {inventario.map((item) => (
                             <option key={item.id} value={item.id}>
                               {item.nombre} ({item.cantidadActual} {item.unidadMedida})
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                         <Input
                           type="number"
                           min={1}
@@ -625,16 +615,16 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-[15px] font-semibold">Reportar incidencia</CardTitle>
+          <CardTitle className="text-base font-semibold">Reportar incidencia</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0 flex flex-col gap-3">
           {unidadesError && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {unidadesError}
             </p>
           )}
           {incError && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {incError}
             </p>
           )}
@@ -642,24 +632,24 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
           <form onSubmit={handleReportarIncidencia} className="flex flex-col gap-2.5">
             <Label className={LABEL_CLASES}>
               Unidad
-              <select value={incUnidadId} onChange={(e) => setIncUnidadId(e.target.value)} className={SELECT_CLASES}>
+              <NativeSelect value={incUnidadId} onChange={(e) => setIncUnidadId(e.target.value)}>
                 <option value="">Selecciona una unidad…</option>
                 {unidades.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={LABEL_CLASES}>
               Severidad
-              <select value={incSeveridad} onChange={(e) => setIncSeveridad(e.target.value as SeveridadIncidencia)} className={SELECT_CLASES}>
+              <NativeSelect value={incSeveridad} onChange={(e) => setIncSeveridad(e.target.value as SeveridadIncidencia)}>
                 {(Object.keys(SEVERIDAD_LABELS) as SeveridadIncidencia[]).map((s) => (
                   <option key={s} value={s}>
                     {SEVERIDAD_LABELS[s]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className={LABEL_CLASES}>
               Título
@@ -667,7 +657,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
             </Label>
             <Label className={LABEL_CLASES}>
               Descripción (opcional)
-              <textarea value={incDescripcion} onChange={(e) => setIncDescripcion(e.target.value)} maxLength={4000} rows={3} className={TEXTAREA_CLASES} />
+              <Textarea value={incDescripcion} onChange={(e) => setIncDescripcion(e.target.value)} maxLength={4000} rows={3} />
             </Label>
             <Button type="submit" size="sm" disabled={incEnviando} className="self-start">
               {incEnviando ? "Enviando…" : "Reportar incidencia"}
@@ -679,7 +669,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
       {puedeConfirmarBloqueo && incUnidadId && (
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-[15px] font-semibold">Incidencias graves por bloquear</CardTitle>
+            <CardTitle className="text-base font-semibold">Incidencias graves por bloquear</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             <p className="m-0 text-xs text-muted-foreground">
@@ -687,7 +677,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
               para que lo resuelvas.
             </p>
             {bloqueoError && (
-              <p role="alert" className="m-0 text-[13px] text-destructive">
+              <p role="alert" className="m-0 text-sm text-destructive">
                 {bloqueoError}
               </p>
             )}
@@ -697,7 +687,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
             ) : (
               incidenciasGraves.map((i) => (
                 <div key={i.id} className="flex flex-col gap-2 rounded-lg border border-border p-2.5">
-                  <strong className="text-[13px] text-foreground">{i.titulo}</strong>
+                  <strong className="text-sm text-foreground">{i.titulo}</strong>
                   <div className="flex flex-wrap items-end gap-2">
                     <Label className={LABEL_CLASES}>
                       Bloquear desde
@@ -717,6 +707,6 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

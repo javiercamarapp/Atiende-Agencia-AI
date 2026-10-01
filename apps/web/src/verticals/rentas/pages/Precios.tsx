@@ -37,9 +37,12 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   EstadoError,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
   Table,
   TableBody,
   TableCell,
@@ -75,13 +78,7 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 
 const PRICING_ESCRITURA_ROLES = new Set(["admin_gestora"]);
 
-/** Mismos tokens que el <Input> de @atiende/ui aplicados al <select> nativo: todos
- * los selectores de esta pantalla son dropdowns de datos reales (unidad con su
- * estado `<option>Cargando…</option>`, canal, día de la semana) -- se quedan nativos
- * y solo se re-estilan. */
-const SELECT_CLASES =
-  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 const NOTA_CLASES = "m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground";
 
 const DIA_SEMANA_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -113,30 +110,30 @@ export function PreciosPage({ apiBaseUrl, token, propertyId, orgSlug, session }:
 
   if (unidades && unidades.length === 0) {
     return (
-      <div className="flex flex-col gap-4">
+      <PageContainer padding="none" size="lg" className="gap-4 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground m-0">Precios</h1>
         <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-[640px]">
+    <PageContainer padding="none" size="sm" className="gap-5 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Precios</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">Cotiza una estadía y, si tu rol lo permite, configura la tarifa de la unidad.</p>
+        <p className="m-0 text-sm text-muted-foreground">Cotiza una estadía y, si tu rol lo permite, configura la tarifa de la unidad.</p>
       </header>
 
       <Label className={`${LABEL_CLASES} max-w-[320px]`}>
         Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+        <NativeSelect value={unidadId} onChange={(e) => setUnidadId(e.target.value)} disabled={!unidades}>
           {!unidades && <option>Cargando…</option>}
           {unidades?.map((u) => (
             <option key={u.id} value={u.id}>
               {u.nombre}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </Label>
 
       {error && <EstadoError mensaje={error} />}
@@ -146,7 +143,7 @@ export function PreciosPage({ apiBaseUrl, token, propertyId, orgSlug, session }:
       {unidadId && puedeEscribir && <ConfiguracionPricing apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />}
 
       {unidadId && !puedeEscribir && (
-        <p className="m-0 text-[13px] text-muted-foreground">
+        <p className="m-0 text-sm text-muted-foreground">
           Solo el rol <strong className="text-foreground">admin_gestora</strong> puede configurar tarifa base, temporadas, descuentos por duración, estancia mínima y reglas por canal
           {org ? (
             <>
@@ -158,7 +155,7 @@ export function PreciosPage({ apiBaseUrl, token, propertyId, orgSlug, session }:
           )}
         </p>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -196,7 +193,7 @@ function Cotizador({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-[15px] font-semibold">Cotizador</CardTitle>
+        <CardTitle className="text-base font-semibold">Cotizador</CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-0 flex flex-col gap-3">
         <form onSubmit={handleCotizar} className="flex flex-col gap-2.5">
@@ -211,18 +208,18 @@ function Cotizador({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps
             </Label>
             <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
               Canal (opcional)
-              <select value={canal} onChange={(e) => setCanal(e.target.value)} className={SELECT_CLASES}>
+              <NativeSelect value={canal} onChange={(e) => setCanal(e.target.value)}>
                 <option value="">Reserva directa (sin canal)</option>
                 {TODOS_LOS_CANALES.map((c) => (
                   <option key={c.codigo} value={c.codigo}>
                     {c.nombre}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
           </div>
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-destructive">
+            <p role="alert" className="m-0 text-sm text-destructive">
               {error}
             </p>
           )}
@@ -255,7 +252,7 @@ function Cotizador({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps
               </TableBody>
             </Table>
 
-            <div className="flex flex-col gap-1 text-[13px]">
+            <div className="flex flex-col gap-1 text-sm">
               <Linea label={`Subtotal (${resultado.noches} noche${resultado.noches === 1 ? "" : "s"})`} valorCentavos={resultado.subtotalAntesDescuentoCentavos} moneda={resultado.moneda} />
               {resultado.descuentoAplicado && (
                 <Linea
@@ -306,7 +303,7 @@ function Linea({ label, valorCentavos, moneda, fuerte }: { label: string; valorC
 function ConfiguracionPricing({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps) {
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="font-display text-[15px] font-semibold text-foreground m-0">Configuración de pricing</h2>
+      <h2 className="font-display text-base font-semibold text-foreground m-0">Configuración de pricing</h2>
       <TarifaBaseForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <TemporadaForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <DescuentoDuracionForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
@@ -381,7 +378,7 @@ function TarifaBaseForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
         </Label>
       </div>
       {error && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {error}
         </p>
       )}
@@ -469,7 +466,7 @@ function TemporadaForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelP
         </Label>
       </div>
       {error && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {error}
         </p>
       )}
@@ -543,7 +540,7 @@ function DescuentoDuracionForm({ apiBaseUrl, token, propertyId, unidadId }: Unid
         </Label>
       </div>
       {error && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {error}
         </p>
       )}
@@ -613,14 +610,14 @@ function MinStayForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelPro
         </Label>
         <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
           Día de check-in
-          <select value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} className={SELECT_CLASES}>
+          <NativeSelect value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)}>
             <option value="">Todos los días</option>
             {DIA_SEMANA_LABELS.map((label, i) => (
               <option key={i} value={i}>
                 {label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Label>
         <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Noches mínimas
@@ -628,7 +625,7 @@ function MinStayForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelPro
         </Label>
       </div>
       {error && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {error}
         </p>
       )}
@@ -687,25 +684,22 @@ function ReglaCanalForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
       <div className="flex gap-2.5 flex-wrap">
         <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
           Canal
-          <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} className={SELECT_CLASES}>
+          <NativeSelect value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)}>
             {CANALES_CON_MARKUP.map((c) => (
               <option key={c.codigo} value={c.codigo}>
                 {c.nombre}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Label>
         <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Markup (%)
           <Input type="number" min="0" max="100" step="0.01" value={markup} onChange={(e) => setMarkup(e.target.value)} required placeholder="15" />
         </Label>
-        <Label className="flex flex-row items-center gap-2 mt-5 text-[13px] text-foreground">
-          <input type="checkbox" className="h-4 w-4 rounded border-border accent-[hsl(var(--primary))]" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
-          Activa (aplica al cotizar para este canal)
-        </Label>
+        <Checkbox wrapperClassName="mt-5" checked={activo} onChange={(e) => setActivo(e.target.checked)} label="Activa (aplica al cotizar para este canal)" />
       </div>
       {error && (
-        <p role="alert" className="m-0 text-[13px] text-destructive">
+        <p role="alert" className="m-0 text-sm text-destructive">
           {error}
         </p>
       )}
