@@ -192,3 +192,4 @@ export {
 } from "./agent-tools/order-flow.ts";
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
+export * from "./data-chat/index.ts";
