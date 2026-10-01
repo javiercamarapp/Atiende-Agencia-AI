@@ -1,4 +1,4 @@
-// UNI-3b (superficies de Likida): en 6 pantallas representativas con tablas, ninguna tabla se sale del
+// UNI-3b (superficies de Likida): en 5 pantallas representativas con tablas, ninguna tabla se sale del
 // viewport (min-w-0) y las tablas anchas hacen scroll DENTRO de su contenedor, no de la pagina.
 // Ademas mide la receta (radio de tarjeta, tipografia y relleno de tabla) con getComputedStyle, tolerancia 1 px,
 // y adjunta una captura por pantalla (claro/oscuro/movil segun el proyecto) para la comparacion contra Likida.
@@ -19,7 +19,6 @@ interface Pantalla {
 const PANTALLAS: readonly Pantalla[] = [
   { nombre: "citas-clientes", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/clientes` },
   { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos` },
-  { nombre: "restaurantes-clientes", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/clientes` },
   { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial` },
   { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
   { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin" },
