@@ -27,8 +27,10 @@
 --   1. Las 3 tablas: RLS habilitado y REVOKE de todo a public/anon/authenticated; despues SOLO SELECT a
 --      `authenticated`, con policy `core.has_property_access(auth.uid(), property_id)` (nunca `using (true)`,
 --      nunca GRANT a anon). Justificacion: el staff lista la cola y el historial de SU property. Ninguna
---      escritura directa: INSERT/UPDATE/DELETE no se conceden a nadie (ni a service_role: no hay consumidor
---      todavia); todo cambio pasa por las funciones de abajo, que validan forma y pertenencia. Una gestion
+--      escritura directa para esos roles: INSERT/UPDATE/DELETE no se conceden a public/anon/authenticated
+--      (service_role no se toca aqui: conserva lo que Supabase le de por default privileges, y no hay
+--      consumidor de esa via todavia); todo cambio de la app pasa por las funciones de abajo, que validan
+--      forma y pertenencia. Una gestion
 --      jamas se borra (auditoria): se cancela.
 --   2. GRANT por COLUMNA en el outbox: el staff NO recibe `telefono` (PII) por esa tabla; el telefono vive en
 --      la tabla de consentimiento, donde si es necesario mostrarlo para gestionar opt-in/opt-out.
@@ -317,6 +319,7 @@ declare
   v_telefono text;
   v_cuerpo text;
   v_id uuid;
+  v_misma boolean;
 begin
   v_org := despachos._cobranza_contexto(p_property_id, true);
   select r.pagado_en, i.rfc_receptor into v_pagado, v_rfc
@@ -341,8 +344,12 @@ begin
     raise exception 'cobranza_whatsapp_encolar: el cliente no tiene consentimiento opt-in' using errcode = 'CB001';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('despachos.cobranza_whatsapp_outbox:' || p_property_id::text, 0));
-  select o.id into v_id from despachos.cobranza_whatsapp_outbox o where o.property_id = p_property_id and o.dedupe_key = p_dedupe_key;
+  select o.id, (o.receivable_id = p_receivable_id and o.rfc_receptor = v_rfc) into v_id, v_misma
+    from despachos.cobranza_whatsapp_outbox o where o.property_id = p_property_id and o.dedupe_key = p_dedupe_key;
   if v_id is not null then
+    if not v_misma then
+      raise exception 'cobranza_whatsapp_encolar: dedupe_key ya usada por otra cuenta' using errcode = '22023';
+    end if;
     return query select v_id, true;
     return;
   end if;
