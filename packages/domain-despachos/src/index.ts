@@ -493,3 +493,5 @@ export type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, Tipo
 export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
 export type { EntradaReporte } from "./reportes/builders.ts";
 export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
+export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } from "./dashboard/lectura.ts";
+export type { ClienteDashboardRef } from "./dashboard/lectura.ts";
