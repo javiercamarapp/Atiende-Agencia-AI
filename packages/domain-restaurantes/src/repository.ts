@@ -123,14 +123,19 @@ export interface KpiDateRange {
 export interface SalesBucketRow {
   readonly revenue: number;
   readonly orderCount: number;
-  /** Clientes ÚNICOS por `customer_name` dentro del tramo — mismo criterio (no
-   * `customer_id`) que `orders_bucketed_stats` del origen, preservado literal porque
-   * pedidos sin cliente vinculado (customer_id null) siguen contando por nombre. */
+  /** Clientes ÚNICOS por `customer_id` dentro del tramo (R-30: antes se contaba por
+   * nombre, y dos personas con el mismo nombre eran una). `revenue`/`orderCount` ya NO
+   * incluyen pedidos cancelados (ventas netas, migración 036). */
   readonly customerCount: number;
 }
 
 export interface ChannelStatsRow {
+  /** R-30: `true` = las cifras están acotadas al periodo pedido (migración 036); `false` = TODO el
+   * histórico (se pidió "histórico", o la base aún no tiene `orders_channel_stats_periodo`). El panel
+   * rotula el periodo según este campo, nunca según lo que pidió. */
+  readonly acotadoAPeriodo: boolean;
   readonly totalOrders: number;
+  /** Ventas SIN pedidos cancelados (los conteos de pedidos sí los incluyen y los reportan en `cancelled`). */
   readonly totalRevenue: number;
   readonly voice: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
   readonly whatsapp: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
@@ -302,7 +307,9 @@ export interface RestaurantesRepository {
    * adaptativa de 'historico' en buildTrendBuckets (kpis.ts) — null si la organización
    * (o el alcance filtrado) todavía no tiene ningún pedido. */
   getFirstOrderCreatedAt(organizationId: string, propertyIds: readonly string[] | null): Promise<Date | null>;
-  getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow>;
+  /** `range` ausente = todo el histórico. Con `range`, contra la base sin la migración 036 cae (SAVEPOINT) al
+   * histórico y lo declara con `acotadoAPeriodo: false`. */
+  getChannelStats(organizationId: string, propertyIds: readonly string[] | null, range?: KpiDateRange): Promise<ChannelStatsRow>;
   getWhatsappConversationStats(organizationId: string, propertyIds: readonly string[] | null): Promise<WhatsAppConversationStatsRow>;
   /** Sin `propertyIds`: la memoria de cliente es por-organización, nunca por-sucursal
    * (mismo criterio que `customers`/`calc_customer_tier` — ver diseño §2, la lista de

@@ -291,6 +291,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",
+  // R-27 -- plantillas HSM de WhatsApp declaradas aprobadas por Meta (lista separada por comas); vacia = todo
+  // sale como texto libre. Opcional, nunca bloquea el arranque.
+  "WHATSAPP_APPROVED_TEMPLATES",
   // MFA del superadmin (ver docs/CREDENCIALES.md): ambas son opcionales y nunca
   // bloquean el arranque.
   "SUPERADMIN_MFA_REQUIRED",
