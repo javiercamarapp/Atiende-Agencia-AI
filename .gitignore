@@ -18,3 +18,7 @@ coverage/
 /api/index.js.map
 .vercel
 .env*
+
+# Respaldos y reportes del drill (contienen datos personales de todos los tenants)
+respaldos/
+drill-report-*/
