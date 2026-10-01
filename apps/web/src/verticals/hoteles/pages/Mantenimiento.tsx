@@ -95,7 +95,8 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
     });
     if (costStr === null) return;
     const actualCost = Number(costStr);
-    const nota = (await pedirTexto({ titulo: `Cerrar el ticket "${ticket.titulo}"`, confirmar: "Cerrar ticket", campo: { etiqueta: "Nota de resolución (opcional)", requerido: false, multilinea: true } })) ?? undefined;
+    const nota = await pedirTexto({ titulo: `Cerrar el ticket "${ticket.titulo}"`, confirmar: "Cerrar ticket", campo: { etiqueta: "Nota de resolución (opcional)", requerido: false, multilinea: true } });
+    if (nota === null) return;
     setBusyId(ticket.id);
     setError(null);
     try {
