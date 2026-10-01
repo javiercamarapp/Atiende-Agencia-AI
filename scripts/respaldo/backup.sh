@@ -50,6 +50,7 @@ if [ "$ENCRYPT" = none ] && [ "${BACKUP_ALLOW_PLAINTEXT:-0}" != 1 ]; then
   cli is-local-conn || die "origen remoto sin cifrado: configura BACKUP_ENCRYPT=age|gpg (recomendado) o BACKUP_ALLOW_PLAINTEXT=1 si el destino ya es un disco cifrado"
 fi
 
+case "$DEST" in *"'"*) die "BACKUP_DEST no puede contener comillas simples";; esac
 mkdir -p "$DEST" || die "no puedo crear BACKUP_DEST"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 NAME="atiende-$TS"

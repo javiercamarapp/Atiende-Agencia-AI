@@ -30,6 +30,8 @@ SCHEMAS="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.ar
 cli schemas "$SCHEMAS" >/dev/null || exit 1
 
 if [ "${RESTORE_BOOTSTRAP:-0}" = 1 ]; then
+  # Crea roles y extensiones a nivel de cluster: solo en un destino local (defensa en profundidad).
+  cli is-local-conn || die "RESTORE_BOOTSTRAP=1 solo se permite con destino local; en un host remoto prepara los roles a mano"
   psql -X -q -v ON_ERROR_STOP=1 -f "$RESPALDO_DIR/platform-bootstrap.sql" >/dev/null 2> >(redact >&2) || die "falló platform-bootstrap.sql"
 fi
 

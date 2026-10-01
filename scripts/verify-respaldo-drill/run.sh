@@ -80,6 +80,9 @@ for url in "postgresql://postgres:$PW@db.abcdefgh.supabase.co:5432/postgres" "po
 done
 RESTORE_DATABASE_URL="postgresql://u:$PW@10.255.255.1/db" bash "$R/restore.sh" "$GOOD" >"$T/rs.log" 2>&1; rc=$?
 expect_rc 1 "destino remoto sin RESTORE_ALLOW_NON_LOCAL rechazado" $rc
+RESTORE_DATABASE_URL="postgresql://u:$PW@10.255.255.1/db" RESTORE_ALLOW_NON_LOCAL=1 RESTORE_BOOTSTRAP=1 bash "$R/restore.sh" "$GOOD" >"$T/rs.log" 2>&1; rc=$?
+expect_rc 1 "RESTORE_BOOTSTRAP=1 rechazado con destino remoto aun con RESTORE_ALLOW_NON_LOCAL=1" $rc
+grep -q "RESTORE_BOOTSTRAP=1 solo se permite" "$T/rs.log" && ok "el rechazo cita el motivo (bootstrap solo local)" || bad "rechazo sin el motivo esperado: $(tail -2 "$T/rs.log")"
 
 start_ephemeral_pg; E_DIR="$EPH_DIR"; E_PORT="$EPH_PORT"
 PSQL_E=(psql -X -q -h "$E_DIR" -p "$E_PORT" -U postgres -v ON_ERROR_STOP=1)
