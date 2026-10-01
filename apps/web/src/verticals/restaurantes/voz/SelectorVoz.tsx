@@ -24,6 +24,33 @@ export interface SelectorVozProps {
   readonly crearAudio?: (url: string) => MuestraAudio;
 }
 
+/** Fondo cónico del avatar de una voz: 8 giros fijos (cada clase completa debe aparecer literal para que Tailwind la genere) que
+ * se eligen de forma determinista a partir del id, en lugar de un `style` con un ángulo calculado. Solo usa tokens de color. */
+const AVATARES_BASE = [
+  "bg-[conic-gradient(from_0deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_45deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_90deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_135deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_180deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_225deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_270deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+  "bg-[conic-gradient(from_315deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
+] as const;
+const AVATARES_BRILLO = [
+  "bg-[conic-gradient(from_0deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_45deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_90deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_135deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_180deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_225deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_270deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+  "bg-[conic-gradient(from_315deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
+] as const;
+
+function giroAvatar(semilla: number, tabla: readonly string[]): string {
+  return tabla[Math.abs(semilla) % tabla.length]!;
+}
+
 function audioPorDefecto(url: string): MuestraAudio {
   return new Audio(url);
 }
@@ -102,11 +129,11 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[13px] font-medium text-foreground">
+        <p className="text-sm font-medium text-foreground">
           Voz — {filtradas.length}/{CATALOGO_VOCES.length} voces
         </p>
       </div>
-      <p className="text-[11.5px] text-muted-foreground mb-2">
+      <p className="text-xs text-muted-foreground mb-2">
         Son las voces predefinidas de Gemini Live. No hay clonación ni diseño de voz, y las voces no vienen etiquetadas por acento: el acento se pide en el comportamiento del agente y conviene validarlo con una llamada de prueba.
       </p>
       <div className="flex items-center gap-1.5 h-8 rounded-lg border border-border bg-card px-2.5 mb-2">
@@ -116,11 +143,11 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar por nombre o tono…"
           aria-label="Buscar voz"
-          className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground"
+          className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       </div>
       {errorMuestra ? (
-        <p role="status" className="mb-2 text-[12px] text-muted-foreground">
+        <p role="status" className="mb-2 text-xs text-muted-foreground">
           {errorMuestra}
         </p>
       ) : null}
@@ -134,26 +161,24 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
                 type="button"
                 onClick={() => alternarMuestra(v)}
                 aria-label={sonando ? `Detener la muestra de ${v.nombre}` : `Escuchar una muestra de ${v.nombre}`}
-                className="relative w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center"
-                style={{ background: `conic-gradient(from ${(v.id.charCodeAt(0) * 37) % 360}deg, #1d4ed8, #38bdf8, #1d4ed8)` }}
+                className={`relative w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center ${giroAvatar(v.id.charCodeAt(0) * 37, AVATARES_BASE)}`}
               >
                 <span
                   aria-hidden
                   data-girando={sonando ? "true" : "false"}
-                  className={`absolute inset-0 ${sonando ? "voz-avatar-gira" : ""}`}
-                  style={{ background: `conic-gradient(from ${(v.id.charCodeAt(1) * 53) % 360}deg, transparent, #ffffff30, transparent)` }}
+                  className={`absolute inset-0 ${giroAvatar(v.id.charCodeAt(1) * 53, AVATARES_BRILLO)} ${sonando ? "voz-avatar-gira" : ""}`}
                 />
-                <span className="relative z-10 text-white">{sonando ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}</span>
+                <span className="relative z-10 text-primary-foreground">{sonando ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}</span>
               </button>
               <button type="button" onClick={() => onElegir(v.id)} className="min-w-0 flex-1 text-left" aria-label={`Elegir la voz ${v.nombre}`}>
-                <span className="block text-[13px] text-foreground truncate">{v.nombre}</span>
-                <span className="block text-[10.5px] text-muted-foreground truncate">{v.tono}</span>
+                <span className="block text-sm text-foreground truncate">{v.nombre}</span>
+                <span className="block text-2xs text-muted-foreground truncate">{v.tono}</span>
               </button>
               {elegida ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" aria-label="Voz elegida" /> : null}
             </li>
           );
         })}
-        {filtradas.length === 0 ? <li className="text-[12px] text-muted-foreground p-3">Sin resultados para esa búsqueda.</li> : null}
+        {filtradas.length === 0 ? <li className="text-xs text-muted-foreground p-3">Sin resultados para esa búsqueda.</li> : null}
       </ul>
     </div>
   );

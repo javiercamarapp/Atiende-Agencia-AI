@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { RestaurantesShell } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import type { BranchOption } from "../src/verticals/restaurantes/dashboard-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
@@ -88,12 +88,44 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(bottomNav!.className).toContain("md:hidden");
   });
 
-  it("el BottomNav trae exactamente los 5 destinos operativos curados, nunca más de 5", async () => {
+  // PR-5 (shell unico): antes eran 5 destinos fijos y Conversaciones/Turnos/Promociones/Sucursales y las
+  // de gestión no se alcanzaban en móvil. Ahora la barra trae 4 destinos curados + "Más", que abre TODAS las secciones.
+  it("el BottomNav trae los 4 destinos operativos curados más 'Más', que lista todas las secciones (nunca más de 5 lugares)", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Panel", "Pedidos", "Historial", "Productos", "Clientes"]);
+    expect(labels).toEqual(["Panel", "Pedidos", "Historial", "Productos"]);
+    const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
+    expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
+    click(mas);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
+      "Panel (KPIs)",
+      "Pedidos",
+      "Conversaciones",
+      "Turnos",
+      "Historial",
+      "Productos",
+      "Promociones",
+      "Sucursales",
+      "Clientes",
+      "Staff",
+      "Auditoría",
+      "Configuración",
+      "Agente de voz",
+      "Privacidad",
+    ]);
+  });
+
+  it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical restaurantes", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+    expect(root.querySelector("main#contenido-principal")!.getAttribute("tabindex")).toBe("-1");
+    const equipo = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Equipo"))!;
+    click(equipo);
+    expect(window.localStorage.getItem("atiende:restaurantes:sidebar:grupo")).toBe("Equipo");
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {

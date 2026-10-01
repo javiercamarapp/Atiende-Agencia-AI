@@ -11,11 +11,11 @@
 // (cosmético, ver `RestaurantesShellContext.role`) — el servidor (admin-staff.ts) es
 // SIEMPRE el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 //
-// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
-// primitivos de `@atiende/ui` — `Card` para cada bloque y cada fila, `Input`/`Label`
-// para el formulario de invitación (el `<select>` sigue nativo, restilado con
-// tokens), `Button` para invitar/revocar y `Badge` para el rol y el estado de cada
-// invitación. Todos los gates de rol, fetches y payloads de abajo son los MISMOS.
+// Presentación (DS v2, PR-5): primitivos de `@atiende/ui` — `Card` para cada bloque y
+// cada fila, `Input`/`Label`/`NativeSelect` para el formulario de invitación y el rol
+// de cada miembro, `Button` para invitar/revocar, `Badge` para el rol y `StatusBadge`
+// para el estado de cada invitación, `useConfirm` para la baja y `PageContainer` como
+// contenedor. Todos los gates de rol, fetches y payloads de abajo son los MISMOS.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -31,7 +31,13 @@ import {
   EstadoVacio,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+  useConfirm,
 } from "@atiende/ui";
+import type { StatusTone } from "@atiende/ui";
 import { Info, UserPlus } from "lucide-react";
 import {
   createStaffInvite,
@@ -56,8 +62,12 @@ const ROLE_LABELS: Record<StaffVerticalRole, string> = {
 
 const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "repartidor", "owner"];
 
-const SELECT_CLASES =
-  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const INVITE_STATUS_TONE: Readonly<Record<string, StatusTone>> = {
+  pending: "warning",
+  accepted: "success",
+  revoked: "danger",
+  expired: "neutral",
+};
 
 function statusLabel(status: string): string {
   if (status === "pending") return "Pendiente";
@@ -69,6 +79,7 @@ function statusLabel(status: string): string {
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
+  const { confirmar, dialogo } = useConfirm();
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
@@ -126,10 +137,16 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   // FASE 3 (producto) -- el servidor (admin-staff.ts::DELETE miembroItemPath) es
   // SIEMPRE el enforcement real (auto-baja/jerarquía/último owner) -- este
-  // `window.confirm` es solo para evitar un clic accidental, nunca la única
+  // diálogo de confirmación es solo para evitar un clic accidental, nunca la única
   // barrera.
   async function handleRemove(member: OrgMember) {
-    if (!window.confirm(`¿Dar de baja a ${member.fullName}? Pierde acceso a esta organización de inmediato.`)) return;
+    const ok = await confirmar({
+      titulo: `Dar de baja a ${member.fullName}`,
+      descripcion: "Pierde acceso a esta organización de inmediato.",
+      tono: "danger",
+      confirmar: "Dar de baja",
+    });
+    if (!ok) return;
     setRemovingId(member.id);
     setError(null);
     try {
@@ -175,14 +192,14 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-5 p-6">
+    <PageContainer padding="none" size="md" className="gap-5">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
         <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-[13px] text-muted-foreground">
+          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
             <span>Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</span>
           </CardContent>
@@ -214,18 +231,18 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                 <Label htmlFor="staff-invitar-rol" className="text-xs text-muted-foreground">
                   Rol
                 </Label>
-                <select
+                <NativeSelect
                   id="staff-invitar-rol"
                   value={verticalRole}
                   onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}
-                  className={SELECT_CLASES}
+                  wrapperClassName="w-auto min-w-40"
                 >
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <Button type="submit" disabled={creating}>
                 <UserPlus />
@@ -238,7 +255,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
             {lastCreated && (
               <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="m-0 mb-1.5 text-[13px] font-semibold text-foreground">
+                <p className="m-0 mb-1.5 text-sm font-semibold text-foreground">
                   Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
                 </p>
                 <p className="m-0 mb-1.5 text-xs text-muted-foreground">
@@ -263,10 +280,10 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                 <Card key={inv.id}>
                   <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                     <div>
-                      <p className="m-0 text-[13px] font-semibold text-foreground">{inv.email}</p>
+                      <p className="m-0 text-sm font-semibold text-foreground">{inv.email}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <Badge variant="secondary">{ROLE_LABELS[inv.verticalRole]}</Badge>
-                        <Badge variant="outline">{statusLabel(inv.status)}</Badge>
+                        <StatusBadge tone={statusTone(INVITE_STATUS_TONE, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
                         <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
                       </div>
                     </div>
@@ -305,23 +322,23 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                   <Card key={m.id}>
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                       <div>
-                        <p className="m-0 text-[13px] font-semibold text-foreground">{m.fullName}</p>
+                        <p className="m-0 text-sm font-semibold text-foreground">{m.fullName}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <select
+                        <NativeSelect
                           aria-label={`Rol de ${m.fullName}`}
                           value={m.verticalRole}
                           disabled={savingRoleId === m.id}
                           onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                          className={SELECT_CLASES}
+                          wrapperClassName="w-auto min-w-40"
                         >
                           {ROLE_OPTIONS.map((r) => (
                             <option key={r} value={r}>
                               {ROLE_LABELS[r]}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                         <Button
                           type="button"
                           variant="destructive"
@@ -352,7 +369,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
             {repartidores.map((r) => (
               <Card key={r.id}>
                 <CardContent className="p-3">
-                  <p className="m-0 text-[13px] font-semibold text-foreground">{r.fullName}</p>
+                  <p className="m-0 text-sm font-semibold text-foreground">{r.fullName}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{r.email}</p>
                 </CardContent>
               </Card>
@@ -360,6 +377,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
           </div>
         )}
       </section>
-    </div>
+      {dialogo}
+    </PageContainer>
   );
 }

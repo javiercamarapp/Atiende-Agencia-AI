@@ -9,6 +9,8 @@
 // solo react/react-dom/react-router-dom), mismo aislamiento que ya mantiene
 // auth-client.ts al no importar tipos de @atiende/core-auth. Los valores deben
 // mantenerse en sync con `STATS_PERIODS` de packages/domain-restaurantes/src/kpis.ts.
+import { formatMoney as formatMoneyUi } from "@atiende/ui";
+
 export type StatsPeriod = "today" | "7" | "30" | "90" | "180" | "365" | "historico";
 
 export const PERIOD_OPTIONS: ReadonlyArray<{ id: StatsPeriod; label: string }> = [
@@ -174,7 +176,7 @@ export async function fetchDashboardData(
 
 export function formatMoney(n: number | null): string {
   if (n === null) return "—";
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${formatMoneyUi(n)}`;
 }
 
 export function formatInt(n: number | null): string {

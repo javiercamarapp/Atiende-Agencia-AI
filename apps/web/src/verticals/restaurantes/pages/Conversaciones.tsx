@@ -4,7 +4,7 @@
 // migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
 import {
   CANAL_LABEL,
   ESTADO_LABEL,
@@ -17,11 +17,10 @@ import {
   tomarConversacion,
 } from "../lib/conversaciones-client.ts";
 import type { BandejaWire, BandejaItemWire, ConversacionCanal, DetalleWire, HandoffEstado } from "../lib/conversaciones-client.ts";
+import { HANDOFF_ESTADO_TONES } from "../lib/status-tones.ts";
 import { CallbacksPanel } from "./CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-const SELECT = "flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground";
-const TEXTAREA = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground";
 
 function hora(iso: string | null): string {
   if (!iso) return "";
@@ -30,10 +29,6 @@ function hora(iso: string | null): string {
   } catch {
     return iso;
   }
-}
-
-function variante(e: HandoffEstado): "default" | "secondary" | "destructive" | "outline" {
-  return e === "pendiente" ? "destructive" : e === "tomada" ? "default" : e === "agente" ? "secondary" : "outline";
 }
 
 function mensaje(err: unknown, porDefecto: string): string {
@@ -77,10 +72,10 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
   }, [apiBaseUrl, token, propertyId, estado, canal, reintento, filtroActual]);
 
   return (
-    <div className="flex flex-col gap-5 max-w-[1100px]">
+    <PageContainer padding="none" className="gap-5">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Conversaciones</h1>
-        <p className="m-0 text-[13px] text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
+        <p className="m-0 text-sm text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
       </header>
 
       <Tabs defaultValue="bandeja">
@@ -95,7 +90,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
               <CardHeader>
                 <CardTitle className="text-sm">De guardia ahora</CardTitle>
               </CardHeader>
-              <CardContent className="text-[13px]">
+              <CardContent className="text-sm">
                 {data.cobertura.sinCobertura ? (
                   <p className="m-0 text-destructive">Nadie está de guardia en este momento: las solicitudes escalan a administración. Define los turnos en «Turnos».</p>
                 ) : (
@@ -112,19 +107,19 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
           )}
 
           <div className="flex flex-wrap gap-3">
-            <select aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} className={SELECT}>
+            <NativeSelect aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} wrapperClassName="w-auto min-w-48">
               <option value="">Todos los estados</option>
               {(Object.keys(ESTADO_LABEL) as HandoffEstado[]).map((e) => (
                 <option key={e} value={e}>
                   {ESTADO_LABEL[e]}
                 </option>
               ))}
-            </select>
-            <select aria-label="Canal" value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} className={SELECT}>
+            </NativeSelect>
+            <NativeSelect aria-label="Canal" value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} wrapperClassName="w-auto min-w-48">
               <option value="">WhatsApp y llamadas</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="voz">Llamadas</option>
-            </select>
+            </NativeSelect>
           </div>
 
           {error && <EstadoError mensaje={error} onReintentar={recargar} />}
@@ -141,7 +136,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
                   <FilaConversacion key={`${i.canal}:${i.conversationId}`} item={i} activa={seleccion?.id === i.conversationId} onElegir={() => setSeleccion({ canal: i.canal, id: i.conversationId })} />
                 ))}
               </ul>
-              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-[13px] text-muted-foreground">Elige una conversación para verla.</p>}
+              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-sm text-muted-foreground">Elige una conversación para verla.</p>}
             </div>
           )}
         </TabsContent>
@@ -150,7 +145,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
           <CallbacksPanel ctx={ctx} />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -160,18 +155,18 @@ function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; a
     <li>
       <button type="button" onClick={onElegir} className={`w-full text-left rounded-md border p-3 ${activa ? "border-primary" : "border-border"} bg-card`}>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[13px] font-medium text-foreground">
+          <span className="text-sm font-medium text-foreground">
             {CANAL_LABEL[item.canal]} {item.telefono ? `· ${item.telefono}` : ""}
           </span>
-          <Badge variant={variante(item.estado)}>{ESTADO_LABEL[item.estado]}</Badge>
+          <StatusBadge tone={statusTone(HANDOFF_ESTADO_TONES, item.estado)}>{ESTADO_LABEL[item.estado]}</StatusBadge>
         </div>
-        <p className="m-0 mt-1 text-[12px] text-muted-foreground truncate">{item.vistaPrevia || "Sin mensajes"}</p>
-        <p className="m-0 mt-1 text-[11px] text-muted-foreground">
+        <p className="m-0 mt-1 text-xs text-muted-foreground truncate">{item.vistaPrevia || "Sin mensajes"}</p>
+        <p className="m-0 mt-1 text-xs text-muted-foreground">
           {hora(item.actividadEn)}
           {item.tomadaPorNombre ? ` · la tiene ${item.tomadaPorNombre}` : ""}
           {item.motivo ? ` · motivo: ${item.motivo}` : ""}
         </p>
-        {esc && <p className="m-0 mt-1 text-[12px] text-destructive">{esc}</p>}
+        {esc && <p className="m-0 mt-1 text-xs text-destructive">{esc}</p>}
       </button>
     </li>
   );
@@ -232,7 +227,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
           {CANAL_LABEL[canal]} — {h ? ESTADO_LABEL[h.estado] : ESTADO_LABEL.agente}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-[13px]">
+      <CardContent className="flex flex-col gap-3 text-sm">
         {aviso && (
           <p role="status" className="m-0 text-foreground">
             {aviso}
@@ -282,7 +277,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
           >
             <label className="flex flex-col gap-1">
               Responder por WhatsApp
-              <textarea value={respuesta} maxLength={1000} onChange={(e) => setRespuesta(e.target.value)} className={TEXTAREA} rows={2} />
+              <Textarea value={respuesta} maxLength={1000} onChange={(e) => setRespuesta(e.target.value)} rows={2} />
             </label>
             <Button type="submit" disabled={ocupado || !respuesta.trim()}>
               Enviar respuesta
@@ -292,7 +287,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
 
         {h && (
           <section aria-label="Notas internas" className="flex flex-col gap-2">
-            <h2 className="m-0 text-[13px] font-semibold">Notas internas (el cliente no las ve)</h2>
+            <h2 className="m-0 text-sm font-semibold">Notas internas (el cliente no las ve)</h2>
             {d.notas.length === 0 && <p className="m-0 text-muted-foreground">Sin notas.</p>}
             {d.notas.map((n) => (
               <p key={n.id} className="m-0">
@@ -310,7 +305,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
                 }, "Nota guardada.");
               }}
             >
-              <input aria-label="Nueva nota" value={nota} maxLength={2000} onChange={(e) => setNota(e.target.value)} className={`${SELECT} flex-1`} />
+              <Input aria-label="Nueva nota" value={nota} maxLength={2000} onChange={(e) => setNota(e.target.value)} className="flex-1" />
               <Button type="submit" variant="outline" disabled={ocupado || !nota.trim()}>
                 Agregar
               </Button>

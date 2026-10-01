@@ -7,7 +7,7 @@
 // RestaurantesShell, pero sin ese nav.
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
-// primitivos de `@atiende/ui` — `Card` por entrega, `Badge` para el estado, `Button`
+// primitivos de `@atiende/ui` — `Card` por entrega, `StatusBadge` para el estado, `Button`
 // para Mapa/Llamar/avanzar/reportar — y el `window.prompt` del navegador que pedía la
 // nota de incidencia pasa a un `AlertDialog` real del sistema de diseño (no
 // `Dialog`/`ModalFormularioLateral` -- una confirmación no es un formulario, mismo
@@ -43,7 +43,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -51,6 +50,11 @@ import {
   EstadoError,
   EstadoVacio,
   Label,
+  PageContainer,
+  StatusBadge,
+  Textarea,
+  formatMoney,
+  statusTone,
 } from "@atiende/ui";
 import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
@@ -58,6 +62,7 @@ import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
 import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
 import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-client.ts";
+import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 
@@ -80,10 +85,6 @@ const NEXT_STATUS_LABEL: Record<RepartidorOrderStatus, string> = {
   cancelado: "",
   problema: "",
 };
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: string; token: string; propertyId: string }) {
   const [orders, setOrders] = useState<readonly RepartidorOrder[] | null>(null);
@@ -158,7 +159,7 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
+      <PageContainer size="sm" className="gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -173,26 +174,26 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
               <div className="flex flex-wrap justify-between gap-2">
                 <div>
                   <p className="m-0 font-semibold text-foreground">
-                    {o.customerName} · {formatMoney(o.total)}
+                    {o.customerName} · ${formatMoney(o.total)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {o.customerPhone} · {new Date(o.createdAt).toLocaleString("es-MX")}
                   </p>
                 </div>
-                <Badge variant={o.status === "problema" ? "destructive" : "secondary"} className="self-start">
+                <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="self-start">
                   {STATUS_LABELS[o.status]}
-                </Badge>
+                </StatusBadge>
               </div>
 
               {o.customerAddress && (
-                <p className="mt-2 flex items-start gap-1.5 text-[13px] text-foreground">
+                <p className="mt-2 flex items-start gap-1.5 text-sm text-foreground">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
                   {o.customerAddress}
                 </p>
               )}
-              <p className="mt-1.5 text-[13px] text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+              <p className="mt-1.5 text-sm text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
               {o.incidentNote && (
-                <p className="mt-1.5 flex items-start gap-1.5 text-[13px] text-destructive">
+                <p className="mt-1.5 flex items-start gap-1.5 text-sm text-destructive">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                   {o.incidentNote}
                 </p>
@@ -251,12 +252,11 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
             <Label htmlFor="repartidor-incidencia-nota" className="text-xs text-muted-foreground">
               Nota para administración
             </Label>
-            <textarea
+            <Textarea
               id="repartidor-incidencia-nota"
               value={incidenciaNota}
               onChange={(e) => setIncidenciaNota(e.target.value)}
               rows={4}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               placeholder="Ej. El cliente no abrió y no contesta el teléfono."
             />
           </div>
@@ -274,7 +274,7 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
+      </PageContainer>
     </div>
   );
 }
@@ -340,17 +340,17 @@ export function RepartidorPedidosPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-background p-6">
+      <PageContainer as="main" size="sm" className="min-h-screen bg-background">
         <EstadoError mensaje={error} />
-      </main>
+      </PageContainer>
     );
   }
 
   if (!propertyId) {
     return (
-      <main className="min-h-screen bg-background p-6">
+      <PageContainer as="main" size="sm" className="min-h-screen bg-background">
         <EstadoCargando etiqueta="Cargando…" />
-      </main>
+      </PageContainer>
     );
   }
 
