@@ -2,7 +2,7 @@
 //
 //   GET    /licitaciones/:propertyId/dias-inhabiles?tenderId=   oficiales de plataforma (2026-2027), sugeridos por validar y
 //                                                               los declarados por la organizacion (cualquier rol)
-//   POST   /licitaciones/:propertyId/dias-inhabiles             { fecha, nombre, tenderId?, publicadoPor?, fuente?, verificacion? } (DECISION_ROLES)
+//   POST   /licitaciones/:propertyId/dias-inhabiles             { fecha, nombre, tenderId?, publicadoPor?, fuente? } (DECISION_ROLES; nace por_validar)
 //   DELETE /licitaciones/:propertyId/dias-inhabiles/:id         quita (soft delete sellado) un dia declarado (DECISION_ROLES)
 //
 // Declarar o quitar un dia inhabil cambia plazos LEGALES (pago, inconformidad, recordatorios), por
