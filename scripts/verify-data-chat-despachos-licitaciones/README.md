@@ -4,20 +4,20 @@ Verifica contra **Postgres real** (RLS + GRANT + `auth.uid()` reales) el SQL de 
 catalogos de "Chatea con tus datos" de **despachos** y **licitaciones**:
 
 - `packages/domain-despachos/src/data-chat/sql.ts` (10 consultas)
-- `packages/domain-licitaciones/src/data-chat/sql.ts` (7 consultas)
+- `packages/domain-licitaciones/src/data-chat/sql.ts` (8 consultas)
 
 El texto de cada consulta se copia identico en `assertions.sql`; los `sql-drift.spec.ts` de ambos paquetes
 fallan si divergen. No agrega migraciones: la bitacora (`core.data_chat_query_log`, migracion 0029) ya acepta
 las dos verticales.
 
-## Que cubre (59 escenarios)
+## Que cubre (66 escenarios)
 
 - **Despachos**: cifras exactas (cartera, antiguedad, CFDI, IVA acreditable, obligaciones, cierres, carga),
   cross-tenant en ambos sentidos, cross-cliente (contador con membership acotada a UN cliente: aunque la app
   pasara `null` o el id de otro cliente, RLS lo limita), pagados fuera de la cartera, lista 69-B solo por
   las funciones `security definer` (sin acceso a la property, otro despacho, staff de licitaciones y `anon`
   rechazados; las tablas `efos_*` no son legibles), `anon` sin acceso a las tablas.
-- **Licitaciones**: cifras exactas, cross-tenant en ambos sentidos y cross-vertical, el rol `viewer` lee,
+- **Licitaciones**: cifras exactas, cross-tenant en ambos sentidos y cross-vertical, el rol `viewer` lee, preguntas de junta de aclaraciones sin cerrar (sin respuestas ni actas),
   dias restantes/semaforo en fecha **local** (una convocatoria que cierra a las 23:45 de Merida tiene 0 dias
   aunque en UTC ya sea otro dia), horizonte de renovaciones inclusivo, moneda distinta de MXN sin monto, zona
   horaria configurada, `anon` sin acceso.

@@ -166,6 +166,20 @@ insert into licitaciones.renewal_alert (id, organization_id, contract_id, tender
   ('00000000-0000-0000-0000-0000000f1602', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1502', '00000000-0000-0000-0000-0000000f1006', '2026-12-01', 60, 0.80, 'reconocida')
 on conflict do nothing;
 
+-- Junta de aclaraciones (L-04, migracion 029): t1001 con limite de preguntas 2-oct 15:00 y junta 5-oct 11:00 (hora de Merida); t1002 sin fechas.
+--   q1 t1001 alta APROBADA · q2 t1002 media BORRADOR · q3 t1002 baja ENVIADA · q4 RESPONDIDA y q5 DESCARTADA (cerradas, no cuentan) · q6 de la organizacion B
+insert into licitaciones.junta_aclaraciones (tender_id, organization_id, questions_deadline_at, meeting_at) values
+  ('00000000-0000-0000-0000-0000000f1001', '00000000-0000-0000-0000-00000000d201', '2026-10-02T21:00:00Z', '2026-10-05T17:00:00Z')
+on conflict do nothing;
+insert into licitaciones.junta_question (id, organization_id, tender_id, question_text, topic, priority, dedupe_key, status, created_by, approved_at, sent_at, answer_text, discard_reason) values
+  ('00000000-0000-0000-0000-0000000f1701', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1001', 'Se aceptan tallas intermedias en la partida 3?', 'tecnico', 'alta', 'k1', 'aprobada', '00000000-0000-0000-0000-000000000071', now(), null, null, null),
+  ('00000000-0000-0000-0000-0000000f1702', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1002', 'El anexo 4 sustituye al formato de la convocatoria?', 'administrativo', 'media', 'k2', 'borrador', '00000000-0000-0000-0000-000000000071', null, null, null, null),
+  ('00000000-0000-0000-0000-0000000f1703', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1002', 'Como se acredita la experiencia en el apartado legal?', 'legal', 'baja', 'k3', 'enviada', '00000000-0000-0000-0000-000000000071', now(), now(), null, null),
+  ('00000000-0000-0000-0000-0000000f1704', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1001', 'Pregunta ya respondida sobre plazos de entrega', 'otro', 'media', 'k4', 'respondida', '00000000-0000-0000-0000-000000000071', now(), now(), 'Respuesta confidencial del acta', null),
+  ('00000000-0000-0000-0000-0000000f1705', '00000000-0000-0000-0000-00000000d201', '00000000-0000-0000-0000-0000000f1001', 'Pregunta descartada por duplicada', 'otro', 'baja', 'k5', 'descartada', '00000000-0000-0000-0000-000000000071', null, null, null, 'Duplicada'),
+  ('00000000-0000-0000-0000-0000000f1706', '00000000-0000-0000-0000-00000000d202', '00000000-0000-0000-0000-0000000f1101', 'Pregunta ajena de la organizacion B', 'otro', 'alta', 'k6', 'borrador', '00000000-0000-0000-0000-000000000073', null, null, null, null)
+on conflict do nothing;
+
 insert into licitaciones.tenant_config (organization_id, timezone) values
   ('00000000-0000-0000-0000-00000000d201', 'America/Cancun'), ('00000000-0000-0000-0000-00000000d202', 'America/Tijuana')
 on conflict do nothing;
@@ -1048,27 +1062,142 @@ begin
   if not (jsonb_array_length(v) = 0) then raise exception 'cross-tenant renovaciones: %', v; end if;
 end $do$;
 rollback;
-\echo '--- 48. anon NO puede leer licitaciones.tender (revocado) ---'
+\echo '--- 48. preguntas de junta pendientes: q1 (aprobada, límite 2-oct 15:00 a 3 días, junta 5-oct 11:00), q2 (borrador) y q3 (enviada), en ese orden; la respondida, la descartada y la de B no aparecen y NUNCA sale la respuesta ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000071', true);
+do $do$
+declare v jsonb;
+begin
+  execute $q$select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from (select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ((j.questions_deadline_at) at time zone $2::text)::date - (($3::timestamptz) at time zone $2::text)::date end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4) t$q$ using '00000000-0000-0000-0000-00000000d201'::uuid, 'America/Merida'::text, '2026-09-30T05:30:00Z'::timestamptz, 51::int into v;
+  if not (jsonb_array_length(v) = 3 and (v->0->>'status') = 'aprobada' and (v->0->>'prioridad') = 'alta' and (v->0->>'limite_preguntas') = '2026-10-02 15:00' and (v->0->>'dias_limite')::int = 3 and (v->0->>'junta') = '2026-10-05 11:00' and (v->1->>'status') = 'borrador' and (v->1->>'limite_preguntas') is null and (v->1->>'dias_limite') is null and (v->2->>'status') = 'enviada' and position('confidencial' in v::text) = 0) then raise exception 'junta inesperada: %', v; end if;
+end $do$;
+rollback;
+\echo '--- 49. preguntas de junta: el tope de filas se respeta (limit 2 -> 2 filas) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000071', true);
+do $do$
+declare v jsonb;
+begin
+  execute $q$select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from (select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ((j.questions_deadline_at) at time zone $2::text)::date - (($3::timestamptz) at time zone $2::text)::date end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4) t$q$ using '00000000-0000-0000-0000-00000000d201'::uuid, 'America/Merida'::text, '2026-09-30T05:30:00Z'::timestamptz, 2::int into v;
+  if not (jsonb_array_length(v) = 2) then raise exception 'tope junta: %', v; end if;
+end $do$;
+rollback;
+\echo '--- 50. preguntas de junta cross-tenant: owner B pidiendo la organizacion A -> 0 filas; pidiendo la suya ve solo la suya ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000073', true);
+do $do$
+declare v jsonb;
+begin
+  execute $q$select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from (select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ((j.questions_deadline_at) at time zone $2::text)::date - (($3::timestamptz) at time zone $2::text)::date end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4) t$q$ using '00000000-0000-0000-0000-00000000d201'::uuid, 'America/Merida'::text, '2026-09-30T05:30:00Z'::timestamptz, 51::int into v;
+  if not (jsonb_array_length(v) = 0) then raise exception 'cross-tenant junta: %', v; end if;
+end $do$;
+rollback;
+\echo '--- 51. preguntas de junta (sentido inverso): owner B ve solo la pregunta de SU organizacion ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000073', true);
+do $do$
+declare v jsonb;
+begin
+  execute $q$select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from (select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ((j.questions_deadline_at) at time zone $2::text)::date - (($3::timestamptz) at time zone $2::text)::date end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4) t$q$ using '00000000-0000-0000-0000-00000000d202'::uuid, 'America/Merida'::text, '2026-09-30T05:30:00Z'::timestamptz, 51::int into v;
+  if not (jsonb_array_length(v) = 1 and (v->0->>'titulo') = 'Convocatoria ajena B') then raise exception 'aislamiento B junta: %', v; end if;
+end $do$;
+rollback;
+\echo '--- 52. preguntas de junta: el rol viewer PUEDE leer (can_access_org) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000072', true);
+do $do$
+declare v jsonb;
+begin
+  execute $q$select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from (select t.title as titulo, left(q.question_text, 160) as pregunta, q.topic as tema, q.priority as prioridad, q.status,
+    to_char(j.questions_deadline_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as limite_preguntas,
+    case when j.questions_deadline_at is null then null
+         else ((j.questions_deadline_at) at time zone $2::text)::date - (($3::timestamptz) at time zone $2::text)::date end as dias_limite,
+    to_char(j.meeting_at at time zone $2::text, 'YYYY-MM-DD HH24:MI') as junta
+  from licitaciones.junta_question q
+  join licitaciones.tender t on t.id = q.tender_id and t.organization_id = q.organization_id
+  left join licitaciones.junta_aclaraciones j on j.tender_id = q.tender_id and j.organization_id = q.organization_id
+  where q.organization_id = $1 and q.status in ('borrador', 'aprobada', 'enviada')
+  order by j.questions_deadline_at asc nulls last,
+    case q.priority when 'alta' then 0 when 'media' then 1 else 2 end, q.created_at asc
+  limit $4) t$q$ using '00000000-0000-0000-0000-00000000d201'::uuid, 'America/Merida'::text, '2026-09-30T05:30:00Z'::timestamptz, 51::int into v;
+  if not (jsonb_array_length(v) = 3) then raise exception 'viewer junta: %', v; end if;
+end $do$;
+rollback;
+\echo '--- 53. anon NO puede leer licitaciones.tender (revocado) ---'
 begin;
 set local role anon;
 select count(*) as should_fail from licitaciones.tender;
 rollback;
-\echo '--- 49. anon NO puede leer licitaciones.contract (revocado) ---'
+\echo '--- 54. anon NO puede leer licitaciones.contract (revocado) ---'
 begin;
 set local role anon;
 select count(*) as should_fail from licitaciones.contract;
 rollback;
-\echo '--- 50. anon NO puede leer licitaciones.go_no_go_decision (revocado) ---'
+\echo '--- 55. anon NO puede leer licitaciones.junta_question (revocado) ---'
+begin;
+set local role anon;
+select count(*) as should_fail from licitaciones.junta_question;
+rollback;
+\echo '--- 56. anon NO puede leer licitaciones.go_no_go_decision (revocado) ---'
 begin;
 set local role anon;
 select count(*) as should_fail from licitaciones.go_no_go_decision;
 rollback;
-\echo '--- 51. anon NO puede leer licitaciones.tender_resolution (revocado) ---'
+\echo '--- 57. anon NO puede leer licitaciones.tender_resolution (revocado) ---'
 begin;
 set local role anon;
 select count(*) as should_fail from licitaciones.tender_resolution;
 rollback;
-\echo '--- 52. anon NO puede leer licitaciones.proposal (revocado) ---'
+\echo '--- 58. anon NO puede leer licitaciones.proposal (revocado) ---'
 begin;
 set local role anon;
 select count(*) as should_fail from licitaciones.proposal;
@@ -1076,7 +1205,7 @@ rollback;
 \echo ''
 \echo '=== C) base SIN migrar: SQLSTATE real + SAVEPOINT (mismo mecanismo que runWithSavepointFallback) ==='
 \echo ''
-\echo '--- 53. despachos: con despachos.receivable ELIMINADA el SQL de cartera falla con 42P01 y la transaccion se recupera (nunca 25P02) ---'
+\echo '--- 59. despachos: con despachos.receivable ELIMINADA el SQL de cartera falla con 42P01 y la transaccion se recupera (nunca 25P02) ---'
 begin;
 drop table despachos.receivable cascade;
 set local role authenticated;
@@ -1097,7 +1226,7 @@ rollback to savepoint sp_verify_recv;
 release savepoint sp_verify_recv;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 54. despachos: con la funcion efos_estado ELIMINADA (migracion 014 pendiente) falla con 42883 'function ... does not exist' y la transaccion se recupera ---'
+\echo '--- 60. despachos: con la funcion efos_estado ELIMINADA (migracion 014 pendiente) falla con 42883 'function ... does not exist' y la transaccion se recupera ---'
 begin;
 drop function despachos.efos_estado();
 set local role authenticated;
@@ -1118,7 +1247,7 @@ rollback to savepoint sp_verify_efos;
 release savepoint sp_verify_efos;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 55. despachos: con la funcion efos_invoices_afectados ELIMINADA falla con 42883 y la transaccion se recupera ---'
+\echo '--- 61. despachos: con la funcion efos_invoices_afectados ELIMINADA falla con 42883 y la transaccion se recupera ---'
 begin;
 drop function despachos.efos_invoices_afectados(uuid);
 set local role authenticated;
@@ -1139,7 +1268,7 @@ rollback to savepoint sp_verify_efosinv;
 release savepoint sp_verify_efosinv;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 56. despachos: con despachos.periodo_cierre_tarea ELIMINADA el SQL de cierres/carga falla con 42P01 y la transaccion se recupera ---'
+\echo '--- 62. despachos: con despachos.periodo_cierre_tarea ELIMINADA el SQL de cierres/carga falla con 42P01 y la transaccion se recupera ---'
 begin;
 drop table despachos.periodo_cierre_tarea cascade;
 set local role authenticated;
@@ -1160,7 +1289,7 @@ rollback to savepoint sp_verify_cierre;
 release savepoint sp_verify_cierre;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 57. licitaciones: con tender.contracting_body ELIMINADA (migracion 007 pendiente) el SQL de convocatorias falla con 42703 y la transaccion se recupera ---'
+\echo '--- 63. licitaciones: con tender.contracting_body ELIMINADA (migracion 007 pendiente) el SQL de convocatorias falla con 42703 y la transaccion se recupera ---'
 begin;
 alter table licitaciones.tender drop column contracting_body cascade;
 set local role authenticated;
@@ -1181,7 +1310,7 @@ rollback to savepoint sp_verify_tender;
 release savepoint sp_verify_tender;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 58. licitaciones: con licitaciones.tenant_config ELIMINADA (migracion 027 pendiente) la zona horaria falla con 42P01 y la transaccion se recupera ---'
+\echo '--- 64. licitaciones: con licitaciones.tenant_config ELIMINADA (migracion 027 pendiente) la zona horaria falla con 42P01 y la transaccion se recupera ---'
 begin;
 drop table licitaciones.tenant_config cascade;
 set local role authenticated;
@@ -1202,7 +1331,28 @@ rollback to savepoint sp_verify_tz;
 release savepoint sp_verify_tz;
 select 1 as transaccion_recuperada_deberia_ser_1;
 rollback;
-\echo '--- 59. licitaciones: con licitaciones.renewal_alert ELIMINADA el SQL de renovaciones falla con 42P01 y la transaccion se recupera ---'
+\echo '--- 65. licitaciones: con licitaciones.junta_question ELIMINADA (migracion 029 / PR #240 pendiente) el SQL de preguntas de junta falla con 42P01 y la transaccion se recupera ---'
+begin;
+drop table licitaciones.junta_question cascade;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000071', true);
+savepoint sp_verify_junta;
+do $do$
+declare v_state text; v_msg text;
+begin
+  begin
+    perform * from licitaciones.junta_question where organization_id = '00000000-0000-0000-0000-00000000d201' limit 51;
+    raise exception 'se esperaba SQLSTATE 42P01 pero la consulta no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42P01' then raise exception 'se esperaba 42P01, se obtuvo % (%)', v_state, v_msg; end if;
+  end;
+end $do$;
+rollback to savepoint sp_verify_junta;
+release savepoint sp_verify_junta;
+select 1 as transaccion_recuperada_deberia_ser_1;
+rollback;
+\echo '--- 66. licitaciones: con licitaciones.renewal_alert ELIMINADA el SQL de renovaciones falla con 42P01 y la transaccion se recupera ---'
 begin;
 drop table licitaciones.renewal_alert cascade;
 set local role authenticated;
