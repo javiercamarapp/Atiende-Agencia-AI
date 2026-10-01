@@ -1,0 +1,187 @@
+// Rn-04 -- liberación de instrucciones de acceso al huésped (código de cerradura, dirección
+// exacta) N horas antes del check-in, solo con reserva confirmada y pagada según la política.
+//
+// Staff (authMiddleware + dbSession + requirePropertyMembership; roles ACCESO_HUESPED_ROLES,
+// la RLS de la migración 025 -- rentas.can_manage_acceso -- lo vuelve a exigir):
+//   GET/PUT /rentas/:propertyId/acceso-huesped/politica
+//   GET     /rentas/:propertyId/acceso-huesped/bitacora?limite=
+//   GET     /rentas/:propertyId/acceso-huesped/reservas   reservas próximas con estado de pago/liberación
+//   GET/PUT /rentas/:propertyId/unidades/:unidadId/acceso-instrucciones
+//   POST    /rentas/:propertyId/reservas/:ocupacionId/pago-confirmado   { confirmado: boolean }
+// Cron (guard de secreto interno/Vercel Cron, igual que checkin-recordatorio.ts):
+//   GET|POST /internal/rentas/acceso-huesped
+// El cron NO está en vercel.json: agendarlo es decisión de Javier (ver docs/DEPLOY.md).
+//
+// Compatibilidad con la base sin migrar (migración 025 pendiente): las lecturas responden
+// `disponible: false` y las escrituras 409 "aún no disponible"; el cron responde ok con
+// `disponible: false` -- nunca un 500.
+//
+// Sin PII/secretos en logs: ningún handler imprime correo, dirección ni código. Las
+// respuestas con el secreto llevan `Cache-Control: no-store`.
+import { Hono } from "hono";
+import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { ACCESO_HUESPED_ROLES, POLITICA_ACCESO_POR_DEFECTO, PostgresRentasAccesoRepository, ejecutarLiberacionAcceso, validarInstruccion, validarPolitica } from "@atiende/domain-rentas";
+import type { PoliticaAcceso, RentasAccesoRepository } from "@atiende/domain-rentas";
+import { Errors } from "../../../errors.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import type { AppDeps } from "../../../deps.ts";
+import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LIMITE_BITACORA_MAX = 200;
+const LIMITE_BITACORA_DEFECTO = 50;
+
+function requireUuid(value: string | undefined, campo: string): string {
+  if (!value || !UUID_RE.test(value)) throw Errors.validation(`${campo}: se esperaba un UUID.`);
+  return value;
+}
+
+async function leerJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    throw Errors.validation("El cuerpo debe ser JSON válido.");
+  }
+}
+
+const politicaAJson = (p: Pick<PoliticaAcceso, "activo" | "horasAntesCheckin" | "horaCheckin" | "exigirPago" | "otaCuentaComoPagada">) => ({
+  activo: p.activo,
+  horas_antes_checkin: p.horasAntesCheckin,
+  hora_checkin: p.horaCheckin,
+  exigir_pago: p.exigirPago,
+  ota_cuenta_como_pagada: p.otaCuentaComoPagada,
+});
+
+export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
+  const app = new Hono<CoreAuthHonoEnv>();
+  const accesoRepo = (db: Parameters<AppDeps["rentasRepo"]>[0]): RentasAccesoRepository => (deps.rentasAccesoRepo ? deps.rentasAccesoRepo(db) : new PostgresRentasAccesoRepository(db));
+
+  const rutas = [
+    "/rentas/:propertyId/acceso-huesped/politica",
+    "/rentas/:propertyId/acceso-huesped/bitacora",
+    "/rentas/:propertyId/acceso-huesped/reservas",
+    "/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones",
+    "/rentas/:propertyId/reservas/:ocupacionId/pago-confirmado",
+  ];
+  for (const ruta of rutas) app.use(ruta, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+
+  app.get("/rentas/:propertyId/acceso-huesped/politica", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const r = await accesoRepo(c.get("db")).obtenerPolitica(c.req.param("propertyId"));
+    if (!r.disponible) return c.json({ disponible: false, politica: null, configurada: false }, 200);
+    return c.json({ disponible: true, configurada: r.valor !== null, politica: politicaAJson(r.valor ?? POLITICA_ACCESO_POR_DEFECTO) }, 200);
+  });
+
+  app.put("/rentas/:propertyId/acceso-huesped/politica", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const v = validarPolitica(await leerJson(c));
+    if (!v.ok) throw Errors.validation(v.error);
+    const r = await accesoRepo(c.get("db")).guardarPolitica(c.get("organizationId") as string, c.req.param("propertyId"), v.valor, c.get("userId"));
+    if (!r.disponible) throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
+    return c.json({ disponible: true, configurada: true, politica: politicaAJson(r.valor) }, 200);
+  });
+
+  app.get("/rentas/:propertyId/acceso-huesped/bitacora", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const crudo = c.req.query("limite");
+    let limite = LIMITE_BITACORA_DEFECTO;
+    if (crudo !== undefined) {
+      limite = Number(crudo);
+      if (!Number.isInteger(limite) || limite < 1 || limite > LIMITE_BITACORA_MAX) throw Errors.validation(`limite: se esperaba un entero entre 1 y ${LIMITE_BITACORA_MAX}.`);
+    }
+    const r = await accesoRepo(c.get("db")).listarBitacora(c.req.param("propertyId"), limite);
+    if (!r.disponible) return c.json({ disponible: false, eventos: [] }, 200);
+    return c.json({ disponible: true, eventos: r.valor.map((e) => ({ id: e.id, reserva_id: e.ocupacionId, evento: e.evento, canal: e.canal, creado_en: e.creadoEn })) }, 200);
+  });
+
+  app.get("/rentas/:propertyId/acceso-huesped/reservas", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const r = await accesoRepo(c.get("db")).listarReservasProximas(c.req.param("propertyId"), 100);
+    if (!r.disponible) return c.json({ disponible: false, reservas: [] }, 200);
+    return c.json(
+      {
+        disponible: true,
+        reservas: r.valor.map((x) => ({
+          reserva_id: x.ocupacionId,
+          unidad_id: x.unidadId,
+          unidad_nombre: x.unidadNombre,
+          canal: x.canal,
+          check_in: x.checkIn,
+          check_out: x.checkOut,
+          huesped_nombre: x.huespedNombre,
+          pago_confirmado: x.pagoConfirmado,
+          liberada: x.liberada,
+        })),
+      },
+      200,
+    );
+  });
+
+  app.get("/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const unidadId = requireUuid(c.req.param("unidadId"), "unidadId");
+    const r = await accesoRepo(c.get("db")).obtenerInstruccion(c.req.param("propertyId"), unidadId);
+    c.header("Cache-Control", "no-store");
+    if (!r.disponible) return c.json({ disponible: false, instrucciones: null }, 200);
+    return c.json(
+      { disponible: true, instrucciones: r.valor ? { direccion_exacta: r.valor.direccionExacta, codigo_acceso: r.valor.codigoAcceso, instrucciones: r.valor.instrucciones } : null },
+      200,
+    );
+  });
+
+  app.put("/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const unidadId = requireUuid(c.req.param("unidadId"), "unidadId");
+    const v = validarInstruccion(await leerJson(c));
+    if (!v.ok) throw Errors.validation(v.error);
+    const r = await accesoRepo(c.get("db")).guardarInstruccion(c.get("organizationId") as string, c.req.param("propertyId"), unidadId, v.valor, c.get("userId"));
+    if (!r.disponible) throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
+    if (r.valor === null) throw Errors.notFound("Unidad no encontrada en esta property.");
+    c.header("Cache-Control", "no-store");
+    return c.json({ disponible: true, instrucciones: { direccion_exacta: r.valor.direccionExacta, codigo_acceso: r.valor.codigoAcceso, instrucciones: r.valor.instrucciones } }, 200);
+  });
+
+  app.post("/rentas/:propertyId/reservas/:ocupacionId/pago-confirmado", async (c) => {
+    assertVerticalRole(c, ACCESO_HUESPED_ROLES);
+    const ocupacionId = requireUuid(c.req.param("ocupacionId"), "ocupacionId");
+    const cuerpo = (await leerJson(c)) as { confirmado?: unknown } | null;
+    if (typeof cuerpo !== "object" || cuerpo === null || typeof cuerpo.confirmado !== "boolean") throw Errors.validation("confirmado: se esperaba true o false.");
+    const r = await accesoRepo(c.get("db")).confirmarPago(ocupacionId, cuerpo.confirmado);
+    if (r === "no_disponible") throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
+    if (r === "no_encontrada") throw Errors.notFound("Reserva no encontrada en esta property.");
+    return c.json({ reserva_id: ocupacionId, pago_confirmado: r === "confirmado" }, 200);
+  });
+
+  // ---- Cron ----
+  app.on(["GET", "POST"], "/internal/rentas/acceso-huesped", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+
+    return withHeartbeat(deps, "/internal/rentas/acceso-huesped", async () => {
+      // Una transacción POR RESERVA (ver @atiende/domain-rentas::ejecutarLiberacionAcceso).
+      const resumen = await ejecutarLiberacionAcceso((fn) => deps.engine.withAppSession({ userId: null }, (db) => fn({ acceso: accesoRepo(db), rentas: deps.rentasRepo(db) })));
+      if (resumen.liberadas > 0) {
+        // Disparo inline best-effort del outbox (mismo patrón que checkin-recordatorio.ts):
+        // sin esto el correo esperaría al cron diario de email-dispatch.
+        await deps.engine.withAppSession({ userId: null }, (db) => triggerRentasEmailDispatchInline(deps, db, deps.rentasRepo(db)));
+      }
+      const response = c.json(
+        {
+          ok: resumen.errores === 0,
+          disponible: resumen.disponible,
+          liberadas: resumen.liberadas,
+          omitidas_sin_contacto: resumen.omitidasSinContacto,
+          omitidas_sin_instrucciones: resumen.omitidasSinInstrucciones,
+          errores: resumen.errores,
+          truncada: resumen.truncada,
+        },
+        200,
+      );
+      if (resumen.errores > 0) throw new CronPartialFailureError(`acceso-huesped: ${resumen.errores} reserva(s) fallaron`, response);
+      return response;
+    })();
+  });
+
+  return app;
+}

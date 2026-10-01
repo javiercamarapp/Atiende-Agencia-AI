@@ -11,9 +11,13 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
   Branch,
+  BranchHoursException,
+  CanalPedido,
   BranchPolicy,
   WhatsAppAgentConfigAccion,
   WhatsAppAgentConfigHistorialEntry,
+  NewBranchHoursExceptionInput,
+  OrderPickupInfo,
   WhatsAppAgentConfigInput,
   WhatsAppAgentConfigRow,
   BranchProductState,
@@ -88,6 +92,11 @@ export interface NewOrderRecord {
   readonly paymentMethod: "efectivo" | "tarjeta" | null;
   readonly callTranscript: string | null;
   readonly callRecordingUrl: string | null;
+  /** Migracion 031: canal, propina y hora prometida de recogida. `create_order_idempotent` viejo
+   * ignora estas llaves del jsonb, asi que mandarlas es seguro contra la base sin migrar. */
+  readonly canal?: CanalPedido | null;
+  readonly propina?: number | null;
+  readonly horaRecogida?: string | null;
 }
 
 export interface ConversationMessage {
@@ -452,6 +461,9 @@ export interface RestaurantesRepository {
    * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
    * decide reglas de negocio). */
   findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
+  /** Promociones ACTIVAS con `auto_apply` (migracion 031) para aplicarlas sin codigo. `[]` contra la base
+   * sin migrar (SAVEPOINT): nunca lanza ni deja la transaccion abortada. */
+  listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]>;
   createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion>;
   updatePromotion(organizationId: string, promotionId: string, patch: PromotionPatch): Promise<Promotion | null>;
   /** Incrementa `times_used` de forma atómica DESPUÉS de un pedido creado con éxito
@@ -552,6 +564,20 @@ export interface RestaurantesRepository {
 
   /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
   findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
+
+  // ---- Puentes (migracion 031): horario por fecha. La LECTURA degrada a [] contra la base sin migrar
+  // (SAVEPOINT); la ESCRITURA lanza `RestaurantesConfigUnavailableError`. ----
+
+  /** Excepciones de la sucursal que se traslapan con [fechaDesde, fechaHasta] (YYYY-MM-DD, inclusive). */
+  listBranchHoursExceptions(propertyId: string, fechaDesde: string, fechaHasta: string): Promise<readonly BranchHoursException[]>;
+  /** Excepciones de TODAS las sucursales de la organizacion que terminan hoy o despues (para el panel). */
+  listUpcomingBranchHoursExceptions(organizationId: string, desdeFecha: string): Promise<readonly BranchHoursException[]>;
+  createBranchHoursException(organizationId: string, input: NewBranchHoursExceptionInput): Promise<BranchHoursException>;
+  deleteBranchHoursException(organizationId: string, exceptionId: string): Promise<boolean>;
+
+  /** Canal, propina y hora de recogida (migracion 031) de varios pedidos. `[]` contra la base sin migrar:
+   * los listados de pedidos NO seleccionan esas columnas para no romperse sin migrar. */
+  listOrderPickupInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderPickupInfo[]>;
   /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
   upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
   /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura

@@ -69,6 +69,45 @@ export async function setNoDomicilio(fetchImpl: typeof fetch, apiBaseUrl: string
   await sendJson<{ id: string; noDomicilio: boolean }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/no-domicilio/${kind}/${id}`, token, "PUT", { noDomicilio });
 }
 
+// ---- puentes (migración 031): excepciones de horario por fecha ----
+
+export interface Puente {
+  readonly id: string;
+  readonly branchId: string;
+  readonly fechaDesde: string;
+  readonly fechaHasta: string;
+  readonly horario: readonly TurnoHorario[];
+  readonly motivo: string | null;
+}
+
+export interface TurnoPuente {
+  readonly abre: string;
+  readonly cierra: string;
+}
+
+const puentesUrl = (apiBaseUrl: string, propertyId: string) => `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/puentes`;
+
+export async function fetchPuentes(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly Puente[]> {
+  const body = await fetchJson<{ puentes: Puente[] }>(fetchImpl, puentesUrl(apiBaseUrl, propertyId), token);
+  return body.puentes;
+}
+
+/** Crea el MISMO puente para una o varias sucursales; `turnos` rigen todos los días del rango. */
+export async function createPuente(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  input: { readonly branchIds: readonly string[]; readonly fechaDesde: string; readonly fechaHasta: string; readonly turnos: readonly TurnoPuente[]; readonly motivo?: string },
+): Promise<readonly Puente[]> {
+  const body = await sendJson<{ puentes: Puente[] }>(fetchImpl, puentesUrl(apiBaseUrl, propertyId), token, "POST", input);
+  return body.puentes;
+}
+
+export async function deletePuente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, exceptionId: string): Promise<void> {
+  await deleteJson<{ ok: true }>(fetchImpl, `${puentesUrl(apiBaseUrl, propertyId)}/${exceptionId}`, token);
+}
+
 // ---- helpers de formulario (puros, con test) ----
 
 export const NOMBRES_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;

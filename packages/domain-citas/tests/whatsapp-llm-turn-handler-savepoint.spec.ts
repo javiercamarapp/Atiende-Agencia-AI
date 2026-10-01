@@ -49,8 +49,17 @@ describe("createLlmWhatsAppTurnHandler (citas) — SAVEPOINT por tool call, cont
     const organizationId = randomUUID();
     const appointmentId = randomUUID();
 
+    const customerId = randomUUID();
     const session = new AbortAwareFakeSession([
       { match: /from citas\.tenant_config/, respond: () => [] },
+      // C-03: las tools cancelar/reagendar/modificar exigen que la cita sea del cliente
+      // que escribe (assertCustomerOwnsAppointment) ANTES de llegar al RPC -- se siembran
+      // el cliente y la cita del remitente para que el test siga ejercitando el AT409.
+      { match: /from citas\.customers/, respond: () => [{ id: customerId, organization_id: organizationId, full_name: "Cliente de prueba", phone: "9990000000", email: null }] },
+      {
+        match: /from citas\.appointments where id/,
+        respond: () => [{ id: appointmentId, organization_id: organizationId, property_id: null, provider_id: randomUUID(), service_id: randomUUID(), customer_id: customerId, starts_at: "2030-01-01T16:00:00.000Z", ends_at: "2030-01-01T16:30:00.000Z", status: "completed", source: "web", notes: null, dedupe_fingerprint: null, idempotency_key: null, reminder_24h_sent_at: null, created_at: "2029-12-01T00:00:00.000Z", google_event_id: null, google_sync_status: "skipped", google_sync_attempts: 0, google_sync_next_retry_at: null, google_sync_error: null }],
+      },
       { match: /citas\.cancel_appointment_idempotent/, respond: () => at409() },
       { match: /select 1/, respond: () => [] },
     ]);
@@ -91,6 +100,10 @@ describe("createLlmWhatsAppTurnHandler (citas) — SAVEPOINT por tool call, cont
     // ningún otro error) fuera del turno; el handler resuelve normal.
     expect(result.reply).toMatch(/completada/);
     expect(result.appointmentId).toBeNull();
+
+    // El RPC de cancelar SÍ se ejecutó (la guardia de titularidad dejó pasar la cita
+    // del remitente) y su AT409 real fue el que disparó el SAVEPOINT.
+    expect(session.calls.some((c) => c.includes("citas.cancel_appointment_idempotent"))).toBe(true);
 
     // El tool call quedó aislado con su propio SAVEPOINT.
     expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);

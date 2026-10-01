@@ -27,6 +27,7 @@ import {
   AppointmentForbiddenError,
   AppointmentNotFoundError,
   AppointmentValidationError,
+  computeCitasResumen,
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
   MAX_LISTA_ESPERA_LIMIT,
@@ -465,6 +466,8 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     "/v1/citas/properties/:propertyId/appointments",
     "/v1/citas/properties/:propertyId/customers",
     "/v1/citas/properties/:propertyId/customers/:customerId",
+    // C-05 -- panel Resumen (solo lectura, conteos agregados).
+    "/v1/citas/properties/:propertyId/resumen",
     // Fase 8 — citas.tenant_config (port de ConfiguracionSection.tsx del origen).
     "/v1/citas/properties/:propertyId/tenant-config",
     // Fase 9 — agente "Lista de espera (simple)": ver GET/POST más abajo.
@@ -1086,6 +1089,26 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const appointments = await citasRepo.listAppointmentsInRange(organizationId, from, to, providerId, limit);
     const enriched = await enrichAppointments(citasRepo, organizationId, appointments);
     return c.json({ appointments: enriched });
+  });
+
+  // ---- C-05 -- Resumen: citas de hoy/semana, pendientes por confirmar, no-shows y clientes
+  // nuevos. Solo lectura de conteos agregados (sin migración: tablas/columnas existentes
+  // desde 001). "Hoy"/"semana" en la zona horaria REAL de la sucursal, nunca UTC/servidor.
+  // Mismo guard que el resto del archivo (requirePropertyMembership, sin distinción de rol). ----
+  app.get("/v1/citas/properties/:propertyId/resumen", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const timeZone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
+    const r = await computeCitasResumen(citasRepo, organizationId, timeZone);
+    return c.json({
+      timezone: r.timezone,
+      generated_at: r.generatedAt,
+      today: { date: r.today.date, total: r.today.total, by_status: r.today.byStatus },
+      week: { from_date: r.week.fromDate, to_date: r.week.toDate, total: r.week.total, by_status: r.week.byStatus },
+      pending_to_confirm: r.pendingToConfirm,
+      no_shows_last_30_days: r.noShowsLast30Days,
+      new_customers_last_30_days: r.newCustomersLast30Days,
+    });
   });
 
   // ---- Clientes — lista paginada + ficha con sus citas próximas ----

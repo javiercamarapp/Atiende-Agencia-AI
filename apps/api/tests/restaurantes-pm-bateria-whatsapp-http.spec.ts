@@ -66,12 +66,11 @@ describe("POST /v1/restaurantes/whatsapp/webhook -- bateria PM", () => {
     expect(salida.some((p) => p.to === "+5219990000004")).toBe(true);
   });
 
-  it("T-ZS07 / P33 [P1] un pin de ubicacion llega al turno con sus coordenadas y la instruccion de usarlas en buscar_sucursal_cercana (lat y lng)", async () => {
+  it("T-ZS07 / P33 [P1] un pin de ubicacion llega al turno como marcador estable con sus coordenadas (el turno las relee y las inyecta en buscar_sucursal_cercana)", async () => {
     const { app, vistos } = await setup();
     await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payloadCon([{ id: "wamid.loc1", from: "5219990000005", type: "location", location: { latitude: 21.0213, longitude: -89.5578 } }])));
     expect(vistos).toHaveLength(1);
-    expect(vistos[0]!.ultimo).toContain("(21.0213, -89.5578)");
-    expect(vistos[0]!.ultimo).toMatch(/buscar_sucursal_cercana \(lat y lng\)/);
+    expect(vistos[0]!.ultimo).toMatch(/^\[Ubicación compartida por WhatsApp\] lat=21\.021300 lng=-89\.557800/);
   });
 
   it("un pin de ubicacion sin coordenadas utilizables pide la colonia por texto", async () => {

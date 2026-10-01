@@ -81,6 +81,8 @@ import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Fin
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
 import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
+import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
+import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
 import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
 import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
@@ -90,6 +92,7 @@ import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
 import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
+import { ResumenPage as CitasResumenPage } from "./verticals/citas/pages/Resumen.tsx";
 import { ProveedorFichaPage, ProveedoresListPage } from "./verticals/citas/pages/Proveedores.tsx";
 import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Servicios.tsx";
 import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
@@ -117,6 +120,7 @@ import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pag
 import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
 import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
 import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.tsx";
+import { SalaGuerraPage } from "./verticals/licitaciones/pages/SalaGuerra.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
 import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
@@ -130,6 +134,7 @@ import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
 import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
+import { ImportarEstadoCuentaPage } from "./verticals/despachos/pages/ImportarEstadoCuenta.tsx";
 import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
@@ -607,6 +612,8 @@ const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <R
  * feed iCal, alertas del sync y conflictos entre canales por resolver. Mismo patrón de
  * ruta hija que RentasIcalSyncRoute. */
 const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
+const RentasReportesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasReportesPage {...ctx} />);
+const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAccesoHuespedPage {...ctx} />);
 
 /** Bitácora de auditoría del staff (r5) — cierra el hueco detectado al diseñar el
  * panel de superadmin: rentas no tenía ninguna pantalla que mostrara qué hizo cada
@@ -647,13 +654,15 @@ function CitasLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/citas/:orgSlug` a secas — la agenda es la landing real
- * del panel (mismo criterio de "página de entrada" que un dashboard de KPIs en
- * otras verticales, pero citas no tiene KPIs todavía, ver README). */
+/** Redirección al abrir `/citas/:orgSlug` a secas — C-05: el Resumen (citas hoy/semana,
+ * pendientes, no-shows, clientes nuevos) es ahora la página de entrada, igual que el dashboard
+ * de KPIs de otras verticales; la agenda queda a un clic desde el propio Resumen. */
 function CitasRootRedirect() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/citas/${orgSlug}/agenda`} replace />;
+  return <Navigate to={`/citas/${orgSlug}/resumen`} replace />;
 }
+
+const CitasResumenRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasResumenPage {...ctx} />);
 
 const CitasAgendaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <AgendaPage {...ctx} />);
 const CitasProveedoresRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ProveedoresListPage {...ctx} />);
@@ -755,6 +764,7 @@ const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/logi
 const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
 const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SeguimientoPage {...ctx} />);
 const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <AprobacionesPage {...ctx} />);
+const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SalaGuerraPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -804,6 +814,7 @@ const DespachosVencimientosRoute = shellRoute(DespachosShell, "/despachos/login"
 const DespachosDeclaracionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DeclaracionesPage {...ctx} />);
 const DespachosNominaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NominaPage {...ctx} />);
 const DespachosConciliacionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ConciliacionPage {...ctx} />);
+const DespachosImportarEstadoCuentaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ImportarEstadoCuentaPage {...ctx} />);
 const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <MigracionCatalogoPage {...ctx} />);
 const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
@@ -898,6 +909,8 @@ export function App() {
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
         <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
+        <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
+        <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
             segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
@@ -911,6 +924,7 @@ export function App() {
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
+        <Route path="/citas/:orgSlug/resumen" element={<CitasResumenRoute />} />
         <Route path="/citas/:orgSlug/agenda" element={<CitasAgendaRoute />} />
         <Route path="/citas/:orgSlug/proveedores" element={<CitasProveedoresRoute />} />
         <Route path="/citas/:orgSlug/proveedores/:providerId" element={<CitasProveedorFichaRoute />} />
@@ -929,6 +943,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/sala-guerra" element={<LicitacionesSalaGuerraRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica" element={<LicitacionesPropuestaTecnicaRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/cierre" element={<LicitacionesCierreRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
@@ -957,6 +972,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
         <Route path="/despachos/:orgSlug/conciliacion" element={<DespachosConciliacionRoute />} />
+        <Route path="/despachos/:orgSlug/conciliacion/importar" element={<DespachosImportarEstadoCuentaRoute />} />
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />

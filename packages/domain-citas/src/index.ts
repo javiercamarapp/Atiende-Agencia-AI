@@ -49,6 +49,7 @@ export type {
   CitasRepository,
   CompleteResult,
   ConfirmResult,
+  CustomerConfirmResult,
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
@@ -142,8 +143,15 @@ export type { CitasCustomerContext, UpcomingAppointmentContext } from "./custome
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
-export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export { computeCitasResumen, RESUMEN_HORIZONTE_PENDIENTES_DIAS, RESUMEN_VENTANA_DIAS } from "./resumen.ts";
+export type { CitasResumen, ResumenPorEstado } from "./resumen.ts";
+export { isUrgentCancellationMessage } from "./whatsapp/urgent-cancellation.ts";
+export { appointmentReminderButtons, buildAppointmentButtonId, parseAppointmentButtonId } from "./whatsapp/appointment-button-ids.ts";
+export type { AppointmentButtonAction } from "./whatsapp/appointment-button-ids.ts";
+export { formatAppointmentWhen, resolveAppointmentButton } from "./whatsapp/appointment-buttons.ts";
+export type { AppointmentButtonOutcome } from "./whatsapp/appointment-buttons.ts";
+export { extractMetaInboundMessages, extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export type { MetaInboundMessage, MetaInteractiveReply, MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createCitasMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";

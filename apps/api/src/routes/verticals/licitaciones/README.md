@@ -125,3 +125,16 @@ plan el correo de alerta puede tardar hasta ~24h en despacharse desde que se
 crea la alerta -- para despacho casi en tiempo real (cada minuto) hace falta
 plan Pro, cambio de infraestructura/costo fuera de alcance de este cambio de
 código.
+
+## L-04 — sala de guerra y junta de aclaraciones (`salaGuerra.ts`)
+
+Bajo `/licitaciones/:propertyId/tenders/:tenderId/`: `GET sala-guerra` (tablero, bitácora, requisitos
+importables, go/no-go ya registrado), `POST sala-guerra/items`, `POST sala-guerra/items/import-requirements`,
+`PATCH sala-guerra/items/:itemId`, `GET|POST sala-guerra/entries` (una `decision` exige los roles de
+go/no-go), `GET junta`, `PUT junta/config`, `POST junta/questions` (409 si ya existe una equivalente),
+`POST junta/questions/draft` (borrador asistido; 503 sin proveedor LLM), `PATCH junta/questions/:id`,
+`POST junta/questions/:id/transition` (aprobar exige owner/admin/analyst) y
+`POST junta/reminders/:id/acknowledge`. Con la migración 029 pendiente las lecturas responden 200
+con `available: false` y las escrituras 503. `AppDeps.licitacionesSalaGuerraRepo` es opcional (lo
+cablea `production/deps.ts`); sin él las rutas responden 503 y el cron omite la junta.
+El cron `/internal/licitaciones/deadline-reminders` vigila también el límite de envío de preguntas.

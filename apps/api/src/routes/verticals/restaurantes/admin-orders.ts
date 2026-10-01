@@ -11,8 +11,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
-import type { Order, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import type { Order, OrderPickupInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -20,7 +20,14 @@ import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } f
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
-function serializeOrder(o: Order) {
+/** Canal, propina y hora de recogida (migracion 031). `null` en los tres cuando la base aun no esta migrada o
+ * el pedido es anterior: los listados no seleccionan esas columnas, se leen aparte con SAVEPOINT. */
+async function pickupInfoByOrder(repo: RestaurantesRepository, organizationId: string, orders: readonly Order[]): Promise<ReadonlyMap<string, OrderPickupInfo>> {
+  const rows = await repo.listOrderPickupInfo(organizationId, orders.map((o) => o.id));
+  return new Map(rows.map((r) => [r.orderId, r]));
+}
+
+function serializeOrder(o: Order, pickup?: OrderPickupInfo) {
   return {
     id: o.id,
     propertyId: o.propertyId,
@@ -37,6 +44,10 @@ function serializeOrder(o: Order) {
     notes: o.notes,
     paymentMethod: o.paymentMethod,
     createdAt: o.createdAt,
+    // PM PR-3: canal / propina / hora prometida de recogida (columnas de la migracion 031).
+    canal: pickup?.canal ?? null,
+    propina: pickup?.propina ?? null,
+    horaRecogida: pickup?.horaRecogida ?? null,
     // Fase 8 — ver domain-restaurantes/src/roles.ts::REPARTIDOR_ROLES. El admin
     // necesita ver a quién despachó un pedido (y la incidencia, si la hay) desde
     // esta MISMA vista de operación/historial -- nunca un endpoint aparte.
@@ -84,6 +95,8 @@ function parseStatus(raw: string | undefined) {
 
 interface StatusBody {
   readonly status?: unknown;
+  /** `false` = no avisar por WhatsApp al cliente de este cambio (aviso opcional de "listo para recoger"). */
+  readonly notifyCustomer?: unknown;
 }
 
 interface AssignRepartidorBody {
@@ -114,7 +127,8 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const cursor = c.req.query("cursor") || undefined;
 
     const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, limit, cursor });
-    return c.json({ orders: page.orders.map(serializeOrder), nextCursor: page.nextCursor });
+    const pickup = await pickupInfoByOrder(repo, c.get("organizationId"), page.orders);
+    return c.json({ orders: page.orders.map((o) => serializeOrder(o, pickup.get(o.id))), nextCursor: page.nextCursor });
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/orders/:orderId", async (c) => {
@@ -125,7 +139,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (!order) throw Errors.notFound("Pedido no encontrado.");
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
-    return c.json({ order: serializeOrder(order) });
+    return c.json({ order: serializeOrder(order, (await pickupInfoByOrder(repo, organizationId, [order])).get(order.id)) });
   });
 
   app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/status", async (c) => {
@@ -155,7 +169,9 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // MISMO pedido (el UPDATE que `changeOrderStatus` ya hizo) se perdía con un
       // 2xx pese a que `triggerInline` de abajo ya se protegía con su propio
       // SAVEPOINT.
-      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"));
+      // `notifyCustomer: false` salta el aviso por WhatsApp al cliente (aviso OPCIONAL de "listo para recoger").
+      if (raw.notifyCustomer !== undefined && typeof raw.notifyCustomer !== "boolean") throw Errors.validation("notifyCustomer: se esperaba true o false.");
+      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"), raw.notifyCustomer === false ? { avisarCliente: false } : {});
       // Cluster #3 (CRÍTICO) de la auditoría final — `changeOrderStatus` ya
       // encoló internamente (best-effort) el WhatsApp al cliente si el nuevo
       // status aplica (tryNotifyCustomerOnOrderStatusChange, ver
@@ -205,9 +221,10 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         });
       }
 
-      return c.json({ order: serializeOrder(updated) });
+      return c.json({ order: serializeOrder(updated, (await pickupInfoByOrder(repo, organizationId, [updated])).get(updated.id)) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
+      if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable("Los estados de recoger todavía no están disponibles en esta base de datos (falta aplicar la migración 031).");
       throw err;
     }
   });
@@ -287,7 +304,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       despues: raw.repartidorId,
     });
 
-    return c.json({ order: serializeOrder(updated) });
+    return c.json({ order: serializeOrder(updated, (await pickupInfoByOrder(repo, organizationId, [updated])).get(updated.id)) });
   });
 
   // Fase 9 — bandeja de notificaciones internas al staff (ver order-notifications.ts):

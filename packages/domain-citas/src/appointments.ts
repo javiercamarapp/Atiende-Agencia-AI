@@ -422,6 +422,26 @@ function resolveCancelOutcome(
   return result.appointment;
 }
 
+/**
+ * Defensa en profundidad para las tools del agente de WhatsApp que reciben un
+ * `appointment_id` redactado por el MODELO (cancelar/reagendar/modificar): la cita debe
+ * pertenecer al cliente que escribe (teléfono del remitente autenticado por Meta,
+ * misma organización). El prompt ya pide sacar el id de `buscar_mis_citas`, pero un
+ * mensaje hostil podría inducir al modelo a usar el id de OTRO cliente del mismo
+ * negocio. Cita ajena e inexistente responden igual (`AppointmentNotFoundError`).
+ */
+const UUID_SHAPE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function assertCustomerOwnsAppointment(repo: CitasRepository, organizationId: string, phone: string, appointmentId: string): Promise<AppointmentRecord> {
+  // Un id que no es UUID (el modelo puede inventar texto) nunca llega a Postgres: un
+  // `22P02` aquí aborta la transacción compartida del turno.
+  const id = appointmentId.trim();
+  const customer = UUID_SHAPE_RE.test(id) ? await repo.findCustomerByPhone(organizationId, normalizePhone(phone)) : null;
+  const appointment = customer ? await repo.findAppointmentForOrganization(organizationId, id) : null;
+  if (!customer || !appointment || appointment.customerId !== customer.id) throw new AppointmentNotFoundError("Cita no encontrada");
+  return appointment;
+}
+
 /** Cancelar vía el agente (voz/WhatsApp) — equivalente a cancel_appointment_idempotent. */
 export async function cancelAppointment(repo: CitasRepository, rawPayload: CancelAppointmentPayload): Promise<AppointmentRecord> {
   const payload = validateCancelAppointmentPayload(rawPayload);

@@ -69,6 +69,8 @@ export const DEFAULT_GRAPH_API_VERSION = "v21.0";
 export const MAX_INTERACTIVE_BUTTONS = 3;
 /** Límite real de Graph API para el título de un botón de respuesta rápida. */
 export const MAX_BUTTON_TITLE_LENGTH = 20;
+/** Límite real de Graph API para el id de un botón de respuesta rápida. */
+export const MAX_BUTTON_ID_LENGTH = 256;
 
 export interface MetaGraphWhatsAppClientOptions {
   /** `WHATSAPP_ACCESS_TOKEN` — token de acceso permanente/de sistema de la Meta App
@@ -99,10 +101,17 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload): Record<strin
     if (message.buttons.length > MAX_INTERACTIVE_BUTTONS) {
       throw new WhatsAppInvalidPayloadError(`WhatsApp Graph API acepta máximo ${MAX_INTERACTIVE_BUTTONS} botones, se recibieron ${message.buttons.length}`);
     }
-    for (const title of message.buttons) {
+    const normalized = message.buttons.map((button, i) => (typeof button === "string" ? { id: `btn_${i}`, title: button } : button));
+    for (const { id, title } of normalized) {
       if (title.length === 0 || title.length > MAX_BUTTON_TITLE_LENGTH) {
         throw new WhatsAppInvalidPayloadError(`título de botón inválido (1-${MAX_BUTTON_TITLE_LENGTH} caracteres): "${title}"`);
       }
+      if (id.length === 0 || id.length > MAX_BUTTON_ID_LENGTH) {
+        throw new WhatsAppInvalidPayloadError(`id de botón inválido (1-${MAX_BUTTON_ID_LENGTH} caracteres): "${id}"`);
+      }
+    }
+    if (new Set(normalized.map((b) => b.id)).size !== normalized.length) {
+      throw new WhatsAppInvalidPayloadError("ids de botón repetidos: Graph API exige ids únicos por mensaje");
     }
     return {
       messaging_product: "whatsapp",
@@ -111,7 +120,7 @@ function buildRequestBody(message: OutboundWhatsAppMessagePayload): Record<strin
       interactive: {
         type: "button",
         body: { text: message.body },
-        action: { buttons: message.buttons.map((title, i) => ({ type: "reply", reply: { id: `btn_${i}`, title } })) },
+        action: { buttons: normalized.map(({ id, title }) => ({ type: "reply", reply: { id, title } })) },
       },
     };
   }

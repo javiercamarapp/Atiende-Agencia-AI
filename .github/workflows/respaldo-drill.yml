@@ -1,0 +1,96 @@
+name: Drill de restauración (PL-05)
+
+# Qué es esto
+# ------------------------------------------------------------------------------
+# Ensayo periódico del respaldo lógico y de la restauración (scripts/respaldo/,
+# runbook en docs/RESPALDO-Y-RESTAURACION.md): levanta un Postgres efímero, aplica
+# TODAS las migraciones reales de supabase/migrations/, siembra datos FICTICIOS, los
+# respalda con backup.sh, restaura ese respaldo en otra base con restore.sh y verifica
+# integridad (conteos, RLS, GRANTs, funciones security definer) con RPO/RTO medidos.
+# Después corre scripts/verify-respaldo-drill/ (casos negativos: respaldo alterado,
+# catálogo distinto, restauración rechazada contra Supabase, cifrado gpg, retención).
+#
+# Qué NO es
+# ------------------------------------------------------------------------------
+# - NO toca producción ni usa secretos: el workflow no declara `secrets` ni variables
+#   de conexión, y el repo es público. El respaldo REAL lo corre Javier con su cuenta
+#   desde su máquina (ver el runbook); este workflow solo prueba que el procedimiento
+#   sigue funcionando contra el esquema actual del repo (si una migración nueva rompe
+#   restaurar un dump, falla aquí antes de que haga falta en un incidente).
+# - Sus RPO/RTO son de una base casi vacía: sirven para detectar regresiones del
+#   procedimiento, no para prometer tiempos de producción.
+# - No publica ni despliega nada.
+#
+# Cuándo corre: cada lunes 07:17 UTC (si falla, GitHub avisa por correo a quien tenga
+# notificaciones de Actions), a mano, y en PRs/push a main que toquen estos scripts,
+# este workflow o las migraciones (un cambio de esquema puede romper la restauración).
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "scripts/respaldo/**"
+      - "scripts/verify-respaldo-drill/**"
+      - ".github/workflows/respaldo-drill.yml"
+      - "supabase/migrations/**"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/respaldo/**"
+      - "scripts/verify-respaldo-drill/**"
+      - ".github/workflows/respaldo-drill.yml"
+      - "supabase/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drill-sintetico:
+    name: Respaldo sintético -> restauración -> verificación
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Confirmar initdb/pg_dump/pg_restore/psql y gpg disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1 && ! ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql gnupg
+          fi
+          # scripts/respaldo/common.sh::ensure_pg_bin agrega /usr/lib/postgresql/<v>/bin al PATH
+          # de los scripts; aquí solo se deja constancia de las versiones.
+          ls /usr/lib/postgresql/*/bin/initdb || true
+          gpg --version | head -1
+
+      - name: Drill sintético (reporte)
+        run: |
+          mkdir -p drill-report
+          set +e
+          DRILL_REPORT_DIR=drill-report bash scripts/respaldo/drill.sh --synthetic
+          rc=$?
+          set -e
+          if [ -f drill-report/report.md ]; then cat drill-report/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          exit $rc
+
+      - name: Gate de casos negativos (scripts/verify-respaldo-drill)
+        run: bash scripts/verify-respaldo-drill/run.sh
+
+      - name: Subir reporte del drill
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drill-report
+          path: drill-report/
+          retention-days: 30

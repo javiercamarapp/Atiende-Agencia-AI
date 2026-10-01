@@ -93,6 +93,7 @@ describe("CitasShell — nav móvil", () => {
     click(mas);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
+      "Resumen",
       "Agenda",
       "Proveedores",
       "Servicios",

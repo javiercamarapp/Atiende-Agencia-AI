@@ -114,4 +114,34 @@ describe('Paso 0 — tool-calling en el gateway compartido', () => {
     expect(result.text).toBe('hola');
     expect(result.toolCalls).toBeUndefined();
   });
+
+  it('C-03: `toolChoice` fuerza la herramienta en OpenRouter y OpenAI (tool_choice de la Chat Completions API)', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(init.body as string));
+      return { ok: true, json: async () => ({ model: 'm', choices: [{ message: { content: 'ok' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }) } as Response;
+    }) as unknown as typeof fetch;
+    const request = { system: 's', messages: [{ role: 'user' as const, content: 'hola' }], tools: [buscarProductoTool], toolChoice: { name: 'buscar_producto' } };
+
+    await new OpenRouterProvider({ apiKey: 'sk-test', model: 'm', fetchImpl }).complete(request);
+    await new OpenAiProvider({ apiKey: 'sk-test', model: 'm', fetchImpl }).complete(request);
+
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) expect(body.tool_choice).toEqual({ type: 'function', function: { name: 'buscar_producto' } });
+  });
+
+  it('C-03: sin `toolChoice`, o con una herramienta que NO está en `tools`, no se manda `tool_choice` (el proveedor rechazaría una función ausente)', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(init.body as string));
+      return { ok: true, json: async () => ({ model: 'm', choices: [{ message: { content: 'ok' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }) } as Response;
+    }) as unknown as typeof fetch;
+    const provider = new OpenAiProvider({ apiKey: 'sk-test', model: 'm', fetchImpl });
+
+    await provider.complete({ system: 's', messages: [{ role: 'user', content: 'hola' }], tools: [buscarProductoTool] });
+    await provider.complete({ system: 's', messages: [{ role: 'user', content: 'hola' }], tools: [buscarProductoTool], toolChoice: { name: 'otra_que_no_existe' } });
+    await provider.complete({ system: 's', messages: [{ role: 'user', content: 'hola' }], toolChoice: { name: 'buscar_producto' } });
+
+    for (const body of bodies) expect(body.tool_choice).toBeUndefined();
+  });
 });

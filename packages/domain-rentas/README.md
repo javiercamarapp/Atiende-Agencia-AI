@@ -273,3 +273,19 @@ los disparara).
   inexistente (ni HTTP ni cron la crean). Es un hallazgo real y distinto ("no hay
   ninguna forma de que nazca una tarea de limpieza en producción"), reportado
   honestamente como bloqueador en vez de fingido como resuelto por esta fase.
+
+## Rn-03 reportes y Rn-04 acceso al huésped
+
+- `src/reportes/` (Rn-03): `generarReporteOcupacionIngresos` agrega noches e ingresos (MXN, centavos
+  enteros, sin conversión) por unidad, propietario, canal y mes. Anti doble conteo: el dinero de una
+  reserva se reparte por noche entre meses (resto mayor exacto), una noche de una unidad se cuenta una
+  sola vez y las llegadas cuentan en el mes de check-in. Exporta CSV (BOM + CRLF, anti-fórmulas) y un PDF
+  simple. `PostgresRentasReportesRepository` solo lee tablas de 001/003 (degrada a solo noches bajo
+  SAVEPOINT si falta `reserva_financiero`).
+- `src/acceso/` (Rn-04, migración `025_rentas_acceso_huesped.sql`): `ejecutarLiberacionAcceso` entrega las
+  instrucciones de acceso por correo (outbox) N horas antes del check-in. La decisión (ventana en la zona
+  de la property + reserva confirmada + pago según política) vive en una sola fuente, la función SQL
+  `rentas.acceso_siguiente_liberacion`; verificada contra Postgres real en
+  `scripts/verify-rentas-reportes-acceso`. Una transacción por reserva; omisiones y errores quedan en
+  `rentas.acceso_bitacora` sin PII ni secretos.
+

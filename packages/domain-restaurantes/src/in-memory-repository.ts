@@ -14,6 +14,7 @@ import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
+  CanalPedido,
   Branch,
   BranchPolicy,
   WhatsAppAgentConfigAccion,
@@ -39,6 +40,9 @@ import type {
   NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
+  BranchHoursException,
+  NewBranchHoursExceptionInput,
+  OrderPickupInfo,
   Order,
   OrderListFilter,
   OrderListPage,
@@ -294,6 +298,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
   // whatsapp_branch_channel / no_domicilio.
   private readonly branchPolicies = new Map<string, BranchPolicy>();
+  private readonly branchHoursExceptions: BranchHoursException[] = [];
+  private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
   private readonly whatsAppAgentConfigs = new Map<string, WhatsAppAgentConfigRow>();
   private readonly branchDeliveryZones = new Map<string, Set<string>>();
   private readonly whatsappBranchChannels = new Map<string, { organizationId: string; propertyId: string }>();
@@ -831,8 +837,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         assignedRepartidorId: null,
         estimatedDeliveryAt: null,
         incidentNote: null,
+        canal: order.canal ?? null,
+        propina: order.propina ?? null,
+        horaRecogida: order.horaRecogida ?? null,
       };
       this.orders.push(created);
+      this.orderPickupInfo.set(created.id, { canal: order.canal ?? null, propina: order.propina ?? null, horaRecogida: order.horaRecogida ?? null });
       if (order.customerId) {
         const customer = this.customers.get(order.customerId);
         if (customer) this.customers.set(customer.id, { ...customer, orderCount: customer.orderCount + 1 });
@@ -1316,6 +1326,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return found ? { ...found } : null;
   }
 
+  async listAutoApplyPromotions(organizationId: string): Promise<readonly Promotion[]> {
+    return [...this.promotions.values()]
+      .filter((p) => p.organizationId === organizationId && p.autoApply && p.isActive)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.code.localeCompare(b.code))
+      .map((p) => ({ ...p }));
+  }
+
   async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
     const now = new Date().toISOString();
     const created: StoredPromotion = {
@@ -1337,6 +1354,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       isActive: input.isActive ?? true,
       channels: input.channels ?? null,
       productIds: input.productIds ?? null,
+      autoApply: input.autoApply ?? false,
+      courtesyProductIds: input.courtesyProductIds ?? null,
+      courtesyQuantity: input.courtesyQuantity ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1364,6 +1384,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       isActive: patch.isActive ?? existing.isActive,
       channels: patch.channels !== undefined ? patch.channels : existing.channels,
       productIds: patch.productIds !== undefined ? patch.productIds : existing.productIds,
+      autoApply: patch.autoApply ?? existing.autoApply,
+      courtesyProductIds: patch.courtesyProductIds !== undefined ? patch.courtesyProductIds : existing.courtesyProductIds,
+      courtesyQuantity: patch.courtesyQuantity !== undefined ? patch.courtesyQuantity : existing.courtesyQuantity,
       updatedAt: new Date().toISOString(),
     };
     this.promotions.set(promotionId, updated);
@@ -1694,6 +1717,39 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`upsertBranchPolicy: la property "${propertyId}" no pertenece a la organizacion.`);
     this.branchPolicies.set(propertyId, { ...policy });
     return policy;
+  }
+
+  async listBranchHoursExceptions(propertyId: string, fechaDesde: string, fechaHasta: string): Promise<readonly BranchHoursException[]> {
+    return this.branchHoursExceptions.filter((e) => e.propertyId === propertyId && e.fechaDesde <= fechaHasta && e.fechaHasta >= fechaDesde).map((e) => ({ ...e }));
+  }
+
+  async listUpcomingBranchHoursExceptions(organizationId: string, desdeFecha: string): Promise<readonly BranchHoursException[]> {
+    return this.branchHoursExceptions
+      .filter((e) => this.branches.get(e.propertyId)?.organizationId === organizationId && e.fechaHasta >= desdeFecha)
+      .sort((a, b) => a.fechaDesde.localeCompare(b.fechaDesde))
+      .map((e) => ({ ...e }));
+  }
+
+  async createBranchHoursException(organizationId: string, input: NewBranchHoursExceptionInput): Promise<BranchHoursException> {
+    // Mismo contrato que el `with check` de la policy: la property debe ser de la organizacion.
+    if (this.branches.get(input.propertyId)?.organizationId !== organizationId) throw new Error(`createBranchHoursException: la property "${input.propertyId}" no pertenece a la organizacion.`);
+    const created: BranchHoursException = { id: randomUUID(), propertyId: input.propertyId, fechaDesde: input.fechaDesde, fechaHasta: input.fechaHasta, horario: input.horario, motivo: input.motivo ?? null };
+    this.branchHoursExceptions.push(created);
+    return { ...created };
+  }
+
+  async deleteBranchHoursException(organizationId: string, exceptionId: string): Promise<boolean> {
+    const index = this.branchHoursExceptions.findIndex((e) => e.id === exceptionId && this.branches.get(e.propertyId)?.organizationId === organizationId);
+    if (index < 0) return false;
+    this.branchHoursExceptions.splice(index, 1);
+    return true;
+  }
+
+  async listOrderPickupInfo(organizationId: string, orderIds: readonly string[]): Promise<readonly OrderPickupInfo[]> {
+    const wanted = new Set(orderIds);
+    return this.orders
+      .filter((o) => o.organizationId === organizationId && wanted.has(o.id) && this.orderPickupInfo.has(o.id))
+      .map((o) => ({ orderId: o.id, ...this.orderPickupInfo.get(o.id)! }));
   }
 
   async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {

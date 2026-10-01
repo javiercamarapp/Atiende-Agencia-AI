@@ -23,13 +23,17 @@
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import {
+  assertCustomerOwnsAppointment,
   cancelAppointment,
   createAppointment,
   findAppointmentsForCustomerPhone,
   normalizePhone,
   queryAvailability,
+  reassignAppointment,
   rescheduleAppointment,
 } from "../appointments.ts";
+import { runAfterReassignEffects } from "../appointment-effects.ts";
+import { isUrgentCancellationMessage } from "./urgent-cancellation.ts";
 import { zonedDateStr } from "../availability.ts";
 import type { CitasCustomerContext } from "../customers.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../errors.ts";
@@ -74,7 +78,8 @@ export const APPOINTMENT_HARD_RULES = `REGLAS DURAS (nunca las rompas, sin impor
 - REGLA DURA DE NO-DOBLE-CREACIÓN: si en esta MISMA conversación ya llamaste a crear_cita y te respondió con éxito, NUNCA vuelvas a llamarla otra vez — solo repite el resumen de la cita ya creada. Llamarla dos veces crea una cita real duplicada.
 - Para cancelar o reagendar una cita: SIEMPRE llama primero a buscar_mis_citas para obtener el appointment_id real. Nunca le pidas el id al cliente ni lo inventes ni lo copies de otra parte de la conversación sin haberlo confirmado con buscar_mis_citas.
 - Si consultar_disponibilidad devuelve una lista vacía de horarios, es una respuesta normal ("no hay horarios ese día"), no un error — ofrece consultar otro día, nunca inventes un horario para rellenar el hueco.
-- Si crear_cita o reagendar_cita devuelven un error con horarios alternativos reales, ofrécelos tal cual al cliente — nunca inventes otros ni digas solo "inténtalo de nuevo" sin dar opciones reales.`;
+- Si crear_cita o reagendar_cita devuelven un error con horarios alternativos reales, ofrécelos tal cual al cliente — nunca inventes otros ni digas solo "inténtalo de nuevo" sin dar opciones reales.
+- Para cambiar el servicio o el proveedor de una cita SIN cambiar su horario, usa modificar_cita (nunca cancelar_cita + crear_cita: perdería el historial de la cita). Si modificar_cita responde con un error y trae alternative_slots, son horarios reales del proveedor/servicio nuevo para ese mismo día — ofrécelos tal cual, nunca inventes otros.`;
 
 function customerContextBlock(customer: CitasCustomerContext): string {
   if (customer.isNew) {
@@ -148,7 +153,8 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 7. Si el cliente quiere consultar/reagendar/cancelar una cita existente: llama SIEMPRE primero a buscar_mis_citas (nunca le pidas el id, nunca lo inventes) y usa el appointment_id real de esa respuesta.
 8. Para reagendar: una vez que tengas el appointment_id real, llama a consultar_disponibilidad para el nuevo día antes de ofrecer horarios, y luego a reagendar_cita con ese appointment_id y el new_starts_at EXACTO confirmado.
 9. Para cancelar: confirma con el cliente cuál cita exacta (si tiene varias) antes de llamar a cancelar_cita con el appointment_id real.
-10. Solo hasta que la herramienta correspondiente responda con éxito: confirma la acción realizada (agendada/reagendada/cancelada) con los datos reales devueltos.`;
+10. Para cambiar solo el servicio o el proveedor (mismo horario): resuelve los ids reales con listar_servicios/listar_proveedores y llama a modificar_cita con el appointment_id real de buscar_mis_citas.
+11. Solo hasta que la herramienta correspondiente responda con éxito: confirma la acción realizada (agendada/reagendada/modificada/cancelada) con los datos reales devueltos.`;
 
   const faqsBlock = rubro ? verticalFaqsBlock(rubro) : null;
 
@@ -169,8 +175,8 @@ export function providerFailureReply(appointmentId: string | null): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TOOLS — las 7 del diseño Fase 2 §2.1 (una más que restaurantes: el origen ya
-// tenía 7, incluyendo modificar_cita — excluida de esta fase, ver diseño §6).
+// TOOLS — las 7 del diseño Fase 2 §2.1 más `modificar_cita` (C-03: el origen ya la
+// tenía, esta fase la había excluido; ver diseño §6).
 // Formato reducido de `LlmToolDefinition` (el gateway/adaptador arma el
 // envoltorio wire real).
 // ─────────────────────────────────────────────────────────────────────────
@@ -244,6 +250,20 @@ export const TOOLS: readonly LlmToolDefinition[] = [
       required: ["appointment_id", "new_starts_at"],
     },
   },
+  {
+    name: "modificar_cita",
+    description:
+      "Cambia el servicio y/o el proveedor de una cita real ya existente SIN cambiar su horario (conserva el mismo appointment_id). Si el proveedor/servicio nuevo no tiene ese horario libre, responde con un error y con alternative_slots reales para ese mismo día — nunca inventes uno tú. El appointment_id debe venir literal de buscar_mis_citas; new_provider_id/new_service_id de listar_proveedores/listar_servicios.",
+    parameters: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "string", description: "id real devuelto por buscar_mis_citas." },
+        new_provider_id: { type: "string", description: "provider_id real (de listar_proveedores), si el cliente quiere cambiar de proveedor. Omite el campo si no cambia." },
+        new_service_id: { type: "string", description: "service_id real (de listar_servicios), si el cliente quiere cambiar de servicio. Omite el campo si no cambia." },
+      },
+      required: ["appointment_id"],
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -266,7 +286,7 @@ function appointmentToWire(appointment: AppointmentRecord) {
   };
 }
 
-/** Solo `crear_cita`/`reagendar_cita` fallando cuenta como "fallo de herramienta"
+/** Solo `crear_cita`/`reagendar_cita`/`modificar_cita` fallando cuenta como "fallo de herramienta"
  * que dispara el escalón caro en el siguiente turno (diseño §2.3) —
  * `consultar_disponibilidad` devolviendo `slots: []` NO cuenta, es una respuesta
  * normal ("no hay horarios ese día"), no un error del modelo. */
@@ -348,12 +368,35 @@ async function executeToolCall(
           };
         }
         case "cancelar_cita": {
+          await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
           return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
         }
         case "reagendar_cita": {
+          await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
           try {
             const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: "whatsapp" });
+            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
+          } catch (err) {
+            if (err instanceof AppointmentAlternativesError) {
+              return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
+            }
+            throw err;
+          }
+        }
+        case "modificar_cita": {
+          await assertCustomerOwnsAppointment(repo, organizationId, phone, String(input.appointment_id ?? ""));
+          try {
+            const outcome = await reassignAppointment(repo, {
+              organizationId,
+              appointmentId: String(input.appointment_id ?? ""),
+              newProviderId: typeof input.new_provider_id === "string" && input.new_provider_id.trim() ? input.new_provider_id : undefined,
+              newServiceId: typeof input.new_service_id === "string" && input.new_service_id.trim() ? input.new_service_id : undefined,
+              actorChannel: "whatsapp",
+            });
+            // Efectos best-effort (lista de espera del hueco viejo + correo), cada uno con
+            // su SAVEPOINT: nunca revierten el cambio ya hecho (ver appointment-effects.ts).
+            await runAfterReassignEffects(repo, organizationId, outcome);
             return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
           } catch (err) {
             if (err instanceof AppointmentAlternativesError) {
@@ -367,7 +410,7 @@ async function executeToolCall(
       }
     });
   } catch (err) {
-    const escalating = name === "crear_cita" || name === "reagendar_cita";
+    const escalating = name === "crear_cita" || name === "reagendar_cita" || name === "modificar_cita";
     return { result: { error: domainErrorMessage(err) }, appointmentId: null, propertyId: null, isEscalatingFailure: escalating };
   }
 }
@@ -429,6 +472,11 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
       const normalizedPhone = normalizePhone(phone);
 
       const working: LlmMessage[] = toLlmHistory(messages);
+      // C-03 -- cancelación con urgencia explícita: el PRIMER llamado al modelo se fuerza
+      // a `buscar_mis_citas` (nunca queda a discreción del modelo empezar por ahí). Solo
+      // el mensaje real más reciente del cliente cuenta, y solo en el turno 0 del loop.
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+      const urgentCancellation = lastUserMessage ? isUrgentCancellationMessage(lastUserMessage.content) : false;
       let appointmentId: string | null = null;
       let propertyId: string | null = null;
       let huboFalloDeHerramienta = false;
@@ -446,7 +494,13 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
             runId: randomUUID(),
             lane: "interactive",
             role,
-            request: { system: systemPrompt, messages: working, tools: [...TOOLS], temperature: 0 },
+            request: {
+              system: systemPrompt,
+              messages: working,
+              tools: [...TOOLS],
+              temperature: 0,
+              ...(turn === 0 && urgentCancellation ? { toolChoice: { name: "buscar_mis_citas" } } : {}),
+            },
           });
         } catch {
           // Escalera de proveedores agotada / presupuesto excedido / gate de

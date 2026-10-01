@@ -25,7 +25,7 @@ describe("prompt PM: sin personalizar es el de siempre", () => {
       "Use escalar_a_humano (con customer_name si lo tiene) con estos motivos: queja, modificacion_platillo, transferencia, tiempos_entrega, pedido_grande, cancelacion_modificacion (pedido ya confirmado), reposicion_descuento, alergia_salud, zona_no_reconocida, zona_ambigua (el cliente insiste en otra sucursal para domicilio), producto_agotado, no_entiende, falla_sistema, otro (facturación, empleo, eventos, prensa, cualquier cosa fuera de lo normal), cliente_lo_pide (pide hablar con una persona).",
     );
     expect(prompt).toContain(
-      "- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. La verde, la roja, los limones y la cebolla van por omisión; el habanero y la crema de ajo solo si el cliente los pide (requested_complements).",
+      "- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. Todas van incluidas por omisión sin preguntar; si el cliente pide quitar alguna mándela en omit_default_complements. Si pide expresamente habanero o crema de ajo puede enviarlas en requested_complements (ya están incluidas, no cambia el total).",
     );
     expect(prompt).toContain("- Promociones (solo recoger): lunes 2x1 en tacos al pastor; martes nachos de pastor con 2 aguas de cortesía.");
     expect(prompt).toContain('"Buenas tardes, gracias por comunicarse a Los Taquitos de PM."');
@@ -50,7 +50,8 @@ describe("prompt PM personalizado", () => {
     expect(prompt).toContain("H11. No cobre como extra lo incluido: las salsas incluidas (roja, verde y de la casa) van sin costo.");
     expect(prompt).toContain("- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde y de la casa.");
     expect(prompt).not.toContain("crema de ajo");
-    expect(prompt).not.toContain("van por omisión");
+    expect(prompt).not.toContain("habanero o crema de ajo");
+    expect(prompt).toContain("Todas van incluidas por omisión sin preguntar; si el cliente pide quitar alguna mándela en omit_default_complements.");
   });
 
   it("los motivos apagados salen de la lista y el prompt lo dice; los de seguridad siguen", () => {
