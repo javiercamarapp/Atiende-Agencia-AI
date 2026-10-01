@@ -171,6 +171,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     this.staffIdByEmail.set(staff.email, staff.id);
   }
 
+  /** Paridad en memoria de `core.change_staff_password`/`consume_password_reset_token`:
+   *  fija el hash nuevo y corta las sesiones previas al inicio del segundo actual. */
+  setPasswordAndRevokeSessions(staffId: string, passwordHash: string): void {
+    const staff = this.staffById.get(staffId);
+    if (!staff) return;
+    this.staffById.set(staffId, { ...staff, passwordHash });
+    this.sessionsRevokedAtByUserId.set(staffId, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString());
+  }
+
+  /** Paridad en memoria de la verificacion de correo (`email_verified_at` solo se fija una vez). */
+  markEmailVerified(staffId: string): void {
+    const staff = this.staffById.get(staffId);
+    if (staff && !staff.emailVerifiedAt) this.staffById.set(staffId, { ...staff, emailVerifiedAt: new Date().toISOString() });
+  }
+
   addOrganization(org: SeedOrganization): void {
     this.organizations.set(org.id, org);
   }

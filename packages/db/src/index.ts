@@ -130,3 +130,13 @@ export type {
   AuthzAuditRepository,
 } from "./authz-audit-repository.ts";
 export { PostgresAuthzAuditRepository, InMemoryAuthzAuditRepository } from "./authz-audit-repository.ts";
+
+export type { StaffSecurityRepository, TotpStatus, TotpSecretRow } from "./staff-security-repository.ts";
+export {
+  PostgresStaffSecurityRepository,
+  StaffSecurityUnavailableError,
+  TotpAlreadyEnrolledError,
+  TotpNoPendingEnrollmentError,
+  TotpNotEnrolledError,
+} from "./staff-security-repository.ts";
+export { InMemoryStaffSecurityRepository } from "./in-memory-staff-security-repository.ts";
