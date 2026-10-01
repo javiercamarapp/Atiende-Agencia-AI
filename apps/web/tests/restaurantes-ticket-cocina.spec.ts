@@ -144,7 +144,7 @@ describe("renderTicketCocinaHtml", () => {
 
   it("marca la reimpresion en el encabezado", () => {
     const html = renderTicketCocinaHtml(construirTicketCocina(pedido(), { ...TZ, reimpresion: 1 }));
-    expect(html).toContain("*** REIMPRESIÓN ***");
+    expect(html).toContain("*** REIMPRESIÓN #1 ***");
     expect(renderTicketCocinaHtml(construirTicketCocina(pedido(), { ...TZ, reimpresion: 3 }))).toContain("REIMPRESIÓN #3");
     expect(renderTicketCocinaHtml(construirTicketCocina(pedido(), TZ))).not.toContain("REIMPRESI");
   });

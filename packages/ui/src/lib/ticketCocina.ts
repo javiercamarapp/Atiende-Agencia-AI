@@ -246,7 +246,7 @@ export function renderTicketCocinaHtml(t: TicketCocina): string {
   const e = escaparHtml;
   const partes: string[] = [];
   partes.push(`<article class="tk" data-folio="${e(t.folio)}">`);
-  if (t.reimpresion > 0) partes.push(`<div class="reimp">*** REIMPRESIÓN${t.reimpresion > 1 ? ` #${t.reimpresion}` : ""} ***</div>`);
+  if (t.reimpresion > 0) partes.push(`<div class="reimp">*** REIMPRESIÓN #${t.reimpresion} ***</div>`);
   partes.push(`<h1>COCINA · ${e(t.sucursal)}</h1>`);
   partes.push(`<div class="centro">Folio <strong>#${e(t.folio)}</strong></div>`);
   partes.push(`<div class="canal">${e(t.canalEtiqueta)}</div>`);
