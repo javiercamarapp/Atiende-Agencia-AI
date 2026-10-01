@@ -138,6 +138,31 @@ describe("sin la bandera el aspecto de produccion no cambia", () => {
   });
 });
 
+describe("motion y legados", () => {
+  it("conserva el bloque global prefers-reduced-motion que apaga animaciones y transiciones", () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\*, \*::before, \*::after \{[^}]*animation-duration: 0\.001ms !important;[^}]*transition-duration: 0\.001ms !important/);
+  });
+
+  it("el hover de elevacion y el press solo existen con movimiento permitido", () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.interactive-lift \{/);
+    expect(css).toMatch(/button:not\(:disabled\):active \{\s*transform: scale\(0\.97\);\s*transition: transform 80ms/);
+  });
+
+  it("el brillo del skeleton solo se activa con data-theme=v2", () => {
+    expect(css).toMatch(/:root\[data-theme="v2"\] \.ds-skeleton \{\s*animation: ds-shimmer/);
+    expect(css).not.toMatch(/\n\.ds-skeleton \{/);
+  });
+
+  it("se retiraron los tokens heredados del hotel (gold, terracotta, sand, olive, cream, gradientes, glow)", () => {
+    for (const nombre of ["--gold", "--terracotta", "--sand", "--olive", "--cream", "--gradient-gold", "--gradient-warm", "--gradient-hero", "--shadow-glow", "text-gradient-gold"]) {
+      expect(css).not.toContain(nombre);
+    }
+    const colores = (preset.theme as { extend: { colors: Record<string, unknown>; boxShadow: Record<string, unknown> } }).extend;
+    for (const nombre of ["gold", "terracotta", "sand", "olive", "cream"]) expect(colores.colors).not.toHaveProperty(nombre);
+    expect(colores.boxShadow).not.toHaveProperty("glow");
+  });
+});
+
 describe("preset de Tailwind", () => {
   const extend = (preset.theme as { extend: Record<string, Record<string, unknown>> }).extend;
 

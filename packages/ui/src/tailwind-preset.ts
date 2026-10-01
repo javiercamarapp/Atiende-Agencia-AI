@@ -80,14 +80,6 @@ const preset: Omit<Config, "content"> = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        gold: {
-          DEFAULT: "hsl(var(--gold))",
-          foreground: "hsl(var(--gold-foreground))",
-        },
-        terracotta: {
-          DEFAULT: "hsl(var(--terracotta))",
-          light: "hsl(var(--terracotta-light))",
-        },
         success: {
           DEFAULT: "hsl(var(--success))",
           tint: "hsl(var(--success-tint))",
@@ -102,9 +94,6 @@ const preset: Omit<Config, "content"> = {
         },
         // Trazo de controles de formulario con contraste >= 3:1 (checkbox, Switch).
         control: "hsl(var(--control-off))",
-        sand: "hsl(var(--sand))",
-        olive: "hsl(var(--olive))",
-        cream: "hsl(var(--cream))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -140,7 +129,6 @@ const preset: Omit<Config, "content"> = {
       boxShadow: {
         card: "var(--shadow-card)",
         elevated: "var(--shadow-elevated)",
-        glow: "var(--shadow-glow)",
       },
       keyframes: {
         "accordion-down": {

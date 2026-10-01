@@ -27,10 +27,12 @@
  * Sistema de color: white / blue / sky-blue — portado literalmente de
  * atiende-restaurantes (docs/referencia/05-frontend-restaurantes.md §1.3)
  * para cumplir REQ-UX-001 (mismos tokens HSL base). A diferencia del
- * origen, aquí SÍ se completa el modo oscuro para gold/terracotta/sand/
- * olive/cream/sidebar (variantes)/sombras/gradientes (deuda documentada en 05 parrafo 1.3:
- * ".dark no redefine esos tokens, en modo oscuro siguen resolviendo a los
- * valores light" — cerrada aquí, ver ADR-002).
+ * origen, aquí SÍ se completa el modo oscuro para sidebar (variantes) y
+ * sombras (deuda documentada en 05 parrafo 1.3: ".dark no redefine esos
+ * tokens, en modo oscuro siguen resolviendo a los valores light" — cerrada
+ * aquí, ver ADR-002). Los tokens heredados del hotel (gold, terracotta, sand,
+ * olive, cream), los gradientes y la sombra glow se retiraron en DS v2: no
+ * tenían uso real (solo el botón de cerrar del Sheet, ya migrado a accent).
  */
 @layer base {
   :root {
@@ -64,21 +66,10 @@
 
     --radius: 0.75rem;
 
-    --gold: 199 89% 48%;
-    --gold-foreground: 0 0% 100%;
-    --terracotta: 224 76% 48%;
-    --terracotta-light: 199 89% 48%;
-    --sand: 210 30% 95%;
-    --olive: 224 76% 48%;
-    --cream: 210 40% 98%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(224 76% 48% / 0.95) 0%, hsl(199 89% 40%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(199 89% 48%) 0%, hsl(199 89% 40%) 100%);
-    --gradient-warm: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(0 0% 100%) 100%);
 
     --shadow-card: 0 4px 24px -4px hsl(216 50% 12% / 0.08);
     --shadow-elevated: 0 12px 40px -8px hsl(216 50% 12% / 0.15);
-    --shadow-glow: 0 0 40px hsl(224 76% 48% / 0.2);
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 216 50% 12%;
@@ -125,22 +116,10 @@
     --input: 216 30% 20%;
     --ring: 213 82% 62%;
 
-    /* Deuda cerrada: estos 12 tokens no existían en .dark del origen. */
-    --gold: 199 89% 60%;
-    --gold-foreground: 216 45% 9%;
-    --terracotta: 213 82% 62%;
-    --terracotta-light: 199 89% 60%;
-    --sand: 216 30% 18%;
-    --olive: 213 82% 62%;
-    --cream: 216 45% 9%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(213 82% 62% / 0.9) 0%, hsl(199 89% 40%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(199 89% 55%) 0%, hsl(199 89% 35%) 100%);
-    --gradient-warm: linear-gradient(180deg, hsl(216 45% 9%) 0%, hsl(216 40% 13%) 100%);
 
     --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.45);
     --shadow-elevated: 0 12px 40px -8px hsl(0 0% 0% / 0.6);
-    --shadow-glow: 0 0 40px hsl(213 82% 62% / 0.28);
 
     --sidebar-background: 216 40% 13%;
     --sidebar-foreground: 210 30% 95%;
@@ -403,12 +382,6 @@
 }
 
 @layer components {
-  .text-gradient-gold {
-    background: var(--gradient-gold);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
 
   /* Cierra el hueco de safe-area citado en 05§2.6 (mobile real). */
   .safe-area-top {
