@@ -42,6 +42,19 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
     return withHeartbeat(deps, "/internal/licitaciones/discover-tenders", async () => {
       const withRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db)));
       const sweep = await runDiscoverTendersSweep(withRepo);
+      // Aviso in-app (campana) a analistas: una por organizacion por dia cuando la ingesta creo registros NUEVOS (suma de las fuentes
+      // de ESA organizacion). UNA transaccion por organizacion; una emision fallida (o la base sin 0039) nunca cambia el barrido ni
+      // la respuesta. Sin PII ni titulos de convocatorias: solo el conteo.
+      const hoyDiscover = new Date().toISOString().slice(0, 10);
+      for (const orgResult of sweep) {
+        const nuevas = orgResult.results.reduce((n, r) => n + r.created, 0);
+        if (nuevas === 0) continue;
+        await deps.engine
+          .withAppSession({ userId: null }, (db) =>
+            emitirNotificacion(db, { evento: "licitaciones.convocatoria.nueva", organizationId: orgResult.organizationId, clave: `${orgResult.organizationId}:${hoyDiscover}`, parametros: { cantidad: nuevas } }),
+          )
+          .catch(() => undefined);
+      }
       const failures: { organization_id: string; source: string | null; error: string }[] = [];
       // r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): `failures[]`
       // de arriba sigue reportando CUALQUIER fuente con `state !== "ok"` (incluida
