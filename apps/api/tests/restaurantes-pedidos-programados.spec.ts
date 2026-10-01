@@ -1,6 +1,7 @@
 // R-11 -- HTTP end-to-end de pedidos programados: pestana "Programados", auto-promocion al consultar (sin cron),
 // alta por el endpoint publico, endpoint interno de promocion y degradacion contra la base sin migrar.
 import { describe, expect, it } from "vitest";
+import type { InMemorySaludRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
@@ -204,7 +205,8 @@ describe("/internal/restaurantes/promover-programados", () => {
   });
 
   it("registra latido (cron de vercel.json) y el kill switch por cron detiene la promocion sin tocar pedidos", async () => {
-    const { deps, restaurantesRepo, organizationId, propertyId, saludRepo } = await buildTestDeps();
+    const { deps, restaurantesRepo, organizationId, propertyId } = await buildTestDeps();
+    const saludRepo = deps.saludRepo as InMemorySaludRepository;
     saludRepo.addPlatformSuperadmin("admin-1");
     const o = makeOrder({ organizationId, propertyId, status: "programado", programadoPara: enMin(10), promovidoAt: null });
     restaurantesRepo.seedOrder(o);

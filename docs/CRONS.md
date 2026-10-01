@@ -10,7 +10,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
   y 1 minuto como piso de frecuencia. Verifica el plan y los límites vigentes en el dashboard de Vercel; este repo no puede consultarlos.
 - Los horarios de Vercel son **UTC**. Los diarios están escalonados; "0 8" UTC = 02:00 CDMX.
 - Cada cron: rechaza con 401 sin secreto, corre dentro de `withHeartbeat` (latido en `/superadmin/salud` + kill switch) y
-  está en `SWITCHABLE_CRONS` (`apps/api/src/platform-switches.ts`). Cadencia esperada del panel se deriva de `vercel.json`.
+  está en `SWITCHABLE_CRONS` (salvo las 4 excepciones de abajo) (`apps/api/src/platform-switches.ts`). Cadencia esperada del panel se deriva de `vercel.json`.
 - Solapamiento: Vercel puede reintentar o solapar corridas. Las rutas son idempotentes (SQL que solo toca filas pendientes,
   `dedupe_key` en el outbox, marcas `*_sent_at`, o lease por feed/comanda). Un cron que lanza deja latido `error`
   y alerta al superadmin; una unidad que falla no revierte a las demás (transacción por unidad).
@@ -52,7 +52,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/hoteles/grupos-liberacion` | `30 9 * * *` | Libera bloqueos de grupos por cutoff (zona de la property) y vence cotizaciones (idempotente en SQL) |
 | `/internal/restaurantes/privacidad-retencion` | `30 8 * * *` | Purga por retención de conversaciones de WhatsApp y voz (lotes de 500, máx. 10 por corrida) |
 
-Todos tienen kill switch por path y latido en el panel de salud; para verificar, el latido de cada path en `/superadmin/salud/crons`.
+Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`) y el interruptor global `crons`. Tienen además interruptor por path todos salvo 4 anteriores a este documento: `hoteles/identidad-purga`, `superadmin/resumen-diario`, `superadmin/mantenimiento` y `superadmin/alertas-cfo` (lista cerrada en el test de contrato; un cron nuevo debe ir en `SWITCHABLE_CRONS`).
 
 ## No agendados a propósito
 

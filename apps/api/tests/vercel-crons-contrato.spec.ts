@@ -16,6 +16,14 @@ const vercel = JSON.parse(readFileSync(path.resolve(here, "..", "..", "..", "ver
   crons: Array<{ path: string; schedule: string }>;
 };
 const MAX_CRONS_PRO = 40;
+// Crons anteriores a este contrato que NO tienen interruptor por path (solo el global `crons`, que
+// withHeartbeat aplica a todos). Un cron nuevo NO debe agregarse aqui: va en SWITCHABLE_CRONS.
+const SIN_INTERRUPTOR_POR_PATH = [
+  "/internal/hoteles/identidad-purga",
+  "/internal/superadmin/alertas-cfo",
+  "/internal/superadmin/mantenimiento",
+  "/internal/superadmin/resumen-diario",
+];
 
 function fuentesApi(dir: string): string[] {
   return readdirSync(dir).flatMap((n: string) => {
@@ -49,9 +57,10 @@ describe("vercel.json::crons -- contrato", () => {
     for (const c of crons) expect(codigo.includes(`"${c.path}"`), c.path).toBe(true);
   });
 
-  it("cada cron esta en SWITCHABLE_CRONS y SWITCHABLE_CRONS no tiene entradas fuera de vercel.json", () => {
+  it("cada cron esta en SWITCHABLE_CRONS (salvo la lista cerrada de 4 anteriores) y SWITCHABLE_CRONS no tiene entradas fuera de vercel.json", () => {
     const paths = new Set(crons.map((c) => c.path));
-    for (const c of crons) expect(SWITCHABLE_CRONS.includes(c.path), c.path).toBe(true);
+    for (const c of crons) expect(SWITCHABLE_CRONS.includes(c.path) || SIN_INTERRUPTOR_POR_PATH.includes(c.path), c.path).toBe(true);
+    for (const e of SIN_INTERRUPTOR_POR_PATH) expect(SWITCHABLE_CRONS.includes(e), `${e} ya es detenible: quitalo de la lista`).toBe(false);
     for (const s of SWITCHABLE_CRONS) expect(paths.has(s), s).toBe(true);
     expect(new Set(SWITCHABLE_CRONS).size).toBe(SWITCHABLE_CRONS.length);
   });
