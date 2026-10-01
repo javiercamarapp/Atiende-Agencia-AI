@@ -12,6 +12,7 @@ import type { BlockedSwitch, SwitchScope } from "@atiende/db";
  *  production/llm-gateway.ts (un test lo verifica contra ALL_PRODUCTION_ROLES). */
 export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:whatsapp_agent",
+  "restaurantes:data_chat",
   "hoteles:whatsapp_agent",
   "citas:whatsapp_agent",
   "licitaciones:requirement_extractor",

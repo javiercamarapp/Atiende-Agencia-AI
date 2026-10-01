@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import type { AppDeps } from "../../../deps.ts";
 import { restaurantesAdminKpisRoutes } from "./admin-kpis.ts";
+import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
@@ -19,6 +20,7 @@ import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
+import { restaurantesConversacionesAdminRoutes } from "./conversaciones-admin.ts";
 import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
@@ -26,6 +28,8 @@ import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-disp
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   app.route("/", restaurantesAdminKpisRoutes(deps));
+  // "Chatea con tus datos" (motor compartido @atiende/agent-core/data-chat + catalogo cerrado de restaurantes).
+  app.route("/", restaurantesAdminDataChatRoutes(deps));
   // Fase 5 — back-office CORE (catálogo/sucursales/pedidos/clientes, ver diseño §1).
   app.route("/", restaurantesAdminCatalogRoutes(deps));
   // Fase 11 — promociones/marketing: CRUD admin real de código de descuento (ver
@@ -55,6 +59,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
+  // R-21 (migración 028): bandeja de conversaciones por sucursal, handoff a humano, turnos de personal y callbacks.
+  app.route("/", restaurantesConversacionesAdminRoutes(deps));
   // Secreto de voz por sucursal (hash + rotación con ventana de gracia, migración 026).
   app.route("/", restaurantesAdminVoiceSecretRoutes(deps));
   // SoftRestaurant (POS de PM) -- bandera por organizacion, comandas pendientes/fallidas y

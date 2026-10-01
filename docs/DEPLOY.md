@@ -427,6 +427,21 @@ logs). Orden recomendado:
 5. Solo entonces, poner `VOICE_REQUIRE_CALL_TOKEN=true` en Vercel. Antes de ese paso el camino legado
    (secreto global sin token) sigue funcionando, sin estado por llamada ni teléfono ligado al token.
 
+## Chatea con tus datos (restaurantes piloto) — migración 0029
+
+Detalle de diseño y seguridad: `docs/DATA-CHAT.md`. Mergear el código NO exige aplicar la migración
+`0029_data_chat_query_log.sql` (espejo `supabase/migrations/20240101000217_*`): sin ella las consultas se
+registran como una línea de log estructurada (sin resultados ni PII) en vez de en
+`core.data_chat_query_log`, y todo lo demás funciona igual. Orden recomendado:
+
+1. Desplegar el código (funciona contra la base sin migrar; `GET .../admin/chat-datos/estado` responde
+   `available: false` si no hay ningún proveedor LLM y el botón sigue diciendo "Pronto").
+2. Aplicar la migración 0029 (la aplica Javier; es solo aditiva: tabla nueva + una función).
+3. Tener al menos un proveedor LLM configurado (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`OPENROUTER_API_KEY`
+   y su modelo). El gasto del chat cuenta contra `core.llm_org_budget` (tope mensual por organización) y
+   queda en `core.llm_usage_daily` con el rol `restaurantes:data_chat`.
+4. Para apagarlo sin desplegar: interruptor de plataforma `agente` → `restaurantes:data_chat`.
+
 ## Resumen de costo por plataforma (tier free)
 
 | Plataforma | Gratis mientras... | Empieza a costar cuando... |

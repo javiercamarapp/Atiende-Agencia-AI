@@ -19,7 +19,9 @@ import {
   ClipboardCheck,
   ClipboardList,
   History,
+  Clock,
   LayoutDashboard,
+  MessageSquare,
   Mic,
   Settings,
   Store,
@@ -37,6 +39,8 @@ import type { LoginSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
+import { SUGERENCIAS_RESTAURANTES, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
+import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import type { BranchOption } from "./dashboard-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
@@ -88,6 +92,9 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
       title: "Operación",
       items: [
         { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
+        { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
+        { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
         { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
         { to: `${base}/promociones`, label: "Promociones", icon: Tag },
@@ -273,6 +280,15 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   const activeBranch = branches.find((b) => b.propertyId === propertyId)!;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
 
+  // "Chatea con tus datos": conexion real con el backend de restaurantes (piloto del motor compartido).
+  // El servidor decide el alcance a partir del token; aqui solo van la sucursal activa y el texto.
+  const chatConexion: ChatDatosConexion = {
+    clave: propertyId,
+    disponible: () => fetchDataChatDisponible(fetch, apiBaseUrl, session.token, propertyId),
+    enviar: (pregunta, historial) => preguntarDatos(fetch, apiBaseUrl, session.token, propertyId, pregunta, historial),
+    sugerencias: SUGERENCIAS_RESTAURANTES,
+  };
+
   // Handler real del selector: actualiza el estado de React (recalcula
   // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
   // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
@@ -339,6 +355,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             user={{ email: session.email, rol: role }}
             onLogout={() => void handleLogout()}
             loggingOut={loggingOut}
+            chat={chatConexion}
           />
         }
       />
@@ -367,7 +384,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
                 onMarkAllRead={notif.onMarkAllRead}
               />
             }
-            chatButton={<BotonChatDatos />}
+            chatButton={<BotonChatDatos chat={chatConexion} />}
           />
         </div>
 

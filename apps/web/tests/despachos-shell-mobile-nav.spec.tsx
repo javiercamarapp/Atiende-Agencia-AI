@@ -3,7 +3,7 @@
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav móvil de
 // DespachosShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
 // así que en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>.
-// Despachos tiene 13 destinos: la barra trae los 4 de uso diario y "Más" abre
+// Despachos tiene 15 destinos: la barra trae los 4 de uso diario y "Más" abre
 // TODOS (PR-0 del informe de diseno-ux, F-01: antes había un comentario que
 // afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
 // Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -85,13 +85,13 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 13 destinos, incluidos Staff y Configuración', async () => {
+  it('el botón "Más" abre los 15 destinos, incluidos Staff y Configuración', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(15);
     expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/nomina", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
   });
 

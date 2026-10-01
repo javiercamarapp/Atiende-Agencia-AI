@@ -95,6 +95,9 @@ export {
   REPUTACION_VIEW_ROLES,
   REPUTACION_ACTION_RESOLVE_ROLES,
   STAFF_INVITE_ROLES,
+  HOUSEKEEPING_TASK_ROLES,
+  HOUSEKEEPING_BOARD_VIEW_ROLES,
+  ROOM_OUT_OF_SERVICE_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -519,4 +522,5 @@ export type { GuestEmailEvent, GuestEmailExtra, GuestEmailFolioExtra, GuestEmail
 export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
 export * from "./identity/index.ts";
+export * from "./housekeeping/index.ts";
 export * from "./privacy/index.ts";

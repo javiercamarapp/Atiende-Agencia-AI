@@ -57,3 +57,19 @@ la migración 023, se comporta como antes):
 - Prompt del perfil: `src/whatsapp/perfil-pm.ts` (usted, orden del cuestionario, reglas duras H1-H12), con los nombres del registro unico de tools.
 - Comanda de SoftRestaurant tambien desde WhatsApp: opcion `encolarComanda` del handler (mismo helper que voz/web).
 - Evaluaciones: `src/evals/agente-pm/README.md`.
+
+## Conversaciones, handoff a humano y turnos (R-21, migración 028)
+
+`src/conversaciones/`: bandeja por sucursal (WhatsApp y llamadas), toma de la conversación por una persona (mientras
+la tiene, el agente de WhatsApp no responde; `whatsapp/inbound.ts` consulta el `HandoffAgentGate` después de guardar el
+mensaje del cliente), devolución al agente, cierre, notas internas, respuesta humana por WhatsApp (vía el outbox
+existente), turnos de personal por sucursal (`cobertura.ts`: quién está de guardia en la zona horaria del negocio y
+escalación por minutos de espera) y registro de intentos de callback.
+
+- Base sin migrar: lecturas -> `disponible: false` con vacío honesto; escrituras -> `ConversacionesNoDisponibleError`
+  (503); el gate del agente -> sin toma (el agente responde como antes). Todo con SAVEPOINT (`runWithSavepointFallback`);
+  cubierto en `tests/conversaciones-repository-savepoint.spec.ts`.
+- SQL y permisos: `migrations/028_conversaciones_handoff_turnos.sql`, verificado contra Postgres real en
+  `scripts/verify-restaurantes-conversaciones-handoff/`.
+- Alcance conocido: la escalación se calcula al leer (no hay cron ni aviso saliente al personal); el agente de voz aún no
+  abre tomas por sí mismo (no existe el worker de voz): las llamadas aparecen en la bandeja y el staff puede tomarlas.

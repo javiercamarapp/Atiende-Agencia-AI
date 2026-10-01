@@ -55,6 +55,14 @@ export function resumenDiarioRoutes(deps: AppDeps): Hono {
         logEvent(c, "warn", "resumen_diario_con_alertas", { fecha, alertas: agregados.salud.alertas.length, criticas: agregados.salud.alertas.filter((a) => a.severidad === "critica").length });
       }
 
+      // Alertas salientes (best-effort, opcionales): cada alerta CRITICA de salud sale tambien por
+      // los canales configurados (correo/webhook/Sentry), con piso por hora por tipo y destino.
+      if (deps.alertas) {
+        for (const a of agregados.salud.alertas.filter((x) => x.severidad === "critica")) {
+          await deps.alertas.notificar({ tipo: `salud:${a.titulo}`, severidad: "critica", titulo: a.titulo, detalle: a.detalle, href: a.href }).catch(() => undefined);
+        }
+      }
+
       const correo = await enviarCorreoResumenDiarioSiCorresponde(deps, fecha, agregados, narrativa);
 
       return c.json({ ok: true, fecha, generadoPor, alertas: agregados.salud.alertas.length, correo: correo.motivo });

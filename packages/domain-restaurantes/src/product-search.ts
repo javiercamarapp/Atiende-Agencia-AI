@@ -63,6 +63,12 @@ const STOPWORDS_BUSQUEDA = new Set([
   "cocteles",
   "cóctel",
   "cócteles",
+  // "una orden de frijoles": la unidad de venta no es parte del nombre del platillo (el match
+  // es AND de todos los tokens, y "orden" solo vive en algunos nombres). "media orden" no se
+  // descarta: se normaliza a "1/2" para encontrar el producto "(1/2 orden)" que si existe.
+  "orden",
+  "ordenes",
+  "órdenes",
 ]);
 
 /**
@@ -78,7 +84,8 @@ export function tokenizeForProductSearch(query: string): string[] {
     .replace(/tres\s+cuartos?\s+de\s+kilo/g, "750g")
     .replace(/cuarto\s+de\s+kilo/g, "250g")
     .replace(/medio\s+kilo/g, "500g")
-    .replace(/\bkilos?\b/g, "kg");
+    .replace(/\bkilos?\b/g, "kg")
+    .replace(/\bmedia\s+orden\b/g, "1/2");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 

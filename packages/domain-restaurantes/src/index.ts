@@ -147,7 +147,7 @@ export type { AssignBranchInput, BranchAssignment, BranchAssignmentVia, RankedBr
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
+export { extractMetaTextMessages, extractMetaInboundMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
@@ -177,6 +177,7 @@ export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock } from "./whatsapp
 export type { PerfilPmContexto } from "./whatsapp/perfil-pm.ts";
 export { PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
 export type { PerfilAgenteWhatsApp, TonoAgenteWhatsApp, WhatsAppAgentConfigInput, WhatsAppAgentConfigRow } from "./types.ts";
+export * from "./conversaciones/index.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,
@@ -201,3 +202,4 @@ export {
 } from "./agent-tools/order-flow.ts";
 export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 export type { VoiceSecretMatch, VoiceToolAuditInput, VoiceToolAuditOutcome } from "./types.ts";
+export * from "./data-chat/index.ts";

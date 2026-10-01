@@ -40,7 +40,7 @@ export interface NearestBranchMatch {
   readonly recognizedZoneName: string;
 }
 
-export type TortillaChoice = "maiz" | "harina";
+export type TortillaChoice = "maiz" | "harina" | "mixta";
 export type CustomerTier = "BLACK" | "PLATINUM" | "GOLD" | "BLUE";
 
 /**

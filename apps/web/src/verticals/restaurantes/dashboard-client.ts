@@ -96,6 +96,11 @@ export { SessionExpiredError };
 
 export class DashboardError extends Error {}
 
+/** Contexto de refresh de sesion de restaurantes, reutilizado por los demas clientes de este vertical (chat con datos). */
+export function restaurantesAuthContext(): AuthedFetchContext<LoginSession> {
+  return defaultAuthCtx();
+}
+
 function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {

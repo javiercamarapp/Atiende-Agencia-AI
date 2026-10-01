@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { Button } from "./ui/button";
+import { cn } from "../lib/utils";
 
 /**
  * Portado de EstadoError (kit.tsx) — docs/referencia/06-backoffice-agentes-likida.md
@@ -15,6 +16,8 @@ export function EstadoError({
   integracion,
   pendienteCredenciales = false,
   onReintentar,
+  compacto = false,
+  className,
 }: {
   titulo?: string;
   mensaje?: string;
@@ -23,6 +26,9 @@ export function EstadoError({
   /** Marca el mensaje como bloqueo de credenciales en vez de error transitorio. */
   pendienteCredenciales?: boolean;
   onReintentar?: () => void;
+  /** Menos aire vertical, para errores dentro de una tarjeta o tabla. */
+  compacto?: boolean;
+  className?: string;
 }) {
   const descripcion =
     mensaje ??
@@ -33,7 +39,14 @@ export function EstadoError({
       : "Ocurrió un problema al conectar con el servidor. Verifica la conexión e inténtalo de nuevo.");
 
   return (
-    <div role="alert" className="flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-12 text-center">
+    <div
+      role="alert"
+      className={cn(
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 text-center",
+        compacto ? "py-6" : "py-12",
+        className,
+      )}
+    >
       <div className="w-11 h-11 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
         <AlertTriangle className="w-5 h-5" strokeWidth={1.75} />
       </div>
