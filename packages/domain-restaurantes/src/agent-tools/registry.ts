@@ -18,7 +18,7 @@ import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
+import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
@@ -312,7 +312,7 @@ export function toRequestedItems(raw: unknown, lenient: boolean): RequestedOrder
   });
 }
 
-export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
+export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo> & Partial<QuotePromotionInfo>) {
   return {
     lines: quote.lines.map((line) => ({
       product_id: line.productId,
@@ -325,8 +325,23 @@ export function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
       requires_adult_confirmation: line.requiresAdultConfirmation,
       line_total: line.lineTotal,
     })),
+    // `total` es el TOTAL A PAGAR (ya con la promocion automatica, si hubo); `subtotal` es la suma de renglones.
     total: quote.total,
     contains_alcohol: quote.containsAlcohol,
+    ...(quote.promocionAplicada
+      ? { subtotal: quote.subtotal, descuento: quote.descuento, promocion_aplicada: { code: quote.promocionAplicada.code, name: quote.promocionAplicada.name, type: quote.promocionAplicada.type, descuento: quote.promocionAplicada.descuento } }
+      : {}),
+    ...(quote.promocionesSugeridas && quote.promocionesSugeridas.length > 0
+      ? {
+          promociones_sugeridas: quote.promocionesSugeridas.map((s) => ({
+            code: s.code,
+            name: s.name,
+            motivo: s.motivo,
+            mensaje: s.mensaje,
+            ...(s.opcionesCortesia ? { opciones_cortesia: s.opcionesCortesia.map((o) => ({ product_id: o.productId, name: o.name })), cortesia_por_unidad: s.cortesiaPorUnidad ?? 0 } : {}),
+          })),
+        }
+      : {}),
     // Modelo PM: politica de la sucursal que aplico la herramienta (minimo ya cumplido,
     // propina, horario). Solo se incluye lo que la cotizacion reporto.
     ...(quote.canal ? { canal: quote.canal } : {}),

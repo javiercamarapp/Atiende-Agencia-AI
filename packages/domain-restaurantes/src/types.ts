@@ -187,6 +187,8 @@ export interface CreateOrderInput {
   /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
    * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
   readonly propina?: number;
+  /** Hora prometida de recogida (ISO 8601 con zona). Solo con canal "recoger"; debe ser futura. */
+  readonly horaRecogida?: string;
 }
 
 export type CanalPedido = "domicilio" | "recoger";
@@ -260,6 +262,20 @@ export interface Order {
    * puerto literal de `orders.incident_note` del origen. null salvo cuando el
    * pedido está (o estuvo) en "problema". */
   readonly incidentNote: string | null;
+  /** Migracion 028. Solo vienen cuando la fila las trae (creacion de pedido con la base migrada);
+   * los listados no seleccionan estas columnas para no romper la base sin migrar -- usa
+   * `repo.listOrderPickupInfo` para leerlas. */
+  readonly canal?: CanalPedido | null;
+  readonly propina?: number | null;
+  readonly horaRecogida?: string | null;
+}
+
+/** Datos de recoger de un pedido (migracion 028): canal, propina y hora prometida de recogida. */
+export interface OrderPickupInfo {
+  readonly orderId: string;
+  readonly canal: CanalPedido | null;
+  readonly propina: number | null;
+  readonly horaRecogida: string | null;
 }
 
 export interface PersistedOrderItem {
@@ -355,7 +371,18 @@ export interface BranchProductState {
   readonly isAvailable: boolean;
 }
 
-export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+/** `listo_para_recoger` y `no_recogido` (migracion 028) son los estados del canal recoger: el pedido
+ * esta listo en mostrador y, si el cliente no llega, queda `no_recogido` y puede volver a cocina. */
+export type OrderStatus =
+  | "pending"
+  | "preparando"
+  | "en_camino"
+  | "entregado"
+  | "cancelado"
+  | "completado"
+  | "problema"
+  | "listo_para_recoger"
+  | "no_recogido";
 
 export interface OrderListFilter {
   readonly propertyIds: readonly string[] | null;
@@ -412,7 +439,7 @@ export interface CallbackRequest extends CallbackRequestInput {
 // aplicación real al total de un pedido, que el origen nunca tuvo. Una sola
 // promoción por pedido a propósito: no hay evidencia en el origen de una regla de
 // combinabilidad, así que no se inventa una.
-export type PromotionType = "percentage" | "fixed" | "bogo";
+export type PromotionType = "percentage" | "fixed" | "bogo" | "cortesia";
 
 export interface Promotion {
   readonly id: string;
@@ -446,6 +473,15 @@ export interface Promotion {
   /** Productos elegibles (ids de `restaurantes.products`, migracion 027) — null = todos los
    * renglones del pedido. */
   readonly productIds: readonly string[] | null;
+  /** Migracion 028 -- se aplica SOLA (sin codigo) cuando el pedido cumple dia/hora/canal/productos.
+   * Exige `channels` explicito (las promociones de PM valen solo para recoger, nunca a domicilio).
+   * `false` contra la base sin migrar. */
+  readonly autoApply: boolean;
+  /** Solo type==='cortesia': productos que el cliente puede elegir gratis (p. ej. las aguas). Los
+   * productos que DISPARAN la cortesia (p. ej. nachos de pastor) son `productIds`. */
+  readonly courtesyProductIds: readonly string[] | null;
+  /** Solo type==='cortesia': piezas gratis POR cada unidad disparadora en el pedido (1..10). */
+  readonly courtesyQuantity: number | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -466,6 +502,9 @@ export interface NewPromotionInput {
   readonly isActive?: boolean;
   readonly channels?: readonly CanalPedido[] | null;
   readonly productIds?: readonly string[] | null;
+  readonly autoApply?: boolean;
+  readonly courtesyProductIds?: readonly string[] | null;
+  readonly courtesyQuantity?: number | null;
 }
 
 export interface PromotionPatch {
@@ -484,6 +523,9 @@ export interface PromotionPatch {
   readonly isActive?: boolean;
   readonly channels?: readonly CanalPedido[] | null;
   readonly productIds?: readonly string[] | null;
+  readonly autoApply?: boolean;
+  readonly courtesyProductIds?: readonly string[] | null;
+  readonly courtesyQuantity?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -619,4 +661,24 @@ export interface VoiceToolAuditInput {
   readonly phoneHash: string | null;
   /** Motivo corto, sin datos personales (maximo 300 caracteres). */
   readonly detail: string | null;
+}
+
+/** Excepcion de horario por FECHA de una sucursal (migracion 028): "puentes". Dentro de
+ * [fechaDesde, fechaHasta] (fechas locales de la sucursal, inclusive) rige `horario` en lugar del
+ * horario semanal de `BranchPolicy`. */
+export interface BranchHoursException {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly fechaDesde: string;
+  readonly fechaHasta: string;
+  readonly horario: HorarioSucursal;
+  readonly motivo: string | null;
+}
+
+export interface NewBranchHoursExceptionInput {
+  readonly propertyId: string;
+  readonly fechaDesde: string;
+  readonly fechaHasta: string;
+  readonly horario: HorarioSucursal;
+  readonly motivo?: string | null;
 }

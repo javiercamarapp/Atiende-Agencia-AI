@@ -11,11 +11,14 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { tryNotifyCustomerOnOrderStatusChange, tryNotifyStaffOrderProblem } from "./order-notifications.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import type { Order, OrderStatus } from "./types.ts";
+import type { Order, OrderPickupInfo, OrderStatus } from "./types.ts";
 
 export class OrderStatusTransitionError extends Error {}
 
-export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
+export const ORDER_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema", "listo_para_recoger", "no_recogido"];
+
+/** Estados exclusivos del canal recoger (migracion 028). */
+export const PICKUP_ONLY_STATUSES: readonly OrderStatus[] = ["listo_para_recoger", "no_recogido"];
 
 export function isOrderStatus(value: string): value is OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(value);
@@ -33,8 +36,15 @@ export function isOrderStatus(value: string): value is OrderStatus {
  */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["preparando", "cancelado", "problema"],
-  preparando: ["en_camino", "cancelado", "problema"],
+  // Un pedido para recoger sale de cocina como `listo_para_recoger` (no `en_camino`): la regla de canal
+  // se aplica en `changeOrderStatus`, que conoce el canal del pedido.
+  preparando: ["en_camino", "listo_para_recoger", "cancelado", "problema"],
   en_camino: ["entregado", "problema"],
+  // Recoger (PM): listo en mostrador -> el cliente lo recoge (`entregado`) o no llega (`no_recogido`).
+  listo_para_recoger: ["entregado", "no_recogido", "cancelado", "problema"],
+  // No recogido: vuelve a cocina (`preparando`, p. ej. el cliente llega tarde y hay que rehacerlo o
+  // recalentarlo) o se cancela.
+  no_recogido: ["preparando", "cancelado"],
   entregado: ["completado", "problema"],
   problema: ["preparando", "cancelado"],
   cancelado: [],
@@ -77,8 +87,16 @@ export function assertValidOrderStatusTransition(from: OrderStatus, to: OrderSta
  * (Blocker A, revisión de PR #169: sin esto, un fallo real dentro del best-effort
  * en sesión de staff abortaba la transacción completa y este MISMO UPDATE se
  * perdía pese a haber "persistido" antes en la misma transacción). */
-export async function changeOrderStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus, db?: TenantDbSession): Promise<Order> {
+export async function changeOrderStatus(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  order: Order,
+  nextStatus: OrderStatus,
+  db?: TenantDbSession,
+  options: { /** `false` = no avisar por WhatsApp al cliente (aviso opcional de "listo para recoger"). */ readonly avisarCliente?: boolean } = {},
+): Promise<Order> {
   assertValidOrderStatusTransition(order.status, nextStatus);
+  await assertCanalAllowsStatus(repo, organizationId, order, nextStatus);
   const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus);
   if (!updated) {
     // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
@@ -96,10 +114,36 @@ export async function changeOrderStatus(repo: RestaurantesRepository, organizati
   }
   if (updated.status === "problema") {
     await tryNotifyStaffOrderProblem(repo, updated, db);
-  } else {
+  } else if (options.avisarCliente !== false) {
     await tryNotifyCustomerOnOrderStatusChange(repo, updated, db);
   }
   return updated;
+}
+
+/** Marca historica de canal en las notas (antes de la columna `orders.canal`). */
+const NOTA_CANAL_RECOGER = /Canal: recoger en sucursal\./;
+
+/** ¿Es un pedido para recoger? Usa la columna `canal` (migracion 028) y, si el pedido es anterior o la
+ * base no esta migrada, la marca historica de las notas. `null` = no se puede saber. */
+export function esPedidoParaRecoger(order: Pick<Order, "notes">, info: Pick<OrderPickupInfo, "canal"> | null): boolean | null {
+  if (info?.canal) return info.canal === "recoger";
+  if (order.notes && NOTA_CANAL_RECOGER.test(order.notes)) return true;
+  return null;
+}
+
+/** Los estados de recoger solo valen para pedidos de canal recoger; un pedido para recoger no sale `en_camino`.
+ * Si el canal no se puede determinar (pedido historico sin marca) no se bloquea. */
+async function assertCanalAllowsStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus): Promise<void> {
+  const esEstadoRecoger = (PICKUP_ONLY_STATUSES as readonly string[]).includes(nextStatus);
+  if (!esEstadoRecoger && nextStatus !== "en_camino") return;
+  const [info] = await repo.listOrderPickupInfo(organizationId, [order.id]);
+  const recoger = esPedidoParaRecoger(order, info ?? null);
+  if (esEstadoRecoger && recoger === false) {
+    throw new OrderStatusTransitionError(`El estado "${nextStatus}" solo aplica a pedidos para recoger en sucursal; este pedido es a domicilio.`);
+  }
+  if (nextStatus === "en_camino" && recoger === true) {
+    throw new OrderStatusTransitionError('Un pedido para recoger no sale "en_camino": márquelo "listo_para_recoger" cuando esté listo en mostrador.');
+  }
 }
 
 // ---- Fase 8 — transiciones que un REPARTIDOR (nunca MANAGER_ROLES) puede disparar

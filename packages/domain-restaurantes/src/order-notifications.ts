@@ -51,7 +51,7 @@ function formatMxn(amount: number): string {
  * sin novedad para el cliente que ya recibió su "entregado"; problema normalmente
  * implica una llamada real del repartidor/staff, no un WhatsApp automático — ver
  * comentario de cabecera). */
-const CUSTOMER_NOTIFIED_STATUSES: ReadonlySet<OrderStatus> = new Set(["preparando", "en_camino", "entregado", "cancelado"]);
+const CUSTOMER_NOTIFIED_STATUSES: ReadonlySet<OrderStatus> = new Set(["preparando", "en_camino", "entregado", "cancelado", "listo_para_recoger"]);
 
 function customerMessageForStatus(order: Order): string | null {
   switch (order.status) {
@@ -59,6 +59,8 @@ function customerMessageForStatus(order: Order): string | null {
       return `${greeting(order)}tu pedido${branchSuffix(order)} (${formatMxn(order.total)}) fue confirmado y ya lo estamos preparando.`;
     case "en_camino":
       return `${greeting(order)}tu pedido${branchSuffix(order)} va en camino.`;
+    case "listo_para_recoger":
+      return `${greeting(order)}tu pedido${branchSuffix(order)} ya está listo para recoger en mostrador.`;
     case "entregado":
       return `${greeting(order)}tu pedido${branchSuffix(order)} fue entregado. ¡Buen provecho!`;
     case "cancelado":

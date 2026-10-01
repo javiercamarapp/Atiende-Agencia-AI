@@ -10,7 +10,7 @@ import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from 
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
-import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
+import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
@@ -122,6 +122,13 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     (!Array.isArray(raw.doubleSalsas) || raw.doubleSalsas.length > DEFAULT_COMPLEMENTS.length || raw.doubleSalsas.some((salsa) => !(DEFAULT_COMPLEMENTS as readonly string[]).includes(salsa)))
   ) {
     throw new OrderValidationError("La doble porción solo aplica a las salsas incluidas del menú.");
+  }
+  if (raw.horaRecogida !== undefined) {
+    if (canal !== "recoger") throw new OrderValidationError("La hora de recogida solo aplica a pedidos para recoger.");
+    if (typeof raw.horaRecogida !== "string" || raw.horaRecogida.length > 40 || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw.horaRecogida) || Number.isNaN(Date.parse(raw.horaRecogida))) {
+      throw new OrderValidationError("La hora de recogida debe ser una fecha y hora ISO 8601 con zona horaria.");
+    }
+    if (!/(Z|[+-]\d{2}:?\d{2})$/.test(raw.horaRecogida)) throw new OrderValidationError("La hora de recogida debe incluir la zona horaria (por ejemplo -06:00).");
   }
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
   // Para recoger no hay direccion de entrega que exigir.
@@ -260,7 +267,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
   // Modelo PM (migracion 023) -- reglas por sucursal: horario, pedido minimo por canal
   // (sobre el total de renglones ANTES de descuentos), cobertura de entrega y propina.
   // Opt-in: sin politica configurada no cambia nada.
-  await aplicarReglasDeSucursal(repo, {
+  const reglas = await aplicarReglasDeSucursal(repo, {
     branch,
     canal: normalizarCanal(payload.canal),
     subtotal: total,
@@ -293,10 +300,37 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     // público, usado en muchos otros call-sites — ver el comentario de
     // cabecera de la migración 022.
     const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
-    const applied = applyPromotionToOrder({ promotion, orderTotal: total, items: orderItems, canal: normalizarCanal(payload.canal), now: new Date(), zonaHoraria });
+    const applied = applyPromotionToOrder({
+      promotion,
+      orderTotal: total,
+      items: orderItems,
+      canal: normalizarCanal(payload.canal),
+      now: new Date(),
+      zonaHoraria,
+      ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+    });
     total = applied.total;
     discount = applied.discount;
     appliedPromotion = promotion;
+  } else {
+    // PM PR-4: promociones AUTOMATICAS por dia y canal (sin codigo). Corre sobre el mismo total/renglones ya
+    // cotizados; una sola por pedido; las de recoger nunca aplican a domicilio (ver selectAutomaticPromotion).
+    // Contra la base sin migrar `listAutoApplyPromotions` devuelve [] (SAVEPOINT): el pedido sigue igual.
+    const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    const auto = selectAutomaticPromotion({
+      promotions: await repo.listAutoApplyPromotions(payload.organizationId),
+      orderTotal: total,
+      items: orderItems,
+      canal: normalizarCanal(payload.canal),
+      now: new Date(),
+      zonaHoraria,
+      ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+    });
+    if (auto.applied) {
+      total = auto.applied.total;
+      discount = auto.applied.discount;
+      appliedPromotion = auto.applied.promotion;
+    }
   }
 
   return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
@@ -353,6 +387,7 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   const canalLines: string[] = [];
   if (payload.canal) canalLines.push(payload.canal === "recoger" ? "Canal: recoger en sucursal." : "Canal: domicilio.");
   if (payload.propina !== undefined && payload.propina > 0) canalLines.push(`Propina: $${payload.propina.toFixed(2)} (no incluida en el total).`);
+  if (payload.horaRecogida) canalLines.push(`Hora de recogida: ${payload.horaRecogida}.`);
   const finalNotes = canalLines.length > 0 ? [notesWithPromotion, ...canalLines].join("\n") : notesWithPromotion;
 
   const dedupeFingerprint = sha256Hex(
@@ -398,6 +433,10 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       paymentMethod: payload.paymentMethod ?? null,
       callTranscript: payload.callTranscript ?? null,
       callRecordingUrl: payload.callRecordingUrl ?? null,
+      // Migracion 028: columnas de canal/propina/hora de recogida (la base vieja las ignora).
+      canal: payload.canal ? normalizarCanal(payload.canal) : null,
+      propina: payload.propina !== undefined && payload.propina > 0 ? payload.propina : null,
+      horaRecogida: payload.horaRecogida ?? null,
     },
     dedupeFingerprint,
     idempotencyKey,
@@ -460,7 +499,7 @@ export async function quoteOrder(
     /** Doble porcion de salsas (extra cobrado, ver `buildDoubleSalsaLine`). */
     readonly doubleSalsas?: readonly DoubleSalsa[];
   },
-): Promise<OrderQuote & QuotePolicyInfo> {
+): Promise<OrderQuote & QuotePolicyInfo & QuotePromotionInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
@@ -473,8 +512,48 @@ export async function quoteOrder(
     ? { ...baseQuote, lines: [...baseQuote.lines, doubleSalsaLine], total: Math.round((baseQuote.total + doubleSalsaLine.lineTotal) * 100) / 100 }
     : baseQuote;
   const reglas = await aplicarReglasDeSucursal(repo, { branch, canal, subtotal: quote.total, colonia: args.colonia, paymentMethod: args.paymentMethod });
+
+  // PM PR-4: promociones automaticas por dia y canal. `total` pasa a ser el TOTAL A PAGAR (ya con el
+  // descuento) y `subtotal` conserva el de renglones; sin promocion aplicada nada cambia. Las promociones
+  // que ya valen hoy pero a las que el pedido aun no llega se devuelven como sugerencias para que el agente
+  // las ofrezca (p. ej. el martes: "con los nachos de pastor van 2 aguas de cortesia, ¿cuales?").
+  const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+  const auto = selectAutomaticPromotion({
+    promotions: await repo.listAutoApplyPromotions(args.organizationId),
+    orderTotal: quote.total,
+    items: quote.lines.map((line) => ({ id: line.productId, name: line.name, price: line.price, quantity: line.quantity })),
+    canal,
+    now: new Date(),
+    zonaHoraria,
+    ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+  });
+  const descuento = auto.applied?.discount ?? 0;
+  const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;
   return {
     ...quote,
+    subtotal: quote.total,
+    descuento,
+    total: auto.applied ? auto.applied.total : quote.total,
+    promocionAplicada: auto.applied
+      ? { code: auto.applied.promotion.code, name: auto.applied.promotion.name, type: auto.applied.promotion.type, descuento }
+      : null,
+    promocionesSugeridas: auto.suggestions.map(({ promotion, motivo }) => ({
+      code: promotion.code,
+      name: promotion.name,
+      motivo,
+      mensaje:
+        promotion.type === "cortesia"
+          ? `Hoy, para recoger, "${promotion.name}": por cada producto de la promoción van ${promotion.courtesyQuantity ?? 0} pieza(s) de cortesía a elegir por el cliente (sin costo). Ofrézcalo y, si acepta, agregue esas piezas como renglones del pedido y vuelva a cotizar.`
+          : `Hoy, para recoger, aplica "${promotion.name}"${promotion.description ? `: ${promotion.description}` : ""}. Con este pedido todavía no se cumple: ofrézcalo y, si acepta, agregue los productos y vuelva a cotizar.`,
+      ...(promotion.type === "cortesia" && promotion.courtesyProductIds
+        ? {
+            opcionesCortesia: promotion.courtesyProductIds
+              .map((productId) => ({ productId, name: nombreDeProducto(productId) }))
+              .filter((o): o is { productId: string; name: string } => o.name !== null),
+            cortesiaPorUnidad: promotion.courtesyQuantity ?? 0,
+          }
+        : {}),
+    })),
     canal,
     pedidoMinimo: reglas.pedidoMinimo,
     propinaPolitica: reglas.policy.propinaPolitica,
@@ -482,6 +561,22 @@ export async function quoteOrder(
     abiertoAhora: reglas.apertura ? reglas.apertura.abierto : null,
     cierraA: reglas.apertura?.cierraA ?? null,
   };
+}
+
+/** Promociones automaticas que acompanan a una cotizacion (PM PR-4). */
+export interface QuotePromotionInfo {
+  /** Suma de renglones ANTES de descuento. `total` (de `OrderQuote`) es el total A PAGAR. */
+  readonly subtotal: number;
+  readonly descuento: number;
+  readonly promocionAplicada: { readonly code: string; readonly name: string; readonly type: Promotion["type"]; readonly descuento: number } | null;
+  readonly promocionesSugeridas: readonly {
+    readonly code: string;
+    readonly name: string;
+    readonly motivo: "faltan_productos" | "falta_elegir_cortesia";
+    readonly mensaje: string;
+    readonly opcionesCortesia?: readonly { readonly productId: string; readonly name: string }[];
+    readonly cortesiaPorUnidad?: number;
+  }[];
 }
 
 /** Informacion de politica de sucursal que acompana a una cotizacion (modelo PM). */

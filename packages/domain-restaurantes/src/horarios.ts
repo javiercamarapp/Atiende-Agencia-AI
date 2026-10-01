@@ -100,7 +100,14 @@ export interface EstadoApertura {
  * valida). Un turno que cruza la medianoche cuenta para el dia siguiente hasta su hora de
  * cierre.
  */
-export function estaAbiertoAhora(horario: HorarioSucursal, instante: Date = new Date(), zonaHorariaSucursal?: string | null): EstadoApertura {
+export function estaAbiertoAhora(
+  horario: HorarioSucursal,
+  instante: Date = new Date(),
+  zonaHorariaSucursal?: string | null,
+  /** Horario que rigio AYER (puentes: una excepcion de fecha puede cambiar el turno que cruzo la
+   * medianoche). Sin valor se usa `horario`, igual que antes. */
+  horarioAyer: HorarioSucursal = horario,
+): EstadoApertura {
   const zona = resolverZonaHorariaNegocio(zonaHorariaSucursal);
   const { dia, minutos } = componentesLocales(instante, zona);
   const diaAnterior = (dia + 6) % 7;
@@ -113,8 +120,11 @@ export function estaAbiertoAhora(horario: HorarioSucursal, instante: Date = new 
     if (turno.dias.includes(dia) && minutos >= abre && (cruza || minutos < cierra)) {
       return { abierto: true, cierraA: turno.cierra, proximaApertura: null };
     }
-    // Cola de un turno que empezo AYER y cruzo la medianoche.
-    if (cruza && turno.dias.includes(diaAnterior) && minutos < cierra) {
+  }
+  // Cola de un turno que empezo AYER (con el horario que rigio ayer) y cruzo la medianoche.
+  for (const turno of horarioAyer) {
+    const cierra = aMinutos(turno.cierra);
+    if (cierra <= aMinutos(turno.abre) && turno.dias.includes(diaAnterior) && minutos < cierra) {
       return { abierto: true, cierraA: turno.cierra, proximaApertura: null };
     }
   }
@@ -143,4 +153,112 @@ export function mensajeSucursalCerrada(nombreSucursal: string, estado: EstadoApe
   if (!estado.proximaApertura) return `La sucursal ${nombreSucursal} está cerrada en este momento.`;
   const { dia, hora, hoy } = estado.proximaApertura;
   return `La sucursal ${nombreSucursal} está cerrada en este momento; abre ${hoy ? "hoy" : `el ${dia}`} a las ${hora}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Puentes: excepciones de horario por FECHA (migracion 028) y dia de negocio.
+// ---------------------------------------------------------------------------
+
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_DIAS_EXCEPCION = 31;
+
+function fechaValida(fecha: string): boolean {
+  if (!FECHA_RE.test(fecha)) return false;
+  const [y, m, d] = fecha.split("-").map(Number) as [number, number, number];
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
+function diasEntre(desde: string, hasta: string): number {
+  const a = Date.parse(`${desde}T00:00:00Z`);
+  const b = Date.parse(`${hasta}T00:00:00Z`);
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Fecha local (YYYY-MM-DD) del instante en la zona del negocio. */
+export function fechaLocal(instante: Date, zonaHoraria: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: zonaHoraria, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instante);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Dia anterior de una fecha YYYY-MM-DD (aritmetica UTC pura: no depende de ninguna zona). */
+export function fechaAnterior(fecha: string): string {
+  const t = new Date(Date.parse(`${fecha}T00:00:00Z`) - 86_400_000);
+  return t.toISOString().slice(0, 10);
+}
+
+/** Valida los datos de una excepcion de horario (fechas reales, rango <= 31 dias, horario valido). */
+export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; readonly fechaHasta: unknown; readonly horario: unknown; readonly motivo?: unknown }): {
+  readonly fechaDesde: string;
+  readonly fechaHasta: string;
+  readonly horario: HorarioSucursal;
+  readonly motivo: string | null;
+} {
+  const { fechaDesde, fechaHasta } = raw;
+  if (typeof fechaDesde !== "string" || typeof fechaHasta !== "string" || !fechaValida(fechaDesde) || !fechaValida(fechaHasta)) {
+    throw new OrderValidationError("Las fechas de la excepción deben ser reales y tener formato AAAA-MM-DD.");
+  }
+  if (fechaHasta < fechaDesde) throw new OrderValidationError("La fecha final no puede ser anterior a la inicial.");
+  if (diasEntre(fechaDesde, fechaHasta) > MAX_DIAS_EXCEPCION) {
+    throw new OrderValidationError(`Una excepción de horario cubre como máximo ${MAX_DIAS_EXCEPCION} días (un puente, no un cambio permanente).`);
+  }
+  const horario = validarHorario(raw.horario);
+  if (horario.length === 0) throw new OrderValidationError("La excepción necesita al menos un turno (para cerrar todo el puente, no la registre).");
+  let motivo: string | null = null;
+  if (raw.motivo !== undefined && raw.motivo !== null) {
+    if (typeof raw.motivo !== "string" || raw.motivo.trim().length === 0 || raw.motivo.length > 200) {
+      throw new OrderValidationError("El motivo debe tener entre 1 y 200 caracteres.");
+    }
+    motivo = raw.motivo.trim();
+  }
+  return { fechaDesde, fechaHasta, horario, motivo };
+}
+
+/** Horario de PUENTE: los turnos indicados rigen TODOS los dias del rango. Parametrizable: las horas del
+ * cambio de turno las define el negocio (no se asumen aqui). */
+export function horarioDePuente(turnos: readonly { readonly abre: string; readonly cierra: string }[]): HorarioSucursal {
+  return validarHorario(turnos.map((t) => ({ dias: [0, 1, 2, 3, 4, 5, 6], abre: t.abre, cierra: t.cierra })));
+}
+
+/** Horario vigente para una FECHA local: la excepcion que la cubre (la mas reciente si hay varias) o el semanal. */
+export function horarioParaFecha(base: HorarioSucursal, excepciones: readonly { readonly fechaDesde: string; readonly fechaHasta: string; readonly horario: HorarioSucursal }[], fecha: string): HorarioSucursal {
+  const cubre = excepciones.filter((e) => e.fechaDesde <= fecha && fecha <= e.fechaHasta);
+  if (cubre.length === 0) return base;
+  return cubre.reduce((a, b) => (b.fechaDesde > a.fechaDesde ? b : a)).horario;
+}
+
+export interface ApreturaConExcepciones {
+  readonly estado: EstadoApertura;
+  /** Dia de la semana (0-6) del DIA DE NEGOCIO: la cola de un turno que cruzo la medianoche (p. ej.
+   * 00:30 del martes con turno 18:00-01:00 del lunes) pertenece al dia en que el turno EMPEZO. */
+  readonly diaNegocio: number;
+  readonly fechaNegocio: string;
+}
+
+/**
+ * Apertura y dia de negocio de un instante considerando excepciones por fecha (puentes). El turno
+ * que empezo ayer se evalua con el horario que rigio AYER; el de hoy con el de HOY.
+ */
+export function aperturaConExcepciones(
+  horario: HorarioSucursal,
+  excepciones: readonly { readonly fechaDesde: string; readonly fechaHasta: string; readonly horario: HorarioSucursal }[],
+  instante: Date,
+  zonaHorariaSucursal?: string | null,
+): ApreturaConExcepciones {
+  const zona = resolverZonaHorariaNegocio(zonaHorariaSucursal);
+  const hoy = fechaLocal(instante, zona);
+  const ayer = fechaAnterior(hoy);
+  const horarioHoy = horarioParaFecha(horario, excepciones, hoy);
+  const horarioAyer = horarioParaFecha(horario, excepciones, ayer);
+  const estado = estaAbiertoAhora(horarioHoy, instante, zona, horarioAyer);
+  const { dia, minutos } = componentesLocales(instante, zona);
+  const diaAnterior = (dia + 6) % 7;
+  const enColaDeAyer = horarioAyer.some((t) => {
+    const cierra = aMinutos(t.cierra);
+    return cierra <= aMinutos(t.abre) && t.dias.includes(diaAnterior) && minutos < cierra;
+  });
+  // Solo es "dia de ayer" si ese turno de ayer es realmente el que tiene abierta la sucursal ahora.
+  const diaNegocio = estado.abierto && enColaDeAyer && !horarioHoy.some((t) => t.dias.includes(dia) && minutos >= aMinutos(t.abre)) ? diaAnterior : dia;
+  return { estado, diaNegocio, fechaNegocio: diaNegocio === dia ? hoy : ayer };
 }

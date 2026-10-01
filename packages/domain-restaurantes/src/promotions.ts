@@ -97,7 +97,16 @@ function partesDeHoyEnZona(now: Date, zonaHoraria: string): { readonly dayOfWeek
  * `daysOfWeek`/`startTime`/`endTime` (hora de PARED del negocio) necesitan la
  * zona real.
  */
-export function assertPromotionApplicable(promotion: Promotion, orderTotal: number, now: Date, zonaHoraria: string, canal?: CanalPedido): void {
+export function assertPromotionApplicable(
+  promotion: Promotion,
+  orderTotal: number,
+  now: Date,
+  zonaHoraria: string,
+  canal?: CanalPedido,
+  /** Dia de NEGOCIO (0-6) cuando difiere del dia calendario: la cola de un turno que cruza la medianoche
+   * (00:30 del martes dentro del turno 18:00-01:00 del lunes) cuenta como lunes. Sin valor = dia calendario. */
+  diaNegocio?: number,
+): void {
   if (!promotion.isActive) {
     throw new PromotionError(`El código "${promotion.code}" ya no está activo.`);
   }
@@ -107,7 +116,8 @@ export function assertPromotionApplicable(promotion: Promotion, orderTotal: numb
   if (promotion.endsAt && now.getTime() > new Date(promotion.endsAt).getTime()) {
     throw new PromotionError(`El código "${promotion.code}" ya expiró.`);
   }
-  const { dayOfWeek, minutesSinceMidnight: nowMinutes } = partesDeHoyEnZona(now, zonaHoraria);
+  const { dayOfWeek: diaCalendario, minutesSinceMidnight: nowMinutes } = partesDeHoyEnZona(now, zonaHoraria);
+  const dayOfWeek = diaNegocio ?? diaCalendario;
   if (promotion.daysOfWeek && promotion.daysOfWeek.length > 0 && !promotion.daysOfWeek.includes(dayOfWeek)) {
     throw new PromotionError(`El código "${promotion.code}" no aplica el día de hoy.`);
   }
@@ -150,6 +160,7 @@ export function computePromotionDiscount(promotion: Promotion, orderTotal: numbe
 export function applyPromotionToOrderTotal(orderTotal: number, promotion: Promotion, now: Date, zonaHoraria: string): { readonly total: number; readonly discount: number } {
   // Un 2x1 necesita los renglones del pedido: usa `applyPromotionToOrder`.
   if (promotion.type === "bogo") throw new PromotionError(`El código "${promotion.code}" es 2x1 y requiere los renglones del pedido.`);
+  if (promotion.type === "cortesia") throw new PromotionError(`El código "${promotion.code}" es un combo de cortesía y requiere los renglones del pedido.`);
   assertPromotionApplicable(promotion, orderTotal, now, zonaHoraria);
   const discount = computePromotionDiscount(promotion, orderTotal);
   return { total: Math.round((orderTotal - discount) * 100) / 100, discount };
@@ -190,11 +201,18 @@ export function applyPromotionToOrder(args: {
   readonly canal: CanalPedido;
   readonly now: Date;
   readonly zonaHoraria: string;
+  /** Dia de negocio (0-6), ver `assertPromotionApplicable`. */
+  readonly diaNegocio?: number;
 }): { readonly total: number; readonly discount: number } {
   const { promotion, orderTotal } = args;
-  assertPromotionApplicable(promotion, orderTotal, args.now, args.zonaHoraria, args.canal);
+  assertPromotionApplicable(promotion, orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio);
   let discount: number;
-  if (promotion.type === "bogo") {
+  if (promotion.type === "cortesia") {
+    discount = Math.min(computeCortesiaDiscount(promotion, args.items), orderTotal);
+    if (discount <= 0) {
+      throw new PromotionError(`El código "${promotion.code}" es un combo de cortesía: agregue un producto de la promoción y elija las piezas de cortesía.`);
+    }
+  } else if (promotion.type === "bogo") {
     discount = Math.min(computeBogoDiscount(promotion, args.items), orderTotal);
     if (discount <= 0) {
       throw new PromotionError(`El código "${promotion.code}" es 2x1: agregue al menos 2 piezas de los productos de la promoción.`);
@@ -203,4 +221,97 @@ export function applyPromotionToOrder(args: {
     discount = computePromotionDiscount(promotion, orderTotal);
   }
   return { total: Math.round((orderTotal - discount) * 100) / 100, discount };
+}
+
+/**
+ * Descuento de un combo de CORTESIA: por cada unidad de un producto DISPARADOR (`productIds`, p. ej.
+ * nachos de pastor) en el pedido, hasta `courtesyQuantity` piezas de los productos de cortesia
+ * (`courtesyProductIds`, p. ej. las aguas) quedan a $0. El cliente ELIGE las piezas de cortesia y esas
+ * piezas ya vienen como renglones normales del pedido: el motor solo resta su precio (nunca agrega ni
+ * cambia renglones). Se regalan primero las mas baratas (criterio conservador del negocio) y nunca mas
+ * piezas que las que hay en el pedido. Sin disparador o sin piezas de cortesia el descuento es 0.
+ */
+export function computeCortesiaDiscount(promotion: Promotion, items: readonly PersistedOrderItem[]): number {
+  const triggers = promotion.productIds && promotion.productIds.length > 0 ? new Set(promotion.productIds) : null;
+  const courtesy = promotion.courtesyProductIds && promotion.courtesyProductIds.length > 0 ? new Set(promotion.courtesyProductIds) : null;
+  const perTrigger = promotion.courtesyQuantity ?? 0;
+  if (!triggers || !courtesy || perTrigger < 1) return 0;
+  let triggerUnits = 0;
+  const courtesyPrices: number[] = [];
+  for (const item of items) {
+    // Un producto que es a la vez disparador y de cortesia no se regala a si mismo.
+    if (triggers.has(item.id)) {
+      triggerUnits += item.quantity;
+      continue;
+    }
+    if (courtesy.has(item.id)) {
+      for (let i = 0; i < item.quantity; i += 1) courtesyPrices.push(item.price);
+    }
+  }
+  const free = Math.min(triggerUnits * perTrigger, courtesyPrices.length);
+  if (free <= 0) return 0;
+  courtesyPrices.sort((a, b) => a - b);
+  let discount = 0;
+  for (const price of courtesyPrices.slice(0, free)) discount += price;
+  return Math.round(discount * 100) / 100;
+}
+
+export interface AutomaticPromotionSuggestion {
+  readonly promotion: Promotion;
+  /** Por que todavia no descuenta con este pedido. */
+  readonly motivo: "faltan_productos" | "falta_elegir_cortesia";
+}
+
+export interface AutomaticPromotionResult {
+  /** La mejor promocion automatica que SI descuenta (maximo descuento; empate -> codigo menor). */
+  readonly applied: { readonly promotion: Promotion; readonly discount: number; readonly total: number } | null;
+  /** Promociones que ya valen HOY (dia/hora/canal) pero a las que este pedido aun no llega: el agente las
+   * ofrece al cliente. */
+  readonly suggestions: readonly AutomaticPromotionSuggestion[];
+}
+
+/**
+ * Promociones AUTOMATICAS (sin codigo): de las `autoApply` activas elige la que aplica a ESTE pedido segun
+ * dia de negocio, hora, canal y renglones. UNA sola por pedido (la de mayor descuento). Reglas duras:
+ *  - una promocion automatica SIN canales explicitos nunca aplica (defensa en profundidad, ademas del CHECK
+ *    de la migracion 028): las de PM valen solo para recoger, JAMAS a domicilio;
+ *  - una promocion que no vale hoy/en este canal se ignora en silencio (no es un error);
+ *  - una que vale hoy pero a la que el pedido no llega queda como sugerencia, no como descuento.
+ * No toca precios de linea: solo calcula el monto a restar, igual que el resto del motor.
+ */
+export function selectAutomaticPromotion(args: {
+  readonly promotions: readonly Promotion[];
+  readonly orderTotal: number;
+  readonly items: readonly PersistedOrderItem[];
+  readonly canal: CanalPedido;
+  readonly now: Date;
+  readonly zonaHoraria: string;
+  readonly diaNegocio?: number;
+}): AutomaticPromotionResult {
+  let best: { promotion: Promotion; discount: number; total: number } | null = null;
+  const suggestions: AutomaticPromotionSuggestion[] = [];
+  const ordered = [...args.promotions].sort((a, b) => a.code.localeCompare(b.code));
+  for (const promotion of ordered) {
+    if (!promotion.autoApply || !promotion.isActive) continue;
+    if (!promotion.channels || promotion.channels.length === 0) continue;
+    try {
+      assertPromotionApplicable(promotion, args.orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio);
+    } catch (err) {
+      if (err instanceof PromotionError) continue; // hoy / en este canal no vale
+      throw err;
+    }
+    let result: { total: number; discount: number } | null = null;
+    try {
+      result = applyPromotionToOrder({ promotion, orderTotal: args.orderTotal, items: args.items, canal: args.canal, now: args.now, zonaHoraria: args.zonaHoraria, diaNegocio: args.diaNegocio });
+    } catch (err) {
+      if (!(err instanceof PromotionError)) throw err;
+    }
+    if (!result || result.discount <= 0) {
+      const hayDisparador = promotion.productIds?.some((id) => args.items.some((i) => i.id === id)) ?? false;
+      suggestions.push({ promotion, motivo: promotion.type === "cortesia" && hayDisparador ? "falta_elegir_cortesia" : "faltan_productos" });
+      continue;
+    }
+    if (!best || result.discount > best.discount) best = { promotion, discount: result.discount, total: result.total };
+  }
+  return { applied: best, suggestions };
 }

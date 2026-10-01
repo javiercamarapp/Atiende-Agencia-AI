@@ -6,7 +6,8 @@
 // Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
 // sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
 // su cuenta porque corre dentro de la transaccion unica del request.
-import { estaAbiertoAhora, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { aperturaConExcepciones, fechaAnterior, fechaLocal, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { normalizeZoneText } from "./nearest-branch.ts";
 import type { RestaurantesRepository } from "./repository.ts";
@@ -68,6 +69,9 @@ export interface ReglasSucursalResultado {
   readonly apertura: EstadoApertura | null;
   readonly pedidoMinimo: number | null;
   readonly preguntarPropina: boolean;
+  /** Dia de NEGOCIO (0-6) cuando la sucursal tiene horario y el instante cae en la cola de un turno que
+   * cruzo la medianoche; `null` = usa el dia calendario (sin horario configurado o fuera de esa cola). */
+  readonly diaNegocio: number | null;
 }
 
 /**
@@ -79,9 +83,21 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
   const policy = await repo.findBranchPolicy(branch.propertyId);
 
   let apertura: EstadoApertura | null = null;
-  if (policy.horario && policy.horario.length > 0) {
-    const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
-    apertura = estaAbiertoAhora(policy.horario, args.now ?? new Date(), zona);
+  let diaNegocio: number | null = null;
+  const horarioBase = policy.horario && policy.horario.length > 0 ? policy.horario : null;
+  const ahora = args.now ?? new Date();
+  const zonaCruda = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+  // Puentes: una excepcion por fecha reemplaza el horario semanal en esas fechas (turno de hoy con el
+  // horario de hoy; la cola del turno de ayer con el de ayer). Contra la base sin migrar la lectura
+  // degrada a [] con SAVEPOINT.
+  const zona = resolverZonaHorariaNegocio(zonaCruda);
+  const hoy = fechaLocal(ahora, zona);
+  const excepciones = await repo.listBranchHoursExceptions(branch.propertyId, fechaAnterior(hoy), hoy);
+  const cubreHoy = excepciones.some((e) => e.fechaDesde <= hoy && hoy <= e.fechaHasta);
+  if (horarioBase || cubreHoy) {
+    const r = aperturaConExcepciones(horarioBase ?? [], excepciones, ahora, zonaCruda);
+    apertura = r.estado;
+    diaNegocio = r.diaNegocio;
     if (!apertura.abierto && args.source !== "admin") {
       throw new OrderValidationError(mensajeSucursalCerrada(branch.name, apertura));
     }
@@ -130,5 +146,5 @@ export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args
     }
   }
 
-  return { policy, apertura, pedidoMinimo, preguntarPropina };
+  return { policy, apertura, pedidoMinimo, preguntarPropina, diaNegocio };
 }
