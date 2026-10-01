@@ -104,15 +104,15 @@ export function crearZipStored(entradas: readonly EntradaZip[]): Uint8Array {
 // ---- SpreadsheetML ----
 const ESTILO = { normal: 0, encabezado: 1, moneda: 2, porcentaje: 3, titulo: 4, entero: 5, negrita: 6, monedaNegrita: 7 } as const;
 
+/** Caracteres válidos en XML 1.0 (tab, LF, CR y desde U+0020, salvo U+FFFE/U+FFFF); el resto se descarta. */
+function esCaracterXmlValido(cp: number): boolean {
+  return cp === 0x9 || cp === 0xa || cp === 0xd || (cp >= 0x20 && cp !== 0xfffe && cp !== 0xffff);
+}
+
 function escXml(s: string): string {
-  // Elimina caracteres de control no válidos en XML 1.0 y escapa los 5 reservados.
-  return s
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  let limpio = "";
+  for (const ch of s) if (esCaracterXmlValido(ch.codePointAt(0)!)) limpio += ch;
+  return limpio.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 function nombreColumna(idx: number): string {
