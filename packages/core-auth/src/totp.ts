@@ -117,7 +117,7 @@ export function buildOtpauthUri(params: { readonly secretBase32: string; readonl
 const KEY_INFO = "atiende/superadmin-mfa/secret/v1";
 
 function deriveKey(keyMaterial: string): Buffer {
-  if (keyMaterial.length < 16) throw new Error("mfa: el material de llave debe tener al menos 16 caracteres");
+  if (keyMaterial.length === 0) throw new Error("mfa: falta el material de llave");
   return Buffer.from(hkdfSync("sha256", Buffer.from(keyMaterial), Buffer.alloc(0), KEY_INFO, 32));
 }
 
