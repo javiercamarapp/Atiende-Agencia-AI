@@ -20,7 +20,7 @@ const BASE = "https://api.test/v1/restaurantes/prop-1/admin/voz";
 function totales(parcial: Record<string, unknown> = {}) {
   return {
     dias: 1, llamadas: 0, llamadasCerradas: 0, duracionPromedioS: null, pedidosVoz: 0, escaladas: 0, abandonadas: 0,
-    tasaResolucionPct: null, tasaHandoffPct: null, tasaAbandonoPct: null, erroresProveedor: 0, erroresElevenlabs: 0, erroresTwilio: 0, erroresOtros: 0,
+    tasaResolucionPct: null, tasaHandoffPct: null, tasaAbandonoPct: null, erroresProveedor: 0, erroresTwilio: 0, erroresOtros: 0,
     tasaErrorPct: null, toolCalls: 0, toolP95PeorDiaMs: null, costoVozMicroUsd: 0, costoTelefoniaMicroUsd: 0, costoCentavosMxn: 0, costoCompleto: true,
     costoPorLlamadaCentavosMxn: null, costoLlmOrgCentavosMxn: null, ...parcial,
   };
@@ -28,7 +28,7 @@ function totales(parcial: Record<string, unknown> = {}) {
 
 const KPI_CON_DATOS = {
   disponible: true, zonaHoraria: "America/Mexico_City", hoy: "2026-03-10", mesDesde: "2026-03-01",
-  diaDeHoy: totales({ llamadas: 4, llamadasCerradas: 3, duracionPromedioS: 430, pedidosVoz: 1, escaladas: 1, tasaResolucionPct: 33, tasaHandoffPct: 33, erroresProveedor: 4, erroresElevenlabs: 2, erroresTwilio: 1, erroresOtros: 1, toolP95PeorDiaMs: 950, costoCentavosMxn: 4000, costoPorLlamadaCentavosMxn: 1000 }),
+  diaDeHoy: totales({ llamadas: 4, llamadasCerradas: 3, duracionPromedioS: 430, pedidosVoz: 1, escaladas: 1, tasaResolucionPct: 33, tasaHandoffPct: 33, erroresProveedor: 4, erroresTwilio: 1, erroresOtros: 1, toolP95PeorDiaMs: 950, costoCentavosMxn: 4000, costoPorLlamadaCentavosMxn: 1000 }),
   mes: totales({ dias: 10, llamadas: 7, llamadasCerradas: 6, pedidosVoz: 3, escaladas: 1, tasaResolucionPct: 50, tasaHandoffPct: 17, tasaErrorPct: 57, erroresProveedor: 4, costoCentavosMxn: 123456, costoLlmOrgCentavosMxn: 6000 }),
   serie: [
     { fecha: "2026-03-09", llamadas: 3, pedidosVoz: 1, escaladas: 0, erroresProveedor: 0, toolP95Ms: null, costoCentavosMxn: 2000 },
@@ -93,7 +93,7 @@ describe("<PestanaIndicadores />", () => {
     expect(t).toContain("Hoy es 10 mar");
     expect(t).toContain("$40.00 MXN"); // costo del dia (4000 centavos)
     expect(t).toContain("$1,234.56 MXN"); // costo del mes
-    expect(t).toContain("ElevenLabs 2");
+    expect(t).not.toContain("ElevenLabs");
     expect(t).toContain("Twilio 1");
     expect(t).toContain("950 ms");
     expect(t).toContain("7:10"); // duracion promedio 430 s

@@ -25,7 +25,7 @@ Migraciones SQL reales en `migrations/` (schema `restaurantes.*`, requiere
 `packages/db/migrations/0001_core_schema.sql` aplicada antes).
 
 Explícitamente fuera de alcance de este paquete todavía: agente de voz
-ElevenLabs completo, panel de superadmin propio (el back office cruzado de
+por teléfono (el núcleo de llamada y el simulador ya están en `src/voz/`; falta el worker de telefonía, ver `docs/VOZ-PM.md`), panel de superadmin propio (el back office cruzado de
 plataforma vive en `apps/api/src/routes/superadmin*.ts`/
 `apps/web/src/superadmin/`, no aquí). El agente de WhatsApp con LLM real y los
 dashboards de KPIs, que esta nota marcaba como "fuera de Fase 1", ya se
