@@ -1,6 +1,6 @@
 # Inventario de violaciones del DS v2 en `apps/web/src` (base del guard de PR-12)
 
-Medido el 1-oct-2026 sobre `apps/web/src` (todo, fuera de `packages/ui`), antes y despues de PR-11. La fuente de verdad ejecutable es el guard `apps/web/tests/web-ds-v2-guard.spec.ts`: es el mismo conjunto de reglas de los guards por vertical, aplicado a TODO `apps/web/src`, sin comentarios, y falla si reaparece una sola ocurrencia. Para reproducir el conteo: `npx vitest run apps/web/tests/web-ds-v2-guard.spec.ts --maxWorkers=2` (hoy: 14 pruebas, todas en verde = baseline 0).
+Medido el 1-oct-2026 sobre `apps/web/src` (todo, fuera de `packages/ui`), antes y despues de PR-11. La fuente de verdad ejecutable es el guard `apps/web/tests/web-ds-v2-guard.spec.ts`: consolida las reglas de los antiguos guards por vertical (ya eliminados, ver `docs/diseno-ux-guard.md`), aplicado a TODO `apps/web/src`, sin comentarios, y falla si reaparece una sola ocurrencia. Para reproducir el conteo: `npx vitest run apps/web/tests/web-ds-v2-guard.spec.ts --maxWorkers=2` (hoy: 14 pruebas, todas en verde = baseline 0).
 
 ## 1. Conteo antes / despues (ocurrencias por regla)
 
@@ -55,6 +55,6 @@ Las verticales de restaurantes, hoteles, rentas, despachos y licitaciones y el s
 
 ## 3. Recomendacion para el guard de PR-12
 
-1. Promover `apps/web/tests/web-ds-v2-guard.spec.ts` a regla de lint o dejarlo como esta (ya corre en `npm run test:unit` y por tanto en el CI): baseline 0, sin lista de excepciones.
-2. Borrar los 6 guards por vertical (`restaurantes|hoteles|rentas|despachos|licitaciones|superadmin-ds-v2-guard.spec.ts`), que son subconjunto del global.
+1. HECHO (PR-12): se dejo `apps/web/tests/web-ds-v2-guard.spec.ts` como spec de vitest (corre en el CI via `npm run test:unit`), baseline 0, con prueba de sanidad; ver `docs/diseno-ux-guard.md`.
+2. HECHO (PR-12): se borraron los 6 guards por vertical.
 3. Si se quiere cubrir lo de la seccion 2, el orden de costo es: radio en `@atiende/ui` (3 sitios) -> `formatMoney` con moneda (3 envoltorios) -> `button` de tarjeta.
