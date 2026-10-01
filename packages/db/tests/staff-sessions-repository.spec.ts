@@ -38,6 +38,7 @@ describe("PostgresStaffSecurityRepository: sesiones y Google", () => {
       { match: /register_staff_session/, respond: () => [] },
       { match: /list_staff_sessions/, respond: () => [{ id: "s1", started_at: new Date("2026-01-01T00:00:00Z"), issued_at: "2026-01-02T00:00:00Z", expires_at: new Date("2026-02-01T00:00:00Z"), user_agent: "UA" }] },
       { match: /revoke_staff_session/, respond: () => [{ ok: true }] },
+      { match: /revoke_all_staff_sessions/, respond: () => [] },
       { match: /list_google_identities/, respond: () => [{ id: "g1", email: "a@gmail.com", created_at: new Date("2026-01-03T00:00:00Z") }] },
       { match: /unlink_google_identity/, respond: () => [{ ok: false }] },
     ]);
@@ -47,9 +48,10 @@ describe("PostgresStaffSecurityRepository: sesiones y Google", () => {
       { id: "s1", startedAt: "2026-01-01T00:00:00.000Z", issuedAt: "2026-01-02T00:00:00.000Z", expiresAt: "2026-02-01T00:00:00.000Z", userAgent: "UA" },
     ]);
     expect(await repo.revokeSession("u1", "s1")).toBe(true);
+    await repo.revokeAllSessions("u1");
     expect(await repo.listGoogleIdentities("u1")).toEqual([{ id: "g1", email: "a@gmail.com", linkedAt: "2026-01-03T00:00:00.000Z" }]);
     expect(await repo.unlinkGoogleIdentity("u1", "g9")).toBe(false);
-    expect(claims).toEqual([{ userId: null }, { userId: "u1" }, { userId: "u1" }, { userId: "u1" }, { userId: "u1" }]);
+    expect(claims).toEqual([{ userId: null }, { userId: "u1" }, { userId: "u1" }, { userId: "u1" }, { userId: "u1" }, { userId: "u1" }]);
   });
 
   it.each([
@@ -126,6 +128,19 @@ describe("InMemoryStaffSecurityRepository: sesiones (misma semantica que la migr
     await new Promise((r) => setTimeout(r, 5));
     await core.revokeAllRefreshTokens("u1");
     expect(await repo.listSessions("u1")).toEqual([]);
+  });
+
+  it("cerrar todas: corta las previas (truncado a segundo) y una sesion emitida despues del corte sigue viva", async () => {
+    const { repo, core } = setup();
+    const t0 = Date.now();
+    await repo.registerSession({ staffId: "u1", jti: "previa", expiresAt: FUTURE(), userAgent: null });
+    repo.now = () => t0 + 2000; // emitida 2 s despues: posterior al corte truncado de "ahora"
+    await repo.revokeAllSessions("u1");
+    // corte = floor(ahora real); la previa se emitio en un segundo anterior simulado:
+    const row = (await core.findStaffById("u1"))?.sessionsRevokedAt;
+    expect(row && new Date(row).getMilliseconds()).toBe(0);
+    await repo.registerSession({ staffId: "u1", jti: "nueva", expiresAt: FUTURE(), userAgent: null });
+    expect((await repo.listSessions("u1")).map((s) => s.id)).toContain("nueva");
   });
 
   it("tope de 50 sesiones vivas por cuenta (descarta las mas viejas)", async () => {

@@ -206,6 +206,11 @@ export class InMemoryStaffSecurityRepository implements StaffSecurityRepository 
     return true;
   }
 
+  async revokeAllSessions(staffId: string): Promise<void> {
+    this.guard();
+    this.core.revokeSessionsAtSecond(staffId);
+  }
+
   async listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]> {
     this.guard();
     return this.core.listGoogleIdentitiesFor(staffId);
