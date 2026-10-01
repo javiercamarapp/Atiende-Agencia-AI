@@ -8,6 +8,7 @@
 //   POST .../admin/handoffs/:handoffId/responder               respuesta humana por WhatsApp (outbox)
 //   GET  .../admin/turnos   PUT .../admin/turnos               turnos de personal y quien esta de guardia
 //   GET  .../admin/callbacks   POST .../admin/callbacks/:callbackId/intentos   registro de callbacks
+//   POST .../admin/callbacks/:callbackId/estado   tomar / asignar / liberar / resolver / reabrir (migracion 033, R-12)
 //
 // Autorizacion: owner/admin/staff (`MANAGER_ROLES`; el repartidor nunca) en todo; los turnos solo se
 // escriben como owner/admin (`STAFF_INVITE_ROLES`). RLS y las funciones SQL de la migracion 028 son la
@@ -18,6 +19,8 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  CALLBACK_ACCIONES,
+  CALLBACK_ESTADOS,
   CALLBACK_RESULTADOS,
   CONVERSACION_CANALES,
   ConversacionesNoDisponibleError,
@@ -33,9 +36,10 @@ import {
   STAFF_INVITE_ROLES,
   calcularCobertura,
   calcularEscalacion,
+  calcularSlaCallback,
   validarTurnos,
 } from "@atiende/domain-restaurantes";
-import type { BandejaItem, CallbackResultado, ConversacionCanal, ConversacionesRepository, HandoffEstado } from "@atiende/domain-restaurantes";
+import type { BandejaItem, CallbackAccion, CallbackEstado, CallbackResultado, ConversacionCanal, ConversacionesRepository, HandoffEstado } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -91,6 +95,7 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
     turnos: `${base}/turnos`,
     callbacks: `${base}/callbacks`,
     intentos: `${base}/callbacks/:callbackId/intentos`,
+    estadoCallback: `${base}/callbacks/:callbackId/estado`,
   };
   for (const path of Object.values(paths)) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -298,15 +303,58 @@ export function restaurantesConversacionesAdminRoutes(deps: AppDeps): Hono<CoreA
   app.get(paths.callbacks, async (c) => {
     const { organizationId, propertyId } = await resolverSucursal(c);
     const soloAbiertos = c.req.query("soloAbiertos") === "1";
+    const estadoFiltro = c.req.query("estado");
+    if (estadoFiltro !== undefined && estadoFiltro !== "" && !(CALLBACK_ESTADOS as readonly string[]).includes(estadoFiltro)) {
+      throw Errors.validation(`estado: debe ser uno de ${CALLBACK_ESTADOS.join(", ")}.`);
+    }
     try {
       const lectura = await repo(c).listarCallbacks(organizationId, propertyId, soloAbiertos);
-      return c.json({
-        disponible: lectura.disponible,
-        items: lectura.valor.map((cb) => ({
+      const ahora = new Date();
+      const items = lectura.valor
+        .map((cb) => {
+          const estado: CallbackEstado = cb.estado ?? (cb.resolved ? "resuelto" : "nuevo");
+          return { cb, estado };
+        })
+        .filter(({ estado }) => !estadoFiltro || estado === estadoFiltro)
+        .map(({ cb, estado }) => ({
           id: cb.id, sucursalId: cb.propertyId, nombre: cb.customerName, telefono: cb.customerPhone, motivo: cb.reason, mensaje: cb.message, origen: cb.source, resuelto: cb.resolved, creadoEn: cb.createdAt,
+          // R-12 (migracion 033). `gestionable: false` = base sin 033: solo hay abierto/resuelto, sin asignacion.
+          estado,
+          gestionable: cb.estado !== undefined,
+          asignadoA: cb.asignadoA ?? null,
+          asignadoNombre: cb.asignadoNombre ?? null,
+          asignadoEn: cb.asignadoAt ?? null,
+          tomadoEn: cb.tomadoAt ?? null,
+          resueltoEn: cb.resueltoAt ?? null,
+          resueltoPor: cb.resueltoPorNombre ?? null,
+          notaResolucion: cb.notaResolucion ?? null,
+          sla: calcularSlaCallback({ reason: cb.reason, createdAt: cb.createdAt, estado, tomadoAt: cb.tomadoAt ?? null, resueltoAt: cb.resueltoAt ?? null }, ahora),
           intentos: cb.intentos.map((i) => ({ id: i.id, resultado: i.resultado, nota: i.nota, proximoIntentoEn: i.proximoIntentoAt, autor: i.autor, creadoEn: i.creadoAt })),
-        })),
-      });
+        }));
+      return c.json({ disponible: lectura.disponible, items });
+    } catch (err) {
+      return aHttp(err);
+    }
+  });
+
+  app.post(paths.estadoCallback, async (c) => {
+    const { organizationId } = await resolverSucursal(c);
+    const callbackId = parseUuid(c.req.param("callbackId"), "Callback");
+    const body = await readJsonCapped<{ accion?: unknown; asignadoA?: unknown; nota?: unknown }>(c.req.raw, 4 * 1024);
+    if (typeof body.accion !== "string" || !(CALLBACK_ACCIONES as readonly string[]).includes(body.accion)) {
+      throw Errors.validation(`accion: debe ser una de ${CALLBACK_ACCIONES.join(", ")}.`);
+    }
+    const accion = body.accion as CallbackAccion;
+    let asignadoA: string | null = null;
+    if (accion === "asignar") {
+      if (typeof body.asignadoA !== "string" || !UUID_RE.test(body.asignadoA)) throw Errors.validation("asignadoA: se requiere el id de la persona a asignar.");
+      asignadoA = body.asignadoA;
+    }
+    if (body.nota !== undefined && body.nota !== null && (typeof body.nota !== "string" || body.nota.length > 1000)) throw Errors.validation("nota: texto de hasta 1000 caracteres.");
+    try {
+      const estado = await repo(c).actualizarCallback(organizationId, callbackId, accion, { asignadoA, nota: (body.nota as string | null | undefined) ?? null });
+      logEvent(c, "info", "restaurantes_callback_estado", { actorUserId: c.get("userId"), organizationId, callbackId, accion, estado, asignadoA });
+      return c.json({ estado });
     } catch (err) {
       return aHttp(err);
     }
