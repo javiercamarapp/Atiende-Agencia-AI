@@ -486,3 +486,10 @@ export type {
   NivelAtencion,
   SeveridadAnomalia,
 } from "./dashboard/kpis.ts";
+export { construirDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
+export type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
+export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
+export type { EntradaReporte } from "./reportes/builders.ts";
+export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
