@@ -90,7 +90,7 @@ async function setup(options: { unavailable?: boolean } = {}) {
     expect(res.json).toMatchObject({ requested: 1 });
     const msg = graph.sent.find((m) => m.buttons && m.buttons.length === 2)!;
     expect(msg).toBeDefined();
-    const [go, noGo] = (msg.buttons as { id: string }[]).map((b) => parseActionButtonId(b.id)!);
+    const [go, noGo] = (msg.buttons as unknown as { id: string }[]).map((b) => parseActionButtonId(b.id)!);
     return { goToken: go!, noGoToken: noGo! };
   }
 
