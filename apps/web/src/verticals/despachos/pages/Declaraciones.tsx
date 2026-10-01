@@ -23,7 +23,7 @@
 // El estado `tipo` y los tres formularios siguen siendo exactamente los mismos.
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Calculator, Search } from "lucide-react";
+import { Calculator, Download, Search } from "lucide-react";
 import {
   Button,
   Card,
@@ -42,8 +42,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@atiende/ui";
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot } from "../lib/declaraciones-client.ts";
-import type { DiotAgregado, IsrResultado } from "../lib/declaraciones-client.ts";
+import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot, fetchDiotLayout } from "../lib/declaraciones-client.ts";
+import type { DiotAgregado, DiotLayoutRespuesta, IsrResultado } from "../lib/declaraciones-client.ts";
 import { formatDiotTipoOperacion, formatMoney, formatTablaAplicadaIsr } from "../lib/format.ts";
 import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -291,10 +291,42 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
   const [agregado, setAgregado] = useState<DiotAgregado | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [layoutAdvertencias, setLayoutAdvertencias] = useState<readonly string[]>([]);
+  const [descargando, setDescargando] = useState<"txt" | "xml" | null>(null);
+
+  // D-05: descarga el layout del periodo consultado (sin firma ni envio). El archivo se
+  // arma en el servidor; aqui solo se guarda como Blob.
+  async function descargarLayout(formato: "txt" | "xml") {
+    setError(null);
+    setDescargando(formato);
+    try {
+      const l: DiotLayoutRespuesta = await fetchDiotLayout(fetch, ctx.apiBaseUrl, ctx.token, ctx.propertyId, periodo);
+      setLayoutAdvertencias(l.advertencias);
+      const contenido = formato === "txt" ? l.txt : l.xml;
+      if (contenido === "") {
+        setError("No hay terceros reportables en este periodo: no se generó archivo.");
+        return;
+      }
+      const blob = new Blob([contenido], { type: formato === "txt" ? "text/plain;charset=utf-8" : "application/xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `DIOT_${periodo}.${formato}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo generar el layout DIOT.");
+    } finally {
+      setDescargando(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setLayoutAdvertencias([]);
     if (!/^\d{4}-\d{2}$/.test(periodo)) {
       setError("Periodo inválido -- usa el formato AAAA-MM.");
       return;
@@ -346,6 +378,24 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
               <strong>Total IVA acreditable:</strong> {formatMoney(agregado.totalIvaAcreditable)}
             </span>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("txt")}>
+              <Download />
+              {descargando === "txt" ? "Generando…" : "Descargar layout TXT"}
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={descargando !== null || agregado.registros.length === 0} onClick={() => void descargarLayout("xml")}>
+              <Download />
+              {descargando === "xml" ? "Generando…" : "Descargar XML"}
+            </Button>
+            <span className="text-xs text-muted-foreground">Archivo para revisión: sin firma ni envío al SAT.</span>
+          </div>
+          {layoutAdvertencias.length > 0 && (
+            <ul role="status" className="list-disc pl-5 text-xs text-muted-foreground">
+              {layoutAdvertencias.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
           {agregado.registros.length === 0 ? (
             <p role="status" className="text-sm text-muted-foreground">
               Sin proveedores reportables en este periodo.
