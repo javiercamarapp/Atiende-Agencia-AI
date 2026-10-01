@@ -11,6 +11,7 @@ import {
   buildCalendarioPlazos,
   calendarioAvisos,
   countBusinessDaysBetween,
+  describirPlazo,
   isBusinessDay,
   isValidDateOnly,
   mexicoCityDateKey,
@@ -224,5 +225,38 @@ describe("parseDiaInhabilCreate", () => {
     [{ fecha: "2026-04-02", nombre: "Dia valido", publicadoPor: "x".repeat(201) }],
   ])("rechaza entrada invalida %#", (raw) => {
     expect(() => parseDiaInhabilCreate(raw as Record<string, unknown>)).toThrow(DiaInhabilValidationError);
+  });
+});
+
+describe("describirPlazo", () => {
+  const cal = officialOnlyCalendar();
+
+  it("usa la fecha civil de Mexico: 31-dic 23:00 CDMX no es el 1-ene inhabil", () => {
+    const p = describirPlazo("2026-12-31T23:00:00-06:00", "2026-12-28T15:00:00-06:00", cal);
+    expect(p.fechaLimite).toBe("2026-12-31");
+    expect(p.caeEnInhabil).toBe(false);
+    // 28-dic (lun) -> 31-dic (jue): 29, 30, 31 = 3 habiles
+    expect(p.diasHabilesRestantes).toBe(3);
+  });
+
+  it("avisa cuando el plazo cae en un feriado y propone el siguiente dia habil", () => {
+    const p = describirPlazo("2026-03-16T14:00:00-06:00", "2026-03-10T09:00:00-06:00", cal);
+    expect(p.caeEnInhabil).toBe(true);
+    expect(p.motivoInhabil).toMatch(/Benito Juárez/);
+    expect(p.siguienteDiaHabil).toBe("2026-03-17");
+    expect(p.avisos.some((a) => /día inhábil/.test(a))).toBe(true);
+  });
+
+  it("avisa cuando cae en fin de semana y cuando ya vencio devuelve negativo", () => {
+    const sab = describirPlazo("2026-03-14T12:00:00-06:00", "2026-03-10T09:00:00-06:00", cal);
+    expect(sab.motivoInhabil).toBe("sábado");
+    const vencido = describirPlazo("2026-03-10T12:00:00-06:00", "2026-03-13T09:00:00-06:00", cal);
+    expect(vencido.diasHabilesRestantes).toBe(-3);
+    expect(vencido.caeEnInhabil).toBe(false);
+  });
+
+  it("un plazo en un anio sin calendario avisa y solo excluye fines de semana", () => {
+    const p = describirPlazo("2029-06-04T12:00:00-06:00", "2029-06-01T09:00:00-06:00", cal);
+    expect(p.avisos.some((a) => /2029/.test(a))).toBe(true);
   });
 });

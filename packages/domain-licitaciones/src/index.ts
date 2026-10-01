@@ -493,6 +493,7 @@ export {
   buildCalendarioPlazos,
   calendarioAvisos,
   countBusinessDaysBetween,
+  describirPlazo,
   isBusinessDay,
   isValidDateOnly,
   mexicoCityDateKey,
@@ -509,6 +510,7 @@ export type {
   DiaInhabilRecord,
   DiaInhabilSugerido,
   DiaInhabilVerificacion,
+  PlazoDescripcion,
 } from "./dias-inhabiles.ts";
 export { calendarNoteOf, holidayDatesOf } from "./business-days.ts";
 export type { DiasInhabilesInput } from "./business-days.ts";

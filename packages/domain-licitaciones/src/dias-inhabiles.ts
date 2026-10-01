@@ -302,3 +302,48 @@ export interface DiaInhabilRecord extends DiaInhabil {
   readonly createdBy: string;
   readonly createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Descripcion de un plazo fijo (fecha limite de presentacion, de preguntas de la junta, etc.)
+// ---------------------------------------------------------------------------
+
+export interface PlazoDescripcion {
+  /** Fecha civil del plazo en America/Mexico_City ("YYYY-MM-DD"). */
+  readonly fechaLimite: string;
+  /** Hoy en America/Mexico_City ("YYYY-MM-DD"). */
+  readonly hoy: string;
+  /** Dias habiles que faltan (negativo = ya vencio; 0 = vence hoy). */
+  readonly diasHabilesRestantes: number;
+  /** El plazo cae en sabado, domingo o dia inhabil: conviene validarlo con la convocante. */
+  readonly caeEnInhabil: boolean;
+  readonly motivoInhabil: string | null;
+  readonly siguienteDiaHabil: string | null;
+  readonly avisos: readonly string[];
+  readonly nota: string;
+}
+
+/**
+ * Describe un plazo FIJO (un instante que fija la convocante) contra el calendario efectivo, siempre
+ * en la fecha civil de America/Mexico_City. No mueve el plazo: solo avisa si cae en dia inhabil y
+ * cuantos dias habiles faltan (la convocante manda; esto es una ayuda para no perder el plazo).
+ */
+export function describirPlazo(deadlineIso: string, nowIso: string, calendario: CalendarioPlazos): PlazoDescripcion {
+  const fechaLimite = mexicoCityDateKey(deadlineIso);
+  const hoy = mexicoCityDateKey(nowIso);
+  const diaSemana = toUtcDate(fechaLimite).getUTCDay();
+  const entrada = calendario.entries.find((e) => e.fecha === fechaLimite);
+  const caeEnInhabil = diaSemana === 0 || diaSemana === 6 || calendario.holidays.includes(fechaLimite);
+  const motivoInhabil = !caeEnInhabil ? null : entrada ? entrada.nombre : diaSemana === 0 ? "domingo" : "sábado";
+  const avisos = calendarioAvisos(calendario, hoy < fechaLimite ? hoy : fechaLimite, hoy < fechaLimite ? fechaLimite : hoy);
+  if (caeEnInhabil) avisos.push(`La fecha límite cae en un día inhábil (${motivoInhabil}): confirme con la convocante si el plazo se recorre.`);
+  return {
+    fechaLimite,
+    hoy,
+    diasHabilesRestantes: countBusinessDaysBetween(hoy, fechaLimite, calendario.holidays),
+    caeEnInhabil,
+    motivoInhabil,
+    siguienteDiaHabil: caeEnInhabil ? nextBusinessDayOnOrAfter(fechaLimite, calendario.holidays) : null,
+    avisos,
+    nota: calendario.note,
+  };
+}
