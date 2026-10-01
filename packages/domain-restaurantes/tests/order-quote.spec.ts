@@ -53,14 +53,23 @@ describe("buildOrderQuoteFromProducts", () => {
 describe("buildComplementNotes", () => {
   it("lista los complementos incluidos por default cuando no se omite ninguno", () => {
     const notes = buildComplementNotes(undefined, [], []);
-    expect(notes).toBe("Complementos incluidos: salsa verde, salsa roja, limones, cebolla.");
+    expect(notes).toBe(
+      "Complementos incluidos: salsa roja, salsa verde, salsa mexicana, salsa guacamolera, limones, crema de ajo, cebolla con cilantro, salsa de piña, salsa habanero (soasada o picada con limón).",
+    );
   });
   it("dice explícitamente 'no enviar complementos' cuando se omiten todos", () => {
     const notes = buildComplementNotes(undefined, [], [...DEFAULT_COMPLEMENTS]);
     expect(notes).toMatch(/No enviar complementos de cortesía/);
   });
-  it("agrega los complementos solicitados sin duplicar", () => {
-    const notes = buildComplementNotes(undefined, ["salsa_habanero", "salsa_habanero"], []);
-    expect(notes.match(/salsa habanero/g)).toHaveLength(1);
+  it("habanero/crema de ajo solicitados no aparecen a la vez como incluidos y solicitados", () => {
+    const notes = buildComplementNotes(undefined, ["salsa_habanero", "salsa_habanero", "crema_ajo"], []);
+    expect(notes).toBe(buildComplementNotes(undefined, [], []));
+    expect(notes).not.toMatch(/solicitados/i);
+  });
+  it("una peticion expresa de habanero gana sobre una omision contradictoria", () => {
+    const notes = buildComplementNotes(undefined, ["salsa_habanero"], ["salsa_habanero", "salsa_verde"]);
+    expect(notes).toContain("salsa habanero");
+    expect(notes).not.toContain("salsa verde");
+    expect(notes).not.toMatch(/solicitados/i);
   });
 });

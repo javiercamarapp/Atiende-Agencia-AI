@@ -460,3 +460,67 @@ registran como una línea de log estructurada (sin resultados ni PII) en vez de 
 | Vercel (Hobby) | Uso personal/no-comercial, builds y bandwidth dentro de cuota | Uso comercial (Vercel lo exige explícito en sus términos), excedes cuota de builds/bandwidth, o agregas add-ons (Postgres, KV, Cron más allá del free) |
 | Upstash Redis | Tier free (10K comandos/día aprox., 256MB) | Excedes esa cuota de comandos/almacenamiento |
 | ElevenLabs | Cuota gratis muy limitada (minutos/mes) | Casi cualquier uso real de voz en producción |
+
+---
+
+## Rentas — reportes (Rn-03) y liberación de acceso al huésped (Rn-04): orden de despliegue y cron, DECISIÓN DE JAVIER
+
+**Rn-03 (reportes de ocupación e ingresos) no necesita migración**: solo lee tablas que
+ya existen desde `001`/`003` (`rentas.ocupacion`, `rentas.unidad`, `rentas.canal`,
+`rentas.reserva_financiero`, `rentas.property_config`). Se despliega con el código; si
+`rentas.reserva_financiero` no existiera o no fuera legible en la base real, el reporte
+responde `financiero_disponible: false` con noches y ocupación (montos en cero), nunca 500.
+
+**Rn-04 (liberación de instrucciones de acceso) sí necesita la migración**
+`packages/domain-rentas/migrations/025_rentas_acceso_huesped.sql` (espejo
+`supabase/migrations/20240101000225_025_rentas_acceso_huesped.sql`). Orden:
+
+1. Mergear el PR (el código sale a Vercel y ya es seguro contra la base sin migrar: las
+   rutas de configuración responden `disponible: false`/409 "aún no disponible" y el
+   cron, si alguien lo dispara, responde `ok` con `disponible: false` y no hace nada).
+2. Aplicar la migración `025` a la base real (Supabase). Es aditiva: tablas y funciones
+   nuevas, no toca ninguna existente.
+3. Con la migración aplicada, el staff (`admin_gestora` / `operador:acceso_total`)
+   configura por property la política (horas antes del check-in, hora local de check-in,
+   si exige pago, si una reserva de canal OTA cuenta como pagada) y por unidad las
+   instrucciones. La política nace **apagada**: nada se libera hasta activarla.
+4. Agendar (o disparar a mano) el cron — ver abajo.
+
+**El cron NO está en `vercel.json`** (decisión tuya, igual que Rn-01): este PR no agrega
+ningún cron ni cambia ninguna cadencia. Endpoint listo: `GET|POST /internal/rentas/acceso-huesped`
+(mismo guard que `checkin-recordatorio`: `Authorization: Bearer $CRON_SECRET` o
+`x-atiende-internal-secret`). Una transacción por reserva, idempotente (`dedupe_key`
+`acceso:<reserva>` en el outbox + marca de liberación), tope de 50 reservas por corrida.
+
+**Cron propuesto (NO aplicado):**
+
+```json
+{ "path": "/internal/rentas/acceso-huesped", "schedule": "30 14 * * *" }
+```
+
+Con una corrida diaria la ventana de liberación se cumple con hasta 24 h de holgura:
+si la política es "24 h antes" y el cron corre una vez al día, la instrucción puede salir
+entre 0 y 24 h *antes* de lo configurado. Para que "N horas antes" sea preciso hace falta
+una cadencia mayor (p. ej. cada hora, `0 * * * *`), con las mismas restricciones de plan
+que el cron de iCal arriba (los crons de más de una vez al día requieren **Vercel Pro** o
+un scheduler externo con `Authorization: Bearer $CRON_SECRET`). Cada corrida sin reservas
+elegibles hace 1 consulta corta.
+
+Si lo agendas: agrega también `"/internal/rentas/acceso-huesped"` a `SWITCHABLE_CRONS`
+(`apps/api/src/platform-switches.ts`) para poder pausarlo desde superadmin (un test exige
+que todo cron detenible esté en `vercel.json`, por eso no se agregó antes).
+
+**Qué cuenta como "pagada"** (rentas no tiene un libro de pagos del huésped;
+`reserva_financiero.monto_recibido_centavos` es el neto tras comisión de canal, no un
+cobro): (a) el staff confirma el pago de la reserva
+(`POST /rentas/:propertyId/reservas/:ocupacionId/pago-confirmado`) o (b) la reserva viene
+de un canal OTA (Airbnb/Vrbo/Booking) y la política `ota_cuenta_como_pagada` está activa
+(por defecto sí: la plataforma cobra al reservar). Con `exigir_pago` apagado no se pide pago.
+
+**Entrega**: por correo, vía `rentas.messaging_outbox` (el mismo dispatcher de Resend que
+ya usan confirmación y recordatorio de check-in). Solo reservas con un correo válido en
+`guest_minimo.contacto`; las de canal sin correo quedan en la bitácora como
+`omitida_sin_contacto`. Nota de retención: el correo con el código viaja en
+`messaging_outbox.payload`, que hoy no se purga tras el envío (es una tabla sin acceso para
+`authenticated`, solo la función de sistema y `service_role`); cambiar el código de la
+cerradura entre estancias sigue siendo la mitigación real.

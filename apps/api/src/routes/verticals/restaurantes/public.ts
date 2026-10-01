@@ -59,6 +59,9 @@ interface CreateOrderBody {
   readonly canal?: unknown;
   readonly colonia_entrega?: unknown;
   readonly propina?: unknown;
+  /** PM PR-3: hora prometida de recogida (ISO 8601 con zona, solo canal "recoger") y doble porcion de salsas. */
+  readonly hora_recogida?: unknown;
+  readonly doble_salsas?: unknown;
 }
 
 function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, source: "web" | "voice"): CreateOrderInput {
@@ -94,6 +97,8 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     canal: typeof body.canal === "string" ? (body.canal as CreateOrderInput["canal"]) : undefined,
     colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
     propina: typeof body.propina === "number" ? body.propina : undefined,
+    horaRecogida: typeof body.hora_recogida === "string" ? body.hora_recogida : undefined,
+    doubleSalsas: Array.isArray(body.doble_salsas) ? (body.doble_salsas as CreateOrderInput["doubleSalsas"]) : undefined,
   };
 }
 

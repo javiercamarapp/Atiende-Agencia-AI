@@ -81,6 +81,8 @@ import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Fin
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
 import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
+import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
+import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
 import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
 import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
@@ -130,6 +132,7 @@ import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
 import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
+import { ImportarEstadoCuentaPage } from "./verticals/despachos/pages/ImportarEstadoCuenta.tsx";
 import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
@@ -607,6 +610,8 @@ const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <R
  * feed iCal, alertas del sync y conflictos entre canales por resolver. Mismo patrón de
  * ruta hija que RentasIcalSyncRoute. */
 const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
+const RentasReportesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasReportesPage {...ctx} />);
+const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAccesoHuespedPage {...ctx} />);
 
 /** Bitácora de auditoría del staff (r5) — cierra el hueco detectado al diseñar el
  * panel de superadmin: rentas no tenía ninguna pantalla que mostrara qué hizo cada
@@ -804,6 +809,7 @@ const DespachosVencimientosRoute = shellRoute(DespachosShell, "/despachos/login"
 const DespachosDeclaracionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DeclaracionesPage {...ctx} />);
 const DespachosNominaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NominaPage {...ctx} />);
 const DespachosConciliacionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ConciliacionPage {...ctx} />);
+const DespachosImportarEstadoCuentaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ImportarEstadoCuentaPage {...ctx} />);
 const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <MigracionCatalogoPage {...ctx} />);
 const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
@@ -898,6 +904,8 @@ export function App() {
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
         <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
+        <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
+        <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
             segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
@@ -957,6 +965,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
         <Route path="/despachos/:orgSlug/conciliacion" element={<DespachosConciliacionRoute />} />
+        <Route path="/despachos/:orgSlug/conciliacion/importar" element={<DespachosImportarEstadoCuentaRoute />} />
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />

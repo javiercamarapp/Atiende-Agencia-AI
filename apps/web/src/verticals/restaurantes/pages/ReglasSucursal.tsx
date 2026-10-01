@@ -8,7 +8,10 @@ import { fetchKnownZones } from "../lib/config-client.ts";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
   NOMBRES_DIAS,
+  createPuente,
+  deletePuente,
   deleteWhatsappSucursal,
+  fetchPuentes,
   describirTurno,
   fetchPoliticaSucursal,
   fetchWhatsappSucursal,
@@ -18,7 +21,7 @@ import {
   updateWhatsappSucursal,
   updateZonasReparto,
 } from "../lib/modelo-pm-client.ts";
-import type { PropinaPolitica, TurnoHorario } from "../lib/modelo-pm-client.ts";
+import type { PropinaPolitica, Puente, TurnoHorario, TurnoPuente } from "../lib/modelo-pm-client.ts";
 
 const SELECT_CLASES = "h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
 
@@ -43,16 +46,29 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
   const [zonasElegidas, setZonasElegidas] = useState<ReadonlySet<string>>(new Set());
   const [whatsapp, setWhatsapp] = useState("");
   const [whatsappGuardado, setWhatsappGuardado] = useState<string | null>(null);
+  // Puentes: excepciones de horario por fecha de ESTA sucursal. El API acepta varias sucursales a la vez; aqui se
+  // crea para esta. Las horas de los turnos las define el negocio (no se asumen).
+  const [puentes, setPuentes] = useState<readonly Puente[]>([]);
+  const [puenteDesde, setPuenteDesde] = useState("");
+  const [puenteHasta, setPuenteHasta] = useState("");
+  const [puenteTurnos, setPuenteTurnos] = useState<TurnoPuente[]>([
+    { abre: "", cierra: "" },
+    { abre: "", cierra: "" },
+  ]);
+  const [puenteMotivo, setPuenteMotivo] = useState("");
 
   async function load() {
     setError(null);
     try {
-      const [politica, zoneIds, numero, known] = await Promise.all([
+      const [politica, zoneIds, numero, known, todosLosPuentes] = await Promise.all([
         fetchPoliticaSucursal(fetch, apiBaseUrl, token, propertyId, branchId),
         fetchZonasReparto(fetch, apiBaseUrl, token, propertyId, branchId),
         fetchWhatsappSucursal(fetch, apiBaseUrl, token, propertyId, branchId),
         fetchKnownZones(fetch, apiBaseUrl, token, propertyId),
+        // Los puentes son accesorios: si el API aun no los expone, el resto de las reglas debe seguir cargando.
+        fetchPuentes(fetch, apiBaseUrl, token, propertyId).catch(() => [] as readonly Puente[]),
       ]);
+      setPuentes(todosLosPuentes.filter((p) => p.branchId === branchId));
       setTurnos(politica.horario ? politica.horario.map((t) => ({ ...t })) : []);
       setMinDomicilio(politica.pedidoMinimoDomicilio === null ? "" : String(politica.pedidoMinimoDomicilio));
       setMinRecoger(politica.pedidoMinimoRecoger === null ? "" : String(politica.pedidoMinimoRecoger));
@@ -125,6 +141,39 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       setNotice("Número de WhatsApp guardado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCrearPuente() {
+    const turnos = puenteTurnos.filter((t) => t.abre && t.cierra);
+    if (!puenteDesde || !puenteHasta || turnos.length === 0 || turnos.some((t) => t.abre === t.cierra)) {
+      setError("Un puente necesita fecha inicial y final y al menos un turno con apertura distinta al cierre.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await createPuente(fetch, apiBaseUrl, token, propertyId, { branchIds: [branchId], fechaDesde: puenteDesde, fechaHasta: puenteHasta, turnos, ...(puenteMotivo.trim() ? { motivo: puenteMotivo.trim() } : {}) });
+      setPuentes((await fetchPuentes(fetch, apiBaseUrl, token, propertyId)).filter((p) => p.branchId === branchId));
+      setNotice("Puente guardado.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el puente.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleBorrarPuente(id: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      await deletePuente(fetch, apiBaseUrl, token, propertyId, id);
+      setPuentes((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo borrar el puente.");
     } finally {
       setSaving(false);
     }
@@ -243,6 +292,56 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           {saving ? "Guardando…" : "Guardar reglas"}
         </Button>
       </div>
+
+      <section className="flex flex-col gap-2 border-t border-border pt-3" data-testid={`puentes-${branchId}`}>
+        <h3 className="m-0 text-sm font-semibold text-foreground">Puentes (horario por fechas)</h3>
+        <p className="m-0 text-xs text-muted-foreground">En las fechas indicadas rigen estos turnos en lugar del horario semanal (por ejemplo, abrir los dos turnos en un puente).</p>
+        {puentes.map((p) => (
+          <div key={p.id} className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+            <span>
+              {p.fechaDesde} → {p.fechaHasta}: {p.horario.map((t) => `${t.abre}–${t.cierra}`).filter((v, i, a) => a.indexOf(v) === i).join(" y ")}
+              {p.motivo ? ` (${p.motivo})` : ""}
+            </span>
+            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void handleBorrarPuente(p.id)} disabled={saving}>
+              Quitar
+            </Button>
+          </div>
+        ))}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`puente-desde-${branchId}`} className="text-xs text-muted-foreground">
+              Desde
+            </Label>
+            <Input id={`puente-desde-${branchId}`} type="date" value={puenteDesde} onChange={(e) => setPuenteDesde(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`puente-hasta-${branchId}`} className="text-xs text-muted-foreground">
+              Hasta
+            </Label>
+            <Input id={`puente-hasta-${branchId}`} type="date" value={puenteHasta} onChange={(e) => setPuenteHasta(e.target.value)} className="h-9 w-[150px]" />
+          </div>
+          {puenteTurnos.map((t, i) => (
+            <div key={i} className="flex flex-col gap-1">
+              <Label htmlFor={`puente-turno-${i}-${branchId}`} className="text-xs text-muted-foreground">
+                Turno {i + 1} (abre / cierra)
+              </Label>
+              <div className="flex gap-1">
+                <Input id={`puente-turno-${i}-${branchId}`} type="time" value={t.abre} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, abre: e.target.value } : x)))} className="h-9 w-[110px]" />
+                <Input type="time" aria-label={`Cierre del turno ${i + 1}`} value={t.cierra} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, cierra: e.target.value } : x)))} className="h-9 w-[110px]" />
+              </div>
+            </div>
+          ))}
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`puente-motivo-${branchId}`} className="text-xs text-muted-foreground">
+              Motivo (opc.)
+            </Label>
+            <Input id={`puente-motivo-${branchId}`} value={puenteMotivo} onChange={(e) => setPuenteMotivo(e.target.value)} className="h-9 w-[180px]" />
+          </div>
+          <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void handleCrearPuente()} disabled={saving}>
+            Guardar puente
+          </Button>
+        </div>
+      </section>
 
       <section className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
         <div className="flex flex-col gap-1">

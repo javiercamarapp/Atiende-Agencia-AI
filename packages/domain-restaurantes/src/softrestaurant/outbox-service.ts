@@ -97,7 +97,7 @@ export function construirPayloadComanda(pedido: PedidoParaComanda, deps: Pick<De
     cantidad: i.quantity,
     modificadores: [],
     nombre: i.name,
-    ...(i.tortilla ? { nota: `Tortilla: ${i.tortilla}` } : {}),
+    ...(i.tortilla ? { nota: `Tortilla: ${i.tortilla === "maiz" ? "maiz" : i.tortilla === "mixta" ? "mixta (mitad maiz, mitad harina)" : "harina"}` } : {}),
   }));
   const tipo: TipoComanda = pedido.tipo ?? (order.customerAddress && order.customerAddress.trim() ? "domicilio" : "recoger");
   const formaPago: FormaPagoComanda = order.paymentMethod ?? "efectivo";
