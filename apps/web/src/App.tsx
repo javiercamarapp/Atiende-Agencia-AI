@@ -67,6 +67,9 @@ import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
 import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
 import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
+import { RecepcionPage } from "./verticals/hoteles/pages/Recepcion.tsx";
+import { HuespedesPage } from "./verticals/hoteles/pages/Huespedes.tsx";
+import { HuespedFichaPage } from "./verticals/hoteles/pages/HuespedFicha.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -538,6 +541,9 @@ const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => 
 const HotelesAgentesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AgentesPage {...ctx} />);
 const HotelesAprobacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AprobacionesAgentesPage {...ctx} />);
 const HotelesGruposRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <GruposPage {...ctx} />);
+const HotelesRecepcionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <RecepcionPage {...ctx} />);
+const HotelesHuespedesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedesPage {...ctx} />);
+const HotelesHuespedFichaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedFichaPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -958,6 +964,9 @@ export function App() {
         <Route path="/hoteles/:orgSlug/agentes" element={<HotelesAgentesRoute />} />
         <Route path="/hoteles/:orgSlug/aprobaciones" element={<HotelesAprobacionesRoute />} />
         <Route path="/hoteles/:orgSlug/grupos" element={<HotelesGruposRoute />} />
+        <Route path="/hoteles/:orgSlug/recepcion" element={<HotelesRecepcionRoute />} />
+        <Route path="/hoteles/:orgSlug/huespedes" element={<HotelesHuespedesRoute />} />
+        <Route path="/hoteles/:orgSlug/huespedes/:guestId" element={<HotelesHuespedFichaRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

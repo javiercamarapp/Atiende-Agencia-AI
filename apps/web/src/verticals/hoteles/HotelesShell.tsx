@@ -19,6 +19,7 @@ import {
   Bot,
   CalendarCheck,
   ClipboardCheck,
+  ConciergeBell,
   ClipboardList,
   Fingerprint,
   Gauge,
@@ -29,6 +30,7 @@ import {
   Star,
   Tags,
   TrendingUp,
+  UserRound,
   UsersRound,
   UtensilsCrossed,
   Wrench,
@@ -136,6 +138,10 @@ const AGENTES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdes
 /** H-06: mismos roles que ven grupos en la base (`hoteles.can_view_groups`); cosmético, el servidor es la barrera real. */
 const GRUPOS_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
 
+// H-28 (recepción) y H-27 (ficha de huésped): mismos `RECEPCION_VIEW_ROLES` / `GUEST_CRM_ROLES` que domain-hoteles/src/roles.ts
+// (duplicado aquí a propósito, ver el comentario de `role` arriba) — solo oculta los links para quien el servidor rechazaría (403).
+const RECEPCION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
+
 // H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
 // arriba) — solo oculta el link "Housekeeping" del nav para quien el servidor rechazaría de
@@ -174,7 +180,9 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     {
       title: "Operación",
       items: [
+        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/recepcion`, label: "Recepción", icon: ConciergeBell }] : []),
         { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
+        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/huespedes`, label: "Huéspedes", icon: UserRound }] : []),
         ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
         { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
         { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
