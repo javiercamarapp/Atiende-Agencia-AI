@@ -31,6 +31,7 @@ import {
 import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -331,7 +332,15 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={<div className="flex items-center gap-2">{branches.length > 1 ? sucursalSelector : null}</div>}
+        action={
+          <MobileHeaderActions
+            selector={branches.length > 1 ? sucursalSelector : null}
+            notif={notif}
+            user={{ email: session.email, rol: role }}
+            onLogout={() => void handleLogout()}
+            loggingOut={loggingOut}
+          />
+        }
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3">
