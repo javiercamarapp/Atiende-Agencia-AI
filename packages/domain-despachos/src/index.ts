@@ -73,6 +73,8 @@ export {
 
 export {
   TIPOS_VENCIMIENTO,
+  TIPOS_VENCIMIENTO_BASE,
+  REGIMEN_FISCAL_POR_DEFECTO,
   fechaLimiteDia17MesSiguiente,
   diasHasta,
   calcularPrioridad,
@@ -87,6 +89,20 @@ export type {
   DecisionEscalamiento,
   NuevoVencimiento,
 } from "./vencimientos/engine.ts";
+
+export {
+  ANIOS_CALENDARIO_VERIFICADOS,
+  RegimenNoSoportadoError,
+  calcularCalendarioFiscal,
+  diaDeLaSemana,
+  feriadosDelAnio,
+  infoDiaInhabil,
+  regimenSoportado,
+  siguienteDiaHabil,
+  sumarDias,
+  tipoPersonaDeRegimen,
+} from "./vencimientos/calendario-fiscal.ts";
+export type { FeriadoFiscal, FechaLimiteHabil, ObligacionFiscalPeriodo, TipoPersona } from "./vencimientos/calendario-fiscal.ts";
 
 export {
   DESPACHOS_ROLES,

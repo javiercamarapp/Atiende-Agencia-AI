@@ -56,11 +56,33 @@ describe("decidirEscalamiento (port literal de escalate)", () => {
   it("vence en 2+ días -> nivel_1", () => expect(decidirEscalamiento("Nómina", "2026-07-17", 5).level).toBe("nivel_1"));
 });
 
-describe("calcularVencimientosDelPeriodo", () => {
-  it("genera los 4 vencimientos estándar (ISR/IVA/DIOT/Nómina) con la misma fecha límite", () => {
-    const vencimientos = calcularVencimientosDelPeriodo(2026, 6, "2026-06-01");
-    expect(vencimientos.map((v) => v.tipo)).toEqual(["ISR", "IVA", "DIOT", "Nómina"]);
-    expect(vencimientos.every((v) => v.fechaLimite === "2026-07-17")).toBe(true);
-    expect(vencimientos.every((v) => v.periodo === "2026-06")).toBe(true);
+describe("calcularVencimientosDelPeriodo (D-26: día hábil y plazos por obligación)", () => {
+  it("régimen por defecto (601): ISR/IVA/Nómina el 17 hábil, DIOT el último día del mes siguiente y balanza el día 3 del segundo mes", () => {
+    const v = calcularVencimientosDelPeriodo(2026, 6, "2026-06-01");
+    expect(v.map((x) => [x.tipo, x.fechaLimite])).toEqual([
+      ["ISR", "2026-07-17"],
+      ["IVA", "2026-07-17"],
+      ["DIOT", "2026-07-31"],
+      ["Nómina", "2026-07-17"],
+      ["Balanza", "2026-08-03"],
+    ]);
+    expect(v.every((x) => x.periodo === "2026-06")).toBe(true);
+  });
+
+  it("el 17 que cae en domingo se corre al lunes (art. 12 CFF) y lo declara", () => {
+    const v = calcularVencimientosDelPeriodo(2026, 4, "2026-04-01");
+    const isr = v.find((x) => x.tipo === "ISR")!;
+    expect(isr.fechaNominal).toBe("2026-05-17");
+    expect(isr.fechaLimite).toBe("2026-05-18");
+    expect(isr.ajustadaPorDiaInhabil).toBe(true);
+  });
+
+  it("la prioridad se calcula sobre la fecha límite AJUSTADA", () => {
+    const v = calcularVencimientosDelPeriodo(2026, 4, "2026-05-18");
+    expect(v.find((x) => x.tipo === "ISR")!.prioridad).toBe("critica");
+  });
+
+  it("un régimen sin calendario modelado lanza en vez de adivinar", () => {
+    expect(() => calcularVencimientosDelPeriodo(2026, 6, "2026-06-01", { regimenFiscal: "999" })).toThrow(/999/);
   });
 });
