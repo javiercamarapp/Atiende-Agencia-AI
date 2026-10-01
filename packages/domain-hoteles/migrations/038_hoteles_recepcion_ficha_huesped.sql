@@ -119,7 +119,8 @@ grant select, insert, update, delete on hoteles.guest_note to service_role;
 -- ---------------------------------------------------------------------------
 -- 2) hoteles.reservation_room_change (append-only)
 --    Seguridad: sin INSERT/UPDATE/DELETE para authenticated; la escribe solo hoteles.change_reservation_room.
---    Un trigger impide UPDATE/DELETE incluso a un rol con privilegios (es evidencia operativa).
+--    Un trigger impide UPDATE/DELETE directos incluso a un rol con privilegios (es evidencia operativa); solo deja pasar las
+--    acciones referenciales en cascada de las FK (ver la funcion).
 -- ---------------------------------------------------------------------------
 create table hoteles.reservation_room_change (
   id uuid primary key default gen_random_uuid(),
@@ -138,6 +139,14 @@ create index reservation_room_change_property_idx on hoteles.reservation_room_ch
 create or replace function hoteles.reservation_room_change_immutable()
 returns trigger language plpgsql set search_path = hoteles, pg_temp as $$
 begin
+  -- Seguridad / disponibilidad: las FK de esta tabla son ON DELETE CASCADE (organization, property, reservation) y ON DELETE SET NULL
+  -- (room, que dispara un UPDATE). Esas acciones referenciales corren como trigger anidado (pg_trigger_depth() > 1) y deben poder
+  -- completarse: si no, con UNA fila de bitacora ya no se podria borrar una reserva, habitacion, property ni dar de baja un tenant.
+  -- Un UPDATE/DELETE directo (profundidad 1) sigue prohibido incluso al superusuario.
+  if pg_trigger_depth() > 1 then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
   raise exception 'reservation_room_change es append-only' using errcode = '42501';
 end;
 $$;
