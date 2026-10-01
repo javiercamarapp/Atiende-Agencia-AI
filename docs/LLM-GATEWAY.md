@@ -32,29 +32,63 @@ rol (p.ej. restaurantes:data_chat)
 - **Archivos**: `providers/openrouter.ts` (proveedor), `prices.ts`, `upstash-rest-client.ts` (breaker
   compartido), `apps/api/src/production/llm-gateway.ts` (armado), `llm-models.ts` (tabla).
 
-## Tabla rol -> modelos (defaults, verificados el 2026-10-01)
+## Tabla rol -> modelos (defaults, verificados el 2026-10-02)
 
-| Rol | Modelo 1 | Modelo 2 (respaldo) | Notas |
-|---|---|---|---|
-| `*:data_chat` (6 verticales), `*:whatsapp_agent(_escalated)`, extractor de requisitos, borrador de propuesta, preguntas de junta, mensajería de rentas, conciliación de despachos | `openai/gpt-6-luna` (razonamiento `low`) | `google/gemini-3.5-flash-lite` (razonamiento `minimal`) | Perfil económico: barato y rápido. |
-| `superadmin:copiloto` (CFO) | `anthropic/claude-sonnet-5.5` (`medium`) | `openai/gpt-6-luna` (`high`) | Poco volumen, mayor riesgo. La ruta que lo invoque llega con SA-33..35; su interruptor de plataforma también (no está en `ALL_PRODUCTION_ROLES` a propósito). |
-| `plataforma:resumen_diario` y reportes largos | `google/gemini-3.8-flash` (`low`) | `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
+| Rol | Escalera (en orden) | Notas |
+|---|---|---|
+| `*:data_chat` (6 verticales), `*:whatsapp_agent(_escalated)`, extractor de requisitos, borrador de propuesta, preguntas de junta, mensajería de rentas, conciliación de despachos | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` (`low`, EE.UU.) -> `google/gemini-2.5-flash-lite` (`minimal`) -> `meta/muse-spark-1.3` (`low`) -> modo sin IA | Perfil económico. El modo sin IA lo decide el llamador (data-chat). |
+| `*:data_chat_retry` (reintento por guardia de cifras) | `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) -> `openai/gpt-6-luna` (`high`) | Rol y ruta listos; ver "Huecos" para el cableado en el motor. |
+| `superadmin:copiloto` (CFO) | `anthropic/claude-sonnet-5.5` (`medium`) -> `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) | Poco volumen, mayor riesgo. La ruta que lo invoque llega con SA-33..35; su interruptor de plataforma también. |
+| `reportes:analisis_financiero` | `anthropic/claude-sonnet-5.5` -> `deepseek/deepseek-v4-pro` | Etapa de análisis de datos de reportes financieros. |
+| `reportes:analisis_general` | `qwen/qwen3-235b-a22b-2507` (EE.UU.) -> `deepseek/deepseek-v4.1-flash` -> `openai/gpt-6-luna` | Etapa de análisis de reportes no financieros. |
+| `reportes:redaccion_financiero`, `reportes:redaccion_general` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` | Rutas separadas por tipo para que el eval decida (Qwen 3.7 Flash como candidato cuando tenga proveedor de EE.UU.). |
+| `plataforma:resumen_diario` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
+| `plataforma:enrutador_turno`, `plataforma:compuerta_escalamiento`, `plataforma:titulos_resumenes`, `plataforma:compactacion_historial` | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Roles pensados para Qwen 3.7 Flash; hoy NO se puede usar (ver política de proveedores). |
 
 Parámetros por modelo en los defaults:
 
-- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 (y los de Gemini 3.5 Flash-Lite en
-  Vertex) **no listan `temperature`** entre los parámetros soportados de OpenRouter (verificado en
-  `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se confirmó con una llamada real: `temperature: 0`
-  devuelve 404 "No endpoints found that can handle the requested parameters"). Con `require_parameters: true`,
-  mandarla deja la ruta sin endpoints; por eso se omite en todos los defaults.
+- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 **no listan `temperature`** entre los
+  parámetros soportados de OpenRouter (verificado en `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se
+  confirmó con una llamada real: `temperature: 0` devuelve 404 "No endpoints found that can handle the requested
+  parameters"). Con `require_parameters: true`, mandarla deja la ruta sin endpoints; por eso se omite en todos
+  los defaults.
 - `minMaxTokens`: piso del tope de salida (1500 a 4000 según el rol). Los tokens de razonamiento consumen
   el tope: con 500 la respuesta podía quedar vacía.
-- Preferencias de proveedor por laboratorio (`provider.only`): `openai/*` -> `openai`, `azure`;
-  `google/*` -> `google-ai-studio`, `google-vertex`; `anthropic/*` -> `anthropic`, `google-vertex`,
-  `amazon-bedrock`. OpenRouter solo prueba entre esos (fallback controlado).
-- **Modelos de laboratorios chinos: ninguno en producción.** `LLM_MODELS_JSON` los rechaza al validar
-  (`BLOCKED_MODEL_AUTHORS`). Los retadores (`EVAL_CHALLENGERS`) están apagados y solo los puede leer el arnés
-  de evals. Usarlos con datos de clientes requiere una decisión explícita de Javier.
+
+## Política de proveedores (allowlist) y laboratorios chinos
+
+Decisión de Javier (1-oct-2026, "sí acepta DeepSeek y Qwen"): la política ya **no es una lista negra de autores**
+sino una **lista blanca de proveedores** (`ALLOWED_PROVIDER_HOSTS` en `llm-models.ts`): un modelo de cualquier
+laboratorio entra a producción solo si TODOS sus proveedores son servidores en EE.UU. de esa lista (OpenAI,
+Azure, Google AI Studio/Vertex, Anthropic, Amazon Bedrock, Meta, DeepInfra, Together, Fireworks, Baseten,
+Parasail, CoreWeave, Groq).
+
+- Cada petición lleva `provider.only` (siempre con al menos un proveedor), `data_collection: "deny"` y
+  `require_parameters: true`. Para los modelos con endpoint ZDR en esos proveedores, además `zdr: true` (forzado).
+  `routingForModel` fija estos valores AUNQUE el objeto de configuración diga otra cosa.
+- Los modelos de laboratorios chinos y Meta están en `VERIFIED_MODEL_HOSTS` con los proveedores EE.UU.
+  verificados el 2026-10-02 contra la API pública de OpenRouter (`/api/v1/models/<id>/endpoints` cruzada con
+  `/api/v1/endpoints/zdr`, la lista pública de endpoints con retención cero):
+
+| Modelo | Proveedores de EE.UU. con ZDR | Nota de precio |
+|---|---|---|
+| `deepseek/deepseek-v4.1-flash` | DeepInfra, Together, Fireworks, Baseten, Parasail, CoreWeave | En EE.UU. cuesta 0.14-0.60 / 0.42-2.40 USD por 1M (no el 0.03 / 0.50 de lista). |
+| `deepseek/deepseek-v4-pro` | DeepInfra, Parasail, Azure (`azure/us`) | 1.30-1.91 / 2.60-3.83 USD por 1M en esos proveedores. |
+| `qwen/qwen3-235b-a22b-2507` | Google Vertex (`us-south1`), Parasail, DeepInfra | 0.09-0.25 / 0.55-1.00 USD por 1M. |
+| `qwen/qwen3.7-flash` | **ninguno**: hoy solo lo sirve Alibaba, sin ZDR | **Rechazado** al validar y en `routingForModel` con un error claro. |
+| `meta/muse-spark-1.3` | Meta (sin ZDR) | 1.25 / 4.25 USD por 1M. |
+
+- `LLM_MODELS_JSON` solo puede **estrechar** los proveedores de un modelo: un `only` con un proveedor fuera de la
+  lista, no verificado para ese modelo o vacío invalida la ruta completa (queda el default y un error
+  `llm_models_json_invalid`). Tampoco acepta `requireParameters: false` ni `dataCollection: "allow"`. Un modelo
+  sin fila verificada ni laboratorio de EE.UU. conocido (p. ej. `z-ai/*`) exige `only` explícito dentro de la
+  lista, y se le fuerza `zdr: true`.
+- Antes de cambiar una fila de `VERIFIED_MODEL_HOSTS`, re-verifica con `node scripts/check-llm-us-hosts.mjs`
+  (usa la API pública, sin llave, no corre en CI).
+- **Qwen 3.7 Flash**: sus cuatro roles (`enrutador_turno`, `compuerta_escalamiento`, `titulos_resumenes`,
+  `compactacion_historial`) quedan con Luna -> DeepSeek V4.1 Flash. Cuando OpenRouter liste un proveedor de EE.UU.
+  con ZDR para `qwen/qwen3.7-flash`, basta cambiar su fila de `VERIFIED_MODEL_HOSTS` y poner el modelo primero
+  en esas rutas (o hacerlo por `LLM_MODELS_JSON` tras actualizar la tabla).
 
 ## Cómo cambiar un modelo (sin tocar código)
 
@@ -82,7 +116,7 @@ Parámetros por modelo en los defaults:
 5. Campos por modelo: `model` (id de OpenRouter), `reasoningEffort` (`none|minimal|low|medium|high|xhigh`),
    `temperature` (`"omit"` o 0-2), `maxTokens`, `minMaxTokens`, `supportsStructuredOutput`. Campos de
    `routing`: `zdr`, `requireParameters`, `allowFallbacks`, `order`, `only`, `ignore` y `dataCollection`
-   (solo acepta `"deny"`: la privacidad no se puede relajar por configuración).
+   (solo acepta `"deny"`: la privacidad no se puede relajar por configuración). Ver "Política de proveedores".
 6. Antes de cambiar el primario de un rol, corre el eval propio (sección Evals) y una llamada de humo.
 
 Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `OPENROUTER_API_KEY` (llave),
@@ -138,8 +172,10 @@ El kill switch por rol sigue siendo `core.platform_switch` (`agente:<rol>`).
 ## Costos
 
 Precios de lista usados como respaldo y para reservar (USD por millón de tokens, tarifa estándar, fuente
-catálogo de OpenRouter 2026-10-01): GPT-6 Luna 0.10 / 0.50; Gemini 3.5 Flash-Lite 0.30 / 2.50; Gemini 3.8
-Flash 0.75 / 3.75; Claude Sonnet 5.5 2 / 10; GPT-6 Sol 1 / 5. La investigación
+catálogo de OpenRouter 2026-10-01/02): GPT-6 Luna 0.10 / 0.50; Gemini 2.5 Flash-Lite 0.10 / 0.40; Gemini 3.5
+Flash-Lite 0.30 / 2.50; Gemini 3.8 Flash 0.75 / 3.75; Claude Sonnet 5.5 2 / 10; GPT-6 Sol 1 / 5; Muse Spark 1.3
+1.25 / 4.25; DeepSeek V4.1 Flash 0.60 / 2.40, DeepSeek V4 Pro 1.91 / 3.83 y Qwen3-235B 0.25 / 1 (estos tres con el
+precio MÁS CARO de sus proveedores de EE.UU., para no sub-reservar). La investigación
 (`investigacion-modelos-copiloto`) estima ~10 centavos MXN por conversación de data-chat con Luna `low`
 (estimación sin medir; se reemplaza con lo medido en evals). El costo **registrado** es el real de OpenRouter.
 

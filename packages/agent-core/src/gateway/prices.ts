@@ -30,6 +30,15 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
   'google/gemini-3.5-flash-lite': { inPerM: 0.3, outPerM: 2.5, cachedInPerM: 0.03, verifiedAt: '2026-10-01' },
   'google/gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75, cachedInPerM: 0.075, verifiedAt: '2026-10-01' },
   'anthropic/claude-sonnet-5.5': { inPerM: 2, outPerM: 10, cachedInPerM: 0.2, verifiedAt: '2026-10-01' },
+  'google/gemini-2.5-flash-lite': { inPerM: 0.1, outPerM: 0.4, cachedInPerM: 0.01, verifiedAt: '2026-10-02' },
+  'meta/muse-spark-1.3': { inPerM: 1.25, outPerM: 4.25, verifiedAt: '2026-10-02' },
+  // Modelos de laboratorios chinos servidos SOLO por proveedores de EE.UU. (ver
+  // apps/api/src/production/llm-models.ts): se reserva con el precio MAS CARO de esos proveedores (el
+  // de lista de OpenRouter, $0.03/$0.5 en DeepSeek V4.1 Flash, no aplica a EE.UU.); el costo registrado
+  // sigue siendo el real que devuelve OpenRouter.
+  'deepseek/deepseek-v4.1-flash': { inPerM: 0.6, outPerM: 2.4, verifiedAt: '2026-10-02' },
+  'deepseek/deepseek-v4-pro': { inPerM: 1.91, outPerM: 3.83, verifiedAt: '2026-10-02' },
+  'qwen/qwen3-235b-a22b-2507': { inPerM: 0.25, outPerM: 1, verifiedAt: '2026-10-02' },
 };
 
 /** Precio de lista de un modelo, o `undefined` si no esta en la tabla. Acepta el id de OpenRouter

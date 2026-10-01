@@ -49,7 +49,12 @@ describe("buildProductionLlmGateway", () => {
   it("con OpenRouter Y OpenAI legado, la escalera usa SOLO OpenRouter (proveedor unico por defecto)", () => {
     const env = envWith({ openai: { apiKey: fakeKey(), model: "gpt-5.6-test" }, openrouter: OPENROUTER });
     const ladder = buildRoleLadder(env, "restaurantes:data_chat", { roles: {} })!;
-    expect(ladder.map((p) => p.id)).toEqual(["openrouter:openai/gpt-6-luna", "openrouter:google/gemini-3.5-flash-lite"]);
+    expect(ladder.map((p) => p.id)).toEqual([
+      "openrouter:openai/gpt-6-luna",
+      "openrouter:deepseek/deepseek-v4.1-flash",
+      "openrouter:google/gemini-2.5-flash-lite",
+      "openrouter:meta/muse-spark-1.3",
+    ]);
   });
 
   it("cada rol de produccion recibe su escalera; el copiloto de superadmin usa Claude Sonnet 5.5 primero y los reportes Gemini 3.8 Flash", () => {
