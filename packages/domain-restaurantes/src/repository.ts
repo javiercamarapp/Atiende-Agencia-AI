@@ -12,6 +12,8 @@ import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWrit
 import type {
   Branch,
   BranchPolicy,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
@@ -507,6 +509,15 @@ export interface RestaurantesRepository {
    *  `RestaurantesConfigUnavailableError` (503 honesto vía la ruta HTTP) si la
    *  base todavía no tiene la migración 022 aplicada. */
   upsertBranchZonaHoraria(propertyId: string, zonaHoraria: string | null): Promise<BranchTimezoneConfig>;
+
+  // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
+  /** Config del agente para esa sucursal; si no tiene fila propia, la de la organizacion (property_id
+   * null); `null` si no hay ninguna o la base todavia no tiene la migracion (SAVEPOINT + 42P01/42703/42501/
+   * 42883): el llamador cae al agente generico. */
+  findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null>;
+  /** Alta o reemplazo de la config de la organizacion (`propertyId` null) o de una sucursal. Lanza
+   * `RestaurantesConfigUnavailableError` en una base sin migrar. */
+  upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow>;
 
   // ---- Modelo PM (migracion 023): politica por sucursal, cobertura de entrega,
   // WhatsApp por sucursal y marcas no_domicilio. Toda LECTURA degrada a "sin

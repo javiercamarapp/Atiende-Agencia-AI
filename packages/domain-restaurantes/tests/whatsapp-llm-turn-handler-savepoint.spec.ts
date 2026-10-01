@@ -49,6 +49,8 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const organizationId = randomUUID();
 
     const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
+      { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
@@ -117,6 +119,7 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
   it("T-HO01 / X37: la escalada por el clasificador (antes del LLM) tambien va en SAVEPOINT; si el aviso no se pudo registrar NO se dice 'ya avisé al equipo'", async () => {
     const organizationId = randomUUID();
     const session = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
