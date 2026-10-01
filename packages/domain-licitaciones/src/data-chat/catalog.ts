@@ -10,6 +10,7 @@
 //  - Montos de propuestas por estado y montos en moneda distinta de MXN (no se convierte ni se inventa
 //    tipo de cambio).
 import {
+  DEFAULT_DATA_CHAT_TIMEZONE,
   PERIOD_PARAMS,
   formatMxn,
   resolvePeriod,
@@ -65,6 +66,17 @@ const ELEGIBILIDAD: Readonly<Record<string, string>> = { cumple: "Cumple", no_cu
 
 const SCOPE_LABEL = "toda tu organización";
 
+/** Una zona IANA invalida llegaria a `at time zone $2` y daria un error de Postgres (22023): se valida antes. */
+function validTimezone(tz: string | null | undefined): string | null {
+  if (!tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    return tz;
+  } catch {
+    return null;
+  }
+}
+
 function failure(status: DataChatToolResult["status"], message: string, source: string): DataChatToolResult {
   return { status, message, source, scopeLabel: "", columns: [], rows: [] };
 }
@@ -72,7 +84,7 @@ function failure(status: DataChatToolResult["status"], message: string, source: 
 async function windowFor(reader: LicitacionesDataChatReader, ctx: DataChatToolContext, args: ParsedArgs | null, source: string): Promise<{ w: LicitacionesDataChatWindow; periodLabel?: string } | DataChatToolResult> {
   // La zona sale de la configuracion de la organizacion (o la del alcance si no hay); nunca del modelo.
   const configured = await reader.organizationTimezone(ctx.scope.organizationId);
-  const timezone = configured ?? ctx.scope.timezone;
+  const timezone = validTimezone(configured) ?? validTimezone(ctx.scope.timezone) ?? DEFAULT_DATA_CHAT_TIMEZONE;
   let desde = ctx.now;
   let hasta = ctx.now;
   let periodLabel: string | undefined;

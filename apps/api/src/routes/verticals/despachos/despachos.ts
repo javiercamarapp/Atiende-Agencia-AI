@@ -24,6 +24,7 @@ import { despachosConfiguracionRoutes } from "./configuracion.ts";
 import { despachosDashboardRoutes } from "./dashboard.ts";
 import { despachosReportesRoutes } from "./reportes.ts";
 import { despachosEfosRoutes } from "./efos.ts";
+import { despachosChatDatosRoutes } from "./chat-datos.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -66,5 +67,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // ver dashboard.ts y reportes.ts. Solo lectura, sin migración nueva.
   app.route("/", despachosDashboardRoutes(deps));
   app.route("/", despachosReportesRoutes(deps));
+  // "Chatea con tus datos" (motor compartido + catalogo cerrado de despachos).
+  app.route("/", despachosChatDatosRoutes(deps));
   return app;
 }

@@ -26,6 +26,7 @@ import { licitacionesAdminStaffRoutes } from "./admin-staff.ts";
 import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
 import { licitacionesResolutionRoutes } from "./resolution.ts";
 import { licitacionesCompanyDataRoutes } from "./companyData.ts";
+import { licitacionesChatDatosRoutes } from "./chat-datos.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -70,5 +71,7 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // PENDIENTE por no tener dónde capturar el dato real).
   app.route("/", licitacionesResolutionRoutes(deps));
   app.route("/", licitacionesCompanyDataRoutes(deps));
+  // "Chatea con tus datos" (motor compartido + catalogo cerrado de licitaciones).
+  app.route("/", licitacionesChatDatosRoutes(deps));
   return app;
 }

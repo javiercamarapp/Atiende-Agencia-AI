@@ -86,6 +86,13 @@ describe("convocatorias_abiertas", () => {
     expect(reader.calls.find((c) => c.method === "convocatoriasAbiertas")!.window!.timezone).toBe("America/Mexico_City");
   });
 
+  it("una zona horaria invalida (configurada o del alcance) cae al default y NUNCA llega al SQL", async () => {
+    const reader = new FakeReader();
+    reader.timezone = "Mars/Olympus";
+    await toolOf(reader, "convocatorias_abiertas").run(ctx({ ...OWNER_SCOPE, timezone: "Narnia/Cair" }), {});
+    expect(reader.calls.find((c) => c.method === "convocatoriasAbiertas")!.window!.timezone).toBe("America/Merida");
+  });
+
   it("montos en MXN con redondeo; sin monto en otra moneda (no se convierte); semáforo por fila", async () => {
     const r = await toolOf(new FakeReader(), "convocatorias_abiertas").run(ctx(), {});
     expect(r.status).toBe("ok");

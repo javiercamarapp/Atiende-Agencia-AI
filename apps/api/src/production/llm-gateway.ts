@@ -73,6 +73,9 @@ export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp
  *  cada vertical que enchufe su catalogo registra el suyo (docs/DATA-CHAT.md). Sin *_escalated: un turno
  *  del chat es una conversacion corta con tope de rondas propio. */
 export const RESTAURANTES_DATA_CHAT_ROLE = "restaurantes:data_chat";
+/** "Chatea con tus datos" de despachos y licitaciones (mismo motor y mismo tope mensual por organizacion). */
+export const DESPACHOS_DATA_CHAT_ROLE = "despachos:data_chat";
+export const LICITACIONES_DATA_CHAT_ROLE = "licitaciones:data_chat";
 export const HOTELES_WHATSAPP_AGENT_ROLE = "hoteles:whatsapp_agent";
 export const HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE = "hoteles:whatsapp_agent_escalated";
 export const CITAS_WHATSAPP_AGENT_ROLE = "citas:whatsapp_agent";
@@ -115,6 +118,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
   RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
   RESTAURANTES_DATA_CHAT_ROLE,
+  DESPACHOS_DATA_CHAT_ROLE,
+  LICITACIONES_DATA_CHAT_ROLE,
   HOTELES_WHATSAPP_AGENT_ROLE,
   HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
