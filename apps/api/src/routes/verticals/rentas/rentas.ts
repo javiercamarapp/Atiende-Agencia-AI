@@ -29,6 +29,7 @@ import { rentasAuditoriaRoutes } from "./auditoria.ts";
 import { rentasCalendarioRoutes } from "./calendario.ts";
 import { rentasLimpiezaRoutes } from "./limpieza.ts";
 import { rentasCheckoutSweepCronRoutes } from "./checkout-sweep-cron.ts";
+import { rentasAdminDataChatRoutes } from "./admin-data-chat.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -65,6 +66,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasOnboardingRoutes(deps));
 
   app.route("/", rentasReservasRoutes(deps));
+  // "Chatea con tus datos" (motor compartido @atiende/agent-core/data-chat + catalogo cerrado de rentas), solo admin_gestora/contador.
+  app.route("/", rentasAdminDataChatRoutes(deps));
   app.route("/", rentasBloqueosRoutes(deps));
   app.route("/", rentasCotizacionesRoutes(deps));
   app.route("/", rentasFinanzasRoutes(deps));

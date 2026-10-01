@@ -28,10 +28,13 @@ import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 import { hotelesPrivacidadRoutes } from "./privacidad.ts";
 import { hotelesTicketsRoutes } from "./tickets.ts";
 import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
+import { hotelesAdminDataChatRoutes } from "./admin-data-chat.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   app.route("/", hotelesFoliosRoutes(deps));
+  // "Chatea con tus datos" (motor compartido @atiende/agent-core/data-chat + catalogo cerrado de hoteles), solo owner/gm.
+  app.route("/", hotelesAdminDataChatRoutes(deps));
   app.route("/", hotelesPedidosFnbRoutes(deps));
   app.route("/", hotelesQuotesRoutes(deps));
   app.route("/", hotelesReservasRoutes(deps));
