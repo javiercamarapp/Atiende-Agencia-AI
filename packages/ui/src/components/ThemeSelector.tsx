@@ -9,7 +9,12 @@ const KEY = "atiende-tema";
 type Tema = "claro" | "sistema" | "oscuro";
 
 function leerTema(): Tema {
-  const v = window.localStorage.getItem(KEY);
+  let v: string | null = null;
+  try {
+    v = window.localStorage.getItem(KEY);
+  } catch {
+    // Sin almacenamiento (modo privado, bloqueado): se usa el tema claro por defecto.
+  }
   return v === "oscuro" || v === "sistema" ? v : "claro";
 }
 
@@ -24,7 +29,8 @@ const OPCIONES: Array<{ valor: Tema; Icono: typeof Sun; rotulo: string }> = [
   { valor: "oscuro", Icono: Moon, rotulo: "Tema oscuro" },
 ];
 
-export function ThemeSelector() {
+export function ThemeSelector({ tamano = "normal" }: { tamano?: "normal" | "compacto" } = {}) {
+  const compacto = tamano === "compacto";
   const [tema, setTema] = useState<Tema>("claro");
 
   useEffect(() => {
@@ -40,13 +46,22 @@ export function ThemeSelector() {
   }, []);
 
   const elegir = (nuevo: Tema) => {
-    window.localStorage.setItem(KEY, nuevo);
+    try {
+      window.localStorage.setItem(KEY, nuevo);
+    } catch {
+      // El tema aplica igual en esta sesion aunque no se pueda recordar.
+    }
     setTema(nuevo);
     aplicar(nuevo);
   };
 
   return (
-    <div role="radiogroup" aria-label="Tema de la interfaz" className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-muted">
+    <div role="radiogroup" aria-label="Tema de la interfaz" className={
+        compacto
+          ? "inline-flex items-center gap-0.5 p-0.5 rounded-full border border-border bg-canvas"
+          : "inline-flex items-center gap-0.5 p-0.5 rounded-full bg-muted"
+      }
+    >
       {OPCIONES.map(({ valor, Icono, rotulo }) => {
         const activo = tema === valor;
         return (
@@ -58,11 +73,15 @@ export function ThemeSelector() {
             aria-label={rotulo}
             title={rotulo}
             onClick={() => elegir(valor)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
-              activo ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+            className={`${compacto ? "size-6" : "w-11 h-11"} rounded-full flex items-center justify-center transition-colors ${
+              activo
+                ? compacto
+                  ? "border border-border bg-card text-foreground"
+                  : "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground"
             }`}
           >
-            <Icono className="w-4 h-4" strokeWidth={1.75} />
+            <Icono className={compacto ? "size-3" : "w-4 h-4"} strokeWidth={1.75} />
           </button>
         );
       })}
