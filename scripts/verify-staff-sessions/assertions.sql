@@ -244,3 +244,55 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a301', true);
 select count(*) as should_fail from core.staff_google_identity;
 rollback;
+
+\echo '=== 29. anon no puede cortar todas las sesiones -- RECHAZADO ==='
+begin;
+set local role anon;
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301') as should_fail;
+rollback;
+
+\echo '=== 30. cross-user: B no puede cortar todas las sesiones de A -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a302', true);
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301') as should_fail;
+rollback;
+
+\echo '=== 31. sesion de sistema (auth.uid() nulo) no puede cortar las sesiones de nadie -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301') as should_fail;
+rollback;
+
+\echo '=== 32. A corta todas las suyas: fija el corte truncado a segundo y las sesiones previas dejan de listarse ==='
+begin;
+set local role authenticated;
+select core.register_staff_session('00000000-0000-0000-0000-00000000a301', '00000000-0000-0000-0000-0000000a5e01', now() + interval '1 day', 'ua', null);
+reset role;
+update core.staff_session set issued_at = now() - interval '1 hour' where id = '00000000-0000-0000-0000-0000000a5e01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a301', true);
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301');
+select count(*) as previas_cortadas_deberia_ser_0 from core.list_staff_sessions('00000000-0000-0000-0000-00000000a301');
+rollback;
+
+\echo '=== 33. el corte de A no toca las sesiones de B ==='
+begin;
+set local role authenticated;
+select core.register_staff_session('00000000-0000-0000-0000-00000000a302', '00000000-0000-0000-0000-0000000a5e01', now() + interval '1 day', 'ua', null);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a301', true);
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a302', true);
+select count(*) as sesion_de_B_intacta_deberia_ser_1 from core.list_staff_sessions('00000000-0000-0000-0000-00000000a302');
+rollback;
+
+\echo '=== 34. la sesion emitida justo despues del corte (mismo segundo) sigue viva ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a301', true);
+select core.revoke_all_staff_sessions('00000000-0000-0000-0000-00000000a301');
+select set_config('request.jwt.claim.sub', '', true);
+select core.register_staff_session('00000000-0000-0000-0000-00000000a301', '00000000-0000-0000-0000-0000000a5e01', now() + interval '1 day', 'ua', null);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000a301', true);
+select count(*) as posterior_viva_deberia_ser_1 from core.list_staff_sessions('00000000-0000-0000-0000-00000000a301');
+rollback;

@@ -115,6 +115,8 @@ export interface StaffSecurityRepository {
   listSessions(staffId: string): Promise<StaffSessionRow[]>;
   /** Cierra UNA sesion de la propia cuenta (revoca su refresh token). `false` si no existe o es de otra cuenta. */
   revokeSession(staffId: string, sessionId: string): Promise<boolean>;
+  /** Corte por fecha (truncado a segundo) de TODAS las sesiones previas de la propia cuenta, incluso las no registradas. */
+  revokeAllSessions(staffId: string): Promise<void>;
   listGoogleIdentities(staffId: string): Promise<GoogleIdentityRow[]>;
   /** Desvincula una identidad de Google de la propia cuenta. `false` si no existe o es de otra cuenta. */
   unlinkGoogleIdentity(staffId: string, identityId: string): Promise<boolean>;
@@ -302,6 +304,12 @@ export class PostgresStaffSecurityRepository implements StaffSecurityRepository 
     return this.run(staffId, async (db) => {
       const { rows } = await db.query<{ ok: boolean }>(`select core.revoke_staff_session($1, $2) as ok;`, [staffId, sessionId]);
       return rows[0]?.ok === true;
+    });
+  }
+
+  async revokeAllSessions(staffId: string): Promise<void> {
+    await this.run(staffId, async (db) => {
+      await db.query(`select core.revoke_all_staff_sessions($1);`, [staffId]);
     });
   }
 

@@ -181,6 +181,11 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     this.sessionsRevokedAtByUserId.set(staffId, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString());
   }
 
+  /** Paridad en memoria de `core.revoke_all_staff_sessions`: corte truncado a segundo, sin tocar la contrasena. */
+  revokeSessionsAtSecond(staffId: string): void {
+    this.sessionsRevokedAtByUserId.set(staffId, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString());
+  }
+
   /** Paridad en memoria de la verificacion de correo (`email_verified_at` solo se fija una vez). */
   markEmailVerified(staffId: string): void {
     const staff = this.staffById.get(staffId);

@@ -21,8 +21,8 @@
 --     Justificacion: se llama al EMITIR una sesion (login, refresh, canje de codigo), momento en
 --     el que todavia no hay sesion autenticada; una sesion con `auth.uid()` real nunca debe poder
 --     fabricar filas de sesion de otra cuenta (llenaria su lista con sesiones falsas).
---   * "atadas al usuario" (`list_staff_sessions`, `revoke_staff_session`, `list_google_identities`,
---     `unlink_google_identity`): exigen `auth.uid() = p_staff_id`. Justificacion: son acciones de la
+--   * "atadas al usuario" (`list_staff_sessions`, `revoke_staff_session`, `revoke_all_staff_sessions`,
+--     `list_google_identities`, `unlink_google_identity`): exigen `auth.uid() = p_staff_id`. Justificacion: son acciones de la
 --     propia cuenta ya autenticada; sin el guard cualquier sesion `authenticated` podria enumerar
 --     los dispositivos o las identidades de Google de OTRA cuenta, cerrar sus sesiones o
 --     desvincular su Google llamando la funcion por RPC directo. `revoke_staff_session` solo
@@ -141,6 +141,24 @@ begin
 end;
 $$;
 
+-- "Cerrar todas las demas": corte por fecha de TODAS las sesiones previas de la propia cuenta (incluso las
+-- que nunca se registraron en `core.staff_session`, p. ej. emitidas antes de esta migracion). Trunca a
+-- segundo (mismo criterio que `change_staff_password`, `0026`): el `iat` de un JWT solo tiene precision
+-- de segundo, y asi la sesion que la ruta emite justo despues para el dispositivo actual NO queda
+-- invalidada por error. Un refresh token de otra sesion emitido en ESE mismo segundo sobrevive (ventana
+-- de menos de 1 s, documentada).
+create or replace function core.revoke_all_staff_sessions(p_staff_id uuid)
+returns void
+language plpgsql security definer set search_path = core, pg_temp
+as $$
+begin
+  if auth.uid() is null or auth.uid() is distinct from p_staff_id then
+    raise exception 'revoke_all_staff_sessions: solo la propia cuenta' using errcode = '42501';
+  end if;
+  update core.staff_user set sessions_revoked_at = date_trunc('second', now()) where id = p_staff_id;
+end;
+$$;
+
 -- Identidades de Google vinculadas a la propia cuenta (nunca devuelve `provider_sub`).
 create or replace function core.list_google_identities(p_staff_id uuid)
 returns table (id uuid, email text, created_at timestamptz)
@@ -177,11 +195,13 @@ $$;
 revoke all on function core.register_staff_session(uuid, uuid, timestamptz, text, uuid) from public;
 revoke all on function core.list_staff_sessions(uuid) from public;
 revoke all on function core.revoke_staff_session(uuid, uuid) from public;
+revoke all on function core.revoke_all_staff_sessions(uuid) from public;
 revoke all on function core.list_google_identities(uuid) from public;
 revoke all on function core.unlink_google_identity(uuid, uuid) from public;
 
 grant execute on function core.register_staff_session(uuid, uuid, timestamptz, text, uuid) to authenticated;
 grant execute on function core.list_staff_sessions(uuid) to authenticated;
 grant execute on function core.revoke_staff_session(uuid, uuid) to authenticated;
+grant execute on function core.revoke_all_staff_sessions(uuid) to authenticated;
 grant execute on function core.list_google_identities(uuid) to authenticated;
 grant execute on function core.unlink_google_identity(uuid, uuid) to authenticated;
