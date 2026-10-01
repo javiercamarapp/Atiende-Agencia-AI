@@ -196,3 +196,22 @@ export type { InfraCostRow, PylRepository } from "./superadmin-pyl-repository.ts
 export { InMemoryPylRepository, PostgresPylRepository } from "./superadmin-pyl-repository.ts";
 export type { CfoAccessLogRow, CfoZoneRepository, CfoZoneRoleRow, ZonaCfoAccion, ZonaCfoRol } from "./superadmin-zona-cfo-repository.ts";
 export { InMemoryCfoZoneRepository, PostgresCfoZoneRepository } from "./superadmin-zona-cfo-repository.ts";
+export type {
+  ArcoPage,
+  ArcoQuery,
+  ArcoRequestRow,
+  ArcoStatusBucket,
+  PlataformaPrivacidadErrorKind,
+  PlataformaPrivacidadRepository,
+  PrivacidadAvailability,
+  PrivacyNoticeRow,
+  PrivacyOverviewRow,
+  PurgeHoldRow,
+  PurgeRunResult,
+  PurgeRunRow,
+  PurgeStatus,
+  PurgeTarget,
+  RetentionPolicyRow,
+  RetentionSource,
+} from "./plataforma-privacidad-repository.ts";
+export { InMemoryPlataformaPrivacidadRepository, PlataformaPrivacidadError, PostgresPlataformaPrivacidadRepository } from "./plataforma-privacidad-repository.ts";

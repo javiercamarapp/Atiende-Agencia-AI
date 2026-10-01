@@ -115,6 +115,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Configuración",
       "Agente de voz",
       "Privacidad",
+      "Privacidad de la organización",
     ]);
   });
 

@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Mic,
   Settings,
+  ShieldCheck,
   Store,
   Tag,
   UserCog,
@@ -133,6 +134,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
         { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
         { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
+        // PL-13 -- privacidad de TODA la organizacion (ARCO de todos los verticales, retención, purgas, aviso versionado).
+        { to: `${base}/privacidad-organizacion`, label: "Privacidad de la organización", icon: ShieldCheck },
       ],
     });
   }
