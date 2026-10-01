@@ -170,6 +170,10 @@ describe("PATCH /hoteles/:propertyId/reservas/:id/transicion", () => {
 
 describe("POST /hoteles/:propertyId/reservas/:id/cancelar", () => {
   it("cancela antes de check-in, aplica la política de cancelación y libera el inventario", async () => {
+    // La politica (freeUntilHours=48) se evalua contra el reloj real: con check-in fijo 2026-12-01 la
+    // cancelacion dejaba de ser libre desde 2026-11-29. Se fija Date lejos del check-in (solo Date).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T18:00:00.000Z"));
     const ctx = await buildHotelesTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const crear = await app.request(
@@ -183,7 +187,7 @@ describe("POST /hoteles/:propertyId/reservas/:id/cancelar", () => {
     const canceladaBody = (await cancelar.json()) as ReservaBody;
     expect(canceladaBody.estado).toBe("cancelada");
     expect(canceladaBody.canceladaEn).not.toBeNull();
-    // Política de fixtures: freeUntilHours=48 -- "now" real está muy lejos de
+    // Política de fixtures: freeUntilHours=48 -- "now" (fijado arriba) está muy lejos de
     // 2026-12-01, así que la cancelación es libre (penalización 0).
     expect(canceladaBody.penalizacionCancelacion).toBe(0);
 

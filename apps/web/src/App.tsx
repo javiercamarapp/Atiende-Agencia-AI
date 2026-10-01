@@ -43,8 +43,13 @@ import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
+import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
+import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
+import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
+import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -52,6 +57,7 @@ import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
+import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -219,6 +225,24 @@ const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
 
+// Storefront PUBLICO de restaurantes (R-09): sin login ni shell de panel; solo necesita el slug del restaurante.
+function StorefrontRestauranteRoute() {
+  const { orgSlug = "" } = useParams();
+  return <StorefrontRestaurantePage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function StorefrontSucursalRoute() {
+  const { orgSlug = "", branchSlug = "" } = useParams();
+  return <StorefrontSucursalPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} branchSlug={branchSlug} />;
+}
+function StorefrontRastreoRoute() {
+  const { orgSlug = "", token = "" } = useParams();
+  return <StorefrontRastreoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} token={token} />;
+}
+function StorefrontPrivacidadRoute() {
+  const { orgSlug = "" } = useParams();
+  return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
+}
+
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
  * que `*LoginRoute` de abajo (esta página tampoco puede adivinar por sí sola a qué
@@ -352,6 +376,15 @@ function SuperAdminGestionOrganizacionesRoute() {
   );
 }
 
+function SuperAdminCfoDashboardRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
 function SuperAdminCostosMargenRoute() {
   const navigate = useNavigate();
   return (
@@ -437,6 +470,8 @@ function HotelesFolioRoute() {
 const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <MantenimientoPage {...ctx} />);
 // H-04 — housekeeping completo (tablero, tareas, inspección, fuera de servicio, reporte).
 const HotelesHousekeepingRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HousekeepingPage {...ctx} />);
+// H-05 — tickets de huésped con SLA, escalación y bitácora (cualquier rol hotelero; el servidor filtra por rol).
+const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <TicketsPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -801,6 +836,10 @@ export function App() {
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
+        <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
+        <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
+        <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
+        <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
@@ -812,6 +851,7 @@ export function App() {
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
+        <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/costos-margen" element={<SuperAdminCostosMargenRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
@@ -826,6 +866,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/housekeeping" element={<HotelesHousekeepingRoute />} />
+        <Route path="/hoteles/:orgSlug/tickets" element={<HotelesTicketsRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

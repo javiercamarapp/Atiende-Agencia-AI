@@ -26,6 +26,8 @@ import { hotelesReputacionRoutes } from "./reputacion.ts";
 import { hotelesIdentidadRoutes } from "./identidad.ts";
 import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 import { hotelesPrivacidadRoutes } from "./privacidad.ts";
+import { hotelesTicketsRoutes } from "./tickets.ts";
+import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -82,5 +84,9 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // H-02 (P0) -- consentimiento, aviso de privacidad, ARCO, bloqueo previo a la purga, retencion legal e
   // incidentes (migrations/032_hoteles_consentimiento_arco_incidentes.sql), ver privacidad.ts.
   app.route("/", hotelesPrivacidadRoutes(deps));
+  // H-05 (P0) -- tickets de huesped con SLA, escalacion automatica, bitacora y creacion desde resenas
+  // (migrations/034_guest_ticket_sla_escalacion.sql), ver tickets.ts y el barrido de SLA (tickets-sla-cron.ts).
+  app.route("/", hotelesTicketsRoutes(deps));
+  app.route("/", hotelesTicketsSlaCronRoutes(deps));
   return app;
 }
