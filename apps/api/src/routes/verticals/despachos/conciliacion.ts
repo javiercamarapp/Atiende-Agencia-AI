@@ -16,6 +16,7 @@
 // (`repo.listInvoices`) sin necesitar una tabla nueva de "trabajo de conciliación" —
 // ese es el alcance explícito de esta fase; persistir el historial de conciliaciones
 // corridas es un incremento natural futuro, no bloqueante para el valor del motor.
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -143,18 +144,10 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     return c.json(resultado);
   });
 
-  /** D-03 -- importación de un estado de cuenta (CSV u OFX) con vista previa: parsea,
-   * valida renglón por renglón (los errores se devuelven con su número de línea, no
-   * abortan el archivo), calcula el hash de idempotencia de cada movimiento y concilia
-   * contra los CFDI ya ingeridos reutilizando el motor de niveles 1-3; si hay cuentas
-   * por cobrar pendientes de los CFDI conciliados con un abono, las sugiere. SOLO lectura:
-   * no persiste nada ni marca cuentas como pagadas. El contenido llega ya decodificado
-   * como texto (el navegador decodifica UTF-8 o Windows-1252). Cobranza se lee en su propio
-   * SAVEPOINT (`leerFuenteOpcional`): contra una base sin esa tabla responde
-   * `cobranzaDisponible: false`, nunca un 500. */
-  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta", async (c) => {
-    assertVerticalRole(c, CONCILIACION_ROLES);
-    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+  /** Valida el cuerpo de la importación y parsea el archivo (compartido por la vista previa y
+   * el guardado: el servidor SIEMPRE re-parsea el contenido, nunca confía en movimientos que
+   * mande el cliente). */
+  function prepararImportacion(raw: ImportarBody) {
     if (typeof raw.contenido !== "string" || raw.contenido.trim().length === 0) throw Errors.validation("contenido: se esperaba el texto del archivo (no vacío).");
     let formato: FormatoEstadoCuenta | undefined;
     if (raw.formato !== undefined && raw.formato !== null) {
@@ -171,24 +164,42 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       if (typeof raw.cuenta !== "string" || !/^[0-9A-Za-z-]{4,34}$/.test(raw.cuenta.trim())) throw Errors.validation("cuenta: se esperaba una CLABE o número de cuenta (4 a 34 caracteres alfanuméricos).");
       cuenta = raw.cuenta.trim();
     }
-
-    const parseo = parsearEstadoDeCuenta(raw.contenido, {
+    return parsearEstadoDeCuenta(raw.contenido, {
       ...(formato ? { formato } : {}),
       ...(banco ? { banco } : {}),
       ...(cuenta ? { cuenta } : {}),
     });
+  }
+
+  /** D-03 -- vista previa de la importación de un estado de cuenta (CSV u OFX): parsea, valida
+   * renglón por renglón (los errores se devuelven con su número de línea, no abortan el
+   * archivo), calcula el hash de idempotencia de cada movimiento, marca los que YA se habían
+   * importado (libro `despachos.estado_cuenta_movimiento`, migración 013) y concilia el resto
+   * contra los CFDI ya ingeridos reutilizando el motor de niveles 1-3; si hay cuentas por
+   * cobrar pendientes de los CFDI conciliados con un abono, las sugiere. SOLO lectura: no
+   * persiste nada ni marca cuentas como pagadas. El contenido llega ya decodificado como texto
+   * (el navegador decodifica UTF-8 o Windows-1252). Libro y cobranza se leen cada uno en su
+   * propio SAVEPOINT (`leerFuenteOpcional`): contra una base sin esas tablas responden
+   * `libroDisponible`/`cobranzaDisponible: false`, nunca un 500. */
+  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta", async (c) => {
+    assertVerticalRole(c, CONCILIACION_ROLES);
+    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+    const parseo = prepararImportacion(raw);
 
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
-    const invoices = parseo.movimientos.length > 0 ? await repo.listInvoices(propertyId) : [];
+    const hayMovimientos = parseo.movimientos.length > 0;
+    const invoices = hayMovimientos ? await repo.listInvoices(propertyId) : [];
     const registros = invoices.map(invoiceARegistroConciliable);
-    const cartera = parseo.movimientos.length > 0 && invoices.length > 0 ? await leerFuenteOpcional(repo, () => repo.listReceivables(propertyId, { pendiente: true })) : [];
+    const hashesYaImportados = hayMovimientos ? await leerFuenteOpcional(repo, () => repo.listEstadoCuentaHashesExistentes(propertyId, parseo.movimientos.map((m) => m.hash))) : new Set<string>();
+    const cartera = hayMovimientos && invoices.length > 0 ? await leerFuenteOpcional(repo, () => repo.listReceivables(propertyId, { pendiente: true })) : [];
 
     return c.json(
       construirVistaPreviaImportacion({
         parseo,
         registros,
         cuentasPorCobrarPendientes: cartera === null ? null : cartera.map((r) => ({ id: r.id, invoiceId: r.invoiceId })),
+        hashesYaImportados,
         opciones: {
           dateToleranceDays: optionalNumber(raw.dateToleranceDays, "dateToleranceDays", 3),
           montoTolerancePct: optionalNumber(raw.montoTolerancePct, "montoTolerancePct", 5.0),
@@ -196,6 +207,46 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         },
       }),
     );
+  });
+
+  /** D-03 -- guarda en el libro los movimientos del archivo, de forma IDEMPOTENTE por hash
+   * (`insert ... on conflict (property_id, hash) do nothing`): subir dos veces el mismo archivo,
+   * o dos archivos con periodos traslapados, no duplica nada (`yaExistentes` cuenta lo descartado).
+   * Todo o nada respecto a errores de parseo: si el archivo tiene renglones con error se rechaza
+   * completo (400) para no importar a medias un estado de cuenta que el contador aún debe corregir.
+   * No marca cuentas por cobrar como pagadas ni concilia nada: eso sigue siendo decisión humana.
+   * Contra una base sin la migración 013 responde 503 honesto (SAVEPOINT vía `leerFuenteOpcional`). */
+  app.post("/despachos/:propertyId/conciliacion/importar-estado-de-cuenta/guardar", async (c) => {
+    assertVerticalRole(c, CONCILIACION_ROLES);
+    const raw = await readJsonCapped<ImportarBody>(c.req.raw, MAX_BODY_IMPORTACION_BYTES);
+    const parseo = prepararImportacion(raw);
+    if (parseo.errores.length > 0) throw Errors.validation(`El archivo tiene ${parseo.errores.length} renglón(es) con error (primero: renglón ${parseo.errores[0]!.renglon}, ${parseo.errores[0]!.mensaje}). Corrígelos y vuelve a subirlo.`);
+    if (parseo.movimientos.length === 0) throw Errors.validation("El archivo no trae movimientos que guardar.");
+
+    const repo = deps.despachosRepo(c.get("db"));
+    const resultado = await leerFuenteOpcional(repo, () =>
+      repo.insertEstadoCuentaMovimientos({
+        organizationId: c.get("organizationId"),
+        propertyId: c.req.param("propertyId"),
+        loteId: randomUUID(),
+        movimientos: parseo.movimientos.map((m) => ({
+          hash: m.hash,
+          cuenta: parseo.cuenta,
+          banco: parseo.banco,
+          formato: parseo.formato,
+          fecha: m.fecha,
+          descripcion: m.descripcion,
+          referencia: m.referencia,
+          cargo: m.cargo,
+          abono: m.abono,
+          monto: m.monto,
+          saldo: m.saldo,
+          renglon: m.renglon,
+        })),
+      }),
+    );
+    if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 013 (libro de movimientos importados).");
+    return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length }, resultado.insertados > 0 ? 201 : 200);
   });
 
   /** Alertas de antigüedad/comisión/duplicados sobre un lote de movimientos ya

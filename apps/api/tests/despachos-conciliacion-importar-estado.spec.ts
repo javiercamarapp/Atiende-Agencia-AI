@@ -2,7 +2,7 @@
 // de importación de estado de cuenta (CSV/OFX) end-to-end sobre el repositorio en memoria,
 // con auth/RLS/roles reales (mismo patrón que despachos-conciliacion.spec.ts).
 import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "@atiende/db";
 import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
@@ -62,6 +62,17 @@ interface Vista {
   conciliacionOmitida: string | null;
   coincidencias: { hash: string; renglon: number; folioFiscal: string[]; cobranzaPendienteIds: string[] }[];
   cobranzaDisponible: boolean;
+  libroDisponible: boolean;
+}
+
+function pgError(code: string, message: string): Error & { code: string } {
+  const err = new Error(message) as Error & { code: string };
+  err.code = code;
+  return err;
+}
+
+async function guardar(token: string, body: unknown, propertyId = ctx.propertyId) {
+  return buildApp(ctx.deps).request(`/despachos/${propertyId}/conciliacion/importar-estado-de-cuenta/guardar`, authedJson(token, body));
 }
 
 describe("POST .../conciliacion/importar-estado-de-cuenta", () => {
@@ -163,5 +174,86 @@ describe("POST .../conciliacion/importar-estado-de-cuenta", () => {
     const { token } = (await login.json()) as { token: string };
     const res = await importar(token, { contenido: CSV_BBVA }, ctx.propertyId);
     expect(res.status).toBe(403);
+  });
+});
+
+describe("POST .../conciliacion/importar-estado-de-cuenta/guardar (libro idempotente por hash)", () => {
+  const CSV_OK = ["Fecha;Concepto;Cargo;Abono;Saldo", "05/01/2026;SPEI RECIBIDO CLIENTE ACME;;1,160.00;51,160.00", "08/01/2026;PAGO DE NÓMINA;3,000.00;;48,160.00"].join("\n");
+
+  it("guarda los movimientos (201) y re-subir el mismo archivo no duplica (200, yaExistentes)", async () => {
+    const a = await guardar(ctx.staff.contador.token, { contenido: CSV_OK, banco: "bbva", cuenta: "012180000123456782" });
+    expect(a.status).toBe(201);
+    expect(await a.json()).toMatchObject({ insertados: 2, yaExistentes: 0, totalMovimientos: 2 });
+    const b = await guardar(ctx.staff.contador.token, { contenido: CSV_OK, banco: "bbva", cuenta: "012180000123456782" });
+    expect(b.status).toBe(200);
+    expect(await b.json()).toMatchObject({ insertados: 0, yaExistentes: 2 });
+  });
+
+  it("después de guardar, la vista previa marca los movimientos como ya importados y no los concilia de nuevo", async () => {
+    await ingestarCfdi();
+    const cuerpo = { contenido: CSV_OK, banco: "bbva", cuenta: "012180000123456782" };
+    await guardar(ctx.staff.contador.token, cuerpo);
+    const v = (await (await importar(ctx.staff.contador.token, cuerpo)).json()) as Vista;
+    expect(v.libroDisponible).toBe(true);
+    expect(v.yaImportados).toHaveLength(2);
+    expect(v.nuevos).toBe(0);
+    expect(v.coincidencias).toEqual([]);
+  });
+
+  it("un periodo traslapado solo guarda lo nuevo", async () => {
+    await guardar(ctx.staff.contador.token, { contenido: CSV_OK, cuenta: "012180000123456782" });
+    const traslapado = ["Fecha;Concepto;Cargo;Abono;Saldo", "08/01/2026;PAGO DE NÓMINA;3,000.00;;48,160.00", "09/01/2026;OTRO;;10.00;48,170.00"].join("\n");
+    const r = await guardar(ctx.staff.contador.token, { contenido: traslapado, cuenta: "012180000123456782" });
+    expect(await r.json()).toMatchObject({ insertados: 1, yaExistentes: 1 });
+  });
+
+  it("todo o nada: un archivo con renglones con error se rechaza (400) y no guarda nada", async () => {
+    const malo = CSV_OK + "\n31/02/2026;FECHA IMPOSIBLE;1.00;;1.00";
+    const r = await guardar(ctx.staff.contador.token, { contenido: malo });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(await r.json())).toContain("renglón 4");
+    const despues = (await (await importar(ctx.staff.contador.token, { contenido: CSV_OK })).json()) as Vista;
+    expect(despues.yaImportados).toEqual([]);
+  });
+
+  it("sin movimientos que guardar: 400", async () => {
+    expect((await guardar(ctx.staff.contador.token, { contenido: "Fecha;Concepto;Cargo;Abono\n" })).status).toBe(400);
+  });
+
+  it("auditor y readonly no pueden guardar (403); sin token 401", async () => {
+    expect((await guardar(ctx.staff.auditor.token, { contenido: CSV_OK })).status).toBe(403);
+    expect((await guardar(ctx.staff.readonly.token, { contenido: CSV_OK })).status).toBe(403);
+    const sinToken = await buildApp(ctx.deps).request(`/despachos/${ctx.propertyId}/conciliacion/importar-estado-de-cuenta/guardar`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    expect(sinToken.status).toBe(401);
+  });
+
+  it("validaciones del cuerpo -> 400 y tope de 2 MB -> 413", async () => {
+    expect((await guardar(ctx.staff.contador.token, { contenido: CSV_OK, banco: "inventado" })).status).toBe(400);
+    expect((await guardar(ctx.staff.contador.token, {})).status).toBe(400);
+    expect((await guardar(ctx.staff.contador.token, { contenido: "x".repeat(2 * 1024 * 1024 + 10) })).status).toBe(413);
+  });
+
+  it("BASE SIN MIGRAR al guardar (42P01): 503 honesto, nunca 500", async () => {
+    vi.spyOn(ctx.despachosRepo, "insertEstadoCuentaMovimientos").mockRejectedValue(pgError("42P01", 'relation "despachos.estado_cuenta_movimiento" does not exist'));
+    const r = await guardar(ctx.staff.contador.token, { contenido: CSV_OK });
+    expect(r.status).toBe(503);
+    expect(JSON.stringify(await r.json())).toContain("migración 013");
+  });
+
+  it("BASE SIN MIGRAR en la vista previa (42P01 al leer el libro): sigue funcionando con libroDisponible=false", async () => {
+    vi.spyOn(ctx.despachosRepo, "listEstadoCuentaHashesExistentes").mockRejectedValue(pgError("42P01", 'relation "despachos.estado_cuenta_movimiento" does not exist'));
+    const res = await importar(ctx.staff.contador.token, { contenido: CSV_OK });
+    expect(res.status).toBe(200);
+    const v = (await res.json()) as Vista;
+    expect(v.libroDisponible).toBe(false);
+    expect(v.parseo.movimientos).toHaveLength(2);
+    expect(v.nuevos).toBe(2);
+  });
+
+  it("un error real (RLS 42501) al guardar NO se disfraza de 503", async () => {
+    vi.spyOn(ctx.despachosRepo, "insertEstadoCuentaMovimientos").mockRejectedValue(pgError("42501", "new row violates row-level security policy"));
+    const r = await guardar(ctx.staff.contador.token, { contenido: CSV_OK });
+    expect(r.status).toBeGreaterThanOrEqual(500);
+    expect(r.status).not.toBe(503);
   });
 });
