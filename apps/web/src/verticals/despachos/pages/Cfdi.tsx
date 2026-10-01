@@ -10,24 +10,20 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, FileUp, ShieldAlert, Upload, X } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Input,
   Label,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  PageContainer,
+  StatusBadge,
 } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
@@ -52,13 +48,7 @@ const RESOLVER_ROLES = new Set(["admin", "contador"]);
 const INGESTA_ROLES = new Set(["admin", "contador"]);
 
 function ValidoBadge({ valido }: { valido: boolean }) {
-  return valido ? (
-    <Badge variant="outline" className="border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400">
-      Válido
-    </Badge>
-  ) : (
-    <Badge variant="destructive">Con hallazgos</Badge>
-  );
+  return valido ? <StatusBadge tone="success">Válido</StatusBadge> : <StatusBadge tone="danger">Con hallazgos</StatusBadge>;
 }
 
 export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
@@ -171,22 +161,14 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">CFDI</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">Comprobantes ingestados y validados contra las reglas fiscales del SAT.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Comprobantes ingestados y validados contra las reglas fiscales del SAT.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-[13px] text-foreground">
-            <input
-              type="checkbox"
-              checked={soloRevision}
-              onChange={(e) => setSoloRevision(e.target.checked)}
-              className="h-4 w-4 rounded border-border accent-primary"
-            />
-            Solo con revisión humana pendiente
-          </label>
+          <Checkbox checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} label="Solo con revisión humana pendiente" />
           {INGESTA_ROLES.has(role) && (
             <>
               <input
@@ -208,16 +190,14 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
         </div>
       </header>
 
-      {/* Avisos transitorios de la importación: se dejan como banderas inline
-          (no `toast`) porque `apps/web` no monta ningún `<Toaster />` y mandar
-          esto a sonner lo haría desaparecer sin que el staff lo vea. */}
+      {/* Avisos de la importación: banderas inline (persisten hasta la siguiente importación; un toast se iría solo). */}
       {importError && (
         <p role="alert" className="text-destructive text-sm">
           {importError}
         </p>
       )}
       {importOk && !importError && (
-        <p className="flex items-center gap-1.5 text-sm text-green-700 dark:text-green-400">
+        <p className="flex items-center gap-1.5 text-sm text-success">
           <FileUp className="h-4 w-4 shrink-0" strokeWidth={1.75} />
           {importOk}
         </p>
@@ -245,7 +225,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           {efos && efos.alertas.length > 0 && (
             <ul className="flex flex-col gap-1.5">
               {efos.alertas.map((a) => (
-                <li key={a.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[13px]">
+                <li key={a.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
                   <span>
                     <Link to={`/despachos/${orgSlug}/cfdi/${a.invoiceId}`} className="font-semibold text-foreground hover:underline underline-offset-2">
                       {a.emisorNombre ?? a.rfcEmisor}
@@ -253,7 +233,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                     <span className="ml-2 font-mono text-xs text-muted-foreground">{a.rfcEmisor}</span>
                     <span className="ml-2 tabular-nums text-muted-foreground">{formatMoney(a.total)}</span>
                   </span>
-                  <Badge variant={a.situacion === "definitivo" ? "destructive" : "outline"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</Badge>
+                  <StatusBadge tone={a.situacion === "definitivo" ? "danger" : "warning"}>{a.situacion === "definitivo" ? "Definitivo" : "Presunto"}</StatusBadge>
                 </li>
               ))}
             </ul>
@@ -277,15 +257,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
               {revisionesError}
             </p>
           )}
-          {/* Sub-widget anidado: tratamiento de carga/vacío compacto (skeletons y
-              una línea) en vez del bloque acolchado de EstadoCargando/EstadoVacio,
-              que aquí competiría visualmente con los estados de la tabla de abajo. */}
-          {revisionesLoading && !revisiones && (
-            <div role="status" aria-busy="true" aria-label="Cargando cola de revisión…" className="space-y-2">
-              <span className="sr-only">Cargando cola de revisión…</span>
-              <Skeleton className="h-4 w-40 rounded" />
-              <Skeleton className="h-4 w-64 rounded" />
-            </div>
+                    {revisionesLoading && !revisiones && (
+            <EstadoCargando etiqueta="Cargando cola de revisión…" lineas={2} />
           )}
           {revisiones && revisiones.length === 0 && !revisionesLoading && (
             <p role="status" className="text-sm text-muted-foreground">
@@ -301,12 +274,12 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                   <div key={r.id} className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                     <div className="flex flex-wrap justify-between gap-3">
                       <div>
-                        <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} className="text-[13px] font-semibold text-foreground hover:underline underline-offset-2">
+                        <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} className="text-sm font-semibold text-foreground hover:underline underline-offset-2">
                           {inv ? (inv.emisorNombre ?? inv.rfcEmisor) : r.invoiceId}
                         </Link>
                         <p className="mt-0.5 text-xs text-muted-foreground">{r.motivo}</p>
                       </div>
-                      <span className="text-[11px] text-muted-foreground">{formatDate(r.creadoEn)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDate(r.creadoEn)}</span>
                     </div>
                     {RESOLVER_ROLES.has(role) ? (
                       <div className="flex flex-wrap items-center gap-2">
@@ -331,7 +304,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                         </Button>
                       </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground">Tu rol no puede resolver revisiones (solo admin/contador).</p>
+                      <p className="text-xs text-muted-foreground">Tu rol no puede resolver revisiones (solo admin/contador).</p>
                     )}
                   </div>
                 );
@@ -350,44 +323,38 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
       )}
 
       {invoices && invoices.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Folio fiscal</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Emisor</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  <TableHead>Revisión</TableHead>
-                  <TableHead>Fecha</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      <Link to={`/despachos/${orgSlug}/cfdi/${inv.id}`} className="font-mono text-xs font-semibold text-foreground hover:underline underline-offset-2">
-                        {inv.folioFiscal.slice(0, 13)}…
-                      </Link>
-                      <div className="text-[11px] text-muted-foreground">{inv.rfcReceptor}</div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{TIPO_LABELS[inv.tipo] ?? inv.tipo}</TableCell>
-                    <TableCell className="text-muted-foreground">{inv.emisorNombre ?? inv.rfcEmisor}</TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{formatMoney(inv.total)}</TableCell>
-                    <TableCell>
-                      <ValidoBadge valido={inv.valido} />
-                    </TableCell>
-                    <TableCell className={inv.requiereRevisionHumana ? "text-destructive" : "text-muted-foreground"}>{inv.requiereRevisionHumana ? "Pendiente" : "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(inv.creadoEn)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          etiqueta="CFDI ingestados"
+          obtenerId={(inv) => inv.id}
+          filas={invoices}
+          paginacion={false}
+          columnas={[
+            {
+              id: "folio",
+              encabezado: "Folio fiscal",
+              principal: true,
+              celda: (inv) => (
+                <>
+                  <Link to={`/despachos/${orgSlug}/cfdi/${inv.id}`} className="font-mono text-xs font-semibold text-foreground hover:underline underline-offset-2">
+                    {inv.folioFiscal.slice(0, 13)}…
+                  </Link>
+                  <div className="text-xs font-normal text-muted-foreground">{inv.rfcReceptor}</div>
+                </>
+              ),
+            },
+            { id: "tipo", encabezado: "Tipo", celda: (inv) => <span className="text-muted-foreground">{TIPO_LABELS[inv.tipo] ?? inv.tipo}</span> },
+            { id: "emisor", encabezado: "Emisor", celda: (inv) => <span className="text-muted-foreground">{inv.emisorNombre ?? inv.rfcEmisor}</span> },
+            { id: "total", encabezado: "Total", celda: (inv) => <span className="tabular-nums text-muted-foreground">{formatMoney(inv.total)}</span> },
+            { id: "estatus", encabezado: "Estatus", celda: (inv) => <ValidoBadge valido={inv.valido} /> },
+            {
+              id: "revision",
+              encabezado: "Revisión",
+              celda: (inv) => <span className={inv.requiereRevisionHumana ? "text-destructive" : "text-muted-foreground"}>{inv.requiereRevisionHumana ? "Pendiente" : "—"}</span>,
+            },
+            { id: "fecha", encabezado: "Fecha", celda: (inv) => <span className="text-muted-foreground">{formatDate(inv.creadoEn)}</span> },
+          ]}
+        />
       )}
-    </div>
+    </PageContainer>
   );
 }

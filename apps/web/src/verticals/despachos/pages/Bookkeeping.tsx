@@ -27,15 +27,17 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Calculator, ChevronDown, ChevronUp, FileStack, Lightbulb, ListChecks, Plus, Trash2 } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  EstadoCargando,
   Input,
   Label,
-  Skeleton,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -63,6 +65,7 @@ import type {
   TipoCfdiBookkeeping,
 } from "../lib/bookkeeping-client.ts";
 import { formatMoney } from "../lib/format.ts";
+import { confianzaTone } from "../lib/status-tones.ts";
 import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
@@ -75,15 +78,6 @@ const BOOKKEEPING_ROLES = new Set(["admin", "contador"]);
 
 const TIPOS_CFDI: readonly TipoCfdiBookkeeping[] = ["I", "E", "T", "P", "N"];
 const TIPO_CFDI_LABELS: Record<TipoCfdiBookkeeping, string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
-
-// Clases compartidas por los `<select>` nativos que se quedan nativos (el
-// design system no exporta un Select propio): misma anatomía que `Input`.
-const SELECT_CELL_CLASS =
-  "h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-// Verde de éxito: misma escala neutra de Tailwind que ya usa StatCard para sus
-// notas positivas (el preset no trae token semántico de éxito).
-const VERDE_BADGE = "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400";
 
 // -- Fila: CFDI a clasificar -----------------------------------------------
 
@@ -172,17 +166,11 @@ function ajusteFilaAInput(f: AjusteEntryFila): EntradaAjusteInput | null {
 }
 
 function ConfidenceBadge({ confidence, needsHumanReview }: { confidence: number; needsHumanReview: boolean }) {
-  // Mismo semáforo que la píldora inline original: ámbar si requiere revisión,
-  // verde si la confianza es alta, azul (secondary) en el resto.
-  const className = needsHumanReview
-    ? "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
-    : confidence >= 0.85
-      ? VERDE_BADGE
-      : undefined;
+  // Mismo semáforo de siempre: ámbar si requiere revisión, verde si la confianza es alta, azul en el resto.
   return (
-    <Badge variant={className ? "outline" : "secondary"} className={className}>
+    <StatusBadge tone={confianzaTone(confidence, needsHumanReview)}>
       {(confidence * 100).toFixed(0)}% {needsHumanReview ? "· revisar" : ""}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -192,14 +180,12 @@ function PolizaCard({ resultado }: { resultado: PolizaResultado }) {
     <Card>
       <CardContent className="flex flex-col gap-2 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <strong className="text-[13px] text-foreground">CFDI {resultado.cfdiUuid}</strong>
+          <strong className="text-sm text-foreground">CFDI {resultado.cfdiUuid}</strong>
           {poliza &&
             (poliza.cuadrada ? (
-              <Badge variant="outline" className={VERDE_BADGE}>
-                Cuadrada
-              </Badge>
+              <StatusBadge tone="success">Cuadrada</StatusBadge>
             ) : (
-              <Badge variant="destructive">Desbalanceada</Badge>
+              <StatusBadge tone="danger">Desbalanceada</StatusBadge>
             ))}
         </div>
         {errores.length > 0 && (
@@ -404,27 +390,27 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   if (!puedeGestionar) {
     return (
-      <div className="flex flex-col gap-2 px-1">
+      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede clasificar CFDI, generar pólizas ni registrar ajustes -- el servidor las rechazaría igual.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 px-1">
+    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Auto-clasificador de pólizas: clasifica CFDI por reglas determinísticas (override humano por RFC tiene prioridad máxima), genera + valida pólizas contables, registra ajustes manuales y revisa qué correcciones humanas conviene convertir en override permanente.
         </p>
       </header>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-[15px]">Catálogo de cuentas (SAT)</CardTitle>
+          <CardTitle className="text-base">Catálogo de cuentas (SAT)</CardTitle>
           <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setCatalogoAbierto(!catalogoAbierto)} aria-expanded={catalogoAbierto}>
             {catalogoAbierto ? <ChevronUp /> : <ChevronDown />}
             {catalogoAbierto ? "Ocultar" : "Mostrar"}
@@ -439,14 +425,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           {catalogoAbierto && (
             <>
               {!catalogo ? (
-                // Sub-widget anidado dentro del panel plegable: skeletons
-                // compactos en vez del bloque acolchado de EstadoCargando.
-                <div role="status" aria-busy="true" aria-label="Cargando catálogo de cuentas…" className="space-y-2">
-                  <span className="sr-only">Cargando catálogo de cuentas…</span>
-                  <Skeleton className="h-9 w-80 rounded-md" />
-                  <Skeleton className="h-4 w-full rounded" />
-                  <Skeleton className="h-4 w-4/5 rounded" />
-                </div>
+                                <EstadoCargando etiqueta="Cargando catálogo de cuentas…" lineas={3} />
               ) : (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="catalogo-filtro" className="sr-only">
@@ -478,7 +457,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                       </TableBody>
                     </Table>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{Object.keys(catalogo.mapeosDefault).length} mapeos default (tipoCfdi|categoría → cuentas) precargados en el motor.</p>
+                  <p className="text-xs text-muted-foreground">{Object.keys(catalogo.mapeosDefault).length} mapeos default (tipoCfdi|categoría → cuentas) precargados en el motor.</p>
                 </div>
               )}
             </>
@@ -488,7 +467,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">Overrides humanos conocidos</CardTitle>
+          <CardTitle className="text-base">Overrides humanos conocidos</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -566,7 +545,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">1. Clasificar CFDI</CardTitle>
+          <CardTitle className="text-base">1. Clasificar CFDI</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="overflow-x-auto">
@@ -659,13 +638,13 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
                       <Label htmlFor={`bk-tipo-${f.key}`} className="sr-only">
                         Tipo de CFDI
                       </Label>
-                      <select id={`bk-tipo-${f.key}`} value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} className={`${SELECT_CELL_CLASS} w-28`}>
+                      <NativeSelect id={`bk-tipo-${f.key}`} value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} size="sm" wrapperClassName="w-28">
                         {TIPOS_CFDI.map((t) => (
                           <option key={t} value={t}>
                             {t} · {TIPO_CFDI_LABELS[t]}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Button
@@ -741,7 +720,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">2. Generar pólizas</CardTitle>
+          <CardTitle className="text-base">2. Generar pólizas</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">Genera + valida una póliza por cada CFDI clasificado arriba (sección 1). Si no hay mapeo contable para (tipo, categoría) el resultado trae el error explícito en vez de una póliza a medias.</p>
@@ -778,7 +757,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">3. Registrar ajuste manual (diario)</CardTitle>
+          <CardTitle className="text-base">3. Registrar ajuste manual (diario)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -892,7 +871,7 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">4. Sugerencias de override</CardTitle>
+          <CardTitle className="text-base">4. Sugerencias de override</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -942,6 +921,6 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

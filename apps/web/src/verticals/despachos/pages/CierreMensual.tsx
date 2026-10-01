@@ -13,51 +13,34 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { CalendarPlus, X } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   Input,
   Label,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  PageContainer,
+  StatusBadge,
+  statusTone,
 } from "@atiende/ui";
 import { crearPeriodo, fetchPeriodos } from "../lib/cierre-mensual-client.ts";
 import type { ClosePeriod } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo } from "../lib/format.ts";
+import { PERIODO_STATUS_TONES } from "../lib/status-tones.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
-// Mismos tres estatus con la misma carga semántica que las píldoras inline
-// originales (azul = abierto, verde = cerrado, rojo = vencido), ahora sobre el
-// `Badge` real de @atiende/ui. El verde usa la misma escala neutra de Tailwind
-// que ya emplea StatCard para sus notas positivas (no hay token semántico de
-// éxito en el preset).
-const STATUS_BADGE: Record<ClosePeriod["status"], { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  open: { variant: "secondary" },
-  closed: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  overdue: { variant: "destructive" },
-};
-
-function StatusBadge({ status }: { status: ClosePeriod["status"] }) {
-  const { variant, className } = STATUS_BADGE[status];
-  return (
-    <Badge variant={variant} className={className}>
-      {formatPeriodStatus(status)}
-    </Badge>
-  );
+// Mismos tres estatus con la misma carga semántica de siempre (azul = abierto, verde = cerrado, rojo = vencido).
+function PeriodoBadge({ status }: { status: ClosePeriod["status"] }) {
+  return <StatusBadge tone={statusTone(PERIODO_STATUS_TONES, status)}>{formatPeriodStatus(status)}</StatusBadge>;
 }
 
 const NOW = new Date();
@@ -118,12 +101,12 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
   const ordenados = periodos ? [...periodos].sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month)) : [];
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="font-display text-xl font-semibold text-foreground">Cierre mensual</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">Checklist de 15 tareas por período: CFDI, bancos, nómina, declaraciones, contabilidad electrónica y reportes.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Checklist de 15 tareas por período: CFDI, bancos, nómina, declaraciones, contabilidad electrónica y reportes.</p>
         </div>
         {GESTIONAR_ROLES.has(role) && (
           <Button variant={showForm ? "outline" : "default"} size="sm" onClick={() => setShowForm((v) => !v)}>
@@ -174,37 +157,28 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
       )}
 
       {ordenados.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Período</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  <TableHead>Abierto</TableHead>
-                  <TableHead>Cerrado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordenados.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} className="font-semibold text-foreground hover:underline underline-offset-2">
-                        {formatPeriodo(p.year, p.month)}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={p.status} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(p.openedAt)}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(p.closedAt)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          etiqueta="Períodos de cierre mensual"
+          obtenerId={(p) => p.id}
+          filas={ordenados}
+          paginacion={false}
+          columnas={[
+            {
+              id: "periodo",
+              encabezado: "Período",
+              principal: true,
+              celda: (p) => (
+                <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+                  {formatPeriodo(p.year, p.month)}
+                </Link>
+              ),
+            },
+            { id: "estatus", encabezado: "Estatus", celda: (p) => <PeriodoBadge status={p.status} /> },
+            { id: "abierto", encabezado: "Abierto", celda: (p) => <span className="text-muted-foreground">{formatDate(p.openedAt)}</span> },
+            { id: "cerrado", encabezado: "Cerrado", celda: (p) => <span className="text-muted-foreground">{formatDate(p.closedAt)}</span> },
+          ]}
+        />
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -16,16 +16,21 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { AlarmClock, AlertTriangle, CheckCircle2, Clock, HandCoins, Hourglass, Send, TrendingUp, Wallet } from "lucide-react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
+  Checkbox,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
   StatCard,
+  StatusBadge,
+  statusTone,
   Table,
   TableBody,
   TableCell,
@@ -33,7 +38,6 @@ import {
   TableHeader,
   TableRow,
 } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import {
@@ -46,20 +50,14 @@ import {
 } from "../lib/cobranza-client.ts";
 import type { CobranzaAgeBucket, CobranzaReminderStage, CuentaCobranza, ResumenCobranza } from "../lib/cobranza-client.ts";
 import { formatDate, formatMoney } from "../lib/format.ts";
+import { COBRANZA_BUCKET_TONES } from "../lib/status-tones.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
+import { BarraProgreso } from "../components/BarraProgreso.tsx";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
 const BUCKET_LABELS: Record<CobranzaAgeBucket, string> = { "0-30": "0-30 días", "31-60": "31-60 días", "61-90": "61-90 días", "90+": "90+ días" };
-// Mismo gradiente semántico de las píldoras inline originales (verde → ámbar →
-// naranja → rojo conforme envejece la cuenta), ahora sobre el `Badge` real.
-const BUCKET_BADGE: Record<CobranzaAgeBucket, { variant: "destructive" | "outline"; className?: string }> = {
-  "0-30": { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  "31-60": { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
-  "61-90": { variant: "outline", className: "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-400" },
-  "90+": { variant: "destructive" },
-};
 const BUCKET_ICONS: Record<CobranzaAgeBucket, typeof Clock> = {
   "0-30": Clock,
   "31-60": Hourglass,
@@ -74,24 +72,18 @@ const STAGE_LABELS: Record<CobranzaReminderStage, string> = {
   escalamiento: "Escalamiento a gerencia (+60 días)",
 };
 
+// Mismo gradiente semántico de siempre (verde -> ámbar -> rojo conforme envejece la cuenta).
 function BucketBadge({ bucket }: { bucket: CobranzaAgeBucket }) {
-  const { variant, className } = BUCKET_BADGE[bucket];
-  return (
-    <Badge variant={variant} className={className}>
-      {BUCKET_LABELS[bucket]}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(COBRANZA_BUCKET_TONES, bucket)}>{BUCKET_LABELS[bucket]}</StatusBadge>;
 }
 
 function ScoreBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const color = score >= 0.7 ? "text-green-700 dark:text-green-400" : score >= 0.4 ? "text-amber-700 dark:text-amber-400" : "text-destructive";
-  const fill = score >= 0.7 ? "bg-green-600 dark:bg-green-500" : score >= 0.4 ? "bg-amber-500" : "bg-destructive";
+  const color = score >= 0.7 ? "text-success" : score >= 0.4 ? "text-warning" : "text-destructive";
+  const tono = score >= 0.7 ? "success" : score >= 0.4 ? "warning" : "danger";
   return (
     <div className="flex items-center gap-1.5">
-      <div className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-        <div className={`h-full ${fill}`} style={{ width: `${pct}%` }} />
-      </div>
+      <BarraProgreso valor={pct} tono={tono} className="h-1.5 w-12" aria-label="Score de cobro" />
       <span className={`text-xs tabular-nums ${color}`}>{pct}%</span>
     </div>
   );
@@ -118,7 +110,7 @@ function ResumenCards({ resumen }: { resumen: ResumenCobranza }) {
       {resumen.alertas.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {resumen.alertas.map((a, i) => (
-            <p key={i} role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] text-destructive">
+            <p key={i} role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
               {a}
             </p>
@@ -247,11 +239,11 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   }
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Cobranza</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo.</p>
         </div>
         {puedeGestionar && (
           <Button variant={showForm ? "outline" : "default"} size="sm" onClick={() => setShowForm((v) => !v)}>
@@ -261,12 +253,12 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
         )}
       </header>
 
-      {/* El formulario de alta pasó del panel inline al `ModalFormularioLateral`
+      {/* El formulario de alta pasó del panel inline al `FormDialog`
           compartido (4 campos + selector de CFDI: exactamente la forma de
           "formulario en riel lateral" para la que existe ese shell). El estado
           `showForm` y `handleRegistrar` son los mismos de antes. */}
       {showForm && (
-        <ModalFormularioLateral
+        <FormDialog
           open
           onOpenChange={(abierto) => {
             if (!abierto) setShowForm(false);
@@ -283,12 +275,11 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
           <form id="cobranza-registrar" onSubmit={handleRegistrar} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cobranza-cfdi">CFDI (tipo Ingreso) *</Label>
-              <select
+              <NativeSelect
                 id="cobranza-cfdi"
                 value={invoiceId}
                 onChange={(e) => setInvoiceId(e.target.value)}
                 required
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <option value="">Selecciona un CFDI…</option>
                 {invoicesDisponibles.map((inv) => (
@@ -296,7 +287,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                     {inv.folioFiscal.slice(0, 13)}… · {inv.emisorNombre ?? inv.rfcEmisor} · {formatMoney(inv.total)}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {invoicesDisponibles.length === 0 && <span className="text-xs text-muted-foreground">No hay CFDI de ingreso sin cuenta por cobrar todavía.</span>}
             </div>
             <div className="flex flex-col gap-1.5">
@@ -317,7 +308,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
               </p>
             )}
           </form>
-        </ModalFormularioLateral>
+        </FormDialog>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -326,10 +317,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
 
       {resumen && <ResumenCards resumen={resumen} />}
 
-      <label className="flex items-center gap-2 text-[13px] text-foreground">
-        <input type="checkbox" checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)} className="h-4 w-4 rounded border-border accent-primary" />
-        Solo cuentas pendientes de cobro
-      </label>
+      <Checkbox checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)} label="Solo cuentas pendientes de cobro" />
 
       {cuentas && cuentas.length === 0 && !loading && (
         <EstadoVacio mensaje={soloPendientes ? "No hay cuentas por cobrar pendientes." : "Todavía no hay ninguna cuenta por cobrar registrada."} />
@@ -359,7 +347,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                       <TableCell className="font-mono text-xs">{cuenta.facturaId ? `${cuenta.facturaId.slice(0, 13)}…` : "—"}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {cuenta.clienteNombre ?? "Sin nombre"}
-                        <div className="text-[11px] text-muted-foreground">{cuenta.clienteEmail ?? "sin correo capturado"}</div>
+                        <div className="text-xs text-muted-foreground">{cuenta.clienteEmail ?? "sin correo capturado"}</div>
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">{formatMoney(cuenta.monto)}</TableCell>
                       <TableCell className="text-muted-foreground">
@@ -369,7 +357,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                             apps/web/src/lib/formato-fecha.ts). `pagadoEn` abajo SÍ es un
                             timestamp real (`timestamptz`) y se queda con `formatDate`. */}
                         {formatFechaSolo(cuenta.fechaVencimiento)}
-                        <div className="text-[11px] text-muted-foreground">{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
+                        <div className="text-xs text-muted-foreground">{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
                       </TableCell>
                       <TableCell>
                         <BucketBadge bucket={cuenta.bucket} />
@@ -379,13 +367,13 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                       </TableCell>
                       <TableCell>
                         {cuenta.pagadoEn ? (
-                          <Badge variant="outline" className="border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400">
+                          <StatusBadge tone="success">
                             Pagada {formatDate(cuenta.pagadoEn)}
-                          </Badge>
+                          </StatusBadge>
                         ) : (
-                          <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
+                          <StatusBadge tone="warning">
                             Pendiente
-                          </Badge>
+                          </StatusBadge>
                         )}
                       </TableCell>
                       {puedeGestionar && (
@@ -396,11 +384,11 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                                 <Label htmlFor={`cobranza-etapa-${cuenta.id}`} className="sr-only">
                                   Etapa del recordatorio
                                 </Label>
-                                <select
+                                <NativeSelect
                                   id={`cobranza-etapa-${cuenta.id}`}
                                   value={stageChoice[cuenta.id] ?? ""}
                                   onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
-                                  className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                  size="sm" wrapperClassName="min-w-36 flex-1"
                                 >
                                   <option value="">Etapa sugerida</option>
                                   {COBRANZA_REMINDER_STAGES.map((s) => (
@@ -408,7 +396,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                                       {STAGE_LABELS[s]}
                                     </option>
                                   ))}
-                                </select>
+                                </NativeSelect>
                                 <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
                                   <Send />
                                   {rowState?.loading ? "…" : "Enviar recordatorio"}
@@ -419,7 +407,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                                 Marcar pagada
                               </Button>
                               {rowState?.message && (
-                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
                                   {rowState.message}
                                 </span>
                               )}
@@ -435,6 +423,6 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

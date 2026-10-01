@@ -28,8 +28,10 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Input,
   Label,
+  PageContainer,
   Separator,
   Table,
   TableBody,
@@ -65,7 +67,7 @@ function ResultadoIsr({ resultado }: { resultado: IsrResultado }) {
   return (
     <Card className="max-w-md">
       <CardContent className="flex flex-col gap-2 p-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+        <p className="font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           {formatTablaAplicadaIsr(resultado.tablaAplicada)} · {resultado.tipoContribuyente === "PF" ? "Persona física" : "Persona moral"}
         </p>
         <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
@@ -80,7 +82,7 @@ function ResultadoIsr({ resultado }: { resultado: IsrResultado }) {
           <span className="font-bold text-foreground">ISR neto a pagar</span>
           <span className="text-right font-bold tabular-nums text-foreground">{formatMoney(resultado.isrNeto)}</span>
         </div>
-        <p className="text-[11px] text-muted-foreground">Cálculo sin persistencia -- copia el ISR neto donde corresponda (ej. comprobante de un vencimiento fiscal ya registrado).</p>
+        <p className="text-xs text-muted-foreground">Cálculo sin persistencia -- copia el ISR neto donde corresponda (ej. comprobante de un vencimiento fiscal ya registrado).</p>
       </CardContent>
     </Card>
   );
@@ -126,10 +128,7 @@ function IsrPfForm({ ctx }: { ctx: DespachosShellContext }) {
               <Label htmlFor="isr-pf-base">Base gravable *</Label>
               <Input id="isr-pf-base" type="number" step="0.01" value={baseGravable} onChange={(e) => setBaseGravable(e.target.value)} required />
             </div>
-            <label className="flex items-center gap-2 text-[13px] text-foreground">
-              <input type="checkbox" checked={annual} onChange={(e) => setAnnual(e.target.checked)} className="h-4 w-4 rounded border-border accent-primary" />
-              Declaración anual (si no, mensual)
-            </label>
+            <Checkbox checked={annual} onChange={(e) => setAnnual(e.target.checked)} label="Declaración anual (si no, mensual)" />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="isr-pf-pagos">Pagos provisionales ya realizados</Label>
               <Input id="isr-pf-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
@@ -258,7 +257,7 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
               <Label htmlFor="resico-pagos">Pagos provisionales ya realizados</Label>
               <Input id="resico-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
             </div>
-            <p className="text-[11px] text-muted-foreground">RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
+            <p className="text-xs text-muted-foreground">RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
             {error && (
               <p role="alert" className="text-destructive text-sm">
                 {error}
@@ -361,7 +360,7 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
       )}
       {agregado && (
         <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
+          <div className="flex flex-wrap gap-6 text-sm text-foreground">
             <span>
               <strong>Periodo:</strong> {agregado.periodo}
             </span>
@@ -446,20 +445,20 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <div className="px-1">
+      <PageContainer padding="none" className="[&>*]:min-w-0">
         <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
         <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a declaraciones fiscales. Solo admin/contador.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-7 px-1">
+    <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>
+        <p className="mt-1 text-sm text-muted-foreground">ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>
       </header>
 
       <section className="flex flex-col gap-3.5">
@@ -489,6 +488,6 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
         <h2 className="font-display text-base font-semibold text-foreground">DIOT por periodo</h2>
         <DiotConsulta ctx={ctx} />
       </section>
-    </div>
+    </PageContainer>
   );
 }

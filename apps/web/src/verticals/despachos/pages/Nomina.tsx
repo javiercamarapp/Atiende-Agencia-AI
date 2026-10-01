@@ -21,12 +21,15 @@ import type { FormEvent } from "react";
 import { Calculator, Copy, FileCode2, Plus, Trash2 } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   Input,
   Label,
+  NativeSelect,
+  PageContainer,
   Separator,
   Table,
   TableBody,
@@ -104,11 +107,11 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
   return (
     <div className="flex flex-col gap-3">
       {resultado.requiresHumanReview && (
-        <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+        <Callout tone="warning" role="alert">
           Requiere revisión humana: {resultado.humanReviewReason}
-        </p>
+        </Callout>
       )}
-      <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
+      <div className="flex flex-wrap gap-6 text-sm text-foreground">
         <span>
           <strong>Periodo:</strong> {formatPeriodo(resultado.year, resultado.month)}
         </span>
@@ -159,7 +162,7 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
           </Table>
         </CardContent>
       </Card>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {resultado.referenciaLegal} -- Cálculo sin persistencia. Clave de idempotencia: <code className="rounded bg-muted px-1 py-0.5 font-mono">{resultado.idempotencyKey}</code>
       </p>
     </div>
@@ -183,7 +186,7 @@ function ComprobanteXml({ comprobante }: { comprobante: ComprobanteNomina }) {
     <Card>
       <CardContent className="flex flex-col gap-2 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[13px] text-foreground">
+          <span className="text-sm text-foreground">
             <strong>Folio {comprobante.folio}</strong> -- empleado {comprobante.employeeId}
           </span>
           <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={copiar}>
@@ -191,7 +194,7 @@ function ComprobanteXml({ comprobante }: { comprobante: ComprobanteNomina }) {
             {copiado ? "Copiado" : "Copiar XML"}
           </Button>
         </div>
-        <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2.5 font-mono text-[11px] text-foreground">{comprobante.xml}</pre>
+        <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2.5 font-mono text-xs text-foreground">{comprobante.xml}</pre>
       </CardContent>
     </Card>
   );
@@ -233,12 +236,12 @@ export function NominaPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <div className="px-1">
+      <PageContainer padding="none" className="[&>*]:min-w-0">
         <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Nómina</h1>
         <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a nómina. Solo admin/contador.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -362,10 +365,10 @@ export function NominaPage(ctx: DespachosShellContext) {
   }
 
   return (
-    <div className="flex flex-col gap-7 px-1">
+    <PageContainer padding="none" className="gap-7 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Nómina</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
+        <p className="mt-1 text-sm text-muted-foreground">Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
       </header>
 
       <section className="flex flex-col gap-3.5">
@@ -411,31 +414,31 @@ export function NominaPage(ctx: DespachosShellContext) {
                       <Label htmlFor={`nomina-id-${f.key}`} className="sr-only">
                         ID empleado
                       </Label>
-                      <Input id={`nomina-id-${f.key}`} value={f.employeeId} onChange={(e) => actualizarFila(f.key, { employeeId: e.target.value })} className="h-9 text-[13px]" />
+                      <Input id={`nomina-id-${f.key}`} value={f.employeeId} onChange={(e) => actualizarFila(f.key, { employeeId: e.target.value })} className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-nombre-${f.key}`} className="sr-only">
                         Nombre
                       </Label>
-                      <Input id={`nomina-nombre-${f.key}`} value={f.nombre} onChange={(e) => actualizarFila(f.key, { nombre: e.target.value })} className="h-9 text-[13px]" />
+                      <Input id={`nomina-nombre-${f.key}`} value={f.nombre} onChange={(e) => actualizarFila(f.key, { nombre: e.target.value })} className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-bruto-${f.key}`} className="sr-only">
                         Salario bruto
                       </Label>
-                      <Input id={`nomina-bruto-${f.key}`} type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} className="h-9 text-[13px]" />
+                      <Input id={`nomina-bruto-${f.key}`} type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-percepciones-${f.key}`} className="sr-only">
                         Percepciones
                       </Label>
-                      <Input id={`nomina-percepciones-${f.key}`} type="number" step="0.01" value={f.percepciones} onChange={(e) => actualizarFila(f.key, { percepciones: e.target.value })} placeholder="0" className="h-9 text-[13px]" />
+                      <Input id={`nomina-percepciones-${f.key}`} type="number" step="0.01" value={f.percepciones} onChange={(e) => actualizarFila(f.key, { percepciones: e.target.value })} placeholder="0" className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Label htmlFor={`nomina-diario-${f.key}`} className="sr-only">
                         Salario diario
                       </Label>
-                      <Input id={`nomina-diario-${f.key}`} type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" className="h-9 text-[13px]" />
+                      <Input id={`nomina-diario-${f.key}`} type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
                     </TableCell>
                     <TableCell className="p-1.5">
                       <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-xs text-destructive hover:text-destructive" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1}>
@@ -500,15 +503,14 @@ export function NominaPage(ctx: DespachosShellContext) {
                 </div>
                 <div className="flex w-36 flex-col gap-1.5">
                   <Label htmlFor="emisor-tipo-nomina">Tipo de nómina</Label>
-                  <select
+                  <NativeSelect
                     id="emisor-tipo-nomina"
                     value={tipoNomina}
                     onChange={(e) => setTipoNomina(e.target.value as TipoNomina)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <option value="O">O -- Ordinaria</option>
                     <option value="E">E -- Extraordinaria</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="flex w-32 flex-col gap-1.5">
                   <Label htmlFor="emisor-serie">Serie</Label>
@@ -517,7 +519,7 @@ export function NominaPage(ctx: DespachosShellContext) {
               </CardContent>
             </Card>
 
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Tipo contrato/régimen/periodicidad usan los catálogos c_TipoContrato, c_TipoRegimen y c_PeriodicidadPago del Anexo 20 del SAT (p. ej. tipo contrato "01" = tiempo indeterminado, régimen "02" =
               Sueldos, periodicidad "05" = Mensual, "04" = Quincenal). Entidad federativa usa el catálogo c_Estado (p. ej. "CMX", "JAL", "NLE").
             </p>
@@ -547,67 +549,67 @@ export function NominaPage(ctx: DespachosShellContext) {
                         <Label htmlFor={`xml-rfc-${f.key}`} className="sr-only">
                           RFC receptor
                         </Label>
-                        <Input id={`xml-rfc-${f.key}`} value={f.rfcReceptor} onChange={(e) => actualizarFila(f.key, { rfcReceptor: e.target.value })} className="h-9 text-[13px]" />
+                        <Input id={`xml-rfc-${f.key}`} value={f.rfcReceptor} onChange={(e) => actualizarFila(f.key, { rfcReceptor: e.target.value })} className="h-9 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-nombre-rec-${f.key}`} className="sr-only">
                           Nombre receptor
                         </Label>
-                        <Input id={`xml-nombre-rec-${f.key}`} value={f.nombreReceptor} onChange={(e) => actualizarFila(f.key, { nombreReceptor: e.target.value })} placeholder="= nombre de nómina" className="h-9 text-[13px]" />
+                        <Input id={`xml-nombre-rec-${f.key}`} value={f.nombreReceptor} onChange={(e) => actualizarFila(f.key, { nombreReceptor: e.target.value })} placeholder="= nombre de nómina" className="h-9 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-cp-${f.key}`} className="sr-only">
                           CP fiscal receptor
                         </Label>
-                        <Input id={`xml-cp-${f.key}`} value={f.domicilioFiscalReceptor} onChange={(e) => actualizarFila(f.key, { domicilioFiscalReceptor: e.target.value })} className="h-9 text-[13px]" />
+                        <Input id={`xml-cp-${f.key}`} value={f.domicilioFiscalReceptor} onChange={(e) => actualizarFila(f.key, { domicilioFiscalReceptor: e.target.value })} className="h-9 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-regimen-rec-${f.key}`} className="sr-only">
                           Régimen fiscal receptor
                         </Label>
-                        <Input id={`xml-regimen-rec-${f.key}`} value={f.regimenFiscalReceptor} onChange={(e) => actualizarFila(f.key, { regimenFiscalReceptor: e.target.value })} placeholder="Opcional" className="h-9 text-[13px]" />
+                        <Input id={`xml-regimen-rec-${f.key}`} value={f.regimenFiscalReceptor} onChange={(e) => actualizarFila(f.key, { regimenFiscalReceptor: e.target.value })} placeholder="Opcional" className="h-9 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-folio-${f.key}`} className="sr-only">
                           Folio
                         </Label>
-                        <Input id={`xml-folio-${f.key}`} value={f.folio} onChange={(e) => actualizarFila(f.key, { folio: e.target.value })} className="h-9 text-[13px]" />
+                        <Input id={`xml-folio-${f.key}`} value={f.folio} onChange={(e) => actualizarFila(f.key, { folio: e.target.value })} className="h-9 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-curp-${f.key}`} className="sr-only">
                           CURP
                         </Label>
-                        <Input id={`xml-curp-${f.key}`} value={f.curp} onChange={(e) => actualizarFila(f.key, { curp: e.target.value })} maxLength={18} className="h-9 w-44 text-[13px]" />
+                        <Input id={`xml-curp-${f.key}`} value={f.curp} onChange={(e) => actualizarFila(f.key, { curp: e.target.value })} maxLength={18} className="h-9 w-44 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-num-${f.key}`} className="sr-only">
                           Número de empleado
                         </Label>
-                        <Input id={`xml-num-${f.key}`} value={f.numEmpleado} onChange={(e) => actualizarFila(f.key, { numEmpleado: e.target.value })} className="h-9 w-28 text-[13px]" />
+                        <Input id={`xml-num-${f.key}`} value={f.numEmpleado} onChange={(e) => actualizarFila(f.key, { numEmpleado: e.target.value })} className="h-9 w-28 text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-contrato-${f.key}`} className="sr-only">
                           Tipo de contrato
                         </Label>
-                        <Input id={`xml-contrato-${f.key}`} value={f.tipoContrato} onChange={(e) => actualizarFila(f.key, { tipoContrato: e.target.value })} placeholder="01" className="h-9 w-[70px] text-[13px]" />
+                        <Input id={`xml-contrato-${f.key}`} value={f.tipoContrato} onChange={(e) => actualizarFila(f.key, { tipoContrato: e.target.value })} placeholder="01" className="h-9 w-[70px] text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-regimen-${f.key}`} className="sr-only">
                           Tipo de régimen
                         </Label>
-                        <Input id={`xml-regimen-${f.key}`} value={f.tipoRegimen} onChange={(e) => actualizarFila(f.key, { tipoRegimen: e.target.value })} placeholder="02" className="h-9 w-[70px] text-[13px]" />
+                        <Input id={`xml-regimen-${f.key}`} value={f.tipoRegimen} onChange={(e) => actualizarFila(f.key, { tipoRegimen: e.target.value })} placeholder="02" className="h-9 w-[70px] text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-periodicidad-${f.key}`} className="sr-only">
                           Periodicidad de pago
                         </Label>
-                        <Input id={`xml-periodicidad-${f.key}`} value={f.periodicidadPago} onChange={(e) => actualizarFila(f.key, { periodicidadPago: e.target.value })} placeholder="05" className="h-9 w-[70px] text-[13px]" />
+                        <Input id={`xml-periodicidad-${f.key}`} value={f.periodicidadPago} onChange={(e) => actualizarFila(f.key, { periodicidadPago: e.target.value })} placeholder="05" className="h-9 w-[70px] text-sm" />
                       </TableCell>
                       <TableCell className="p-1.5">
                         <Label htmlFor={`xml-entfed-${f.key}`} className="sr-only">
                           Entidad federativa
                         </Label>
-                        <Input id={`xml-entfed-${f.key}`} value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} className="h-9 w-[70px] text-[13px]" />
+                        <Input id={`xml-entfed-${f.key}`} value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} className="h-9 w-[70px] text-sm" />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -635,6 +637,6 @@ export function NominaPage(ctx: DespachosShellContext) {
           )}
         </section>
       )}
-    </div>
+    </PageContainer>
   );
 }

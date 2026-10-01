@@ -6,19 +6,14 @@
 // el modelo no asigna responsables a revisiones/tareas, la carga es por cliente.
 import { useEffect, useState } from "react";
 import { AlertTriangle, CalendarCheck, CheckCircle2, ClipboardList, HandCoins, ShieldAlert, Users, Wallet } from "lucide-react";
-import { Badge, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Card, CardContent, DataTable, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge, statusTone } from "@atiende/ui";
 import { fetchDashboardDespacho } from "../lib/dashboard-client.ts";
 import type { AnomaliaDashboard, DashboardDespacho, FuenteDashboard, KpisCliente, NivelAtencion, SeveridadAnomalia } from "../lib/dashboard-client.ts";
 import { formatMoney, formatPeriodo } from "../lib/format.ts";
+import { NIVEL_ATENCION_TONES, SEVERIDAD_ANOMALIA_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const NIVEL_ETIQUETA: Record<NivelAtencion, string> = { critico: "Crítico", atencion: "Atención", al_corriente: "Al corriente", sin_datos: "Sin datos" };
-const NIVEL_BADGE: Record<NivelAtencion, { variant: "destructive" | "outline"; className?: string }> = {
-  critico: { variant: "destructive" },
-  atencion: { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
-  al_corriente: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
-  sin_datos: { variant: "outline" },
-};
 const SEVERIDAD_ETIQUETA: Record<SeveridadAnomalia, string> = { alta: "Alta", media: "Media", baja: "Baja" };
 const FUENTE_ETIQUETA: Record<FuenteDashboard, string> = {
   cartera: "cartera y cobranza",
@@ -30,12 +25,7 @@ const FUENTE_ETIQUETA: Record<FuenteDashboard, string> = {
 const SIN_CARTERA = "Sin cartera disponible: aún no hay cuentas por cobrar registradas o la base no tiene ese módulo.";
 
 export function NivelBadge({ nivel }: { nivel: NivelAtencion }) {
-  const { variant, className } = NIVEL_BADGE[nivel];
-  return (
-    <Badge variant={variant} className={className}>
-      {NIVEL_ETIQUETA[nivel]}
-    </Badge>
-  );
+  return <StatusBadge tone={statusTone(NIVEL_ATENCION_TONES, nivel)}>{NIVEL_ETIQUETA[nivel]}</StatusBadge>;
 }
 
 function formatPct(value: number | null): string {
@@ -95,8 +85,8 @@ function ResumenCards({ d }: { d: DashboardDespacho }) {
 function ListaAnomalias({ anomalias }: { anomalias: readonly AnomaliaDashboard[] }) {
   if (anomalias.length === 0) {
     return (
-      <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
-        <CheckCircle2 className="h-4 w-4 text-green-600" strokeWidth={1.75} />
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <CheckCircle2 className="h-4 w-4 text-success" strokeWidth={1.75} />
         Sin anomalías detectadas con los datos disponibles.
       </p>
     );
@@ -104,10 +94,10 @@ function ListaAnomalias({ anomalias }: { anomalias: readonly AnomaliaDashboard[]
   return (
     <ul className="flex flex-col gap-1.5">
       {anomalias.map((a) => (
-        <li key={a.codigo} className="flex items-start gap-2 text-[13px] text-foreground">
-          <Badge variant={a.severidad === "alta" ? "destructive" : "outline"} className="shrink-0">
+        <li key={a.codigo} className="flex items-start gap-2 text-sm text-foreground">
+          <StatusBadge tone={statusTone(SEVERIDAD_ANOMALIA_TONES, a.severidad)} className="shrink-0">
             {SEVERIDAD_ETIQUETA[a.severidad]}
-          </Badge>
+          </StatusBadge>
           <span>
             {a.mensaje}
             {a.monto !== null ? ` (${formatMoney(a.monto)})` : ""}
@@ -187,10 +177,10 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
   const activo = data?.ranking.find((c) => c.propertyId === propertyId) ?? null;
 
   return (
-    <div className="flex flex-col gap-4 px-1">
+    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header>
         <h1 className="font-display text-xl font-semibold text-foreground">Dashboard gerencial</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Cartera y cobranza, carga de trabajo, cierres pendientes y anomalías de todos tus clientes, calculados con los CFDI 4.0, vencimientos del SAT y cierres ya registrados.
         </p>
       </header>
@@ -203,12 +193,12 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
       {data && data.totalClientes > 0 && (
         <>
           {data.fuentesNoDisponibles.length > 0 && (
-            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
               Algunos indicadores aún no están disponibles en esta base de datos ({data.fuentesNoDisponibles.map((f) => FUENTE_ETIQUETA[f]).join(", ")}); se muestran como «sin dato» en vez de cero.
             </p>
           )}
           {data.truncado && (
-            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+            <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
               Se consolidan los primeros {data.totalClientes} de {data.totalClientesVisibles} clientes visibles.
             </p>
           )}
@@ -216,44 +206,31 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
           <ResumenCards d={data} />
           {activo && <DetalleCliente cliente={activo} />}
 
-          <Card>
-            <CardContent className="overflow-x-auto p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Atención</TableHead>
-                    <TableHead>Cartera vencida</TableHead>
-                    <TableHead>Cobranza</TableHead>
-                    <TableHead>Pendientes</TableHead>
-                    <TableHead>Cierre mes anterior</TableHead>
-                    <TableHead>Anomalías</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.ranking.map((c) => (
-                    <TableRow key={c.propertyId} className="align-top">
-                      <TableCell className="font-medium">{c.nombre}</TableCell>
-                      <TableCell>
-                        <NivelBadge nivel={c.nivelAtencion} />
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : "Sin dato"}</TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : "Sin dato"}</TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : "Sin dato"}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {c.cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[c.cierres.mesAnterior.estado] : "Sin dato"}
-                      </TableCell>
-                      <TableCell className="min-w-64">
-                        <ListaAnomalias anomalias={c.anomalias} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <DataTable
+            etiqueta="Clientes del despacho por nivel de atención"
+            obtenerId={(c) => c.propertyId}
+            filas={data.ranking}
+            paginacion={false}
+            columnas={[
+              { id: "cliente", encabezado: "Cliente", principal: true, celda: (c) => <span className="font-medium">{c.nombre}</span> },
+              { id: "atencion", encabezado: "Atención", celda: (c) => <NivelBadge nivel={c.nivelAtencion} /> },
+              { id: "cartera", encabezado: "Cartera vencida", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : "Sin dato"}</span> },
+              { id: "cobranza", encabezado: "Cobranza", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : "Sin dato"}</span> },
+              { id: "pendientes", encabezado: "Pendientes", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : "Sin dato"}</span> },
+              {
+                id: "cierre",
+                encabezado: "Cierre mes anterior",
+                celda: (c) => (
+                  <span className="text-muted-foreground">
+                    {c.cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[c.cierres.mesAnterior.estado] : "Sin dato"}
+                  </span>
+                ),
+              },
+              { id: "anomalias", encabezado: "Anomalías", className: "min-w-64", celda: (c) => <ListaAnomalias anomalias={c.anomalias} /> },
+            ]}
+          />
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

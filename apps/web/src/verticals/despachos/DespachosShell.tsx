@@ -1,73 +1,23 @@
-// Shell del panel de staff de despachos (Fase 9) — primera UI operativa real de
-// este vertical más allá del login (ver README: hasta esta fase solo existía
-// Login.tsx, pese a que los motores de dominio (CFDI/conciliación/migración de
-// catálogo/cierre mensual/nómina/contabilidad electrónica) ya estaban completos).
-// Mismo patrón exacto que HotelesShell.tsx/LicitacionesShell.tsx: resuelve sesión +
-// propertyId UNA vez (vía lib/admin-client.ts::fetchBranches, plumbing nuevo de
-// esta fase — ver GET /v1/despachos/:orgSlug/admin/branches, admin.ts) y le da a
-// las páginas nuevas (CierreMensual/Cfdi) la misma nav lateral y el mismo `role`
-// del staff (cosmético, para ocultar acciones que el servidor rechazaría igual — el
+// Shell del panel de staff de despachos — resuelve sesión + propertyId (contribuyente
+// activo) UNA vez y le da a todas las páginas la misma navegación y el mismo `role`
+// del staff (cosmético, para ocultar acciones que el servidor rechazaría igual: el
 // enforcement real es SIEMPRE server-side, ver VER_CIERRE_MENSUAL_ROLES/
 // GESTIONAR_CIERRE_MENSUAL_ROLES/CERRAR_PERIODO_ROLES en roles.ts).
 //
-// Presentación — migrado de la nav `<nav>`/estilos inline original al `Sidebar`
-// real de @atiende/ui (mismo patrón "sidebar bottom hundido gris" ya portado desde
-// atiende-hoteles, ver packages/ui/src/components/Sidebar.tsx): los ítems de
-// NAV_ITEMS de abajo se agrupan por dominio contable en `SIDEBAR_SECTIONS` y se
-// pasan tal cual a `sections`. Toda la lógica de sesión/branches/propertyId de
-// abajo sigue exactamente igual — solo cambia el JSX/CSS de presentación.
+// PR-8 del plan de diseño-ux (DS v2): igual que restaurantes (PR-5), la sesión
+// (lectura persistida, SESSION_EXPIRED_EVENT, contribuyentes, contribuyente activo
+// persistido por organización, rol, logout) vive en `useVerticalSession` y el chrome
+// (Sidebar, MobileHeader + menú de cuenta, BottomNav con "Más", cabecera de escritorio,
+// <main> con skip link) en `VerticalShell` de @atiende/ui; este archivo solo aporta lo
+// propio de despachos: el adaptador de sesión, el mapa de navegación, el chat con datos
+// y el contexto que reciben las páginas.
 //
-// Fase 10 — hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar
-// UN contribuyente/cliente"): este Shell fijaba `branches[0]` para siempre,
-// aunque el negocio central de un despacho real es dar servicio a N clientes/
-// contribuyentes y GET .../admin/branches YA devolvía la lista completa (cada
-// branch = un contribuyente distinto, `core.property` org-scoped con múltiples
-// filas posibles — ver admin.ts/postgres-repository.ts, sin cambio de esquema
-// necesario). Ahora expone un selector real (pasado como `hotelSelector` al
-// Sidebar — prop genérica pese al nombre, ver su tipo en Sidebar.tsx — visible
-// cuando hay más de un contribuyente) y resuelve el `propertyId` activo con
-// `resolveActivePropertyId` (admin-client.ts) en vez de descartar el resto de la
-// lista — todas las páginas hijas (Cfdi/Declaraciones/Vencimientos/etc.) ya
-// consumían `ctx.propertyId` sin cachear nada propio, así que cambiar la
-// selección aquí basta para que TODAS refetcheen contra el contribuyente elegido.
-// NO cubierto por esta fase: `despachos.tenant_profile` (RFC/razón social) sigue
-// siendo `organization_id primary key` — UN solo RFC/razón social por
-// organización, no por contribuyente/property — pero ningún archivo de código lo
-// lee todavía (solo existe en la migración), así que no bloquea el selector ni
-// ninguna de las 10 páginas de esta fase, que ya leen/escriben SIEMPRE por
-// `property_id` (invoice/fiscal_deadline/invoice_review, todas RLS-scoped por
-// property). Si en el futuro se necesita mostrar u operar el RFC/razón social
-// POR contribuyente (no solo por despacho), `tenant_profile` necesitaría
-// rediseñarse con `property_id` en la llave (o una tabla nueva) — cambio de
-// esquema real, fuera de alcance aquí.
-//
-// Fase 19 — hallazgo de auditoría (severidad ALTA, "el selector real de
-// contribuyente de la Fase 10 vive en un useState que se resetea cada vez que se
-// navega"): App.tsx monta una instancia NUEVA de este Shell por cada una de las 14
-// rutas Despachos*Route (`/despachos/:orgSlug/cfdi`, `/despachos/:orgSlug/
-// declaraciones`, etc. — no hay un layout persistente entre rutas de React Router
-// aquí, mismo motivo que llevó a rentas a necesitar lib/property-selection.ts en la
-// misma ronda). Sin persistir la selección fuera del componente, un contador que
-// elige el contribuyente B en CFDI y navega a Declaraciones volvía a ver los datos
-// del contribuyente A (el primero, vía `resolveActivePropertyId(branches, null)`)
-// sin ningún aviso. `selectedPropertyId` ahora se inicializa leyendo
-// lib/property-selection.ts (persistido bajo la llave de esta organización) y
-// `handleSelectProperty` persiste cada cambio — mismo patrón exacto que
-// RentasShell.tsx.
-//
-// Hallazgo relacionado (misma fase): varias páginas "calculadora" de despachos
-// (Conciliacion/DevolucionIva/Bookkeeping/Declaraciones/Nomina/
-// ContabilidadElectronica) guardan en su propio useState el resultado calculado
-// para el contribuyente activo, sin limpiarlo cuando `ctx.propertyId` cambia
-// DENTRO de la misma instancia de Shell (cambiar el selector sin navegar) — el
-// resultado en pantalla quedaba siendo el del contribuyente anterior hasta que el
-// usuario disparaba el cálculo de nuevo manualmente. La forma más barata de
-// corregirlo sin tocar cada página es remontar el árbol de `children(...)` cuando
-// cambia `propertyId`: `key={propertyId}` en el `<div>` que los envuelve fuerza a
-// React a destruir y recrear esas páginas (con todo su estado local) cada vez que
-// el contribuyente activo cambia, exactamente como si se hubiera navegado a una
-// ruta nueva.
-import { useEffect, useState } from "react";
+// Un despacho da servicio a N contribuyentes (cada branch = un contribuyente, ver
+// admin-client.ts). `contentKey={propertyId}` remonta las páginas hijas cuando cambia el
+// contribuyente activo (mismo `key` que antes tenía el <main>): las páginas
+// "calculadora" (Conciliacion/DevolucionIva/Bookkeeping/Declaraciones/Nomina/
+// ContabilidadElectronica) guardan el resultado calculado en estado local y sin el
+// remonte mostrarían el del contribuyente anterior.
 import type { ReactNode } from "react";
 import {
   BookOpen,
@@ -87,19 +37,30 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { AtiendeWordmark, BottomNav, DashboardHeader, MobileHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
-import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
-import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
-import { conexionChatDatosDespachos } from "./lib/chat-datos-client.ts";
-import { useNotifications } from "../../lib/useNotifications.ts";
+import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { useVerticalSession } from "../../lib/useVerticalSession.ts";
+import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
+import { useDocumentTitle } from "../../shell/use-document-title.ts";
+import { conexionChatDatosDespachos } from "./lib/chat-datos-client.ts";
 import { clearDespachosSession, logout, readPersistedDespachosSession } from "./lib/auth-client.ts";
-import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
-import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
-import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
+
+/** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
+const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
+  vertical: "despachos",
+  readSession: readPersistedDespachosSession,
+  clearSession: clearDespachosSession,
+  logout,
+  fetchBranches,
+  readPropertyId: readPersistedPropertyId,
+  persistPropertyId,
+  resolveActivePropertyId,
+};
 
 export interface DespachosShellContext {
   readonly apiBaseUrl: string;
@@ -194,254 +155,73 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
   ];
 }
 
+/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las
+ * secciones fiscales/contables (los 15 destinos de `buildSidebarSections`, sin curarlos a ojo). */
+function buildMobileItems(orgSlug: string): BottomNavItem[] {
+  const base = `/despachos/${orgSlug}`;
+  return [
+    { to: `${base}/cierre-mensual`, label: "Cierre", icon: CalendarCheck },
+    { to: `${base}/cfdi`, label: "CFDI", icon: FileText },
+    { to: `${base}/cobranza`, label: "Cobranza", icon: HandCoins },
+    { to: `${base}/vencimientos`, label: "Vencim.", icon: CalendarClock },
+  ];
+}
+
 export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: DespachosShellProps) {
-  const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
-  const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
-  // Contribuyente/cliente activo elegido en el selector de abajo -- `null` hasta
-  // que el staff elige uno explícitamente, en cuyo caso `resolveActivePropertyId`
-  // cae al primero de `branches` (mismo fallback que el `branches[0]` fijo de
-  // antes, pero ahora es solo el default inicial, no un techo duro). Fase 19 --
-  // inicializado leyendo lib/property-selection.ts (persistido para este
-  // `orgSlug`) para que sobreviva a que App.tsx monte una instancia NUEVA de este
-  // Shell al navegar a otra ruta del panel (ver comentario de cabecera del
-  // archivo); `resolveActivePropertyId` ya tolera un valor persistido que quedó
-  // obsoleto (branch reasignado/dado de baja entre sesiones), así que no hace
-  // falta validarlo aquí.
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => readPersistedPropertyId(window.localStorage, orgSlug));
-  const [error, setError] = useState<string | null>(null);
-  // Mismo hallazgo de auditoría que hoteles/restaurantes/citas/licitaciones:
-  // /auth/logout ya existe en el backend (compartido entre verticales), solo
-  // faltaba el botón.
-  const [loggingOut, setLoggingOut] = useState(false);
+  // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
+  useDocumentTitle("Despachos", orgSlug);
+  const s = useVerticalSession({ adapter: DESPACHOS_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "readonly" });
 
-  useEffect(() => {
-    const s = readPersistedDespachosSession(window.localStorage);
-    setSession(s);
-    if (!s) onRequireLogin();
-  }, [onRequireLogin]);
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
+  if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando contribuyentes…" />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este despacho todavía no tiene ningún contribuyente configurado." />;
 
-  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
-  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
-  // redirección"): fetchJson/postJson de lib/admin-client.ts ya intentan un refresh
-  // automático ante un 401 (ver ../../lib/authed-fetch.ts); si ESE refresh también
-  // falla disparan SESSION_EXPIRED_EVENT en `window` — este Shell escucha y reusa el
-  // `onRequireLogin` que ya tenía. Filtra por `detail.vertical` para no reaccionar
-  // al session-expired de otra vertical abierta en otra pestaña.
-  useEffect(() => {
-    function handleSessionExpired(event: Event) {
-      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
-      if (detail?.vertical !== "despachos") return;
-      clearDespachosSession(window.localStorage);
-      setSession(null);
-      onRequireLogin();
-    }
-    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
-    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
-  }, [onRequireLogin]);
+  const { session, branches, activeBranch, propertyId, role } = s;
 
-  async function handleLogout() {
-    if (!session) return;
-    setLoggingOut(true);
-    try {
-      await logout(fetch, apiBaseUrl, session.refreshToken);
-    } finally {
-      clearDespachosSession(window.localStorage);
-      setSession(null);
-      onRequireLogin();
-    }
-  }
-
-  useEffect(() => {
-    if (!session) return;
-    let cancelado = false;
-    (async () => {
-      try {
-        const list = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
-        if (!cancelado) setBranches(list);
-      } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar el despacho.");
-      }
-    })();
-    return () => {
-      cancelado = true;
-    };
-  }, [session, apiBaseUrl, orgSlug]);
-
-  // Campana de notificaciones del header (DashboardHeader/NotificationBell) --
-  // llamada SIEMPRE, antes de los early return de sesión de abajo, para no violar
-  // las reglas de hooks (mismo patrón exacto que CitasShell.tsx/RentasShell.tsx);
-  // `session?.token ?? ""` deja que el propio hook maneje un token vacío mientras
-  // la sesión resuelve/no existe -- en esas ramas el header ni siquiera llega a
-  // pintarse.
-  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
-
-  if (session === undefined) return null; // resolviendo sesión persistida
-  if (!session) return null; // onRequireLogin ya disparó la redirección
-
-  if (error) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <p role="alert" className="text-destructive text-sm">
-          {error}
-        </p>
-      </main>
-    );
-  }
-
-  if (!branches) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <p className="text-muted-foreground text-sm">Cargando…</p>
-      </main>
-    );
-  }
-
-  if (branches.length === 0) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <p role="alert" className="text-destructive text-sm">
-          Este despacho todavía no tiene ninguna property configurada.
-        </p>
-      </main>
-    );
-  }
-
-  // Hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar UN
-  // contribuyente/cliente"): un despacho real da servicio a N clientes/
-  // contribuyentes distintos, y GET .../admin/branches ya devolvía la lista
-  // completa (cada branch = un contribuyente, ver admin-client.ts) -- este Shell
-  // simplemente descartaba todo menos `branches[0]`. `resolveActivePropertyId`
-  // respeta la selección del staff en el selector de abajo y solo cae al primero
-  // como default inicial (o si la selección quedó obsoleta).
-  const propertyId = resolveActivePropertyId(branches, selectedPropertyId)!;
-  const activeBranch = branches.find((b) => b.propertyId === propertyId);
-  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "readonly";
-
-  // "Chatea con tus datos": conexion real con el backend de despachos (motor compartido, catalogo cerrado de
-  // solo lectura). El servidor decide el alcance (organizacion, clientes, rol) a partir del token; aqui solo
+  // "Chatea con tus datos": conexión real con el backend de despachos (motor compartido, catálogo cerrado de
+  // solo lectura). El servidor decide el alcance (organización, clientes, rol) a partir del token; aquí solo
   // van el cliente activo y el texto.
   const chatConexion = conexionChatDatosDespachos(fetch, apiBaseUrl, session.token, propertyId);
 
-  // Fase 19 -- handler real del selector: actualiza el estado de React (recalcula
-  // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
-  // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
-  // para que sobreviva a navegar a otra ruta del panel o a un refresh de página.
-  function handleSelectProperty(nextPropertyId: string) {
-    setSelectedPropertyId(nextPropertyId);
-    persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
-  }
-
-  // Prop genérica de Sidebar (ver su tipo en Sidebar.tsx) — aquí se usa para el
-  // selector real de CONTRIBUYENTE (no de hotel), mismo criterio ya aplicado en
-  // HotelesShell.tsx/RentasShell.tsx. Solo se renderiza cuando hay más de un
-  // contribuyente, igual que el `<select>` original.
+  // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
+  // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const contribuyenteSelector =
     branches.length > 1 ? (
       <div>
-        <label htmlFor="despachos-contribuyente-activo" className="block px-0.5 mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+        <label htmlFor="despachos-contribuyente-activo" className="block mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">
           Contribuyente
         </label>
-        <select
-          id="despachos-contribuyente-activo"
-          value={propertyId}
-          onChange={(e) => handleSelectProperty(e.target.value)}
-          className="w-full rounded-lg border border-border bg-card px-2.5 py-2 text-[13px] text-foreground"
-        >
+        <NativeSelect id="despachos-contribuyente-activo" size="sm" value={propertyId} onChange={(e) => s.selectBranch(e.target.value)}>
           {branches.map((b) => (
             <option key={b.propertyId} value={b.propertyId}>
               {b.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
-    ) : null;
-
-  const sections = buildSidebarSections(orgSlug);
+    ) : (
+      <p className="text-xs text-muted-foreground truncate">{activeBranch.name}</p>
+    );
 
   return (
-    <div className="min-h-screen bg-background flex gap-3 p-3">
-      <Sidebar
-        sections={sections}
-        user={{ email: session.email, rol: role }}
-        onLogout={handleLogout}
-        hotelSelector={contribuyenteSelector}
-      />
-
-      {/* En viewport móvil el <Sidebar> compartido es `hidden md:flex`: el
-          acceso móvil es <MobileHeader> (logo, selector de contribuyente, campana
-          y menú de cuenta con chat y cerrar sesión) más <BottomNav>, cuya barra
-          trae los 4 destinos de uso diario y cuyo botón "Más" abre las 15
-          secciones fiscales/contables (todas, sin curarlas a ojo). */}
-      <MobileHeader
-        title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={
-          <MobileHeaderActions
-            selector={contribuyenteSelector}
-            notif={notif}
-            user={{ email: session.email, rol: role }}
-            onLogout={handleLogout}
-            loggingOut={loggingOut}
-            chat={chatConexion}
-          />
-        }
-      />
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:block">
-          <DashboardHeader
-            variant="vertical"
-            icon={<Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-            title={`Despachos · ${activeBranch?.name ?? orgSlug}`}
-            fecha={fechaCortaEsMx()}
-            notificationBell={
-              <NotificationBell
-                items={notif.items}
-                unreadCount={notif.unreadCount}
-                loading={notif.loading}
-                onOpenChange={(open) => {
-                  if (open) notif.refetch();
-                }}
-                onMarkRead={notif.onMarkRead}
-                onMarkAllRead={notif.onMarkAllRead}
-              />
-            }
-            chatButton={<BotonChatDatos chat={chatConexion} />}
-          />
-        </div>
-        {/* DashboardHeader no tiene slot propio para este aviso -- mismo criterio que
-            RentasShell.tsx: se conserva como anuncio accesible en vez de perderlo. */}
-        {loggingOut && (
-          <span className="sr-only" role="status">
-            Cerrando sesión…
-          </span>
-        )}
-
-        {/* Fase 19 -- `key={propertyId}` fuerza a React a desmontar/remontar las
-            páginas hijas cuando el contribuyente activo cambia DENTRO de la misma
-            instancia de Shell (selector, sin navegar) -- corrige el hallazgo
-            relacionado en el que Conciliacion/DevolucionIva/Bookkeeping/
-            Declaraciones/Nomina/ContabilidadElectronica conservaban en pantalla el
-            resultado calculado para el contribuyente anterior porque su estado local
-            de cálculo no se limpiaba solo porque `ctx.propertyId` cambiara (ver
-            comentario de cabecera del archivo). Páginas que no cachean ningún
-            resultado propio (Cfdi/Vencimientos/etc., que ya refetchean por
-            `useEffect` con `propertyId` en su arreglo de dependencias) no cambian de
-            comportamiento: un remount con las mismas dependencias dispara el mismo
-            fetch que ya disparaban. */}
-        <main key={propertyId} className="flex-1 overflow-auto pb-24 pt-20 md:pb-6 md:pt-0">
-          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
-        </main>
-      </div>
-
-      <BottomNav
-        items={[
-          { to: `/despachos/${orgSlug}/cierre-mensual`, label: "Cierre", icon: CalendarCheck },
-          { to: `/despachos/${orgSlug}/cfdi`, label: "CFDI", icon: FileText },
-          { to: `/despachos/${orgSlug}/cobranza`, label: "Cobranza", icon: HandCoins },
-          { to: `/despachos/${orgSlug}/vencimientos`, label: "Vencim.", icon: CalendarClock },
-        ]}
-        moreSections={sections}
-      />
-    </div>
+    <VerticalShellConectado
+      apiBaseUrl={apiBaseUrl}
+      token={session.token}
+      chat={chatConexion}
+      vertical="despachos"
+      sections={buildSidebarSections(orgSlug)}
+      mobileItems={buildMobileItems(orgSlug)}
+      user={{ email: session.email, rol: role }}
+      onLogout={() => void s.logout()}
+      loggingOut={s.loggingOut}
+      header={{ icon: <Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, fecha: fechaCortaEsMx() }}
+      branchSelector={contribuyenteSelector}
+      mobileSelector={contribuyenteSelector}
+      contentKey={propertyId}
+    >
+      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+    </VerticalShellConectado>
   );
 }

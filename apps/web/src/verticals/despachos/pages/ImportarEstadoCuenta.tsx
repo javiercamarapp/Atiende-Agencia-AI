@@ -9,7 +9,26 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, FileUp, Search } from "lucide-react";
-import { Badge, Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoVacio, Input, Label, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoVacio,
+  Input,
+  Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { BANCOS_ESTADO_CUENTA, decodificarArchivoEstadoCuenta, formatoPorNombreArchivo, guardarEstadoCuenta, previsualizarEstadoCuenta } from "../lib/estado-cuenta-client.ts";
 import type { BancoEstadoCuenta, CoincidenciaImportacion, EntradaImportacion, ResultadoGuardadoEstadoCuenta, VistaPreviaImportacion } from "../lib/estado-cuenta-client.ts";
 import { formatMoney } from "../lib/format.ts";
@@ -89,12 +108,12 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
   if (!puedeGestionar) {
     return (
-      <div className="flex flex-col gap-2 px-1">
+      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
         <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
         <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede importar estados de cuenta -- el servidor lo rechazaría igual.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -103,11 +122,11 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
   const parseo = vista?.parseo;
 
   return (
-    <div className="flex flex-col gap-5 px-1">
+    <PageContainer padding="none" className="gap-5 [&>*]:min-w-0">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-foreground">Importar estado de cuenta</h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Sube el archivo CSV u OFX que descargas de tu banco. Revisas la vista previa y los errores por renglón; solo se guarda cuando tú lo confirmas.
           </p>
         </div>
@@ -118,7 +137,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[15px]">1. Archivo del banco</CardTitle>
+          <CardTitle className="text-base">1. Archivo del banco</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-3">
@@ -158,7 +177,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
             </Button>
             {nombreArchivo && <span className="text-xs text-muted-foreground">{nombreArchivo}</span>}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Se reconocen los encabezados habituales de BBVA, Banorte, Santander, HSBC, Scotiabank, Citibanamex e Inbursa (Fecha, Concepto/Descripción, Referencia, Cargo/Retiro, Abono/Depósito, Importe, Saldo) con fechas dd/mm/aaaa. Los bancos cambian sus layouts: si el tuyo no se reconoce, el detalle del error por renglón te dice qué corregir.
           </p>
         </CardContent>
@@ -176,10 +195,10 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
         <>
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-[15px]">2. Resumen</CardTitle>
+              <CardTitle className="text-base">2. Resumen</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-foreground">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-foreground">
                 <span>
                   <strong>Banco:</strong> {etiquetaBanco(parseo.banco)}
                   {parseo.bancoDetectado ? " (detectado)" : ""}
@@ -232,7 +251,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                   <Button type="button" size="sm" onClick={() => void handleGuardar()} disabled={guardando || parseo.errores.length > 0 || vista.nuevos === 0}>
                     {guardando ? "Guardando…" : `Guardar ${vista.nuevos} movimiento(s) nuevos en el libro`}
                   </Button>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {parseo.errores.length > 0 ? "Corrige los renglones con error para poder guardar (se guarda todo o nada)." : vista.nuevos === 0 ? "Todo el archivo ya estaba guardado." : "Guardar no marca cuentas por cobrar como pagadas ni concilia por sí solo."}
                   </span>
                 </div>
@@ -243,7 +262,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
           {parseo.errores.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-[15px]">Errores por renglón ({parseo.errores.length})</CardTitle>
+                <CardTitle className="text-base">Errores por renglón ({parseo.errores.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto rounded-xl border border-border">
@@ -273,13 +292,13 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
           {parseo.advertencias.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-1.5 text-[15px]">
+                <CardTitle className="flex items-center gap-1.5 text-base">
                   <AlertTriangle className="h-4 w-4 text-warning" strokeWidth={1.75} />
                   Avisos ({parseo.advertencias.length})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="flex flex-col gap-1 text-[13px] text-foreground">
+                <ul className="flex flex-col gap-1 text-sm text-foreground">
                   {parseo.advertencias.map((a, i) => (
                     <li key={`${a.codigo}-${a.renglon ?? "g"}-${i}`}>{a.mensaje}</li>
                   ))}
@@ -290,16 +309,16 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-[15px]">3. Movimientos y conciliación</CardTitle>
+              <CardTitle className="text-base">3. Movimientos y conciliación</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {vista.conciliacion && (
-                <p className="text-[13px] text-foreground">
+                <p className="text-sm text-foreground">
                   <strong>Conciliados con CFDI:</strong> {vista.conciliacion.totalMatched} de {vista.conciliacion.totalMovements} movimientos nuevos ({Math.round(vista.conciliacion.matchRate)}%).
                 </p>
               )}
-              {vista.conciliacionOmitida && <p className="text-[13px] text-muted-foreground">{vista.conciliacionOmitida}</p>}
-              {!vista.cobranzaDisponible && vista.conciliacion && <p className="text-[13px] text-muted-foreground">Cobranza no disponible todavía en esta base: se concilia solo contra CFDI.</p>}
+              {vista.conciliacionOmitida && <p className="text-sm text-muted-foreground">{vista.conciliacionOmitida}</p>}
+              {!vista.cobranzaDisponible && vista.conciliacion && <p className="text-sm text-muted-foreground">Cobranza no disponible todavía en esta base: se concilia solo contra CFDI.</p>}
 
               {parseo.movimientos.length === 0 ? (
                 <EstadoVacio compacto titulo="Sin movimientos válidos" mensaje="Revisa los errores por renglón de arriba." />
@@ -326,19 +345,19 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                             <TableCell className="p-2 tabular-nums">{m.renglon}</TableCell>
                             <TableCell className="p-2">{m.fecha}</TableCell>
                             <TableCell className="p-2">{m.descripcion || "—"}</TableCell>
-                            <TableCell className="p-2 font-mono text-[11px]">{m.referencia ?? "—"}</TableCell>
+                            <TableCell className="p-2 font-mono text-xs">{m.referencia ?? "—"}</TableCell>
                             <TableCell className="p-2 text-right tabular-nums">{m.cargo !== null ? formatMoney(m.cargo) : ""}</TableCell>
                             <TableCell className="p-2 text-right tabular-nums">{m.abono !== null ? formatMoney(m.abono) : ""}</TableCell>
                             <TableCell className="p-2 text-right tabular-nums">{m.saldo !== null ? formatMoney(m.saldo) : ""}</TableCell>
                             <TableCell className="p-2">
                               {yaImportados.has(m.hash) ? (
-                                <Badge variant="secondary">Ya importado</Badge>
+                                <StatusBadge tone="neutral">Ya importado</StatusBadge>
                               ) : coincidencia ? (
                                 <div className="flex flex-col gap-0.5">
-                                  <Badge variant="outline" className="w-fit border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400">
+                                  <StatusBadge tone="success" className="w-fit">
                                     CFDI {NIVEL_LABELS[coincidencia.nivel] ?? coincidencia.nivel}
-                                  </Badge>
-                                  {coincidencia.cobranzaPendienteIds.length > 0 && <span className="text-[11px] text-muted-foreground">Cuenta por cobrar pendiente: revisa si ya se pagó</span>}
+                                  </StatusBadge>
+                                  {coincidencia.cobranzaPendienteIds.length > 0 && <span className="text-xs text-muted-foreground">Cuenta por cobrar pendiente: revisa si ya se pagó</span>}
                                 </div>
                               ) : (
                                 <span className="text-muted-foreground">Sin conciliar</span>
@@ -352,7 +371,7 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
                 </div>
               )}
               {parseo.movimientos.length > MAX_FILAS_VISTA && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Se muestran los primeros {MAX_FILAS_VISTA} de {parseo.movimientos.length} movimientos; el archivo completo se validó y concilió.
                 </p>
               )}
@@ -360,6 +379,6 @@ export function ImportarEstadoCuentaPage({ apiBaseUrl, token, propertyId, orgSlu
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
