@@ -1,6 +1,6 @@
 // Agregacion y reporte (JSON + Markdown) de una corrida del arnes: ranking por exactitud / cifras inventadas /
 // herramienta / latencia / costo, puertas de aprobacion del plan (docs/EVAL-COPILOTO.md) y recomendacion por rol.
-import { candidatoPorId, type ModeloCandidato, type RolEval } from "./candidatos.js";
+import { candidatoPorId, candidatosNoElegibles, type ModeloCandidato, type RolEval } from "./candidatos.js";
 import type { RegistroTurno, ResultadoCorrida } from "./runner.js";
 import { CATEGORIAS_CASO } from "./types.js";
 
@@ -224,6 +224,8 @@ export interface ReporteCorrida {
   readonly ranking: readonly string[];
   readonly recomendaciones: readonly RecomendacionRol[];
   readonly descartados: ResultadoCorrida["descartados"];
+  /** Candidatos de la fase sin proveedor de EE.UU. con ZDR hoy: no se corrieron y se listan aqui (nunca se omiten en silencio). */
+  readonly noElegibles: readonly { readonly modelo: string; readonly etiqueta: string; readonly motivo: string }[];
   readonly noCorridos: number;
 }
 
@@ -242,6 +244,7 @@ export function construirReporte(res: ResultadoCorrida, expectativas: ReadonlyMa
     ranking: resumenes.map((r) => r.modelo),
     recomendaciones: recomendarPorRol(resumenes, candidatos),
     descartados: res.descartados,
+    noElegibles: candidatosNoElegibles(res.fase).map((c) => ({ modelo: c.id, etiqueta: c.etiqueta, motivo: c.noElegible! })),
     noCorridos: res.noCorridos.length,
   };
 }
@@ -299,6 +302,14 @@ export function reporteMarkdown(r: ReporteCorrida): string {
     L.push("## Modelos descartados por ruta");
     L.push("");
     for (const d of r.descartados) L.push(`- \`${d.modelo}\`: ${d.motivo}`);
+  }
+  if (r.noElegibles.length > 0) {
+    L.push("");
+    L.push("## Modelos no elegibles (sin proveedor de EE.UU. con ZDR)");
+    L.push("");
+    L.push("No se corrieron: la politica del gateway (proveedores de EE.UU. permitidos, `data_collection: deny`, ZDR) no se relaja. Re-verificar con `node scripts/check-llm-us-hosts.mjs <modelo>`.");
+    L.push("");
+    for (const d of r.noElegibles) L.push(`- ${d.etiqueta} (\`${d.modelo}\`): no elegible, ${d.motivo}.`);
   }
   L.push("");
   L.push("Los modelos de calibracion (Haiku 4.5, Grok 4.3) nunca se recomiendan. Un modelo sin ruta EE.UU./ZDR se descarta; la politica no se relaja.");

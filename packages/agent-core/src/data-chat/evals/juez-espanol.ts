@@ -1,4 +1,4 @@
-// Juez de espanol barato (Qwen 3.7 Flash via OpenRouter; NUNCA Sonnet). Califica de 1 a 5 el TEXTO que ve el usuario
+// Juez de espanol barato (Qwen3-235B-A22B por Parasail via OpenRouter; NUNCA Sonnet). Califica de 1 a 5 el TEXTO que ve el usuario
 // con una rubrica fija. Es un complemento de las reglas deterministas (graders.reglasEspanol), no parte de la
 // exactitud, y su costo cuenta contra el mismo tope de gasto.
 import { OpenRouterError, OpenRouterProvider } from "../../gateway/providers/openrouter.js";
@@ -49,7 +49,7 @@ export interface OpcionesJuezOpenRouter {
   readonly fetchImpl?: typeof fetch;
 }
 
-/** Juez real: prueba la cadena de rutas (Qwen estricto, Qwen datos sinteticos, Gemini Flash-Lite) y se queda con la
+/** Juez real: prueba la cadena de rutas (Qwen3-235B por Parasail, Qwen3-235B por DeepInfra/Vertex, DeepSeek V4.1 Flash, Gemini Flash-Lite; todas con la politica EE.UU./ZDR) y se queda con la
  *  primera que responde; si una ruta devuelve 400/404/422 (sin endpoint) pasa a la siguiente. */
 export function crearJuezOpenRouter(o: OpcionesJuezOpenRouter): JuezEspanol {
   let rutaViva = 0;
