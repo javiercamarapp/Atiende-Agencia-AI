@@ -79,12 +79,12 @@ export function StepUpDialog() {
             <Input id="stepup-codigo" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="123456" />
           </div>
           {error && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}
           {enrolar && (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               ¿Aún no enrolas tu autenticador? <Link to="/superadmin/seguridad" className="underline" onClick={cerrar}>Ve a Seguridad (MFA)</Link>.
             </p>
           )}

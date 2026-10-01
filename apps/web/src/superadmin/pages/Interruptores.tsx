@@ -5,8 +5,7 @@
 // servidor (cache del guard); se avisa en pantalla, no se promete "al instante".
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Power } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, FormDialog, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type Scope = "global" | "agente" | "cron";
@@ -102,7 +101,7 @@ export function SuperAdminInterruptoresPage({ apiBaseUrl, token }: { readonly ap
     return (
       <TableRow key={`${scope}:${target}`}>
         <TableCell className="font-mono text-xs">{etiqueta}</TableCell>
-        <TableCell>{bloqueado ? <Badge variant="destructive">Detenido</Badge> : <Badge variant="outline">Activo</Badge>}</TableCell>
+        <TableCell>{bloqueado ? <StatusBadge tone="danger">Detenido</StatusBadge> : <StatusBadge tone="success">Activo</StatusBadge>}</TableCell>
         <TableCell className="max-w-[320px] truncate text-muted-foreground" title={i?.motivo ?? ""}>
           {i ? i.motivo : "—"}
         </TableCell>
@@ -140,7 +139,7 @@ export function SuperAdminInterruptoresPage({ apiBaseUrl, token }: { readonly ap
   );
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
           <Power className="w-5 h-5" strokeWidth={1.75} />
@@ -152,7 +151,7 @@ export function SuperAdminInterruptoresPage({ apiBaseUrl, token }: { readonly ap
       </div>
 
       {!datos.disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           Los interruptores todavía no están disponibles en esta base (migración 0025 pendiente de aplicar). Nada está detenido.
         </p>
       )}
@@ -174,7 +173,7 @@ export function SuperAdminInterruptoresPage({ apiBaseUrl, token }: { readonly ap
         </>
       )}
 
-      <ModalFormularioLateral
+      <FormDialog
         open={cambio !== null}
         onOpenChange={(open) => !open && setCambio(null)}
         titulo={cambio?.bloquear ? "Detener" : "Reactivar"}
@@ -194,24 +193,23 @@ export function SuperAdminInterruptoresPage({ apiBaseUrl, token }: { readonly ap
         <form id="form-interruptor" onSubmit={aplicar} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="interruptor-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-            <textarea
+            <Textarea
               id="interruptor-motivo"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               rows={4}
               placeholder="Ej. El proveedor de WhatsApp reporta caída; se detiene el dispatcher hasta confirmar."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               required
             />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+    </PageContainer>
   );
 }
 

@@ -5,7 +5,7 @@
 // el API responde `disponible: false` y la pantalla lo dice, sin inventar nada.
 import { useEffect, useState, type FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 export interface EstadoZona {
@@ -154,7 +154,7 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
   if (!estado) return <EstadoCargando etiqueta="Cargando zona CFO…" />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" strokeWidth={1.75} />
@@ -166,7 +166,7 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
       </div>
 
       {!estado.disponible && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           {estado.mensaje ?? "La zona CFO segura todavía no está disponible en este despliegue."} Mientras tanto no hay rol de solo lectura ni bitácora de consultas.
         </p>
       )}
@@ -177,14 +177,14 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
             <CardTitle>Tu acceso</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-            <Badge variant={estado.soloLectura ? "outline" : "default"}>{estado.soloLectura ? "Finanzas (solo lectura)" : "Superadmin"}</Badge>
+            <StatusBadge tone={estado.soloLectura ? "neutral" : "info"}>{estado.soloLectura ? "Finanzas (solo lectura)" : "Superadmin"}</StatusBadge>
             <span className="text-muted-foreground">{estado.mfaObligatoria ? "MFA obligatoria para entrar a las pantallas financieras." : "MFA exigida si ya la enrolaste."}</span>
           </CardContent>
         </Card>
       )}
 
       {aviso && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {aviso}
         </p>
       )}
@@ -203,16 +203,15 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="zona-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-                  <textarea
+                  <Textarea
                     id="zona-motivo"
                     value={motivo}
                     onChange={(e) => setMotivo(e.target.value)}
                     rows={3}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
                 {formError && (
-                  <p role="alert" className="text-[13px] text-destructive">
+                  <p role="alert" className="text-sm text-destructive">
                     {formError}
                   </p>
                 )}
@@ -283,7 +282,7 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
                             {e.actorUserId.slice(0, 8)} <span className="text-muted-foreground">({e.actorRol})</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={e.accion === "denegado" ? "destructive" : "outline"}>{ETIQUETA_ACCION[e.accion]}</Badge>
+                            <StatusBadge tone={e.accion === "denegado" ? "danger" : "neutral"}>{ETIQUETA_ACCION[e.accion]}</StatusBadge>
                           </TableCell>
                           <TableCell className="font-mono text-xs">{e.recurso}</TableCell>
                           <TableCell className="max-w-[280px] truncate text-muted-foreground" title={resumenFiltros(e.filtros)}>
@@ -312,6 +311,6 @@ export function SuperAdminZonaCfoPage({ apiBaseUrl, token }: { readonly apiBaseU
           Tu rol es de solo lectura: puedes consultar Dashboard CFO, P&amp;L, Costos y margen, Planes y precios, Gasto de API y Facturación (resumen). La bitácora y la gestión de roles las ve un superadmin completo.
         </p>
       )}
-    </div>
+    </PageContainer>
   );
 }

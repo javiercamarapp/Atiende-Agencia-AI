@@ -7,7 +7,8 @@
 // redactó la narrativa a partir de esos números ya calculados).
 import { useEffect, useState } from "react";
 import { AlertTriangle, CircleAlert, CircleCheck, Clock, Mail, RefreshCw, Sparkles } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, statusTone } from "@atiende/ui";
+import { SEVERIDAD_ALERTA_TONES } from "../lib/status-tones.ts";
 
 type GeneradoPor = "llm" | "determinista";
 type SeveridadAlerta = "critica" | "alta" | "media";
@@ -74,18 +75,18 @@ function delta(n: number | null | undefined): string {
 }
 
 function IconoSemaforo({ alertas }: { readonly alertas: readonly Alerta[] }) {
-  if (alertas.length === 0) return <CircleCheck className="w-5 h-5 text-emerald-600" strokeWidth={1.75} />;
+  if (alertas.length === 0) return <CircleCheck className="w-5 h-5 text-success" strokeWidth={1.75} />;
   if (alertas.some((a) => a.severidad === "critica")) return <CircleAlert className="w-5 h-5 text-destructive" strokeWidth={1.75} />;
-  return <AlertTriangle className="w-5 h-5 text-amber-500" strokeWidth={1.75} />;
+  return <AlertTriangle className="w-5 h-5 text-warning" strokeWidth={1.75} />;
 }
 
 function BadgeGeneradoPor({ generadoPor }: { readonly generadoPor: GeneradoPor }) {
   return generadoPor === "llm" ? (
-    <Badge className="gap-1 bg-violet-600 text-white hover:bg-violet-600">
+    <StatusBadge tone="info" dot={false} className="gap-1">
       <Sparkles className="w-3 h-3" strokeWidth={2} /> generado por LLM
-    </Badge>
+    </StatusBadge>
   ) : (
-    <Badge variant="outline">plantilla determinista</Badge>
+    <StatusBadge tone="neutral" dot={false}>plantilla determinista</StatusBadge>
   );
 }
 
@@ -105,13 +106,13 @@ function TarjetaResumen({ resumen }: { readonly resumen: Resumen }) {
         <div className="flex items-center gap-2">
           <BadgeGeneradoPor generadoPor={resumen.generadoPor} />
           {resumen.correoEnviadoEn ? (
-            <Badge variant="outline" className="gap-1">
+            <StatusBadge tone="success" dot={false} className="gap-1">
               <Mail className="w-3 h-3" strokeWidth={1.75} /> correo enviado
-            </Badge>
+            </StatusBadge>
           ) : (
-            <Badge variant="outline" className="gap-1 text-muted-foreground">
+            <StatusBadge tone="neutral" dot={false} className="gap-1">
               <Mail className="w-3 h-3" strokeWidth={1.75} /> sin correo
-            </Badge>
+            </StatusBadge>
           )}
         </div>
       </div>
@@ -128,28 +129,28 @@ function TarjetaResumen({ resumen }: { readonly resumen: Resumen }) {
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">Gasto de LLM hoy</p>
           <p className="text-lg font-semibold text-foreground">{moneda(a.gastoLlm.costoHoyMicroUsd)}</p>
-          <p className="text-[11px] text-muted-foreground">{porcentaje(a.gastoLlm.pctTopePlataforma)} del tope de plataforma</p>
+          <p className="text-xs text-muted-foreground">{porcentaje(a.gastoLlm.pctTopePlataforma)} del tope de plataforma</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">Altas de facturación</p>
           <p className="text-lg font-semibold text-foreground">
             {a.facturacion === null ? "no disponible" : a.facturacion.altas} <span className="text-xs font-normal text-muted-foreground">{delta(d?.facturacionAltas)}</span>
           </p>
-          <p className="text-[11px] text-muted-foreground">{a.facturacion === null ? "" : `${a.facturacion.morososNuevos} moroso(s) nuevo(s)`}</p>
+          <p className="text-xs text-muted-foreground">{a.facturacion === null ? "" : `${a.facturacion.morososNuevos} moroso(s) nuevo(s)`}</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">Prospectos nuevos</p>
           <p className="text-lg font-semibold text-foreground">
             {a.prospectos === null ? "no disponible" : a.prospectos.altas} <span className="text-xs font-normal text-muted-foreground">{delta(d?.prospectosAltas)}</span>
           </p>
-          <p className="text-[11px] text-muted-foreground">{a.prospectos === null ? "" : `${a.prospectos.sinMovimiento} sin movimiento > ${a.prospectos.umbralSinMovimientoDias} d`}</p>
+          <p className="text-xs text-muted-foreground">{a.prospectos === null ? "" : `${a.prospectos.sinMovimiento} sin movimiento > ${a.prospectos.umbralSinMovimientoDias} d`}</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">Organizaciones nuevas</p>
           <p className="text-lg font-semibold text-foreground">
             {a.organizacionesStaff === null ? "no disponible" : a.organizacionesStaff.organizacionesNuevas} <span className="text-xs font-normal text-muted-foreground">{delta(d?.organizacionesNuevas)}</span>
           </p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {a.organizacionesStaff === null
               ? ""
               : `${a.organizacionesStaff.staffNuevos} staff nuevo(s)${a.organizacionesStaff.nombresOrganizacionesNuevas.length > 0 ? ` — ${a.organizacionesStaff.nombresOrganizacionesNuevas.join(", ")}` : ""}`}
@@ -167,9 +168,7 @@ function TarjetaResumen({ resumen }: { readonly resumen: Resumen }) {
           <ul className="flex flex-col gap-2">
             {a.salud.alertas.map((al, i) => (
               <li key={`${al.titulo}-${i}`} className="flex items-start gap-3 rounded-lg border border-border p-3">
-                <Badge variant={al.severidad === "critica" ? "destructive" : "secondary"} className={al.severidad === "alta" ? "bg-amber-500 text-white hover:bg-amber-500" : ""}>
-                  {al.severidad}
-                </Badge>
+                <StatusBadge tone={statusTone(SEVERIDAD_ALERTA_TONES, al.severidad)}>{al.severidad}</StatusBadge>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">{al.titulo}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{al.detalle}</p>
@@ -240,7 +239,7 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
   if (!resumenes) return <EstadoCargando etiqueta="Cargando resumen diario…" />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Resumen diario</h1>
@@ -259,7 +258,7 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -321,6 +320,6 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
       )}
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

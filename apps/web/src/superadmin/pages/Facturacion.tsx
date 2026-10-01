@@ -13,31 +13,8 @@
 // inventa un número, solo formatea lo que la API ya resolvió.
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, Building2, Calendar, ChevronLeft, ChevronRight, Copy, ExternalLink, History, Link2, RefreshCw, ScaleIcon, TrendingDown, Webhook } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  formatMoney,
-} from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, formatMoney, statusTone } from "@atiende/ui";
+import { BILLING_ESTADO_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 type EstadoBilling = "sin_suscripcion" | "activa" | "pago_pendiente" | "cancelada";
@@ -139,8 +116,8 @@ const NOMBRE_MOTIVO_BITACORA: Record<string, string> = {
 };
 
 function badgeResultadoBitacora(result: ResultadoBitacora) {
-  const variant = result === "procesado" ? "default" : result === "rechazado" || result === "error" ? "destructive" : "secondary";
-  return <Badge variant={variant}>{NOMBRE_RESULTADO_BITACORA[result]}</Badge>;
+  const tone = result === "procesado" ? "success" : result === "rechazado" || result === "error" ? "danger" : "neutral";
+  return <StatusBadge tone={tone}>{NOMBRE_RESULTADO_BITACORA[result]}</StatusBadge>;
 }
 
 const NOMBRE_VERTICAL: Record<string, string> = {
@@ -161,12 +138,6 @@ const NOMBRE_ESTADO: Record<EstadoBilling, string> = {
 
 const FILTROS: readonly FiltroEstado[] = ["todos", "activa", "pago_pendiente", "sin_suscripcion", "cancelada"];
 
-// Mismo estilo que `SELECT_CLASES` de `Prospectos.tsx` -- no hay componente
-// `Select` en `@atiende/ui` todavía, así que los filtros nativos de esta
-// pantalla siguen el mismo patrón que el resto del back office.
-const SELECT_CLASES =
-  "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
 function mxn(monto: number | null): string {
   return monto === null ? "No disponible" : `$${formatMoney(monto, 2)} MXN`;
 }
@@ -184,8 +155,7 @@ function antiguedad(iso: string): string {
 }
 
 function badgeEstado(estado: EstadoBilling) {
-  const variant = estado === "activa" ? "default" : estado === "pago_pendiente" ? "destructive" : "secondary";
-  return <Badge variant={variant}>{NOMBRE_ESTADO[estado]}</Badge>;
+  return <StatusBadge tone={statusTone(BILLING_ESTADO_TONES, estado)}>{NOMBRE_ESTADO[estado]}</StatusBadge>;
 }
 
 async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
@@ -261,7 +231,7 @@ function PanelCheckout({ apiBaseUrl, token, org, onClose }: { readonly apiBaseUr
   }
 
   return (
-    <ModalFormularioLateral
+    <FormDialog
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -307,7 +277,7 @@ function PanelCheckout({ apiBaseUrl, token, org, onClose }: { readonly apiBaseUr
               )}
             </div>
             {error && (
-              <p role="alert" className="text-[13px] text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             )}
@@ -331,7 +301,7 @@ function PanelCheckout({ apiBaseUrl, token, org, onClose }: { readonly apiBaseUr
           </div>
         )}
       </div>
-    </ModalFormularioLateral>
+    </FormDialog>
   );
 }
 
@@ -407,7 +377,7 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
   if (!resumen || !organizacionesFiltradas || !eventos) return <EstadoCargando etiqueta="Cargando facturación…" />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Facturación</h1>
@@ -420,7 +390,7 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -500,13 +470,14 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
             procesar), sin datos de tarjeta ni payload crudo.
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <NativeSelect
+              size="sm"
+              wrapperClassName="w-auto"
               value={filtroResultado}
               onChange={(e) => {
                 setFiltroResultado(e.target.value as ResultadoBitacora | "todos");
                 setBitacoraOffset(0);
               }}
-              className={SELECT_CLASES}
               aria-label="Filtrar por resultado"
             >
               <option value="todos">Todos los resultados</option>
@@ -515,7 +486,7 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
                   {NOMBRE_RESULTADO_BITACORA[r]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Input
               value={filtroOrganizationId}
               onChange={(e) => {
@@ -538,7 +509,7 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
              previos, el error se muestra como aviso ARRIBA de esos datos en
              vez de desaparecer. */}
           {bitacoraError && bitacora && (
-            <p role="alert" className="text-[13px] text-destructive mb-3">
+            <p role="alert" className="text-sm text-destructive mb-3">
               {bitacoraError}
             </p>
           )}
@@ -649,9 +620,9 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
                       <TableCell>
                         {org.seats} / {org.staffCount}
                         {org.descuadreAsientos !== 0 && (
-                          <Badge variant="destructive" className="ml-2">
+                          <StatusBadge tone="danger" className="ml-2">
                             {org.descuadreAsientos > 0 ? `+${org.descuadreAsientos}` : org.descuadreAsientos} descuadre
-                          </Badge>
+                          </StatusBadge>
                         )}
                         {!org.precioConocido && <span className="block text-xs text-muted-foreground">Sin precio per-seat configurado</span>}
                       </TableCell>
@@ -676,6 +647,6 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
       {detalle && <PanelCheckout apiBaseUrl={apiBaseUrl} token={token} org={detalle} onClose={() => setDetalle(null)} />}
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

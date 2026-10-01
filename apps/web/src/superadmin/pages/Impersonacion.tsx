@@ -6,27 +6,7 @@
 // seguridad que esta pantalla copia).
 import { useEffect, useState, type FormEvent } from "react";
 import { History, LogIn, LogOut, ShieldAlert } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 export interface ImpersonacionSesion {
@@ -161,7 +141,7 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
   const activas = sesiones.filter((s) => s.activa);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -179,13 +159,13 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
       </div>
 
       {!available && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           La impersonación de superadmin todavía no está disponible en esta base (migración pendiente de aplicar).
         </p>
       )}
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -226,7 +206,7 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
                       </TableCell>
                       <TableCell className="text-muted-foreground">{fechaHoraEsMx(s.startedAtMs)}</TableCell>
                       <TableCell>
-                        {s.activa ? <Badge>Activa · {duracionRestante(s.remainingMs)} restantes</Badge> : <Badge variant="outline">Terminada / vencida</Badge>}
+                        {s.activa ? <StatusBadge tone="warning">Activa · {duracionRestante(s.remainingMs)} restantes</StatusBadge> : <StatusBadge tone="neutral">Terminada / vencida</StatusBadge>}
                       </TableCell>
                       <TableCell>
                         {s.activa && (
@@ -270,7 +250,7 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
                     <TableRow key={e.id}>
                       <TableCell className="text-muted-foreground">{e.seq}</TableCell>
                       <TableCell>
-                        <Badge variant={e.eventType === "start" ? "default" : "outline"}>{e.eventType === "start" ? "Iniciada" : "Terminada"}</Badge>
+                        <StatusBadge tone={e.eventType === "start" ? "warning" : "neutral"}>{e.eventType === "start" ? "Iniciada" : "Terminada"}</StatusBadge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{e.actorEmail ?? "—"}</TableCell>
                       <TableCell className="font-mono text-xs">{e.organizationId}</TableCell>
@@ -287,7 +267,7 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
         </CardContent>
       </Card>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={abriendo}
         onOpenChange={(open) => setAbriendo(open)}
         titulo="Iniciar impersonación"
@@ -311,25 +291,24 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="impersonacion-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-            <textarea
+            <Textarea
               id="impersonacion-motivo"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               rows={4}
               placeholder="Ej. Ticket SOP-9001: el tenant reporta que su checkout público falla, necesito revisar su configuración."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               required
             />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

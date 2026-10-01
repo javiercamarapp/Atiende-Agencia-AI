@@ -4,7 +4,7 @@
 // apps/api/src/routes/superadmin-privacidad.ts (ver docs/PRIVACIDAD-PLATAFORMA.md). Referencia operativa,
 // no asesoria legal. Las solicitudes no traen telefono, correo ni nombre del titular.
 import { useCallback, useEffect, useState } from "react";
-import { Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import {
   DERECHO_ETIQUETA,
   ESTADO_ARCO_ETIQUETA,
@@ -180,7 +180,7 @@ export function SuperAdminPrivacidadPage({ apiBaseUrl, token }: { readonly apiBa
               <CardDescription>
                 {plazos ? `Referencia: ${plazos.respuestaDias} días para responder y ${plazos.ejecucionDias} más para ejecutar (días naturales). ` : ""}
                 <label className="ml-1 inline-flex items-center gap-1.5 text-xs">
-                  <input type="checkbox" checked={soloVencidas} onChange={(e) => setSoloVencidas(e.target.checked)} />
+                  <Checkbox checked={soloVencidas} onChange={(e) => setSoloVencidas(e.target.checked)} />
                   Solo vencidas
                 </label>
               </CardDescription>
