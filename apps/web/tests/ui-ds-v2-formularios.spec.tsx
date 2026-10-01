@@ -29,8 +29,8 @@ describe("Textarea", () => {
     const t = q<HTMLTextAreaElement>("textarea");
     expect(ref.current).toBe(t);
     expect(t.rows).toBe(3);
-    expect(t.className).toContain("focus-visible:ring-2");
-    expect(t.className).toContain("rounded-field");
+    expect(t.className).toContain("focus-visible:border-muted-foreground");
+    expect(t.className).toContain("rounded-lg");
     changeValue(t, "adios");
     expect(onChange).toHaveBeenCalled();
     expect(t.value).toBe("adios");
@@ -152,7 +152,7 @@ describe("Checkbox", () => {
     act(() => c.click());
     expect(c.checked).toBe(false);
     expect(c.className).toContain("border-control");
-    expect(c.className).toContain("focus-visible:ring-2");
+    expect(c.className).not.toContain("outline-none");
   });
 
   it("forwardRef entrega el input aunque se use internamente otro ref", () => {
@@ -223,7 +223,7 @@ describe("Switch", () => {
     rendered = renderComponent(<Switch aria-label="x" />);
     const cls = q<HTMLButtonElement>("button").className;
     expect(cls).toContain("bg-control");
-    expect(cls).toContain("focus-visible:ring-2");
+    expect(cls).not.toContain("outline-none");
     expect(cls).toContain("data-[state=checked]:bg-primary");
   });
 });
@@ -340,10 +340,10 @@ describe("FormField", () => {
 });
 
 describe("Input (campo base compartido)", () => {
-  it("usa el alto por token de control y el radio de campo; un h-* explicito gana", () => {
+  it("usa el alto por token de control y rounded-lg de Likida; un h-* explicito gana", () => {
     rendered = renderComponent(<Input aria-label="x" />);
     expect(q<HTMLInputElement>("input").className).toContain("h-[var(--control-md)]");
-    expect(q<HTMLInputElement>("input").className).toContain("rounded-field");
+    expect(q<HTMLInputElement>("input").className).toContain("rounded-lg");
     rendered.rerender(<Input aria-label="x" className="h-9" />);
     expect(q<HTMLInputElement>("input").className).toContain("h-9");
     expect(q<HTMLInputElement>("input").className).not.toContain("h-[var(--control-md)]");

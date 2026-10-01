@@ -39,7 +39,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           ref={setRef}
           type="checkbox"
           className={cn(
-            "peer size-full cursor-pointer appearance-none rounded-[5px] border border-control bg-background ring-offset-background transition-[background-color,border-color,box-shadow] duration-fast ease-brand checked:border-primary checked:bg-primary indeterminate:border-primary indeterminate:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive",
+            "peer size-full cursor-pointer appearance-none rounded-[5px] border border-control bg-card transition-[background-color,border-color,box-shadow] duration-fast ease-brand checked:border-primary checked:bg-primary indeterminate:border-primary indeterminate:bg-primary disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive",
             className,
           )}
           {...props}
@@ -59,7 +59,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
 
     if (label === undefined) return caja;
     return (
-      <label className={cn("flex min-h-6 cursor-pointer items-start gap-2.5 text-sm", props.disabled && "cursor-not-allowed opacity-70", wrapperClassName)}>
+      <label className={cn("flex min-h-6 cursor-pointer items-start gap-2.5 text-ui", props.disabled && "cursor-not-allowed opacity-70", wrapperClassName)}>
         {caja}
         <span className="grid gap-0.5 leading-5">
           <span className="font-medium text-foreground">{label}</span>
