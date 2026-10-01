@@ -1,8 +1,7 @@
 # Notificaciones in-app
 
 Campana y página de notificaciones del panel de cada vertical y de superadmin. Este documento describe el modelo
-(parte A, backend) y el **catálogo de eventos**. La campana con punto rojo y la página idéntica a Likida son la
-parte B (ver "Estado").
+(parte A, backend), el **catálogo de eventos** y la campana y la página (parte B, ver "Campana y página").
 
 ## Modelo
 
@@ -22,8 +21,8 @@ parte B (ver "Estado").
   nunca a otra organización. Las de plataforma, solo sistema o superadmin.
 - **Sin PII**: título y cuerpo salen del catálogo; los parámetros solo pueden ser números o códigos cortos sin
   espacios. El enlace usa `{orgSlug}`, que resuelve la base.
-- **Lectura**: `GET /notifications` (filtros `limit`, `before`, `unread=1`, `categoria`), `POST /notifications/:id/read`,
-  `POST /notifications/read-all`. El contador de no leídas se calcula en SQL con el índice
+- **Lectura**: `GET /notifications` (filtros `limit`, `before`, `unread=1`, `categoria`), `GET /notifications/unread-count`
+  (solo el número, para el sondeo de la campana), `POST /notifications/:id/read`, `POST /notifications/read-all`. El contador de no leídas se calcula en SQL con el índice
   `(staff_user_id, created_at)`, sin N+1.
 - **Compatibilidad con la base sin migrar**: la lectura cae a las funciones de 0013 y los productores devuelven
   `no_disponible`, ambos dentro de un `SAVEPOINT` (la transacción del request no queda abortada). Una emisión nunca
@@ -106,10 +105,31 @@ parte B (ver "Estado").
 | `superadmin.organizacion.accion_pendiente` | aprobaciones | atencion | superadmins de plataforma | UserRoundCheck | `/superadmin/gestion-organizaciones` | una por solicitud | 2 d | pendiente: doble control de gestion de organizaciones (0038): falta emitir al solicitar |
 
 
+## Campana y página
+
+Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista.tsx`), en las 7 consolas.
+
+- **Campana** (`packages/ui/src/components/NotificationBell.tsx`): enlace a la página de notificaciones de la consola
+  (`/<vertical>/<orgSlug>/notificaciones`, `/superadmin/notificaciones`), `h-8 w-8 rounded-lg` con borde, `Bell` de 14 px y
+  un **punto rojo sin número** (`size-1.5`, `bg-destructive`, sin animación) cuando hay al menos una notificación sin leer.
+  Se apaga al leerlas. Ya no abre un dropdown.
+- **Sondeo** (`apps/web/src/lib/useNotifications.ts`): `GET /notifications/unread-count` cada 30 s; se pausa con la pestaña
+  oculta y se refresca al mostrarse o recuperar el foco; tras fallos espera el doble (tope 5 min); un 401 lo detiene. No hay
+  realtime en el backend. Cuando el sondeo ve subir el contador, anuncia el cambio y la página abierta recarga su lista.
+- **Página** (`apps/web/src/components/NotificacionesPagina.tsx`, una sola para las 7 consolas): tarjetas con badge de
+  severidad («Aviso», «Requiere atención», «Crítica»), categoría y hora relativa, «Resolver» a la pantalla de origen
+  (solo si el enlace es una ruta interna; abrirlo marca el aviso como leído) y «Marcar leído»; «Marcar todas»; filtros
+  «Sin leer»/«Todas» y por categoría (en el servidor); «Cargar más» por fecha; estados vacío, cargando y error con
+  «Reintentar». Si el servidor rechaza marcar, la tarjeta y el punto de la campana se revierten y se avisa inline.
+- **Leído**: estado por usuario en el servidor (`core.notification_read`), no localStorage como en Likida (sus alertas son un
+  cálculo en vivo; aquí cada aviso es una fila real).
+- **Sin migrar**: la lectura cae a las funciones de 0013 (ver Modelo); en esa base las filas no traen categoría, severidad ni
+  enlace, así que la página las muestra como «Aviso» sin «Resolver».
+
 ## Estado
 
-- **Parte A (este documento, backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato,
-  API, catálogo y los productores marcados `conectado`.
-- **Parte B (pendiente, segundo PR)**: la campana con punto rojo sin número (se apaga al leer) y la página de
-  notificaciones idéntica a Likida en las 7 consolas. Hoy `NotificationBell` sigue mostrando el número.
-- Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta.
+- **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
+  productores marcados `conectado`.
+- **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
+- Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
+  la página los mostrará vacíos hasta que su flujo origen emita.
