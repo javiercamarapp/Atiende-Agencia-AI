@@ -34,6 +34,7 @@ import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { conexionChatDatosCitas } from "./lib/chat-datos-client.ts";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -188,6 +189,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       branchSelector={branchSelector}
       mobileSelector={branches.length > 1 ? branchSelector : null}
       contentKey={propertyId}
+      chat={conexionChatDatosCitas(fetch, apiBaseUrl, session.token, propertyId)}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role, staffFullName: session.fullName, staffEmail: session.email })}
     </VerticalShellConectado>
