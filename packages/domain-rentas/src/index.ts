@@ -289,3 +289,9 @@ export { PostgresRentasOnboardingRepository } from "./onboarding/postgres-reposi
 // que un incidente de emergencia necesita registrar.
 // ---------------------------------------------------------------------------
 export * from "./break-glass/index.ts";
+
+// ---------------------------------------------------------------------------
+// Rn-03 -- reportes de ocupación e ingresos por unidad, propietario, canal y mes (con
+// exportación CSV/PDF) -- ver src/reportes/*. Solo lectura, sin migración nueva.
+// ---------------------------------------------------------------------------
+export * from "./reportes/index.ts";
