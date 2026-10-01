@@ -58,6 +58,7 @@ import {
   type LlmProvider,
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
@@ -198,9 +199,26 @@ export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConf
   return undefined;
 }
 
-/** Circuit breaker del gateway: el store compartido (o en memoria) con las claves prefijadas por entorno. */
-export function buildCircuitBreaker(env: ApiEnv): CircuitBreaker {
-  return new CircuitBreaker(buildBreakerStore(env), { ...(env.llmProviders.openrouter?.breakerEnv ? { keyPrefix: env.llmProviders.openrouter.breakerEnv } : {}) });
+/** Notificacion in-app a los superadmins cuando el breaker de un modelo se abre (`superadmin.llm.modelo_caido`; solo el
+ *  id del modelo, sin PII; dedupe por modelo y dia en la base). Best-effort: nunca lanza ni altera la escalera. */
+export async function notificarModeloCaidoBestEffort(engine: TenancyEngine, providerId: string, ahora: Date = new Date()): Promise<void> {
+  try {
+    const modelo = providerId.replace(/^openrouter:/, "").replace(/\//g, ":").replace(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 40);
+    await engine.withAppSession({ userId: null }, (session) =>
+      emitirNotificacion(session, { evento: "superadmin.llm.modelo_caido", organizationId: null, clave: `${modelo}:${ahora.toISOString().slice(0, 10)}`, parametros: { modelo } }),
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+/** Circuit breaker del gateway: el store compartido (o en memoria) con las claves prefijadas por entorno. Con `engine`,
+ *  avisa a los superadmins cuando un modelo se cae. */
+export function buildCircuitBreaker(env: ApiEnv, engine?: TenancyEngine): CircuitBreaker {
+  return new CircuitBreaker(buildBreakerStore(env), {
+    ...(env.llmProviders.openrouter?.breakerEnv ? { keyPrefix: env.llmProviders.openrouter.breakerEnv } : {}),
+    ...(engine ? { onOpen: (providerId: string) => notificarModeloCaidoBestEffort(engine, providerId) } : {}),
+  });
 }
 
 function hasAnyProvider(env: ApiEnv): boolean {
@@ -229,7 +247,7 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   const models = loadLlmModelsConfig(env);
 
   const gateway = new LlmGateway({
-    breaker: buildCircuitBreaker(env),
+    breaker: buildCircuitBreaker(env, engine),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
