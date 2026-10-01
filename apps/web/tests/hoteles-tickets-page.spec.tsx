@@ -109,18 +109,47 @@ describe("TicketsPage", () => {
     expect(text()).toContain("Ticket registrado.");
   });
 
-  it("cerrar pide la nota y la manda; cancelar pide confirmacion", async () => {
+  // PR-6 de diseno-ux: window.confirm/window.prompt pasan al ConfirmDialog (useConfirm) de @atiende/ui.
+  const dialogo = () => document.body.querySelector('[role="alertdialog"]') as HTMLElement | null;
+  async function pulsarEnDialogo(texto: string) {
+    const boton = Array.from(dialogo()!.querySelectorAll("button")).find((b) => b.textContent?.trim() === texto)!;
+    click(boton);
+    await settle();
+  }
+
+  it("cancelar pide confirmacion con ConfirmDialog: Volver no manda nada, confirmar si, y nunca usa window.confirm", async () => {
     const { posts } = stub({ tickets: [ticket()] });
-    vi.spyOn(window, "prompt").mockReturnValue("Se reparo el clima");
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     rendered = renderComponent(<TicketsPage {...ctx("frontdesk")} />);
     await settle();
     click(buttons("Cancelar")[0]!);
     await settle();
+    expect(dialogo()!.textContent).toContain("Cancelar este ticket");
+    expect(dialogo()!.textContent).toContain("El aire no enfria");
+    await pulsarEnDialogo("Volver");
     expect(posts).toEqual([]); // el usuario no confirmo
+    click(buttons("Cancelar")[0]!);
+    await settle();
+    await pulsarEnDialogo("Cancelar ticket");
+    expect(posts).toEqual([{ url: "https://api.test/hoteles/prop-1/tickets/t1/cancelar", body: {} }]);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("cerrar pide la nota en el dialogo y la manda; cancelar el dialogo no cierra el ticket", async () => {
+    const { posts } = stub({ tickets: [ticket()] });
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("no debe usarse");
+    rendered = renderComponent(<TicketsPage {...ctx("frontdesk")} />);
+    await settle();
     click(buttons("Cerrar")[0]!);
     await settle();
+    await pulsarEnDialogo("Cancelar");
+    expect(posts).toEqual([]);
+    click(buttons("Cerrar")[0]!);
+    await settle();
+    changeValue(dialogo()!.querySelector("textarea")!, "Se reparo el clima");
+    await pulsarEnDialogo("Cerrar ticket");
     expect(posts).toEqual([{ url: "https://api.test/hoteles/prop-1/tickets/t1/cerrar", body: { nota: "Se reparo el clima" } }]);
+    expect(promptSpy).not.toHaveBeenCalled();
   });
 
   it("acciones por rol: un departamento ajeno no ve botones; manager ve escalar", async () => {
