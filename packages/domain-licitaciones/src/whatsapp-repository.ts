@@ -94,8 +94,9 @@ export interface WhatsAppRepository {
   activeContacts(organizationId: string, topic: WhatsAppTopic): Promise<readonly ActiveContact[]>;
   /** `null` si ya hay una solicitud vigente sin usar para ese usuario/convocatoria/accion. */
   issueActionToken(input: IssueTokenInput): Promise<string | null>;
-  confirmOptIn(phoneE164: string): Promise<number>;
-  optOutByPhone(phoneE164: string): Promise<number>;
+  /** Devuelve las organizaciones cuyo contacto paso a `activo`/`baja` (vacio = nada que hacer). */
+  confirmOptIn(phoneE164: string): Promise<readonly string[]>;
+  optOutByPhone(phoneE164: string): Promise<readonly string[]>;
   /** `null` si el `dedupeKey` ya estaba encolado (idempotente). */
   enqueueOutbox(organizationId: string, eventType: string, dedupeKey: string, payload: unknown): Promise<string | null>;
   claimOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxItem[]>;
@@ -274,17 +275,17 @@ export class PostgresWhatsAppRepository implements WhatsAppRepository {
     });
   }
 
-  async confirmOptIn(phoneE164: string): Promise<number> {
+  async confirmOptIn(phoneE164: string): Promise<readonly string[]> {
     return this.guarded(async () => {
-      const { rows } = await this.db.query<{ n: number }>(`select licitaciones.system_whatsapp_confirm_opt_in($1)::int as n;`, [phoneE164]);
-      return rows[0]?.n ?? 0;
+      const { rows } = await this.db.query<{ orgs: string[] | null }>(`select licitaciones.system_whatsapp_confirm_opt_in($1)::text[] as orgs;`, [phoneE164]);
+      return rows[0]?.orgs ?? [];
     });
   }
 
-  async optOutByPhone(phoneE164: string): Promise<number> {
+  async optOutByPhone(phoneE164: string): Promise<readonly string[]> {
     return this.guarded(async () => {
-      const { rows } = await this.db.query<{ n: number }>(`select licitaciones.system_whatsapp_opt_out($1)::int as n;`, [phoneE164]);
-      return rows[0]?.n ?? 0;
+      const { rows } = await this.db.query<{ orgs: string[] | null }>(`select licitaciones.system_whatsapp_opt_out($1)::text[] as orgs;`, [phoneE164]);
+      return rows[0]?.orgs ?? [];
     });
   }
 
@@ -488,30 +489,30 @@ export class InMemoryWhatsAppRepository implements WhatsAppRepository {
     return randomUUID();
   }
 
-  async confirmOptIn(phoneE164: string): Promise<number> {
+  async confirmOptIn(phoneE164: string): Promise<readonly string[]> {
     this.guard();
-    let n = 0;
+    const n = new Set<string>();
     for (const [k, c] of this.contacts) {
       if (c.phoneE164 === phoneE164 && c.status === "pendiente" && c.consentRequestedAt) {
         this.contacts.set(k, { ...c, status: "activo", optedInAt: new Date(this.now()).toISOString() });
         this.events.push({ organizationId: c.organizationId, userId: c.userId, event: "opt_in", detail: "mensaje entrante" });
-        n += 1;
+        n.add(c.organizationId);
       }
     }
-    return n;
+    return [...n];
   }
 
-  async optOutByPhone(phoneE164: string): Promise<number> {
+  async optOutByPhone(phoneE164: string): Promise<readonly string[]> {
     this.guard();
-    let n = 0;
+    const n = new Set<string>();
     for (const [k, c] of this.contacts) {
       if (c.phoneE164 === phoneE164 && c.status !== "baja") {
         this.contacts.set(k, { ...c, status: "baja", optedOutAt: new Date(this.now()).toISOString() });
         this.events.push({ organizationId: c.organizationId, userId: c.userId, event: "baja", detail: "mensaje entrante" });
-        n += 1;
+        n.add(c.organizationId);
       }
     }
-    return n;
+    return [...n];
   }
 
   async enqueueOutbox(organizationId: string, eventType: string, dedupeKey: string, payload: unknown): Promise<string | null> {

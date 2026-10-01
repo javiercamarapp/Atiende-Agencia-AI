@@ -357,7 +357,7 @@ insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164,
 insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c3', '+5215511110003', 'pendiente', null);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select licitaciones.system_whatsapp_confirm_opt_in('+5215511110004') as activados_deberia_ser_1;
+select cardinality(licitaciones.system_whatsapp_confirm_opt_in('+5215511110004')) as activados_deberia_ser_1;
 rollback;
 
 \echo '--- 31. OPT-IN: sin consentimiento solicitado un SI suelto no activa nada ---'
@@ -365,7 +365,7 @@ begin;
 insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c3', '+5215511110003', 'pendiente', null);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select licitaciones.system_whatsapp_confirm_opt_in('+5215511110003') as activados_deberia_ser_0;
+select cardinality(licitaciones.system_whatsapp_confirm_opt_in('+5215511110003')) as activados_deberia_ser_0;
 rollback;
 
 \echo '--- 32. OPT-IN: una baja explicita NO se revierte con un SI suelto ---'
@@ -373,7 +373,7 @@ begin;
 insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_out_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c3', '+5215511110003', 'baja', now(), now());
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select licitaciones.system_whatsapp_confirm_opt_in('+5215511110003') as activados_deberia_ser_0;
+select cardinality(licitaciones.system_whatsapp_confirm_opt_in('+5215511110003')) as activados_deberia_ser_0;
 rollback;
 
 \echo '--- 33. OPT-OUT: BAJA entrante desactiva todas las filas del numero ---'
@@ -381,7 +381,7 @@ begin;
 insert into licitaciones.whatsapp_contact (organization_id, user_id, phone_e164, status, consent_requested_at, opted_in_at) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000c5', '+5215511110005', 'activo', now(), now());
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select licitaciones.system_whatsapp_opt_out('+5215511110005') as bajas_deberia_ser_1;
+select cardinality(licitaciones.system_whatsapp_opt_out('+5215511110005')) as bajas_deberia_ser_1;
 rollback;
 
 \echo '--- 34. PANEL: el usuario pide consentimiento y queda UN solo mensaje aunque lo pida dos veces ---'

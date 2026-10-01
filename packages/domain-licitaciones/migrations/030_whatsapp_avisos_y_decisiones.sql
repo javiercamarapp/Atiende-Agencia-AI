@@ -357,10 +357,10 @@ $$;
 
 -- Opt-in: SOLO un mensaje entrante del propio numero (atestiguado por la firma de
 -- Meta) pasa pendiente -> activo. Una baja explicita NO se revierte con un SI suelto:
--- el usuario debe volver a pedirlo desde el panel.
+-- el usuario debe volver a pedirlo desde el panel. Devuelve las organizaciones afectadas.
 create or replace function licitaciones.system_whatsapp_confirm_opt_in(p_phone text)
-returns integer language plpgsql security definer set search_path = licitaciones, pg_temp as $$
-declare n integer;
+returns uuid[] language plpgsql security definer set search_path = licitaciones, pg_temp as $$
+declare orgs uuid[];
 begin
   if auth.uid() is not null then
     raise exception 'system_whatsapp_confirm_opt_in es solo para la sesión de sistema' using errcode = '42501';
@@ -373,14 +373,14 @@ begin
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, event, detail)
     select organization_id, user_id, 'opt_in', 'mensaje entrante' from upd
   )
-  select count(*) into n from upd;
-  return n;
+  select coalesce(array_agg(distinct organization_id), '{}'::uuid[]) into orgs from upd;
+  return orgs;
 end;
 $$;
 
 create or replace function licitaciones.system_whatsapp_opt_out(p_phone text)
-returns integer language plpgsql security definer set search_path = licitaciones, pg_temp as $$
-declare n integer;
+returns uuid[] language plpgsql security definer set search_path = licitaciones, pg_temp as $$
+declare orgs uuid[];
 begin
   if auth.uid() is not null then
     raise exception 'system_whatsapp_opt_out es solo para la sesión de sistema' using errcode = '42501';
@@ -393,8 +393,8 @@ begin
     insert into licitaciones.whatsapp_event_log (organization_id, user_id, event, detail)
     select organization_id, user_id, 'baja', 'mensaje entrante' from upd
   )
-  select count(*) into n from upd;
-  return n;
+  select coalesce(array_agg(distinct organization_id), '{}'::uuid[]) into orgs from upd;
+  return orgs;
 end;
 $$;
 
