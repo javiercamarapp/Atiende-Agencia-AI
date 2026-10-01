@@ -12,7 +12,25 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Fingerprint } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Tabs, TabsContent, TabsList, TabsTrigger, toast } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  toast,
+} from "@atiende/ui";
 import {
   ADMIN_ROLES,
   DOCUMENT_TYPE_LABELS,
@@ -45,8 +63,6 @@ import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 type Tab = "boveda" | "purgas" | "migratorio" | "privacidad";
 
-const SELECT_CLASS = "block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground";
-
 function NoDisponible({ mensaje }: { mensaje: string }) {
   return <EstadoVacio mensaje={mensaje} />;
 }
@@ -57,7 +73,7 @@ export function IdentidadPage({ apiBaseUrl, token, propertyId, role }: HotelesSh
   const [tab, setTab] = useState<Tab>("boveda");
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center gap-2">
         <Fingerprint className="w-5 h-5 text-muted-foreground" strokeWidth={1.75} />
         <h1 className="text-xl font-display font-semibold text-foreground">Identidad y registro migratorio</h1>
@@ -84,7 +100,7 @@ export function IdentidadPage({ apiBaseUrl, token, propertyId, role }: HotelesSh
           <PrivacidadTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -230,9 +246,9 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
                     Huésped: {it.huespedId} · Retención hasta {it.retencionHasta} · {it.verificadaEn ? "Verificada" : "Sin verificar"}
                   </p>
                 </div>
-                <Badge variant={it.estado === "activo" ? "default" : "secondary"} className="self-start">
+                <StatusBadge tone={it.estado === "activo" ? "success" : "neutral"} className="self-start">
                   {it.estado === "activo" ? "Activa" : it.estado === "bloqueada" ? "Bloqueada" : "Purgada"}
-                </Badge>
+                </StatusBadge>
               </div>
               {it.estado === "bloqueada" && (
                 <p className="text-xs text-muted-foreground" data-testid="identidad-bloqueada">
@@ -257,7 +273,7 @@ function BovedaTab({ apiBaseUrl, token, propertyId, canReveal, isAdmin }: TabPro
                       <span className="text-muted-foreground">Vigencia:</span> {revealed.doc.vigenciaHasta}
                     </p>
                   )}
-                  {revealed.doc.mrz && <pre className="text-[11px] whitespace-pre-wrap">{revealed.doc.mrz}</pre>}
+                  {revealed.doc.mrz && <pre className="text-xs whitespace-pre-wrap">{revealed.doc.mrz}</pre>}
                   <div>
                     <Button type="button" variant="outline" size="sm" onClick={() => setRevealed(null)}>
                       Ocultar
@@ -434,35 +450,35 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
         <form onSubmit={(e) => void handleSubmit(e)} className="grid gap-3 sm:grid-cols-2" aria-label="Capturar identidad">
           <div>
             <Label htmlFor="ident-huesped">Huésped</Label>
-            <select id="ident-huesped" className={SELECT_CLASS} value={guestId} onChange={(e) => { setGuestId(e.target.value); setReservationId(""); }} required>
+            <NativeSelect id="ident-huesped" value={guestId} onChange={(e) => { setGuestId(e.target.value); setReservationId(""); }} required>
               <option value="">{guests ? "Selecciona un huésped…" : "Cargando…"}</option>
               {guests?.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.nombreCompleto}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <Label htmlFor="ident-reserva">Reserva (opcional)</Label>
-            <select id="ident-reserva" className={SELECT_CLASS} value={reservationId} onChange={(e) => setReservationId(e.target.value)} disabled={!guestId}>
+            <NativeSelect id="ident-reserva" value={reservationId} onChange={(e) => setReservationId(e.target.value)} disabled={!guestId}>
               <option value="">Sin reserva</option>
               {guestReservations.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.checkInDate} → {r.checkOutDate}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <Label htmlFor="ident-tipo">Tipo de documento</Label>
-            <select id="ident-tipo" className={SELECT_CLASS} value={documentType} onChange={(e) => setDocumentType(e.target.value as DocumentType)}>
+            <NativeSelect id="ident-tipo" value={documentType} onChange={(e) => setDocumentType(e.target.value as DocumentType)}>
               {(Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).map((t) => (
                 <option key={t} value={t}>
                   {DOCUMENT_TYPE_LABELS[t]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <Label htmlFor="ident-nacionalidad">Nacionalidad (ISO-3, ej. MEX)</Label>
@@ -515,7 +531,7 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
             {aviso && (
               <>
                 <label className="flex items-center gap-2 text-xs text-foreground">
-                  <input type="checkbox" checked={registrarConsent} onChange={(e) => setRegistrarConsent(e.target.checked)} />
+                  <Checkbox checked={registrarConsent} onChange={(e) => setRegistrarConsent(e.target.checked)} />
                   Registrar el consentimiento del huésped (aviso {aviso.version})
                 </label>
                 {registrarConsent && (
@@ -528,7 +544,7 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
                       <span className="text-xs font-medium text-foreground">Finalidades obligatorias (todas)</span>
                       {aviso.finalidadesObligatorias.map((f) => (
                         <label key={f} className="flex items-center gap-2 text-xs text-foreground">
-                          <input type="checkbox" checked={aceptadasObl.has(f)} onChange={(e) => setAceptadasObl(toggle(aceptadasObl, f, e.target.checked))} />
+                          <Checkbox checked={aceptadasObl.has(f)} onChange={(e) => setAceptadasObl(toggle(aceptadasObl, f, e.target.checked))} />
                           {f}
                         </label>
                       ))}
@@ -538,33 +554,33 @@ function CaptureForm({ apiBaseUrl, token, propertyId, onCaptured }: TabProps & {
                       {aviso.finalidadesOpcionales.length === 0 && <span className="text-xs text-muted-foreground">Este aviso no tiene finalidades opcionales.</span>}
                       {aviso.finalidadesOpcionales.map((f) => (
                         <label key={f} className="flex items-center gap-2 text-xs text-foreground">
-                          <input type="checkbox" checked={aceptadasOpc.has(f)} onChange={(e) => setAceptadasOpc(toggle(aceptadasOpc, f, e.target.checked))} />
+                          <Checkbox checked={aceptadasOpc.has(f)} onChange={(e) => setAceptadasOpc(toggle(aceptadasOpc, f, e.target.checked))} />
                           {f}
                         </label>
                       ))}
                     </div>
                     <div>
                       <Label htmlFor="consent-canal">Canal</Label>
-                      <select id="consent-canal" className={SELECT_CLASS} value={canal} onChange={(e) => setCanal(e.target.value)}>
+                      <NativeSelect id="consent-canal" value={canal} onChange={(e) => setCanal(e.target.value)}>
                         {CONSENT_CANALES.map((c) => (
                           <option key={c} value={c}>
                             {c}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div>
                       <Label htmlFor="consent-metodo">Evidencia del consentimiento</Label>
-                      <select id="consent-metodo" className={SELECT_CLASS} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                      <NativeSelect id="consent-metodo" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
                         {Object.keys(CONSENT_METODO_LABELS).map((m) => (
                           <option key={m} value={m}>
                             {CONSENT_METODO_LABELS[m]}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <label className="sm:col-span-2 flex items-center gap-2 text-xs text-foreground">
-                      <input type="checkbox" checked={sensibles} onChange={(e) => setSensibles(e.target.checked)} />
+                      <Checkbox checked={sensibles} onChange={(e) => setSensibles(e.target.checked)} />
                       Incluye datos sensibles (p. ej. biométricos): exige consentimiento expreso y por escrito (firma o mecanismo de autenticación)
                     </label>
                     {consentIncompleto && <p className="sm:col-span-2 text-xs text-destructive" role="alert">Falta aceptar todas las finalidades obligatorias o usar firma/autenticación con datos sensibles.</p>}
@@ -640,11 +656,11 @@ function PurgasTab({ apiBaseUrl, token, propertyId }: TabProps) {
                 <p className="font-medium text-foreground">Identidad {p.identidadId}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{p.motivo}</p>
               </div>
-              <Badge variant={p.estado === "pendiente" || p.estado === "en_bloqueo" ? "default" : "secondary"} className="self-start">
+              <StatusBadge tone={p.estado === "pendiente" || p.estado === "en_bloqueo" ? "warning" : "neutral"} className="self-start">
                 {PURGA_ESTADO_LABELS[p.estado]}
-              </Badge>
+              </StatusBadge>
             </div>
-            <p className="text-[11px] text-muted-foreground">Solicitada por {p.solicitadaPor} · {p.creadaEn}</p>
+            <p className="text-xs text-muted-foreground">Solicitada por {p.solicitadaPor} · {p.creadaEn}</p>
             {p.notaDecision && <p className="text-xs text-muted-foreground">Nota: {p.notaDecision}</p>}
             {p.estado === "pendiente" && (
               <div className="flex gap-2 mt-1">
@@ -756,9 +772,9 @@ function MigratorioTab({ apiBaseUrl, token, propertyId }: TabProps) {
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">Reserva {r.reservaId} · Huésped {r.huespedId}{r.retencionRegistroHasta ? ` · Registro conservado hasta ${r.retencionRegistroHasta}` : ""}</p>
               </div>
-              <Badge variant={r.estado === "pendiente" ? "default" : "secondary"} className="self-start">
+              <StatusBadge tone={r.estado === "pendiente" ? "warning" : "neutral"} className="self-start">
                 {MIGRATORIO_ESTADO_LABELS[r.estado]}
-              </Badge>
+              </StatusBadge>
             </div>
             {r.constancia && <p className="text-xs text-muted-foreground">Constancia: {r.constancia}</p>}
             {r.estado === "pendiente" && (

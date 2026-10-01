@@ -6,7 +6,25 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Bot } from "lucide-react";
-import { Button, Callout, Card, CardContent, DataTable, EstadoCargando, EstadoError, Input, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, useConfirm } from "@atiende/ui";
+import {
+  Button,
+  Callout,
+  Card,
+  CardContent,
+  DataTable,
+  EstadoCargando,
+  EstadoError,
+  Input,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+  useConfirm,
+} from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
 import {
   ACCION_LABELS,
@@ -339,7 +357,7 @@ export function AgentesPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
           <Bot className="w-5 h-5" strokeWidth={1.75} />
@@ -481,6 +499,6 @@ export function AgentesPage({ apiBaseUrl, token, propertyId, role }: HotelesShel
         </Tabs>
       )}
       {dialogo}
-    </div>
+    </PageContainer>
   );
 }

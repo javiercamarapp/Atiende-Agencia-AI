@@ -9,9 +9,25 @@
 // props, mismo estado, mismas llamadas de red, misma condición de cada rama.
 import { useEffect, useState } from "react";
 import { ShieldAlert } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger, toast } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  toast,
+} from "@atiende/ui";
 import { fetchFraudAlerts, resolveFraudAlert, runFraudScan, FRAUD_ALERT_STATUS_LABELS } from "../lib/fraude-client.ts";
 import type { FraudAlertStatus, FraudAlertSummary } from "../lib/fraude-client.ts";
+import { FRAUDE_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const FILTERS: ReadonlyArray<FraudAlertStatus | "todas"> = ["todas", "pendiente", "confirmado", "descartado"];
@@ -75,7 +91,7 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-display font-semibold text-foreground">Fraude interno</h1>
         <Button type="button" onClick={() => void handleScan()} disabled={scanning}>
@@ -107,11 +123,11 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
                       <p className="font-medium text-foreground">{a.patron}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{a.razon}</p>
                     </div>
-                    <Badge variant={a.estado === "pendiente" ? "default" : "secondary"} className="self-start">
+                    <StatusBadge tone={statusTone(FRAUDE_ESTADO_TONES, a.estado)} className="self-start">
                       {FRAUD_ALERT_STATUS_LABELS[a.estado]}
-                    </Badge>
+                    </StatusBadge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Folio: {a.folioId} {a.cargoId ? `· Cargo: ${a.cargoId}` : ""} · Roles destinatario: {a.rolesDestinatario.join(", ")}
                   </p>
                   {a.notaDecision && <p className="text-xs text-muted-foreground">Nota: {a.notaDecision}</p>}
@@ -131,6 +147,6 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

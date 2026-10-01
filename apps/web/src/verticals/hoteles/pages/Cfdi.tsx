@@ -18,20 +18,32 @@
 // condición de cada rama.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+} from "@atiende/ui";
 import { cancelarCfdi, consultarEstadoCfdi, emitirCfdiHospedaje, emitirCfdiPago, fetchCfdisByFolio, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { fetchFolio } from "../lib/folios-client.ts";
 import type { FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { dineroMx } from "../lib/dinero.ts";
+import { CFDI_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 export interface CfdiPageProps extends HotelesShellContext {
   readonly folioId: string;
-}
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
@@ -42,18 +54,7 @@ const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
   rechazado: "Rechazado",
 };
 
-const ESTADO_VARIANT: Record<CfdiEmisionSummary["estado"], "default" | "secondary" | "destructive"> = {
-  pendiente: "secondary",
-  timbrado: "default",
-  en_proceso_cancelacion: "secondary",
-  cancelado: "destructive",
-  rechazado: "destructive",
-};
-
 const MOTIVOS: readonly MotivoCancelacionSat[] = ["01", "02", "03", "04"];
-const selectClass =
-  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
 export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPageProps) {
   const [folio, setFolio] = useState<FolioSummary | null>(null);
   const [cfdis, setCfdis] = useState<readonly CfdiEmisionSummary[] | null>(null);
@@ -183,11 +184,11 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
   const puedeTimbrarPago = cfdiHospedaje?.estado === "timbrado" && cfdiHospedaje.metodoPago === "PPD";
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
+    <PageContainer padding="none" size="md" className="gap-4">
       <header>
         <h1 className="text-xl font-display font-semibold text-foreground">CFDI de hospedaje</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Folio: {folio.etiqueta} · Saldo: {formatMoney(folio.saldo)}
+          Folio: {folio.etiqueta} · Saldo: {dineroMx(folio.saldo)}
         </p>
       </header>
 
@@ -209,16 +210,16 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
                       RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
                     </p>
                   </div>
-                  <Badge variant={ESTADO_VARIANT[c.estado]} className="self-start">
+                  <StatusBadge tone={statusTone(CFDI_ESTADO_TONES, c.estado)} className="self-start">
                     {ESTADO_LABELS[c.estado]}
-                  </Badge>
+                  </StatusBadge>
                 </div>
                 <p className="mt-2 text-sm text-foreground">
-                  Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
-                  {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
-                  {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
+                  Subtotal {dineroMx(c.subtotal)} · IVA {dineroMx(c.iva)}
+                  {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${dineroMx(c.impuestosLocales.ishMonto)}` : ""}
+                  {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${dineroMx(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{dineroMx(c.total)}</strong>
                 </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
                 {c.estado === "timbrado" && cancelTargetId !== c.id && (
                   <Button type="button" variant="outline" size="sm" className="mt-2.5 text-destructive border-destructive/40 hover:border-destructive" onClick={() => setCancelTargetId(c.id)} disabled={busy}>
                     Cancelar CFDI
@@ -229,20 +230,20 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
                     <Button type="button" variant="outline" size="sm" className="mt-2.5" onClick={() => void handleConsultarEstado(c.id)} disabled={busy}>
                       Consultar estado real ante el PAC
                     </Button>
-                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    <p className="mt-1.5 text-xs text-muted-foreground">
                       El SAT todavía no confirma si esta cancelación fue aceptada o rechazada. Este botón vuelve a preguntarle al PAC; el estado solo se actualiza aquí si ya confirmó "cancelado".
                     </p>
                   </>
                 )}
                 {cancelTargetId === c.id && (
                   <form onSubmit={handleCancelar} className="mt-2.5 flex flex-col gap-2 border border-destructive/30 rounded-lg p-3">
-                    <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} className={selectClass}>
+                    <NativeSelect value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)}>
                       {MOTIVOS.map((m) => (
                         <option key={m} value={m}>
                           {MOTIVO_CANCELACION_LABELS[m]}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                     {cancelMotivo === "01" && (
                       <Input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} />
                     )}
@@ -268,15 +269,15 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
             <form onSubmit={handleEmitirHospedaje} className="flex flex-col gap-3">
               <p className="text-sm font-semibold text-foreground">Timbrar CFDI de hospedaje</p>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" checked={esExtranjero} onChange={(e) => setEsExtranjero(e.target.checked)} disabled={esGlobal} className="accent-primary" />
+                <Checkbox checked={esExtranjero} onChange={(e) => setEsExtranjero(e.target.checked)} disabled={esGlobal} />
                 Huésped extranjero (RFC genérico XEXX010101000)
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" checked={esGlobal} onChange={(e) => setEsGlobal(e.target.checked)} disabled={esExtranjero} className="accent-primary" />
+                <Checkbox checked={esGlobal} onChange={(e) => setEsGlobal(e.target.checked)} disabled={esExtranjero} />
                 Factura global a público en general (RFC XAXX010101000)
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" checked={esNoShow} onChange={(e) => setEsNoShow(e.target.checked)} className="accent-primary" />
+                <Checkbox checked={esNoShow} onChange={(e) => setEsNoShow(e.target.checked)} />
                 No-show (penalización sin estancia)
               </label>
               {!esExtranjero && !esGlobal && (
@@ -287,15 +288,15 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
               )}
               <div className="flex items-center gap-2">
                 <Label htmlFor="cfdi-metodo-pago" className="font-normal">Método de pago:</Label>
-                <select id="cfdi-metodo-pago" value={metodoPago} onChange={(e) => setMetodoPago(e.target.value as "PUE" | "PPD")} className={selectClass}>
+                <NativeSelect id="cfdi-metodo-pago" value={metodoPago} onChange={(e) => setMetodoPago(e.target.value as "PUE" | "PPD")}>
                   <option value="PUE">PUE · pago en una sola exhibición</option>
                   <option value="PPD">PPD · pago en parcialidades o diferido</option>
-                </select>
+                </NativeSelect>
               </div>
               <Button type="submit" disabled={busy} className="self-start">
                 {busy ? "Timbrando…" : "Timbrar CFDI"}
               </Button>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 El servidor calcula el desglose real (subtotal, IVA, ISH, DSA) a partir de los cargos facturables del folio y valida el comprobante antes de timbrarlo — este formulario no calcula ni adivina montos.
               </p>
             </form>
@@ -311,7 +312,7 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
             {pagosCapturados.map((p) => (
               <div key={p.id} className="flex justify-between items-center border border-border rounded-lg px-3 py-2">
                 <span className="text-sm text-foreground">
-                  {p.metodo} · {formatMoney(p.monto)} {p.referenciaExterna ? `· Ref: ${p.referenciaExterna}` : ""}
+                  {p.metodo} · {dineroMx(p.monto)} {p.referenciaExterna ? `· Ref: ${p.referenciaExterna}` : ""}
                 </span>
                 <Button type="button" variant="outline" size="sm" onClick={() => void handleEmitirPago(cfdiHospedaje!.id, p.id)} disabled={busy}>
                   Timbrar complemento de pago
@@ -319,11 +320,11 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-xs text-muted-foreground">
             Timbrar el complemento de un pago que ya tiene uno es seguro: el servidor es idempotente por pago y devuelve el mismo comprobante ya emitido, {cfdisPago.length} emitido(s) hasta ahora en este folio.
           </p>
         </section>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -11,7 +11,7 @@
 // incidentes); aquí solo se ordena la UX. Base sin la migración 032: estado honesto "no disponible aún".
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Tabs, TabsContent, TabsList, TabsTrigger, toast } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone, toast } from "@atiende/ui";
 import {
   ARCO_CANAL_LABELS,
   ARCO_DERECHO_LABELS,
@@ -59,6 +59,7 @@ import type {
   RetencionSummary,
 } from "../lib/privacidad-client.ts";
 import type { DocumentoRevelado } from "../lib/identidad-client.ts";
+import { ARCO_PLAZO_TONES } from "../lib/status-tones.ts";
 
 interface Props {
   readonly apiBaseUrl: string;
@@ -68,7 +69,6 @@ interface Props {
   readonly isAdmin: boolean;
 }
 
-const SELECT_CLASS = "block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground";
 type Sub = "aviso" | "arco" | "incidentes" | "retencion";
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -266,15 +266,15 @@ function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
               </div>
               <div className="sm:col-span-2">
                 <Label htmlFor="aviso-texto">Aviso simplificado (se muestra en el punto de captura)</Label>
-                <textarea id="aviso-texto" className={SELECT_CLASS} rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} required minLength={20} maxLength={2000} />
+                <Textarea id="aviso-texto" rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} required minLength={20} maxLength={2000} />
               </div>
               <div>
                 <Label htmlFor="aviso-obligatorias">Finalidades obligatorias (una por línea)</Label>
-                <textarea id="aviso-obligatorias" className={SELECT_CLASS} rows={3} value={obligatorias} onChange={(e) => setObligatorias(e.target.value)} required />
+                <Textarea id="aviso-obligatorias" rows={3} value={obligatorias} onChange={(e) => setObligatorias(e.target.value)} required />
               </div>
               <div>
                 <Label htmlFor="aviso-opcionales">Finalidades opcionales (una por línea; casilla distinta y sin marcar)</Label>
-                <textarea id="aviso-opcionales" className={SELECT_CLASS} rows={3} value={opcionales} onChange={(e) => setOpcionales(e.target.value)} />
+                <Textarea id="aviso-opcionales" rows={3} value={opcionales} onChange={(e) => setOpcionales(e.target.value)} />
               </div>
               <div className="sm:col-span-2">
                 <Button type="submit" disabled={saving}>
@@ -315,13 +315,13 @@ function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
                     Aviso {c.versionAviso} · {c.canal} · {c.metodo}
                     {c.datosSensibles ? " · datos sensibles (expreso y por escrito)" : ""}
                   </p>
-                  <Badge variant={c.revocadoEn ? "secondary" : "default"}>{c.revocadoEn ? "Revocado" : "Vigente"}</Badge>
+                  <StatusBadge tone={c.revocadoEn ? "neutral" : "success"}>{c.revocadoEn ? "Revocado" : "Vigente"}</StatusBadge>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Huésped {c.huespedId} · {c.consentidoEn} · obligatorias: {c.finalidadesObligatorias.join("; ")}
                   {c.finalidadesOpcionales.length > 0 ? ` · opcionales: ${c.finalidadesOpcionales.join("; ")}` : ""}
                 </p>
-                {c.revocadoEn && <p className="text-[11px] text-muted-foreground">Revocado: {c.motivoRevocacion}</p>}
+                {c.revocadoEn && <p className="text-xs text-muted-foreground">Revocado: {c.motivoRevocacion}</p>}
                 {!c.revocadoEn && (
                   <div className="mt-1">
                     <Button type="button" size="sm" variant="outline" onClick={() => void handleRevoke(c)}>
@@ -341,7 +341,6 @@ function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
 // ---------------------------------------------------------------------------
 // ARCO
 // ---------------------------------------------------------------------------
-const PLAZO_BADGE: Record<string, "default" | "secondary" | "destructive"> = { en_plazo: "default", por_vencer: "secondary", vencida: "destructive", cerrada: "secondary" };
 
 function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
   const [data, setData] = useState<(Lista<ArcoSummary> & { hoy: string }) | null>(null);
@@ -420,23 +419,23 @@ function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
             <form onSubmit={(e) => void handleOpen(e)} className="grid gap-3 sm:grid-cols-2" aria-label="Registrar solicitud ARCO">
               <div>
                 <Label htmlFor="arco-derecho">Derecho</Label>
-                <select id="arco-derecho" className={SELECT_CLASS} value={derecho} onChange={(e) => setDerecho(e.target.value as ArcoDerecho)}>
+                <NativeSelect id="arco-derecho" value={derecho} onChange={(e) => setDerecho(e.target.value as ArcoDerecho)}>
                   {(Object.keys(ARCO_DERECHO_LABELS) as ArcoDerecho[]).map((d) => (
                     <option key={d} value={d}>
                       {ARCO_DERECHO_LABELS[d]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <Label htmlFor="arco-canal">Canal de recepción</Label>
-                <select id="arco-canal" className={SELECT_CLASS} value={canal} onChange={(e) => setCanal(e.target.value as ArcoCanal)}>
+                <NativeSelect id="arco-canal" value={canal} onChange={(e) => setCanal(e.target.value as ArcoCanal)}>
                   {(Object.keys(ARCO_CANAL_LABELS) as ArcoCanal[]).map((c) => (
                     <option key={c} value={c}>
                       {ARCO_CANAL_LABELS[c]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <Label htmlFor="arco-solicitante">Titular que solicita</Label>
@@ -474,7 +473,7 @@ function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
               </div>
               <div className="flex gap-1 self-start">
                 <Badge variant="secondary">{ARCO_ESTADO_LABELS[a.estado]}</Badge>
-                <Badge variant={PLAZO_BADGE[a.plazo.estado] ?? "secondary"}>{PLAZO_ESTADO_LABELS[a.plazo.estado]}</Badge>
+                <StatusBadge tone={statusTone(ARCO_PLAZO_TONES, a.plazo.estado)}>{PLAZO_ESTADO_LABELS[a.plazo.estado]}</StatusBadge>
               </div>
             </div>
             {a.descripcion && <p className="text-xs text-muted-foreground">{a.descripcion}</p>}
@@ -597,21 +596,21 @@ function IncidentesSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
           <form onSubmit={(e) => void handleReport(e)} className="grid gap-3 sm:grid-cols-2" aria-label="Reportar incidente">
             <div>
               <Label htmlFor="inc-tipo">Tipo</Label>
-              <select id="inc-tipo" className={SELECT_CLASS} value={tipo} onChange={(e) => setTipo(e.target.value as IncidenteTipo)}>
+              <NativeSelect id="inc-tipo" value={tipo} onChange={(e) => setTipo(e.target.value as IncidenteTipo)}>
                 {(Object.keys(INCIDENTE_TIPO_LABELS) as IncidenteTipo[]).map((t) => (
                   <option key={t} value={t}>
                     {INCIDENTE_TIPO_LABELS[t]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div>
               <Label htmlFor="inc-severidad">Severidad</Label>
-              <select id="inc-severidad" className={SELECT_CLASS} value={severidad} onChange={(e) => setSeveridad(e.target.value as IncidenteSeveridad)}>
+              <NativeSelect id="inc-severidad" value={severidad} onChange={(e) => setSeveridad(e.target.value as IncidenteSeveridad)}>
                 <option value="baja">Baja</option>
                 <option value="media">Media</option>
                 <option value="alta">Alta</option>
-              </select>
+              </NativeSelect>
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="inc-titulo">Título</Label>
@@ -619,10 +618,10 @@ function IncidentesSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="inc-descripcion">Qué pasó (10 a 1000 caracteres)</Label>
-              <textarea id="inc-descripcion" className={SELECT_CLASS} rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required minLength={10} maxLength={1000} />
+              <Textarea id="inc-descripcion" rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required minLength={10} maxLength={1000} />
             </div>
             <label className="sm:col-span-2 flex items-center gap-2 text-xs text-foreground">
-              <input type="checkbox" checked={riesgo} onChange={(e) => setRiesgo(e.target.checked)} />
+              <Checkbox checked={riesgo} onChange={(e) => setRiesgo(e.target.checked)} />
               Puede afectar de forma significativa derechos patrimoniales o morales del titular (lo decide el hotel con su abogado)
             </label>
             <div className="sm:col-span-2">
@@ -651,9 +650,9 @@ function IncidentesSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
                   {i.afectados !== null ? ` · ${i.afectados} afectado(s)` : ""}
                 </p>
               </div>
-              <Badge variant={i.estado === "cerrada" ? "secondary" : "default"} className="self-start">
+              <StatusBadge tone={i.estado === "cerrada" ? "neutral" : "warning"} className="self-start">
                 {INCIDENTE_ESTADO_LABELS[i.estado]}
-              </Badge>
+              </StatusBadge>
             </div>
             <p className="text-xs text-muted-foreground">{i.descripcion}</p>
             {i.recordatorio.requerido && (
@@ -775,12 +774,12 @@ function RetencionSection({ apiBaseUrl, token, propertyId }: Props) {
                   <p className="font-medium text-foreground">
                     Caso {h.folio} · identidad {h.identidadId}
                   </p>
-                  <Badge variant={h.estado === "activa" ? "default" : "secondary"}>{h.estado === "activa" ? "Activa" : "Liberada"}</Badge>
+                  <StatusBadge tone={h.estado === "activa" ? "info" : "neutral"}>{h.estado === "activa" ? "Activa" : "Liberada"}</StatusBadge>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {h.motivo} · autoriza: {h.autorizacion}
                 </p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {REVISION_LABELS[h.revision]} · revisar antes del {h.revisarAntesDe}
                 </p>
                 {h.estado === "activa" && (
@@ -807,9 +806,9 @@ function RetencionSection({ apiBaseUrl, token, propertyId }: Props) {
                   <p className="text-sm text-foreground">
                     Identidad {a.identidadId} · {a.motivo}
                   </p>
-                  <Badge variant={a.estado === "pendiente" || a.estado === "aprobada" ? "default" : "secondary"}>{a.estado}</Badge>
+                  <StatusBadge tone={a.estado === "pendiente" || a.estado === "aprobada" ? "info" : "neutral"}>{a.estado}</StatusBadge>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Solicitada por {a.solicitadaPor}
                   {a.caducaEn ? ` · caduca ${a.caducaEn}` : ""}
                 </p>
@@ -853,7 +852,7 @@ function RetencionSection({ apiBaseUrl, token, propertyId }: Props) {
       {bitacora?.disponible && bitacora.items.length > 0 && (
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium text-foreground">Bitácora de privacidad (últimos 50)</p>
-          <ul className="text-[11px] text-muted-foreground flex flex-col gap-0.5">
+          <ul className="text-xs text-muted-foreground flex flex-col gap-0.5">
             {bitacora.items.map((e) => (
               <li key={e.id}>
                 {e.creadaEn} · {e.tipo} · {e.accion}

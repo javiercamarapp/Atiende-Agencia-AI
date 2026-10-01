@@ -24,7 +24,20 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Plus, X } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  PageContainer,
+  StatusBadge,
+  Textarea,
+} from "@atiende/ui";
 import {
   asegurarSeguridadFnb,
   confirmarCocinaFnb,
@@ -154,7 +167,7 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-display font-semibold text-foreground">Pedidos F&amp;B</h1>
@@ -197,19 +210,18 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
 
               <div>
                 <Label htmlFor="fnb-notas">Notas generales (opcional)</Label>
-                <textarea
+                <Textarea
                   id="fnb-notas"
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
-                  className="mt-1 flex w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
 
               <label className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} className="accent-primary" />
+                <Checkbox checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} />
                 El huésped declaró una alergia/restricción alimentaria
               </label>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Aunque dejes esto sin marcar, el servidor revisa las notas de texto libre y marca el pedido igual si detecta (o no logra descartar) una alergia — fail-closed, ver fnbAllergyGuard.ts.
               </p>
 
@@ -240,9 +252,9 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
                     </p>
                   </div>
                   {p.alergiaDeclarada && (
-                    <Badge variant={pendienteConfirmar ? "destructive" : "secondary"} className="self-start">
+                    <StatusBadge tone={pendienteConfirmar ? "danger" : "neutral"} className="self-start">
                       Alergia declarada · {pendienteConfirmar ? "Pendiente de confirmar" : "Confirmada por cocina"}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </div>
 
@@ -258,12 +270,12 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
                 )}
 
                 {p.alergiaDeclarada && p.alergiaDetectadaVia && (
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">Origen: {FNB_ALLERGY_VIA_LABELS[p.alergiaDetectadaVia]}</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">Origen: {FNB_ALLERGY_VIA_LABELS[p.alergiaDetectadaVia]}</p>
                 )}
 
-                <p className={`mt-2 text-sm ${p.seguridadAseguradaEn ? "text-green-700 dark:text-green-500" : "text-foreground"}`}>{p.mensajeSeguridad}</p>
-                {p.seguridadAseguradaEn && <p className="mt-0.5 text-[11px] text-muted-foreground">Asegurado el {new Date(p.seguridadAseguradaEn).toLocaleString("es-MX")}</p>}
-                {p.cocineroConfirmoEn && <p className="mt-0.5 text-[11px] text-muted-foreground">Cocina confirmó el {new Date(p.cocineroConfirmoEn).toLocaleString("es-MX")}</p>}
+                <p className={`mt-2 text-sm ${p.seguridadAseguradaEn ? "text-success" : "text-foreground"}`}>{p.mensajeSeguridad}</p>
+                {p.seguridadAseguradaEn && <p className="mt-0.5 text-xs text-muted-foreground">Asegurado el {new Date(p.seguridadAseguradaEn).toLocaleString("es-MX")}</p>}
+                {p.cocineroConfirmoEn && <p className="mt-0.5 text-xs text-muted-foreground">Cocina confirmó el {new Date(p.cocineroConfirmoEn).toLocaleString("es-MX")}</p>}
 
                 {canConfirmarCocina && (
                   <div className="mt-2.5 flex gap-2 flex-wrap">
@@ -291,6 +303,6 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
           );
         })}
       </div>
-    </div>
+    </PageContainer>
   );
 }

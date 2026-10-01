@@ -14,15 +14,25 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input } from "@atiende/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  NativeSelect,
+  PageContainer,
+  StatusBadge,
+  statusTone,
+} from "@atiende/ui";
 import { cancelarCfdi, fetchCfdisByProperty, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { dineroMx } from "../lib/dinero.ts";
+import { CFDI_ESTADO_TONES } from "../lib/status-tones.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
   pendiente: "Pendiente",
@@ -32,18 +42,7 @@ const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
   rechazado: "Rechazado",
 };
 
-const ESTADO_VARIANT: Record<CfdiEmisionSummary["estado"], "default" | "secondary" | "destructive"> = {
-  pendiente: "secondary",
-  timbrado: "default",
-  en_proceso_cancelacion: "secondary",
-  cancelado: "destructive",
-  rechazado: "destructive",
-};
-
 const MOTIVOS: readonly MotivoCancelacionSat[] = ["01", "02", "03", "04"];
-const selectClass =
-  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
 export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const navigate = useNavigate();
   const [cfdis, setCfdis] = useState<readonly CfdiEmisionSummary[] | null>(null);
@@ -93,7 +92,7 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
+    <PageContainer padding="none" size="md" className="gap-4">
       <header>
         <h1 className="text-xl font-display font-semibold text-foreground">CFDI de hospedaje</h1>
         <p className="mt-1 text-sm text-muted-foreground">Todos los comprobantes fiscales timbrados en este hotel, de cualquier folio.</p>
@@ -128,20 +127,20 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     Folio: <Link to={`/hoteles/${orgSlug}/folios/${c.folioId}/cfdi`} className="text-primary hover:underline underline-offset-2">{c.folioId}</Link>
                   </p>
                 </div>
-                <Badge variant={ESTADO_VARIANT[c.estado]} className="self-start">
+                <StatusBadge tone={statusTone(CFDI_ESTADO_TONES, c.estado)} className="self-start">
                   {ESTADO_LABELS[c.estado]}
-                </Badge>
+                </StatusBadge>
               </div>
               <p className="mt-2 text-sm text-foreground">
-                Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
-                {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
-                {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
+                Subtotal {dineroMx(c.subtotal)} · IVA {dineroMx(c.iva)}
+                {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${dineroMx(c.impuestosLocales.ishMonto)}` : ""}
+                {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${dineroMx(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{dineroMx(c.total)}</strong>
               </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
               {c.estado === "timbrado" && cancelTargetId !== c.id && (
                 <Button type="button" variant="outline" size="sm" className="mt-2.5 text-destructive border-destructive/40 hover:border-destructive" onClick={() => setCancelTargetId(c.id)} disabled={busy}>
                   Cancelar CFDI
@@ -149,13 +148,13 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
               )}
               {cancelTargetId === c.id && (
                 <form onSubmit={handleCancelar} className="mt-2.5 flex flex-col gap-2 border border-destructive/30 rounded-lg p-3">
-                  <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} className={selectClass}>
+                  <NativeSelect value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)}>
                     {MOTIVOS.map((m) => (
                       <option key={m} value={m}>
                         {MOTIVO_CANCELACION_LABELS[m]}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   {cancelMotivo === "01" && (
                     <Input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} />
                   )}
@@ -173,6 +172,6 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
           </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }
