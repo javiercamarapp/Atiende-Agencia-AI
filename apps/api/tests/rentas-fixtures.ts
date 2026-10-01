@@ -229,6 +229,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     engine,
     rentasRepo,
     rentasOwnerPortalRepo,
+    calendarStore,
     rentasCalendarSyncRepo,
     rentasIcalFeedPort,
     rentasMensajeriaRepo,
