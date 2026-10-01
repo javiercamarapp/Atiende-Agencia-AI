@@ -89,6 +89,7 @@ import {
   ClipboardList,
   Home,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   RefreshCcw,
   Tag,
@@ -132,6 +133,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
         { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
         { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
+        { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
       ],
     },
     {
