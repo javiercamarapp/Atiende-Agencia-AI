@@ -12,7 +12,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Pencil, Plus, Scissors } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
   Button,
   Card,
   CardContent,
@@ -28,6 +28,7 @@ import {
   TableCell,
   TableRow,
 } from "@atiende/ui";
+import { activoTone } from "../lib/status-tones.ts";
 import { createService, fetchServiceDetail, fetchServices, updateService } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatMoneyFromCents } from "../lib/format.ts";
@@ -236,7 +237,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
                   <TableRow>
                     <TableCell className="text-muted-foreground">Estado</TableCell>
                     <TableCell>
-                      <Badge variant={service.isActive ? "secondary" : "outline"}>{service.isActive ? "Activo" : "Inactivo"}</Badge>
+                      <StatusBadge tone={activoTone(service.isActive)}>{service.isActive ? "Activo" : "Inactivo"}</StatusBadge>
                     </TableCell>
                   </TableRow>
                 </TableBody>

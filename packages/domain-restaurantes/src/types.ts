@@ -182,6 +182,26 @@ export interface BranchPolicy {
   readonly propinaPolitica: PropinaPolitica | null;
 }
 
+/** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de
+ * Los Taquitos de PM (usted, recoger y domicilio, reglas duras de PM). */
+export type PerfilAgenteWhatsApp = "generico" | "taqueria_pm";
+export const PERFILES_AGENTE_WHATSAPP: readonly PerfilAgenteWhatsApp[] = ["generico", "taqueria_pm"];
+export const TONOS_AGENTE_WHATSAPP = ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"] as const;
+export type TonoAgenteWhatsApp = (typeof TONOS_AGENTE_WHATSAPP)[number];
+
+/** Configuracion del agente de WhatsApp por organizacion (`propertyId` null) o por sucursal. Cada campo
+ * nulo cae al valor por omision del perfil. */
+export interface WhatsAppAgentConfigRow {
+  readonly propertyId: string | null;
+  readonly perfil: PerfilAgenteWhatsApp;
+  readonly agentName: string | null;
+  readonly businessName: string | null;
+  readonly toneStyle: TonoAgenteWhatsApp | null;
+  readonly deliveryTimeText: string | null;
+}
+
+export type WhatsAppAgentConfigInput = Omit<WhatsAppAgentConfigRow, "propertyId">;
+
 export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
 
 /** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
@@ -599,4 +619,47 @@ export interface VoiceToolAuditInput {
   readonly phoneHash: string | null;
   /** Motivo corto, sin datos personales (maximo 300 caracteres). */
   readonly detail: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// R-09 -- storefront publico (menu, carrito, checkout, rastreo por token).
+// ---------------------------------------------------------------------------
+/** Renglon del menu publico de UNA sucursal: incluye los productos "de hoy no hay"
+ * (`isAvailable: false`) para mostrarlos deshabilitados, a diferencia de
+ * `listAvailableProductsForBranch` (solo disponibles, usado para cotizar). El precio
+ * es SIEMPRE el de la sucursal (`branch_products.price`). */
+export interface StorefrontCatalogRow {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly price: number;
+  readonly imageUrl: string | null;
+  readonly isPopular: boolean;
+  /** Disponibilidad en vivo en ESTA sucursal (`branch_products.is_available`). */
+  readonly isAvailable: boolean;
+  readonly categoryId: string | null;
+  readonly categoryName: string | null;
+  readonly categoryDisplayOrder: number;
+  readonly displayOrder: number;
+  /** Producto o categoria marcados "no se vende a domicilio" (alcohol en PM). */
+  readonly noDomicilio: boolean;
+}
+
+/** Vista PUBLICA de un pedido para la pagina de rastreo: sin nombre, telefono, direccion,
+ * correo ni notas del cliente (ver migracion 032). */
+export interface StorefrontOrderTracking {
+  readonly status: OrderStatus;
+  readonly branch: string | null;
+  readonly total: number;
+  readonly paymentMethod: "efectivo" | "tarjeta" | null;
+  readonly canal: CanalPedido;
+  readonly createdAt: string;
+  readonly items: ReadonlyArray<{ readonly name: string; readonly quantity: number; readonly tortilla: TortillaChoice | null }>;
+}
+
+/** `disponible: false` = la base todavia no tiene la funcion de rastreo (42883, migracion 032 sin
+ * aplicar): la pagina debe decir "rastreo no disponible aun", nunca confundirlo con "no existe". */
+export interface StorefrontTrackingResult {
+  readonly disponible: boolean;
+  readonly pedido: StorefrontOrderTracking | null;
 }

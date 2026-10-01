@@ -20,7 +20,7 @@ import type { FormEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, CalendarSync, Pencil, Plug, Plus, TriangleAlert, UserRound } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
   Button,
   Card,
   CardContent,
@@ -36,6 +36,7 @@ import {
   TableCell,
   TableRow,
 } from "@atiende/ui";
+import { syncTone } from "../lib/status-tones.ts";
 import {
   connectCalCom,
   connectCalDav,
@@ -175,7 +176,7 @@ function CalendarProviderCardShell({ title, connected, syncStatus, syncError, su
         {connected ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={syncStatus === "error" ? "destructive" : "secondary"}>{syncStatus === "error" ? "Conectado (con error)" : "Conectado"}</Badge>
+              <StatusBadge tone={syncTone(syncStatus)}>{syncStatus === "error" ? "Conectado (con error)" : "Conectado"}</StatusBadge>
               {summary && <span className="break-all text-[13px] text-muted-foreground">{summary}</span>}
             </div>
             {syncStatus === "error" && syncError && <p className="text-[13px] text-destructive">Error de sincronización: {syncError}</p>}
@@ -511,7 +512,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
             <div>
               <h1 className="font-display text-xl font-semibold text-foreground">{detail.provider.displayName}</h1>
               <p className="mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
-                {detail.provider.roleLabel} {!detail.provider.isActive && <Badge variant="outline">Inactivo</Badge>}
+                {detail.provider.roleLabel} {!detail.provider.isActive && <StatusBadge tone="neutral">Inactivo</StatusBadge>}
               </p>
             </div>
             {!editing && (
@@ -581,9 +582,9 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
               <CardContent>
                 {detail.googleCalendar.connected ? (
                   <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant={detail.googleCalendar.syncStatus === "error" ? "destructive" : "secondary"}>
+                    <StatusBadge tone={syncTone(detail.googleCalendar.syncStatus)}>
                       {detail.googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
-                    </Badge>
+                    </StatusBadge>
                     <p className={detail.googleCalendar.syncStatus === "error" ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}>
                       {detail.googleCalendar.syncStatus === "error"
                         ? `Error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}`
@@ -657,7 +658,7 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
                           <TableCell className={rule.isActive ? "py-2 text-foreground" : "py-2 text-muted-foreground"}>
                             <span className="inline-flex items-center gap-2">
                               {formatHHMM(rule.startTime)} – {formatHHMM(rule.endTime)}
-                              {!rule.isActive && <Badge variant="outline">inactivo</Badge>}
+                              {!rule.isActive && <StatusBadge tone="neutral">inactivo</StatusBadge>}
                             </span>
                           </TableCell>
                         </TableRow>

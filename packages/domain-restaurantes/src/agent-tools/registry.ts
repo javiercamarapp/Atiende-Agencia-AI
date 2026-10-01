@@ -18,6 +18,7 @@ import { OrderValidationError } from "../errors.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
+import { assertWebOrderRules } from "../storefront.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import {
   assertCanConfirm,
@@ -41,7 +42,9 @@ import type {
   TortillaChoice,
 } from "../types.ts";
 
-export type AgentChannel = "whatsapp" | "voz";
+/** "web" = checkout publico del storefront (R-09): solo cotizar/confirmar/crear, con la misma maquina de estados
+ * del servidor. El telefono lo escribe el cliente (no hay canal que lo identifique), asi que `ctx.phone` es null. */
+export type AgentChannel = "whatsapp" | "voz" | "web";
 
 export type AgentToolName =
   | "buscar_cliente"
@@ -96,6 +99,38 @@ export interface AgentToolOutcome {
 // ─────────────────────────────────────────────────────────────────────────
 // Definiciones (una sola fuente)
 // ─────────────────────────────────────────────────────────────────────────
+
+/** Motivos con los que el agente pasa una conversacion a una persona. Los cinco primeros son los
+ * historicos (genericos); el resto son los de la matriz de escalacion de Los Taquitos de PM (quejas,
+ * modificacion de platillos, pago por transferencia, tiempos de entrega, etc.). Un valor fuera de la
+ * lista se guarda como `otro`: el motivo viaja a la bandeja del gerente y no puede ser texto libre. */
+export const MOTIVOS_ESCALACION = [
+  "cliente_lo_pide",
+  "queja",
+  "no_puedo_resolver",
+  "pedido_especial",
+  "otro",
+  "modificacion_platillo",
+  "transferencia",
+  "tiempos_entrega",
+  "pedido_grande",
+  "cancelacion_modificacion",
+  "reposicion_descuento",
+  "alergia_salud",
+  "zona_no_reconocida",
+  "zona_ambigua",
+  "producto_agotado",
+  "no_entiende",
+  "falla_sistema",
+  "cobro_duplicado",
+  "urgencia",
+  "privacidad_arco",
+] as const;
+export type MotivoEscalacion = (typeof MOTIVOS_ESCALACION)[number];
+
+export function normalizarMotivoEscalacion(raw: unknown): MotivoEscalacion {
+  return typeof raw === "string" && (MOTIVOS_ESCALACION as readonly string[]).includes(raw) ? (raw as MotivoEscalacion) : "otro";
+}
 
 const ITEM_SCHEMA = {
   type: "object",
@@ -171,7 +206,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "items"],
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "confirmar_resumen",
@@ -181,7 +216,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       type: "object",
       properties: { quote_hash: { type: "string", description: "El quote_hash que devolvió cotizar_pedido (opcional; si se manda debe ser el de la última cotización)." } },
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "crear_pedido",
@@ -204,7 +239,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       },
       required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
-    channels: ["whatsapp", "voz"],
+    channels: ["whatsapp", "voz", "web"],
   },
   {
     name: "registrar_contacto",
@@ -226,29 +261,9 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         customer_name: { type: "string" },
         motivo: {
           type: "string",
-          enum: [
-            "cliente_lo_pide",
-            "queja",
-            "no_puedo_resolver",
-            "pedido_especial",
-            "otro",
-            "cancelacion_modificacion",
-            "cobro_duplicado",
-            "urgencia",
-            "privacidad_arco",
-            "transferencia",
-            "alergia_salud",
-            "modificacion_platillo",
-            "zona_no_reconocida",
-            "zona_ambigua",
-            "no_entiende",
-            "producto_agotado",
-            "falla_sistema",
-            "pedido_grande",
-            "tiempos_entrega",
-          ],
+          enum: [...MOTIVOS_ESCALACION],
           description:
-            "Motivo del aviso: transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande / tiempos_entrega (pedido muy grande o exige un tiempo concreto).",
+            "Motivo del aviso (llamala UNA sola vez por conversacion y motivo): transferencia (quiere pagar por transferencia), modificacion_platillo (pide cambiar ingredientes o receta de un platillo), alergia_salud, cancelacion_modificacion (cancelar o cambiar un pedido ya confirmado), producto_agotado, zona_no_reconocida (colonia no reconocida dos veces), no_entiende (no se le entiende dos veces), falla_sistema, pedido_grande / tiempos_entrega (pedido muy grande o exige un tiempo concreto), cobro_duplicado, urgencia, privacidad_arco (derechos ARCO / datos personales).",
         },
         resumen: { type: "string", description: "Una o dos frases con lo que necesita el cliente." },
       },
@@ -405,7 +420,7 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     customerPhone: ctx.phone ?? (lenient ? "" : (str(input.customer_phone) ?? "")),
     customerAddress: str(input.customer_address),
     items: toCreateOrderItems(input.items, lenient),
-    source: ctx.channel === "voz" ? "voice" : "whatsapp",
+    source: ctx.channel === "voz" ? "voice" : ctx.channel === "web" ? "web" : "whatsapp",
     notes: str(input.notes),
     paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
@@ -635,7 +650,9 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
-      const createInput = mapCreateOrderToolInput(ctx, input, lenient);
+      const mapped = mapCreateOrderToolInput(ctx, input, lenient);
+      // Checkout web: reglas duras que la fuente "web" historica no exige (ver storefront.ts).
+      const createInput = ctx.channel === "web" ? assertWebOrderRules(mapped) : mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
@@ -654,7 +671,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
         propertyId: ctx.lockedPropertyId ?? null,
         customerName: String(input.customer_name ?? "Cliente"),
         customerPhone: ctx.phone,
-        reason: esEscalada ? `escalada:${typeof input.motivo === "string" ? input.motivo : "otro"}` : typeof input.reason === "string" ? input.reason : undefined,
+        reason: esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined,
         message: esEscalada ? (typeof input.resumen === "string" ? input.resumen : undefined) : typeof input.message === "string" ? input.message : undefined,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
       });

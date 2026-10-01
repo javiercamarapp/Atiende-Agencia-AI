@@ -15,6 +15,8 @@ import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   Branch,
   BranchPolicy,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
@@ -51,6 +53,8 @@ import type {
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
   WhatsappChannelConfig,
+  StorefrontCatalogRow,
+  StorefrontTrackingResult,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -287,6 +291,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
   // whatsapp_branch_channel / no_domicilio.
   private readonly branchPolicies = new Map<string, BranchPolicy>();
+  private readonly whatsAppAgentConfigs = new Map<string, WhatsAppAgentConfigRow>();
   private readonly branchDeliveryZones = new Map<string, Set<string>>();
   private readonly whatsappBranchChannels = new Map<string, { organizationId: string; propertyId: string }>();
   private readonly noDomicilioProducts = new Set<string>();
@@ -498,6 +503,56 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       });
     }
     return result;
+  }
+
+  async listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]> {
+    const rows: StorefrontCatalogRow[] = [];
+    for (const bp of this.branchProducts) {
+      if (bp.propertyId !== propertyId) continue;
+      const product = this.products.get(bp.productId);
+      if (!product) continue;
+      const category = product.categoryId ? this.categories.get(product.categoryId) : undefined;
+      rows.push({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: bp.price,
+        imageUrl: product.imageUrl,
+        isPopular: product.isPopular,
+        isAvailable: bp.isAvailable,
+        categoryId: product.categoryId,
+        categoryName: category?.name ?? null,
+        categoryDisplayOrder: category?.displayOrder ?? 0,
+        displayOrder: product.displayOrder,
+        noDomicilio: this.noDomicilioProducts.has(product.id) || (product.categoryId !== null && this.noDomicilioCategories.has(product.categoryId)),
+      });
+    }
+    return rows.sort((a, b) => a.categoryDisplayOrder - b.categoryDisplayOrder || (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~") || a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
+  }
+
+  /** Solo pruebas: simula una base sin la migracion 032 (`findStorefrontOrderTracking` -> no disponible). */
+  simulateStorefrontTrackingUnavailable(): void {
+    this.storefrontTrackingUnavailable = true;
+  }
+  private storefrontTrackingUnavailable = false;
+
+  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
+    if (this.storefrontTrackingUnavailable) return { disponible: false, pedido: null };
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
+    if (!order) return { disponible: true, pedido: null };
+    const notes = order.notes ?? "";
+    return {
+      disponible: true,
+      pedido: {
+        status: order.status,
+        branch: order.branch,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        canal: notes.includes("Canal: recoger en sucursal.") ? "recoger" : "domicilio",
+        createdAt: order.createdAt,
+        items: order.items.map((i) => ({ name: i.name, quantity: i.quantity, tortilla: i.tortilla ?? null })),
+      },
+    };
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
@@ -1563,6 +1618,20 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.branches.has(propertyId)) throw new Error(`upsertBranchZonaHoraria: la property "${propertyId}" no existe.`);
     this.branchZonaHoraria.set(propertyId, zonaHoraria);
     return { zonaHoraria };
+  }
+
+  // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
+  async findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    const propia = propertyId ? this.whatsAppAgentConfigs.get(`${organizationId}:${propertyId}`) : undefined;
+    return propia ?? this.whatsAppAgentConfigs.get(`${organizationId}:`) ?? null;
+  }
+
+  async upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow> {
+    // Mismo contrato que el `with check` de la policy: la property debe ser de la organizacion.
+    if (propertyId && this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`upsertWhatsAppAgentConfig: la property "${propertyId}" no pertenece a la organizacion.`);
+    const row: WhatsAppAgentConfigRow = { ...config, propertyId };
+    this.whatsAppAgentConfigs.set(`${organizationId}:${propertyId ?? ""}`, row);
+    return row;
   }
 
   // ---- Modelo PM (migracion 023) ----

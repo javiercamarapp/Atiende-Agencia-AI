@@ -10,10 +10,12 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "evals:pm:real": "node --experimental-strip-types src/evals/agente-pm/real-cli.ts"
   },
   "dependencies": {
     "@atiende/agent-core": "*",
+    "@atiende/core-pii": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
     "@atiende/whatsapp-gateway": "*"

@@ -18,6 +18,13 @@
 // decisión de infraestructura legítima y futura, no un requisito para que la
 // correlación por-request funcione hoy: un agregador de logs que ingiera stdout ya
 // puede agrupar por el campo `requestId` de cada línea.
+//
+// PL-10 (scrub de PII): `campos` pasa SIEMPRE por `scrubValor` (@atiende/core-pii, la misma
+// fuente de patrones que las alertas y la redaccion de pagos de WhatsApp) antes de serializarse:
+// un mensaje de error de Postgres/proveedor con un correo, telefono, tarjeta, token o JWT ya no
+// llega al agregador de logs. Los UUID (tenant/request) se conservan para poder correlacionar.
+import { OPCIONES_LOGS, scrubValor } from "@atiende/core-pii";
+
 type LogLevel = "info" | "warn" | "error";
 
 /** Duck-type deliberado, NO `Pick<Context, "get">` de Hono: `Context<Env>.get` es
@@ -35,7 +42,8 @@ interface LoggableContext {
 
 export function logEvent(c: LoggableContext, level: LogLevel, evento: string, campos: Record<string, unknown> = {}): void {
   const requestId = (c.get("requestId") as string | undefined) ?? null;
-  const linea = JSON.stringify({ ts: new Date().toISOString(), level, evento, requestId, ...campos });
+  const limpios = scrubValor(campos, OPCIONES_LOGS) as Record<string, unknown>;
+  const linea = JSON.stringify({ ts: new Date().toISOString(), level, evento, requestId, ...limpios });
   if (level === "error") console.error(linea);
   else if (level === "warn") console.warn(linea);
   else console.log(linea);

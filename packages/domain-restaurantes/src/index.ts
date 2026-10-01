@@ -1,3 +1,6 @@
+export type { StorefrontCatalogRow, StorefrontOrderTracking, StorefrontTrackingResult } from "./types.ts";
+export { buildStorefrontBranches, buildStorefrontMenu, groupStorefrontMenu, assertWebOrderRules, previewPromotion } from "./storefront.ts";
+export type { StorefrontBranchView, StorefrontMenuCategory, StorefrontMenuItem, PromotionPreview } from "./storefront.ts";
 export type {
   Branch,
   BranchPolicy,
@@ -157,7 +160,7 @@ export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
-export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, getAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, getAgentConfig, resolveAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
 
 export {
@@ -175,10 +178,16 @@ export {
 } from "./kpis.ts";
 export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
 export * from "./voz/index.ts";
+export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock } from "./whatsapp/perfil-pm.ts";
+export type { PerfilPmContexto } from "./whatsapp/perfil-pm.ts";
+export { PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
+export type { PerfilAgenteWhatsApp, TonoAgenteWhatsApp, WhatsAppAgentConfigInput, WhatsAppAgentConfigRow } from "./types.ts";
 export * from "./conversaciones/index.ts";
 
 export {
   AGENT_TOOL_DEFINITIONS,
+  MOTIVOS_ESCALACION,
+  normalizarMotivoEscalacion,
   VOICE_TOOL_HTTP_PATHS,
   exportVoiceToolManifest,
   executeAgentToolSafely,
@@ -186,6 +195,7 @@ export {
   mapCreateOrderToolInput,
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
+export type { MotivoEscalacion } from "./agent-tools/registry.ts";
 export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
 export {
   CLAIM_STALE_MS,

@@ -18,6 +18,8 @@ import type {
   Branch,
   BranchProductState,
   BranchPolicy,
+  WhatsAppAgentConfigInput,
+  WhatsAppAgentConfigRow,
   CanalPedido,
   BranchSummary,
   BranchTimezoneConfig,
@@ -54,8 +56,11 @@ import type {
   WhatsAppChannelResolution,
   WhatsappBranchChannel,
   WhatsappChannelConfig,
+  StorefrontCatalogRow,
+  StorefrontOrderTracking,
+  StorefrontTrackingResult,
 } from "./types.ts";
-import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { EMPTY_BRANCH_POLICY, TONOS_AGENTE_WHATSAPP, type TonoAgenteWhatsApp } from "./types.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
   ChannelStatsRow,
@@ -116,6 +121,31 @@ interface ProductRow {
   readonly price: string;
   readonly is_available: boolean;
   readonly no_domicilio?: boolean;
+}
+
+interface StorefrontCatalogDbRow {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly price: string;
+  readonly image_url: string | null;
+  readonly is_popular: boolean;
+  readonly is_available: boolean;
+  readonly category_id: string | null;
+  readonly category_name: string | null;
+  readonly category_display_order: number | string;
+  readonly display_order: number | string;
+  readonly no_domicilio?: boolean;
+}
+
+interface StorefrontTrackingDbPayload {
+  readonly status: string;
+  readonly branch: string | null;
+  readonly total: string | number;
+  readonly payment_method: string | null;
+  readonly canal: string;
+  readonly created_at: string;
+  readonly items: ReadonlyArray<{ readonly name?: string; readonly quantity?: number | string; readonly tortilla?: string | null }>;
 }
 
 interface CustomerRow {
@@ -542,6 +572,95 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       isAvailable: row.is_available,
       noDomicilio: row.no_domicilio === true,
     }));
+  }
+
+  async listStorefrontCatalog(propertyId: string): Promise<readonly StorefrontCatalogRow[]> {
+    // Mismo criterio que listAvailableProductsForBranch: `no_domicilio` (migracion 023) puede no
+    // existir todavia; el respaldo EXIGE SAVEPOINT porque corre dentro de la transaccion del request.
+    const rows = await runWithSavepointFallback<readonly StorefrontCatalogDbRow[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_catalogo",
+      primary: async () => {
+        const { rows: result } = await this.db.query<StorefrontCatalogDbRow>(
+          `select pr.id, pr.name, pr.description, bp.price, pr.image_url, pr.is_popular, bp.is_available,
+                  pr.category_id, c.name as category_name, coalesce(c.display_order, 0) as category_display_order,
+                  pr.display_order, (pr.no_domicilio or coalesce(c.no_domicilio, false)) as no_domicilio
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1
+           order by coalesce(c.display_order, 0), c.name nulls last, pr.display_order, pr.name
+           limit 500;`,
+          [propertyId],
+        );
+        return result;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => {
+        const { rows: result } = await this.db.query<StorefrontCatalogDbRow>(
+          `select pr.id, pr.name, pr.description, bp.price, pr.image_url, pr.is_popular, bp.is_available,
+                  pr.category_id, c.name as category_name, coalesce(c.display_order, 0) as category_display_order,
+                  pr.display_order
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1
+           order by coalesce(c.display_order, 0), c.name nulls last, pr.display_order, pr.name
+           limit 500;`,
+          [propertyId],
+        );
+        return result;
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      price: Number(row.price),
+      imageUrl: row.image_url,
+      isPopular: row.is_popular === true,
+      isAvailable: row.is_available === true,
+      categoryId: row.category_id,
+      categoryName: row.category_name,
+      categoryDisplayOrder: Number(row.category_display_order),
+      displayOrder: Number(row.display_order),
+      noDomicilio: row.no_domicilio === true,
+    }));
+  }
+
+  async findStorefrontOrderTracking(organizationId: string, orderId: string): Promise<StorefrontTrackingResult> {
+    // Funcion de migracion 032: base sin migrar -> 42883. SAVEPOINT porque la sesion es la transaccion
+    // unica del request (un try/catch simple la dejaria abortada, 25P02).
+    return runWithSavepointFallback<StorefrontTrackingResult>({
+      session: this.db,
+      savepointName: "sp_restaurantes_storefront_rastreo",
+      primary: async () => {
+        const { rows } = await this.db.query<{ tracking: StorefrontTrackingDbPayload | null }>(
+          `select restaurantes.storefront_order_tracking($1::uuid, $2::uuid) as tracking;`,
+          [organizationId, orderId],
+        );
+        const t = rows[0]?.tracking ?? null;
+        if (!t) return { disponible: true, pedido: null };
+        return {
+          disponible: true,
+          pedido: {
+            status: t.status as StorefrontOrderTracking["status"],
+            branch: t.branch ?? null,
+            total: Number(t.total),
+            paymentMethod: t.payment_method === "efectivo" || t.payment_method === "tarjeta" ? t.payment_method : null,
+            canal: t.canal === "recoger" ? "recoger" : "domicilio",
+            createdAt: String(t.created_at),
+            items: (Array.isArray(t.items) ? t.items : []).map((i) => ({
+              name: String(i.name ?? ""),
+              quantity: Number(i.quantity ?? 0),
+              tortilla: i.tortilla === "maiz" || i.tortilla === "harina" || i.tortilla === "mixta" ? i.tortilla : null,
+            })),
+          },
+        };
+      },
+      isRecoverable: esErrorBaseSinMigrar026,
+      fallback: async () => ({ disponible: false, pedido: null }),
+    });
   }
 
   async findCustomerByPhone(organizationId: string, phone: string): Promise<Customer | null> {
@@ -1973,6 +2092,60 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   // SAVEPOINT obligatorio); toda escritura lanza RestaurantesConfigUnavailableError.
   // ---------------------------------------------------------------------------
 
+  // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
+  async findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    // Lectura dentro de la transaccion unica del turno: una base sin migrar (42P01/42703/42501/42883)
+    // NO puede abortarla; con SAVEPOINT cae a "sin config" y el turno sigue con el agente generico.
+    return runWithSavepointFallback<WhatsAppAgentConfigRow | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_read",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `select property_id, perfil, agent_name, business_name, tone_style, delivery_time_text
+             from restaurantes.whatsapp_agent_config
+            where organization_id = $1 and enabled = true and (property_id = $2 or property_id is null)
+            order by (property_id is null) asc
+            limit 1;`,
+          [organizationId, propertyId],
+        );
+        return rows[0] ? mapWhatsAppAgentConfigRow(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+  }
+
+  async upsertWhatsAppAgentConfig(organizationId: string, propertyId: string | null, config: WhatsAppAgentConfigInput): Promise<WhatsAppAgentConfigRow> {
+    return runWithSavepointFallback<WhatsAppAgentConfigRow>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_write",
+      primary: async () => {
+        // Dos indices unicos parciales (organizacion / sucursal): `on conflict` necesita el predicado exacto.
+        const conflict = propertyId === null ? "(organization_id) where property_id is null" : "(organization_id, property_id) where property_id is not null";
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, enabled, updated_at)
+           values ($1, $2, $3, $4, $5, $6, $7, true, now())
+           on conflict ${conflict} do update set
+             perfil = excluded.perfil,
+             agent_name = excluded.agent_name,
+             business_name = excluded.business_name,
+             tone_style = excluded.tone_style,
+             delivery_time_text = excluded.delivery_time_text,
+             enabled = true,
+             updated_at = excluded.updated_at
+           returning property_id, perfil, agent_name, business_name, tone_style, delivery_time_text;`,
+          [organizationId, propertyId, config.perfil, config.agentName, config.businessName, config.toneStyle, config.deliveryTimeText],
+        );
+        return mapWhatsAppAgentConfigRow(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("whatsapp_agent_config", err, "029_whatsapp_agent_config.sql");
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return runWithSavepointFallback<BranchPolicy>({
       session: this.db,
@@ -2193,6 +2366,27 @@ function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
     pedidoMinimoDomicilio: row.pedido_minimo_domicilio === null ? null : Number(row.pedido_minimo_domicilio),
     pedidoMinimoRecoger: row.pedido_minimo_recoger === null ? null : Number(row.pedido_minimo_recoger),
     propinaPolitica: propina === "nunca" || propina === "siempre" || propina === "solo_tarjeta" ? propina : null,
+  };
+}
+
+interface WhatsAppAgentConfigRowSql {
+  property_id: string | null;
+  perfil: string;
+  agent_name: string | null;
+  business_name: string | null;
+  tone_style: string | null;
+  delivery_time_text: string | null;
+}
+
+function mapWhatsAppAgentConfigRow(row: WhatsAppAgentConfigRowSql): WhatsAppAgentConfigRow {
+  return {
+    propertyId: row.property_id,
+    // Un valor desconocido (fila escrita por una version futura) cae al perfil generico: nunca rompe el turno.
+    perfil: row.perfil === "taqueria_pm" ? "taqueria_pm" : "generico",
+    agentName: row.agent_name,
+    businessName: row.business_name,
+    toneStyle: (TONOS_AGENTE_WHATSAPP as readonly string[]).includes(row.tone_style ?? "") ? (row.tone_style as TonoAgenteWhatsApp) : null,
+    deliveryTimeText: row.delivery_time_text,
   };
 }
 
