@@ -2,7 +2,7 @@
 // previsualiza (recotiza con el motor de tarifas, cupo, penalidad y bloqueos) y confirma con guardia de precio (`totalEsperado`) e
 // Idempotency-Key. Nada se calcula en el cliente: todo numero sale de la previsualizacion. "Cancelar" solo cierra, nunca ejecuta.
 import { useEffect, useRef, useState } from "react";
-import { Button, FormDialog, Input, Label, Textarea } from "@atiende/ui";
+import { Button, FormDialog, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
 import { cambiarFechas, ESTADOS_EN_CASA, previsualizarFechas } from "../lib/fechas-client.ts";
 import type { PrevisualizacionFechas } from "../lib/fechas-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -30,13 +30,11 @@ interface Props {
 
 function Fila({ etiqueta, actual, nueva, fuerte = false }: { etiqueta: string; actual: string; nueva: string; fuerte?: boolean }) {
   return (
-    <tr className={fuerte ? "font-semibold text-foreground" : "text-foreground"}>
-      <th scope="row" className="py-1 pr-3 text-left text-xs font-normal text-muted-foreground">
-        {etiqueta}
-      </th>
-      <td className="py-1 pr-3 text-right tabular-nums">{actual}</td>
-      <td className="py-1 text-right tabular-nums">{nueva}</td>
-    </tr>
+    <TableRow className={fuerte ? "font-semibold text-foreground" : "text-foreground"}>
+      <TableCell className="text-xs font-normal text-muted-foreground">{etiqueta}</TableCell>
+      <TableCell className="text-right tabular-nums">{actual}</TableCell>
+      <TableCell className="text-right tabular-nums">{nueva}</TableCell>
+    </TableRow>
   );
 }
 
@@ -166,22 +164,22 @@ export function CambiarFechasDialog({ apiBaseUrl, token, propertyId, reserva, on
               </ul>
             )}
             {nueva && (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground">
-                    <th className="text-left font-normal" />
-                    <th className="text-right font-normal pr-3">Actual</th>
-                    <th className="text-right font-normal">Nueva</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead aria-label="Concepto" />
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">Nueva</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   <Fila etiqueta="Noches" actual={String(preview.actual.noches)} nueva={String(nueva.noches)} />
                   <Fila etiqueta="Subtotal" actual={dineroMx(preview.actual.neto)} nueva={dineroMx(nueva.neto)} />
                   <Fila etiqueta="IVA" actual={dineroMx(preview.actual.iva)} nueva={dineroMx(nueva.iva)} />
                   <Fila etiqueta="ISH" actual={dineroMx(preview.actual.ish)} nueva={dineroMx(nueva.ish)} />
                   <Fila etiqueta="Total" actual={dineroMx(preview.actual.total)} nueva={dineroMx(nueva.total)} fuerte />
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
             {dif !== null && (
               <p className="text-sm text-foreground">
