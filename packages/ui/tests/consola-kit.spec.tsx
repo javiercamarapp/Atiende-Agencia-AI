@@ -16,7 +16,7 @@ import {
   GlobalFilter,
   HBars,
   KpiTile,
-  Sparkline,
+  SparklineConsola,
   Tendencia,
   UMBRAL_AGRUPAR_SEMANA,
   agruparPorSemana,
@@ -167,10 +167,10 @@ describe("HBars", () => {
   });
 });
 
-describe("Sparkline y Tendencia", () => {
+describe("SparklineConsola y Tendencia", () => {
   it("con menos de 2 puntos no se pinta (no se inventa una serie plana)", () => {
-    expect(montar(<Sparkline valores={[3]} />).querySelector("svg")).toBeNull();
-    expect(montar(<Sparkline valores={[1, 2, 3]} />).querySelector('[data-testid="sparkline"]')).not.toBeNull();
+    expect(montar(<SparklineConsola valores={[3]} />).querySelector("svg")).toBeNull();
+    expect(montar(<SparklineConsola valores={[1, 2, 3]} />).querySelector('[data-testid="sparkline"]')).not.toBeNull();
   });
   it("tendencia: null dice 'sin historia suficiente'; sube en verde y baja en rojo", () => {
     expect(montar(<Tendencia valor={null} />).textContent).toBe("sin historia suficiente");

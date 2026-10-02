@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { resolverFormato, type FormatoPreset } from "../lib/formato-preset";
 import { Card } from "./ui/card";
-import { Sparkline, Tendencia } from "./graficas";
+import { SparklineConsola, Tendencia } from "./graficas";
 
 export interface KpiTileProps {
   /** Elemento ya armado (`<Icon className="size-[15px]" strokeWidth={1.75} />`). */
@@ -49,7 +49,7 @@ export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia,
       ) : sparkline && sparkline.length > 1 ? (
         <div className="mt-2 flex items-center gap-2 border-t border-dashed border-line2 pt-2">
           <div className="min-w-0 flex-1">
-            <Sparkline valores={sparkline} alto={20} />
+            <SparklineConsola valores={sparkline} alto={20} />
           </div>
           {tendencia !== undefined && <Tendencia valor={tendencia} />}
         </div>

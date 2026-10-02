@@ -26,13 +26,13 @@ function SinDatos({ texto, className }: { texto: string; className?: string }) {
   );
 }
 
-// ---- Sparkline y tendencia ---------------------------------------------------
+// ---- SparklineConsola y tendencia ---------------------------------------------------
 
 /**
  * `width="100%"` + viewBox, NUNCA un ancho fijo en px: un ancho fijo dentro de un flex angosto (la tarjeta
  * de KPI) empuja el trazo fuera de la tarjeta. Con menos de 2 puntos no hay serie que trazar y no se pinta.
  */
-export function Sparkline({ valores, alto = 24 }: { valores: readonly number[]; alto?: number }) {
+export function SparklineConsola({ valores, alto = 24 }: { valores: readonly number[]; alto?: number }) {
   const ANCHO_VB = 100;
   if (valores.length < 2) return null;
   const max = Math.max(...valores);

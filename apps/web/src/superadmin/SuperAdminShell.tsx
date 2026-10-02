@@ -83,7 +83,6 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       sections={SECTIONS}
       sidebarPie={SIDEBAR_PIE}
       mobileItems={MOBILE_ITEMS}
-      sidebarPie={SIDEBAR_PIE}
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
