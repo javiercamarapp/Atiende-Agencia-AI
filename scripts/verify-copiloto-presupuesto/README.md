@@ -1,7 +1,7 @@
 # verify-copiloto-presupuesto
 
 Postgres **real** (el gate de CI `scripts/verify-real-postgres-ci/run-gate.mjs` lo descubre solo): migración
-`packages/db/migrations/0046_copiloto_presupuesto_y_roles.sql` (espejo en `supabase/migrations/`).
+`packages/db/migrations/0047_copiloto_presupuesto_y_roles.sql` (espejo en `supabase/migrations/`).
 
 Cubre CHAT-07 / MOD-12:
 

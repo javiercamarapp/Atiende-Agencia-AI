@@ -97,7 +97,7 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
 
   constructor(private readonly engine: TenancyEngine) {}
 
-  /** Ventana horaria de respaldos (migracion 0046): cuenta la llamada y avisa si mas del 5 % de la hora cayo a un modelo de respaldo.
+  /** Ventana horaria de respaldos (migracion 0047): cuenta la llamada y avisa si mas del 5 % de la hora cayo a un modelo de respaldo.
    *  Corre en su PROPIA sesion de sistema y es best-effort: nunca lanza ni toca el registro de uso de arriba. */
   private async registrarVentana(fallbackUsed: boolean): Promise<void> {
     if (this.ventanaNoDisponible) return;
@@ -105,7 +105,7 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
       const w = await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).recordHourWindow(fallbackUsed));
       if (fallbackSuperaUmbral(w.calls, w.fallbacks)) await notificarFallbackAltoBestEffort(this.engine, this.fallbackAvisado, new Date(), (w.fallbacks * 100) / w.calls);
     } catch (err) {
-      if (isMigrationPendingError(err)) this.ventanaNoDisponible = true; // base sin migrar (0046): sin ventana, nunca un error
+      if (isMigrationPendingError(err)) this.ventanaNoDisponible = true; // base sin migrar (0047): sin ventana, nunca un error
     }
   }
 
@@ -165,7 +165,7 @@ export async function notificarTopeIaAgotadoBestEffort(engine: TenancyEngine, em
 export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
   private readonly topeNotificado = new Set<string>();
   private readonly umbralNotificado = new Set<string>();
-  /** La base aun no tiene la reserva con rol (migracion 0046): se usa la de 3 argumentos sin reintentar la nueva en cada llamada. */
+  /** La base aun no tiene la reserva con rol (migracion 0047): se usa la de 3 argumentos sin reintentar la nueva en cada llamada. */
   private sinReservaConRol = false;
 
   constructor(private readonly engine: TenancyEngine) {}
@@ -223,7 +223,7 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
 }
 
 /**
- * Tope DIARIO de turnos LLM por organizacion y rol sobre `core.consume_llm_role_turn` (migracion 0046, conteo atomico entre
+ * Tope DIARIO de turnos LLM por organizacion y rol sobre `core.consume_llm_role_turn` (migracion 0047, conteo atomico entre
  * instancias). Cada llamada abre su PROPIA sesion de sistema. Los roles sin tope por defecto (`defaultRoleDailyTurnLimit`) ni
  * siquiera tocan la base. Un fallo de infraestructura (base sin migrar o caida) es FAIL-OPEN a proposito: el tope diario es una
  * proteccion de uso, y el dinero sigue protegido por el tope mensual (que si es fail-closed).

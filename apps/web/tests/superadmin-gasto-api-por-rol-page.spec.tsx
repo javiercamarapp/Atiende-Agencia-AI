@@ -47,7 +47,7 @@ describe("Gasto por organizacion y rol", () => {
   });
 
   it("base sin migrar: 'No disponible aun' (nunca ceros fingidos)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => res({ disponible: false, mensaje: "El reporte por rol requiere la migración 0046.", filas: [] })));
+    vi.stubGlobal("fetch", vi.fn(async () => res({ disponible: false, mensaje: "El reporte por rol requiere la migración 0047.", filas: [] })));
     rendered = render();
     await esperar();
     expect(rendered.container.textContent).toContain("No disponible aún");
@@ -109,7 +109,7 @@ describe("Tope diario de turnos por rol", () => {
   });
 
   it("base sin migrar al pedir los topes: 'No disponible aun'", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.includes("/por-rol") ? res({ disponible: true, filas: [] }) : res({ disponible: false, mensaje: "requiere la migración 0046", defaults: [], propios: [] }))));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.includes("/por-rol") ? res({ disponible: true, filas: [] }) : res({ disponible: false, mensaje: "requiere la migración 0047", defaults: [], propios: [] }))));
     rendered = render();
     await esperar();
     changeValue(rendered.container.querySelector("#topes-rol-organizacion") as HTMLSelectElement, ORGS[0]!.organizationId);

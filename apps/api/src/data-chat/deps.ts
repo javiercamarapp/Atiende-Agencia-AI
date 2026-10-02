@@ -71,7 +71,7 @@ export class PostgresDataChatAuditSink implements DataChatAuditSink {
     const common = [entry.organizationId, entry.tool, JSON.stringify(entry.params), entry.outcome, entry.rowCount, entry.durationMs, entry.errorCode ?? null];
     const recoverable = (err: unknown): boolean => isUndefinedFunctionError(err) || isUndefinedTableError(err) || isUndefinedColumnError(err);
     // Niveles, del mas nuevo al mas viejo, cada uno en su propio SAVEPOINT (la transaccion del request sigue viva si falta la funcion):
-    //   1) 11 argumentos (migracion 0046): ruta, costo real en micro-USD, modelo y rol -- solo si la entrada trae alguno de los tres;
+    //   1) 11 argumentos (migracion 0047): ruta, costo real en micro-USD, modelo y rol -- solo si la entrada trae alguno de los tres;
     //   2) 8 argumentos (migracion 0045): ruta;
     //   3) 7 argumentos (migracion 0029): sin ruta;
     //   4) log estructurado SIN resultados ni PII si ni la bitacora existe.

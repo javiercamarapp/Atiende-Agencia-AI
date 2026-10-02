@@ -1,4 +1,4 @@
--- Copiloto: presupuesto, costo por rol y tope diario de turnos (migracion 0046) -- verificacion contra Postgres REAL.
+-- Copiloto: presupuesto, costo por rol y tope diario de turnos (migracion 0047) -- verificacion contra Postgres REAL.
 -- Cada escenario corre en su propio `begin; ... rollback;`. Alias `should_fail` = debe terminar en ERROR; alias
 -- `..._deberia_ser_N` = el valor esperado (ver scripts/verify-real-postgres-ci/run-gate.mjs). Datos ficticios.
 -- Sesion de sistema = sin `set local role` ni claim (auth.uid() es null); usuario real = `set local role authenticated` +

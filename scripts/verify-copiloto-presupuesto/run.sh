@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de la
-# migración 0046 (presupuesto y costo del Copiloto, tope diario por rol). En CI la corre automáticamente
+# migración 0047 (presupuesto y costo del Copiloto, tope diario por rol). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-copiloto-presupuesto/run.sh
 set -euo pipefail

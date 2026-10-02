@@ -34,7 +34,7 @@ import { NEW_PLATFORM_LLM_ROLES } from "../production/llm-models.ts";
 import { defaultRoleDailyTurnLimit } from "../production/llm-role-limits.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NO_DISPONIBLE_AUN = "El reporte por rol requiere la migración 0046, que aún no está aplicada.";
+const NO_DISPONIBLE_AUN = "El reporte por rol requiere la migración 0047, que aún no está aplicada.";
 
 /** Roles con tope diario de turnos (los que tienen default): los unicos que el superadmin puede ajustar por organizacion. */
 function rolesConTopeDiario(): { role: string; maxTurnosDia: number }[] {
@@ -150,7 +150,7 @@ export function superadminLlmUsageRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   // CHAT-07: gasto por organizacion, rol y mes (de core.llm_usage_daily, el costo REAL que reporto el proveedor). Detras de step-up
-  // (SENSITIVE_ROUTES). Sin la migracion 0046 responde `disponible: false` con la lista vacia (nunca un 500).
+  // (SENSITIVE_ROUTES). Sin la migracion 0047 responde `disponible: false` con la lista vacia (nunca un 500).
   app.get("/superadmin/gasto-api/por-rol", async (c) => {
     const { from, to } = parseDateRange(c);
     try {

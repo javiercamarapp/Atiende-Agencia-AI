@@ -2,7 +2,7 @@
 //   GET /superadmin/gasto-api/por-rol                          (costo REAL de core.llm_usage_daily, agrupado por organizacion/rol/mes)
 //   GET/PUT /superadmin/gasto-api/organizaciones/:id/topes-rol (tope diario de turnos por rol; defaults del sistema y topes propios)
 // Las tres rutas exigen step-up con factor MFA activo (fetchConStepUp pide el codigo y reintenta). Cada bloque maneja cargando, error,
-// "no disponible aun" (base sin la migracion 0046) y vacio de verdad; nunca muestra cifras inventadas.
+// "no disponible aun" (base sin la migracion 0047) y vacio de verdad; nunca muestra cifras inventadas.
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import { fetchJson } from "../lib/fetch-json.ts";
@@ -146,7 +146,7 @@ export function GastoApiPorRol({ apiBaseUrl, token, from, to, organizaciones }: 
           ) : !porRol ? (
             <EstadoCargando etiqueta="Cargando gasto por rol…" />
           ) : !porRol.disponible ? (
-            <EstadoVacio mensaje={`No disponible aún: ${porRol.mensaje ?? "requiere la migración 0046."}`} />
+            <EstadoVacio mensaje={`No disponible aún: ${porRol.mensaje ?? "requiere la migración 0047."}`} />
           ) : porRol.filas.length === 0 ? (
             <EstadoVacio mensaje="Sin llamadas al LLM registradas en este rango de fechas todavía." />
           ) : (
@@ -206,7 +206,7 @@ export function GastoApiPorRol({ apiBaseUrl, token, from, to, organizaciones }: 
           ) : cargandoTopes && !topes ? (
             <EstadoCargando etiqueta="Cargando topes…" />
           ) : topes && !topes.disponible ? (
-            <EstadoVacio mensaje={`No disponible aún: ${topes.mensaje ?? "requiere la migración 0046."}`} />
+            <EstadoVacio mensaje={`No disponible aún: ${topes.mensaje ?? "requiere la migración 0047."}`} />
           ) : topes ? (
             <div className="overflow-x-auto">
               <Table>

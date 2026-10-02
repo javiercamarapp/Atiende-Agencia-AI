@@ -74,7 +74,7 @@ export interface LlmPlatformBudgetRow {
   readonly spendThisMonthMicroUsd: number;
 }
 
-/** Totales del mes tras una reserva exitosa (para avisar al 80 %). Solo la reserva con rol (migracion 0046) los devuelve. */
+/** Totales del mes tras una reserva exitosa (para avisar al 80 %). Solo la reserva con rol (migracion 0047) los devuelve. */
 export interface LlmMonthlyReservationTotals {
   readonly orgTotalMicroUsd: number;
   readonly orgCapMicroUsd: number;
@@ -82,7 +82,7 @@ export interface LlmMonthlyReservationTotals {
   readonly platformCapMicroUsd: number;
 }
 
-/** Gasto agregado por organizacion, rol y mes (reporte de Gasto API, migracion 0046). */
+/** Gasto agregado por organizacion, rol y mes (reporte de Gasto API, migracion 0047). */
 export interface LlmUsageByOrgRoleMonthRow {
   readonly organizationId: string;
   readonly organizationName: string;
@@ -144,7 +144,7 @@ export interface LlmUsageRepository {
    *  (organización/plataforma) se excede — nunca deja una reserva a medias. */
   reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<LlmMonthlyReservationTotals | null>;
   settleMonthlyBudget(reservationId: string, actualMicroUsd: number): Promise<void>;
-  /** Consume un turno LLM del dia para (organizacion, rol) (migracion 0046). Solo sistema. */
+  /** Consume un turno LLM del dia para (organizacion, rol) (migracion 0047). Solo sistema. */
   consumeRoleTurn(organizationId: string, role: string, defaultLimit: number): Promise<LlmRoleTurnResult>;
   /** Cuenta una llamada (y si cayo a un modelo de respaldo) en la hora en curso; devuelve los totales de la hora. Solo sistema. */
   recordHourWindow(fallbackUsed: boolean): Promise<LlmHourWindow>;
@@ -156,7 +156,7 @@ export interface LlmUsageRepository {
   getPlatformBudgetForSuperadmin(callerId: string): Promise<LlmPlatformBudgetRow>;
   setOrgMonthlyCapForSuperadmin(callerId: string, organizationId: string, monthlyCapMicroUsd: number, alertThresholdPct: number): Promise<void>;
   setPlatformMonthlyCapForSuperadmin(callerId: string, monthlyCapMicroUsd: number, alertThresholdPct: number): Promise<void>;
-  /** Gasto por organizacion/rol/mes (migracion 0046; sin ella la funcion SQL no existe y el llamador lo trata como "no disponible"). */
+  /** Gasto por organizacion/rol/mes (migracion 0047; sin ella la funcion SQL no existe y el llamador lo trata como "no disponible"). */
   listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]>;
   listOrgRoleLimitsForSuperadmin(callerId: string, organizationId: string): Promise<readonly LlmOrgRoleLimitRow[]>;
   setOrgRoleLimitForSuperadmin(callerId: string, organizationId: string, role: string, maxTurnosDia: number): Promise<void>;
@@ -281,7 +281,7 @@ export class PostgresLlmUsageRepository implements LlmUsageRepository {
 
   async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<LlmMonthlyReservationTotals | null> {
     try {
-      // Con rol: sobrecarga de 4 argumentos (migracion 0046; subtope del Copiloto y totales para avisar al 80 %). Si todavia no
+      // Con rol: sobrecarga de 4 argumentos (migracion 0047; subtope del Copiloto y totales para avisar al 80 %). Si todavia no
       // existe, el error 42883 deja ESTA transaccion abortada: el llamador (ProductionOrgMonthlyBudgetStore) reintenta sin rol en
       // una sesion nueva, nunca en esta.
       if (role !== undefined) {

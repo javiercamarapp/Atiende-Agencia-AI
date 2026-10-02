@@ -19,7 +19,7 @@
 import { MonthlyBudgetExceededError } from './errors.js';
 
 /** Porcentaje del tope mensual de una organización reservado como TECHO del Copiloto. Debe coincidir con
- *  `core.copiloto_subtope_pct()` (migración 0046). */
+ *  `core.copiloto_subtope_pct()` (migración 0047). */
 export const COPILOTO_SUBTOPE_PCT = 30;
 
 /** true si `role` es del Copiloto ("Chatea con tus datos"): `<vertical>:data_chat` o su reintento `<vertical>:data_chat_retry`. */

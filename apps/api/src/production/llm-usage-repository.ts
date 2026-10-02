@@ -76,7 +76,7 @@ export class ProductionLlmUsageRepository implements LlmUsageRepository {
     return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).setPlatformMonthlyCapForSuperadmin(callerId, monthlyCapMicroUsd, alertThresholdPct));
   }
 
-  // CHAT-07 (migracion 0046): reporte por organizacion/rol/mes y tope diario por rol, tambien COMO el caller autenticado.
+  // CHAT-07 (migracion 0047): reporte por organizacion/rol/mes y tope diario por rol, tambien COMO el caller autenticado.
   listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]> {
     return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).listUsageByOrgRoleMonthForSuperadmin(callerId, from, to));
   }
