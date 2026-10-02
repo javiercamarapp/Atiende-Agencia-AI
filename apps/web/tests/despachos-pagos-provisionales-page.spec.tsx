@@ -57,6 +57,12 @@ interface Llamada {
 let llamadas: Llamada[];
 let rendered: RenderedComponent | undefined;
 
+// Respuesta de archivo determinista: `blob()` resuelve en un microtask (un `Response` real de undici resuelve el Blob en una tarea aparte y la prueba dependia de la planificacion).
+function respuestaArchivo(): Response {
+  const blob = new Blob(["%PDF-1.7"]);
+  return { ok: true, status: 200, headers: new Headers({ "content-disposition": 'attachment; filename="pagos-provisionales-2026-07.pdf"' }), blob: async () => blob } as unknown as Response;
+}
+
 function stubFetch(respuestaGet: unknown = papel(), escritura: (url: string, method: string) => Response = () => new Response(JSON.stringify(papel({ guardado: { isr: true, iva: true } })), { status: 200 })) {
   llamadas = [];
   vi.stubGlobal(
@@ -64,7 +70,7 @@ function stubFetch(respuestaGet: unknown = papel(), escritura: (url: string, met
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       llamadas.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (method === "GET" && url.includes("/exportar")) return new Response(new Blob(["%PDF-1.7"]), { status: 200, headers: { "content-disposition": 'attachment; filename="pagos-provisionales-2026-07.pdf"' } });
+      if (method === "GET" && url.includes("/exportar")) return respuestaArchivo();
       if (method === "GET") return new Response(JSON.stringify(respuestaGet), { status: 200 });
       return escritura(url, method);
     }),
