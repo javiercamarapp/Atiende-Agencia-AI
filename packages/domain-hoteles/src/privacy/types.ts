@@ -7,12 +7,14 @@
 
 export const ARCO_RIGHTS = ["acceso", "rectificacion", "cancelacion", "oposicion"] as const;
 export type ArcoRight = (typeof ARCO_RIGHTS)[number];
-export const ARCO_STATUSES = ["recibida", "en_revision", "procedente", "improcedente", "ejecutada"] as const;
+export const ARCO_STATUSES = ["pendiente_verificacion", "recibida", "en_revision", "procedente", "improcedente", "ejecutada"] as const;
 export type ArcoStatus = (typeof ARCO_STATUSES)[number];
 /** Estados a los que se puede avanzar (`recibida` solo es el estado inicial). */
-export type ArcoTargetStatus = Exclude<ArcoStatus, "recibida">;
-export const ARCO_CHANNELS = ["mostrador", "correo", "whatsapp", "web", "telefono", "otro"] as const;
+export type ArcoTargetStatus = Exclude<ArcoStatus, "recibida" | "pendiente_verificacion">;
+export const ARCO_CHANNELS = ["mostrador", "correo", "whatsapp", "web", "telefono", "otro", "publico"] as const;
 export type ArcoChannel = (typeof ARCO_CHANNELS)[number];
+/** Canales que el STAFF puede capturar a mano: "publico" es el origen reservado de la solicitud del titular sin login (H-30). */
+export const ARCO_STAFF_CHANNELS = ["mostrador", "correo", "whatsapp", "web", "telefono", "otro"] as const;
 export type ArcoExtensionPhase = "respuesta" | "ejecucion";
 
 export const CONSENT_CHANNELS = ["mostrador", "tableta", "qr", "whatsapp", "web", "telefono", "otro"] as const;

@@ -152,7 +152,7 @@ export class InMemoryPrivacyRepository implements PrivacyRepository {
   async listArco(propertyId: string, filters: { status?: ArcoStatus; limit: number }): Promise<PrivacyListResult<ArcoRequestRecord>> {
     return InMemoryPrivacyRepository.list(
       this.unavailable,
-      [...this.arcos.values()].filter((a) => a.propertyId === propertyId && (!filters.status || a.status === filters.status)).sort((a, b) => (a.responseDueOn < b.responseDueOn ? -1 : 1)).slice(0, filters.limit),
+      [...this.arcos.values()].filter((a) => a.propertyId === propertyId && (filters.status ? a.status === filters.status : a.status !== "pendiente_verificacion")).sort((a, b) => (a.responseDueOn < b.responseDueOn ? -1 : 1)).slice(0, filters.limit),
     );
   }
   async findArco(propertyId: string, requestId: string): Promise<ArcoRequestRecord | null> {
