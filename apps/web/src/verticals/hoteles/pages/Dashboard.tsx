@@ -44,6 +44,7 @@
 // aplicado en HotelesShell.tsx/Login.tsx. Ningún cambio de lógica: mismos props,
 // mismo estado, mismas llamadas de red, misma condición de cada rama.
 import { useEffect, useState } from "react";
+import { HotelesFijadosCopiloto } from "./Copiloto.tsx";
 import { Link } from "react-router-dom";
 import { ArrowRight, BedDouble, CalendarCheck, CalendarClock, CircleDollarSign, PiggyBank, ShieldAlert, TrendingUp, UtensilsCrossed, Wallet, Wrench } from "lucide-react";
 import {
@@ -326,6 +327,7 @@ export function DashboardPage(ctx: HotelesShellContext) {
         <h1 className="text-xl font-display font-semibold text-foreground">Panel de {ctx.orgSlug}</h1>
       </div>
       {EXECUTIVE_ROLES.has(ctx.role) ? <ExecutiveSummary {...ctx} /> : <OperationalSummary {...ctx} />}
+      <HotelesFijadosCopiloto {...ctx} />
     </PageContainer>
   );
 }

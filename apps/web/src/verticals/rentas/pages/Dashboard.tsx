@@ -4,6 +4,7 @@
 // sin migrar) se muestra como tal ("—" con su razón) y el resto carga; uno "sin_permiso" (rol) no se pinta. El rol `limpieza`
 // no tiene Resumen: se le lleva a "Mis tareas", su panel real. El selector de propiedad vive en el Shell.
 import { useEffect, useState } from "react";
+import { RentasFijadosCopiloto } from "./Copiloto.tsx";
 import { Navigate, Link } from "react-router-dom";
 import { AlertTriangle, BedDouble, ClipboardList, Inbox, LogIn, LogOut, RefreshCcw } from "lucide-react";
 import { AgentRunCard, EstadoCargando, EstadoError, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard } from "@atiende/ui";
@@ -184,6 +185,7 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
             ))
           )}
         </ResumenSeccion>
+        <RentasFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
       </ResumenLayout>
     </PageContainer>
   );

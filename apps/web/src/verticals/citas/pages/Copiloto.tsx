@@ -4,9 +4,10 @@
 // solo viaja la sucursal activa en la URL. Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven "sin acceso".
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_CITAS } from "../../../lib/copiloto/config/citas.ts";
+import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
 import { CopilotoPage } from "../../../pages/CopilotoPage.tsx";
@@ -53,4 +54,18 @@ function CitasCopilotoConectado({ apiBaseUrl, token, propertyId, orgSlug }: Cita
       orgSlug={orgSlug}
     />
   );
+}
+
+/** Lo minimo que necesita el tablero de fijados del contexto del shell (la pagina de Resumen lo pasa tal cual). `role` es opcional: sin el, decide el servidor (403). */
+export type CitasFijadosCopilotoProps = Pick<CitasShellContext, "apiBaseUrl" | "token" | "propertyId" | "orgSlug"> & { readonly role?: string };
+
+/** Tablero de fijados del Copiloto para la pagina de Resumen (solo los roles con Copiloto). */
+export function CitasFijadosCopiloto({ apiBaseUrl, token, propertyId, orgSlug, role }: CitasFijadosCopilotoProps) {
+  const cliente = useMemo(() => {
+    const baseUrl = urlChatDatosCitas(apiBaseUrl, propertyId);
+    const fetchImpl: typeof fetch = (...args) => fetch(...args);
+    return crearClienteFijados({ baseUrl, fetchImpl, token, conAuth: (hacer) => withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(baseUrl), defaultAuthCtx(), token, hacer) });
+  }, [apiBaseUrl, propertyId, token]);
+  if (role !== undefined && !COPILOTO_CITAS_ROLES.has(role)) return null;
+  return <SeccionFijadosCopiloto cliente={cliente} rutaCopiloto={`/citas/${encodeURIComponent(orgSlug)}/copiloto`} />;
 }

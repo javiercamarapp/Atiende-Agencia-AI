@@ -45,6 +45,16 @@ export const COPILOTO_LICITACIONES: CopilotoConfigVertical = {
       preguntas: ["¿Qué fallos recibí este mes?", "¿Qué contratos terminan su vigencia en los próximos 90 días?"],
     },
   ],
+  directas: {
+    "¿Qué convocatorias vencen en los próximos 7 días?": { tool: "convocatorias_abiertas", args: { vencen_en_dias: 7 } },
+    "¿Cómo va el semáforo de mis plazos?": { tool: "plazos_semaforo" },
+    "¿Qué decisiones go/no-go tomé este mes?": { tool: "go_no_go", args: { periodo: "este_mes" } },
+    "¿Cuántas propuestas tengo por estado?": { tool: "propuestas_por_estado" },
+    "¿Qué preguntas de la junta de aclaraciones tengo pendientes?": { tool: "preguntas_junta_pendientes" },
+    "¿Qué convocatorias tengo abiertas?": { tool: "convocatorias_abiertas" },
+    "¿Qué fallos recibí este mes?": { tool: "fallos", args: { periodo: "este_mes" } },
+    "¿Qué contratos terminan su vigencia en los próximos 90 días?": { tool: "renovaciones", args: { dentro_de_dias: 90 } },
+  },
   etiquetasHerramienta: {
     convocatorias_abiertas: "Revisando las convocatorias abiertas",
     plazos_semaforo: "Calculando el semáforo de plazos",

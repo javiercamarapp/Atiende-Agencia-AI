@@ -2,6 +2,7 @@
 // la semana, pendientes por confirmar, no-shows y clientes nuevos. Solo lectura de conteos reales
 // del servidor (GET .../resumen): si la carga falla se muestra el error, nunca un 0 inventado.
 import { useEffect, useState } from "react";
+import { CitasFijadosCopiloto } from "./Copiloto.tsx";
 import { Link } from "react-router-dom";
 import { CalendarCheck, CalendarDays, CalendarX, Clock, UserPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, StatCard } from "@atiende/ui";
@@ -72,6 +73,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShe
           </p>
         </>
       )}
+      <CitasFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
     </div>
   );
 }

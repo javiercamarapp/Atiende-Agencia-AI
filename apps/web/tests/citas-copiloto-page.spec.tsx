@@ -125,7 +125,7 @@ describe("CitasCopilotoPage", () => {
     for (const ruta of Object.values(COPILOTO_CITAS.rutasFuente)) expect(ruta).toMatch(/^\/citas\/:orgSlug\//);
   });
 
-  it("elegir un chip hace POST NDJSON con SOLO pregunta + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
+  it("elegir un chip hace POST NDJSON de consulta DIRECTA (tool + args + label) + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
     click(porTexto(root, CHIP)!);
@@ -133,7 +133,8 @@ describe("CitasCopilotoPage", () => {
     const post = llamadas.find((l) => l.method === "POST");
     expect(post?.url).toBe(`${API}/citas/prop-1/chat-datos`);
     expect(post?.accept).toBe("application/x-ndjson");
-    expect(post?.body).toEqual({ question: CHIP, conversationId: "new" });
+    // El chip tiene consulta directa: viaja la herramienta con sus argumentos (sin modelo) y el texto del chip como etiqueta.
+    expect(post?.body).toEqual({ tool: "citas_por_dia", args: { periodo: "esta_semana" }, label: CHIP, conversationId: "new" });
     expect(root.textContent).toContain(TEXTO);
     const fuente = [...root.querySelectorAll("a")].find((a) => a.textContent?.includes("Citas de la agenda"));
     expect(fuente?.getAttribute("href")).toBe("/citas/demo/agenda");
