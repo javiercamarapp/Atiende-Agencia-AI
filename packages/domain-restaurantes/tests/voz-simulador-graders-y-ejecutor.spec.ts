@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { crearEjecutorTools, sanearArgumentos, transporteHttp } from "../src/voz/llamada/ejecutor-tools.ts";
 import { correrGuion } from "../src/voz/simulador/correr-guion.ts";
-import { evaluarLlamada } from "../src/voz/simulador/graders-voz.ts";
+import { evaluarLlamada, logContieneSensible } from "../src/voz/simulador/graders-voz.ts";
 import { GUIONES_ES_MX } from "../src/voz/simulador/guiones-es-mx.ts";
 import { FakeVoiceProvider } from "../src/voz/fake-voice-provider.ts";
 import { VozNoConfiguradaError } from "../src/voz/provider.ts";
@@ -37,6 +37,21 @@ describe("los graders detectan el error", () => {
     expect(await falla({ ...l, logs: [...l.logs, { evento: "x", campos: { motivo: "llamo desde 9991234567" } }] }, "G_SIN_PII_LOG")).toBeDefined();
     expect(await falla({ ...l, transcripcion: [...l.transcripcion, { rol: "cliente", texto: "mi tarjeta 4111 1111 1111 1111" }] }, "G_SIN_TARJETA")).toBeDefined();
     expect(await falla({ ...l, transcripcion: [...l.transcripcion, { rol: "agente", texto: "¿Qué quieres ordenar?" }] }, "G_TONO_USTED")).toBeDefined();
+  });
+
+  it("G_SIN_PII_LOG no se dispara por un UUID que contiene '412' por azar, pero sigue detectando el dato real", async () => {
+    const l = await correrGuion(guion("V07"));
+    const uuidConDigitos = "a1412f3c-9b41-4412-8412-412412412412";
+    expect(await falla({ ...l, logs: [...l.logs, { evento: "x", campos: { llamada: uuidConDigitos } }] }, "G_SIN_PII_LOG")).toBeUndefined();
+    const uuidTodoDigitos = "41241241-2412-4412-8412-412412412412"; // sus digitos seguidos tambien parecerian un telefono
+    expect(await falla({ ...l, logs: [...l.logs, { evento: "x", campos: { llamada: uuidTodoDigitos } }] }, "G_SIN_PII_LOG")).toBeUndefined();
+    // el mismo dato sensible suelto o dentro de una frase sigue fallando
+    expect(logContieneSensible(`{"direccion":"numero 412 por 45"}`, "412")).toBe(true);
+    expect(logContieneSensible(`{"llamada":"${uuidConDigitos}","n":"412"}`, "412")).toBe(true);
+    expect(logContieneSensible(`{"llamada":"${uuidConDigitos}"}`, "412")).toBe(false);
+    // un numero mayor que lo contiene no es el dato (p. ej. 4120 ms), pero el nombre se busca como subcadena
+    expect(logContieneSensible(`{"ms":4120}`, "412")).toBe(false);
+    expect(logContieneSensible(`{"cliente":"ANA PECH"}`, "Ana Pech")).toBe(true);
   });
 
   it("resultado, pregrabados, barge-in y handoff distintos a lo esperado", async () => {
