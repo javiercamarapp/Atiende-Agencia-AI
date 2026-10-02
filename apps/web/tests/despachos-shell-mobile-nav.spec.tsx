@@ -3,7 +3,7 @@
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav móvil de
 // DespachosShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
 // así que en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>.
-// Despachos tiene 18 destinos: la barra trae los 4 de uso diario y "Más" abre
+// Despachos tiene 20 destinos: la barra trae los 4 de uso diario y "Más" abre
 // TODOS (PR-0 del informe de diseno-ux, F-01: antes había un comentario que
 // afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
 // Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -97,7 +97,7 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
   });
 
   // UNI-6: marco de Likida -- Resumen y Cierre mensual raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 18 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 20 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"]);
@@ -105,9 +105,9 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "CFDI", "Cobranza", "Cola de cobranza", "Vencimientos"]);
     abrirCategoria(root, "Fiscal");
     expect(categoriasAbiertas(root)).toEqual(["Fiscal"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Declaraciones", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Declaraciones", "Pagos provisionales", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
     abrirCategoria(root, "Contabilidad");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Conciliación bancaria", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
     abrirCategoria(root, "Clientes y equipo");
     expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Staff", "Configuración"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Contador Demo", rol: "Administrador" });
