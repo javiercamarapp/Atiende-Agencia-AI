@@ -103,6 +103,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.expediente.aprobacion_pendiente` | aprobaciones | atencion | owner/admin, analyst | ShieldCheck | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
 | `licitaciones.expediente.aprobado` | cierres | info | owner/admin, analyst, writer | CircleCheckBig | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
 | `licitaciones.presentacion.declarada` | cierres | info | owner/admin, analyst, reviewer | FileCheck2 | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta (clave = id de la propuesta) | 30 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
 
 ### citas
 
@@ -161,6 +162,10 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   `licitaciones.expediente.aprobacion_pendiente` (se dio la 1/2 técnico-legal y falta la 2/2 económica, por otra persona),
   `licitaciones.expediente.aprobado` (2/2 completa) y `licitaciones.presentacion.declarada`. Los tres enlazan a la lista de
   convocatorias: el catálogo solo admite `{orgSlug}`, no el id de la convocatoria concreta.
+- **L-25 (gate final de la sala de guerra)**: suma `licitaciones.sala_guerra.paquete_no_listo`, conectado en
+  `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts`: se emite cuando `GET .../sala-guerra/gate` detecta que faltan
+  menos de 24 horas para el cierre, aun no se declaro la presentacion y el paquete no esta listo. Dedupe por convocatoria;
+  el enlace va a la lista de convocatorias (el catalogo solo admite `{orgSlug}`).
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

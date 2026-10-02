@@ -59,6 +59,7 @@ import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
+import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
 import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copiloto.tsx";
@@ -307,6 +308,11 @@ function HotelesAvisoPublicoRoute() {
 function HotelesMisDatosRoute() {
   const { orgSlug = "" } = useParams();
   return <MisDatosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+// Pagina PUBLICA de reservas de citas (C-19): sin login ni shell; solo necesita el slug del negocio.
+function ReservarCitasRoute() {
+  const { orgSlug = "" } = useParams();
+  return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
@@ -1029,6 +1035,7 @@ export function App() {
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/demo/:orgSlug" element={<DemoWhatsAppRoute />} />
+        <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />

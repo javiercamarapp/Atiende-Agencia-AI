@@ -239,3 +239,125 @@ export function transitionJuntaQuestion(f: typeof fetch, apiBaseUrl: string, tok
 export function acknowledgeJuntaReminder(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string, reminderId: string): Promise<JuntaReminder> {
   return postJson<JuntaReminder>(f, `${tenderBase(apiBaseUrl, propertyId, tenderId)}/junta/reminders/${reminderId}/acknowledge`, token, {});
 }
+
+// ---------------------------------------------------------------------------------------------
+// L-25 -- gate final de la sala de guerra (GET .../sala-guerra/gate). Solo lectura; nada se envia a un portal.
+// ---------------------------------------------------------------------------------------------
+
+export type GateColor = "verde" | "ambar" | "rojo";
+export type GateConditionId = "aprobaciones" | "checklist" | "paquete" | "zip_manifiesto" | "holgura";
+export type GateLink = "aprobaciones" | "checklist" | "paquete" | "sala_tablero" | null;
+
+export interface GateCondition {
+  readonly id: GateConditionId;
+  readonly label: string;
+  readonly color: GateColor;
+  readonly motivo: string;
+  readonly enlace: GateLink;
+}
+
+export interface GateCuentaRegresiva {
+  readonly estado: "sin_fecha" | "abierto" | "vencido";
+  readonly msRestantes: number | null;
+  readonly dias: number;
+  readonly horas: number;
+  readonly minutos: number;
+  readonly fechaCierreLocal: string | null;
+  readonly horaCierreLocal: string | null;
+  readonly zonaHoraria: string;
+}
+
+export interface GateSalaGuerraResponse {
+  readonly now: string;
+  readonly tender: { readonly id: string; readonly title: string; readonly submissionDeadline: string | null };
+  readonly proposalId: string | null;
+  readonly presentado: boolean;
+  readonly gate: {
+    readonly listo: boolean;
+    readonly veredicto: "listo" | "no_listo";
+    readonly condiciones: readonly GateCondition[];
+    readonly motivos: readonly string[];
+    readonly cuentaRegresiva: GateCuentaRegresiva;
+    readonly holguraHoras: number | null;
+    readonly alerta24h: boolean;
+  };
+  readonly alerta: "emitida" | "sin_nuevas" | "no_disponible" | "error" | "no_aplica";
+}
+
+export function fetchGateSalaGuerra(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<GateSalaGuerraResponse> {
+  return fetchJson<GateSalaGuerraResponse>(f, `${tenderBase(apiBaseUrl, propertyId, tenderId)}/sala-guerra/gate`, token);
+}
+
+/** "3 d 2 h 10 min" / "4 h 5 min" / "12 min" a partir de milisegundos (siempre en valor absoluto). */
+export function formatCuentaRegresiva(ms: number): string {
+  const abs = Math.abs(ms);
+  const dias = Math.floor(abs / 86_400_000);
+  const horas = Math.floor((abs % 86_400_000) / 3_600_000);
+  const minutos = Math.floor((abs % 3_600_000) / 60_000);
+  const partes: string[] = [];
+  if (dias > 0) partes.push(`${dias} d`);
+  if (dias > 0 || horas > 0) partes.push(`${horas} h`);
+  partes.push(`${minutos} min`);
+  return partes.join(" ");
+}
+
+// ---------------------------------------------------------------------------------------------
+// L-29 -- bitacora visible por convocatoria (GET .../bitacora). Solo lectura.
+// ---------------------------------------------------------------------------------------------
+
+export type BitacoraFuente = "auditoria" | "sala_guerra" | "go_no_go" | "aprobacion" | "presentacion";
+
+export const BITACORA_FUENTE_LABEL: Readonly<Record<BitacoraFuente, string>> = {
+  auditoria: "Auditoría de la convocatoria",
+  sala_guerra: "Sala de guerra",
+  go_no_go: "Go / No-go",
+  aprobacion: "Aprobaciones",
+  presentacion: "Presentación",
+};
+
+export interface BitacoraEvento {
+  readonly id: string;
+  readonly fuente: BitacoraFuente;
+  readonly accion: string;
+  readonly descripcion: string;
+  readonly at: string;
+  readonly actor: { readonly esTuyo: boolean | null; readonly rol: string | null };
+}
+
+export interface BitacoraPagina {
+  readonly available: boolean;
+  readonly items: readonly BitacoraEvento[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export interface BitacoraQuery {
+  readonly fuente?: BitacoraFuente | "";
+  /** Fecha civil YYYY-MM-DD (inicio del dia en la zona del navegador). */
+  readonly desde?: string;
+  readonly hasta?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/** Inicio / fin del dia local del navegador como ISO con offset real (nunca se asume UTC). */
+function diaLocalIso(dateOnly: string, finDelDia: boolean): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return null;
+  const d = new Date(`${dateOnly}T${finDelDia ? "23:59:59.999" : "00:00:00.000"}`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+export function fetchBitacora(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string, q: BitacoraQuery = {}): Promise<BitacoraPagina> {
+  const params = new URLSearchParams();
+  if (q.fuente) params.set("fuente", q.fuente);
+  const desde = q.desde ? diaLocalIso(q.desde, false) : null;
+  const hasta = q.hasta ? diaLocalIso(q.hasta, true) : null;
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (q.limit !== undefined) params.set("limit", String(q.limit));
+  if (q.offset !== undefined) params.set("offset", String(q.offset));
+  const qs = params.toString();
+  return fetchJson<BitacoraPagina>(f, `${tenderBase(apiBaseUrl, propertyId, tenderId)}/bitacora${qs ? `?${qs}` : ""}`, token);
+}
