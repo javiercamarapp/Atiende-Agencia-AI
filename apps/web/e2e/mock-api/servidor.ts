@@ -143,6 +143,11 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     res.end(texto);
   }
 
+  function enviarCrudo(res: ServerResponse, status: number, tipo: string, texto: string, origen: string | undefined): void {
+    res.writeHead(status, { "content-type": tipo, "cache-control": "no-store", ...cabecerasCors(origen) });
+    res.end(texto);
+  }
+
   async function control(req: IncomingMessage, res: ServerResponse, ruta: string, origen: string | undefined): Promise<void> {
     const metodo = req.method ?? "GET";
     if (ruta === "/__mock/salud") return enviar(res, 200, { ok: true, escenarios: escenarios.size }, origen);
@@ -248,6 +253,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
         const salida = await c.ruta.manejador({ metodo, ruta, query: url.searchParams, cuerpo, params, persona, estado: estadoDe(e) });
         if (esRespuestaMarcada(salida)) {
           registrar(salida.status, {});
+          if (salida.crudo) return enviarCrudo(res, salida.status, salida.crudo.tipo, salida.crudo.texto, origen);
           return enviar(res, salida.status, salida.cuerpo, origen);
         }
         registrar(200, {});
