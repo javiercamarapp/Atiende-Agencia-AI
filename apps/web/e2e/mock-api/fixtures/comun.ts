@@ -77,10 +77,6 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
   return fila;
 }
 
-/** "Chatea con tus datos" no esta disponible en el mock de citas: la SPA debe mostrarlo de forma honesta (`available: false`).
- *  Restaurantes (CHAT-08), hoteles (CHAT-09), rentas (CHAT-10), despachos (CHAT-11) y licitaciones (CHAT-12) lo sirven activo desde sus fixtures. */
-const ESTADO_CHAT = () => ({ available: false });
-
 export const rutasComunes: readonly Ruta[] = [
   { metodo: "GET", patron: "/notifications/unread-count", manejador: (p) => ({ unreadCount: noLeidas(lista(p.estado, p.persona)) }) },
   { metodo: "GET", patron: "/notifications", manejador: (p) => {
@@ -107,5 +103,4 @@ export const rutasComunes: readonly Ruta[] = [
       n.readAt = n.readAt ?? MARCA_LECTURA;
       return { ok: true, unreadCount: noLeidas(todas) };
     } },
-  { metodo: "GET", patron: "/citas/:id/chat-datos/estado", manejador: ESTADO_CHAT },
 ];

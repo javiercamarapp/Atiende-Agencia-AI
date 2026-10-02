@@ -28,7 +28,7 @@ export { SessionExpiredError };
 
 export class CitasAdminError extends Error {}
 
-function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+export function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {
     vertical: "citas",
