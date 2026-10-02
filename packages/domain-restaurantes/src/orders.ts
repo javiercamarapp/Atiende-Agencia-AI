@@ -341,6 +341,7 @@ export async function prepareCreateOrder(
       now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+      propertyId: branch.propertyId,
     });
     total = applied.total;
     discount = applied.discount;
@@ -358,6 +359,7 @@ export async function prepareCreateOrder(
       now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+      propertyId: branch.propertyId,
     });
     if (auto.applied) {
       total = auto.applied.total;
@@ -569,6 +571,7 @@ export async function quoteOrder(
     now: new Date(),
     zonaHoraria,
     ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+    propertyId: branch.propertyId,
   });
   const descuento = auto.applied?.discount ?? 0;
   const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;

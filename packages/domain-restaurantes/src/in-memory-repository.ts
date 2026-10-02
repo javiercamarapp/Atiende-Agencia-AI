@@ -1379,6 +1379,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       autoApply: input.autoApply ?? false,
       courtesyProductIds: input.courtesyProductIds ?? null,
       courtesyQuantity: input.courtesyQuantity ?? null,
+      propertyIds: input.propertyIds ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1409,6 +1410,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       autoApply: patch.autoApply ?? existing.autoApply,
       courtesyProductIds: patch.courtesyProductIds !== undefined ? patch.courtesyProductIds : existing.courtesyProductIds,
       courtesyQuantity: patch.courtesyQuantity !== undefined ? patch.courtesyQuantity : existing.courtesyQuantity,
+      propertyIds: patch.propertyIds !== undefined ? patch.propertyIds : (existing.propertyIds ?? null),
       updatedAt: new Date().toISOString(),
     };
     this.promotions.set(promotionId, updated);
