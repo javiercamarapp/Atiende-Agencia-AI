@@ -58,13 +58,14 @@ const FUENTE_SEMAFORO = { tool: "plazos_semaforo", source: "Convocatorias de la 
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("licitaciones.copiloto.conversaciones", () => []);
 
 const rutasCopiloto: readonly Ruta[] = [
+  { metodo: "GET", patron: `${L}/chat-datos/pins`, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${L}/chat-datos/estado`, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
   {
     metodo: "POST",
     patron: `${L}/chat-datos`,
     manejador: (p) => {
-      const cuerpo = (p.cuerpo ?? {}) as { question?: string; conversationId?: string };
-      const pregunta = String(cuerpo.question ?? "");
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; label?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? cuerpo.label ?? "");
       const lista = conversacionesMock(p);
       let conv = lista.find((c) => c.id === cuerpo.conversationId);
       if (!conv) {
