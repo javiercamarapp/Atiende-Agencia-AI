@@ -215,7 +215,6 @@ describe("GET .../sala-guerra/gate (L-25)", () => {
     let abortada = false;
     let savepoints = 0;
     let rollbacksToSavepoint = 0;
-    let consultasTrasRecuperar = 0;
     const envolver = (session: TenantDbSession): TenantDbSession => ({
       exec: async (sql) => {
         if (/^\s*savepoint/i.test(sql)) savepoints += 1;
@@ -229,10 +228,6 @@ describe("GET .../sala-guerra/gate (L-25)", () => {
       },
       query: async <T>(sql: string, params?: unknown[]) => {
         if (abortada) throw Object.assign(new Error("current transaction is aborted"), { code: "25P02" });
-        if (/marcador_post_lectura/.test(sql)) {
-          if (rollbacksToSavepoint > 0) consultasTrasRecuperar += 1;
-          return { rows: [] as T[] };
-        }
         return session.query<T>(sql, params);
       },
     });
@@ -251,7 +246,6 @@ describe("GET .../sala-guerra/gate (L-25)", () => {
                 throw Object.assign(new Error('invalid input syntax for type uuid: "/var/data/legacy.zip"'), { code: "22P02" });
               };
             }
-            if (prop === "findSubmission") return async (...args: [string, string]) => (await db.query("select 1 as marcador_post_lectura"), target.findSubmission(...args));
             const v = Reflect.get(target, prop, receiver);
             return typeof v === "function" ? v.bind(target) : v;
           },
