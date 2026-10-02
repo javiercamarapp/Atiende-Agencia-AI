@@ -32,6 +32,7 @@ export function ChatDatosShell({
   etiquetasHerramienta,
   rutasFuente,
   maxCaracteres,
+  vertical,
   uso,
   conversacionInicial,
   onConversacionCambia,
@@ -151,6 +152,7 @@ export function ChatDatosShell({
                 ocupado={enviando}
                 onRegenerar={copiloto.regenerar}
                 onPreguntar={preguntar}
+                vertical={vertical}
               />
             ))}
             {enviando ? <CopilotoPensando fase={fase} pasos={pasos} etiquetas={etiquetasHerramienta} /> : null}
