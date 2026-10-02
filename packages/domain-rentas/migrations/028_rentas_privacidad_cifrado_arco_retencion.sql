@@ -32,9 +32,9 @@ alter table rentas.acceso_instruccion alter column direccion_exacta drop not nul
 
 alter table rentas.acceso_instruccion
   add constraint acceso_instruccion_sobres_formato check (
-    (direccion_cifrada is null or (length(direccion_cifrada) <= 4096 and direccion_cifrada ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{4,}$'))
-    and (codigo_cifrado is null or (length(codigo_cifrado) <= 4096 and codigo_cifrado ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{4,}$'))
-    and (instrucciones_cifradas is null or (length(instrucciones_cifradas) <= 8192 and instrucciones_cifradas ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{4,}$'))
+    (direccion_cifrada is null or (length(direccion_cifrada) <= 4096 and direccion_cifrada ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]*$'))
+    and (codigo_cifrado is null or (length(codigo_cifrado) <= 4096 and codigo_cifrado ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]*$'))
+    and (instrucciones_cifradas is null or (length(instrucciones_cifradas) <= 8192 and instrucciones_cifradas ~ '^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]*$'))
   ),
   add constraint acceso_instruccion_version_llave check (
     (direccion_cifrada is null and codigo_cifrado is null and instrucciones_cifradas is null) or (key_version is not null and key_version > 0)

@@ -11,7 +11,7 @@ import { AccesoDescifradoError, AccesoNoDisponibleError } from "./errores.ts";
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
-const ENVELOPE_RE = /^v([0-9]{1,3})\.([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{4,})$/;
+const ENVELOPE_RE = /^v([0-9]{1,3})\.([A-Za-z0-9_-]{16})\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]*)$/;
 
 export type CampoAcceso = "direccion" | "codigo" | "instrucciones";
 
