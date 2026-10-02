@@ -22,7 +22,8 @@ test.describe("licitaciones: gate final y bitacora @humo", () => {
 
     const gate = page.getByTestId("gate-final");
     await expect(gate.getByText("No listo")).toBeVisible();
-    await expect(gate.getByText(/Cierra en 18 d 23 h 0 min/)).toBeVisible();
+    // La cuenta avanza desde el reloj del servidor: segundos despues de cargar ya son 22 h 59 min.
+    await expect(gate.getByText(/Cierra en 18 d (23 h 0|22 h 59) min/)).toBeVisible();
     await expect(page.getByTestId("gate-aprobaciones")).toContainText("Falta la aprobación técnico-legal (1/2) y la aprobación económica (2/2).");
     await expect(page.getByTestId("gate-paquete")).toContainText("Todavía no hay un paquete de envío ensamblado.");
     await expect(page.getByTestId("gate-holgura")).toContainText("Verde");
@@ -67,6 +68,7 @@ test.describe("licitaciones: gate final y bitacora @humo", () => {
 
   test("error al calcular el gate: mensaje honesto y reintento", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("licitaciones", "owner");
+    vigilante.permitirRespuesta5xx(/\/sala-guerra\/gate/);
     await mock.inyectarFalla({ metodo: "GET", ruta: "/sala-guerra/gate", status: 500, cuerpo: { message: "No se pudo calcular el gate." }, veces: 1 });
     await page.goto(`${BASE}/sala-guerra`);
     await expect(page.getByText("No se pudo calcular el gate.")).toBeVisible();

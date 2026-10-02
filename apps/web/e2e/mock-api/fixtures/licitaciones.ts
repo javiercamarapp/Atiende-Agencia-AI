@@ -266,6 +266,10 @@ const rutasSalaGuerra: readonly Ruta[] = [
       };
     },
   },
+  // La ficha de la convocatoria (donde vive la pestana Bitacora) carga estas tres lecturas junto con la convocatoria y el checklist.
+  { metodo: "GET", patron: `${L}/tenders/:tid/matching`, manejador: (p) => ({ tenderId: p.params["tid"], score: 72, criteria: [], eligibility: { status: "elegible", criteria: [] } }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/go-no-go`, manejador: () => ({ decisions: [] }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/resolution`, manejador: () => ({ resolutions: [] }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/sala-guerra/gate`, manejador: (p) => gateMock(p) },
   {
     metodo: "GET",
