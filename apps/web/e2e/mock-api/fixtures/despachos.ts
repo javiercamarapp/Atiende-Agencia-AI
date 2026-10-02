@@ -64,12 +64,14 @@ const BLOQUE_CARTERA = {
   title: "Cartera por cliente",
   columns: [
     { key: "cliente", label: "Cliente", kind: "text" },
-    { key: "pendiente", label: "Pendiente", kind: "mxn" },
-    { key: "vencido", label: "Vencido", kind: "mxn" },
+    { key: "cuentas", label: "Cuentas pendientes", kind: "integer" },
+    { key: "pendiente", label: "Monto pendiente", kind: "mxn" },
+    { key: "vencidas", label: "Cuentas vencidas", kind: "integer" },
+    { key: "vencido", label: "Monto vencido", kind: "mxn" },
   ],
   rows: [
-    { cliente: "Abarrotes del Sureste SA de CV", pendiente: 84000, vencido: 31000 },
-    { cliente: "Comercial Peninsular SA de CV", pendiente: 36000, vencido: 14000 },
+    { cliente: "Abarrotes del Sureste SA de CV", cuentas: 5, pendiente: 84000, vencido: 31000, vencidas: 2 },
+    { cliente: "Comercial Peninsular SA de CV", cuentas: 3, pendiente: 36000, vencido: 14000, vencidas: 1 },
   ],
   chart: { kind: "bar", x: "cliente", y: "pendiente" },
   truncated: false,
