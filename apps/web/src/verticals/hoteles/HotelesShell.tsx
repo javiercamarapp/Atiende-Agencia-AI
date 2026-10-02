@@ -86,6 +86,8 @@ export interface HotelesShellContext {
    * no exponía nada de identidad del staff más allá de lo que ya necesitaba `role`. */
   readonly staffFullName: string | undefined;
   readonly staffEmail: string;
+  /** Nombre de la property activa (UNI-RES-hoteles: subtitulo del Resumen). Opcional: sin el, el Resumen usa el slug de la organizacion. */
+  readonly propertyName?: string;
 }
 
 export interface HotelesShellProps {
@@ -282,7 +284,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       mobileSelector={branches.length > 1 ? hotelSelector : null}
       contentKey={propertyId}
     >
-      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}
     </VerticalShellConectado>
   );
 }
