@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-hoteles-zona-horaria/run.sh. Ejercita la migración
-# 041_hoteles_cambio_fechas_lista_espera.sql (H-28 cambio de fechas, H-12 lista de espera
-# y bandera ARCO): RLS/GRANT/security definer reales, positivo,
+# 041_hoteles_cambio_fechas_lista_espera.sql (H-28 cambio de fechas, H-12 lista de espera):
+# RLS/GRANT/security definer reales, positivo,
 # negativo, cross-tenant, anon y sesión de sistema. El mirror en memoria de
 # domain-hoteles nunca aplica RLS/GRANT/triggers.
 #

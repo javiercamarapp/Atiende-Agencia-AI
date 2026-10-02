@@ -403,4 +403,26 @@ select public.verify_assert((select 'search_path=core, hoteles, pg_temp' = any (
 select 1 as ok_privilegios;
 rollback;
 
+\echo '=== 24. la bitacora de fechas sigue inmutable (42501) pero NO bloquea el borrado en cascada: staff (SET NULL), reserva, property y tenant ==='
+begin;
+insert into hoteles.reservation_date_change (organization_id, property_id, reservation_id, old_check_in, old_check_out, new_check_in, new_check_out, old_total, new_total, changed_by)
+values ('00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000e0002', '2031-07-03', '2031-07-05', '2031-07-03', '2031-07-06', 2000, 3000, '00000000-0000-0000-0000-0000000a0a05'),
+       ('00000000-0000-0000-0000-00000000b001', '00000000-0000-0000-0000-0000000b1b01', '00000000-0000-0000-0000-0000000e0005', '2031-07-03', '2031-07-05', '2031-07-03', '2031-07-06', 2000, 3000, '00000000-0000-0000-0000-0000000b0b01');
+select public.verify_expect_error($q$update hoteles.reservation_date_change set new_total = 1 where reservation_id = '00000000-0000-0000-0000-0000000e0002'$q$, '42501');
+select public.verify_expect_error($q$delete from hoteles.reservation_date_change where reservation_id = '00000000-0000-0000-0000-0000000e0002'$q$, '42501');
+-- changed_by ON DELETE SET NULL (dispara un UPDATE anidado): dar de baja al staff no se bloquea y conserva la fila.
+delete from core.staff_user where id = '00000000-0000-0000-0000-0000000a0a05';
+select public.verify_assert((select changed_by is null from hoteles.reservation_date_change where reservation_id = '00000000-0000-0000-0000-0000000e0002'), 'changed_by quedo en null');
+-- reservation_id ON DELETE CASCADE
+delete from hoteles.reservation where id = '00000000-0000-0000-0000-0000000e0002';
+select public.verify_assert(public.verify_date_change_count('00000000-0000-0000-0000-0000000e0002') = 0, 'la bitacora de la reserva borrada se fue en cascada');
+-- organization/property ON DELETE CASCADE: dar de baja el tenant B con bitacora y lista de espera no se bloquea.
+insert into hoteles.waitlist_entry (property_id, room_type_id, check_in_date, check_out_date, guest_name, contact_phone)
+values ('00000000-0000-0000-0000-0000000b1b01', '00000000-0000-0000-0000-0000000d0004', '2031-07-03', '2031-07-05', 'Fer Gil', '5588887777');
+-- (reservation_status_event, ajena a esta migracion, es ON DELETE RESTRICT: se limpia para aislar las tablas de esta migracion.)
+delete from hoteles.reservation_status_event where organization_id = '00000000-0000-0000-0000-00000000b001';
+delete from core.organization where id = '00000000-0000-0000-0000-00000000b001';
+select count(*) as tenant_b_sin_filas_deberia_ser_0 from hoteles.reservation_date_change where organization_id = '00000000-0000-0000-0000-00000000b001';
+rollback;
+
 \echo 'Fin: los escenarios que terminan en ERROR por diseno estan envueltos en verify_expect_error; el resto devuelve filas con sufijo de valor exacto.'

@@ -105,14 +105,14 @@ grant execute on function hoteles.change_reservation_room(uuid, uuid, text) to a
 -- 2) Bitacora append-only del cambio de fechas.
 --    Seguridad: RLS select solo para el staff que administra reservas de la property; ningun GRANT de escritura a
 --    authenticated (solo la funcion change_reservation_dates, security definer, inserta); un trigger bloquea UPDATE/DELETE
---    aun para superusuario (mismo patron que reservation_room_change, 038). organization_id y changed_by los deriva la
+--    aun para superusuario salvo las acciones referenciales en cascada de sus FK (mismo patron que reservation_room_change, 038). organization_id y changed_by los deriva la
 --    funcion de la reserva y de auth.uid(): nunca vienen del cliente. El motivo es texto libre acotado (3-200).
 --    `penalty_amount` es la penalidad calculada por la politica de cancelacion al acortar; es informativa para el
 --    staff (no se postea sola al folio).
 -- ---------------------------------------------------------------------------
 create table hoteles.reservation_date_change (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references core.organization(id) on delete restrict,
+  organization_id uuid not null references core.organization(id) on delete cascade,
   property_id uuid not null references core.property(id) on delete cascade,
   reservation_id uuid not null references hoteles.reservation(id) on delete cascade,
   old_check_in date not null,
@@ -132,6 +132,15 @@ create index reservation_date_change_reservation_idx on hoteles.reservation_date
 create or replace function hoteles.reservation_date_change_immutable()
 returns trigger language plpgsql set search_path = hoteles, pg_temp as $$
 begin
+  -- Disponibilidad: las FK de esta tabla son ON DELETE CASCADE (organization, property, reservation) y ON DELETE SET NULL
+  -- (changed_by, que dispara un UPDATE). Esas acciones referenciales corren como trigger anidado (pg_trigger_depth() > 1) y
+  -- deben poder completarse: si no, con UNA fila de bitacora ya no se podria borrar una reserva, property, staff ni dar de
+  -- baja un tenant (mismo criterio que reservation_room_change, 038). Un UPDATE/DELETE directo (profundidad 1) sigue
+  -- prohibido incluso al superusuario.
+  if pg_trigger_depth() > 1 then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
   raise exception 'reservation_date_change es append-only' using errcode = '42501';
 end;
 $$;
@@ -150,7 +159,8 @@ grant select, insert on hoteles.reservation_date_change to service_role;
 -- ---------------------------------------------------------------------------
 -- 3) hoteles.change_reservation_dates(...): cambio atomico de fechas de una reserva.
 --    Seguridad: security definer con search_path fijo (core, hoteles, pg_temp) porque actualiza reservation.check_in_date /
---    check_out_date / total_amount y el inventario sin dar esos UPDATE al cliente; exige auth.uid() (la sesion de sistema
+--    check_out_date / total_amount y el inventario en UNA transaccion con bloqueos y validaciones (nota: authenticated ya
+--    tiene UPDATE(total_amount) desde la 005; esta funcion NO es la barrera sobre ese campo, solo agrega atomicidad); exige auth.uid() (la sesion de sistema
 --    NO la ejecuta); la membresia y el rol (owner/gm/frontdesk/reservations) se leen ANTES de bloquear fila alguna; revocada
 --    a public/anon.
 --    Reglas: la reserva debe estar confirmada / check_in / en_estancia. Confirmada: cambia llegada y salida. En casa: la
@@ -312,7 +322,7 @@ grant execute on function hoteles.change_reservation_dates(uuid, date, date, dat
 -- ---------------------------------------------------------------------------
 create table hoteles.waitlist_entry (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references core.organization(id) on delete restrict,
+  organization_id uuid not null references core.organization(id) on delete cascade,
   property_id uuid not null references core.property(id) on delete cascade,
   room_type_id uuid not null references hoteles.room_type(id) on delete cascade,
   check_in_date date not null,
@@ -326,7 +336,9 @@ create table hoteles.waitlist_entry (
   offered_at timestamptz,
   offered_by uuid references core.staff_user(id) on delete set null,
   offer_expires_at timestamptz,
-  reservation_id uuid references hoteles.reservation(id) on delete restrict,
+  -- Sin ON DELETE explicito (NO ACTION): borrar directo una reserva ya ligada a una entrada aceptada se rechaza; el borrado
+  -- en cascada de property/organization si procede porque la entrada tambien se borra en la misma sentencia.
+  reservation_id uuid references hoteles.reservation(id),
   created_by uuid references core.staff_user(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
