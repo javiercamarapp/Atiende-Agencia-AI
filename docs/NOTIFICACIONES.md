@@ -60,6 +60,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `hoteles.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldCheck | `/hoteles/{orgSlug}/aprobaciones` | una por solicitud | 3 d | pendiente: cola de aprobaciones del agente de reservas: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
 | `hoteles.grupo.por_liberar` | cierres | atencion | owner/admin, gm, reservations | Users | `/hoteles/{orgSlug}/grupos` | una por propiedad por dia | 5 d | pendiente: cron grupos-liberacion: falta decidir el umbral de aviso con producto |
 | `hoteles.night_audit.fallo` | cierres | critica | owner/admin, gm, accountant | MoonStar | `/hoteles/{orgSlug}/reservas` | una por propiedad por noche | 7 d | pendiente: night-audit corre en el worker: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `hoteles.housekeeping.inspeccion_rechazada` | operacion | atencion | owner/admin, gm, frontdesk, housekeeping | ClipboardX | `/hoteles/{orgSlug}/housekeeping` | una por tarea y por rechazo | 3 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping.ts` |
+| `hoteles.housekeeping.sin_cupo` | operacion | atencion | owner/admin, gm, frontdesk | UsersRound | `/hoteles/{orgSlug}/housekeeping` | una por propiedad por dia | 2 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping-residual.ts` |
+| `hoteles.canal.whatsapp_actualizado` | seguridad | atencion | owner/admin, gm | MessageSquareLock | `/hoteles/{orgSlug}/mensajeria` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/mensajeria-config.ts` |
 
 ### rentas
 
