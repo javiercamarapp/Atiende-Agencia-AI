@@ -78,6 +78,8 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
 }
 
 export const rutasComunes: readonly Ruta[] = [
+  // El banner de plan (BannerPlan) lee /billing/uso en cada consola: en e2e es el estado honesto 'no disponible' (sin Stripe ni topes).
+  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "Todavía no disponible en este despliegue." }) },
   { metodo: "GET", patron: "/notifications/unread-count", manejador: (p) => ({ unreadCount: noLeidas(lista(p.estado, p.persona)) }) },
   { metodo: "GET", patron: "/notifications", manejador: (p) => {
       const todas = lista(p.estado, p.persona);
