@@ -15,7 +15,7 @@ import { CircuitBreaker, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore,
 import type { LlmMessage, LlmToolDefinition, OpenRouterModelParams } from "@atiende/agent-core";
 import { AGENT_TOOL_DEFINITIONS } from "../../agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../../whatsapp/llm-turn-handler.ts";
-import { buildPmSystemPrompt } from "../../whatsapp/perfil-pm.ts";
+import { buildPmSystemPrompt, saludoPorHora } from "../../whatsapp/perfil-pm.ts";
 import { evaluarCaso } from "./graders.ts";
 import { CONTRATO_OBJETIVO, Mundo, cargarMenu, cargarSuite } from "./mundo.ts";
 import type { CasoEval, ResultadoCaso } from "./tipos.ts";
@@ -128,7 +128,7 @@ async function correrCaso(caso: CasoEval, mundo: Mundo, llamar: Llamador, herram
     businessName: PM_CONFIG_POR_OMISION.businessName,
     agentName: PM_CONFIG_POR_OMISION.agentName ?? "el asistente virtual",
     deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText,
-    saludo: "Buenas tardes",
+    saludo: saludoPorHora(caso.contexto.hora_local),
     branches: branches as never,
     entryBranch: { name: mundo.sucursalNombre(caso.contexto.sucursal_contexto), slug: caso.contexto.sucursal_contexto.toLowerCase() },
     customer: { isNew: true },
