@@ -52,6 +52,8 @@ export interface Peticion {
   readonly cuerpo: unknown;
   readonly params: Readonly<Record<string, string>>;
   readonly persona: Persona | null;
+  /** Cabeceras de la peticion (en minusculas), p. ej. `x-step-up-token` o `idempotency-key`. */
+  readonly cabeceras: Readonly<Record<string, string | string[] | undefined>>;
   /** Estado mutable del escenario (aislado por prueba): fixtures lo usan para que un POST se refleje en el GET siguiente. */
   readonly estado: EstadoEscenario;
 }

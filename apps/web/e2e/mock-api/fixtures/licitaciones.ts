@@ -107,8 +107,95 @@ const rutasCopiloto: readonly Ruta[] = [
   },
 ];
 
+// L-26/L-28 -- cierre del expediente: doble aprobacion (tecnico-legal 1/2 y economica 2/2, dos personas distintas, step-up) y
+// declaracion de la presentacion ante el portal. Replica las reglas del servidor (cierre.ts) para que lo que la pantalla muestre
+// tras cada accion sea coherente; solo existe en la API simulada de e2e.
+type EtapaCierre = "tecnica_legal" | "economica";
+interface AprobacionCierre {
+  readonly id: string;
+  readonly approvedAt: string;
+  readonly approvedByRole: string;
+  readonly actorId: string;
+}
+type AprobacionesCierre = Record<EtapaCierre, AprobacionCierre | null>;
+const CODIGO_TOTP_VALIDO = "123456";
+const aprobacionesCierre = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<AprobacionesCierre>("lic.cierre.aprobaciones", () => ({ tecnica_legal: null, economica: null }));
+const presentacionMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<{ registro: Record<string, unknown> | null; paquete: { generatedAt: string } | null }>("lic.cierre.presentacion", () => ({ registro: null, paquete: null }));
+
+function estadoAprobaciones(a: AprobacionesCierre, actorId: string) {
+  const vista = (stage: EtapaCierre) => ({ stage, approval: a[stage] ? { id: a[stage]!.id, approvedAt: a[stage]!.approvedAt, approvedByRole: a[stage]!.approvedByRole, byYou: a[stage]!.actorId === actorId } : null });
+  const missing = (["tecnica_legal", "economica"] as const).filter((s) => a[s] === null);
+  return { mode: "doble" as const, stages: [vista("tecnica_legal"), vista("economica")], complete: missing.length === 0, missing };
+}
+
+const rutasCierre: readonly Ruta[] = [
+  { metodo: "GET", patron: "/auth/2fa/status", manejador: () => ({ available: true, enabled: true, pending: false, lockedUntil: null, backupCodesRemaining: 8 }) },
+  {
+    metodo: "POST",
+    patron: "/auth/step-up",
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
+      if (c.scope !== "expediente_approval") return fallo(400, "scope desconocido.");
+      if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
+      return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
+    },
+  },
+  { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
+  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: () => ({ items: [] }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/checklist`, manejador: () => ({ overallStatus: "verde", items: [{ id: "chk-1", dimension: "formato", result: "verde", notes: "Todos los archivos cumplen el formato del portal.", evidenceRef: null }] }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/package/latest`, manejador: (p) => {
+      const paquete = presentacionMock(p).paquete;
+      return paquete ? { id: "exp-1", status: "ready", draftReasons: [], missing: [], generatedAt: paquete.generatedAt, notice: "La presentación y firma las realiza el usuario; el sistema no envía ofertas." } : fallo(404, "No se ha generado ningún paquete todavía para este expediente.");
+    } },
+  { metodo: "GET", patron: `${L}/tenders/:tid/expediente/approvals`, manejador: (p) => estadoAprobaciones(aprobacionesCierre(p), p.persona!.id) },
+  {
+    metodo: "POST",
+    patron: `${L}/tenders/:tid/expediente/approval`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const stage = ((p.cuerpo ?? {}) as { stage?: string }).stage;
+      if (stage !== "tecnica_legal" && stage !== "economica") return fallo(400, "stage requerido: tecnica_legal | economica.");
+      // Sin el token de step-up del propio usuario no se aprueba (igual que `requireStepUp` en el servidor).
+      if (p.cabeceras["x-step-up-token"] !== `mock-step-up.${p.persona!.id}`) return fallo(403, "Esta acción requiere confirmar tu identidad con el código de tu app de autenticación.");
+      const a = aprobacionesCierre(p);
+      const otra: EtapaCierre = stage === "tecnica_legal" ? "economica" : "tecnica_legal";
+      if (stage === "economica" && a.tecnica_legal === null) return fallo(409, "La aprobación económica (2/2) exige antes la aprobación técnico-legal (1/2) vigente para los insumos actuales del expediente.");
+      if (a[otra]?.actorId === p.persona!.id) return fallo(403, "La aprobación técnico-legal y la económica deben darlas dos personas distintas: ya diste la otra aprobación de este expediente.");
+      const nueva: AprobacionCierre = { id: `apr-${stage}`, approvedAt: "2026-10-01T16:00:00.000Z", approvedByRole: p.persona!.rol, actorId: p.persona!.id };
+      a[stage] = nueva;
+      return conStatus(201, { id: nueva.id, scope: "expediente", scopeRef: "expediente", status: "vigente", inputsHash: "hash-mock", decidedAt: nueva.approvedAt, stage });
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${L}/tenders/:tid/package/assemble`,
+    manejador: (p) => {
+      const a = aprobacionesCierre(p);
+      if (a.tecnica_legal === null || a.economica === null) return fallo(409, "El expediente necesita la doble aprobación antes de ensamblar el paquete.");
+      const generatedAt = "2026-10-01T18:00:00.000Z";
+      presentacionMock(p).paquete = { generatedAt };
+      return { id: "exp-1", status: "ready", draftReasons: [], missing: [], generatedAt, notice: "La presentación y firma las realiza el usuario; el sistema no envía ofertas." };
+    },
+  },
+  { metodo: "GET", patron: `${L}/tenders/:tid/submission`, manejador: (p) => presentacionMock(p).registro },
+  {
+    metodo: "POST",
+    patron: `${L}/tenders/:tid/submission/declare`,
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { submittedAt?: string; notes?: string | null; acknowledgementContentBase64?: string | null };
+      if (typeof p.cabeceras["idempotency-key"] !== "string" || p.cabeceras["idempotency-key"] === "") return fallo(400, "Falta el header Idempotency-Key.");
+      if (!c.submittedAt || Number.isNaN(new Date(c.submittedAt).getTime())) return fallo(400, "submittedAt requerido (ISO 8601).");
+      const estado = presentacionMock(p);
+      // Idempotente: repetir la declaracion devuelve la ya registrada.
+      estado.registro ??= { id: "sub-1", status: "submitted", submittedAt: c.submittedAt, acknowledgementStorageRef: c.acknowledgementContentBase64 ? "blob-1" : null, acknowledgementFileHash: c.acknowledgementContentBase64 ? "b".repeat(64) : null, notes: c.notes ?? null, createdAt: "2026-10-01T18:05:00.000Z" };
+      return conStatus(201, estado.registro);
+    },
+  },
+];
+
 export const rutasLicitaciones: readonly Ruta[] = [
   ...rutasCopiloto,
+  ...rutasCierre,
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
   { metodo: "GET", patron: `${L}/tenders`, manejador: () => ({ tenders: CONVOCATORIAS }) },
   { metodo: "GET", patron: `${L}/whatsapp/settings`, manejador: (p) => p.estado.obtener("lic.whatsapp", ajustesSemilla) },
