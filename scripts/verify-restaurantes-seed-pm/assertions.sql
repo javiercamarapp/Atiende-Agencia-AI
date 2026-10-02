@@ -527,7 +527,8 @@ select public.seed_pm_demo();
 update restaurantes.products set search_keywords = array['alias-del-dueno', 'bitek'] where name = 'Tacos de Bistec de Res (orden de 3)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
 select public.seed_pm_demo();
 select (
-  (select search_keywords from restaurantes.products where name = 'Tacos de Bistec de Res (orden de 3)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = array['alias-del-dueno', 'bistek', 'bisté', 'bitek']::text[]
+  -- comparacion como CONJUNTO (el orden de un array depende del collation de la base: C local vs en_US en CI)
+  (select search_keywords @> array['alias-del-dueno', 'bistek', 'bisté', 'bitek']::text[] and array['alias-del-dueno', 'bistek', 'bisté', 'bitek']::text[] @> search_keywords and cardinality(search_keywords) = 4 from restaurantes.products where name = 'Tacos de Bistec de Res (orden de 3)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
   and (select search_keywords from restaurantes.products where name = 'Taco Al Pastor (individual)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = array['trompo']::text[]
   and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and 'chela' = any(pr.search_keywords)) = (select count(*) from restaurantes.products pr join restaurantes.categories c on c.id = pr.category_id join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and c.name = 'Cervezas')
   and (select search_keywords from restaurantes.products where id = '00000000-0000-0000-0000-0000000e00c1') = '{}'::text[]
