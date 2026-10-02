@@ -39,6 +39,27 @@ describe("emitirNotificacion", () => {
     expect(session.calls.some((c) => c.startsWith("release savepoint sp_fallback_"))).toBe(true);
   });
 
+  it("el enlace con {entidadId} (detalle de una entidad) se resuelve con el entidadId de la emision; sin id valido se rechaza sin tocar la base", async () => {
+    const UUID = "6129984c-4f5e-4a0f-9b7e-0d4d8a1b2c3d";
+    let enlace: unknown;
+    const session = new AbortAwareFakeSession([{ match: emit, respond: () => [{ emit_notification: 1 }] }]);
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, p?: unknown[]) => {
+      if (emit.test(sql)) enlace = (p ?? [])[7];
+      return original(sql, p);
+    }) as typeof session.query;
+
+    expect(await emitirNotificacion(session, { evento: "despachos.cfdi.cancelado", organizationId: ORG, clave: UUID, entidadTipo: "invoice", entidadId: UUID })).toEqual({ estado: "emitida", destinatarios: 1 });
+    expect(enlace).toBe(`/despachos/{orgSlug}/cfdi/${UUID}`);
+
+    enlace = undefined;
+    for (const malo of [undefined, "", "../../admin", "a/b", "x?y=1"]) {
+      const r = await emitirNotificacion(session, { evento: "despachos.cfdi.cancelado", organizationId: ORG, clave: UUID, entidadId: malo });
+      expect(r.estado, String(malo)).toBe("invalida");
+    }
+    expect(enlace).toBeUndefined();
+  });
+
   it("0 filas = sin_nuevas (dedupe, sin destinatarios o tope), no es un error", async () => {
     const session = new AbortAwareFakeSession([{ match: emit, respond: () => [{ emit_notification: 0 }] }]);
     expect(await emitirNotificacion(session, { evento: "hoteles.aprobacion.expirada", organizationId: ORG, clave: "x", parametros: { cantidad: 1 } })).toEqual({ estado: "sin_nuevas", destinatarios: 0 });

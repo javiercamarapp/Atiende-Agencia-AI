@@ -30,6 +30,8 @@ import { despachosCarteraRoutes } from "./cartera.ts";
 import { despachosLibroRoutes } from "./libro.ts";
 import { despachosPagosProvisionalesRoutes } from "./pagos-provisionales.ts";
 import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
+import { despachosCfdiEstatusSatRoutes } from "./cfdi-estatus-sat.ts";
+import { despachosCronSatRoutes } from "./cron-sat.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -40,6 +42,8 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // sin SQL", ver admin-staff.ts.
   app.route("/", despachosAdminStaffRoutes(deps));
   app.route("/", despachosCfdiRoutes(deps));
+  // D-27 -- "Verificar en el SAT" por CFDI. DEBE montarse DESPUES de cfdi.ts: hereda su middleware de sesion (ver cfdi-estatus-sat.ts).
+  app.route("/", despachosCfdiEstatusSatRoutes(deps));
   app.route("/", despachosEfosRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));
@@ -84,5 +88,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosPagosProvisionalesRoutes(deps));
   // D-11 -- cola de cobranza: gestiones por factura/cliente, reporte PDF de cartera y outbox de WhatsApp (opt-in/opt-out, sin envio).
   app.route("/", despachosColaCobranzaRoutes(deps));
+  // D-26/D-27/D-28 -- crons de estatus SAT de CFDI, descarga mensual de la 69-B y barrido diario de vencimientos, ver cron-sat.ts.
+  app.route("/", despachosCronSatRoutes(deps));
   return app;
 }

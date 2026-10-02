@@ -93,11 +93,12 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
 | `despachos.cobranza.recordatorios` | cobranza | atencion | owner/admin, contador | Receipt | `/despachos/{orgSlug}/cola-cobranza` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/notifications.ts` |
-| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 7 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (depende de accion manual: el barrido solo lo dispara el boton del panel, no hay cron (hueco heredado de #303)) |
-| `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por CFDI ingerido (clave = id del CFDI) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` |
-| `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (depende de accion manual: el barrido solo lo dispara el boton del panel, no hay cron (hueco heredado de #303)) |
+| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 7 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (lo dispara el boton del panel y el cron diario /internal/despachos/vencimientos-barrido (D-26)) |
+| `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por CFDI ingerido (clave = id del CFDI) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` (tambien lo emite el cron mensual /internal/despachos/efos-69b/descarga, apps/api/src/routes/verticals/despachos/cron-sat.ts, con la misma clave: un CFDI no se avisa dos veces) |
+| `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (lo dispara el boton del panel y el cron diario /internal/despachos/vencimientos-barrido (D-26)) |
 | `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` (depende de accion manual: sale al escalar a mano un vencimiento desde el panel, no hay cron) |
 | `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago guardado (clave = property + folio fiscal del REP) | 14 d | pendiente: el analisis de REP (POST .../cfdi/rep/analizar) no guarda nada y lo pueden llamar roles de solo lectura: emitir ahi llenaria la campana con XML arbitrario; se conecta cuando el REP se persista |
+| `despachos.cfdi.cancelado` | fiscal | critica | owner/admin, contador | FileX | `/despachos/{orgSlug}/cfdi/{entidadId}` | una por CFDI (clave = id del CFDI; la cancelacion es terminal) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi-estatus-sat.ts` (tambien lo emite el cron semanal de estatus SAT (apps/worker/src/jobs/despachos/cfdi-estatus-sat.ts, via cron-sat.ts); el mismo CFDI no se avisa dos veces) |
 | `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
 | `despachos.conciliacion.sugerencias_pendientes` | aprobaciones | atencion | owner/admin, contador | Sparkles | `/despachos/{orgSlug}/conciliacion` | una por sesion de conciliacion (clave = id de la sesion) | 7 d | conectado: `apps/api/src/routes/verticals/despachos/conciliacion-persistida.ts` |
 | `despachos.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/despachos/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
@@ -117,6 +118,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `licitaciones.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `licitaciones.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/licitaciones/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
+| `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
 
 ### citas
 
@@ -176,10 +178,17 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.
+- **D-26/D-27/D-28 (crons de despachos)**: suma `despachos.cfdi.cancelado` (critica, owner/admin y contador, enlace al DETALLE del CFDI con el marcador
+  `{entidadId}`, que `emitirNotificacion` sustituye por el `entidadId` de la emision) y conecta los productores de `despachos.efos.alerta`,
+  `despachos.fiscal.vencimiento_proximo` y `despachos.fiscal.vencimiento_vencido` a los crons nuevos (`apps/api/src/routes/verticals/despachos/cron-sat.ts`).
 - **L-26/L-28 (cierre del expediente de licitaciones)**: suma 3 eventos conectados en `apps/api/src/routes/verticals/licitaciones/cierre.ts`:
   `licitaciones.expediente.aprobacion_pendiente` (se dio la 1/2 técnico-legal y falta la 2/2 económica, por otra persona),
   `licitaciones.expediente.aprobado` (2/2 completa) y `licitaciones.presentacion.declarada`. Los tres enlazan a la lista de
   convocatorias: el catálogo solo admite `{orgSlug}`, no el id de la convocatoria concreta.
+- **L-25 (gate final de la sala de guerra)**: suma `licitaciones.sala_guerra.paquete_no_listo`, conectado en
+  `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts`: se emite cuando `GET .../sala-guerra/gate` detecta que faltan
+  menos de 24 horas para el cierre, aun no se declaro la presentacion y el paquete no esta listo. Dedupe por convocatoria;
+  el enlace va a la lista de convocatorias (el catalogo solo admite `{orgSlug}`).
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

@@ -5,7 +5,7 @@
 // `serializeInvoice`) — la validación fiscal real (billing + reglas SAT avanzadas)
 // vive por completo en @atiende/domain-despachos; este cliente solo transporta lo
 // que la ruta ya serializa.
-import { fetchJson, postXml, putJson } from "./admin-client.ts";
+import { fetchJson, postJson, postXml, putJson } from "./admin-client.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 export type CategoriaContable = "gasto_operativo" | "activo_fijo" | "inversion" | "honorarios" | "nomina" | "sin_clasificar";
@@ -113,4 +113,20 @@ export async function importarCfdiXml(fetchImpl: typeof fetch, apiBaseUrl: strin
 /** `PUT /despachos/:propertyId/cfdi/:invoiceId/estado-sat` -- captura el estado del CFDI ante el SAT (un cancelado no cambia). */
 export async function registrarEstadoSat(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<InvoiceSummary> {
   return putJson<InvoiceSummary>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/${invoiceId}/estado-sat`, token, { estado });
+}
+
+/** Resultado de `POST .../cfdi/:invoiceId/verificar-estatus-sat` (D-27). `consultado: false` = el SAT no respondio (o el CFDI ya estaba
+ * cancelado): el estado NO cambia y `motivo` dice por que. */
+export interface VerificacionEstatusSat {
+  readonly consultado: boolean;
+  readonly motivo?: "datos_insuficientes" | "timeout" | "red" | "http" | "respuesta_invalida" | "ya_cancelado";
+  readonly estadoSat: EstadoSatCfdi;
+  readonly estadoSatVerificadoEn: string | null;
+  readonly esCancelable: string | null;
+  readonly estatusCancelacion: string | null;
+}
+
+/** `POST /despachos/:propertyId/cfdi/:invoiceId/verificar-estatus-sat` -- consulta el estatus del CFDI ante el servicio publico del SAT. */
+export async function verificarEstatusSat(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, invoiceId: string): Promise<VerificacionEstatusSat> {
+  return postJson<VerificacionEstatusSat>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/${invoiceId}/verificar-estatus-sat`, token, {});
 }
