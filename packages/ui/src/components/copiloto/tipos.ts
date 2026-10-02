@@ -94,11 +94,20 @@ export interface ConversacionCompleta {
   readonly mensajes: readonly CopilotoMensaje[];
 }
 
+/** Consulta DIRECTA de un chip o tarjeta: una herramienta del catalogo cerrado con argumentos tipados (p. ej. el periodo),
+ *  que el servidor ejecuta SIN llamar al modelo. El texto del chip es solo la etiqueta del mensaje; el servidor valida todo. */
+export interface CopilotoDirecta {
+  readonly tool: string;
+  readonly args?: Readonly<Record<string, string | number>>;
+}
+
 export interface CopilotoTransporte {
-  /** Envia una pregunta. Debe reportar `paso`/`fin`/`error` por `onEvento` (NDJSON) y/o devolver la respuesta final. */
+  /** Envia una pregunta. Debe reportar `paso`/`fin`/`error` por `onEvento` (NDJSON) y/o devolver la respuesta final.
+   *  Con `directa`, `pregunta` es la etiqueta del chip y la consulta se resuelve sin modelo. */
   enviar(p: {
     pregunta: string;
     conversacionId?: string;
+    directa?: CopilotoDirecta;
     senal: AbortSignal;
     onEvento: (e: CopilotoEvento) => void;
   }): Promise<CopilotoRespuesta>;
@@ -148,6 +157,8 @@ export interface ChatDatosShellProps {
   readonly sugerencias: readonly string[];
   /** Tarjetas de la portada (3, como atiende-restaurantes). */
   readonly categorias: readonly CopilotoCategoria[];
+  /** Texto exacto de un chip o pregunta de tarjeta -> consulta directa (sin modelo). Lo que no esta aqui pasa por el modelo. */
+  readonly directas?: Readonly<Record<string, CopilotoDirecta>>;
   /** Nombre visible de cada herramienta del catalogo (para los pasos "en vivo"). */
   readonly etiquetasHerramienta: Readonly<Record<string, string>>;
   /** Herramienta -> ruta interna de la pantalla fuente (lista blanca: solo rutas que empiezan con "/"). */
@@ -162,4 +173,49 @@ export interface ChatDatosShellProps {
   readonly zonaHoraria?: string;
   /** Reloj inyectable (pruebas). */
   readonly ahora?: () => Date;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fijados (CHAT-15): resultados del Copiloto fijados en el tablero. El servidor guarda herramienta + argumentos (no cifras) y
+// los RE-EJECUTA sin modelo al abrir el tablero, con el alcance actual del usuario.
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface FijadoResumen {
+  readonly id: string;
+  readonly titulo: string;
+  readonly herramienta: string;
+  readonly compartido: boolean;
+  /** true = el usuario actual es el autor (puede quitarlo o compartirlo). */
+  readonly propio: boolean;
+}
+
+export interface FijadoResultado {
+  readonly id: string;
+  readonly titulo: string;
+  readonly status: CopilotoStatus;
+  readonly text: string;
+  readonly blocks: readonly CopilotoBloque[];
+  readonly sources: readonly CopilotoFuente[];
+}
+
+export type FijadosFalla = "sin_acceso" | "sin_permiso" | "no_disponible" | "error";
+
+/** Error que un cliente de fijados lanza para que la seccion muestre el estado honesto correcto. */
+export class FijadosErrorCliente extends Error {
+  readonly tipo: FijadosFalla;
+  constructor(tipo: FijadosFalla, mensaje: string = tipo) {
+    super(mensaje);
+    this.name = "FijadosErrorCliente";
+    this.tipo = tipo;
+  }
+}
+
+export interface FijadosCliente {
+  /** `disponible: false` = el servidor todavia no tiene la funcion (base sin migrar): se dice, no se inventa una lista vacia. */
+  listar(senal: AbortSignal): Promise<{ readonly disponible: boolean; readonly fijados: readonly FijadoResumen[] }>;
+  /** Re-ejecucion del fijado sin modelo, con el alcance actual del usuario. */
+  resultado(id: string, senal: AbortSignal): Promise<FijadoResultado>;
+  quitar(id: string): Promise<void>;
+  /** Solo owner/admin pueden compartir: el servidor responde `sin_permiso` si no. */
+  compartir(id: string, compartido: boolean): Promise<void>;
 }
