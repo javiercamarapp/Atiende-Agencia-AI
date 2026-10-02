@@ -26,10 +26,14 @@
 --      concede ninguna escritura). Sin `using (true)` ni GRANT a anon. `service_role` conserva acceso total (cron/soporte).
 --      Las llaves foráneas COMPUESTAS (id, organization_id, property_id) impiden apuntar una partida, un pago o una póliza
 --      a la póliza/factura de OTRA property u organización aunque se mienta en las columnas de tenant (cross-tenant).
---   2. Todas las funciones de escritura son `security definer` con `set search_path = despachos, pg_temp`, `revoke all ...
---      from public` y EXECUTE solo a `authenticated`; exigen `auth.uid()` no nulo y reutilizan
+--   2. Las funciones de escritura son `security definer` con `set search_path = despachos, pg_temp`, `revoke all ...
+--      from public, anon` y EXECUTE solo a `authenticated`; exigen `auth.uid()` no nulo y reutilizan
 --      `despachos.cartera_puede_escribir(property)` (migración 018): acceso a la property + rol admin/contador en la
 --      organización de vertical despachos de ESA property. Un contador de otra organización recibe 42501.
+--      `despachos.libro_poliza_insertar` es el núcleo interno (también `security definer`): se revoca a public, anon Y
+--      authenticated (nadie puede llamarla directo; solo la invocan `libro_poliza_registrar` y `libro_poliza_reversar`,
+--      mismo owner) y, como defensa en profundidad, repite el guard `auth.uid()` + `cartera_puede_escribir` + que la
+--      organización corresponda a la property. La reversa recibe la property y verifica el permiso ANTES de bloquear la póliza.
 --   3. Periodo cerrado: una póliza (o su reversa) fechada en un mes con `despachos.periodo_cierre.status = 'closed'` se
 --      rechaza con 55000. Una póliza de reversa se fecha en el mes en que se registra la corrección.
 --   4. Folio: asignado por la función bajo `pg_advisory_xact_lock` (dos altas simultáneas no repiten folio) y protegido
@@ -209,6 +213,7 @@ as $$
 declare
   v_org uuid;
   v_insertadas integer;
+  v_nuevas integer;
 begin
   if auth.uid() is null or not despachos.cartera_puede_escribir(p_property_id) then
     raise exception 'libro_catalogo_sembrar: sin permiso sobre el cliente' using errcode = '42501';
@@ -221,6 +226,12 @@ begin
     raise exception 'libro_catalogo_sembrar: se esperan de 1 a 500 cuentas' using errcode = '22023';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('despachos.libro_cuenta:' || p_property_id::text, 0));
+  -- Mismo tope que `libro_cuenta_guardar`: 2000 cuentas por cliente (cuenta solo las que se sembrarían de verdad: las ya existentes no suman).
+  select count(*) into v_nuevas from (select distinct btrim(c.codigo) as codigo from jsonb_to_recordset(p_cuentas) as c(codigo text, descripcion text, naturaleza text)) n
+    where not exists (select 1 from despachos.libro_cuenta x where x.property_id = p_property_id and x.codigo = n.codigo);
+  if (select count(*) from despachos.libro_cuenta x where x.property_id = p_property_id) + v_nuevas > 2000 then
+    raise exception 'libro_catalogo_sembrar: máximo 2000 cuentas por cliente' using errcode = '54000';
+  end if;
   insert into despachos.libro_cuenta (property_id, organization_id, codigo, descripcion, naturaleza)
   select p_property_id, v_org, btrim(c.codigo), btrim(c.descripcion), c.naturaleza
   from jsonb_to_recordset(p_cuentas) as c(codigo text, descripcion text, naturaleza text)
@@ -232,7 +243,7 @@ exception
     raise exception 'libro_catalogo_sembrar: cuenta inválida (código de 4 a 10 dígitos, descripción y naturaleza D/A)' using errcode = '22023';
 end;
 $$;
-revoke all on function despachos.libro_catalogo_sembrar(uuid, jsonb) from public;
+revoke all on function despachos.libro_catalogo_sembrar(uuid, jsonb) from public, anon;
 grant execute on function despachos.libro_catalogo_sembrar(uuid, jsonb) to authenticated;
 
 -- Alta o cambio de descripción de UNA cuenta. La naturaleza no cambia si la cuenta ya tiene partidas.
@@ -274,11 +285,14 @@ begin
   end if;
 end;
 $$;
-revoke all on function despachos.libro_cuenta_guardar(uuid, text, text, text) from public;
+revoke all on function despachos.libro_cuenta_guardar(uuid, text, text, text) from public, anon;
 grant execute on function despachos.libro_cuenta_guardar(uuid, text, text, text) to authenticated;
 
--- Núcleo compartido por el registro y la reversa: valida cuadre/cuentas/periodo, asigna folio e inserta. NO se expone
--- (revoke de public, sin GRANT): solo lo llaman las dos funciones públicas de abajo, que ya validaron rol y property.
+-- Núcleo compartido por el registro y la reversa: valida cuadre/cuentas/periodo, asigna folio e inserta. NO se expone:
+-- revoke explícito a public, anon y authenticated y sin GRANT (por si los default privileges del entorno otorgan EXECUTE a
+-- funciones nuevas, como en la migración 016); solo lo llaman las dos funciones públicas de abajo (mismo owner). Aun así
+-- repite el guard de permisos: es SECURITY DEFINER y, si algún día se le concediera EXECUTE por error, no escribiría en
+-- libro_poliza/libro_movimiento sin rol de escritura sobre la property.
 create or replace function despachos.libro_poliza_insertar(
   p_property_id uuid,
   p_organization_id uuid,
@@ -307,6 +321,10 @@ declare
   v_poliza uuid;
   v_concepto text := btrim(coalesce(p_concepto, ''));
 begin
+  if auth.uid() is null or p_property_id is null or not despachos.cartera_puede_escribir(p_property_id)
+     or not exists (select 1 from core.property pr where pr.id = p_property_id and pr.organization_id = p_organization_id and pr.vertical = 'despachos') then
+    raise exception 'libro_poliza_insertar: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
   if p_tipo is null or p_tipo not in ('ingreso', 'egreso', 'diario') then
     raise exception 'libro_poliza: tipo de póliza inválido' using errcode = '22023';
   end if;
@@ -363,12 +381,13 @@ begin
   values (p_organization_id, p_property_id, v_ejercicio, v_mes, p_tipo, v_folio, p_fecha, v_concepto, p_origen, p_invoice_id, p_reversa_de, v_debe, auth.uid())
   returning id into v_poliza;
   insert into despachos.libro_movimiento (poliza_id, organization_id, property_id, linea, cuenta, concepto, debe_centavos, haber_centavos)
-  select v_poliza, p_organization_id, p_property_id, (row_number() over ())::int, btrim(x.cuenta), coalesce(btrim(x.concepto), ''), coalesce(x.debe, 0), coalesce(x.haber, 0)
-  from jsonb_to_recordset(p_movimientos) as x(cuenta text, concepto text, debe bigint, haber bigint);
+  select v_poliza, p_organization_id, p_property_id, e.ord::int, btrim(e.elem->>'cuenta'), coalesce(btrim(e.elem->>'concepto'), ''),
+         coalesce((e.elem->>'debe')::bigint, 0), coalesce((e.elem->>'haber')::bigint, 0)
+  from jsonb_array_elements(p_movimientos) with ordinality as e(elem, ord);
   return query select v_poliza, v_folio;
 end;
 $$;
-revoke all on function despachos.libro_poliza_insertar(uuid, uuid, text, date, text, text, uuid, uuid, jsonb) from public;
+revoke all on function despachos.libro_poliza_insertar(uuid, uuid, text, date, text, text, uuid, uuid, jsonb) from public, anon, authenticated;
 
 -- Registro de una póliza (manual, o la de un CFDI persistido). Partidas: [{cuenta, concepto, debe, haber}] en centavos.
 create or replace function despachos.libro_poliza_registrar(
@@ -412,29 +431,36 @@ begin
     p_property_id, v_org, p_tipo, p_fecha, p_concepto, case when p_invoice_id is null then 'manual' else 'cfdi' end, p_invoice_id, null, p_movimientos);
 end;
 $$;
-revoke all on function despachos.libro_poliza_registrar(uuid, text, date, text, jsonb, uuid) from public;
+revoke all on function despachos.libro_poliza_registrar(uuid, text, date, text, jsonb, uuid) from public, anon;
 grant execute on function despachos.libro_poliza_registrar(uuid, text, date, text, jsonb, uuid) to authenticated;
 
 -- Reversa: crea una póliza de diario con las partidas invertidas (debe <-> haber) y marca la original como reversada.
--- La original no se modifica en importes; el libro nunca pierde historia.
-create or replace function despachos.libro_poliza_reversar(p_poliza_id uuid, p_fecha date, p_concepto text)
+-- La original no se modifica en importes; el libro nunca pierde historia. Recibe la property: el permiso se verifica ANTES de
+-- bloquear la póliza (FOR UPDATE), de modo que un usuario sin acceso nunca toma un lock sobre filas de otro cliente ni distingue
+-- "no existe" de "no es tuya" (ambos son 42501 para quien no tiene permiso sobre la property).
+create or replace function despachos.libro_poliza_reversar(p_property_id uuid, p_poliza_id uuid, p_fecha date, p_concepto text)
 returns table (out_poliza_id uuid, out_folio integer)
 language plpgsql
 security definer
 set search_path = despachos, pg_temp
 as $$
 declare
-  v_prop uuid;
   v_org uuid;
   v_origen text;
   v_reversada boolean;
   v_movs jsonb;
 begin
-  select lp.property_id, lp.organization_id, lp.origen, lp.reversada into v_prop, v_org, v_origen, v_reversada
-  from despachos.libro_poliza lp where lp.id = p_poliza_id for update;
-  if v_prop is null or auth.uid() is null or not despachos.cartera_puede_escribir(v_prop) then
-    -- misma respuesta para "no existe" y "no es tuya": no confirma pólizas ajenas.
-    raise exception 'libro_poliza_reversar: póliza no encontrada o sin permiso' using errcode = '42501';
+  if auth.uid() is null or p_property_id is null or not despachos.cartera_puede_escribir(p_property_id) then
+    raise exception 'libro_poliza_reversar: sin permiso sobre el cliente' using errcode = '42501';
+  end if;
+  select p.organization_id into v_org from core.property p where p.id = p_property_id and p.vertical = 'despachos';
+  if v_org is null then
+    raise exception 'libro_poliza_reversar: la property no es de despachos' using errcode = '42501';
+  end if;
+  select lp.origen, lp.reversada into v_origen, v_reversada
+  from despachos.libro_poliza lp where lp.id = p_poliza_id and lp.property_id = p_property_id for update;
+  if not found then
+    raise exception 'libro_poliza_reversar: póliza no encontrada' using errcode = 'P0002';
   end if;
   if v_origen = 'reversa' then
     raise exception 'libro_poliza_reversar: una póliza de reversa no se revierte; registra una póliza nueva' using errcode = '22023';
@@ -444,16 +470,19 @@ begin
   end if;
   select jsonb_agg(jsonb_build_object('cuenta', m.cuenta, 'concepto', m.concepto, 'debe', m.haber_centavos, 'haber', m.debe_centavos) order by m.linea)
     into v_movs from despachos.libro_movimiento m where m.poliza_id = p_poliza_id;
-  return query select * from despachos.libro_poliza_insertar(v_prop, v_org, 'diario', p_fecha, p_concepto, 'reversa', null, p_poliza_id, v_movs);
+  return query select * from despachos.libro_poliza_insertar(p_property_id, v_org, 'diario', p_fecha, p_concepto, 'reversa', null, p_poliza_id, v_movs);
   update despachos.libro_poliza set reversada = true where id = p_poliza_id;
 end;
 $$;
-revoke all on function despachos.libro_poliza_reversar(uuid, date, text) from public;
-grant execute on function despachos.libro_poliza_reversar(uuid, date, text) to authenticated;
+revoke all on function despachos.libro_poliza_reversar(uuid, uuid, date, text) from public, anon;
+grant execute on function despachos.libro_poliza_reversar(uuid, uuid, date, text) to authenticated;
 
 -- Balanza de comprobación derivada (centavos). Saldo inicial: cuentas de balance (1, 2, 3) acumulan TODO lo anterior al
 -- mes; cuentas de resultados (4 en adelante) solo desde enero del ejercicio (no hay póliza de cierre de ejercicio).
 -- SECURITY INVOKER: RLS del staff decide qué property puede ver.
+-- PENDIENTE DE VALIDAR CON EL CONTADOR: no hay póliza de traspaso/cierre de resultados; la balanza solo reinicia las cuentas de
+-- resultados (4 en adelante) en enero por convención de este reporte y las cuentas de balance arrastran todo lo anterior, así que
+-- el resultado del ejercicio NO se traspasa al capital. La serie de cuentas (1, 2, 3 = balance) es la del catálogo base asumido.
 create or replace function despachos.libro_balanza(p_property_id uuid, p_ejercicio integer, p_mes integer)
 returns table (
   out_cuenta text,
@@ -496,7 +525,7 @@ as $$
   where (a.debe <> 0 or a.haber <> 0 or a.debe_ini <> 0 or a.haber_ini <> 0)
   order by a.cuenta;
 $$;
-revoke all on function despachos.libro_balanza(uuid, integer, integer) from public;
+revoke all on function despachos.libro_balanza(uuid, integer, integer) from public, anon;
 grant execute on function despachos.libro_balanza(uuid, integer, integer) to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -564,7 +593,7 @@ begin
   end if;
   select coalesce(sum(pc.importe_pagado_centavos), 0) into v_pagado from despachos.pago_cfdi pc
     where pc.invoice_id = p_invoice_id
-      and not (pc.folio_fiscal_rep = p_folio_fiscal_rep and pc.pago_index = p_pago_index);
+      and not (pc.folio_fiscal_rep = lower(p_folio_fiscal_rep) and pc.pago_index = p_pago_index);
   if v_pagado + p_importe_pagado_centavos > v_total then
     raise exception 'pago_cfdi_registrar: los pagos suman más que el total del CFDI' using errcode = '22023';
   end if;
@@ -577,7 +606,7 @@ begin
   return v_insertadas = 1;
 end;
 $$;
-revoke all on function despachos.pago_cfdi_registrar(uuid, uuid, text, integer, date, text, integer, bigint, bigint, bigint, bigint) from public;
+revoke all on function despachos.pago_cfdi_registrar(uuid, uuid, text, integer, date, text, integer, bigint, bigint, bigint, bigint) from public, anon;
 grant execute on function despachos.pago_cfdi_registrar(uuid, uuid, text, integer, date, text, integer, bigint, bigint, bigint, bigint) to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -637,7 +666,7 @@ begin
         parametros = excluded.parametros, advertencias = excluded.advertencias, updated_at = now();
 end;
 $$;
-revoke all on function despachos.pago_provisional_guardar(uuid, integer, integer, text, text, bigint, bigint, bigint, bigint, bigint, jsonb, integer) from public;
+revoke all on function despachos.pago_provisional_guardar(uuid, integer, integer, text, text, bigint, bigint, bigint, bigint, bigint, jsonb, integer) from public, anon;
 grant execute on function despachos.pago_provisional_guardar(uuid, integer, integer, text, text, bigint, bigint, bigint, bigint, bigint, jsonb, integer) to authenticated;
 
 -- Marca el papel como presentado (monto efectivamente pagado y fecha) y cierra el vencimiento del calendario fiscal del
@@ -682,11 +711,11 @@ begin
     where property_id = p_property_id and tipo = p_impuesto and periodo = v_periodo and estado <> 'completado';
 end;
 $$;
-revoke all on function despachos.pago_provisional_presentar(uuid, integer, integer, text, bigint, date) from public;
+revoke all on function despachos.pago_provisional_presentar(uuid, integer, integer, text, bigint, date) from public, anon;
 grant execute on function despachos.pago_provisional_presentar(uuid, integer, integer, text, bigint, date) to authenticated;
 
--- Solo-sistema: cuántas obligaciones de pago provisional (ISR/IVA) por organización vencen dentro de `p_dias` días (o ya
--- vencieron en la ventana) y todavía no tienen un papel PRESENTADO. Devuelve solo organización + conteo: sin RFC, nombres
+-- Solo-sistema: cuántas obligaciones de pago provisional (ISR/IVA) por organización vencen entre `p_hoy` y `p_hoy + p_dias`
+-- (ambos inclusive; las ya vencidas antes de hoy NO se cuentan aquí) y todavía no tienen un papel PRESENTADO. Devuelve solo organización + conteo: sin RFC, nombres
 -- ni montos (el texto de la notificación es de catálogo y no lleva PII).
 create or replace function despachos.system_pagos_provisionales_por_vencer(p_hoy date, p_dias integer)
 returns table (out_organization_id uuid, out_cantidad integer)
@@ -717,5 +746,5 @@ begin
     group by d.organization_id;
 end;
 $$;
-revoke all on function despachos.system_pagos_provisionales_por_vencer(date, integer) from public;
+revoke all on function despachos.system_pagos_provisionales_por_vencer(date, integer) from public, anon;
 grant execute on function despachos.system_pagos_provisionales_por_vencer(date, integer) to authenticated;

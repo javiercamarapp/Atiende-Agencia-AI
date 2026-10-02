@@ -166,9 +166,11 @@ export class PostgresLibroRepository implements LibroRepository {
     });
   }
 
-  reversarPoliza(_propertyId: string, polizaId: string, fecha: string, concepto: string): Promise<RegistroPolizaResultado> {
+  reversarPoliza(propertyId: string, polizaId: string, fecha: string, concepto: string): Promise<RegistroPolizaResultado> {
     return this.escritura("reversa", async () => {
-      const { rows } = await this.db.query<{ out_poliza_id: string; out_folio: number }>("select out_poliza_id, out_folio from despachos.libro_poliza_reversar($1, $2::date, $3);", [
+      // La property viaja a la función: verifica el permiso sobre ELLA antes de bloquear la póliza y exige que la póliza sea de esa property.
+      const { rows } = await this.db.query<{ out_poliza_id: string; out_folio: number }>("select out_poliza_id, out_folio from despachos.libro_poliza_reversar($1::uuid, $2::uuid, $3::date, $4);", [
+        propertyId,
         polizaId,
         fecha,
         concepto,

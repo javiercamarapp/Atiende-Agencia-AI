@@ -351,7 +351,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Corrige captura');
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Corrige captura');
 select count(*) as reversa_deberia_ser_1 from despachos.libro_poliza r join despachos.libro_poliza o on o.id = r.reversa_de where r.origen = 'reversa' and r.tipo = 'diario' and o.reversada and r.total_centavos = o.total_centavos;
 rollback;
 
@@ -360,7 +360,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Corrige captura');
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Corrige captura');
 select count(*) as saldo_neto_deberia_ser_0 from despachos.libro_balanza('00000000-0000-0000-0000-000000d24b01', 2026, 7) where out_saldo_final_centavos <> 0;
 rollback;
 
@@ -369,8 +369,8 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Una');
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-26', 'Dos') as should_fail;
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Una');
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-26', 'Dos') as should_fail;
 rollback;
 
 \echo '42. una poliza de reversa no se revierte'
@@ -378,8 +378,8 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Una');
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where origen = 'reversa' and property_id = '00000000-0000-0000-0000-000000d24b01'), '2026-07-26', 'Otra') as should_fail;
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Una');
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where origen = 'reversa' and property_id = '00000000-0000-0000-0000-000000d24b01'), '2026-07-26', 'Otra') as should_fail;
 rollback;
 
 \echo '43. revertir una poliza libera al CFDI para contabilizarse de nuevo'
@@ -387,7 +387,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, '00000000-0000-0000-0000-000000d24d01');
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'cfdi'), '2026-07-25', 'Corrige');
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'cfdi'), '2026-07-25', 'Corrige');
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, '00000000-0000-0000-0000-000000d24d01');
 rollback;
 
@@ -397,7 +397,7 @@ select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d2
 insert into despachos.periodo_cierre (organization_id, property_id, anio, mes, status) values ('00000000-0000-0000-0000-000000d24a01', '00000000-0000-0000-0000-000000d24b01', 2026, 7, 'closed');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Tarde') as should_fail;
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' and origen = 'manual'), '2026-07-25', 'Tarde') as should_fail;
 rollback;
 
 \echo '45. cross-tenant: admin de B NO revierte la poliza de A'
@@ -406,7 +406,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c04', true);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'Ajena') as should_fail;
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'Ajena') as should_fail;
 rollback;
 
 \echo '46. readonly NO revierte'
@@ -415,7 +415,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01
 select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c03', true);
-select despachos.libro_poliza_reversar((select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'RO') as should_fail;
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'RO') as should_fail;
 rollback;
 
 \echo '=== ESCRITURA DIRECTA CERRADA Y RLS ==='
@@ -1101,3 +1101,146 @@ select set_config('request.jwt.claim.sub', '', true);
 select * from despachos.system_pagos_provisionales_por_vencer(null, 7) as should_fail;
 rollback;
 
+\echo '=== NUCLEO INTERNO, REVERSA CON PROPERTY Y POSTURA DE SEGURIDAD ==='
+\echo '127. control positivo: el registro normal (que pasa por el nucleo interno) funciona para el admin de A'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
+select count(*) as registro_por_nucleo_deberia_ser_1 from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01';
+rollback;
+
+\echo '128. el nucleo libro_poliza_insertar NO es ejecutable ni por el admin de A (authenticated)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select * from despachos.libro_poliza_insertar('00000000-0000-0000-0000-000000d24b01', '00000000-0000-0000-0000-000000d24a01', 'ingreso', '2026-07-20', 'Directo', 'manual', null, null, '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '129. anon NO ejecuta el nucleo libro_poliza_insertar'
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select * from despachos.libro_poliza_insertar('00000000-0000-0000-0000-000000d24b01', '00000000-0000-0000-0000-000000d24a01', 'ingreso', '2026-07-20', 'Directo', 'manual', null, null, '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb) as should_fail;
+rollback;
+
+\echo '130. has_function_privilege: ni public, ni anon, ni authenticated tienen EXECUTE sobre el nucleo'
+begin;
+select count(*)::int as nucleo_ejecutable_deberia_ser_0 from unnest(array['public', 'anon', 'authenticated']) as r(rol)
+where has_function_privilege(r.rol::name, 'despachos.libro_poliza_insertar(uuid,uuid,text,date,text,text,uuid,uuid,jsonb)', 'execute');
+rollback;
+
+\echo '131. has_function_privilege: ninguna funcion de la migracion es ejecutable por public ni anon'
+begin;
+select count(*)::int as funciones_publicas_o_anon_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'despachos' and p.proname in ('libro_catalogo_sembrar','libro_cuenta_guardar','libro_poliza_insertar','libro_poliza_registrar','libro_poliza_reversar','libro_balanza','pago_cfdi_registrar','pago_provisional_guardar','pago_provisional_presentar','system_pagos_provisionales_por_vencer')
+  and (has_function_privilege('anon'::name, p.oid, 'execute') or has_function_privilege('public'::name, p.oid, 'execute'));
+rollback;
+
+\echo '132. las 9 funciones definer fijan search_path y la balanza es invoker'
+begin;
+select (count(*) filter (where p.prosecdef and p.proconfig is not null and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%')))::int as definer_con_search_path_deberia_ser_9
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'despachos' and p.proname in ('libro_catalogo_sembrar','libro_cuenta_guardar','libro_poliza_insertar','libro_poliza_registrar','libro_poliza_reversar','libro_balanza','pago_cfdi_registrar','pago_provisional_guardar','pago_provisional_presentar','system_pagos_provisionales_por_vencer') and p.proname <> 'libro_balanza';
+rollback;
+
+\echo '133. la balanza es SECURITY INVOKER con search_path fijo'
+begin;
+select count(*)::int as balanza_definer_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'despachos' and p.proname = 'libro_balanza' and (p.prosecdef or p.proconfig is null);
+rollback;
+
+\echo '134. las 5 tablas nuevas tienen RLS habilitado'
+begin;
+select (count(*) filter (where c.relrowsecurity))::int as rls_deberia_ser_5
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'despachos' and c.relname in ('libro_cuenta','libro_poliza','libro_movimiento','pago_cfdi','pago_provisional');
+rollback;
+
+\echo '135. ninguna policy de las 5 tablas es permisiva (using true) ni aplica a anon'
+begin;
+select count(*)::int as policies_permisivas_deberia_ser_0 from pg_policies
+where schemaname = 'despachos' and tablename in ('libro_cuenta','libro_poliza','libro_movimiento','pago_cfdi','pago_provisional') and (qual = 'true' or with_check = 'true' or 'anon' = any(roles));
+rollback;
+
+\echo '136. anon y public no tienen ningun privilegio sobre las 5 tablas; authenticated solo lee'
+begin;
+select count(*)::int as tablas_con_privilegios_de_mas_deberia_ser_0 from unnest(array['libro_cuenta','libro_poliza','libro_movimiento','pago_cfdi','pago_provisional']) as t(nombre)
+where has_table_privilege('anon'::name, 'despachos.' || t.nombre, 'select, insert, update, delete, truncate, references, trigger')
+   or has_table_privilege('public'::name, 'despachos.' || t.nombre, 'select, insert, update, delete, truncate, references, trigger')
+   or has_table_privilege('authenticated'::name, 'despachos.' || t.nombre, 'insert, update, delete, truncate, references, trigger');
+rollback;
+
+\echo '137. reversa: el admin de B NO revierte la poliza de A1 ni siquiera pasando SU propia property (no existe en B1)'
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c04', true);
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b03', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'Ajena') as should_fail;
+rollback;
+
+\echo '138. reversa: la poliza de A1 no se revierte pasando otra property del MISMO despacho (A2)'
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select * from despachos.libro_poliza_registrar('00000000-0000-0000-0000-000000d24b01', 'ingreso', '2026-07-20', 'Póliza de prueba', '[{"cuenta": "1050000", "concepto": "", "debe": 116000, "haber": 0}, {"cuenta": "4080000", "concepto": "", "debe": 0, "haber": 100000}, {"cuenta": "2600400", "concepto": "", "debe": 0, "haber": 16000}]'::jsonb, null);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b02', (select id from despachos.libro_poliza where property_id = '00000000-0000-0000-0000-000000d24b01' limit 1), '2026-07-25', 'Otra property') as should_fail;
+rollback;
+
+\echo '139. reversa: una poliza inexistente en una property propia responde "no encontrada" (P0002), no un error de permiso'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', '00000000-0000-0000-0000-00000000dead', '2026-07-25', 'No existe') as should_fail;
+rollback;
+
+\echo '140. reversa: anon sin EXECUTE'
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+select despachos.libro_poliza_reversar('00000000-0000-0000-0000-000000d24b01', '00000000-0000-0000-0000-00000000dead', '2026-07-25', 'Anon') as should_fail;
+rollback;
+
+\echo '141. siembra: control positivo de 500 cuentas nuevas en A2 (admin de A)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (1000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select count(*) as siembra_500_deberia_ser_500 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d24b02';
+rollback;
+
+\echo '142. siembra: llegar EXACTAMENTE a 2000 cuentas por cliente se permite (control positivo del tope)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (1000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (2000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (3000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (4000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select count(*) as siembra_2000_deberia_ser_2000 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d24b02';
+rollback;
+
+\echo '143. siembra: la cuenta 2001 se rechaza (54000), aunque el lote sea de 1 sola cuenta'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (1000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (2000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (3000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (4000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (5000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 1) g)) as should_fail;
+rollback;
+
+\echo '144. siembra: re-sembrar cuentas que YA existen en un catalogo lleno no cuenta contra el tope'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000d24c01', true);
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (1000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (2000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (3000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (4000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select despachos.libro_catalogo_sembrar('00000000-0000-0000-0000-000000d24b02', (select jsonb_agg(jsonb_build_object('codigo', (1000000 + g)::text, 'descripcion', 'Cuenta ' || g, 'naturaleza', 'D')) from generate_series(1, 500) g));
+select count(*) as siembra_resembrada_deberia_ser_2000 from despachos.libro_cuenta where property_id = '00000000-0000-0000-0000-000000d24b02';
+rollback;
