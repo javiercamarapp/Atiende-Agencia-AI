@@ -140,3 +140,19 @@ describe("tryEnqueueReservaEmail", () => {
     expect(resultado).toEqual({ enqueued: false, reason: "reserva_no_encontrada" });
   });
 });
+
+// SA-L-46: solo la confirmacion de la reserva salta la lista de supresion; el recordatorio de check-in (cron del
+// negocio) es proactivo y se suprime.
+describe("enqueueReservaEmailCore: marca transaccional (SA-L-46)", () => {
+  it("reserva.creada va marcada transaccional y reserva.recordatorio_checkin no", async () => {
+    const fixture = await crearFixture();
+    const ocupacionId = await crearReservaConHuesped(fixture, "maria@example.com");
+    await enqueueReservaEmailCore(fixture.repo, fixture.organizationId, "reserva.creada", ocupacionId);
+    await enqueueReservaEmailCore(fixture.repo, fixture.organizationId, "reserva.recordatorio_checkin", ocupacionId);
+    const outbox = fixture.repo.getMessagingOutbox();
+    const creada = outbox.find((o) => o.eventType === "reserva.creada")!.payload as { transaccional?: unknown };
+    const recordatorio = outbox.find((o) => o.eventType === "reserva.recordatorio_checkin")!.payload as { transaccional?: unknown };
+    expect(creada.transaccional).toBe(true);
+    expect(recordatorio.transaccional).toBeUndefined();
+  });
+});

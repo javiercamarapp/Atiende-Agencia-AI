@@ -95,7 +95,10 @@ export async function enqueueReservaEmailCore(repo: RentasRepository, organizati
     }
   }
 
-  await repo.enqueueMessagingOutbox(ocupacion.propertyId, organizationId, "email", event, dedupeKey, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto });
+  // SA-L-46: solo la confirmacion de la reserva salta la lista de supresion. El recordatorio de check-in lo dispara el
+  // cron del negocio, no lo pidio el huesped: es proactivo y se suprime.
+  const transaccional = event === "reserva.creada";
+  await repo.enqueueMessagingOutbox(ocupacion.propertyId, organizationId, "email", event, dedupeKey, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto, ...(transaccional ? { transaccional: true } : {}) });
 
   return { enqueued: true };
 }

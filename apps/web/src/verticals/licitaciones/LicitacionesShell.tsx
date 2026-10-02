@@ -14,7 +14,7 @@
 // diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
-import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldAlert, ShieldCheck, Target, Users } from "lucide-react";
+import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
@@ -83,7 +83,11 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarS
     {
       title: "Resumen",
       siempreAbierto: true,
-      items: [{ to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard }],
+      items: [
+        { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
+        // CHAT-12: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas.
+        { to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles },
+      ],
     },
     {
       title: "Oportunidades",
@@ -162,6 +166,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       token={session.token}
       notificacionesHref={`/licitaciones/${orgSlug}/notificaciones`}
       chat={chatConexion}
+      copilotoHref={`/licitaciones/${orgSlug}/copiloto`}
       vertical="licitaciones"
       sections={buildSidebarSections(orgSlug, puedeVerStaff)}
       mobileItems={buildMobileItems(orgSlug)}

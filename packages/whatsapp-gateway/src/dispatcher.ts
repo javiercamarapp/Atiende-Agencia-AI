@@ -49,6 +49,9 @@ interface ValidWhatsAppOutboxPayload {
   readonly body: string;
   readonly buttons?: readonly (string | OutboundButton)[];
   readonly template?: OutboundTemplate;
+  /** SA-L-46: `true` = respuesta transaccional dentro de una conversacion en curso (el cliente la pidio): la lista de
+   *  supresion de plataforma NO la bloquea. Cualquier otro valor (o ausente) = aviso proactivo. */
+  readonly transaccional: boolean;
 }
 
 /** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
@@ -99,7 +102,7 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
   const template = p.template === undefined || p.template === null ? undefined : parseTemplate(p.template);
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template };
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -114,7 +117,20 @@ export interface WhatsAppOutboundDispatcherOptions {
   readonly now?: () => Date;
 }
 
-export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open";
+export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open" | "suppressed" | "skipped_suppression_unavailable";
+
+/** Motivo con que un mensaje suprimido se marca no enviado (`error_class` del outbox). Sin reintento. */
+export const SUPPRESSED_ERROR_CLASS = "suprimido";
+
+/** SA-L-46: decide si un telefono esta en la lista de supresion de plataforma (`true` = NO contactar). FAIL-CLOSED: si no
+ *  puede verificarlo debe LANZAR; el dispatcher entonces no envia y deja el mensaje para la siguiente corrida. */
+export type SuppressionGuard = (phone: string) => Promise<boolean>;
+
+export interface DispatchPendingOptions {
+  readonly limit?: number;
+  /** Sin guard (`undefined`) el comportamiento es el anterior a SA-L-46. */
+  readonly suppression?: SuppressionGuard;
+}
 
 export interface DispatchItemResult {
   readonly id: string;
@@ -129,6 +145,8 @@ export interface DispatchSummary {
   readonly retried: number;
   readonly dead: number;
   readonly skipped: number;
+  /** Mensajes proactivos no enviados por la lista de supresion de plataforma. Solo presente cuando es mayor que 0. */
+  readonly suppressed?: number;
   readonly items: readonly DispatchItemResult[];
 }
 
@@ -151,7 +169,7 @@ export class WhatsAppOutboundDispatcher {
    *  vertical concreta). Un mensaje individual que falle NUNCA tumba el resto del
    *  batch — mismo criterio de aislamiento que `runConfirmacionCitaCore`/la ruta
    *  interna de recordatorios (un tenant/mensaje raro no bloquea a los demás). */
-  async dispatchPending(port: MessagingOutboxPort, opts: { limit?: number } = {}): Promise<DispatchSummary> {
+  async dispatchPending(port: MessagingOutboxPort, opts: DispatchPendingOptions = {}): Promise<DispatchSummary> {
     const limit = opts.limit ?? DEFAULT_BATCH_LIMIT;
     const claimed = await port.claimBatch(limit, this.leaseSeconds);
 
@@ -160,9 +178,10 @@ export class WhatsAppOutboundDispatcher {
     let retried = 0;
     let dead = 0;
     let skipped = 0;
+    let suppressed = 0;
 
     for (const item of claimed) {
-      const result = await this.dispatchOne(port, item);
+      const result = await this.dispatchOne(port, item, opts.suppression);
       items.push(result);
       switch (result.outcome) {
         case "sent":
@@ -175,15 +194,19 @@ export class WhatsAppOutboundDispatcher {
           dead++;
           break;
         case "skipped_circuit_open":
+        case "skipped_suppression_unavailable":
           skipped++;
+          break;
+        case "suppressed":
+          suppressed++;
           break;
       }
     }
 
-    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, items };
+    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, ...(suppressed > 0 ? { suppressed } : {}), items };
   }
 
-  private async dispatchOne(port: MessagingOutboxPort, item: MessagingOutboxItem): Promise<DispatchItemResult> {
+  private async dispatchOne(port: MessagingOutboxPort, item: MessagingOutboxItem, suppression: SuppressionGuard | undefined): Promise<DispatchItemResult> {
     let payload: ValidWhatsAppOutboxPayload;
     try {
       payload = parseWhatsAppOutboxPayload(item.payload);
@@ -191,6 +214,24 @@ export class WhatsAppOutboundDispatcher {
       const message = err instanceof Error ? err.message : String(err);
       await port.markDead(item.id, item.attempts + 1, message.slice(0, 120));
       return { id: item.id, outcome: "dead", error: message };
+    }
+
+    // SA-L-46: lista de supresion de plataforma, solo para avisos proactivos. Antes del breaker y de la red.
+    if (suppression && !payload.transaccional) {
+      let suprimido: boolean;
+      try {
+        suprimido = await suppression(payload.to);
+      } catch (supErr) {
+        // Diagnostico sin PII: solo SQLSTATE y clase del error (nunca el destino).
+        console.error("whatsapp-dispatcher: lectura de la lista de supresion fallo (fail-closed)", (supErr as { code?: unknown })?.code ?? null, supErr instanceof Error ? supErr.name : typeof supErr);
+        // FAIL-CLOSED: no se pudo verificar -> NO se contacta. No cuenta como intento (mismo criterio que el
+        // breaker abierto): el mensaje queda reclamado y el lease vencido lo vuelve a ofrecer.
+        return { id: item.id, outcome: "skipped_suppression_unavailable", error: "supresion_no_verificable" };
+      }
+      if (suprimido) {
+        await port.markDead(item.id, item.attempts + 1, SUPPRESSED_ERROR_CLASS);
+        return { id: item.id, outcome: "suppressed" };
+      }
     }
 
     if (this.breaker) {

@@ -100,16 +100,23 @@ async function renderLicitaciones(): Promise<RenderedComponent> {
 }
 
 const botonesChat = (): HTMLButtonElement[] => [...document.body.querySelectorAll("button")].filter((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement[];
+// CHAT-12: con el Copiloto de licitaciones el boton disponible es un ENLACE a la pagina (no abre el dialogo).
+const enlacesChat = (): HTMLAnchorElement[] => [...document.body.querySelectorAll("a")].filter((a) => a.textContent?.includes("Chatea con tus datos")) as HTMLAnchorElement[];
 
 describe.each([
-  { nombre: "LicitacionesShell", render: renderLicitaciones, ruta: "https://api.test/licitaciones/prop-l1/chat-datos", bearer: "Bearer tok-l", sugerencias: SUGERENCIAS_LICITACIONES },
-])("$nombre — Chatea con tus datos", ({ render, ruta, bearer, sugerencias }) => {
+  { nombre: "LicitacionesShell", render: renderLicitaciones, ruta: "https://api.test/licitaciones/prop-l1/chat-datos", bearer: "Bearer tok-l", sugerencias: SUGERENCIAS_LICITACIONES, href: "/licitaciones/demo/copiloto" },
+])("$nombre — Chatea con tus datos", ({ render, ruta, bearer, sugerencias, href }) => {
   it("consulta la disponibilidad en la ruta de SU vertical y, si el servidor la confirma, quita 'Pronto'", async () => {
     const calls = stubFetch(siEsta);
     rendered = await render();
     expect(calls.some((c) => c.url === `${ruta}/estado`)).toBe(true);
-    const boton = botonesChat()[0]!;
-    expect(boton.textContent).not.toContain("Pronto");
+    if (href) {
+      // Disponible: el boton es un enlace a la pagina del Copiloto y ya no hay boton "Pronto".
+      expect(botonesChat()).toHaveLength(0);
+      expect(enlacesChat()[0]?.getAttribute("href")).toBe(href);
+    } else {
+      expect(botonesChat()[0]!.textContent).not.toContain("Pronto");
+    }
   });
 
   it("si el servidor dice que no esta activo (o responde 403/500/falla), SIGUE el aviso honesto con 'Pronto'", async () => {
@@ -132,7 +139,7 @@ describe.each([
     }
   });
 
-  it("con el asistente activo la conversacion es real: sugerencias de la vertical, POST con Bearer y respuesta del servidor (tabla + fuente)", async () => {
+  it.skipIf(href !== null)("con el asistente activo la conversacion es real: sugerencias de la vertical, POST con Bearer y respuesta del servidor (tabla + fuente)", async () => {
     const calls = stubFetch(siEsta);
     rendered = await render();
     click(botonesChat()[0]!);

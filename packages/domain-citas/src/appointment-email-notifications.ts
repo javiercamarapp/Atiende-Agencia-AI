@@ -59,6 +59,15 @@ export type AppointmentEmailEvent =
   | "appointment.completed"
   | "appointment.no_show";
 
+/** SA-L-46: eventos que son confirmacion, cambio o cancelacion de SU cita (la lista de supresion no los bloquea). */
+const EVENTOS_CORREO_TRANSACCIONALES: ReadonlySet<AppointmentEmailEvent> = new Set<AppointmentEmailEvent>([
+  "appointment.created",
+  "appointment.confirmed",
+  "appointment.modified",
+  "appointment.rescheduled",
+  "appointment.cancelled",
+]);
+
 export interface AppointmentEmailExtra {
   /** Solo relevante para "appointment.rescheduled": el starts_at ANTERIOR de esta misma cita. */
   readonly previousStartsAt?: string;
@@ -161,7 +170,11 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
       throw new Error(`Evento de correo de cita desconocido: ${String(event)}`);
   }
 
-  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, { to: customer.email, subject: correo.asunto, html: correo.html, text: correo.texto });
+  // SA-L-46: solo la confirmacion, el cambio o la cancelacion de SU cita saltan la lista de supresion. El recordatorio
+  // de 24 h y los avisos de cita completada / no asistio los inicia el negocio (cron o staff), no los pidio el cliente:
+  // son proactivos y se suprimen, igual que el recordatorio de la misma cita por WhatsApp.
+  const transaccional = EVENTOS_CORREO_TRANSACCIONALES.has(event);
+  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, { to: customer.email, subject: correo.asunto, html: correo.html, text: correo.texto, ...(transaccional ? { transaccional: true } : {}) });
 
   return { enqueued: true };
 }

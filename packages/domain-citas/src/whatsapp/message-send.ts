@@ -121,7 +121,7 @@ export async function enqueueAppointmentWhatsappCore(
 
   // Un reagendado distinto del ultimo debe poder avisar de nuevo: el dedupe incluye el horario nuevo.
   const dedupeKey = event === "appointment.rescheduled" ? `wa-rescheduled:${appointmentId}:${appointment.startsAt}` : `wa-${kind}:${appointmentId}`;
-  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", event, dedupeKey, { to: customer.phone, phone_number_id: phoneNumberId, body: armarMensaje(config, kind, valores) });
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", event, dedupeKey, { to: customer.phone, phone_number_id: phoneNumberId, body: armarMensaje(config, kind, valores), transaccional: true }); // SA-L-46: aviso de SU cita (confirmacion/cancelacion/cambio); la supresion no lo bloquea.
   return { enqueued: true };
 }
 
