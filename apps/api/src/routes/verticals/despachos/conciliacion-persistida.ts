@@ -98,13 +98,13 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
 
   /** Datos que el motor necesita, SIEMPRE leídos del servidor: movimientos de la sesión sin match vigente y CFDI de la property aún sin conciliar. */
   async function cargarDatos(c: Context<CoreAuthHonoEnv>, repo: ConciliacionPersistidaRepository, sesion: SesionConciliacion) {
-    const [movimientos, matches, sugerencias, conciliados, invoices] = await Promise.all([
-      repo.listarMovimientosSesion(sesion),
-      repo.listarMatches(sesion.id),
-      repo.listarSugerencias(sesion.id),
-      repo.invoiceIdsConciliados(sesion.propertyId),
-      deps.despachosRepo(c.get("db")).listInvoices(sesion.propertyId),
-    ]);
+    // En SECUENCIA: la sesión del request es UNA transacción con un solo cliente pg. Cada método del repo abre su propio
+    // SAVEPOINT; en paralelo se encolan SAVEPOINT a, b, c y luego RELEASE a destruye b y c (3B001) y aborta la transacción.
+    const movimientos = await repo.listarMovimientosSesion(sesion);
+    const matches = await repo.listarMatches(sesion.id);
+    const sugerencias = await repo.listarSugerencias(sesion.id);
+    const conciliados = await repo.invoiceIdsConciliados(sesion.propertyId);
+    const invoices = await deps.despachosRepo(c.get("db")).listInvoices(sesion.propertyId);
     const movimientosConMatch = new Set(matches.filter((m) => m.deshechoEn === null).map((m) => m.movimientoId));
     const movimientosLibres: MovimientoGuardado[] = movimientos.filter((m) => !movimientosConMatch.has(m.id));
     const registrosLibres = invoices.filter((i) => !conciliados.datos.has(i.id)).map(invoiceARegistro);
