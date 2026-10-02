@@ -24,8 +24,16 @@ export interface StatCardProps {
   deltaNota?: string;
   /** Razón por la que no hay cifra real todavía (ej. "Pendiente de credenciales del PMS"). Si se pasa, la tarjeta ignora `value`/`nota`/`delta` y muestra "—" con esta explicación. */
   sinDato?: string;
+  /**
+   * `neutra` = la tarjeta de la consola de Likida tal cual (`admin/ui/kit.tsx` StatCard): chip de icono de 28 px con
+   * esquina `rounded-lg`, en el acento de Atiende (`bg-primary`) donde Likida usa tinta negra. Sin ella (`marca`) el chip es
+   * circular, como en los Resumenes de las verticales. El resto (cifra, pie punteado, delta en texto) es identico.
+   */
+  variante?: StatCardVariante;
   className?: string;
 }
+
+export type StatCardVariante = "marca" | "neutra";
 
 /**
  * KPI de dos capas de Likida (admin/ui/kit.tsx:160-208): tarjeta exterior blanca
@@ -33,14 +41,14 @@ export interface StatCardProps {
  * Atiende, etiqueta gris, cifra grande) y, debajo, un pie tras divisor punteado.
  * Con la disciplina de "nunca inventar una cifra": sin dato real muestra "—" y dice por que.
  */
-export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, variante = "marca", className }: StatCardProps) {
   const mostrarSinDato = Boolean(sinDato);
   const pie = pieDe({ mostrarSinDato, sinDato, delta, deltaNota, nota });
   return (
     <Card className={cn("flex h-full min-w-0 flex-col p-2", className)}>
       <div className="min-w-0 rounded-xl border border-line2 bg-canvas px-3 py-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <div data-testid="stat-card-chip" className={cn("flex size-7 shrink-0 items-center justify-center bg-primary text-primary-foreground", variante === "neutra" ? "rounded-lg" : "rounded-full")}>
             <Icon className="size-[15px]" strokeWidth={1.75} />
           </div>
           <span className="line-clamp-2 min-w-0 flex-1 text-ui text-muted-foreground">{label}</span>
@@ -102,17 +110,19 @@ export interface TrendStatCardProps {
   deltaPct?: number;
   deltaLabel?: string;
   sinDato?: string;
+  variante?: StatCardVariante;
   className?: string;
 }
 
 /** KPI con tendencia: la misma tarjeta de dos capas con el pie `↑ 12 % vs periodo anterior`. */
-export function TrendStatCard({ icon, label, value, deltaPct, deltaLabel = "vs periodo anterior", sinDato, className }: TrendStatCardProps) {
+export function TrendStatCard({ icon, label, value, deltaPct, deltaLabel = "vs periodo anterior", sinDato, variante, className }: TrendStatCardProps) {
   return (
     <StatCard
       icon={icon}
       label={label}
       value={value}
       sinDato={sinDato}
+      variante={variante}
       className={className}
       delta={deltaPct === undefined ? undefined : { pct: Math.round(deltaPct * 10) / 10, bueno: deltaPct >= 0 }}
       deltaNota={deltaLabel}

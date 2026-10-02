@@ -6,6 +6,9 @@ test.describe("superadmin @humo", () => {
   test("superadmin: entra y recorre todo el menu sin errores de consola ni 5xx", async ({ page, iniciarSesion, vigilante }) => {
     const aterrizaje = await iniciarSesion("superadmin");
     expect(aterrizaje).toBe("/superadmin");
+    await afirmarPantallaSana(page, "resumen");
+    // SA-L-01: el listado de organizaciones ya no es la raiz; vive en su propia ruta.
+    await page.goto("/superadmin/organizaciones");
     await afirmarPantallaSana(page, "organizaciones");
     await expect(page.getByText("Taqueria El Faro")).toBeVisible();
     await recorrerSecciones(page, { minimo: 18 });

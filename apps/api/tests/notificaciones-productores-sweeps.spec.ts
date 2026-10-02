@@ -123,7 +123,7 @@ describe("superadmin.cron.fallo (withHeartbeat)", () => {
       evento: "superadmin.cron.fallo",
       organizationId: null,
       severidad: "critica",
-      enlace: "/superadmin/resumen",
+      enlace: "/superadmin",
       cuerpo: "Tarea: licitaciones.alert-notifications.",
       dedupeKey: `superadmin.cron.fallo:licitaciones.alert-notifications:${new Date().toISOString().slice(0, 10)}`,
     });

@@ -41,9 +41,7 @@ async function leerEnlaces(raiz: Locator): Promise<EnlaceNav[]> {
 export async function enlacesSidebar(page: Page): Promise<EnlaceNav[]> {
   const unicos = new Map<string, EnlaceNav>();
   const agregar = async (): Promise<void> => {
-    // Las categorias mandan: el pie del Sidebar ("Costos de IA", "Ver los otros paneles") solo aporta un destino que
-    // ninguna categoria trae, y nunca renombra uno de ellas (p. ej. "Costos de IA" repite "Costos y margen").
-    for (const e of await leerEnlaces(sidebar(page).locator("nav"))) unicos.set(e.href, e);
+    // Gana el PRIMER enlace de cada ruta: el menu va antes que las pildoras del pie, que pueden repetir un destino con otro texto.
     for (const e of await leerEnlaces(sidebar(page))) if (!unicos.has(e.href)) unicos.set(e.href, e);
   };
   await agregar();
@@ -98,7 +96,7 @@ export async function seccionesDelPanel(page: Page): Promise<EnlaceNav[]> {
 export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
   if (esMovil(page)) {
     const hoja = await abrirMasMovil(page);
-    // `.first()`: el pie de superadmin ("Costos de IA") repite el destino de "Costos y margen" en la seccion "Cuenta".
+    // `.first()`: una pildora de la seccion "Cuenta" puede repetir un destino del menu (p. ej. "Costos de IA" del superadmin).
     await hoja.locator(`a[href="${enlace.href}"]`).first().click();
     await expect(hoja).toBeHidden();
   } else {
