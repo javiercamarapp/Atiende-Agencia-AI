@@ -65,6 +65,9 @@ export interface ProductoEncontrado {
    * `restaurantes.products/categories.no_domicilio`, migracion 023). Ausente/false =
    * sin restriccion (tambien cuando la base todavia no tiene la columna). */
   readonly noDomicilio?: boolean;
+  /** El renglon exige elegir tortilla (maiz, harina o mixta): tacos y los platillos que el menu describe "de maiz o harina".
+   * Ausente = se decide por el nombre ("taco"), como antes de PM-C4. */
+  readonly requiresTortilla?: boolean;
 }
 
 export interface RequestedOrderItemInput {
