@@ -98,6 +98,10 @@ const dialogo = () => document.body.querySelector('[role="dialog"]') as HTMLElem
 const drenar = async () => {
   for (let i = 0; i < 5; i++) await act(async () => flushMicrotasks());
 };
+/** Espera real (macrotareas) hasta que la condicion se cumpla: la lectura de un Blob no se resuelve solo con microtareas. */
+const esperar = async (condicion: () => boolean, intentos = 100) => {
+  for (let i = 0; i < intentos && !condicion(); i++) await act(async () => new Promise<void>((r) => setTimeout(r, 5)));
+};
 
 describe("PagosProvisionalesPage", () => {
   it("muestra el papel: cliente, ISR a cargo, IVA a cargo, lineas, exclusiones con motivo y el aviso de PPD pendientes", async () => {
@@ -209,7 +213,7 @@ describe("PagosProvisionalesPage", () => {
     stubFetch();
     rendered = await montar("auditor");
     click(boton("PDF")!);
-    await drenar();
+    await esperar(() => (URL.createObjectURL as unknown as { mock: { calls: unknown[] } }).mock.calls.length > 0);
     expect(llamadas.some((l) => l.url.includes("/exportar?formato=pdf&regimen=601"))).toBe(true);
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
