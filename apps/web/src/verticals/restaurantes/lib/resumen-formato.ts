@@ -1,6 +1,10 @@
 // Funciones puras del Resumen de restaurantes (saludo en la zona de la sucursal, delta honesto, fecha de la
 // ultima conversacion). Aparte de Dashboard.tsx para probarlas sin DOM.
-import type { StatCardDelta } from "@atiende/ui";
+/** Misma forma que el `delta` de `StatCard` (@atiende/ui no exporta el tipo por nombre). */
+export interface DeltaKpi {
+  readonly pct: number;
+  readonly bueno: boolean;
+}
 
 /** Hora local (0-23) de `fecha` en la zona IANA `zona`; sin zona valida cae a la del navegador. */
 export function horaEnZona(fecha: Date, zona: string | null): number {
@@ -34,7 +38,7 @@ export function saludoEnZona(
 }
 
 /** Variacion contra el periodo anterior: `null` = no hay base (la tarjeta dice "sin periodo comparable"), nunca un 0 % inventado. */
-export function deltaDe(pct: number | null | undefined): StatCardDelta | null {
+export function deltaDe(pct: number | null | undefined): DeltaKpi | null {
   if (pct === null || pct === undefined || !Number.isFinite(pct)) return null;
   return { pct: Math.round(pct * 10) / 10, bueno: pct >= 0 };
 }

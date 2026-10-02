@@ -31,7 +31,6 @@ import {
 import {
   Bot,
   ClipboardList,
-  DollarSign,
   HandHelping,
   MessageCircle,
   Mic,
