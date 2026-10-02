@@ -209,9 +209,9 @@ describe("PagosProvisionalesPage", () => {
     stubFetch();
     rendered = await montar("auditor");
     click(boton("PDF")!);
-    await drenar();
+    // `Response.blob()` resuelve en una tarea posterior a los microtasks: se espera con waitFor, no con drenar().
+    await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled(), { timeout: 3000 });
     expect(llamadas.some((l) => l.url.includes("/exportar?formato=pdf&regimen=601"))).toBe(true);
-    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
   it("auditor/readonly: calculan y exportan pero no guardan, presentan ni registran REP", async () => {
