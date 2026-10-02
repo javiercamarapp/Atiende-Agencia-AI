@@ -47,11 +47,11 @@ describe("renderReportePdf", () => {
     const bytes = await renderReportePdf({ ...base, contenido: contenido() });
     expect(Buffer.from(bytes.slice(0, 5)).toString("latin1")).toBe("%PDF-");
     const texto = textoDelPdf(bytes);
-    expect(texto).toContain("Periodo: últimos 30 días".replace("ú", "ú"));
+    expect(texto).toContain("Periodo: últimos 30 días");
     expect(texto).toContain("Alcance: todas tus sucursales");
     expect(texto).toContain("Cifras reales de tu sistema");
     expect(texto).toContain("Generado el 2 de octubre de 2026");
-    expect(texto).toContain("Taquería Don Beto".replace("í", "í"));
+    expect(texto).toContain("Taquería Don Beto");
     expect(texto).toContain("Se vendieron 1500.5 pesos");
     expect(texto).toContain("Fuente: Ventas por día, fila 1");
     expect(texto).not.toContain("Narrativa no disponible");
@@ -63,8 +63,8 @@ describe("renderReportePdf", () => {
   it("sin narrativa dice honestamente por que y conserva tablas y graficas", async () => {
     const bytes = await renderReportePdf({ ...base, contenido: contenido({ narrativa: null, hallazgos: [], motivoSinNarrativa: "guardia" }) });
     const texto = textoDelPdf(bytes);
-    expect(texto).toContain("Narrativa no disponible: la verificación de cifras".replace("ó", "ó"));
-    expect(texto).toContain("solo las tablas y gráficas con cifras reales".replace("á", "á"));
+    expect(texto).toContain("Narrativa no disponible: la verificación de cifras");
+    expect(texto).toContain("contiene solo las tablas");
     expect(texto).toContain("Cifras reales de tu sistema");
     expect(texto).not.toContain("Hallazgos");
   });
@@ -93,7 +93,7 @@ describe("renderReportePdf", () => {
     expect(bytes.byteLength).toBeGreaterThan(1500);
     const texto = textoDelPdf(bytes);
     expect(texto).toContain("Barras");
-    expect(texto).toContain("Dona única".replace("ú", "ú"));
+    expect(texto).toContain("Dona única");
   });
 
   it("pagina las tablas largas con el encabezado repetido y el pie en cada pagina", async () => {
