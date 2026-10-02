@@ -206,7 +206,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                 />
               </FormField>
               <Button type="submit" loading={savingWhatsapp}>
-Guardar
+                Guardar
               </Button>
               {whatsappSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
@@ -250,7 +250,7 @@ Guardar
                 </NativeSelect>
               </div>
               <Button type="submit" loading={savingZonaHoraria}>
-Guardar
+                Guardar
               </Button>
               {zonaHorariaSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
@@ -279,8 +279,8 @@ Guardar
             <FormField label="Longitud">
               <Input id="config-zona-lng" value={zoneLng} onChange={(e) => setZoneLng(e.target.value)} placeholder="-89.6216" className="w-auto min-w-[110px]" required />
             </FormField>
-            <Button type="submit" disabled={creatingZone}>
-              {creatingZone ? "Agregando…" : "Agregar zona"}
+            <Button type="submit" loading={creatingZone}>
+              Agregar zona
             </Button>
           </form>
 

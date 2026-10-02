@@ -124,7 +124,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
           {guardado && <span className="text-xs text-muted-foreground">Configuración guardada.</span>}
           <div>
             <Button type="submit" size="sm" loading={guardando}>
-Guardar configuración
+              Guardar configuración
             </Button>
           </div>
         </form>
@@ -263,8 +263,8 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
                 {items.length} de {total}
               </span>
               {nextOffset !== null && (
-                <Button type="button" variant="outline" size="sm" onClick={cargarMas} disabled={cargandoMas}>
-                  {cargandoMas ? "Cargando…" : "Cargar más"}
+                <Button type="button" variant="outline" size="sm" onClick={cargarMas} loading={cargandoMas}>
+                  Cargar más
                 </Button>
               )}
             </div>

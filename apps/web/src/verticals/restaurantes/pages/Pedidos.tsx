@@ -489,7 +489,6 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                   type="button"
                   size="sm"
                   variant="ghost"
-                 
                   onClick={() => setVistaPrevia({ ticket: construirTicketCocina(o, { reimpresion: prefs.impresos.includes(o.id) ? (prefs.reimpresiones[o.id] ?? 0) + 1 : 0 }), orderId: o.id })}
                 >
                   Vista previa
@@ -518,8 +517,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                       key={next}
                       type="button"
                       size="sm"
-                      variant={next === "cancelado" ? "danger" : "outline"}
-                     
+
                       onClick={() => void handleChangeStatus(o, next)}
                       loading={changingId === o.id}
                     >
