@@ -20,6 +20,7 @@ import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { hotelesPropertyConfigRoutes } from "./property-config.ts";
+import { hotelesMensajeriaConfigRoutes } from "./mensajeria-config.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 import { hotelesRevenueRoutes } from "./revenue.ts";
 import { hotelesRevenueRecomendacionesRoutes } from "./revenue-recomendaciones.ts";
@@ -71,6 +72,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // /hoteles/:propertyId/configuracion (owner/gm), ver property-config.ts y
   // migrations/030_zona_horaria_property.sql.
   app.route("/", hotelesPropertyConfigRoutes(deps));
+  // H-29 -- canal WhatsApp y agente de voz editables desde el panel (owner/gm; el secreto de voz es write-only), ver mensajeria-config.ts.
+  app.route("/", hotelesMensajeriaConfigRoutes(deps));
   // Fix hallazgo auditoría (rubro 1, "completitud funcional" — alta de cliente de
   // principio a fin: organización + property + STAFF + primera venta): hoteles era
   // la única de las 6 verticales sin forma de invitar staff adicional, ver

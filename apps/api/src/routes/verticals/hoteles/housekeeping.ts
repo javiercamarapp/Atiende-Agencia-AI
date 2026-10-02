@@ -38,6 +38,7 @@ import {
   assertTaskAction,
   inspectorIsAllowed,
   isIsoDate,
+  optOutSkipsTaskType,
   type HousekeepingPriority,
   type HousekeepingRepository,
   type HousekeepingTaskRecord,
@@ -59,6 +60,8 @@ import {
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { registerHousekeepingResidualRoutes, residualRepoFor } from "./housekeeping-residual.ts";
+import { emitirNotificacion } from "@atiende/db";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -406,9 +409,8 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   // Selector de responsables: miembros aceptados con rol `housekeeping` que cubren esta
   // property. Lectura best-effort con SAVEPOINT (la funcion SQL vive en la sesion REAL del
   // request): si falla por migracion pendiente degrada a lista vacia, nunca a 500/25P02.
-  app.get("/hoteles/:propertyId/housekeeping/camaristas", async (c) => {
-    assertVerticalRole(c, HOUSEKEEPING_BOARD_VIEW_ROLES);
-    const propertyId = c.req.param("propertyId");
+  async function listCamaristas(c: Context<CoreAuthHonoEnv>): Promise<readonly { readonly id: string; readonly nombre: string }[]> {
+    const propertyId = c.req.param("propertyId") ?? "";
     const organizationId = c.get("organizationId");
     const members = await runWithSavepointFallback({
       session: c.get("db"),
@@ -416,9 +418,12 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
       isRecoverable: isMigrationPendingError,
       fallback: () => Promise.resolve([]),
     });
-    return c.json({
-      camaristas: members.filter((m) => m.propertyIds === null || m.propertyIds.includes(propertyId)).map((m) => ({ id: m.userId, nombre: m.fullName })),
-    });
+    return members.filter((m) => m.propertyIds === null || m.propertyIds.includes(propertyId)).map((m) => ({ id: m.userId, nombre: m.fullName }));
+  }
+
+  app.get("/hoteles/:propertyId/housekeeping/camaristas", async (c) => {
+    assertVerticalRole(c, HOUSEKEEPING_BOARD_VIEW_ROLES);
+    return c.json({ camaristas: await listCamaristas(c) });
   });
 
   app.get("/hoteles/:propertyId/housekeeping/tareas", async (c) => {
@@ -443,7 +448,12 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, HOUSEKEEPING_TASK_ROLES);
     const raw = await readBody(c);
     const fecha = await resolveDate(c, raw.fecha);
-    const creadas = await guarded(() => hkRepo(c).generateDay(c.req.param("propertyId"), fecha, c.get("userId")));
+    const propertyId = c.req.param("propertyId");
+    // H-26: habitaciones con opt-out de limpieza activo ese dia no reciben tarea de estancia (la de salida si). Contra la
+    // base sin 039 la lectura degrada a vacio (SAVEPOINT) y el comportamiento es el de antes.
+    const optOuts = await guarded(() => residualRepoFor(deps, c).listOptOuts(propertyId, fecha));
+    const skipStay = optOuts.optOuts.filter((o) => o.status === "activo").map((o) => o.roomId);
+    const creadas = await guarded(() => hkRepo(c).generateDay(propertyId, fecha, c.get("userId"), skipStay));
     return c.json({ fecha, creadas }, 201);
   });
 
@@ -457,6 +467,9 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (!HK_PRIORITIES.includes(prioridad as HousekeepingPriority)) throw Errors.validation(`prioridad: se esperaba ${HK_PRIORITIES.join("|")}.`);
     const asignadoA = raw.asignadoA === undefined || raw.asignadoA === null ? null : requireUuid(raw.asignadoA, "asignadoA");
     const fecha = await resolveDate(c, raw.fecha);
+    if (optOutSkipsTaskType(tipo as HousekeepingTaskType) && (await guarded(() => residualRepoFor(deps, c).hasActiveOptOut(c.req.param("propertyId"), roomId, fecha)))) {
+      throw Errors.conflict("La habitacion tiene un opt-out de limpieza activo ese dia: no se crean tareas de estancia ni repaso.");
+    }
     const created = await guarded(() =>
       hkRepo(c).createTask({
         propertyId: c.req.param("propertyId"),
@@ -499,6 +512,30 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     return c.json(serializeTask(updated));
   }
 
+  // Inspeccion (H-26): si la property exige fotos, aprobar requiere al menos una foto de la tarea; rechazar avisa al supervisor.
+  // Contra la base sin 039 la config es la de por defecto (fotos no obligatorias) y ambas lecturas degradan con SAVEPOINT.
+  async function inspect(c: Context<CoreAuthHonoEnv>, repo: HousekeepingRepository, task: HousekeepingTaskRecord, approved: boolean, note: string | null) {
+    const residual = residualRepoFor(deps, c);
+    if (approved) {
+      const { config } = await residual.getConfig(task.propertyId);
+      if (config.photosRequiredOnInspection && (await residual.countPhotos(task.propertyId, task.id)) === 0) {
+        throw Errors.conflict("Esta property exige al menos una foto de la tarea para aprobar la inspeccion.");
+      }
+    }
+    const updated = await repo.inspectTask(task.propertyId, task.id, { inspectorId: c.get("userId"), approved, note });
+    if (updated && !approved) {
+      await emitirNotificacion(c.get("db"), {
+        evento: "hoteles.housekeeping.inspeccion_rechazada",
+        organizationId: c.get("organizationId"),
+        propertyId: task.propertyId,
+        clave: `${task.id}:${updated.rejections}`,
+        entidadTipo: "housekeeping_task",
+        entidadId: task.id,
+      });
+    }
+    return updated;
+  }
+
   app.post("/hoteles/:propertyId/housekeeping/tareas/:taskId/iniciar", (c) =>
     transition(c, "iniciar", (repo, task) => repo.startTask(task.propertyId, task.id, c.get("userId"))),
   );
@@ -512,7 +549,7 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
       if (!body.aprobada && !nota) throw Errors.validation("nota: obligatoria al rechazar una inspeccion (que debe corregirse).");
       // Separacion de funciones (espejo del CHECK de la migracion 033).
       if (!inspectorIsAllowed(c.get("userId"), task.assignedTo)) throw Errors.forbidden("Quien limpio no puede inspeccionar su propio trabajo.");
-      return repo.inspectTask(task.propertyId, task.id, { inspectorId: c.get("userId"), approved: body.aprobada, note: nota });
+      return inspect(c, repo, task, body.aprobada, nota);
     }),
   );
   app.post("/hoteles/:propertyId/housekeeping/tareas/:taskId/asignar", (c) =>
@@ -578,6 +615,9 @@ export function hotelesHousekeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (!closed) throw Errors.notFound("Inhabilitacion activa no encontrada.");
     return c.json(serializeOutOfService(closed));
   });
+
+  // H-26 (migracion 039): config, asignacion automatica, fotos, blancos y opt-out sobre esta misma cadena de middleware.
+  registerHousekeepingResidualRoutes(app, deps, { hkRepo, guarded, requireUuid, resolveDate, optionalText, listCamaristas });
 
   return app;
 }

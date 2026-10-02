@@ -23,7 +23,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -174,6 +174,12 @@ export interface AppDeps {
    *  produccion no se define y las rutas usan `PostgresHousekeepingRepository` (RLS real,
    *  SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesHousekeepingRepo?: (db: TenantDbSession) => HousekeepingRepository;
+  /** H-26 -- housekeeping residual (config, fotos de inspeccion, blancos, opt-out; migracion 039). OPCIONAL: en produccion no se define y las
+   *  rutas usan `PostgresHousekeepingResidualRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
+  readonly hotelesHousekeepingResidualRepo?: (db: TenantDbSession) => HousekeepingResidualRepository;
+  /** H-29 -- configuracion del canal WhatsApp y del agente de voz desde el panel (migracion 039). OPCIONAL: en produccion no se define y las
+   *  rutas usan `PostgresMensajeriaConfigRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben. */
+  readonly hotelesMensajeriaConfigRepo?: (db: TenantDbSession) => MensajeriaConfigRepository;
   /** H-05 -- tickets de huesped con SLA (migracion 034). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresGuestTicketRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo
    *  sobreescriben con el repo en memoria. */
