@@ -40,18 +40,23 @@ async function leerEnlaces(raiz: Locator): Promise<EnlaceNav[]> {
 /** Enlaces de seccion del Sidebar de escritorio: recorre cada grupo del acordeon y une lo que muestra cada uno. */
 export async function enlacesSidebar(page: Page): Promise<EnlaceNav[]> {
   const unicos = new Map<string, EnlaceNav>();
-  const agregar = async (): Promise<void> => {
-    // Gana el PRIMER enlace de cada ruta: el menu va antes que las pildoras del pie, que pueden repetir un destino con otro texto.
-    for (const e of await leerEnlaces(sidebar(page))) if (!unicos.has(e.href)) unicos.set(e.href, e);
+  // Gana el PRIMER enlace de cada ruta y el menu (`<nav>`) va antes que las pildoras del pie, que pueden repetir un destino con
+  // otro texto ("Costos de IA" repite "Gasto de API de LLM"). Antes bastaba con leer todo el Sidebar porque el grupo abierto por
+  // defecto (el primero) ya traia ese destino; si el primer grupo es otro, la pildora ganaba. Por eso el menu se lee aparte y el
+  // pie se une al final (solo agrega destinos que el menu no tiene, p. ej. "Ver los otros paneles").
+  const agregar = async (soloMenu: boolean): Promise<void> => {
+    const raiz = soloMenu ? sidebar(page).locator("nav") : sidebar(page);
+    for (const e of await leerEnlaces(raiz)) if (!unicos.has(e.href)) unicos.set(e.href, e);
   };
-  await agregar();
+  await agregar(true);
   const botones = botonesDeGrupo(page);
   const n = await botones.count();
   for (let i = 0; i < n; i++) {
     const boton = botones.nth(i);
     if ((await boton.getAttribute("aria-expanded")) === "false") await boton.click();
-    await agregar();
+    await agregar(true);
   }
+  await agregar(false);
   return [...unicos.values()];
 }
 

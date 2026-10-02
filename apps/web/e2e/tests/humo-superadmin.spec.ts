@@ -34,7 +34,6 @@ test.describe("superadmin @humo", () => {
   test("panel de agentes: Cancelar y Escape en la palanca no escriben; aplicar con motivo hace un PUT y la fila queda Detenida", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("superadmin");
     await page.goto("/superadmin/agentes");
-    await expect(page.getByText("Agente de WhatsApp de restaurantes")).toBeVisible();
     const detener = page.getByRole("button", { name: "Detener Agente de WhatsApp de restaurantes" });
     await expect(detener).toBeVisible();
 
@@ -52,7 +51,7 @@ test.describe("superadmin @humo", () => {
   test("panel de agentes: una corrida abre su traza con el error redactado", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("superadmin");
     await page.goto("/superadmin/agentes");
-    await page.getByText("/internal/rentas/ical-sync").click();
+    await page.getByText("/internal/rentas/ical-sync").first().click();
     const traza = page.getByRole("dialog", { name: "Traza de la corrida" });
     await expect(traza.getByText("timeout del proveedor de calendario")).toBeVisible();
     vigilante.verificar();
