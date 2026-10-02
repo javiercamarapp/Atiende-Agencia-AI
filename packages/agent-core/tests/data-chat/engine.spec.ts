@@ -203,7 +203,8 @@ describe("runDataChatTurn — inyección de prompt desde los datos", () => {
       { text: "Vendió $999999 MXN" },
     ]);
     const audit = new MemoryAudit();
-    const a = await runDataChatTurn({ catalog: catalogOf(tool), scope: SCOPE_A, question: "ventas esta semana", complete: llm.complete, audit, now: NOW });
+    // maxToolRounds 2: la 2.a ronda aun ofrece herramientas (con los defaults es la de redaccion y el intento ni se procesa).
+    const a = await runDataChatTurn({ catalog: catalogOf(tool), scope: SCOPE_A, question: "ventas esta semana", complete: llm.complete, audit, now: NOW, limits: { maxToolRounds: 2 } });
     expect(audit.entries.some((e) => e.tool === "borrar_todo" && e.outcome === "denied")).toBe(true);
     expect(a.text).not.toMatch(/999999/);
     expect(a.status).toBe("ok");
@@ -235,7 +236,8 @@ describe("runDataChatTurn — límites", () => {
     expect(a.blocks[0]!.rows).toHaveLength(50);
     expect(a.blocks[0]!.truncated).toBe(true);
     const toolMsg = llm.requests[1]!.messages.find((m) => m.role === "tool") as { content: string };
-    expect(JSON.parse(toolMsg.content).filas).toHaveLength(50);
+    // La UI y el PDF reciben las 50; al modelo le llegan 20 (maxModelRows) con el aviso de recorte.
+    expect(JSON.parse(toolMsg.content).filas).toHaveLength(20);
   });
 
   it("timeout de herramienta: se cancela, no cuelga, y el usuario recibe un aviso honesto", async () => {

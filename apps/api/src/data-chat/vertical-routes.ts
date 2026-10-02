@@ -13,6 +13,7 @@ import { runDataChatTurn, type DataChatCatalog } from "@atiende/agent-core/data-
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { AppDeps } from "../deps.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../production/llm-models.ts";
+import { logUsoDataChat } from "./uso-log.ts";
 import { parseDataChatRequest } from "./body.ts";
 import { buildDataChatEstado } from "./estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "./ndjson.ts";
@@ -91,6 +92,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
+        onUso: logUsoDataChat(c, cfg.vertical),
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );

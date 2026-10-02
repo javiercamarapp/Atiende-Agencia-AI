@@ -339,7 +339,8 @@ describe("candidatos y proyeccion de costo", () => {
 
   it("los no elegibles (Qwen 3.7 Flash, Grok 4.3...) no entran a ninguna fase pero el reporte los lista; los elegibles no se marcan", () => {
     const ids = candidatosNoElegibles("piloto").map((c) => c.id);
-    expect(ids).toEqual(expect.arrayContaining(["qwen/qwen3.7-flash", "x-ai/grok-4.3", "z-ai/glm-4.7-flash", "qwen/qwen3.5-flash-02-23", "bytedance-seed/seed-2.0-mini"]));
+    expect(ids).toEqual(expect.arrayContaining(["qwen/qwen3.7-flash", "x-ai/grok-4.3", "z-ai/glm-4.7-flash", "qwen/qwen3.5-flash-02-23", "bytedance-seed/seed-2.0-mini", "meta/muse-spark-1.3-contributor", "meta-llama/llama-4-maverick"]));
+    for (const id of ["meta/muse-spark-1.3-contributor", "meta-llama/llama-4-maverick"]) expect(candidatoPorId(id)!.noElegible, id).toMatch(/sin ruta EE\.UU\.\/ZDR/);
     expect(candidatosDeFase("piloto").map((c) => c.id)).not.toEqual(expect.arrayContaining(["qwen/qwen3.7-flash"]));
     for (const f of ["piloto", "barrido", "bakeoff", "cfo"] as const) for (const c of candidatosDeFase(f)) expect(c.noElegible, c.id).toBeUndefined();
     expect(candidatoPorId("qwen/qwen3-235b-a22b-2507")!.noElegible).toBeUndefined();

@@ -19,6 +19,7 @@ import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
+import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
@@ -78,6 +79,7 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
+        onUso: logUsoDataChat(c, "despachos"),
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "despachos", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );
