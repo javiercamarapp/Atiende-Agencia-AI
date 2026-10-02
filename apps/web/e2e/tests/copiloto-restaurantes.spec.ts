@@ -47,14 +47,14 @@ test.describe("copiloto de restaurantes @copiloto", () => {
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });
-    await expect(panel.getByRole("button", { name: PREGUNTA })).toBeVisible();
+    await expect(panel.getByRole("button", { name: PREGUNTA, exact: true })).toBeVisible();
     // Chat nuevo: vuelve la portada (sin conversacion).
     await panel.getByRole("button", { name: "Nuevo chat" }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toHaveCount(0);
 
     // Reabrir desde el historial trae la conversacion guardada desde el servidor.
     await page.getByRole("button", { name: "Historial de chats" }).click();
-    await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: PREGUNTA }).click();
+    await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: PREGUNTA, exact: true }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toBeVisible();
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: /chat-datos\/conversaciones\/[0-9a-f-]+$/ })).length).toBeGreaterThan(0);
     vigilante.verificar();
