@@ -7,6 +7,7 @@
 //   GET  <baseUrl>/estado                -> { available, permitido, motivo, usoHoyPct }  (403 = rol sin acceso)
 //   GET  <baseUrl>/conversaciones        -> { disponible, conversaciones }
 //   GET/PATCH/DELETE <baseUrl>/conversaciones/:id
+//   POST <baseUrl>/pins { conversationId, seq, bloque }   (fijar; el servidor deriva herramienta y argumentos del mensaje guardado)
 //   POST <baseUrl>/conversaciones/:id/reporte?seq=N -> application/pdf (reporte del mensaje; "Descargar PDF")
 //
 // Reglas: el cliente solo manda la pregunta y el `conversationId` ("new" la primera vez, el uuid despues); el alcance
@@ -234,8 +235,9 @@ export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): Copiloto
       hilo = [];
     },
 
-    async enviar({ pregunta, conversacionId, senal, onEvento }) {
-      const cuerpo: Record<string, unknown> = { question: pregunta };
+    async enviar({ pregunta, conversacionId, directa, senal, onEvento }) {
+      // Consulta directa (chip): el servidor ejecuta la herramienta SIN modelo; `label` es solo el texto del mensaje del usuario.
+      const cuerpo: Record<string, unknown> = directa ? { tool: directa.tool, ...(directa.args ? { args: directa.args } : {}), label: pregunta } : { question: pregunta };
       if (conversacionId) cuerpo["conversationId"] = conversacionId;
       else if (hilo.length === 0) cuerpo["conversationId"] = "new";
       else cuerpo["history"] = hilo.slice(-MAX_HISTORIAL_LOCAL).map((m) => ({ role: m.role, text: m.text.slice(0, MAX_CARACTERES_TURNO) }));
@@ -323,6 +325,14 @@ export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): Copiloto
         });
       }
       return { id: json["id"], titulo: typeof json["titulo"] === "string" ? json["titulo"] : "Conversación", mensajes };
+    },
+
+    async fijar(id, seq, bloque) {
+      const res = await llamar((t) =>
+        cfg.fetchImpl(url("/pins"), { method: "POST", headers: cabecera(t, { "content-type": "application/json" }), body: JSON.stringify({ conversationId: id, seq, bloque }) }),
+      );
+      // 409 = tope de fijados; 503 = el servidor todavia no tiene los fijados; 404 = ese resultado ya no se puede fijar.
+      if (!res.ok) throw errorHttp(res);
     },
 
     async renombrar(id, titulo) {

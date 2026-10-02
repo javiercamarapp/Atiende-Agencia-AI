@@ -346,7 +346,8 @@ function clip(text: string, max: number): string {
 
 /** Pregunta del usuario tal como se guarda: sin PII y sin controles. */
 export function redactQuestionForStorage(question: string, tool?: string): string {
-  const base = tool ? `Consulta directa: ${tool}` : question;
+  // Consulta directa (chip): `question` trae el texto del chip si lo mando; si no, el nombre de la herramienta.
+  const base = tool ? (question.trim() || `Consulta directa: ${tool}`) : question;
   return clip(redactPii(base.replace(/\s+/g, " ").trim()), 600);
 }
 

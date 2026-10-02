@@ -41,6 +41,18 @@ export const COPILOTO_RESTAURANTES: CopilotoConfigVertical = {
       preguntas: ["¿Cuántos clientes recurrentes tuve este mes?", "¿Qué promociones tengo activas y cuántas veces se han usado?"],
     },
   ],
+  directas: {
+    "¿Cuánto vendí esta semana?": { tool: "ventas_por_dia", args: { periodo: "esta_semana" } },
+    "¿Cuáles son mis productos más vendidos este mes?": { tool: "productos_mas_vendidos", args: { periodo: "este_mes" } },
+    "¿A qué horas tengo más pedidos en los últimos 30 días?": { tool: "horas_pico", args: { periodo: "ultimos_30_dias" } },
+    "¿Qué canal me trae más pedidos este mes?": { tool: "pedidos_por_canal", args: { periodo: "este_mes" } },
+    "¿Cuántos clientes recurrentes tuve este mes?": { tool: "clientes_recurrentes", args: { periodo: "este_mes" } },
+    "¿Cuánto vendí por día en los últimos 7 días?": { tool: "ventas_por_dia", args: { periodo: "ultimos_7_dias" } },
+    "¿Cuál es mi ticket medio este mes?": { tool: "ticket_medio", args: { periodo: "este_mes" } },
+    "¿Cuánto vendió cada sucursal este mes?": { tool: "ventas_por_sucursal", args: { periodo: "este_mes" } },
+    "¿Cuántos pedidos tengo por canal este mes?": { tool: "pedidos_por_canal", args: { periodo: "este_mes" } },
+    "¿Qué promociones tengo activas y cuántas veces se han usado?": { tool: "promociones" },
+  },
   etiquetasHerramienta: {
     ventas_por_dia: "Leyendo las ventas por día",
     ventas_por_sucursal: "Comparando las ventas por sucursal",

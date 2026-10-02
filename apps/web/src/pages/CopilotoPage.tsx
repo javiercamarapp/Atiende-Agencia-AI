@@ -121,6 +121,7 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
         textos={textos}
         sugerencias={config.sugerencias}
         categorias={config.categorias}
+        directas={config.directas}
         etiquetasHerramienta={config.etiquetasHerramienta}
         rutasFuente={rutasFuente}
         maxCaracteres={config.maxCaracteres}

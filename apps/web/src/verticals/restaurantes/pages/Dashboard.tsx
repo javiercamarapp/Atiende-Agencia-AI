@@ -10,6 +10,7 @@
 // (~5 min por pedido), no la mide, y un rotulo tiene que ser verdad.
 // El rol repartidor no tiene Resumen: el Shell ya lo manda a /repartidor; aqui se repite como defensa en profundidad.
 import { useCallback, useEffect, useState } from "react";
+import { RestaurantesFijadosCopiloto } from "./Copiloto.tsx";
 import { Navigate } from "react-router-dom";
 import {
   AgentRunCard,
@@ -463,6 +464,7 @@ export function RestaurantesDashboardPage({
             </div>
           </Card>
         </div>
+        <RestaurantesFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
       </ResumenLayout>
     </PageContainer>
   );

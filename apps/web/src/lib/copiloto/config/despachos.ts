@@ -42,6 +42,16 @@ export const COPILOTO_DESPACHOS: CopilotoConfigVertical = {
       preguntas: ["¿Cuántos CFDI se recibieron este mes?", "¿Qué cierres mensuales siguen pendientes?", "¿Qué clientes tienen más pendientes por atender hoy?"],
     },
   ],
+  directas: {
+    "¿Cuánto me deben mis clientes hoy?": { tool: "cartera_por_cliente" },
+    "¿Cuánta cobranza tengo vencida por antigüedad?": { tool: "cobranza_antiguedad" },
+    "¿Cuántos CFDI se recibieron este mes?": { tool: "cfdi_por_periodo", args: { periodo: "este_mes" } },
+    "¿Qué obligaciones fiscales vencen este mes?": { tool: "obligaciones_fiscales", args: { periodo: "este_mes" } },
+    "¿Algún proveedor de mis clientes aparece en la lista 69-B del SAT?": { tool: "alertas_efos" },
+    "¿Cuánto IVA acreditable tuvo cada cliente este mes?": { tool: "impuestos_del_mes", args: { periodo: "este_mes" } },
+    "¿Qué cierres mensuales siguen pendientes?": { tool: "cierres_pendientes" },
+    "¿Qué clientes tienen más pendientes por atender hoy?": { tool: "carga_de_trabajo" },
+  },
   etiquetasHerramienta: {
     cartera_por_cliente: "Sumando la cartera por cliente",
     cobranza_antiguedad: "Calculando la antigüedad de saldos",
