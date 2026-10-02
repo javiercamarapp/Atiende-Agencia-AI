@@ -36,7 +36,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
   for (const p of plan.products) {
     const id = newId("producto", p.name);
     productIds.set(p.name, id);
-    repo.seedProduct({ id, organizationId, categoryId: categoryIds.get(p.categorySlug)!, name: p.name, description: p.description, searchKeywords: [], price: p.price, isPopular: p.isPopular, displayOrder: p.displayOrder });
+    repo.seedProduct({ id, organizationId, categoryId: categoryIds.get(p.categorySlug)!, name: p.name, description: p.description, searchKeywords: [...p.searchKeywords], price: p.price, isPopular: p.isPopular, displayOrder: p.displayOrder });
     if (p.noDomicilio) repo.seedNoDomicilio({ productIds: [id] });
   }
   const propertyBySlug = new Map<string, string>();
