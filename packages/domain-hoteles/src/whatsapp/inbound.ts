@@ -8,6 +8,7 @@
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
 import type { HotelesRepository } from "../repository.ts";
+import type { ConversacionesSistemaPort } from "../conversaciones/tipos.ts";
 import type { ConversationMessage } from "../types.ts";
 import type { HotelesWhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -23,6 +24,8 @@ export interface InboundMessageOutcome {
   /** true si Meta debe reintentar el batch firmado completo. */
   readonly retryable: boolean;
   readonly reply?: string;
+  /** H-20: la conversacion esta en atencion humana: el mensaje se guardo y NO se respondio ni se corrio el agente. */
+  readonly silenciado?: boolean;
 }
 
 /**
@@ -36,6 +39,8 @@ export async function handleInboundWhatsAppMessage(
   repo: HotelesRepository,
   turnHandler: HotelesWhatsAppTurnHandler,
   args: { readonly organizationId: string; readonly propertyId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly phoneNumberId: string },
+  /** H-20: estado de la conversacion (agente|humano|cerrada). Sin este puerto, o con la base sin la migracion 043, el agente responde siempre (comportamiento previo). */
+  conversaciones?: ConversacionesSistemaPort,
 ): Promise<InboundMessageOutcome> {
   const { organizationId, propertyId, messageId, phone, body, phoneNumberId } = args;
   const phoneHash = actorHash(phone);
@@ -70,6 +75,14 @@ export async function handleInboundWhatsAppMessage(
       const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(propertyId, phone, userMessage);
 
+      // H-20: registra el entrante (no leido, reabre una conversacion cerrada) y, si la atiende una persona, el agente CALLA: el
+      // mensaje ya quedo guardado arriba; no se corre el LLM (sin gasto), no se responde y la bandeja lo muestra como no leido.
+      const modo = conversaciones ? await conversaciones.registrarEntrante(propertyId, phone) : null;
+      if (modo === "humano") {
+        await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false, silenciado: true };
+      }
+
       const turn = await turnHandler.handleInboundMessage({ organizationId, propertyId, phone, messages: messagesAfterUser });
 
       const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
@@ -84,6 +97,10 @@ export async function handleInboundWhatsAppMessage(
         body: turn.reply,
         transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
       });
+
+      // H-20: el agente (o el gobierno) pidio una persona: la conversacion pasa a humano y se notifica a recepcion/reservas. El puerto
+      // es best-effort (nunca lanza ni deja la transaccion abortada): la respuesta de arriba ya esta encolada.
+      if (turn.handoff && conversaciones) await conversaciones.derivarAHumano(propertyId, phone, turn.handoff.motivo);
 
       await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);
       return { ok: true, retryable: false, reply: turn.reply };
