@@ -4,7 +4,7 @@
 // la fecha de publicacion de la convocatoria (opcional) que decide el regimen legal del plazo, y
 // muestran el rechazo 422 del servidor (plazo del regimen abrogado sin verificar) en vez de tragarlo.
 import { act } from "react";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PostAdjudicacionPage } from "../src/verticals/licitaciones/pages/PostAdjudicacion.tsx";
 import type { LicitacionesShellContext } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
