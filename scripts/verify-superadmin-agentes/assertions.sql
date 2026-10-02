@@ -382,4 +382,25 @@ set local role anon;
 select core.system_agent_is_live('restaurantes:whatsapp_agent') as should_fail;
 rollback;
 
+\echo '=== 48. org_list_retention_policies: el owner de una organizacion NO ve la clase interna plataforma_agent_run ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000001a2', true);
+select count(*) as deberia_ser_0 from core.org_list_retention_policies('00000000-0000-0000-0000-0000000001b2') where out_data_class = 'plataforma_agent_run';
+rollback;
+
+\echo '=== 49. org_list_retention_policies: el owner sigue viendo las clases de su catalogo (control: la funcion no quedo vacia) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000001a2', true);
+select (count(*) > 0)::int as deberia_ser_1 from core.org_list_retention_policies('00000000-0000-0000-0000-0000000001b2') where out_data_class = 'restaurantes_whatsapp_conversaciones';
+rollback;
+
+\echo '=== 50. org_set_retention_policy: un owner no puede fijar una politica sobre la clase interna (no es de la plataforma por organizacion) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000001a2', true);
+select core.org_set_retention_policy('00000000-0000-0000-0000-0000000001b2', 'plataforma_agent_run', 60) as should_fail;
+rollback;
+
 \echo 'Fin: los escenarios con alias should_fail deben terminar en ERROR; el resto devuelve el valor deberia_ser_N.'

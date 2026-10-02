@@ -45,6 +45,8 @@
 --     datos). REVOKE de public y anon + GRANT EXECUTE solo a authenticated. Razon: `authenticated` no tiene GRANT
 --     sobre las tablas; la funcion es la unica puerta y la lectura de core.llm_usage_daily solo la agrega (sumas),
 --     sin datos personales. La bitacora esta acotada a 200 filas y a un rango de 400 dias (22023 si se excede).
+--   * core.org_list_retention_policies (redefinida, ver su comentario): oculta a los tenants las clases de vertical
+--     'plataforma'; el guard y los permisos son los de la 0036.
 --   * Retencion: core.retention_class('plataforma_agent_run', 90 dias, minimo 30, maximo 365, executor 'vertical'):
 --     la purga NO la hace core.system_run_retention_purge (que trabaja por organizacion y politica) sino
 --     core.system_purge_agent_runs, que el cron de mantenimiento de plataforma invoca con el valor de esta clase.
@@ -124,6 +126,35 @@ revoke all on core.agent_run from public, anon, authenticated;
 -- Retencion registrada: 90 dias por defecto (30 a 365). La purga la corre core.system_purge_agent_runs.
 insert into core.retention_class (data_class, vertical, description, default_days, min_days, max_days, executor) values
   ('plataforma_agent_run', 'plataforma', 'Bitacora de corridas de agentes y crons (estado, duracion, tareas, costo y error redactado). La purga la corre core.system_purge_agent_runs desde el cron de mantenimiento de plataforma.', 90, 30, 365, 'vertical');
+
+-- El catalogo de retencion que ve el owner/admin de una organizacion (core.org_list_retention_policies, 0036) lista TODAS
+-- las clases de core.retention_class. La bitacora de corridas es un dato INTERNO de la plataforma, no del tenant: no debe
+-- aparecer en su pantalla de privacidad. Se redefine la funcion con UN solo cambio respecto de la 0036: la clausula
+-- `where c.vertical <> 'plataforma'`. Mismos guard (`_privacy_is_org_admin`), `search_path`, REVOKE y GRANT que la 0036.
+-- Hallazgo del gate de CI (scripts/verify-plataforma-privacidad: "owner A ve las 5 clases del catalogo").
+create or replace function core.org_list_retention_policies(p_org uuid)
+returns table (
+  out_data_class text, out_vertical text, out_description text, out_executor text,
+  out_default_days integer, out_min_days integer, out_max_days integer,
+  out_effective_days integer, out_source text, out_updated_at timestamptz
+)
+language plpgsql stable security definer set search_path = core, pg_temp as $$
+begin
+  if not core._privacy_is_org_admin(p_org) then
+    return;
+  end if;
+  return query
+    select c.data_class, c.vertical, c.description, c.executor, c.default_days, c.min_days, c.max_days,
+           e.out_days, e.out_source, p.updated_at
+      from core.retention_class c
+      cross join lateral core._retention_effective(p_org, c.data_class) e
+      left join core.retention_policy p on p.organization_id = p_org and p.data_class = c.data_class
+     where c.vertical <> 'plataforma'
+     order by c.vertical, c.data_class;
+end;
+$$;
+revoke all on function core.org_list_retention_policies(uuid) from public, anon;
+grant execute on function core.org_list_retention_policies(uuid) to authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- C) core.record_agent_run -- SOLO SISTEMA

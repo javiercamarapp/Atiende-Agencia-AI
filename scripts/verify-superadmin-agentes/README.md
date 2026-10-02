@@ -6,7 +6,7 @@ Verificacion contra Postgres real de `packages/db/migrations/0044_superadmin_cor
 Los repositorios en memoria nunca aplican GRANT ni RLS: este directorio es la prueba de que las garantias de la
 migracion se cumplen contra privilegios reales.
 
-## Que cubre (47 escenarios, auto-descubiertos por `scripts/verify-real-postgres-ci/run-gate.mjs`)
+## Que cubre (50 escenarios, auto-descubiertos por `scripts/verify-real-postgres-ci/run-gate.mjs`)
 
 - **Escritura solo-sistema** (`core.record_agent_run`): la sesion de sistema escribe; un staff, un superadmin real y
   `anon` son rechazados; estado, disparo y tareas incoherentes los rechazan los CHECK; el correo y el telefono del
@@ -20,6 +20,8 @@ migracion se cumplen contra privilegios reales.
   (rol y rol escalado); las corridas de 40 y 100 dias quedan fuera de la ventana; un agente sin datos sale en ceros.
 - **Retencion y purga**: la clase `plataforma_agent_run` (90 dias) esta registrada; `core.system_purge_agent_runs`
   borra solo lo anterior a la retencion y solo la ejecuta la sesion de sistema.
+- **Catalogo de retencion del tenant**: `core.org_list_retention_policies` (redefinida) oculta la clase interna
+  `plataforma_agent_run` al owner de una organizacion y este no puede fijarle una politica.
 - **`core.system_agent_is_live`**: solo-sistema; decide si el fallo de un agente avisa a los superadmins.
 
 ## Correr a mano
