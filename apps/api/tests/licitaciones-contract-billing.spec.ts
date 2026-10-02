@@ -46,6 +46,51 @@ describe("Fase 6 pieza 1, ítem 2 (REQ-051) -- cobranza: facturas y cuentas por 
     expect(body.status).toBe("pendiente");
   });
 
+  it("L-23: la fecha de la convocatoria decide el regimen -- ley nueva 17 dias habiles, abrogada 20 dias naturales", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await createContract(app, ctx.propertyId, ctx.tenderId, ctx.staff.owner.token);
+    const url = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/invoices`;
+
+    const nueva = await app.request(url, authedJson(ctx.staff.writer.token, { concepto: "n", amount: "1.00", invoiceVerifiedOn: "2026-01-05", convocatoriaPublicadaEn: "2025-06-01" }));
+    expect(nueva.status).toBe(201);
+    const nuevaBody = (await nueva.json()) as { dueDate: string; legalReference: string; regimenLegal: { regimen: string; fuente: string } };
+    expect(nuevaBody.dueDate).toBe("2026-01-28");
+    expect(nuevaBody.regimenLegal).toMatchObject({ regimen: "laassp_2025", fuente: "fecha_convocatoria" });
+
+    const vieja = await app.request(url, authedJson(ctx.staff.writer.token, { concepto: "v", amount: "1.00", invoiceVerifiedOn: "2026-01-05", convocatoriaPublicadaEn: "2025-04-16" }));
+    expect(vieja.status).toBe(201);
+    const viejaBody = (await vieja.json()) as { dueDate: string; legalReference: string; regimenLegal: { regimen: string } };
+    expect(viejaBody.dueDate).toBe("2026-01-25");
+    expect(viejaBody.regimenLegal.regimen).toBe("laassp_2000_abrogada");
+    expect(viejaBody.legalReference).toMatch(/abrogada/);
+    expect(viejaBody.legalReference).toMatch(/validar con abogado/i);
+
+    // Persistido: el listado devuelve el vencimiento y la referencia del regimen aplicado.
+    const list = await app.request(url, authedJson(ctx.staff.viewer.token));
+    const invoices = ((await list.json()) as { invoices: { concepto: string; dueDate: string }[] }).invoices;
+    expect(invoices.find((i) => i.concepto === "v")?.dueDate).toBe("2026-01-25");
+  });
+
+  it("L-23: sin fecha de convocatoria se conserva el vencimiento previo y se declara la suposicion; fecha invalida -> 400", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await createContract(app, ctx.propertyId, ctx.tenderId, ctx.staff.owner.token);
+    const url = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/invoices`;
+
+    const sinFecha = await app.request(url, authedJson(ctx.staff.writer.token, { concepto: "s", amount: "1.00", invoiceVerifiedOn: "2026-01-05" }));
+    expect(sinFecha.status).toBe(201);
+    const body = (await sinFecha.json()) as { dueDate: string; legalReference: string; regimenLegal: { fuente: string } };
+    expect(body.dueDate).toBe("2026-01-28");
+    expect(body.regimenLegal.fuente).toBe("no_declarada");
+    expect(body.legalReference).toMatch(/Fecha de convocatoria no declarada/);
+
+    for (const mala of ["2025-02-30", "abril", 20250417]) {
+      const res = await app.request(url, authedJson(ctx.staff.writer.token, { concepto: "x", amount: "1.00", invoiceVerifiedOn: "2026-01-05", convocatoriaPublicadaEn: mala }));
+      expect(res.status, String(mala)).toBe(400);
+    }
+  });
+
   it("un dueDate inyectado por el cliente se ignora -- no existe ningún campo que lo acepte", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);

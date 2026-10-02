@@ -107,6 +107,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
   // precargaba MAÑANA en vez de HOY entre las 18:00 y las 23:59 hora de CDMX
   // (00:00-05:59 UTC), ver apps/web/src/lib/formato-fecha.ts.
   const [invoiceVerifiedOnText, setInvoiceVerifiedOnText] = useState(() => hoyFechaSolo());
+  const [invoiceConvocatoriaText, setInvoiceConvocatoriaText] = useState("");
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [createInvoiceError, setCreateInvoiceError] = useState<string | null>(null);
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
@@ -121,6 +122,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
   const [agraviosText, setAgraviosText] = useState("");
   const [pruebasText, setPruebasText] = useState("");
   const [falloNotifiedOnText, setFalloNotifiedOnText] = useState("");
+  const [draftConvocatoriaText, setDraftConvocatoriaText] = useState("");
   const [bajoTratados, setBajoTratados] = useState(false);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [generateDraftError, setGenerateDraftError] = useState<string | null>(null);
@@ -205,7 +207,12 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
 
     setCreatingInvoice(true);
     try {
-      await createContractInvoice(fetch, apiBaseUrl, token, propertyId, tenderId, { concepto, amount, invoiceVerifiedOn: invoiceVerifiedOnText.trim() });
+      await createContractInvoice(fetch, apiBaseUrl, token, propertyId, tenderId, {
+        concepto,
+        amount,
+        invoiceVerifiedOn: invoiceVerifiedOnText.trim(),
+        ...(invoiceConvocatoriaText.trim() ? { convocatoriaPublicadaEn: invoiceConvocatoriaText.trim() } : {}),
+      });
       setConceptoText("");
       setAmountText("");
       await loadBilling(tenderId);
@@ -259,6 +266,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
         pruebas,
         falloNotifiedOn: falloNotifiedOnText.trim(),
         bajoTratados,
+        ...(draftConvocatoriaText.trim() ? { convocatoriaPublicadaEn: draftConvocatoriaText.trim() } : {}),
       });
       setDrafts((prev) => [draft, ...(prev ?? [])]);
       setHechosText("");
@@ -391,9 +399,16 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                     <Label htmlFor="factura-verificacion">Fecha de verificación</Label>
                     <Input id="factura-verificacion" type="date" value={invoiceVerifiedOnText} onChange={(e) => setInvoiceVerifiedOnText(e.target.value)} />
                   </div>
+                  <div className="flex flex-[1_1_180px] flex-col gap-1.5">
+                    <Label htmlFor="factura-convocatoria">Convocatoria publicada el (opcional)</Label>
+                    <Input id="factura-convocatoria" type="date" value={invoiceConvocatoriaText} onChange={(e) => setInvoiceConvocatoriaText(e.target.value)} />
+                  </div>
                   <Button type="submit" size="sm" disabled={creatingInvoice}>
                     {creatingInvoice ? "Registrando…" : "Registrar factura"}
                   </Button>
+                  <p className="basis-full text-xs text-muted-foreground">
+                    La fecha de la convocatoria decide el régimen: desde el 17-abr-2025, LAASSP nueva (17 días hábiles); antes, LAASSP de 2000 abrogada (20 días naturales, validar con abogado). Sin fecha se aplica el régimen vigente.
+                  </p>
                   {createInvoiceError && (
                     <p role="alert" className="basis-full text-xs text-destructive">
                       {createInvoiceError}
@@ -522,8 +537,15 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                       <Label htmlFor="inc-fallo">Fecha de notificación del fallo</Label>
                       <Input id="inc-fallo" type="date" value={falloNotifiedOnText} onChange={(e) => setFalloNotifiedOnText(e.target.value)} />
                     </div>
+                    <div className="flex flex-[1_1_180px] flex-col gap-1.5">
+                      <Label htmlFor="inc-convocatoria">Convocatoria publicada el (opcional)</Label>
+                      <Input id="inc-convocatoria" type="date" value={draftConvocatoriaText} onChange={(e) => setDraftConvocatoriaText(e.target.value)} />
+                    </div>
                     <Checkbox label="Licitación pública internacional bajo cobertura de tratados (10 días hábiles en vez de 6)" checked={bajoTratados} onChange={(e) => setBajoTratados(e.target.checked)} />
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Si la convocatoria se publicó antes del 17-abr-2025 (LAASSP abrogada) el plazo de inconformidad no está verificado y el borrador no se genera: valídalo con un abogado. Sin fecha se aplica el régimen vigente.
+                  </p>
                   {generateDraftError && (
                     <p role="alert" className="text-xs text-destructive">
                       {generateDraftError}

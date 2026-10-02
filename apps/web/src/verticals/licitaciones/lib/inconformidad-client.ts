@@ -58,6 +58,8 @@ export interface CreateInconformidadDraftInput {
   /** "YYYY-MM-DD" -- fecha en que se notificó el fallo; el plazo se cuenta desde AQUÍ, nunca desde "hoy". */
   readonly falloNotifiedOn: string;
   readonly bajoTratados: boolean;
+  /** "YYYY-MM-DD" opcional (L-23): fecha de publicación de la convocatoria. Anterior al 2025-04-17 (LAASSP abrogada) el servidor NO genera el borrador (422): el plazo no está verificado. */
+  readonly convocatoriaPublicadaEn?: string;
 }
 
 /** `GET .../inconformidad` -- lectura, ningún rol restringido. Historial COMPLETO (todas las versiones), más recientes primero tal cual las devuelve el servidor. */

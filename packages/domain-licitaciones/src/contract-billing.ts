@@ -6,11 +6,8 @@
 // 16-abr-2025) fija en su Art. 73 el plazo de pago en 17 días HÁBILES desde
 // la verificación de la factura (no 20 días naturales, que era el régimen
 // de la ley abrogada). REQ-050 (versionar el régimen legal por fecha de
-// CONVOCATORIA — LAASSP nueva vs. LAASSP 2000 abrogada) queda
-// explícitamente FUERA de esta pieza: se aplica siempre el régimen VIGENTE
-// hoy (17 días hábiles), documentado como una simplificación deliberada
-// (ver README del vertical) — construir el versionado completo por fecha de
-// convocatoria es trabajo aparte de REQ-050 que esta fase no cubre.
+// CONVOCATORIA) vive en `regimen-legal.ts` (L-23): este módulo calcula SOLO el
+// régimen vigente y `computePaymentDueDateByRegime` decide cuál aplicar.
 //
 // Dinero SIEMPRE en `DecimalString`/centavos vía `money.ts` (REQ-051:
 // "dinero en Decimal... nunca por LLM") — nunca `number` de punto flotante.
@@ -23,7 +20,7 @@ import { fromCents, sumCents, toCents, type DecimalString } from "./money.ts";
 
 export const LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS = 17;
 export const LAASSP_ART_73_LEGAL_REFERENCE =
-  'LAASSP nueva, Art. 73 (DOF 16-abr-2025, vigor 17-abr-2025): pago dentro de los 17 días hábiles siguientes a la verificación de la factura. REQ-050 (versionar por fecha de convocatoria contra el régimen abrogado, 20 días naturales) no está construido en esta fase -- se aplica siempre el régimen vigente hoy.';
+  'LAASSP nueva, Art. 73 (DOF 16-abr-2025, vigor 17-abr-2025): pago dentro de los 17 días hábiles siguientes a la verificación de la factura.';
 
 export interface PaymentDeadlineResult {
   readonly dueDate: string;
