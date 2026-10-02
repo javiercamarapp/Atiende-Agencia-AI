@@ -109,3 +109,18 @@ describe("format (MXN)", () => {
     expect(roundMoney(0.1 + 0.2)).toBe(0.3);
   });
 });
+
+describe("redactPii: correos con cuantificadores acotados (defensa en profundidad contra ReDoS)", () => {
+  it("redacta correos normales y con subdominios", () => {
+    expect(redactPii("escribe a ana.lopez+x@correo.com.mx ya")).toBe("escribe a [correo] ya");
+  });
+
+  it("una cadena enorme de '%' o '.' sin arroba se procesa en tiempo acotado y no se altera", () => {
+    for (const ch of ["%", ".", "a"]) {
+      const largo = ch.repeat(60_000);
+      const t0 = Date.now();
+      expect(redactPii(largo)).toBe(largo);
+      expect(Date.now() - t0).toBeLessThan(1500);
+    }
+  });
+});

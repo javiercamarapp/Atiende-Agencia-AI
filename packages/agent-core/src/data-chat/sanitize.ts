@@ -7,7 +7,9 @@
 // los resultados) — ver docs/DATA-CHAT.md.
 
 const PHONE_RE = /(?<![\d.])(?:\+?\d[\s().-]?){9,15}(?!\d)/g;
-const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+// Cuantificadores acotados (RFC 5321: local <= 64, dominio <= 255): sin acotar, una cadena larga de '%' o '.' sin '@' costaba
+// tiempo polinomial (CodeQL js/polynomial-redos) en datos no confiables que ahora tambien entran por el reporte PDF.
+const EMAIL_RE = /[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,255}\.[A-Z]{2,24}/gi;
 const CARD_RE = /\b(?:\d[ -]?){13,19}\b/g;
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 
