@@ -217,7 +217,7 @@ export class InMemoryMensajeriaConfigRepository implements MensajeriaConfigRepos
     const c = this.channels.get(propertyId);
     return c ? { configurado: true, phoneNumberId: c.phoneNumberId, enabled: c.enabled, updatedAt: c.updatedAt } : { configurado: false, phoneNumberId: null, enabled: false, updatedAt: null };
   }
-  async saveWhatsAppChannel(propertyId: string, input: { readonly phoneNumberId: string; readonly enabled: boolean }): Promise<WhatsAppChannelStatus> {
+  async saveWhatsAppChannel(propertyId: string, input: { readonly phoneNumberId: string; readonly enabled: boolean }, _actorId?: string): Promise<WhatsAppChannelStatus> {
     this.requireMigrated("saveWhatsAppChannel");
     for (const [pid, c] of this.channels) {
       if (pid !== propertyId && c.phoneNumberId === input.phoneNumberId) throw new MensajeriaConflictError("Ese numero de WhatsApp ya esta conectado a otra propiedad.");
