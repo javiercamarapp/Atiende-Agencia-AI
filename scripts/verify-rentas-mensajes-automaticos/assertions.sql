@@ -54,6 +54,10 @@ on conflict do nothing;
 insert into rentas.mensaje_automatico_config (id, organization_id, property_id, evento, plantilla_id, offset_horas, activo) values
   ('00000000-0000-0000-0000-0000000e2a60', '00000000-0000-0000-0000-0000000e2a00', '00000000-0000-0000-0000-0000000e2a10', 'pre_llegada', '00000000-0000-0000-0000-0000000e2a40', -48, true)
 on conflict do nothing;
+-- Estancia larga de 90 noches (check-out 2030-10-10): el ancla de check_out esta a mas de 40 dias del check-in.
+insert into rentas.ocupacion (id, organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante, canal_origen_id) values
+  ('00000000-0000-0000-0000-0000000e2a52', '00000000-0000-0000-0000-0000000e2a00', '00000000-0000-0000-0000-0000000e2a10', '00000000-0000-0000-0000-0000000e2a20', daterange('2030-07-12', '2030-10-10', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, (select id from rentas.canal where codigo = 'booking'))
+on conflict do nothing;
 
 \echo '=== VENTANA Y ZONA HORARIA (sesion de sistema) ==='
 \echo '1. en el instante exacto del disparo (2030-06-08 00:30 CDMX) la reserva Airbnb es candidata'
@@ -343,6 +347,16 @@ begin;
 reset role;
 update rentas.plantilla_mensaje set activa = true where id = '00000000-0000-0000-0000-0000000e2a40';
 select aprobada_por_tenant::int as aprobada_deberia_ser_1 from rentas.plantilla_mensaje where id = '00000000-0000-0000-0000-0000000e2a40';
+rollback;
+
+\echo '39. estancia larga: el mensaje de check_out sale por la fecha de SALIDA (08:00 CDMX del 10-oct), aunque el check-in quede a 90 dias'
+begin;
+reset role;
+insert into rentas.mensaje_automatico_config (organization_id, property_id, evento, plantilla_id, offset_horas, activo)
+values ('00000000-0000-0000-0000-0000000e2a00', '00000000-0000-0000-0000-0000000e2a10', 'check_out', '00000000-0000-0000-0000-0000000e2a42', 8, true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as visibles_deberia_ser_1 from rentas.sistema_listar_mensajes_automaticos('2030-10-10T14:30:00Z', 100);
 rollback;
 
 \echo ''

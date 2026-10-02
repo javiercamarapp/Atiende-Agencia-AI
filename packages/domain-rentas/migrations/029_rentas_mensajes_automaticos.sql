@@ -233,7 +233,8 @@ begin
     cross join lateral (select coalesce(zv.name, 'America/Mexico_City') as tz) z
     where c.activo
       and (pl.canal_codigo is null or pl.canal_codigo = ca.codigo)
-      and lower(o.rango) between (p_ahora::date - 40) and (p_ahora::date + 40)
+      -- Prefiltro barato por la fecha ANCLA del evento (offset maximo 30 dias + gracia + margen de zona): evita evaluar la zona de reservas lejanas.
+      and (case when c.evento in ('pre_llegada', 'check_in') then lower(o.rango) else upper(o.rango) end) between (p_ahora::date - 32) and (p_ahora::date + 32)
       and not exists (select 1 from rentas.mensaje_automatico_envio e where e.ocupacion_id = o.id and e.evento = c.evento)
   ) t(ocupacion_id, organization_id, property_id, unidad_id, evento, offset_horas, plantilla_id, plantilla_cuerpo, plantilla_aprobada, plantilla_activa, canal_codigo, check_in, check_out, huesped_nombre, propiedad_nombre, unidad_nombre, zona_horaria, disparo_en)
   where t.disparo_en <= p_ahora and t.disparo_en > p_ahora - interval '24 hours'
