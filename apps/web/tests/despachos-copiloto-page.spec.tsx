@@ -7,6 +7,8 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { DespachosCopilotoPage } from "../src/verticals/despachos/pages/Copiloto.tsx";
+import { VER_DASHBOARD_ROLES } from "@atiende/domain-despachos";
+import { COPILOTO_DESPACHOS_ROLES } from "../src/verticals/despachos/pages/Copiloto.tsx";
 import { COPILOTO_DESPACHOS } from "../src/lib/copiloto/config/despachos.ts";
 import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
@@ -153,12 +155,10 @@ describe("DespachosCopilotoPage", () => {
     expect(root.textContent).toMatch(/no pude|no está disponible|intenta|inténtalo/i);
   });
 
-  it("el historial lateral lista, renombra y borra contra el backend", async () => {
+  it("el historial lateral lista las conversaciones guardadas contra el backend (renombrar y borrar: copiloto-transporte.spec.ts)", async () => {
     const conv = { id: "22222222-2222-4222-8222-222222222222", titulo: "Cartera de hoy", actualizadaEn: new Date().toISOString(), mensajes: 2 };
     instalarFetch(estadoOk, (url, init) => {
       if (url.endsWith("/conversaciones") && !init.method) return json(200, { disponible: true, conversaciones: [conv] });
-      if (url.endsWith(`/conversaciones/${conv.id}`) && init.method === "PATCH") return json(200, { id: conv.id, titulo: "Renombrada" });
-      if (url.endsWith(`/conversaciones/${conv.id}`) && init.method === "DELETE") return new Response(null, { status: 204 });
       return undefined;
     });
     const root = await montar();
@@ -271,5 +271,9 @@ describe("DespachosCopilotoPage", () => {
     click(porTexto(root, "¿Cuánto me deben mis clientes hoy?")!);
     await esperar();
     expect(llamadas.find((l) => l.method === "POST")?.url).toBe(`${API}/despachos/prop-2/chat-datos`);
+  });
+
+  it("los roles de la UI coinciden exactamente con VER_DASHBOARD_ROLES del servidor", () => {
+    expect([...COPILOTO_DESPACHOS_ROLES].sort()).toEqual([...VER_DASHBOARD_ROLES].sort());
   });
 });
