@@ -19,6 +19,7 @@ import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-c
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
+import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 
 export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -73,6 +74,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
+        onUso: logUsoDataChat(c, "restaurantes"),
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );
