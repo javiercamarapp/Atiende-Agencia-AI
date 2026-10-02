@@ -122,7 +122,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
     }
     try {
       const r = await repoDe(c).crearSesion(c.req.param("propertyId"), raw.periodo, cuenta, c.get("userId"));
-      await auditar(c, "despachos.conciliacion.sesion_crear", { sesionId: r.sesion.id, periodo: r.sesion.periodo, movimientos: r.movimientos });
+      await auditar(c, "despachos.conciliacion:sesion-crear", { sesionId: r.sesion.id, periodo: r.sesion.periodo, movimientos: r.movimientos });
       return c.json({ sesion: r.sesion, movimientos: r.movimientos }, 201);
     } catch (err) {
       return traducirErrorConciliacionHttp(err);
@@ -190,7 +190,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       const { propuestas } = calcularPropuestas(d.movimientosLibres, d.registrosLibres);
       const pares = resolverPares(solicitados, propuestas);
       const matches = await repo.confirmarMatches(propertyId, sesion.id, pares, c.get("userId"));
-      await auditar(c, "despachos.conciliacion.confirmar", {
+      await auditar(c, "despachos.conciliacion:confirmar", {
         sesionId: sesion.id,
         pares: matches.length,
         motor: matches.filter((m) => m.origen === "motor").length,
@@ -209,7 +209,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
     try {
       const sesion = await sesionOFallar(repo, c.req.param("propertyId"), c.req.param("id"));
       const r = await repo.cerrarSesion(sesion.propertyId, sesion.id, c.get("userId"));
-      if (!r.yaCerrada) await auditar(c, "despachos.conciliacion.sesion_cerrar", { sesionId: sesion.id });
+      if (!r.yaCerrada) await auditar(c, "despachos.conciliacion:sesion-cerrar", { sesionId: sesion.id });
       return c.json({ yaCerrada: r.yaCerrada });
     } catch (err) {
       return traducirErrorConciliacionHttp(err);
@@ -229,7 +229,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       if (!match) throw Errors.notFound("Conciliación no encontrada.");
       const r = await repo.deshacerMatch(propertyId, matchId, motivo, c.get("userId"));
       // Idempotente: la segunda llamada responde 200 con `yaDeshecho` y NO vuelve a dejar bitácora.
-      if (!r.yaDeshecho) await auditar(c, "despachos.conciliacion.deshacer", { matchId, sesionId: match.sesionId, origen: match.origen, motivoLongitud: motivo.length });
+      if (!r.yaDeshecho) await auditar(c, "despachos.conciliacion:deshacer", { matchId, sesionId: match.sesionId, origen: match.origen, motivoLongitud: motivo.length });
       return c.json({ yaDeshecho: r.yaDeshecho });
     } catch (err) {
       return traducirErrorConciliacionHttp(err);
@@ -289,7 +289,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
         });
         notificacion = n.estado;
       }
-      await auditar(c, "despachos.conciliacion.sugerencias_llm", { sesionId: sesion.id, evaluados: calculo.movimientosSinConciliar.length, sugerencias: guardadas.length, sinSugerencia: resultado.sinSugerencia.length });
+      await auditar(c, "despachos.conciliacion:sugerencias-llm", { sesionId: sesion.id, evaluados: calculo.movimientosSinConciliar.length, sugerencias: guardadas.length, sinSugerencia: resultado.sinSugerencia.length });
       return c.json(
         {
           sugerencias: guardadas,
@@ -312,7 +312,7 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       const sug = await repo.obtenerSugerencia(propertyId, id);
       if (!sug) throw Errors.notFound("Sugerencia no encontrada.");
       const r = await repo.resolverSugerencia(propertyId, id, aprobar, c.get("userId"));
-      await auditar(c, aprobar ? "despachos.conciliacion.sugerencia_aprobar" : "despachos.conciliacion.sugerencia_rechazar", { sugerenciaId: id, sesionId: sug.sesionId, matchId: r.matchId });
+      await auditar(c, aprobar ? "despachos.conciliacion:sugerencia-aprobar" : "despachos.conciliacion:sugerencia-rechazar", { sugerenciaId: id, sesionId: sug.sesionId, matchId: r.matchId });
       return c.json({ estado: r.estado, matchId: r.matchId });
     } catch (err) {
       return traducirErrorConciliacionHttp(err);
