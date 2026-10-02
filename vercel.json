@@ -93,6 +93,7 @@
     { "path": "/internal/hoteles/tickets-sla", "schedule": "*/10 * * * *" },
     { "path": "/internal/hoteles/aprobaciones-expiracion", "schedule": "20 * * * *" },
     { "path": "/internal/rentas/acceso-huesped", "schedule": "10 * * * *" },
+    { "path": "/internal/rentas/mensajes-automaticos", "schedule": "40 * * * *" },
     { "path": "/internal/hoteles/grupos-liberacion", "schedule": "30 9 * * *" },
     { "path": "/internal/restaurantes/privacidad-retencion", "schedule": "30 8 * * *" }
   ]

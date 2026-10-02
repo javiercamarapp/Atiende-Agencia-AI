@@ -49,6 +49,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/rentas/checkout-sweep",
   "/internal/rentas/email-dispatch",
   "/internal/rentas/ical-sync",
+  "/internal/rentas/mensajes-automaticos",
   "/internal/restaurantes/email-dispatch",
   "/internal/restaurantes/privacidad-retencion",
   "/internal/restaurantes/promover-programados",
