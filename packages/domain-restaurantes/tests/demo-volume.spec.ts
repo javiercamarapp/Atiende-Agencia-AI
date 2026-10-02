@@ -55,14 +55,14 @@ const subtotal = (o: DemoOrderRow) => Math.round(o.items.reduce((s, i) => s + i.
 const descuento = (o: DemoOrderRow) => Number(/Promoción aplicada: [A-Z0-9_-]+ \(-\$([0-9.]+)\)/.exec(o.notes)?.[1] ?? 0);
 
 describe("generarVolumenDemo (motor real de pedidos)", () => {
-  it("genera volumen moderado en las 5 sucursales activas y NUNCA toca T4 (inactiva)", async () => {
+  it("genera volumen moderado solo en las sucursales activas (T1 y T3) y NUNCA toca las inactivas (T2, T4, T5, T7 y T8)", async () => {
     const { orders, summary } = await generar();
     expect(orders.length).toBeGreaterThan(300);
     expect(summary.orders).toBe(orders.length);
-    expect(Object.keys(summary.porSucursal).sort()).toEqual(["altabrisa", "fco-montejo", "garcia-lavin", "pensiones", "prol-montejo"]);
-    expect(orders.some((o) => o.branchSlug === "t4-pendiente")).toBe(false);
+    expect(Object.keys(summary.porSucursal).sort()).toEqual(["pensiones", "prol-montejo"]);
+    for (const inactiva of ["fco-montejo", "galerias", "playa", "garcia-lavin", "altabrisa"]) expect(orders.some((o) => o.branchSlug === inactiva)).toBe(false);
     // Proporcion ilustrativa: la sucursal grande vende mas que la mas chica.
-    expect(summary.porSucursal["garcia-lavin"]!).toBeGreaterThan(summary.porSucursal["pensiones"]!);
+    expect(summary.porSucursal["prol-montejo"]!).toBeGreaterThan(summary.porSucursal["pensiones"]!);
   });
 
   it("los totales son COHERENTES: suma de renglones (precio del menu x cantidad) menos el descuento que el motor aplico", async () => {
@@ -99,9 +99,10 @@ describe("generarVolumenDemo (motor real de pedidos)", () => {
     }
     expect(domicilio).toBeGreaterThan(100);
     expect(recogerConAlcohol).toBeGreaterThanOrEqual(0);
-    // Los precios son los del menu sembrado (ningun precio inventado).
-    const precioPorNombre = new Map(plan.products.map((p) => [p.name, p.price]));
-    for (const o of orders) for (const i of o.items) if (precioPorNombre.has(i.name)) expect(i.price).toBe(precioPorNombre.get(i.name));
+    // Los precios son los de la SUCURSAL del pedido en el menu sembrado (ningun precio inventado, ni el de otra sucursal).
+    const branchId = new Map(plan.branches.map((b) => [b.slug, b.id]));
+    const productoPorNombre = new Map(plan.products.map((p) => [p.name, p]));
+    for (const o of orders) for (const i of o.items) if (productoPorNombre.has(i.name)) expect(i.price).toBe(productoPorNombre.get(i.name)!.branchPrices[branchId.get(o.branchSlug)!]);
     void world;
   });
 

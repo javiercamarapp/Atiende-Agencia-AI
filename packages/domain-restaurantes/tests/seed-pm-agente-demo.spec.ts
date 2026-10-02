@@ -151,10 +151,10 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     const martes = new Date("2026-10-13T20:00:00Z");
     const pedido = (canal: "recoger" | "domicilio") => ({
       organizationId: world.organizationId,
-      branchSlug: "altabrisa",
+      branchSlug: "prol-montejo",
       customerName: "Cliente Prueba",
       customerPhone: "0001000001",
-      ...(canal === "domicilio" ? { customerAddress: "Calle 7 #270, Vista Alegre" } : {}),
+      ...(canal === "domicilio" ? { customerAddress: "Calle 34 #382-C, Emiliano Zapata Norte" } : {}),
       canal,
       source: "web" as const,
       items: [

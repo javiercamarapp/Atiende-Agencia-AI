@@ -102,18 +102,18 @@ export async function construirAssertions(): Promise<string> {
       `${aplicar}select count(*)::int as pedidos_con_total_incoherente_deberia_ser_0 from restaurantes.orders o where o.organization_id = ${DEMO_ORG} and abs(o.total - (${SUMA_RENGLONES} - ${DESCUENTO})) > 0.005;`,
     ),
     escenario(
-      "V4. Los renglones son del menu sembrado: mismo nombre y mismo precio que el producto de la organizacion (0 discrepancias)",
+      "V4. Los renglones son del menu sembrado: mismo nombre y mismo precio que el producto EN LA SUCURSAL del pedido (branch_products; 0 discrepancias)",
       `${aplicar}select count(*)::int as renglones_fuera_del_menu_deberia_ser_0
   from restaurantes.orders o cross join lateral jsonb_array_elements(o.items) i
  where o.organization_id = ${DEMO_ORG}
-   and not exists (select 1 from restaurantes.products p where p.organization_id = o.organization_id and p.name = i->>'name' and p.price = (i->>'price')::numeric);`,
+   and not exists (select 1 from restaurantes.products p join restaurantes.branch_products bp on bp.product_id = p.id and bp.property_id = o.property_id where p.organization_id = o.organization_id and p.name = i->>'name' and bp.price = (i->>'price')::numeric);`,
     ),
     escenario(
-      "V5. Las 5 sucursales activas reciben pedidos y T4 (inactiva, sin menu) ninguno",
+      "V5. Solo las 2 sucursales activas (T1 y T3) reciben pedidos; las inactivas (T2, T4, T5, T7 y T8) ninguno",
       `${aplicar}select (
-  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG}) = 5
-  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG} and bd.slug = 't4-pendiente') = 0
-)::int as cinco_sucursales_y_t4_vacia_deberia_ser_1;`,
+  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG}) = 2
+  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG} and bd.slug not in ('prol-montejo', 'pensiones')) = 0
+)::int as dos_sucursales_activas_y_las_demas_vacias_deberia_ser_1;`,
     ),
     escenario(
       "V6. Reglas duras: ningun pedido a domicilio bajo $200 (antes de descuentos) ni con alcohol (no_domicilio)",
@@ -188,7 +188,7 @@ export async function construirAssertions(): Promise<string> {
     escenario(
       "V16b. LIMPIEZA del volumen: el menu, la politica y la configuracion del agente de la demo siguen ahi",
       `${aplicar}select restaurantes.demo_limpiar(${DEMO_ORG}, 'volumen');\nselect (
-  (select count(*) from restaurantes.products where organization_id = ${DEMO_ORG}) = 251
+  (select count(*) from restaurantes.products where organization_id = ${DEMO_ORG}) = 237
   and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = ${DEMO_ORG}) = 1
 )::int as configuracion_intacta_deberia_ser_1;`,
     ),

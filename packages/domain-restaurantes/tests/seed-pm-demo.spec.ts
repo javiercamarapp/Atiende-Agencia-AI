@@ -12,6 +12,7 @@ import { PromotionError } from "../src/errors.ts";
 import {
   buildPmSeedPlan,
   COMPORTAMIENTO_MAX,
+  type PmSeedData,
   extraerComportamiento,
   PmSeedError,
   renderPmSeedDoBlock,
@@ -23,6 +24,7 @@ import {
 import { assertPuedeAplicar, describirObjetivo, parseSeedArgs, SeedTargetError } from "../src/seed/target-safety.ts";
 import { construirAssertions } from "../../../scripts/verify-restaurantes-seed-pm/generar-assertions.ts";
 import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
+import { dataConP5Aprobado } from "./support/pm-seed-p5.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const { data, agent } = loadSeedInputs();
@@ -31,15 +33,17 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 describe("buildPmSeedPlan", () => {
   const plan = buildPmSeedPlan(data, agent);
 
-  it("modela las 6 sucursales: 5 activas con datos y T4 registrada, inactiva y sin menu", () => {
-    expect(plan.branches).toHaveLength(6);
-    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["altabrisa", "fco-montejo", "garcia-lavin", "pensiones", "prol-montejo"]);
-    const t4 = plan.branches.find((b) => b.slug === "t4-pendiente")!;
-    expect(t4).toMatchObject({ status: "inactive", menu: null, lat: null, lng: null, phone: null });
+  it("modela las 7 sucursales: solo T1 y T3 activas (con catalogo impreso); T5 inactiva fuera de temporada; T2, T7 y T8 sin catalogo hasta P5; T4 Galerias sin pedidos", () => {
+    expect(plan.branches).toHaveLength(7);
+    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["pensiones", "prol-montejo"]);
+    expect(plan.branches.map((b) => [b.id, b.catalogSize])).toEqual([["T1", 236], ["T2", 0], ["T3", 211], ["T4", 0], ["T5", 222], ["T7", 0], ["T8", 0]]);
+    expect(plan.branches.find((b) => b.slug === "galerias")).toMatchObject({ status: "inactive", catalogSize: 0, phone: "999 941 9612", lat: null, lng: null });
+    expect(plan.branches.find((b) => b.slug === "playa")).toMatchObject({ status: "inactive", phone: "969 688 4195", address: "C. 19 x 22 y 24, Chicxulub, Progreso" });
+    expect(plan.branches.find((b) => b.slug === "garcia-lavin")!.name).toBe("García Lavín (Victory Platz)");
   });
 
-  it("251 productos (245 + 6 regionales); los 42 de alcohol son no_domicilio y solo ellos", () => {
-    expect(plan.products).toHaveLength(251);
+  it("237 productos; los 42 de alcohol son no_domicilio y solo ellos", () => {
+    expect(plan.products).toHaveLength(237);
     expect(plan.products.filter((p) => p.noDomicilio)).toHaveLength(42);
     expect(plan.products.find((p) => p.name === "Heineken")!.noDomicilio).toBe(true);
     expect(plan.products.find((p) => p.name === "Taco Al Pastor (individual)")!.noDomicilio).toBe(false);
@@ -48,8 +52,9 @@ describe("buildPmSeedPlan", () => {
     expect(cervezas.some((p) => p.noDomicilio) && cervezas.some((p) => !p.noDomicilio)).toBe(true);
   });
 
-  it("precios por sucursal: 3 de menu grande x 251 + 2 de menu chico x 245 = 1243", () => {
-    expect(plan.summary.branchProducts).toBe(3 * 251 + 2 * 245);
+  it("precios por sucursal: T1 236 + T3 211 + T5 222 = 669 (cada uno sale de su menu impreso)", () => {
+    expect(plan.summary.productsByBranch).toEqual({ T1: 236, T2: 0, T3: 211, T4: 0, T5: 222, T7: 0, T8: 0 });
+    expect(plan.summary.branchProducts).toBe(236 + 211 + 222);
   });
 
   it("politica PM: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta", () => {
@@ -63,19 +68,20 @@ describe("buildPmSeedPlan", () => {
 
   it("solo se carga el 2x1 del lunes (solo recoger); el combo del martes se reporta como no cargado", () => {
     expect(plan.promotions).toEqual([
-      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"] }),
+      expect.objectContaining({ code: "LUNES2X1PM", type: "bogo", daysOfWeek: [1], channels: ["recoger"], productNames: ["Taco Al Pastor (individual)"], branchIds: ["T2", "T3", "T4"] }),
     ]);
     expect(plan.summary.skippedPromotions.join(" ")).toMatch(/PROMO-MAR/);
   });
 
-  it("zonas: solo puntos de sucursales con coordenadas (T3 y T4 no tienen); nada inventado", () => {
-    expect(plan.zones.map((z) => z.name).sort()).toEqual(["Francisco de Montejo", "Prolongación Montejo", "Victory Altabrisa", "Victory Platz (García Lavín)"]);
+  it("zonas: solo puntos de sucursales con coordenadas reales (T3 y T4 no tienen; las de T5 son aproximadas); nada inventado", () => {
+    expect(plan.zones.map((z) => z.name).sort()).toEqual(["Francisco de Montejo", "García Lavín (Victory Platz)", "Prolongación Montejo", "Victory Altabrisa"]);
   });
 
   it("el comportamiento de voz cabe en el tope de la migracion 025 y la voz no se habilita", () => {
     expect(plan.voice.comportamiento.length).toBeLessThanOrEqual(COMPORTAMIENTO_MAX);
     expect(plan.voice.comportamiento).toMatch(/REGLAS DURAS/);
-    expect(plan.voice.greetings).toHaveLength(5);
+    expect(plan.voice.greetings).toHaveLength(2);
+    expect(plan.voice.greetings.every((g) => !/buenas tardes/i.test(g.mensajeInicial))).toBe(true);
     expect(renderPmSeedPlpgsql(plan)).toMatch(/false, v->'voice'->>'voiceId'/);
   });
 
@@ -88,12 +94,12 @@ describe("buildPmSeedPlan -- rechaza datos que rompen el modelo", () => {
   type Mutable = { sucursales: Array<Record<string, unknown>>; productos: Array<Record<string, unknown>>; promociones: Array<Record<string, unknown>>; organizacion: Record<string, unknown>; horario_general: Record<string, unknown>; reglas: Record<string, unknown> };
   const sucursal = (d: Mutable, id: string) => d.sucursales.find((b) => b.id === id)!;
   const casos: Array<[string, (d: Mutable) => void, RegExp]> = [
-    ["menos de 6 sucursales", (d) => { d.sucursales.pop(); }, /6 sucursales/],
-    ["T4 activa", (d) => { sucursal(d, "T4").activa = true; }, /inactiva|menu/],
-    ["sucursal activa sin menu", (d) => { sucursal(d, "T1").menu = null; }, /necesita menu/],
+    ["menos de 7 sucursales", (d) => { d.sucursales.pop(); }, /7 sucursales/],
+    ["T4 activa", (d) => { sucursal(d, "T4").activa = true; }, /T4.*inactiva/],
+    ["sucursal activa sin catalogo suficiente", (d) => { sucursal(d, "T5").activa = true; for (const p of d.productos.slice(0, 80)) { delete (p.precios_por_sucursal as Record<string, number>).T5; delete (p.fuente_precio as Record<string, string>).T5; } }, /al menos 150 productos/],
     ["slug duplicado", (d) => { sucursal(d, "T2").slug = "altabrisa"; }, /duplicada/],
     ["lat sin lng", (d) => { sucursal(d, "T1").lng = null; }, /juntas/],
-    ["producto con precio 0", (d) => { d.productos[0]!.precio = 0; }, /precio invalido/],
+    ["producto con precio 0", (d) => { (d.productos[0]!.precios_por_sucursal as Record<string, number>).T1 = 0; }, /precio invalido/],
     ["producto duplicado", (d) => { d.productos[1]!.nombre = d.productos[0]!.nombre; }, /duplicado/],
     ["categoria desconocida", (d) => { d.productos[0]!.categoria = "Inventada"; }, /categoria desconocida/],
     ["promocion a domicilio", (d) => { d.promociones[0]!.canales = ["domicilio"]; }, /no aplican a domicilio/],
@@ -230,8 +236,8 @@ type EvalCaso = {
   esperado: { comanda?: { tipo: string; sucursal: string; total_mxn?: number | null; items: Array<{ producto: string; piezas: number }> } };
 };
 
-function seedRepoDesdePlan() {
-  const plan = buildPmSeedPlan(data, agent);
+function seedRepoDesdePlan(datos: PmSeedData = data) {
+  const plan = buildPmSeedPlan(datos, agent);
   const repo = new InMemoryRestaurantesRepository();
   const organizationId = randomUUID();
   repo.seedOrganization({ id: organizationId, slug: plan.organization.slug, name: plan.organization.name });
@@ -253,9 +259,10 @@ function seedRepoDesdePlan() {
     const propertyId = randomUUID();
     propertyBySlug.set(b.slug, propertyId);
     repo.seedBranch({ propertyId, organizationId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng });
-    if (!b.menu) continue;
+    if (b.catalogSize === 0) continue;
     for (const p of plan.products) {
-      if (b.menu === "grande" || p.scope === "todas") repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price: p.price, isAvailable: true });
+      const price = p.branchPrices[b.id];
+      if (price !== undefined) repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price, isAvailable: true });
     }
     repo.seedBranchPolicy(propertyId, { pedidoMinimoDomicilio: plan.policy.pedidoMinimoDomicilio, propinaPolitica: "solo_tarjeta" });
   }
@@ -265,25 +272,26 @@ function seedRepoDesdePlan() {
 describe("evals del agente vs. el motor real de pedidos (menu sembrado + 2x1 del lunes)", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("el seed deja el menu consultable por sucursal: el menu chico no tiene comida regional", async () => {
+  it("el seed deja el menu consultable por sucursal: Pensiones no tiene comida regional y Galerias no tiene nada", async () => {
     const { repo, propertyBySlug } = seedRepoDesdePlan();
-    const chico = await repo.listAvailableProductsForBranch(propertyBySlug.get("fco-montejo")!);
-    const grande = await repo.listAvailableProductsForBranch(propertyBySlug.get("altabrisa")!);
-    expect(chico.some((p) => p.name === "Sopa de Lima")).toBe(false);
-    expect(grande.some((p) => p.name === "Sopa de Lima")).toBe(true);
-    expect(await repo.listAvailableProductsForBranch(propertyBySlug.get("t4-pendiente")!)).toEqual([]);
+    const pensiones = await repo.listAvailableProductsForBranch(propertyBySlug.get("pensiones")!);
+    const prolongacion = await repo.listAvailableProductsForBranch(propertyBySlug.get("prol-montejo")!);
+    expect(pensiones.some((p) => p.name === "Sopa de Lima")).toBe(false);
+    expect(prolongacion.some((p) => p.name === "Sopa de Lima")).toBe(true);
+    expect(await repo.listAvailableProductsForBranch(propertyBySlug.get("galerias")!)).toEqual([]);
   });
 
   it("cada comanda esperada por las evals existe en el menu y su total coincide con el motor de pedidos", async () => {
     const casos = (agent.evals as { casos: EvalCaso[] }).casos.filter((c) => c.esperado.comanda?.items?.length);
     expect(casos.length).toBeGreaterThan(20);
     const idPorBranch = new Map(data.sucursales.map((b) => [b.id, b.slug]));
+    // Las evals de T2, T7 y T8 corren contra el FIXTURE donde Javier ya contesto P5; con los datos reales esas sucursales no tienen catalogo.
     const diasJs: Record<string, number> = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, "miércoles": 3, jueves: 4, viernes: 5, sabado: 6, "sábado": 6 };
     const discrepancias: string[] = [];
 
     for (const caso of casos) {
       const comanda = caso.esperado.comanda!;
-      const { repo, organizationId, plan } = seedRepoDesdePlan();
+      const { repo, organizationId, plan } = seedRepoDesdePlan(dataConP5Aprobado(data));
       await repo.createPromotion(organizationId, {
         code: "LUNES2X1PM",
         name: plan.promotions[0]!.name,
@@ -341,7 +349,17 @@ describe("evals del agente vs. el motor real de pedidos (menu sembrado + 2x1 del
     // unifique la semantica. Se fija la lista exacta: si el motor o el menu cambian y aparece OTRA
     // discrepancia, este test falla; si el experto corrige las evals, falla pidiendo vaciar la lista.
     const SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS = ["C04", "C08", "C09", "C11", "C13", "C20", "L03", "L17", "L22", "L25", "L46"];
-    expect(discrepancias.map((d) => d.split(":")[0]).sort()).toEqual(SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS);
+    // HALLAZGO REAL de PM-C1 (precio por sucursal): estas 5 evals de Pensiones (T3) esperan el total con los precios de T1-2026, pero Pensiones
+    // vende con su lista impresa T3-2025 (p. ej. pastor $36, no $42) y el motor cotiza con el precio de SU sucursal: 4 tacos al pastor el lunes
+    // = 2 x $36 + agua $51 = $123, no los $144 de la eval. Corregir esos totales es trabajo de PM-C5 (casos de evaluacion con datos reales);
+    // la lista es exacta y todas son de T3 con un total distinto.
+    const TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3 = ["C01", "C10", "L14", "L30", "L39"];
+    for (const id of TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3) {
+      const caso = casos.find((c) => c.id === id)!;
+      expect(caso.esperado.comanda!.sucursal).toBe("T3");
+      expect(discrepancias.find((d) => d.startsWith(`${id}:`))).toMatch(/total esperado/);
+    }
+    expect(discrepancias.map((d) => d.split(":")[0]).sort()).toEqual([...SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS, ...TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3].sort());
     // Todos los demas casos (incluidos los 2x1 del lunes: L02, L30, C06) cuadran al centavo con el motor real.
     expect(casos.length - discrepancias.length).toBeGreaterThanOrEqual(20);
   });
