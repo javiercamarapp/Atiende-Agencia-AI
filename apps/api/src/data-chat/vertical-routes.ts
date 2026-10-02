@@ -84,7 +84,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     const userId = c.get("userId");
     const propertyId = c.req.param("propertyId") ?? "";
     // Con `conversationId` el historial sale de la base y el turno se guarda (conversaciones.ts); sin el, todo igual.
-    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: cfg.vertical }, propertyId });
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, tool, signal: c.req.raw.signal, scope: { organizationId, userId, vertical: cfg.vertical }, propertyId });
     return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
       persist.finish(turnDb, label ?? question, tool, await runDataChatTurn({
         catalog: turn.catalogFor(turnDb) ?? turn.catalogFor(db)!,

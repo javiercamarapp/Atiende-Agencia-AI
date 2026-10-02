@@ -434,6 +434,10 @@ export interface BeginTurnInput {
   readonly history: DataChatHistoryTurn[];
   readonly scope: ConversacionScope;
   readonly propertyId: string | null;
+  /** Turno de ruta directa (chip/boton): no usa modelo, asi que tampoco se compacta el historial (no espera al proveedor). */
+  readonly tool?: string | undefined;
+  /** Aborto del request: corta la espera de la compactacion si el cliente se fue. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 export function conversacionesRepo(deps: AppDeps, db: TenantDbSession): ConversacionesRepository {
@@ -460,8 +464,8 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
   }
   // MOD-12 -- compactacion: en una conversacion larga la parte vieja se resume (rol `plataforma:compactacion_historial`); si algo falla, el historial tal cual.
   let resumen: string | undefined;
-  if (history.length > 0 && completion) {
-    const compactado = await compactarHistorial(completion(scope.organizationId, COMPACTACION_HISTORIAL_ROLE), history, (err) => console.error(JSON.stringify({ level: "error", event: "data_chat_compactacion_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })));
+  if (history.length > 0 && completion && input.tool === undefined) {
+    const compactado = await compactarHistorial(completion(scope.organizationId, COMPACTACION_HISTORIAL_ROLE), history, (err) => console.error(JSON.stringify({ level: "error", event: "data_chat_compactacion_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })), input.signal);
     history = compactado.history;
     resumen = compactado.resumen;
   }

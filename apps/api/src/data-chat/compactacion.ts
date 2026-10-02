@@ -43,15 +43,19 @@ export interface HistorialCompactado {
 }
 
 /** Devuelve el historial a usar y, si la conversacion es larga y el resumen salio valido, el resumen de la parte vieja. Nunca lanza. */
-export async function compactarHistorial(complete: DataChatCompletion | undefined, history: DataChatHistoryTurn[], onError?: (err: unknown) => void): Promise<HistorialCompactado> {
+export async function compactarHistorial(complete: DataChatCompletion | undefined, history: DataChatHistoryTurn[], onError?: (err: unknown) => void, signal?: AbortSignal): Promise<HistorialCompactado> {
+  if (signal?.aborted) return { history };
   if (!complete || estimarTokens(history) <= COMPACTACION_UMBRAL_TOKENS || history.length <= COMPACTACION_TURNOS_RECIENTES) return { history };
   const viejos = history.slice(0, history.length - COMPACTACION_TURNOS_RECIENTES);
   const recientes = history.slice(history.length - COMPACTACION_TURNOS_RECIENTES);
   const texto = viejos.map((t) => `${t.role === "user" ? "Usuario" : "Asistente"}: ${redactPii(t.text).slice(0, 300)}`).join("\n").slice(0, 4_000);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   try {
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error("compactacion_timeout")), COMPACTACION_TIMEOUT_MS);
+      onAbort = () => reject(new Error("compactacion_abortada"));
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
     const work = complete({ system: SYSTEM, messages: [{ role: "user", content: texto }], maxOutputTokens: 160, temperature: 0 });
     work.catch(() => undefined);
@@ -63,5 +67,6 @@ export async function compactarHistorial(complete: DataChatCompletion | undefine
     return { history };
   } finally {
     if (timer) clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
   }
 }

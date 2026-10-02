@@ -205,4 +205,30 @@ describe("compactacion (cableado)", () => {
     expect(persist.resumen).toBeUndefined();
     expect(complete).not.toHaveBeenCalled();
   });
+  const largo10 = () => Array.from({ length: 10 }, (_, i) => ({ role: i % 2 === 0 ? ("user" as const) : ("assistant" as const), text: `t${i} ${"x".repeat(700)}` }));
+  const ID = "00000000-0000-4000-8000-0000000000c1";
+
+  it("un turno de ruta directa (tool) no compacta ni llama al modelo", async () => {
+    const repo = new Repo();
+    repo.historial = largo10();
+    const complete = vi.fn(() => ok("Hablaron de ventas y cancelaciones."));
+    const persist = await beginTurnPersistence(deps(repo, () => complete), {} as TenantDbSession, { conversationId: ID, history: [], scope: SCOPE, propertyId: null, tool: "ventas_semana" });
+    expect(complete).not.toHaveBeenCalled();
+    expect(persist.resumen).toBeUndefined();
+    expect(persist.history).toHaveLength(10);
+  });
+
+  it("si el cliente aborta, la compactacion no espera al modelo y devuelve el historial tal cual", async () => {
+    const repo = new Repo();
+    repo.historial = largo10();
+    const ac = new AbortController();
+    const complete = vi.fn(() => new Promise<never>(() => undefined));
+    const p = beginTurnPersistence(deps(repo, () => complete), {} as TenantDbSession, { conversationId: ID, history: [], scope: SCOPE, propertyId: null, signal: ac.signal });
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 5));
+    ac.abort();
+    const persist = await p;
+    expect(persist.resumen).toBeUndefined();
+    expect(persist.history).toHaveLength(10);
+  });
 });

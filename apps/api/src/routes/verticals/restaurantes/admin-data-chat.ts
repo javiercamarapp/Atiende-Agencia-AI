@@ -77,7 +77,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     const userId = c.get("userId");
     // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
-    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "restaurantes" }, propertyId: c.req.param("propertyId") ?? null });
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, tool, signal: c.req.raw.signal, scope: { organizationId, userId, vertical: "restaurantes" }, propertyId: c.req.param("propertyId") ?? null });
     return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
       persist.finish(turnDb, label ?? question, tool, await runDataChatTurn({
         catalog: turn.catalogFor(turnDb)!,
