@@ -26,9 +26,24 @@
 import { Hono } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { LlmOrganizationNotFoundError } from "@atiende/db";
+import { LlmOrganizationNotFoundError, isMigrationPendingError } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
+import { ALL_PRODUCTION_ROLES, DATA_CHAT_RETRY_ROLES } from "../production/llm-gateway.ts";
+import { NEW_PLATFORM_LLM_ROLES } from "../production/llm-models.ts";
+import { defaultRoleDailyTurnLimit } from "../production/llm-role-limits.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NO_DISPONIBLE_AUN = "El reporte por rol requiere la migración 0046, que aún no está aplicada.";
+
+/** Roles con tope diario de turnos (los que tienen default): los unicos que el superadmin puede ajustar por organizacion. */
+function rolesConTopeDiario(): { role: string; maxTurnosDia: number }[] {
+  const roles = [...new Set([...ALL_PRODUCTION_ROLES, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES])];
+  return roles.flatMap((role) => {
+    const maxTurnosDia = defaultRoleDailyTurnLimit(role);
+    return maxTurnosDia === undefined ? [] : [{ role, maxTurnosDia }];
+  });
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_RANGE_DAYS = 30;
@@ -132,6 +147,51 @@ export function superadminLlmUsageRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.req.query("organizationId") ?? null;
     const rows = await deps.llmUsageRepo.listUsageByProviderModelForSuperadmin(c.get("userId"), from, to, organizationId);
     return c.json({ range: { from, to }, desglose: rows });
+  });
+
+  // CHAT-07: gasto por organizacion, rol y mes (de core.llm_usage_daily, el costo REAL que reporto el proveedor). Detras de step-up
+  // (SENSITIVE_ROUTES). Sin la migracion 0046 responde `disponible: false` con la lista vacia (nunca un 500).
+  app.get("/superadmin/gasto-api/por-rol", async (c) => {
+    const { from, to } = parseDateRange(c);
+    try {
+      const filas = await deps.llmUsageRepo.listUsageByOrgRoleMonthForSuperadmin(c.get("userId"), from, to);
+      return c.json({ range: { from, to }, disponible: true, filas });
+    } catch (err) {
+      if (isMigrationPendingError(err)) return c.json({ range: { from, to }, disponible: false, mensaje: NO_DISPONIBLE_AUN, filas: [] });
+      throw err;
+    }
+  });
+
+  // Tope diario de turnos por rol de una organizacion: los defaults del sistema y los topes propios con el uso de hoy.
+  app.get("/superadmin/gasto-api/organizaciones/:id/topes-rol", async (c) => {
+    const organizationId = c.req.param("id");
+    if (!UUID_RE.test(organizationId)) throw Errors.validation("El id de la organización no es válido.");
+    try {
+      const propios = await deps.llmUsageRepo.listOrgRoleLimitsForSuperadmin(c.get("userId"), organizationId);
+      return c.json({ disponible: true, defaults: rolesConTopeDiario(), propios });
+    } catch (err) {
+      if (isMigrationPendingError(err)) return c.json({ disponible: false, mensaje: NO_DISPONIBLE_AUN, defaults: rolesConTopeDiario(), propios: [] });
+      throw err;
+    }
+  });
+
+  app.put("/superadmin/gasto-api/organizaciones/:id/topes-rol", async (c) => {
+    const organizationId = c.req.param("id");
+    if (!UUID_RE.test(organizationId)) throw Errors.validation("El id de la organización no es válido.");
+    const raw = (await c.req.json().catch(() => ({}))) as { role?: unknown; maxTurnosDia?: unknown };
+    const role = typeof raw.role === "string" ? raw.role : "";
+    if (!rolesConTopeDiario().some((r) => r.role === role)) throw Errors.validation("role debe ser un rol con tope diario de turnos.");
+    if (typeof raw.maxTurnosDia !== "number" || !Number.isInteger(raw.maxTurnosDia) || raw.maxTurnosDia < 1 || raw.maxTurnosDia > 100_000) {
+      throw Errors.validation("maxTurnosDia debe ser un entero entre 1 y 100000.");
+    }
+    try {
+      await deps.llmUsageRepo.setOrgRoleLimitForSuperadmin(c.get("userId"), organizationId, role, raw.maxTurnosDia);
+    } catch (err) {
+      if (err instanceof LlmOrganizationNotFoundError) throw Errors.notFound(err.message);
+      if (isMigrationPendingError(err)) throw Errors.serviceUnavailable(NO_DISPONIBLE_AUN);
+      throw err;
+    }
+    return c.json({ ok: true });
   });
 
   app.put("/superadmin/gasto-api/organizaciones/:id/tope", async (c) => {
