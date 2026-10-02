@@ -19,7 +19,7 @@ const ETIQUETA_ESTADO: Readonly<Record<EstadoCita, string>> = {
 };
 const ORDEN_ESTADOS: readonly EstadoCita[] = ["pending", "confirmed", "completed", "no_show", "cancelled"];
 
-export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
+export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role }: CitasShellContext) {
   const [resumen, setResumen] = useState<CitasResumen | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +73,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShe
           </p>
         </>
       )}
-      <CitasFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
+      <CitasFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} role={role} />
     </div>
   );
 }
