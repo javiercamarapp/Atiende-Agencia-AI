@@ -16,6 +16,7 @@ import type {
   BloqueoRecord,
   CanalRecord,
   ConfiguracionComisionCanal,
+  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoDuracion,
   DescuentoDuracionRecord,
@@ -33,6 +34,13 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  ReglaCanalRecord,
+  TarifaBaseRecord,
+  TemporadaConfigRecord,
+  UpdateDescuentoDuracionInput,
+  UpdateReglaCanalInput,
+  UpdateReglaMinStayInput,
+  UpdateTemporadaInput,
   OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
@@ -725,6 +733,99 @@ export class PostgresRentasRepository implements RentasRepository {
       [input.organizationId, input.propertyId, input.unidadId, input.canalId, input.markupBasisPoints, input.activo],
     );
     return { id: rows[0]!.id };
+  }
+
+  // ---- Pricing: lectura de la configuracion y edicion/borrado por id (Rn-23) ----
+
+  async loadConfiguracionPricing(unidadId: string, hoy: string): Promise<ConfiguracionPricingUnidad> {
+    const [base, temporadas, descuentos, minStay, canal] = await Promise.all([
+      this.db.query<{ id: string; precio_noche_centavos: string; moneda: string; vigente_desde: string }>(
+        `select id, precio_noche_centavos, moneda::text as moneda, vigente_desde::text as vigente_desde from rentas.tarifa_base where unidad_id = $1 order by vigente_desde desc;`,
+        [unidadId],
+      ),
+      this.db.query<{ id: string; nombre: string; fecha_inicio: string; fecha_fin: string; precio_noche_centavos: string; moneda: string }>(
+        `select id, nombre, fecha_inicio::text as fecha_inicio, fecha_fin::text as fecha_fin, precio_noche_centavos, moneda::text as moneda from rentas.tarifa_temporada where unidad_id = $1 order by fecha_inicio;`,
+        [unidadId],
+      ),
+      this.listDescuentosDuracion(unidadId),
+      this.listReglasMinStay(unidadId),
+      this.db.query<{ id: string; codigo: string; markup_basis_points: number; activo: boolean }>(
+        `select trc.id, c.codigo, trc.markup_basis_points, trc.activo
+         from rentas.tarifa_regla_canal trc join rentas.canal c on c.id = trc.canal_id
+         where trc.unidad_id = $1 order by c.codigo;`,
+        [unidadId],
+      ),
+    ]);
+    const historial: TarifaBaseRecord[] = base.rows.map((r) => ({ id: r.id, precioNocheCentavos: Number(r.precio_noche_centavos), moneda: r.moneda, vigenteDesde: r.vigente_desde }));
+    return {
+      tarifaBaseVigente: historial.find((t) => t.vigenteDesde <= hoy) ?? null,
+      historialTarifaBase: historial,
+      temporadas: temporadas.rows.map((r) => ({
+        id: r.id,
+        nombre: r.nombre,
+        rango: { inicio: r.fecha_inicio, fin: r.fecha_fin },
+        precioNocheCentavos: Number(r.precio_noche_centavos),
+        moneda: r.moneda,
+      })),
+      descuentosDuracion: descuentos,
+      reglasMinStay: minStay,
+      reglasCanal: canal.rows.map((r) => ({ id: r.id, canalCodigo: r.codigo, markupBasisPoints: r.markup_basis_points, activo: r.activo })),
+    };
+  }
+
+  async updateTemporada(input: UpdateTemporadaInput): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update rentas.tarifa_temporada set nombre = $3, fecha_inicio = $4, fecha_fin = $5, precio_noche_centavos = $6, moneda = $7
+       where id = $1 and unidad_id = $2 returning id;`,
+      [input.id, input.unidadId, input.nombre, input.rango.inicio, input.rango.fin, input.precioNocheCentavos, input.moneda],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteTemporada(unidadId: string, id: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(`delete from rentas.tarifa_temporada where id = $1 and unidad_id = $2 returning id;`, [id, unidadId]);
+    return rows.length > 0;
+  }
+
+  async updateDescuentoDuracion(input: UpdateDescuentoDuracionInput): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update rentas.tarifa_descuento_duracion set noches_minimas = $3, porcentaje_descuento_basis_points = $4, fuente = $5
+       where id = $1 and unidad_id = $2 returning id;`,
+      [input.id, input.unidadId, input.nochesMinimas, input.porcentajeDescuentoBasisPoints, input.fuente],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteDescuentoDuracion(unidadId: string, id: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(`delete from rentas.tarifa_descuento_duracion where id = $1 and unidad_id = $2 returning id;`, [id, unidadId]);
+    return rows.length > 0;
+  }
+
+  async updateReglaMinStay(input: UpdateReglaMinStayInput): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update rentas.tarifa_min_stay set fecha_inicio = $3, fecha_fin = $4, dia_semana_checkin = $5, noches_minimas = $6
+       where id = $1 and unidad_id = $2 returning id;`,
+      [input.id, input.unidadId, input.rango.inicio, input.rango.fin, input.diaSemanaCheckIn, input.nochesMinimas],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteReglaMinStay(unidadId: string, id: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(`delete from rentas.tarifa_min_stay where id = $1 and unidad_id = $2 returning id;`, [id, unidadId]);
+    return rows.length > 0;
+  }
+
+  async updateReglaCanalPricing(input: UpdateReglaCanalInput): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update rentas.tarifa_regla_canal set markup_basis_points = $3, activo = $4 where id = $1 and unidad_id = $2 returning id;`,
+      [input.id, input.unidadId, input.markupBasisPoints, input.activo],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteReglaCanalPricing(unidadId: string, id: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(`delete from rentas.tarifa_regla_canal where id = $1 and unidad_id = $2 returning id;`, [id, unidadId]);
+    return rows.length > 0;
   }
 
   // ---- Owner statement (flujo 5, Fase 2) ----

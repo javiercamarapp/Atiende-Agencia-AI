@@ -30,6 +30,7 @@ export type {
 
 export { calcularCotizacion, evaluarViolacionesMinStay } from "./pricing/cotizacion.ts";
 export type {
+  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoAplicado,
   DescuentoDuracion,
@@ -106,6 +107,13 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  ReglaCanalRecord,
+  TarifaBaseRecord,
+  TemporadaConfigRecord,
+  UpdateDescuentoDuracionInput,
+  UpdateReglaCanalInput,
+  UpdateReglaMinStayInput,
+  UpdateTemporadaInput,
   OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
