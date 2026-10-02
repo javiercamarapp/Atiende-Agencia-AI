@@ -10,6 +10,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { WRITE_ROLES } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { avisarCambioDeBases } from "./avisos-campana.ts";
 
 export function licitacionesTenderVersionsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -52,6 +53,8 @@ export function licitacionesTenderVersionsRoutes(deps: AppDeps): Hono<CoreAuthHo
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const result = await repo.recordTenderVersion(organizationId, tenderId, actorId);
+    // L-30: aviso in-app solo si el recalculo creo una version nueva sobre una convocatoria ya versionada (created: false no emite).
+    await avisarCambioDeBases(c.get("db"), { organizationId, tenderId, version: result.created && result.version.version > 1 ? result.version.version : null });
     return c.json(result, result.created ? 201 : 200);
   });
 

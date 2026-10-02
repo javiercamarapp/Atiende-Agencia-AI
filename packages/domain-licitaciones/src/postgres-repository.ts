@@ -945,9 +945,14 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // (solo `submissionDeadline`, ver `submissionDeadlineChanged` abajo, que
     // se conserva por compatibilidad informativa) a CUALQUIER campo de bases
     // que haya cambiado (REQ-151/155).
-    await this.recordTenderVersion(organizationId, tender.id, input.actorId);
+    const versionResult = await this.recordTenderVersion(organizationId, tender.id, input.actorId);
 
-    return { tender, created, submissionDeadlineChanged: !created && previousDeadline !== undefined && previousDeadline !== tender.submissionDeadline };
+    return {
+      tender,
+      created,
+      submissionDeadlineChanged: !created && previousDeadline !== undefined && previousDeadline !== tender.submissionDeadline,
+      versionCambiada: versionResult.created && versionResult.version.version > 1 ? versionResult.version.version : null,
+    };
   }
 
   // ---- Bitácora de auditoría de alta/actualización manual (f2-orden-total-bitacoras) ----
