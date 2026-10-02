@@ -316,8 +316,18 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         const fresh = new PackageAssembler().buildManifest(input);
         paquete = { generatedAt: stored.generatedAt, storedStatus: stored.status, vigenteStatus: fresh.status, draftReasons: fresh.draftReasons };
         if (stored.storageRef) {
+          // La lectura del blob corre en SAVEPOINT: un error de Postgres (p. ej. 22P02 por un storage_ref legacy que
+          // no es uuid, o 57014 por timeout) no debe dejar abortada la transaccion compartida del request, porque
+          // despues se sigue usando la sesion (aviso in-app) y el COMMIT. Cualquier fallo de lectura es "ilegible".
+          const storageRef = stored.storageRef;
+          const bytes = await runWithSavepointFallback<Uint8Array | null>({
+            session: c.get("db"),
+            primary: () => repo.readManifestZip(storageRef),
+            isRecoverable: () => true,
+            fallback: async () => null,
+          });
           try {
-            zip = await verifyZipAgainstStoredManifest(await repo.readManifestZip(stored.storageRef), { status: stored.status, manifest: stored.manifest });
+            zip = bytes ? await verifyZipAgainstStoredManifest(bytes, { status: stored.status, manifest: stored.manifest }) : { state: "ilegible" };
           } catch {
             zip = { state: "ilegible" };
           }
