@@ -395,9 +395,12 @@ grant execute on function hoteles.arco_access_snapshot(uuid, text) to authentica
 
 -- ---------------------------------------------------------------------------
 -- Nota (core._arco_union): el estado nuevo 'pendiente_verificacion' de hoteles se clasifica como 'por_confirmar' en la
---    vista ARCO consolidada. Esa funcion se redefine por ultima vez en 20240101000278 (rentas 028, que agrega rentas a la
---    union y llega DESPUES de esta migracion), asi que el cambio vive alli: redefinirla aqui la dejaria pisada por 278 y,
---    aplicada fuera de orden, quitaria la rama de rentas. Entre 277 y 278 (se aplican juntas, en orden) no hay consumidor.
+--    vista ARCO consolidada, pero NO en esta migracion: la ultima definicion de la funcion vive en 20240101000278
+--    (rentas 028, que agrega rentas a la union) y ya esta aplicada en la base real, donde 277 llega despues y fuera de
+--    orden; redefinirla aqui la dejaria pisada por 278 o, aplicada fuera de orden, quitaria la rama de rentas.
+--    El cambio vive en la migracion posterior 20240101000287 (rentas 030). Entre 277 y 287 una solicitud
+--    'pendiente_verificacion' saldria como 'resuelta' en core.org_list_arco_requests y core.platform_list_arco_requests,
+--    por eso 287 debe aplicarse junto con 277.
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
