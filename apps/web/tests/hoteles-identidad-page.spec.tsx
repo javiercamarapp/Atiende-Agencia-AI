@@ -55,6 +55,11 @@ const ARCO = {
   recibidaEn: "2026-03-01", respuestaLimite: "2026-03-21", ejecucionLimite: null, estado: "recibida", notaDecision: null, prorroga: null,
   plazo: { fase: "respuesta", vence: "2026-03-21", diasRestantes: -3, estado: "vencida" }, prorrogaDisponible: { disponible: true, dias: 20 },
 };
+const ARCO_ACCESO = {
+  id: "arco-2", folio: "ARCO-20260320-ZZ99XY", derecho: "acceso", huespedId: null, identidadId: null, solicitante: "Ana Torres", contacto: "ana@example.com", canal: "publico", descripcion: null,
+  recibidaEn: "2026-03-20", respuestaLimite: "2026-04-09", ejecucionLimite: "2026-04-24", estado: "procedente", notaDecision: "Identidad verificada", prorroga: null,
+  plazo: { fase: "ejecucion", vence: "2026-04-24", diasRestantes: 31, estado: "en_plazo" }, prorrogaDisponible: { disponible: false, dias: 15 },
+};
 const INCIDENTE = {
   id: "inc-1", folio: "INC-20260301-AB12CD", tipo: "divulgacion", severidad: "alta", titulo: "Correo al huesped equivocado", descripcion: "Se envio una confirmacion a otra persona.", detectadoEn: "2026-03-01T10:00:00Z",
   afectados: 1, riesgoSignificativo: true, estado: "detectada", notificacion: null, motivoNoNotificar: null,
@@ -73,6 +78,7 @@ interface Opts {
   retenciones?: unknown;
   accesos?: unknown;
   decideAccesoStatus?: number;
+  enlace?: { status: number; body: unknown };
 }
 
 function stubFetch(opts: Opts = {}) {
@@ -90,6 +96,10 @@ function stubFetch(opts: Opts = {}) {
       if (method === "GET" && p === "retenciones") return jsonResponse(opts.retenciones ?? { disponible: true, items: [] });
       if (method === "GET" && p === "accesos-excepcionales") return jsonResponse(opts.accesos ?? { disponible: true, items: [] });
       if (method === "GET" && p.startsWith("bitacora")) return jsonResponse({ disponible: true, items: [] });
+      if (method === "POST" && p === "arco/arco-2/enlace-mis-datos") {
+        const e = opts.enlace ?? { status: 200, body: { enlace: "https://app.test/hoteles/demo/mis-datos#token=m1.abc.def", venceEn: "2026-03-25T10:00:00.000Z", correo: "encolado", envioDeCorreo: "pendiente_de_configuracion" } };
+        return jsonResponse(e.body, e.status);
+      }
       if (method === "POST" && p === "accesos-excepcionales/acc-1/decidir") {
         return opts.decideAccesoStatus && opts.decideAccesoStatus >= 400
           ? jsonResponse({ message: "Doble control: quien solicita el acceso excepcional no puede aprobarlo ni rechazarlo; debe decidirlo otra persona con rol owner/gm." }, opts.decideAccesoStatus)
@@ -350,6 +360,83 @@ describe("IdentidadPage (hoteles) -- H-02: bloqueo, consentimiento y privacidad"
     expect(rendered.container.querySelector('[data-testid="plazo-arco"]')!.textContent).toContain("vencida hace 3 d");
     expect(buttonByText("Procedente")).toBeDefined();
     expect(buttonByText("Prórroga (+20 d)")).toBeDefined();
+  });
+
+  it("H-30 ARCO: el origen 'Formulario publico' se etiqueta, el staff no puede elegirlo como canal y solo un ACCESO procedente ofrece el enlace 'Mis datos'", async () => {
+    stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO, ARCO_ACCESO] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("ARCO");
+    expect(rendered.container.textContent).toContain("por Formulario público");
+    const opciones = [...rendered.container.querySelectorAll<HTMLOptionElement>("#arco-canal option")].map((o) => o.textContent);
+    expect(opciones).toContain("Mostrador");
+    expect(opciones).not.toContain("Formulario público");
+    expect([...rendered.container.querySelectorAll("button")].filter((b) => b.textContent?.includes("Enlace «Mis datos»"))).toHaveLength(1);
+  });
+
+  it("H-30 enlace 'Mis datos': elige al huesped, genera el enlace por la API y avisa honestamente que el correo no saldra sin Resend", async () => {
+    stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO_ACCESO] } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("ARCO");
+    await act(async () => {
+      buttonByText("Enlace «Mis datos»").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    // la busqueda de huespedes tiene un retraso de 250 ms
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const sel = rendered.container.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
+    expect([...sel.options].map((o) => o.textContent)).toContain("Ana Torres");
+    const generar = buttonByText("Generar enlace");
+    expect(generar.disabled).toBe(true);
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
+      setter.call(sel, "guest-1");
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+    });
+    await act(async () => {
+      rendered!.container.querySelector<HTMLFormElement>('form[aria-label="Enlace Mis datos"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/arco/arco-2/enlace-mis-datos"))!;
+    expect(JSON.parse(String(post[1].body))).toEqual({ huespedId: "guest-1", enviarCorreo: true });
+    const res = rendered.container.querySelector('[data-testid="enlace-mis-datos-resultado"]')!;
+    expect((res.querySelector("input") as HTMLInputElement).value).toBe("https://app.test/hoteles/demo/mis-datos#token=m1.abc.def");
+    expect(res.textContent).toContain("NO saldrá hasta que se configure el envío de correo");
+  });
+
+  it("H-30 enlace 'Mis datos': un rechazo del servidor se muestra tal cual", async () => {
+    stubFetch({ arco: { disponible: true, hoy: "2026-03-24", items: [ARCO_ACCESO] }, enlace: { status: 400, body: { message: "El enlace solo se emite para una solicitud de acceso procedente." } } });
+    rendered = renderPage();
+    await esperar();
+    await openTab("Privacidad");
+    await openTab("ARCO");
+    await act(async () => {
+      buttonByText("Enlace «Mis datos»").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    // la busqueda de huespedes tiene un retraso de 250 ms
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    const sel = rendered.container.querySelector<HTMLSelectElement>("#mis-datos-h-arco-2")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, "guest-1");
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+    });
+    await act(async () => {
+      rendered!.container.querySelector<HTMLFormElement>('form[aria-label="Enlace Mis datos"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector('form[aria-label="Enlace Mis datos"] [role="alert"]')!.textContent).toContain("solo se emite para una solicitud de acceso procedente");
   });
 
   it("pestana Privacidad > Incidentes (owner): el recordatorio del art. 19 es visible y solo informa; frontdesk reporta pero no ve ARCO ni Retencion", async () => {

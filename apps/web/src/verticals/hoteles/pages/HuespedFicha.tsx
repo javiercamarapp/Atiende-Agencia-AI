@@ -6,12 +6,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Archive, UserRound } from "lucide-react";
+import { ArrowLeft, Archive, Download, UserRound } from "lucide-react";
 import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
 import { formatMoney } from "@atiende/ui";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
-import { HUESPED_CRM_ROLES, NOTA_MAX_LENGTH, NOTA_TIPO_LABELS, agregarNota, archivarNota, fetchFicha, notaTieneDatoSensible } from "../lib/huespedes-client.ts";
-import type { Ficha, NotaTipo } from "../lib/huespedes-client.ts";
+import { HUESPED_CRM_ROLES, HUESPED_EXPORT_ROLES, NOTA_MAX_LENGTH, NOTA_TIPO_LABELS, agregarNota, archivarNota, exportarDatosHuesped, fetchFicha, notaTieneDatoSensible } from "../lib/huespedes-client.ts";
+import type { ExportFormato, Ficha, NotaTipo } from "../lib/huespedes-client.ts";
 import { RESERVA_ESTADO_LABELS } from "../lib/recepcion-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
@@ -36,7 +36,10 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   const [busy, setBusy] = useState(false);
   const [tipo, setTipo] = useState<NotaTipo>("nota");
   const [texto, setTexto] = useState("");
+  const [exportando, setExportando] = useState<ExportFormato | null>(null);
+  const [errorExport, setErrorExport] = useState<string | null>(null);
   const puedeVer = HUESPED_CRM_ROLES.has(role);
+  const puedeExportar = HUESPED_EXPORT_ROLES.has(role);
 
   const load = useCallback(async () => {
     if (!puedeVer) return;
@@ -96,6 +99,26 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   const restringido = ficha?.arco?.restriccion === true;
 
+  async function exportar(formato: ExportFormato) {
+    setExportando(formato);
+    setErrorExport(null);
+    try {
+      const blob = await exportarDatosHuesped(fetch, apiBaseUrl, token, propertyId, guestId, formato);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `datos-huesped-${guestId.slice(0, 8)}.${formato}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorExport(err instanceof Error ? err.message : "No se pudo exportar los datos del huésped.");
+    } finally {
+      setExportando(null);
+    }
+  }
+
   return (
     <PageContainer padding="none" className="gap-4">
       <header className="flex items-center justify-between gap-3 flex-wrap">
@@ -123,6 +146,26 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
               </StatusBadge>
               {restringido && <StatusBadge tone="danger">ARCO en curso: sin notas nuevas</StatusBadge>}
             </div>
+            {puedeExportar && (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={exportando !== null} onClick={() => void exportar("json")}>
+                    <Download className="size-3.5" strokeWidth={1.75} />
+                    {exportando === "json" ? "Exportando…" : "Exportar datos (JSON)"}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={exportando !== null} onClick={() => void exportar("csv")}>
+                    <Download className="size-3.5" strokeWidth={1.75} />
+                    {exportando === "csv" ? "Exportando…" : "Exportar datos (CSV)"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Incluye perfil, estancias, notas, consentimientos, contactos y conversaciones. El documento de identidad nunca se exporta. Cada exportación queda en la bitácora de privacidad.</p>
+                {errorExport && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {errorExport}
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {ficha.resumen.estancias} estancia(s) · {ficha.resumen.noches} noche(s)
               {ficha.resumen.ultimaEstancia ? ` · última: ${formatFechaSolo(ficha.resumen.ultimaEstancia)}` : ""}

@@ -67,6 +67,8 @@ import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copilot
 import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
 import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
+import { AvisoPublicoPage } from "./verticals/hoteles/privacidad-publica/AvisoPublicoPage.tsx";
+import { MisDatosPage } from "./verticals/hoteles/privacidad-publica/MisDatosPage.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { HotelesCopilotoPage } from "./verticals/hoteles/pages/Copiloto.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -298,6 +300,15 @@ function StorefrontRastreoRoute() {
 function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
   return <DemoWhatsAppPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+// H-30 -- privacidad PUBLICA del huesped de hoteles (aviso + ARCO sin login, y "mis datos" con enlace firmado): sin shell de panel.
+function HotelesAvisoPublicoRoute() {
+  const { orgSlug = "" } = useParams();
+  return <AvisoPublicoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function HotelesMisDatosRoute() {
+  const { orgSlug = "" } = useParams();
+  return <MisDatosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
 // Pagina PUBLICA de reservas de citas (C-19): sin login ni shell; solo necesita el slug del negocio.
 function ReservarCitasRoute() {
@@ -1069,6 +1080,8 @@ export function App() {
         <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
+        <Route path="/hoteles/:orgSlug/aviso" element={<HotelesAvisoPublicoRoute />} />
+        <Route path="/hoteles/:orgSlug/mis-datos" element={<HotelesMisDatosRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/copiloto" element={<HotelesCopilotoRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />

@@ -5,3 +5,7 @@ export * from "./parse.ts";
 export * from "./repository.ts";
 export { PostgresPrivacyRepository, mapPrivacyPgError } from "./postgres-repository.ts";
 export { InMemoryPrivacyRepository } from "./in-memory-repository.ts";
+export * from "./public.ts";
+export { PostgresPublicPrivacyRepository, PostgresGuestDataRepository } from "./public-postgres.ts";
+export { InMemoryPublicPrivacyRepository } from "./public-in-memory.ts";
+export { correoCodigoArco, correoMisDatos } from "./public-emails.ts";

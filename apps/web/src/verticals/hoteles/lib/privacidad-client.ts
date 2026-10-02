@@ -10,7 +10,9 @@ import type { DocumentoRevelado, IdentidadSummary } from "./identidad-client.ts"
 
 export type ArcoDerecho = "acceso" | "rectificacion" | "cancelacion" | "oposicion";
 export type ArcoEstado = "recibida" | "en_revision" | "procedente" | "improcedente" | "ejecutada";
-export type ArcoCanal = "mostrador" | "correo" | "whatsapp" | "web" | "telefono" | "otro";
+export type ArcoCanal = "mostrador" | "correo" | "whatsapp" | "web" | "telefono" | "otro" | "publico";
+/** Canales que el staff puede capturar a mano: "publico" es el origen del formulario del titular sin login (H-30). */
+export type ArcoCanalStaff = Exclude<ArcoCanal, "publico">;
 export type PlazoEstado = "en_plazo" | "por_vencer" | "vencida" | "cerrada";
 export type IncidenteTipo = "acceso_no_autorizado" | "perdida_robo" | "alteracion" | "divulgacion" | "otro";
 export type IncidenteSeveridad = "baja" | "media" | "alta";
@@ -19,7 +21,8 @@ export type AccesoEstado = "pendiente" | "aprobada" | "rechazada" | "usada";
 
 export const ARCO_DERECHO_LABELS: Record<ArcoDerecho, string> = { acceso: "Acceso", rectificacion: "Rectificación", cancelacion: "Cancelación", oposicion: "Oposición" };
 export const ARCO_ESTADO_LABELS: Record<ArcoEstado, string> = { recibida: "Recibida", en_revision: "En revisión", procedente: "Procedente", improcedente: "Improcedente", ejecutada: "Ejecutada" };
-export const ARCO_CANAL_LABELS: Record<ArcoCanal, string> = { mostrador: "Mostrador", correo: "Correo", whatsapp: "WhatsApp", web: "Web", telefono: "Teléfono", otro: "Otro" };
+export const ARCO_CANAL_LABELS: Record<ArcoCanal, string> = { mostrador: "Mostrador", correo: "Correo", whatsapp: "WhatsApp", web: "Web", telefono: "Teléfono", otro: "Otro", publico: "Formulario público" };
+export const ARCO_CANALES_STAFF: readonly ArcoCanalStaff[] = ["mostrador", "correo", "whatsapp", "web", "telefono", "otro"];
 export const PLAZO_ESTADO_LABELS: Record<PlazoEstado, string> = { en_plazo: "En plazo", por_vencer: "Por vencer", vencida: "Vencida", cerrada: "Cerrada" };
 export const INCIDENTE_TIPO_LABELS: Record<IncidenteTipo, string> = {
   acceso_no_autorizado: "Acceso no autorizado", perdida_robo: "Pérdida o robo", alteracion: "Alteración", divulgacion: "Divulgación", otro: "Otro",
@@ -181,7 +184,7 @@ export const fetchArco = (f: typeof fetch, a: string, t: string, p: string) => g
 export interface NuevoArcoInput {
   readonly derecho: ArcoDerecho;
   readonly solicitante: string;
-  readonly canal: ArcoCanal;
+  readonly canal: ArcoCanalStaff;
   readonly contacto?: string;
   readonly descripcion?: string;
   readonly huespedId?: string;
@@ -190,6 +193,18 @@ export interface NuevoArcoInput {
 export const openArco = (f: typeof fetch, a: string, t: string, p: string, input: NuevoArcoInput) => post<{ solicitudId: string; solicitud: ArcoSummary | null }>(f, a, t, p, "arco", input);
 export const advanceArco = (f: typeof fetch, a: string, t: string, p: string, id: string, estado: Exclude<ArcoEstado, "recibida">, nota: string) =>
   post<{ resultado: string; solicitud: ArcoSummary | null }>(f, a, t, p, `arco/${id}/avanzar`, { estado, nota });
+export interface EnlaceMisDatos {
+  /** URL con el token en el fragmento (nunca viaja al servidor al abrirla). */
+  readonly enlace: string;
+  readonly venceEn: string;
+  /** encolado = en la cola de correo; sin_correo = el titular no dejo correo; omitido = no se pidio o la cola no esta disponible. */
+  readonly correo: "encolado" | "sin_correo" | "omitido";
+  /** pendiente_de_configuracion = sin llave de Resend: el correo queda en cola y NO sale hasta configurarla. */
+  readonly envioDeCorreo: "habilitado" | "pendiente_de_configuracion";
+}
+/** H-30: emite el enlace "mis datos" de una solicitud de ACCESO procedente (owner/gm; el servidor lo exige). */
+export const issueEnlaceMisDatos = (f: typeof fetch, a: string, t: string, p: string, id: string, huespedId: string, enviarCorreo: boolean) =>
+  post<EnlaceMisDatos>(f, a, t, p, `arco/${id}/enlace-mis-datos`, { huespedId, enviarCorreo });
 export const extendArco = (f: typeof fetch, a: string, t: string, p: string, id: string, motivo: string) => post<{ solicitud: ArcoSummary | null }>(f, a, t, p, `arco/${id}/prorroga`, { motivo });
 
 export const fetchIncidentes = (f: typeof fetch, a: string, t: string, p: string) => get<Lista<IncidenteSummary>>(f, a, t, p, "incidentes");

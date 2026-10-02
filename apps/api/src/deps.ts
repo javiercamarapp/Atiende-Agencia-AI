@@ -25,7 +25,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -217,6 +217,11 @@ export interface AppDeps {
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
   readonly hotelesPrivacidadRepo?: (db: TenantDbSession) => PrivacyRepository;
+  /** H-30 -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, "mis datos"; migracion 042), sesion de
+   *  SISTEMA. OPCIONAL: en produccion no se define y las rutas usan `PostgresPublicPrivacyRepository`; solo los tests inyectan el espejo. */
+  readonly hotelesPrivacidadPublicaRepo?: (db: TenantDbSession) => PublicPrivacyRepository;
+  /** H-30 -- exportacion de datos del huesped y emision del enlace "mis datos" (staff owner/gm; migracion 042). OPCIONAL, igual que arriba. */
+  readonly hotelesGuestDataRepo?: (db: TenantDbSession) => GuestDataRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de

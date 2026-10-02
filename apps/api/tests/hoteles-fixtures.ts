@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryAgentesRepository, InMemoryHotelesRepository, InMemoryIdentityRepository, InMemoryPrivacyRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { InMemoryAgentesRepository, InMemoryHotelesRepository, InMemoryIdentityRepository, InMemoryPrivacyRepository, InMemoryPublicPrivacyRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -45,6 +45,8 @@ export interface HotelesTestContext {
   readonly identidadRepo: InMemoryIdentityRepository;
   /** H-02 -- privacidad en memoria (mismo objeto que resuelve `deps.hotelesPrivacidadRepo(...)`), coordinada con `identidadRepo`. */
   readonly privacidadRepo: InMemoryPrivacyRepository;
+  /** H-30 -- privacidad publica + exportacion en memoria (mismo objeto para sesion de sistema y de staff). */
+  readonly privacidadPublicaRepo: InMemoryPublicPrivacyRepository;
   /** H-03 -- agentes/aprobaciones en memoria (mismo objeto que resuelve `deps.hotelesAgentesRepo(...)`). */
   readonly agentesRepo: InMemoryAgentesRepository;
   readonly organizationId: string;
@@ -83,6 +85,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const hotelesRepo = new InMemoryHotelesRepository();
   const identidadRepo = new InMemoryIdentityRepository();
   const privacidadRepo = new InMemoryPrivacyRepository(identidadRepo);
+  const privacidadPublicaRepo = new InMemoryPublicPrivacyRepository();
   const agentesRepo = new InMemoryAgentesRepository();
 
   const organizationId = randomUUID();
@@ -94,6 +97,26 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   // `organizations`/`properties`: no comparte almacenamiento con `coreRepo`/`engine`).
   hotelesRepo.seedOrganization({ id: organizationId, slug: "hotel-de-prueba", name: "Hotel de Prueba" });
   hotelesRepo.seedPropertySummary(organizationId, { propertyId, name: "Hotel de Prueba — Matriz" });
+  // H-30 -- espejo de la privacidad publica: aviso vigente de la property y huesped exportable.
+  privacidadPublicaRepo.orgSlug = "hotel-de-prueba";
+  privacidadPublicaRepo.organizationName = "Hotel de Prueba";
+  privacidadPublicaRepo.organizationId = organizationId;
+  privacidadPublicaRepo.allowedProperties.add(propertyId);
+  privacidadPublicaRepo.properties = [
+    {
+      propertyId,
+      propertyName: "Hotel de Prueba — Matriz",
+      notice: {
+        id: randomUUID(),
+        version: "v1",
+        simplifiedText: "Aviso simplificado v1: identificarte, registro de huespedes y facturacion.",
+        integralUrl: "https://hotel-de-prueba.example.com/aviso",
+        mandatoryPurposes: ["identificar al huesped"],
+        optionalPurposes: ["promociones"],
+        publishedAt: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  ];
 
   async function seedStaff(role: "owner" | "gm" | "frontdesk" | "reservations" | "housekeeping" | "maintenance" | "fnb" | "accountant", label: string) {
     const id = randomUUID();
@@ -150,6 +173,18 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   // GET /hoteles/:propertyId/huespedes.
   const guestId = randomUUID();
   hotelesRepo.seedGuest({ id: guestId, propertyId, fullName: "Ana Torres", email: "ana.torres@example.com", phone: "5511112222" });
+  privacidadPublicaRepo.guests.set(guestId, {
+    propertyId,
+    doc: {
+      perfil: { id: guestId, nombre: "Ana Torres", correo: "ana.torres@example.com", telefono: "5511112222" },
+      estancias: [{ reservaId: randomUUID(), estado: "confirmada", entrada: "2026-03-01", salida: "2026-03-03", total: "2500.00" }],
+      consentimientos: [{ id: randomUUID(), versionAviso: "v1", canal: "mostrador" }],
+      identidad: [{ id: randomUUID(), tipoDocumento: "pasaporte", estado: "activo", verificada: true, conservarHasta: "2099-01-01" }],
+      notas: [{ id: randomUUID(), tipo: "nota", texto: '=HYPERLINK("http://x","clic"), "con comillas"' }],
+      solicitudesContacto: [],
+      conversaciones: [],
+    },
+  });
   hotelesRepo.seedNightlyRates(propertyId, roomTypeId, [
     { date: "2026-12-01", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
     { date: "2026-12-02", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
@@ -190,6 +225,8 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     hotelesRepo: (_db) => hotelesRepo,
     hotelesIdentidadRepo: (_db) => identidadRepo,
     hotelesPrivacidadRepo: (_db) => privacidadRepo,
+    hotelesPrivacidadPublicaRepo: (_db) => privacidadPublicaRepo,
+    hotelesGuestDataRepo: (_db) => privacidadPublicaRepo,
     hotelesAgentesRepo: (_db) => agentesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
@@ -256,6 +293,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     hotelesRepo,
     identidadRepo,
     privacidadRepo,
+    privacidadPublicaRepo,
     agentesRepo,
     organizationId,
     propertyId,

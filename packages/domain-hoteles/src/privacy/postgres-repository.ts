@@ -267,7 +267,7 @@ export class PostgresPrivacyRepository implements PrivacyRepository {
   listArco(propertyId: string, filters: { status?: ArcoStatus; limit: number }): Promise<PrivacyListResult<ArcoRequestRecord>> {
     return this.list(
       "arco-list",
-      `select ${ARCO_COLUMNS} from hoteles.arco_request where property_id = $1 and ($2::text is null or status = $2) order by response_due_on, created_at desc, id limit $3;`,
+      `select ${ARCO_COLUMNS} from hoteles.arco_request where property_id = $1 and (($2::text is null and status <> 'pendiente_verificacion') or status = $2) order by response_due_on, created_at desc, id limit $3;`,
       [propertyId, filters.status ?? null, filters.limit],
       toArco,
     );
