@@ -30,9 +30,11 @@
 --     corre withAppSession, con o sin auth.uid()); nada a anon.
 --   * core.esta_suprimido: solo-sistema por la misma razon (la consultan los despachadores). Devuelve solo
 --     boolean: no revela motivo, origen ni organizacion. GRANT solo a `authenticated`.
---   * core.list_supresiones_for_superadmin: caller-binding (auth.uid() = p_caller_id) y superadmin real via
---     core.superadmin_require_caller (delega en core.platform_superadmin). Devuelve conteos por tipo,
---     motivo y origen, NUNCA hashes ni valores. GRANT solo a `authenticated`.
+--   * core.list_supresiones_for_superadmin: funcion de SOLO LECTURA: caller-binding (auth.uid() = p_caller_id)
+--     y superadmin real via core.is_platform_superadmin (guard de lectura, como las demas funciones de
+--     lectura del back office); NO usa superadmin_require_caller, que ademas rechaza al superadmin con rol
+--     restringido de finanzas (esa exclusion es para escrituras). Devuelve conteos por tipo, motivo y
+--     origen, NUNCA hashes ni valores. GRANT solo a `authenticated`.
 --   * core.agregar_no_contactar_for_superadmin: mismo guard de superadmin; registra motivo 'no_contactar'
 --     con origen 'superadmin' y el actor. La ruta del API ademas exige step-up MFA. GRANT solo a
 --     `authenticated`.
@@ -127,7 +129,12 @@ create or replace function core.list_supresiones_for_superadmin(p_caller_id uuid
 returns table (tipo text, motivo text, origen text, total bigint, ultimo_en timestamptz)
 language plpgsql stable security definer set search_path = core, pg_temp as $$
 begin
-  perform core.superadmin_require_caller(p_caller_id, 'list_supresiones_for_superadmin');
+  if auth.uid() is null or auth.uid() <> p_caller_id then
+    raise exception 'list_supresiones_for_superadmin: caller binding invalido (auth.uid() no coincide con p_caller_id)' using errcode = '42501';
+  end if;
+  if not core.is_platform_superadmin(p_caller_id) then
+    raise exception 'list_supresiones_for_superadmin: solo un superadmin de plataforma real puede ejecutar esta accion' using errcode = '42501';
+  end if;
   return query
     select s.tipo, s.motivo, s.origen, count(*)::bigint, max(s.creado_en)
     from core.supresion_contacto s

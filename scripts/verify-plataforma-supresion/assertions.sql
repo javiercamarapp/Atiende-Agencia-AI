@@ -265,11 +265,12 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6c00
 select * from core.list_supresiones_for_superadmin('00000000-0000-0000-0000-0000000f6c01') as should_fail;
 rollback;
 
-\echo '12c. el superadmin restringido a finanzas NO puede listar'
+\echo '12c. el superadmin restringido a finanzas SI puede listar (funcion de solo lectura: conteos, sin valores)'
 begin;
 set local role authenticated;
+select core.registrar_supresion('telefono', 'a896f05198562634b8aaab833a835eeaf440ba8c1bb3009cb6da337746ef4120', 'baja', 'whatsapp.citas', null);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f6c02', true);
-select * from core.list_supresiones_for_superadmin('00000000-0000-0000-0000-0000000f6c02') as should_fail;
+select count(*)::int as grupos_deberia_ser_1 from core.list_supresiones_for_superadmin('00000000-0000-0000-0000-0000000f6c02');
 rollback;
 
 \echo '12d. sin sesion de usuario (sistema) tampoco se lista'
