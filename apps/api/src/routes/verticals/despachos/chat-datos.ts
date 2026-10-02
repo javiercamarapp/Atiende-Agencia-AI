@@ -22,6 +22,7 @@ import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
+import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -86,5 +87,23 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   mountConversacionesRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES });
+  // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
+  mountReporteRoutes(app, deps, {
+    base,
+    vertical: "despachos",
+    roles: VER_DASHBOARD_ROLES,
+    resolve: async (c, db) => {
+      const reader = deps.dataChat?.despachosReader;
+      if (!reader) return undefined;
+      const organizationId = c.get("organizationId");
+      const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
+      // `findPropertyConfig` degrada a null (nunca lanza) en la base sin la migracion 012.
+      const config = await deps.despachosRepo(db).findPropertyConfig(c.req.param("propertyId") ?? "");
+      return {
+        catalog: buildDespachosDataChatCatalog(reader(db)),
+        scope: { organizationId, userId: c.get("userId"), vertical: "despachos", verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE },
+      };
+    },
+  });
   return app;
 }

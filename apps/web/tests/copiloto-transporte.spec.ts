@@ -2,7 +2,7 @@
 // cuerpo sin identidad, hilo local cuando el servidor no guarda, CRUD de conversaciones y /estado. `fetch` inyectado: sin red.
 import { describe, expect, it } from "vitest";
 import { CopilotoErrorTransporte, type CopilotoEvento } from "@atiende/ui";
-import { consultarEstadoCopiloto, crearTransporteCopiloto, leerNdjson, normalizarRespuesta, parsearLinea, TEXTO_SIN_ACCESO } from "../src/lib/copiloto/transporte.ts";
+import { consultarEstadoCopiloto, crearTransporteCopiloto, leerNdjson, nombreArchivoPdf, normalizarRespuesta, parsearLinea, TEXTO_SIN_ACCESO } from "../src/lib/copiloto/transporte.ts";
 
 const BASE = "https://api.example.test/v1/restaurantes/p1/admin/chat-datos";
 const enc = new TextEncoder();
@@ -214,6 +214,75 @@ describe("conversaciones", () => {
     expect(llamadas).toEqual([{ url: `${BASE}/conversaciones/a`, method: "PATCH", body: '{"titulo":"Nuevo"}' }, { url: `${BASE}/conversaciones/a`, method: "DELETE" }]);
     const roto = crear((async () => json(404, { message: "no" })) as unknown as typeof fetch);
     await expect(roto.borrar?.("a")).rejects.toBeInstanceOf(CopilotoErrorTransporte);
+  });
+});
+
+describe("descargarPdf (reporte PDF del mensaje)", () => {
+  const pdf = (nombre = "reporte-hoteles-2026-10-02.pdf") =>
+    new Response(new Blob(["%PDF-1.7 prueba"]), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${nombre}"` } });
+
+  it("hace POST autenticado a .../conversaciones/:id/reporte?seq=N y entrega el PDF con el nombre del servidor", async () => {
+    const llamadas: { url: string; method: string; auth: string | null }[] = [];
+    const guardados: { nombre: string; tipo: string; tamano: number }[] = [];
+    const t = crearTransporteCopiloto({
+      baseUrl: BASE,
+      token: "tok",
+      fetchImpl: (async (url: string, init: RequestInit) => {
+        llamadas.push({ url, method: String(init.method), auth: new Headers(init.headers).get("authorization") });
+        return pdf();
+      }) as unknown as typeof fetch,
+      guardarArchivo: (blob, nombre) => guardados.push({ nombre, tipo: blob.type, tamano: blob.size }),
+    });
+    await t.descargarPdf?.("conv/1", 2);
+    expect(llamadas).toEqual([{ url: `${BASE}/conversaciones/conv%2F1/reporte?seq=2`, method: "POST", auth: "Bearer tok" }]);
+    expect(guardados).toHaveLength(1);
+    expect(guardados[0]).toMatchObject({ nombre: "reporte-hoteles-2026-10-02.pdf" });
+    expect(guardados[0]!.tamano).toBeGreaterThan(0);
+  });
+
+  it("usa el envoltorio de refresh de sesion (reintenta con el token nuevo)", async () => {
+    const tokens: (string | null)[] = [];
+    const t = crear((async (_u: string, init: RequestInit) => {
+      tokens.push(new Headers(init.headers).get("authorization"));
+      return tokens.length === 1 ? json(401, {}) : pdf();
+    }) as unknown as typeof fetch, async (hacer) => {
+      const primero = await hacer("viejo");
+      return primero.status === 401 ? hacer("nuevo") : primero;
+    });
+    await expect(t.descargarPdf?.("c", 2)).rejects.toBeInstanceOf(Error); // sin guardarArchivo inyectado usa el DOM (no hay en node)
+    expect(tokens).toEqual(["Bearer viejo", "Bearer nuevo"]);
+  });
+
+  it("errores honestos y legibles: 403, 404, 429, 422 con el mensaje del servidor, 503 y 500 (nunca el cuerpo crudo)", async () => {
+    const intento = async (res: Response) => {
+      const t = crear((async () => res) as unknown as typeof fetch);
+      return t.descargarPdf?.("c", 2).then(() => "no fallo", (e: Error) => e.message);
+    };
+    expect(await intento(json(403, {}))).toBe(TEXTO_SIN_ACCESO);
+    expect(await intento(json(404, {}))).toContain("No encontré esa conversación");
+    expect(await intento(json(429, {}))).toContain("muchos reportes");
+    expect(await intento(json(422, { code: "report_no_data", message: "No hay cifras para armar el reporte con tu alcance actual." }))).toBe("No hay cifras para armar el reporte con tu alcance actual.");
+    expect(await intento(new Response("<html>", { status: 422 }))).toContain("no tiene cifras");
+    expect(await intento(json(503, {}))).toContain("todavía no están disponibles");
+    expect(await intento(json(500, { stack: "secreto" }))).toContain("No pude generar el reporte");
+    expect(await intento(json(500, { stack: "secreto" }))).not.toContain("secreto");
+  });
+
+  it("una respuesta 200 que no es PDF se rechaza; un fallo de red es un error legible", async () => {
+    const noPdf = crear((async () => json(200, { ok: true })) as unknown as typeof fetch);
+    await expect(noPdf.descargarPdf?.("c", 2)).rejects.toThrow(/no es un PDF/);
+    const caido = crear((async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch);
+    await expect(caido.descargarPdf?.("c", 2)).rejects.toThrow(/No pude conectar/);
+  });
+
+  it("nombreArchivoPdf solo acepta nombres .pdf simples; cualquier otra cosa cae a reporte.pdf", () => {
+    const con = (cd: string | null) => ({ headers: new Headers(cd ? { "content-disposition": cd } : {}) });
+    expect(nombreArchivoPdf(con('attachment; filename="reporte-citas-2026-10-02.pdf"'))).toBe("reporte-citas-2026-10-02.pdf");
+    expect(nombreArchivoPdf(con('attachment; filename="../../etc/passwd"'))).toBe("reporte.pdf");
+    expect(nombreArchivoPdf(con('attachment; filename="x.exe"'))).toBe("reporte.pdf");
+    expect(nombreArchivoPdf(con(null))).toBe("reporte.pdf");
   });
 });
 

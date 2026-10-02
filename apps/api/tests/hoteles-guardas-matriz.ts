@@ -29,6 +29,7 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /chat-datos/conversaciones/:conversationId": ["owner", "gm"],
   "PATCH /chat-datos/conversaciones/:conversationId": ["owner", "gm"],
   "DELETE /chat-datos/conversaciones/:conversationId": ["owner", "gm"],
+  "POST /chat-datos/conversaciones/:conversationId/reporte": ["owner", "gm"],
   "GET /pedidos-fnb": "todos",
   "POST /pedidos-fnb": ["owner", "gm", "frontdesk", "fnb"],
   "GET /pedidos-fnb/:orderId": "todos",
