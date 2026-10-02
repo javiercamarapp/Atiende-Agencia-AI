@@ -172,7 +172,7 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   // ---- Barrido de cifrado de las instrucciones heredadas en texto plano (Rn-29) ----
   // Sistema (guard de secreto interno/cron), SOLO POR POST y NO agendado en vercel.json: se corre a mano tras aplicar la
   // migracion 028 y configurar RENTAS_ACCESS_KEY. Idempotente: cifra, verifica el ida y vuelta y SOLO entonces anula el texto plano.
-  // Una transaccion por tanda (`limite` filas, 1..200, por defecto 50); repetir hasta `cifradas: 0`. Sin llave: 503.
+  // Una transaccion por tanda (`limite` filas, 1..200, por defecto 50); repetir hasta `ok: true` y `cifradas: 0` (`fallidas > 0` = filas que siguen en claro). Sin llave: 503.
   app.post("/internal/rentas/acceso-cifrar", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
     const crudo = c.req.query("limite");

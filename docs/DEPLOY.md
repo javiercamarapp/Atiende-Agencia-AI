@@ -624,7 +624,7 @@ sale a Vercel y es seguro contra la base sin migrar (rutas con `disponible: fals
    `RENTAS_ACCESS_KEY_VERSION`, por defecto 1). Guárdala además en un gestor de secretos con respaldo: perderla vuelve ilegibles las
    instrucciones ya cifradas. Sin llave, leer o guardar instrucciones de acceso responde 503 "no disponible: falta RENTAS_ACCESS_KEY".
 3. Aplicar la migración 028 a la base real. Hasta aquí, nada cambia para el staff.
-4. Cifrar lo que ya existe en texto plano (idempotente; repetir hasta `cifradas: 0`):
+4. Cifrar lo que ya existe en texto plano (idempotente; repetir hasta `ok: true` y `cifradas: 0`; `fallidas > 0` o `ok: false` indican filas que siguen en claro):
    `curl -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" "https://<api>/internal/rentas/acceso-cifrar?limite=50"`.
    La columna en claro solo se anula después de cifrar y verificar el ida y vuelta. No está en `vercel.json`.
 5. Retención (Rn-30): las clases `rentas_huesped_pii` y `rentas_acceso_instrucciones` (90 días por defecto, rango 30 a 730) se purgan con
