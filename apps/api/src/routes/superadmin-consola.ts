@@ -83,10 +83,6 @@ export function medianocheMexicoIso(fecha: string): string {
 
 const usd = (micro: number): number => Math.round(micro) / 1_000_000;
 
-function razonDe<T>(f: FuenteConsola<T>): string {
-  return f.ok ? "error" : f.razon;
-}
-
 export function superadminConsolaRoutes(deps: AppDeps, opciones: { readonly politicaMrr?: PoliticaMrrResumen; readonly ahora?: () => Date } = {}): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const politica = opciones.politicaMrr ?? POLITICA_MRR_RESUMEN;

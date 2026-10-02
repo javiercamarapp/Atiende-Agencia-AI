@@ -33,6 +33,8 @@ const FILAS: CfoOrgRow[] = [
   fila("f", { orgStatus: "trial" }), // en prueba: no cuenta
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const cuerpo = async (res: Response): Promise<any> => res.json();
 const dia = (d: string, llm: number, ev: number, tokens: number): ConsolaCostoDiarioRow => ({ dia: d, llmMicroUsd: llm, eventosMicroUsd: ev, tokens });
 
 async function setup(opciones: { consola?: InMemoryConsolaRepository | null; cfo?: InMemoryCfoRepository | null; zona?: InMemoryCfoZoneRepository | null } = {}) {
@@ -133,7 +135,7 @@ describe("GET /superadmin/consola/resumen", () => {
     const sa = await t.superadmin();
     const res = await get(t.app, "/superadmin/consola/resumen", sa.token);
     const texto = await res.text();
-    const b = JSON.parse(texto);
+    const b = JSON.parse(texto) as ReturnType<typeof JSON.parse>;
     expect(b.disponible).toBe(true);
     expect(b.hoy).toBe("2026-09-30");
     expect(b.organizaciones.valor.total).toBe(4);
@@ -168,7 +170,7 @@ describe("GET /superadmin/consola/resumen", () => {
     sembrarTodo(t.consola!);
     t.consola!.seed({ costoHistorico: { ok: false, razon: "error" }, alcance: { ok: false, razon: "no_migrado" } });
     const sa = await t.superadmin();
-    const b = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     for (const campo of ["gastoIa", "tokens", "vozMinutos"]) expect(b[campo]).toMatchObject({ valor: null, codigo: "error" });
     for (const campo of ["sucursales", "usuarios"]) expect(b[campo]).toMatchObject({ valor: null, codigo: "no_migrado" });
     expect(b.organizaciones.valor.total).toBe(4);
@@ -183,7 +185,7 @@ describe("GET /superadmin/consola/resumen", () => {
     sembrarTodo(t.consola!);
     t.consola!.seed({ costoDiario: { ok: false, razon: "error" } });
     const sa = await t.superadmin();
-    const b = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     expect(b.gastoIa.valor.totalUsd).toBe(5);
     expect(b.gastoIa.valor.serie14d.valor).toBeNull();
     expect(b.gastoIa.valor.delta7d.valor).toBeNull();
@@ -195,7 +197,7 @@ describe("GET /superadmin/consola/resumen", () => {
       const sa = await t.superadmin();
       const res = await get(t.app, "/superadmin/consola/resumen", sa.token);
       expect(res.status).toBe(200);
-      const b = await res.json();
+      const b = await cuerpo(res);
       expect(b.disponible).toBe(false);
       expect(b.mensaje).toMatch(/0042_superadmin_consola_resumen/);
       for (const campo of ["organizaciones", "gastoIa", "tokens", "operaciones", "vozMinutos", "sucursales", "usuarios", "conversacionesWa", "resueltasSinHumano", "mrr"]) {
@@ -210,7 +212,7 @@ describe("GET /superadmin/consola/resumen", () => {
     sembrarTodo(t.consola!);
     t.consola!.seed({ resueltasSinHumano: { ok: true, data: { total: 0, resueltasSinHumano: 0, razon: null } } });
     const sa = await t.superadmin();
-    const b = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     expect(b.resueltasSinHumano.valor).toMatchObject({ resueltas: 0, total: 0, porcentaje: null });
   });
 });
@@ -222,7 +224,7 @@ describe("delta de 7 dias contra los 7 anteriores, con reloj fijo", () => {
     const t = await setup();
     sembrarTodo(t.consola!);
     const sa = await t.superadmin();
-    const b = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     expect(b.hoy).toBe("2026-09-30");
     expect(t.consola!.llamadas.costoDiario).toEqual([{ desde: "2026-09-17", hasta: "2026-09-30" }]);
     expect(t.consola!.llamadas.operaciones).toEqual([{ desde: "2026-09-17", hasta: "2026-09-30" }]);
@@ -265,7 +267,7 @@ describe("MRR del Resumen", () => {
     const t = await setup();
     sembrarTodo(t.consola!);
     const sa = await t.superadmin();
-    const a = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const a = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     expect(a.mrr.valor).toEqual({ totalMxn: 2488, organizacionesConPrecio: 2, organizacionesSinPrecio: 2 });
     await get(t.app, "/superadmin/consola/resumen", sa.token);
     const filas = t.zona!.entries().filter((e) => e.recurso === POLITICA_MRR_RESUMEN.recursoBitacora);
@@ -280,7 +282,7 @@ describe("MRR del Resumen", () => {
     const sa = await t.superadmin();
     const res = await get(t.app, "/superadmin/consola/resumen", sa.token);
     expect(res.status).toBe(200);
-    const b = await res.json();
+    const b = await cuerpo(res);
     expect(b.mrr).toMatchObject({ valor: null, codigo: "sin_bitacora" });
     expect(b.organizaciones.valor.total).toBe(4);
   });
@@ -289,7 +291,7 @@ describe("MRR del Resumen", () => {
     const t = await setup({ cfo: new InMemoryCfoRepository({ migrado: false }) });
     sembrarTodo(t.consola!);
     const sa = await t.superadmin();
-    const b = await (await get(t.app, "/superadmin/consola/resumen", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
     expect(b.mrr).toMatchObject({ valor: null, codigo: "mrr_sin_repositorio" });
   });
 
@@ -314,7 +316,7 @@ describe("GET /superadmin/consola/agentes-actividad", () => {
     await salud.recordCronHeartbeat({ cronName: "/internal/citas/confirmacion-cita", status: "ok", error: null, startedAt: "2026-09-30T17:00:00.000Z", finishedAt: "2026-09-30T17:00:02.000Z", durationMs: 2000 });
     await salud.recordCronHeartbeat({ cronName: "/internal/rentas/ical-sync", status: "error", error: "x", startedAt: "2026-09-30T17:00:00.000Z", finishedAt: "2026-09-30T17:00:01.000Z", durationMs: 1000 });
     await salud.recordCronHeartbeat({ cronName: "/internal/cron/inexistente", status: "ok", error: null, startedAt: "2026-09-30T17:00:00.000Z", finishedAt: "2026-09-30T17:00:01.000Z", durationMs: 1000 });
-    const b = await (await get(t.app, "/superadmin/consola/agentes-actividad", sa.token)).json();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/agentes-actividad", sa.token));
     expect(b.disponible).toBe(true);
     expect(t.consola!.llamadas.agentesActividad).toEqual(["2026-09-30"]);
     expect(b.agentes.valor).toEqual([
@@ -331,7 +333,7 @@ describe("GET /superadmin/consola/agentes-actividad", () => {
     const sa = await t.superadmin();
     const res = await get(t.app, "/superadmin/consola/agentes-actividad", sa.token);
     expect(res.status).toBe(200);
-    const b = await res.json();
+    const b = await cuerpo(res);
     expect(b.agentes).toMatchObject({ valor: null, codigo: "no_migrado" });
     expect(b.ultimaCorrida.valor).toEqual([]);
   });
