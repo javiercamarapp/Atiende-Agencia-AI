@@ -9,7 +9,8 @@
 --      2x1 del lunes solo recoger, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
---      promocion; reparar un precio alterado.
+--      promocion; reparar un precio alterado; sobre una base con la version anterior (T4 y T7 renombrados
+--      en #328) renombra por identidad estable (slug) en vez de duplicar o chocar con unique(slug).
 --   D. Aislamiento: otra organizacion con nombres iguales queda intacta; un slug de otra vertical
 --      aborta; staff de otra organizacion y anon no leen lo sembrado.
 --   E. Agente de WhatsApp (perfil taqueria_pm con los datos del dueño), carga como DEMO (marca
@@ -210,6 +211,26 @@ select (
   (select price from restaurantes.products where name = 'Taco Al Pastor (individual)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 42
   and (select no_domicilio from restaurantes.products where name = 'Heineken' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
 )::int as seed_repara_deberia_ser_1;
+rollback;
+
+\echo '=== C4. Re-ejecutar sobre una base con la version ANTERIOR (T4 "T4 (pendiente de datos)" / t4-pendiente y T7 con su nombre viejo, #328) RENOMBRA: sin duplicar, sin chocar con unique(slug) y conservando el id de la sucursal ==='
+begin;
+select public.seed_pm_demo();
+create temp table t4_antes as select p.id from core.property p join restaurantes.branch_detail bd on bd.property_id = p.id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug = 'galerias';
+create temp table t7_antes as select p.id from core.property p join restaurantes.branch_detail bd on bd.property_id = p.id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug = 'garcia-lavin';
+update restaurantes.branch_detail set slug = 't4-pendiente' where property_id = (select id from t4_antes);
+update core.property set name = 'T4 (pendiente de datos)' where id = (select id from t4_antes);
+update core.property set name = 'Victory Platz (García Lavín)' where id = (select id from t7_antes);
+select public.seed_pm_demo();
+select (
+  (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.branch_detail where property_id = (select id from t4_antes) and slug = 'galerias') = 1
+  and (select name from core.property where id = (select id from t4_antes)) = 'Galerías'
+  and (select name from core.property where id = (select id from t7_antes)) = 'García Lavín (Victory Platz)'
+  and (select count(*) from restaurantes.branch_detail where slug = 't4-pendiente') = 0
+  and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 669
+)::int as renombra_sin_duplicar_deberia_ser_1;
 rollback;
 
 \echo '=== D1. AISLAMIENTO: la otra organizacion (mismo nombre de producto y de sucursal) queda intacta ==='
