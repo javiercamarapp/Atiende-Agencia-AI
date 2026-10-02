@@ -290,7 +290,7 @@ export type {
   TenderVersion,
   PersistedTenderVersion,
 } from "./tender-version-registry.ts";
-export type { TenderChangeNotificationRecord, RecordTenderVersionResult } from "./repository.ts";
+export type { TenderChangeNotificationRecord, RecordTenderVersionResult, TenderAuditLogEntry, TenderAuditLogPage } from "./repository.ts";
 
 // ---- Fase 6: seguimiento post-adjudicación (REQ-051..055) ----
 export { CONTRACT_STATES, CONTRACT_INITIAL_STATUS, CONTRACT_TERMINAL_STATES, CONTRACT_TRANSITIONS, CONTRACT_ALERT_STATES, CONTRACT_DECISION_TRANSITIONS, CONTRACT_STEP_UP_TRANSITIONS, isContractStatus, checkTransition } from "./contract-lifecycle.ts";

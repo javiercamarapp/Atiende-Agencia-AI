@@ -139,6 +139,18 @@ con `available: false` y las escrituras 503. `AppDeps.licitacionesSalaGuerraRepo
 cablea `production/deps.ts`); sin él las rutas responden 503 y el cron omite la junta.
 El cron `/internal/licitaciones/deadline-reminders` vigila también el límite de envío de preguntas.
 
+**L-25 — gate final** (`GET sala-guerra/gate`, cualquier miembro, solo lectura): checklist de integridad vivo, paquete
+re-derivado contra el expediente vivo, sha256 de los bytes del ZIP guardado contra el manifiesto guardado, doble
+aprobación (2/2, L-26; la aprobación única de la base sin migración 033 se muestra en ámbar declarado) y holgura al cierre
+(24 h) en la zona horaria de la organización. Veredicto `listo`/`no_listo` con motivos. A menos de 24 h del cierre, sin
+presentación declarada y con el paquete no listo emite `licitaciones.sala_guerra.paquete_no_listo` (dedupe por convocatoria,
+mejor esfuerzo en SAVEPOINT). No presenta nada ante ningún portal.
+
+**L-29 — bitácora** (`GET bitacora?fuente=&desde=&hasta=&limit=&offset=`, cualquier miembro, solo lectura): mezcla en orden
+temporal la auditoría de alta/edición (`tender_audit_log`, orden total), las anotaciones de la sala, go/no-go, aprobaciones
+vigentes del expediente y la declaración de presentación. Sin ids ni correos de otras personas (solo `esTuyo` y rol). Cada
+fuente ausente en una base sin migrar aporta una lista vacía (SAVEPOINT), nunca un 500.
+
 ## L-05 — WhatsApp (`whatsapp.ts`)
 
 - `GET|POST /v1/licitaciones/whatsapp/webhook`: público, firmado (`X-Hub-Signature-256` sobre los bytes crudos, verificador compartido `@atiende/domain-citas::verifyMetaSignature`), tope de 256 KB y límite de ritmo. Solo atiende mensajes del número remitente `LICITACIONES_WHATSAPP_PHONE_NUMBER_ID`; sin él (o sin repositorio) acusa recibo sin procesar. `SI`/`BAJA` (opt-in/opt-out) y botones `lic-wa:<token>` (decisión go/no-go).
