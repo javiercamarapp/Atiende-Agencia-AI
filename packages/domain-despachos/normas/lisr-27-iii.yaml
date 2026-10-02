@@ -1,0 +1,15 @@
+id: lisr-27-iii
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "27 fracción III"
+resumen: "No deducibilidad de pagos en efectivo por más de 2,000 pesos."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar el umbral vigente y sus excepciones."
+usado_en_codigo:
+  - "src/pagos-provisionales/engine.ts:10"
+  - "src/pagos-provisionales/engine.ts:38"
+  - "src/pagos-provisionales/engine.ts:194"

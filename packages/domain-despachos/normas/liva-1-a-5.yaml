@@ -1,0 +1,15 @@
+id: liva-1-a-5
+tipo: norma
+ordenamiento: "LIVA"
+articulo_o_regla: "1-A y 5"
+resumen: "Retenciones de IVA y acreditamiento: el IVA se acredita cuando el gasto está efectivamente pagado (flujo)."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LIVA.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El código cita 1-B y 5; la tarea D-33 pide 1-A y 5. Falta fijar qué artículo sustenta qué cálculo."
+usado_en_codigo:
+  - "src/pagos-provisionales/engine.ts:23"
+  - "src/devolucion-iva/calculo.ts:66"
+  - "src/cfdi/rep.ts:7"
