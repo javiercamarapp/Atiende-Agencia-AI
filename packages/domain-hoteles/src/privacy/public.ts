@@ -25,7 +25,7 @@ export interface PublicNoticeProperty {
   readonly notice: PublicNotice | null;
 }
 export interface PublicNoticesResult {
-  /** `false`: base sin la migracion 041 -- "no disponible aun". */
+  /** `false`: base sin la migracion 042 -- "no disponible aun". */
   readonly available: boolean;
   readonly organizationName: string | null;
   readonly properties: readonly PublicNoticeProperty[];

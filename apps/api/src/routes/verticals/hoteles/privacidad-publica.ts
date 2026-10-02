@@ -1,7 +1,7 @@
 // H-30 (P1) -- superficie PUBLICA de privacidad del huesped de hoteles, SIN login. Igual que el storefront publico de restaurantes,
 // este grupo se monta sin `authMiddleware` y abre su propia sesion de SISTEMA (`userId: null`); su defensa es CORS por origen,
 // limite de tasa por IP / referencia / contacto (consumido en una sesion APARTE para que un rechazo no revierta el conteo),
-// honeypot, validacion estricta y un modelo de datos que solo expone funciones `security definer` solo-sistema (migracion 041).
+// honeypot, validacion estricta y un modelo de datos que solo expone funciones `security definer` solo-sistema (migracion 042).
 //
 //   GET  /v1/hoteles/:orgSlug/privacidad[?property=slug]       aviso vigente (texto publico, sin datos personales)
 //   POST /v1/hoteles/:orgSlug/privacidad/solicitud             alta de una solicitud ARCO: queda pendiente_verificacion
@@ -44,7 +44,7 @@ const MAX_BODY_BYTES = 8 * 1024;
 const noStore = (c: Context) => c.header("Cache-Control", "no-store");
 
 function unavailable(err: unknown): unknown {
-  if (err instanceof PrivacyUnavailableError) return Errors.serviceUnavailable("La privacidad publica aun no esta disponible: falta aplicar la migracion 041 en esta base.");
+  if (err instanceof PrivacyUnavailableError) return Errors.serviceUnavailable("La privacidad publica aun no esta disponible: falta aplicar la migracion 042 en esta base.");
   if (err instanceof PrivacyInvalidInputError) return Errors.validation(err.message);
   return err;
 }
@@ -95,7 +95,7 @@ export function hotelesPrivacidadPublicaRoutes(deps: AppDeps): Hono {
     const propiedad = c.req.query("property") ?? null;
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const result = await repoOf(db).listNotices(orgSlug);
-      if (!result.available) return c.json({ disponible: false, motivo: "La privacidad publica aun no esta disponible en esta base: falta aplicar la migracion 041." });
+      if (!result.available) return c.json({ disponible: false, motivo: "La privacidad publica aun no esta disponible en esta base: falta aplicar la migracion 042." });
       if (result.properties.length === 0) throw Errors.notFound("Hotel no encontrado.");
       const hotel = { nombre: result.organizationName };
       if (propiedad) {
@@ -143,7 +143,7 @@ export function hotelesPrivacidadPublicaRoutes(deps: AppDeps): Hono {
       } catch (err) {
         throw unavailable(err);
       }
-      if (!notices.available) throw Errors.serviceUnavailable("La privacidad publica aun no esta disponible: falta aplicar la migracion 041 en esta base.");
+      if (!notices.available) throw Errors.serviceUnavailable("La privacidad publica aun no esta disponible: falta aplicar la migracion 042 en esta base.");
       if (notices.properties.length === 0) throw Errors.notFound("Hotel no encontrado.");
       const property = pickProperty(notices.properties, form.propertySlug);
       if (!property) throw Errors.validation("propiedad: indica la propiedad del hotel a la que va dirigida la solicitud.");

@@ -75,7 +75,7 @@ describe("CSV de exportacion", () => {
   });
 });
 
-describe("espejo en memoria (mismas reglas que la migracion 041)", () => {
+describe("espejo en memoria (mismas reglas que la migracion 042)", () => {
   const prop = "00000000-0000-4000-8000-0000000000a1";
   const input = (id: string, over: Record<string, unknown> = {}) => ({
     requestId: id,

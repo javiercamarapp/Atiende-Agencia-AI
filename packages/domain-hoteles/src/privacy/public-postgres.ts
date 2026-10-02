@@ -1,6 +1,6 @@
 // Adaptadores Postgres de la privacidad publica del huesped (H-30) sobre `TenantDbSession`.
 // REGLA DURA DE COMPATIBILIDAD CON LA BASE SIN MIGRAR: la sesion es UNA transaccion por request; un 42883/42P01/42703
-// la dejaria ABORTADA (25P02). Toda llamada a las funciones de la migracion 041 corre en `runWithSavepointFallback`:
+// la dejaria ABORTADA (25P02). Toda llamada a las funciones de la migracion 042 corre en `runWithSavepointFallback`:
 // la lectura publica degrada a `available: false` y las escrituras a `PrivacyUnavailableError` (503 honesto).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
@@ -19,7 +19,7 @@ import type {
   SubmitPublicArcoInput,
 } from "./public.ts";
 
-const MIGRATION_HINT = "migracion 041 pendiente";
+const MIGRATION_HINT = "migracion 042 pendiente";
 
 async function guardedWrite<T>(db: TenantDbSession, operation: string, functionName: string, primary: () => Promise<T>): Promise<T> {
   try {

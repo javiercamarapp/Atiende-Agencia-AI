@@ -102,14 +102,14 @@ describe("Exportar datos en la ficha del huesped", () => {
     expect(revoke).toHaveBeenCalledTimes(2);
   });
   it("un rechazo del servidor (base sin migrar 503) se muestra y no descarga nada", async () => {
-    stub(() => ({ ok: false, status: 503, json: async () => ({ message: "La privacidad aun no esta disponible: migracion 041 pendiente." }) }) as unknown as Response);
+    stub(() => ({ ok: false, status: 503, json: async () => ({ message: "La privacidad aun no esta disponible: migracion 042 pendiente." }) }) as unknown as Response);
     const create = vi.fn(() => "blob:test");
     Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
     montar();
     await esperar();
     click(boton("Exportar datos (CSV)")!);
     await esperar();
-    expect(rendered!.container.querySelector('[role="alert"]')?.textContent).toContain("migracion 041 pendiente");
+    expect(rendered!.container.querySelector('[role="alert"]')?.textContent).toContain("migracion 042 pendiente");
     expect(create).not.toHaveBeenCalled();
     expect(boton("Exportar datos (CSV)")!.disabled).toBe(false);
   });

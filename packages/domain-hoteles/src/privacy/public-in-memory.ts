@@ -1,5 +1,5 @@
 // Mirror en memoria de la privacidad publica (H-30) para pruebas de la API y de la UI. Reproduce las reglas de las
-// funciones de la migracion 041 (tope por contacto, codigo de un solo uso con intentos y expiracion, plazo de 20 dias
+// funciones de la migracion 042 (tope por contacto, codigo de un solo uso con intentos y expiracion, plazo de 20 dias
 // desde la verificacion, snapshot solo para acceso procedente) pero NUNCA aplica RLS/GRANT: eso lo prueba
 // scripts/verify-hoteles-privacidad-publica contra Postgres real.
 import { PrivacyAccessDeniedError, PrivacyNotFoundError, PrivacyUnavailableError, PrivacyInvalidInputError } from "./errors.ts";
@@ -50,7 +50,7 @@ export class InMemoryPublicPrivacyRepository implements PublicPrivacyRepository,
   readonly outbox: InMemoryOutboxEmail[] = [];
   readonly exportLog: { propertyId: string; guestId: string; format: ExportFormat }[] = [];
   readonly snapshotLog: string[] = [];
-  /** `false` simula la base sin la migracion 041. */
+  /** `false` simula la base sin la migracion 042. */
   available = true;
   organizationName: string | null = "Hotel Demo";
   /** Slug que responde; otro slug = hotel inexistente (cero propiedades). `null` = cualquiera. */

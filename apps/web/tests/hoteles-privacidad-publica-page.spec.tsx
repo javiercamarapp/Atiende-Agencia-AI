@@ -101,11 +101,11 @@ describe("AvisoPublicoPage", () => {
     expect(String(fetchMock.mock.calls[0]![0])).toBe(`${API}/v1/hoteles/demo/privacidad?property=centro`);
   });
   it("base sin la migracion: 'No disponible aún'; hotel inexistente: mensaje; error de red: reintentar", async () => {
-    stubAviso({ disponible: false, motivo: "La privacidad publica aun no esta disponible en esta base: falta aplicar la migracion 041." });
+    stubAviso({ disponible: false, motivo: "La privacidad publica aun no esta disponible en esta base: falta aplicar la migracion 042." });
     montarAviso([]);
     await esperar();
     expect(texto()).toContain("No disponible aún");
-    expect(texto()).toContain("migracion 041");
+    expect(texto()).toContain("migracion 042");
     rendered!.unmount();
     stubAviso({ message: "Hotel no encontrado." }, 404);
     montarAviso([]);

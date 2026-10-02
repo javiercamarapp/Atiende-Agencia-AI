@@ -206,10 +206,10 @@ export interface AppDeps {
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
   readonly hotelesPrivacidadRepo?: (db: TenantDbSession) => PrivacyRepository;
-  /** H-30 -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, "mis datos"; migracion 041), sesion de
+  /** H-30 -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, "mis datos"; migracion 042), sesion de
    *  SISTEMA. OPCIONAL: en produccion no se define y las rutas usan `PostgresPublicPrivacyRepository`; solo los tests inyectan el espejo. */
   readonly hotelesPrivacidadPublicaRepo?: (db: TenantDbSession) => PublicPrivacyRepository;
-  /** H-30 -- exportacion de datos del huesped y emision del enlace "mis datos" (staff owner/gm; migracion 041). OPCIONAL, igual que arriba. */
+  /** H-30 -- exportacion de datos del huesped y emision del enlace "mis datos" (staff owner/gm; migracion 042). OPCIONAL, igual que arriba. */
   readonly hotelesGuestDataRepo?: (db: TenantDbSession) => GuestDataRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no

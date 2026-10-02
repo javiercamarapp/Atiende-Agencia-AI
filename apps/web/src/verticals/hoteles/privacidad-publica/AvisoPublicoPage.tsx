@@ -1,6 +1,6 @@
 // Aviso de privacidad PUBLICO del hotel (H-30): indexable, sin datos personales, con URL copiable para imprimir/QR y el formulario para
 // ejercer derechos ARCO sin login (verificacion por codigo enviado al correo). Todo lo que se muestra sale del servidor: si el hotel
-// aun no publica su aviso o la base no tiene la migracion 041, se dice honestamente. No es asesoria legal: el texto del aviso integral
+// aun no publica su aviso o la base no tiene la migracion 042, se dice honestamente. No es asesoria legal: el texto del aviso integral
 // lo valida un abogado del hotel.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";

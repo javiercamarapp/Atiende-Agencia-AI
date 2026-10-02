@@ -60,7 +60,7 @@ describe("GET /v1/hoteles/:orgSlug/privacidad (aviso publico, sin login)", () =>
     const body = (await (await app.request(BASE)).json()) as { propiedades: Array<{ aviso: unknown }> };
     expect(body.propiedades[0]!.aviso).toBeNull();
   });
-  it("base sin la migracion 041: disponible false con el motivo, nunca 500", async () => {
+  it("base sin la migracion 042: disponible false con el motivo, nunca 500", async () => {
     const { app, repo } = await setup();
     repo.available = false;
     const res = await app.request(BASE);
