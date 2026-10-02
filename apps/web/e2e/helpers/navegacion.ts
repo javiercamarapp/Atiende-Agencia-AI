@@ -41,7 +41,10 @@ async function leerEnlaces(raiz: Locator): Promise<EnlaceNav[]> {
 export async function enlacesSidebar(page: Page): Promise<EnlaceNav[]> {
   const unicos = new Map<string, EnlaceNav>();
   const agregar = async (): Promise<void> => {
-    for (const e of await leerEnlaces(sidebar(page))) unicos.set(e.href, e);
+    // Las categorias mandan: el pie del Sidebar ("Costos de IA", "Ver los otros paneles") solo aporta un destino que
+    // ninguna categoria trae, y nunca renombra uno de ellas (p. ej. "Costos de IA" repite "Costos y margen").
+    for (const e of await leerEnlaces(sidebar(page).locator("nav"))) unicos.set(e.href, e);
+    for (const e of await leerEnlaces(sidebar(page))) if (!unicos.has(e.href)) unicos.set(e.href, e);
   };
   await agregar();
   const botones = botonesDeGrupo(page);
@@ -95,7 +98,8 @@ export async function seccionesDelPanel(page: Page): Promise<EnlaceNav[]> {
 export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
   if (esMovil(page)) {
     const hoja = await abrirMasMovil(page);
-    await hoja.locator(`a[href="${enlace.href}"]`).click();
+    // `.first()`: el pie de superadmin ("Costos de IA") repite el destino de "Costos y margen" en la seccion "Cuenta".
+    await hoja.locator(`a[href="${enlace.href}"]`).first().click();
     await expect(hoja).toBeHidden();
   } else {
     await (await abrirGrupoDe(page, enlace.href)).click();
