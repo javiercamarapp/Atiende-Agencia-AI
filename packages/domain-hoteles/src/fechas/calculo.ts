@@ -102,6 +102,10 @@ export function previsualizarCambioFechas(i: PrevisualizarCambioFechasInput): Pr
   const nochesAgregadas = diferencia(nuevas, setViejas);
   const nochesQuitadas = diferencia(viejas, setNuevas);
 
+  // LIMITACION CONOCIDA (documentada, no un bug): se recotizan TODAS las noches de la nueva estancia con la tarifa vigente,
+  // incluidas las ya consumidas/posteadas de un huesped en casa y las que la reserva pagaba a una tarifa promocional. Si la tarifa
+  // cambio desde la reserva, extender una noche puede mover el precio de toda la estancia y acortar puede subir el total. El
+  // staff ve el desglose antes de confirmar (previsualizacion) y las noches ya posteadas al folio no se reversan.
   // Recotizacion con el motor determinista. Con el huesped en casa la llegada ya ocurrio: se neutralizan las restricciones
   // de llegada (CTA / estancia minima) de la fecha original para no rechazar una extension legitima.
   const tarifas = i.tarifas.map((r) => (enCasa && r.date === i.entrada ? { ...r, closedToArrival: false, minStay: 1 } : r));

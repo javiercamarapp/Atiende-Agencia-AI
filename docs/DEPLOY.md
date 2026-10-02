@@ -257,7 +257,7 @@ ni cron nuevos. La función `hoteles.change_reservation_room` queda con la membr
 `20240101000273_041_hoteles_cambio_fechas_lista_espera.sql` a la base real. El código funciona contra la base vieja: la
 previsualización del cambio de fechas es solo lectura y funciona (el cálculo usa tarifas y tablas anteriores); confirmar un cambio de fechas
 responde 503 "no disponible aún", las lecturas de `/hoteles/:propertyId/lista-espera` responden `disponible:false` con lista vacía, las
-escrituras 503, y cancelar una reserva o acortar fechas NO intenta ofrecer lugares (se omite dentro de un SAVEPOINT) y sigue funcionando como
+escrituras 503, y cancelar una reserva o acortar fechas SI intenta ofrecer lugares, pero la oferta falla dentro de un SAVEPOINT (se omite sin tumbar la transaccion) y la cancelacion sigue funcionando como
 hoy; `cambiar-habitacion` sigue funcionando (con la función de la 038). Orden: (1) despliega el código; (2) aplica la 041 (`supabase db push`;
 requiere 001, 003, 005, 025/026, 035 y 038 ya aplicadas); (3) prueba en Reservas un cambio de fechas y una entrada de lista de espera. Con la 041
 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas ni la función nuevas (la redefinición de
