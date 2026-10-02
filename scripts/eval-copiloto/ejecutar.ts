@@ -31,6 +31,8 @@ import { leerCongelado } from "./congelado.ts";
 /** Tope total del piloto + barrido (saldo de OpenRouter ~$59.68 el 1-oct-2026; decision: no pasar de ~$45). */
 export const TOPE_TOTAL_USD = 45;
 export const TOPE_HUMO_USD = 0.5;
+/** Tope de la fase piloto: el piloto del 1-oct-2026 costo 2.07 USD reales, asi que 12 USD es holgura de sobra. */
+export const TOPE_PILOTO_USD = 12;
 
 export interface PlanCorrida {
   readonly fase: FaseCorrida;
@@ -121,9 +123,10 @@ export function construirPlan(args: Map<string, string>, todos: readonly CasoEva
     if (casos.length === 0) throw new Error("fase cfo: no hay casos CFO/superadmin (en main no existe un catalogo de datos de superadmin; ver docs/EVAL-COPILOTO.md)");
   }
 
-  const tope = fase === "humo" ? TOPE_HUMO_USD : fase === "piloto" ? 12 : TOPE_TOTAL_USD;
+  const tope = fase === "humo" ? TOPE_HUMO_USD : fase === "piloto" ? TOPE_PILOTO_USD : TOPE_TOTAL_USD;
   const maxUsd = numero(args, "max-usd", tope, 0.01, TOPE_TOTAL_USD);
   if (fase === "humo" && maxUsd > TOPE_HUMO_USD) throw new Error(`el humo no puede pasar de ${TOPE_HUMO_USD} USD`);
+  if (fase === "piloto" && maxUsd > TOPE_PILOTO_USD) throw new Error(`el piloto no puede pasar de ${TOPE_PILOTO_USD} USD`);
   return { fase, modo, modelos, casos, k, maxUsd };
 }
 
