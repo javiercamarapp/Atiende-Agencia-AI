@@ -203,7 +203,7 @@ export class InMemoryConciliacionPersistidaRepository implements ConciliacionPer
     return { yaCerrada: false };
   }
 
-  async guardarSugerencias(propertyId: string, sesionId: string, sugerencias: readonly NuevaSugerencia[]): Promise<readonly SugerenciaConciliacion[]> {
+  async guardarSugerencias(propertyId: string, sesionId: string, sugerencias: readonly NuevaSugerencia[], _actorId?: string): Promise<readonly SugerenciaConciliacion[]> {
     this.exigirDisponible();
     const s = this.sesiones.get(sesionId);
     if (!s || s.propertyId !== propertyId) throw new ConciliacionNoEncontradaError("sesión no encontrada");

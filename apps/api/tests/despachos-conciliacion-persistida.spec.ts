@@ -14,7 +14,8 @@ import type { AppDeps } from "../src/deps.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
-let ctx: DespachosTestContext;
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+let ctx: Mutable<DespachosTestContext>;
 beforeEach(async () => {
   ctx = await buildDespachosTestContext(buildApp);
 });
