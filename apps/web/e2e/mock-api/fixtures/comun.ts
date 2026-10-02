@@ -96,6 +96,9 @@ export const rutasComunes: readonly Ruta[] = [
       for (const n of todas) n.readAt = n.readAt ?? MARCA_LECTURA;
       return { ok: true, markedCount: marcadas, unreadCount: 0 };
     } },
+  // Plan y uso (PL-16): el banner del shell lo pide en cada pantalla. La API simulada no factura: responde el estado honesto "no disponible"
+  // (el cliente lo trata como sin banner), sin inventar un plan ni cifras de uso.
+  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "La API simulada de e2e no tiene facturación." }) },
   { metodo: "POST", patron: "/notifications/:id/read", manejador: (p) => {
       const todas = lista(p.estado, p.persona);
       const n = todas.find((x) => x.id === p.params.id);
