@@ -114,6 +114,9 @@ export interface EjecutarHerramientasOptions {
   readonly now: Date;
   readonly signal?: AbortSignal;
   readonly toolTimeoutMs?: number;
+  /** Aisla cada consulta (p.ej. SAVEPOINT en la transaccion unica del request): una consulta que falla en Postgres no
+   *  debe dejar abortada la sesion compartida. Debe RELANZAR el error tras recuperar la sesion. */
+  readonly aislar?: <T>(trabajo: () => Promise<T>) => Promise<T>;
   readonly onError?: (where: string, err: unknown) => void;
 }
 
@@ -158,7 +161,9 @@ export async function ejecutarHerramientasReporte(opts: EjecutarHerramientasOpti
     }
     let result: DataChatToolResult;
     try {
-      result = await withTimeout((signal) => tool.run({ scope: opts.scope, now: opts.now, signal, maxRows: REPORTE_MAX_FILAS_TABLA }, parsed.value), opts.toolTimeoutMs ?? 8_000, opts.signal);
+      const correr = (): Promise<DataChatToolResult> =>
+        withTimeout((signal) => tool.run({ scope: opts.scope, now: opts.now, signal, maxRows: REPORTE_MAX_FILAS_TABLA }, parsed.value), opts.toolTimeoutMs ?? 8_000, opts.signal);
+      result = await (opts.aislar ? opts.aislar(correr) : correr());
     } catch (err) {
       onError(`tool:${tool.name}`, err);
       omitidas.push({ tool: tool.name, title: tool.label, motivo: "No pude consultar estos datos en este momento." });
