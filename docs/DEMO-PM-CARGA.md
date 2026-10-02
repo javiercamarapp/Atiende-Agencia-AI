@@ -12,8 +12,8 @@ los corre una persona, a propósito, con el OK de quien administra el proyecto.
 | Se crea | Detalle |
 | --- | --- |
 | Organización **`los-taquitos-de-pm-demo`** | Nombre «Los Taquitos de PM (demo)». Slug distinto al de la cuenta real (`los-taquitos-de-pm`), así que nunca se mezclan. Marcada en `restaurantes.demo_organization` (`is_demo`). |
-| 6 sucursales | T1, T2, T3, T7, T8 activas; **T4 inactiva y sin menú** (el dueño no ha confirmado qué es). |
-| Menú | 251 productos, 24 categorías; 42 productos de alcohol marcados `no_domicilio`; precios por sucursal. |
+| 7 sucursales | T1 y T3 activas con su catálogo impreso; T5 Playa (Chicxulub) inactiva fuera de temporada; **T2, T7 y T8 inactivas y sin catálogo hasta que Javier conteste P5**; T4 Galerías inactiva y sin pedidos. |
+| Menú | 237 productos, 25 categorías; 42 productos de alcohol marcados `no_domicilio`; catálogo y precio por sucursal (T1 236, T3 211, T5 222), de los menús impresos. |
 | Reglas | Horario 12:00–01:00 (una sola franja), pedido mínimo a domicilio $200, propina solo con tarjeta, promoción `LUNES2X1PM` (2x1 en tacos al pastor, solo recoger, **automática**). |
 | Agente de WhatsApp | Perfil `taqueria_pm` en `whatsapp_agent_config` con los datos del dueño (tono de *usted*, tiempo de entrega, salsas, promociones). El nombre del asistente queda vacío (el dueño no lo definió). |
 | Voz | **Deshabilitada**, con comportamiento y saludo por sucursal cargados. |
@@ -42,7 +42,7 @@ de nada, ni tareas programadas. **No toca** ninguna otra organización (si el sl
 node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --demo
 ```
 
-Imprime el plan: 6 sucursales (5 activas), 251 productos, 42 de alcohol, 1 promoción, el perfil del agente, el modo `DEMO` y la lista de
+Imprime el plan: 7 sucursales (2 activas), 237 productos, 42 de alcohol, 1 promoción, el perfil del agente, el modo `DEMO` y la lista de
 **pendientes del dueño** (cambio de turno, WhatsApp por sucursal, coordenadas de T3, mapa de colonias, catálogo de SoftRestaurant,
 nombre del asistente, combo del martes, identidad de T4). Atajo: `npm run demo:seed`.
 
@@ -68,9 +68,9 @@ Con `psql "$SEED_DATABASE_URL"`:
 ```sql
 -- 4.1 Marca demo y sucursales
 select o.slug, o.name, d.activo, d.seed_version from core.organization o join restaurantes.demo_organization d on d.organization_id = o.id where o.slug = 'los-taquitos-de-pm-demo';
-select bd.slug, p.status from restaurantes.branch_detail bd join core.property p on p.id = bd.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm-demo' order by bd.display_order;   -- 5 active + t4-pendiente inactive
+select bd.slug, p.status from restaurantes.branch_detail bd join core.property p on p.id = bd.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm-demo' order by bd.display_order;   -- t1 y t3 active; las demás inactive
 -- 4.2 Menú y reglas
-select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo';                       -- 251
+select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo';                       -- 237
 select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo' and pr.no_domicilio;    -- 42
 select code, auto_apply, channels, days_of_week from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm-demo';  -- LUNES2X1PM, true, {recoger}, {1}
 -- 4.3 Agente
@@ -114,7 +114,7 @@ Verificación:
 
 ```sql
 select count(*) from restaurantes.orders where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo');
-select bd.slug, count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo') group by 1 order by 1;   -- sin t4-pendiente
+select bd.slug, count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo') group by 1 order by 1;   -- solo prol-montejo y pensiones
 select count(*) from restaurantes.orders where organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm-demo') and customer_phone !~ '^0001[0-9]{6}$';   -- 0 (la demo aun no tiene sesiones del chat)
 ```
 
