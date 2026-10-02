@@ -661,6 +661,8 @@ export interface MessagingOutboxRow {
   readonly id: string;
   readonly attempts: number;
   readonly payload: unknown;
+  /** Organizacion duena del mensaje (PL-16: medidor mensual de mensajes por plan). */
+  readonly organizationId?: string;
 }
 
 // ============================================================================

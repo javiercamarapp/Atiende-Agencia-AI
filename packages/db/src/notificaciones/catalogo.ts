@@ -64,6 +64,27 @@ export interface EventoNotificacion {
   readonly productor: ProductorNotificacion;
 }
 
+// ---- Plan, tope de mensajes y fin de prueba (PL-16) ------------------------------------------------
+// Mismos tres avisos en las 6 verticales (owner/admin) y dos de plataforma (superadmin). Texto sin PII: solo numeros y el slug de la
+// organizacion como codigo. La pantalla de destino (`Plan y uso`) la monta apps/web en cada vertical.
+const VERTICALES_PLAN = ["restaurantes", "hoteles", "rentas", "licitaciones", "citas", "despachos"] as const;
+
+function eventosPlan(v: (typeof VERTICALES_PLAN)[number]): EventoNotificacion[] {
+  const medidor = { estado: "conectado", archivo: "apps/api/src/plan-topes/medidor.ts" } as const;
+  const prueba = { estado: "conectado", archivo: "apps/api/src/plan-topes/aviso-prueba.ts", nota: "depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale" } as const;
+  return [
+    { id: `${v}.plan.mensajes_80`, ambito: v, categoria: "cobranza", severidad: "atencion", roles: [], icono: "Gauge", titulo: "Va en el 80 por ciento del tope de mensajes de su plan", cuerpo: "Mensajes del mes: {usado} de {limite}.", parametros: ["usado", "limite"], enlace: `/${v}/{orgSlug}/plan`, dedupe: "una por organizacion por mes", venceDias: 10, productor: { ...medidor, nota: "solo mide el WhatsApp saliente de citas, hoteles y restaurantes" } },
+    { id: `${v}.plan.mensajes_excedido`, ambito: v, categoria: "cobranza", severidad: "critica", roles: [], icono: "Gauge", titulo: "Se alcanzó el tope de mensajes de su plan", cuerpo: "Mensajes del mes: {usado} de {limite}. Revise su plan.", parametros: ["usado", "limite"], enlace: `/${v}/{orgSlug}/plan`, dedupe: "una por organizacion por mes", venceDias: 10, productor: { ...medidor, nota: "solo mide el WhatsApp saliente de citas, hoteles y restaurantes" } },
+    { id: `${v}.plan.prueba_por_vencer`, ambito: v, categoria: "cobranza", severidad: "atencion", roles: [], icono: "Clock", titulo: "Su prueba está por terminar", cuerpo: "Días restantes: {dias}. Revise Plan y uso para ver el estado de su cuenta.", parametros: ["dias"], enlace: `/${v}/{orgSlug}/plan`, dedupe: "una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin", venceDias: 8, productor: prueba },
+  ];
+}
+
+const EVENTOS_PLAN: readonly EventoNotificacion[] = [
+  ...VERTICALES_PLAN.flatMap(eventosPlan),
+  { id: "superadmin.plan.mensajes_80", ambito: "superadmin", categoria: "cobranza", severidad: "atencion", roles: [], icono: "Gauge", titulo: "Una organización va en el 80 por ciento de su tope de mensajes", cuerpo: "Organización: {organizacion}. Mensajes del mes: {usado} de {limite}.", parametros: ["organizacion", "usado", "limite"], enlace: "/superadmin/planes", dedupe: "una por organizacion por mes", venceDias: 10, productor: { estado: "conectado", archivo: "apps/api/src/plan-topes/medidor.ts", nota: "solo mide el WhatsApp saliente de citas, hoteles y restaurantes" } },
+  { id: "superadmin.plan.mensajes_excedido", ambito: "superadmin", categoria: "cobranza", severidad: "atencion", roles: [], icono: "Gauge", titulo: "Una organización alcanzó el tope de mensajes de su plan", cuerpo: "Organización: {organizacion}. Mensajes del mes: {usado} de {limite}.", parametros: ["organizacion", "usado", "limite"], enlace: "/superadmin/planes", dedupe: "una por organizacion por mes", venceDias: 10, productor: { estado: "conectado", archivo: "apps/api/src/plan-topes/medidor.ts", nota: "solo mide el WhatsApp saliente de citas, hoteles y restaurantes" } },
+];
+
 export const CATALOGO_NOTIFICACIONES: readonly EventoNotificacion[] = [
   // ---- Restaurantes -------------------------------------------------------------------------------
   { id: "restaurantes.pedido.nuevo", ambito: "restaurantes", categoria: "operacion", severidad: "info", roles: ["staff"], icono: "ShoppingBag", titulo: "Pedido nuevo por atender", cuerpo: null, parametros: [], enlace: "/restaurantes/{orgSlug}/pedidos", dedupe: "un aviso por pedido (clave = id del pedido)", venceDias: 7, productor: { estado: "conectado", archivo: "packages/domain-restaurantes/src/postgres-repository.ts" } },
@@ -128,6 +149,7 @@ export const CATALOGO_NOTIFICACIONES: readonly EventoNotificacion[] = [
   { id: "superadmin.llm.fallback_alto", ambito: "superadmin", categoria: "salud", severidad: "atencion", roles: [], icono: "Shuffle", titulo: "Muchas llamadas de IA cayeron a un modelo de respaldo", cuerpo: "En la última hora, {porcentaje} por ciento de las llamadas usó un modelo de respaldo.", parametros: ["porcentaje"], enlace: "/superadmin/gasto-api", dedupe: "una por hora", venceDias: 3, productor: { estado: "conectado", archivo: "apps/api/src/production/llm-usage-gateway-adapters.ts" } },
   { id: "superadmin.llm.modelo_caido", ambito: "superadmin", categoria: "salud", severidad: "critica", roles: [], icono: "TriangleAlert", titulo: "Un modelo de IA dejó de responder", cuerpo: "Modelo: {modelo}. El gateway pasa al siguiente modelo de la escalera.", parametros: ["modelo"], enlace: "/superadmin/salud", dedupe: "una por modelo por dia", venceDias: 7, productor: { estado: "conectado", archivo: "apps/api/src/production/llm-gateway.ts" } },
   { id: "superadmin.organizacion.accion_pendiente", ambito: "superadmin", categoria: "aprobaciones", severidad: "atencion", roles: [], icono: "UserRoundCheck", titulo: "Una acción sobre una organización espera la aprobación de un segundo superadmin", cuerpo: null, parametros: [], enlace: "/superadmin/gestion-organizaciones", dedupe: "una por solicitud", venceDias: 2, productor: { estado: "conectado", archivo: "apps/api/src/routes/superadmin-organizaciones.ts" } },
+  ...EVENTOS_PLAN,
 ];
 
 export function eventoPorId(id: string): EventoNotificacion | undefined {

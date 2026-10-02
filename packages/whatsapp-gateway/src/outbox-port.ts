@@ -25,6 +25,9 @@ export interface MessagingOutboxItem {
    *  `dispatcher.ts::isValidWhatsAppPayload`) antes de tocar la red; un payload
    *  con forma inválida se marca `dead` de inmediato, nunca se reintenta a ciegas. */
   readonly payload: unknown;
+  /** Organizacion duena del mensaje, cuando la vertical la conoce (PL-16: medidor mensual de mensajes por plan). Sin ella el
+   *  dispatcher envia sin medir, igual que antes. */
+  readonly organizationId?: string;
 }
 
 export interface MessagingOutboxPort {

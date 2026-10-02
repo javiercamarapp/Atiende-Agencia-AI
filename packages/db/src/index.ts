@@ -51,6 +51,7 @@ export { openManagedPostgres, AbortedTransactionCommitError } from "./managed-po
 export type { ManagedPostgresConfig, ManagedPostgresEngine } from "./managed-postgres-engine.ts";
 export { runWithSavepointFallback } from "./savepoint-fallback.ts";
 export * from "./notificaciones/index.ts";
+export * from "./planes-topes.ts";
 export type { SavepointFallbackOptions } from "./savepoint-fallback.ts";
 export type {
   LlmUsageRepository,

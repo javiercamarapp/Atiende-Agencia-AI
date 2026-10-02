@@ -56,6 +56,7 @@ import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
+import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
@@ -539,6 +540,13 @@ const RentasNotificacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx)
 const CitasNotificacionesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const DespachosNotificacionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const LicitacionesNotificacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+// Plan y uso (PL-16): una sola pagina compartida, montada en el shell de cada vertical.
+const RestaurantesPlanRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const HotelesPlanRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const RentasPlanRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const CitasPlanRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const DespachosPlanRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const LicitacionesPlanRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
@@ -1018,6 +1026,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
+        <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -1081,6 +1090,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/notificaciones" element={<HotelesNotificacionesRoute />} />
+        <Route path="/hoteles/:orgSlug/plan" element={<HotelesPlanRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
         <Route path="/hoteles/:orgSlug/reputacion" element={<HotelesReputacionRoute />} />
@@ -1102,6 +1112,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/privacidad-organizacion" element={<RentasPrivacidadOrganizacionRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
+        <Route path="/rentas/:orgSlug/plan" element={<RentasPlanRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
         <Route path="/rentas/:orgSlug/equipo" element={<RentasEquipoRoute />} />
         <Route path="/rentas/:orgSlug/copiloto" element={<RentasCopilotoRoute />} />
@@ -1133,6 +1144,7 @@ export function App() {
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
         <Route path="/citas/:orgSlug/avisos" element={<CitasAvisosRoute />} />
         <Route path="/citas/:orgSlug/notificaciones" element={<CitasNotificacionesRoute />} />
+        <Route path="/citas/:orgSlug/plan" element={<CitasPlanRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
         <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
@@ -1156,6 +1168,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
         <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/licitaciones/:orgSlug/notificaciones" element={<LicitacionesNotificacionesRoute />} />
+        <Route path="/licitaciones/:orgSlug/plan" element={<LicitacionesPlanRoute />} />
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
@@ -1171,6 +1184,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
         <Route path="/despachos/:orgSlug/copiloto" element={<DespachosCopilotoRoute />} />
         <Route path="/despachos/:orgSlug/notificaciones" element={<DespachosNotificacionesRoute />} />
+        <Route path="/despachos/:orgSlug/plan" element={<DespachosPlanRoute />} />
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />

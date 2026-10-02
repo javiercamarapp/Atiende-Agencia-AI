@@ -52,6 +52,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `restaurantes.costo.umbral_voz` | cierres | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/agente-voz` | una por sucursal por dia | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-kpi.ts` (depende de accion manual: sale cuando alguien evalua las alertas (POST .../alertas/evaluar), no hay cron) |
 | `restaurantes.onboarding.listo` | onboarding | info | owner/admin | CircleCheckBig | `/restaurantes/{orgSlug}/primeros-pasos` | una por organizacion, al completarse el ultimo punto obligatorio (no al leer el checklist) | 30 d | conectado: `apps/api/src/routes/verticals/restaurantes/onboarding-aviso.ts` (se emite en la escritura que lo completa: disponibilidad de menu por sucursal, politica/horario de sucursal o configuracion del agente) |
 | `restaurantes.voz.tasa_error_alta` | salud | atencion | owner/admin | TriangleAlert | `/restaurantes/{orgSlug}/agente-voz` | una por sucursal por dia | 2 d | conectado: `apps/api/src/routes/verticals/restaurantes/voz-kpi.ts` (depende de accion manual: sale cuando alguien evalua las alertas (POST .../alertas/evaluar), no hay cron) |
+| `restaurantes.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `restaurantes.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/restaurantes/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `restaurantes.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/restaurantes/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 
 ### hoteles
 
@@ -67,6 +70,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `hoteles.housekeeping.inspeccion_rechazada` | operacion | atencion | owner/admin, gm, frontdesk, housekeeping | ClipboardX | `/hoteles/{orgSlug}/housekeeping` | una por tarea y por rechazo | 3 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping.ts` |
 | `hoteles.housekeeping.sin_cupo` | operacion | atencion | owner/admin, gm, frontdesk | UsersRound | `/hoteles/{orgSlug}/housekeeping` | una por propiedad por dia | 2 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping-residual.ts` |
 | `hoteles.canal.whatsapp_actualizado` | seguridad | atencion | owner/admin, gm | MessageSquareLock | `/hoteles/{orgSlug}/mensajeria` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/mensajeria-config.ts` |
+| `hoteles.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/hoteles/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `hoteles.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/hoteles/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `hoteles.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/hoteles/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 
 ### rentas
 
@@ -78,6 +84,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `rentas.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, admin_gestora, operador:calendario_mensajeria | MessageSquareWarning | `/rentas/{orgSlug}/aprobaciones` | una por mensaje | 3 d | conectado: `apps/api/src/routes/verticals/rentas/mensajeria-borradores.ts` |
 | `rentas.privacidad.arco_registrada` | seguridad | atencion | owner/admin, admin_gestora | ShieldAlert | `/rentas/{orgSlug}/privacidad` | una por solicitud | 30 d | conectado: `apps/api/src/routes/verticals/rentas/privacidad.ts` |
 | `rentas.privacidad.arco_por_vencer` | seguridad | critica | owner/admin, admin_gestora | CalendarClock | `/rentas/{orgSlug}/privacidad` | una por organizacion por dia (clave = organizacion + dia) | 7 d | pendiente: Requiere un cron diario que revise los plazos de las solicitudes abiertas; no se agenda en este PR (decision de costo, igual que la purga PL-13). |
+| `rentas.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/rentas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `rentas.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/rentas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `rentas.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/rentas/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 
 ### despachos
 
@@ -92,6 +101,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `despachos.cfdi.cancelado` | fiscal | critica | owner/admin, contador | FileX | `/despachos/{orgSlug}/cfdi/{entidadId}` | una por CFDI (clave = id del CFDI; la cancelacion es terminal) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi-estatus-sat.ts` (tambien lo emite el cron semanal de estatus SAT (apps/worker/src/jobs/despachos/cfdi-estatus-sat.ts, via cron-sat.ts); el mismo CFDI no se avisa dos veces) |
 | `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
 | `despachos.conciliacion.sugerencias_pendientes` | aprobaciones | atencion | owner/admin, contador | Sparkles | `/despachos/{orgSlug}/conciliacion` | una por sesion de conciliacion (clave = id de la sesion) | 7 d | conectado: `apps/api/src/routes/verticals/despachos/conciliacion-persistida.ts` |
+| `despachos.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/despachos/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `despachos.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/despachos/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `despachos.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/despachos/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 
 ### licitaciones
 
@@ -103,6 +115,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.expediente.aprobacion_pendiente` | aprobaciones | atencion | owner/admin, analyst | ShieldCheck | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
 | `licitaciones.expediente.aprobado` | cierres | info | owner/admin, analyst, writer | CircleCheckBig | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
 | `licitaciones.presentacion.declarada` | cierres | info | owner/admin, analyst, reviewer | FileCheck2 | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta (clave = id de la propuesta) | 30 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `licitaciones.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `licitaciones.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/licitaciones/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 | `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
 
 ### citas
@@ -116,6 +131,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `citas.escalacion.sin_seguimiento` | agentes | critica | owner/admin | Siren | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
 | `citas.cita.por_confirmar` | operacion | atencion | owner/admin, staff | CalendarClock | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
 | `citas.recordatorio.agotado` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/avisos` | una por cada recordatorio nuevo agotado (clave = instante del ultimo) | 5 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
+| `citas.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/citas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `citas.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/citas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `citas.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/citas/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 
 ### superadmin
 
@@ -128,6 +146,8 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `superadmin.llm.fallback_alto` | salud | atencion | superadmins de plataforma | Shuffle | `/superadmin/gasto-api` | una por hora | 3 d | conectado: `apps/api/src/production/llm-usage-gateway-adapters.ts` (mas del 5 % de las llamadas de la hora, con al menos 20, cayo a un modelo de respaldo; requiere la migracion 0046) |
 | `superadmin.llm.modelo_caido` | salud | critica | superadmins de plataforma | TriangleAlert | `/superadmin/salud` | una por modelo por dia | 7 d | conectado: `apps/api/src/production/llm-gateway.ts` (cuando el circuit breaker de un modelo pasa a abierto) |
 | `superadmin.organizacion.accion_pendiente` | aprobaciones | atencion | superadmins de plataforma | UserRoundCheck | `/superadmin/gestion-organizaciones` | una por solicitud | 2 d | conectado: `apps/api/src/routes/superadmin-organizaciones.ts` |
+| `superadmin.plan.mensajes_80` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/planes` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `superadmin.plan.mensajes_excedido` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/planes` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 
 
 ## Campana y página

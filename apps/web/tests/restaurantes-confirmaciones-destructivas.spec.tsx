@@ -2,7 +2,8 @@
 //
 // PR-5 de diseno-ux (restaurantes): las dos confirmaciones destructivas que seguian en
 // `window.confirm` (baja de staff en Staff.tsx, quitar zona en Configuracion.tsx) pasan al
-// <ConfirmDialog> de @atiende/ui via `useConfirm`. Se afirma que:
+// <ConfirmDialog> de @atiende/ui via `useConfirm`. UNI-C suma "cancelar pedido" (Pedidos.tsx) y "reportar
+// incidencia" (Repartidor.tsx, con `pedirTexto`), que eran un AlertDialog local. Se afirma que:
 //   - `window.confirm` NUNCA se llama;
 //   - Cancelar/cerrar NO ejecuta el DELETE;
 //   - Confirmar si lo ejecuta, con el nombre del objeto en el titulo del dialogo.
@@ -11,8 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { StaffPage } from "../src/verticals/restaurantes/pages/Staff.tsx";
 import { ConfiguracionPage } from "../src/verticals/restaurantes/pages/Configuracion.tsx";
+import { PedidosPage } from "../src/verticals/restaurantes/pages/Pedidos.tsx";
+import { RepartidorPedidosView } from "../src/verticals/restaurantes/pages/Repartidor.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -168,5 +171,149 @@ describe("Configuracion (restaurantes) — quitar zona con ConfirmDialog", () =>
     expect(deletes()).toHaveLength(1);
     expect(deletes()[0]![0]).toBe(`${BASE}/config/zonas/zona-1`);
     expect(rendered!.container.querySelector('button[aria-label="Quitar zona Altabrisa"]')).toBeNull();
+  });
+});
+
+
+describe("Pedidos (restaurantes) — cancelar pedido con useConfirm", () => {
+  const PEDIDO = {
+    id: "ord-1",
+    propertyId: "prop-1",
+    branch: "Centro",
+    customerId: "cust-1",
+    customerName: "Juan Pérez",
+    customerPhone: "5511112222",
+    customerAddress: "Calle Falsa 123",
+    total: 345.5,
+    status: "pending",
+    canal: "domicilio",
+    items: [{ id: "it-1", name: "Tacos al pastor", price: 115, quantity: 3 }],
+    source: "web",
+    notes: null,
+    paymentMethod: "efectivo",
+    createdAt: "2026-09-19T10:00:00.000Z",
+    assignedRepartidorId: null,
+    estimatedDeliveryAt: null,
+    incidentNote: null,
+  };
+
+  const patches = () => fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith("/status") && (init as RequestInit | undefined)?.method === "PATCH");
+
+  async function abrirCancelar(): Promise<void> {
+    stubFetch((method, url) => {
+      if (url.includes("/admin/staff/repartidores")) return jsonResponse({ repartidores: [] });
+      if (method === "GET" && url.includes("/admin/orders")) {
+        const estado = new URL(url).searchParams.get("status") ?? "";
+        return jsonResponse({ orders: estado === "pending" ? [PEDIDO] : [], nextCursor: null });
+      }
+      if (method === "PATCH" && url.endsWith("/status")) return jsonResponse({ order: { ...PEDIDO, status: "cancelado" } });
+      return null;
+    });
+    rendered = renderComponent(<PedidosPage {...ctx()} />);
+    await esperar();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Marcar Cancelado"))!;
+    click(boton);
+    await esperar();
+  }
+
+  it("abre un alertdialog con el nombre del cliente, sin window.confirm ni escritura", async () => {
+    await abrirCancelar();
+    expect(dialogo()).not.toBeNull();
+    expect(dialogo()!.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("Volver no llama al API y el pedido sigue en la lista", async () => {
+    await abrirCancelar();
+    await pulsarEnDialogo("Volver");
+    expect(patches()).toHaveLength(0);
+    expect(dialogo()).toBeNull();
+    expect(rendered!.container.textContent).toContain("Juan Pérez");
+  });
+
+  it("Escape tampoco llama al API", async () => {
+    await abrirCancelar();
+    await act(async () => {
+      keydown(dialogo()!, "Escape");
+      for (let i = 0; i < 6; i++) await flushMicrotasks();
+    });
+    expect(patches()).toHaveLength(0);
+    expect(dialogo()).toBeNull();
+  });
+
+  it("Cancelar el pedido manda PATCH .../status con {status:'cancelado'}", async () => {
+    await abrirCancelar();
+    await pulsarEnDialogo("Cancelar el pedido");
+    expect(patches()).toHaveLength(1);
+    expect(JSON.parse((patches()[0]![1] as RequestInit).body as string)).toEqual({ status: "cancelado" });
+  });
+});
+
+describe("Repartidor (restaurantes) — reportar incidencia con useConfirm().pedirTexto", () => {
+  const ENTREGA = {
+    id: "ord-9",
+    propertyId: "prop-1",
+    customerName: "Lucía Xool",
+    customerPhone: "9991112222",
+    customerAddress: "Calle 60 #100",
+    total: 210,
+    status: "en_camino",
+    items: [{ id: "it-1", name: "Cochinita", price: 70, quantity: 3 }],
+    createdAt: "2026-09-19T10:00:00.000Z",
+    incidentNote: null,
+  };
+
+  const patches = () => fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith("/repartidor/orders/ord-9/status") && (init as RequestInit | undefined)?.method === "PATCH");
+
+  async function abrirIncidencia(): Promise<void> {
+    stubFetch((method, url) => {
+      if (method === "GET" && url === "https://api.test/v1/restaurantes/prop-1/repartidor/orders") return jsonResponse({ orders: [ENTREGA] });
+      if (method === "PATCH" && url.endsWith("/repartidor/orders/ord-9/status")) return jsonResponse({ order: { ...ENTREGA, status: "problema", incidentNote: "no abrió" } });
+      return null;
+    });
+    rendered = renderComponent(<RepartidorPedidosView apiBaseUrl="https://api.test" token="tok-123" propertyId="prop-1" />);
+    await esperar();
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Reportar incidencia"))!;
+    click(boton);
+    await esperar();
+  }
+
+  it("el dialogo pide una nota obligatoria: sin texto el boton Reportar queda deshabilitado y no hay PATCH", async () => {
+    await abrirIncidencia();
+    expect(dialogo()).not.toBeNull();
+    expect(dialogo()!.textContent).toContain("Nota para administración");
+    const reportar = [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reportar incidencia") as HTMLButtonElement;
+    expect(reportar.disabled).toBe(true);
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("Volver no llama al API", async () => {
+    await abrirIncidencia();
+    await pulsarEnDialogo("Volver");
+    expect(patches()).toHaveLength(0);
+    expect(dialogo()).toBeNull();
+  });
+
+  it("Escape no llama al API", async () => {
+    await abrirIncidencia();
+    await act(async () => {
+      keydown(dialogo()!, "Escape");
+      for (let i = 0; i < 6; i++) await flushMicrotasks();
+    });
+    expect(patches()).toHaveLength(0);
+    expect(dialogo()).toBeNull();
+  });
+
+  it("con nota manda PATCH .../repartidor/orders/:id/status con {status:'problema', incidentNote} recortada", async () => {
+    await abrirIncidencia();
+    const campo = dialogo()!.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      changeValue(campo, "  no abrió y no contesta  ");
+      await flushMicrotasks();
+    });
+    await pulsarEnDialogo("Reportar incidencia");
+    expect(patches()).toHaveLength(1);
+    expect(JSON.parse((patches()[0]![1] as RequestInit).body as string)).toEqual({ status: "problema", incidentNote: "no abrió y no contesta" });
   });
 });

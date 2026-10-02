@@ -190,7 +190,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
   return (
     <Card>
       <CardHeader className="p-4 pb-3">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+        <CardTitle className="flex items-center gap-2">
           <Bot className="h-4 w-4" strokeWidth={1.75} />
           Agente de WhatsApp
         </CardTitle>

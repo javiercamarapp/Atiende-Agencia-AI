@@ -89,10 +89,10 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
+    <PageContainer padding="none">
       <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Turnos</h1>
-        <p className="m-0 text-sm text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
+        <h1 className="sr-only">Turnos</h1>
+        <p className="m-0 text-ui text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
@@ -104,7 +104,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
           {cobertura && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">De guardia ahora</CardTitle>
+                <CardTitle>De guardia ahora</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
                 {cobertura.sinCobertura ? (
