@@ -53,6 +53,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
 interface UpsertWhatsappConfigBody {
   readonly phoneNumberId?: unknown;
@@ -372,7 +373,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const anterior = await repo.findWhatsAppAgentConfigExacta(organizationId, alcancePropertyId);
     let actualizado: WhatsAppAgentConfigRow;
     try {
-      actualizado = await repo.guardarWhatsAppAgentConfig(organizationId, alcancePropertyId, config, { accion, actorUserId: staffId, versionEsperada });
+      actualizado = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.guardarWhatsAppAgentConfig(organizationId, alcancePropertyId, config, { accion, actorUserId: staffId, versionEsperada }));
     } catch (err) {
       if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable(err.message);
       if (err instanceof WhatsAppAgentConfigConflictError) throw Errors.conflict(err.message);

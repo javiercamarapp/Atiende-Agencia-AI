@@ -1,5 +1,5 @@
 // R-33 -- GET /v1/restaurantes/:propertyId/admin/onboarding: checklist de onboarding de la organizacion, calculado con datos
-// reales (sucursales, menu, horarios, coordenadas, cobertura, numeros de WhatsApp, agente, pedidos). Solo lectura. owner/admin
+// reales (sucursales, menu, horarios, coordenadas, cobertura, numeros de WhatsApp, agente, pedidos). Solo lectura (el aviso de "listo" lo emite la escritura que cierra el checklist: ver onboarding-aviso.ts). owner/admin
 // (`STAFF_INVITE_ROLES`, como la configuracion); un staff acotado a una sucursal no ve el estado de toda la organizacion.
 //
 // Base sin migrar: el repositorio degrada con SAVEPOINT cada lectura a "sin configurar", asi que ningun punto se da por hecho
@@ -7,7 +7,6 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { emitirNotificacion } from "@atiende/db";
 import { STAFF_INVITE_ROLES, cargarOnboarding } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -26,11 +25,6 @@ export function restaurantesAdminOnboardingRoutes(deps: AppDeps): Hono<CoreAuthH
     if (scope !== null) throw Errors.forbidden("El checklist de onboarding es de toda la organización: requiere acceso a todas las sucursales.");
     c.header("Cache-Control", "no-store");
     const checklist = await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId);
-    // Cierre del checklist: cuando todos los puntos obligatorios estan hechos se avisa UNA vez por organizacion (clave de dedupe =
-    // organizacion; la base la depura al vencer la vigencia). Dentro de un SAVEPOINT (emitirNotificacion): sin migrar no aborta la lectura.
-    if (checklist.listoParaOperar) {
-      await emitirNotificacion(c.get("db"), { evento: "restaurantes.onboarding.listo", organizationId, clave: organizationId });
-    }
     return c.json(checklist);
   });
 
