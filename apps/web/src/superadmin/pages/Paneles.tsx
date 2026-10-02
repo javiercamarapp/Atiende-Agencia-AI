@@ -11,9 +11,9 @@
 // `/<vertical>/<slug>`).
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BedDouble, Calculator, CalendarCheck, Gavel, Home, UtensilsCrossed } from "lucide-react";
+import { ArrowLeftRight, BedDouble, Calculator, CalendarCheck, Gavel, Home, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, PageContainer, useTituloBarra } from "@atiende/ui";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { persistSession } from "../../lib/auth-client.ts";
 import { persistHotelesSession } from "../../verticals/hoteles/lib/auth-client.ts";
@@ -56,6 +56,8 @@ const PERSISTIR_POR_VERTICAL: Record<string, (storage: Storage, session: LoginSe
 
 export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
   const navigate = useNavigate();
+  // SA-L-01: la pagina ya no es un item del menu (vive en el pie "Ver los otros paneles"), asi que la barra no la deriva de la ruta.
+  useTituloBarra("Ver los otros paneles", ArrowLeftRight);
   const [entrandoA, setEntrandoA] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
