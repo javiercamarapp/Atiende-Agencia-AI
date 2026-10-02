@@ -112,6 +112,8 @@ describe("generarVolumenDemo (motor real de pedidos)", () => {
     expect(conPromo.length).toBeGreaterThan(0);
     for (const o of conPromo) {
       expect(o.canal).toBe("recoger");
+      // PM-C2 (P6): de las sucursales activas con pedidos (T1 y T3) el 2x1 solo vale en Pensiones (T3), nunca en Prolongacion Montejo.
+      expect(o.branchSlug).toBe("pensiones");
       const dia = new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "long" }).format(new Date(o.createdAt));
       expect(dia).toBe("Monday");
       expect(o.items.some((i) => i.name === "Taco Al Pastor (individual)")).toBe(true);

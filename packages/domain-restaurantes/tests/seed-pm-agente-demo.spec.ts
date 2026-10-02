@@ -139,19 +139,23 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     const plan = buildPmSeedPlan(data, agent);
     expect(plan.promotions.every((p) => p.autoApply === true)).toBe(true);
     const sql = renderPmSeedPlpgsql(plan);
-    expect(sql).toMatch(/insert into restaurantes\.promotions \([^)]*auto_apply\)/);
+    expect(sql).toMatch(/insert into restaurantes\.promotions \([^)]*auto_apply, property_ids\)/);
     expect(sql).toMatch(/auto_apply = excluded\.auto_apply/);
+    expect(sql).toMatch(/property_ids = excluded\.property_ids/);
     expect(renderSchemaPreflightSql()).toContain("031_recoger_promociones_automaticas_puentes.sql");
+    // PM-C2: sin la migracion 038 el 2x1 valdria en TODAS las sucursales: el seed se niega a correr.
+    expect(renderSchemaPreflightSql()).toContain("restaurantes.promotions.property_ids");
+    expect(renderSchemaPreflightSql()).toContain("038_promociones_por_sucursal.sql");
   });
 
-  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger; a domicilio o en otro dia no", async () => {
+  it("al cotizar SIN codigo, el motor aplica el 2x1 el lunes al recoger en Pensiones (T3); a domicilio, en otro dia o en Prolongacion Montejo (T1) no", async () => {
     const plan = buildPmSeedPlan(data, agent);
     const world = await buildInMemoryPmWorld(plan);
     const lunes = new Date("2026-10-12T20:00:00Z"); // lunes 14:00 en Merida
     const martes = new Date("2026-10-13T20:00:00Z");
-    const pedido = (canal: "recoger" | "domicilio") => ({
+    const pedido = (canal: "recoger" | "domicilio", branchSlug = "pensiones") => ({
       organizationId: world.organizationId,
-      branchSlug: "prol-montejo",
+      branchSlug,
       customerName: "Cliente Prueba",
       customerPhone: "0001000001",
       ...(canal === "domicilio" ? { customerAddress: "Calle 34 #382-C, Emiliano Zapata Norte" } : {}),
@@ -170,5 +174,9 @@ describe("la promocion 2x1 del lunes se carga AUTOMATICA (el agente no manda cod
     expect(conPromo.total).toBeCloseTo(base.total - conPromo.discount, 2);
     const domicilio = await prepareCreateOrder(world.repo, pedido("domicilio"), { asOf: lunes });
     expect(domicilio.discount).toBe(0);
+    // PM-C2 (P6): el 2x1 NO vale en T1 (Prolongacion Montejo), aunque sea lunes y para recoger.
+    const enT1 = await prepareCreateOrder(world.repo, pedido("recoger", "prol-montejo"), { asOf: lunes });
+    expect(enT1.discount).toBe(0);
+    expect(enT1.appliedPromotion).toBeNull();
   });
 });

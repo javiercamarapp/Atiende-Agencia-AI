@@ -176,7 +176,7 @@ export async function previewPromotion(
   if (!promotion) return invalida(`El código "${codigo}" no existe.`);
   try {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(args.propertyId)).zonaHoraria);
-    const applied = applyPromotionToOrder({ promotion, orderTotal: args.total, items: args.items, canal: args.canal, now: args.now ?? new Date(), zonaHoraria: zona });
+    const applied = applyPromotionToOrder({ promotion, orderTotal: args.total, items: args.items, canal: args.canal, now: args.now ?? new Date(), zonaHoraria: zona, propertyId: args.propertyId });
     return { valida: true, codigo, descuento: applied.discount, totalConDescuento: applied.total, mensaje: null };
   } catch (err) {
     if (err instanceof PromotionError) return invalida(err.message);

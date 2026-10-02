@@ -47,6 +47,9 @@
       "id": "T4",
       "nombre": "Galerías",
       "slug": "galerias",
+      "slugs_anteriores": [
+        "t4-pendiente"
+      ],
       "direccion": "Calle 60 No. 299-A, Carretera Mérida-Progreso Km 0.5, Col. Revolución Cordemex, Plaza Galerías Mérida (food court)",
       "telefono": "999 941 9612",
       "lat": null,
