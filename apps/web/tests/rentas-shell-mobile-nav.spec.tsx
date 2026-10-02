@@ -52,9 +52,9 @@ afterEach(() => {
   fetchPropertiesMock.mockReset();
 });
 
-async function renderShell(): Promise<RenderedComponent> {
+async function renderShell(rol = "admin_gestora"): Promise<RenderedComponent> {
   installMatchMediaStub();
-  installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify(SESSION));
+  installMemoryLocalStorage().setItem("atiende.rentas.session", JSON.stringify({ ...SESSION, organizations: [{ ...SESSION.organizations[0]!, rol }] }));
   fetchPropertiesMock.mockResolvedValue([{ propertyId: "prop-1", nombre: "Depa Marina" }]);
   const result = renderComponent(
     <MemoryRouter>
@@ -101,34 +101,34 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });
 
-  it('el botón "Más" abre los 13 destinos, incluidos Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
+  it('el botón "Más" abre los 14 destinos (13 + Copiloto para admin_gestora), incluidos Copiloto, Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(14);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
+      expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
     );
   });
 
   // UNI-6: marco de Likida -- Resumen y Calendario raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 13 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 14 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Canales", "Finanzas", "Configuración", "Control"]);
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Aprobaciones", "Mis tareas", "Acceso al huésped"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Aprobaciones", "Mis tareas", "Acceso al huésped"]);
     abrirCategoria(root, "Canales");
     expect(categoriasAbiertas(root)).toEqual(["Canales"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Sincronización iCal", "Monitor de conflictos"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Sincronización iCal", "Monitor de conflictos"]);
     abrirCategoria(root, "Finanzas");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Precios", "Finanzas", "Reportes"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Precios", "Finanzas", "Reportes"]);
     abrirCategoria(root, "Configuración");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Catálogo", "Equipo"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Catálogo", "Equipo"]);
     abrirCategoria(root, "Control");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Auditoría"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Auditoría"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Gestora Demo", rol: "Administrador gestora" });
   });
 
@@ -204,5 +204,27 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.rentas.session")).toBeNull();
+  });
+
+  // CHAT-10: el Copiloto solo existe para admin_gestora y contador (FINANZAS_LECTURA_ROLES del servidor); operador y limpieza no
+  // ven la entrada en el Sidebar ni en la hoja "Más" de la barra móvil (el servidor igual responde 403).
+  it.each(["contador"])("%s ve la entrada Copiloto en el Sidebar y en la hoja Más", async (rol) => {
+    rendered = await renderShell(rol);
+    expect(linksSidebar(rendered.container).slice(0, 2)).toEqual(["Resumen", "Copiloto"]);
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/rentas/demo/copiloto");
+  });
+
+  it.each(["operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario", "limpieza"])("%s NO ve la entrada Copiloto ni en el Sidebar ni en la hoja Más", async (rol) => {
+    rendered = await renderShell(rol);
+    expect(linksSidebar(rendered.container)).not.toContain("Copiloto");
+    expect([...rendered.container.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/rentas/demo/copiloto")).toBe(false);
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
+    expect(hrefs).toHaveLength(13);
+    expect(hrefs).not.toContain("/rentas/demo/copiloto");
   });
 });

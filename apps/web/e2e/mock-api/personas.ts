@@ -75,7 +75,13 @@ export function resolverPersona(id: string): Persona | null {
   return null;
 }
 
+/** Rol de ORGANIZACION que reporta el login. La SPA de rentas decide por roles verticales reales (admin_gestora, contador, operador:*,
+ *  limpieza): admin/finanzas/staff de la API simulada se reportan como admin_gestora/contador/operador:solo_calendario. `owner` queda
+ *  tal cual (no es un rol de rentas: las pantallas con gate por rol lo tratan como sin acceso, igual que hoy). */
+const ROL_ORG_RENTAS: Readonly<Record<string, string>> = { admin: "admin_gestora", finanzas: "contador", staff: "operador:solo_calendario" };
+
 export function organizacionesDe(persona: Persona): Array<{ id: string; slug: string; nombre: string; vertical: string; rol: string }> {
   if (!persona.vertical) return [];
-  return [{ id: persona.orgId, slug: persona.orgSlug, nombre: persona.orgNombre, vertical: persona.vertical, rol: persona.rol }];
+  const rol = persona.vertical === "rentas" ? (ROL_ORG_RENTAS[persona.rol] ?? persona.rol) : persona.rol;
+  return [{ id: persona.orgId, slug: persona.orgSlug, nombre: persona.orgNombre, vertical: persona.vertical, rol }];
 }
