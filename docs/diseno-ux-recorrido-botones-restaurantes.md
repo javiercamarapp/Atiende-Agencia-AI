@@ -69,7 +69,7 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 
 ## UNI-C (oleada C de unificacion): controles que cambiaron
 
-Capturas antes/despues (escritorio y movil, claro y oscuro) en `docs/diseno-ux-capturas-unic-restaurantes/` (`antes-*` / `despues-*`: Pedidos, Productos, Historial, Staff, Promociones, Repartidor y los dos dialogos de alta nuevos).
+Capturas antes/despues (escritorio y movil, claro y oscuro) en `docs/diseno-ux-capturas-unic-restaurantes/` (`antes-*` / `despues-*`: Pedidos, Productos, Historial, Staff, Promociones y los dos dialogos de alta nuevos). Repartidor queda SIN capturas: las anteriores mostraban el error del mock-api (faltaba la fixture) y se retiraron; su evidencia es la prueba e2e `restaurantes-repartidor.spec.ts` (lista, Volver/Escape sin PATCH, incidencia con nota). Pendiente de recaptura cuando la Mac tenga memoria para levantar el build.
 
 | Pantalla | Antes | Ahora (mismo endpoint, mismo payload) |
 |---|---|---|
