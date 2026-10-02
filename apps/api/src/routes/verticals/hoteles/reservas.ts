@@ -40,6 +40,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { INLINE_BATCH_SIZE, runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { ofrecerListaEsperaTrasLiberacion } from "./lista-espera-ofertas.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -373,6 +374,9 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     for (const night of nights) {
       await repo.releaseAvailability(propertyId, reservation.roomTypeId, night, 1);
     }
+    // H-12: las noches liberadas se ofrecen a la lista de espera (FIFO) y se avisa al staff. Best-effort dentro de un SAVEPOINT:
+    // contra la base sin migrar (041) o ante cualquier fallo la cancelacion ya hecha sigue valida.
+    await ofrecerListaEsperaTrasLiberacion(deps, c.get("db"), { organizationId: c.get("organizationId"), propertyId, roomTypeId: reservation.roomTypeId, noches: nights });
 
     return c.json(serializeReservation(canceled));
   });

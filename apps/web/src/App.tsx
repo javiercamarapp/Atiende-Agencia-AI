@@ -155,6 +155,7 @@ import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.ts
 import { SalaGuerraPage } from "./verticals/licitaciones/pages/SalaGuerra.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
+import { DespachosCopilotoPage } from "./verticals/despachos/pages/Copiloto.tsx";
 import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
 import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -939,6 +940,8 @@ function DespachosRootRedirect() {
 }
 
 const DespachosDashboardRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosDashboardPage {...ctx} />);
+// CHAT-11 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de despachos (admin, contador, auditor, readonly).
+const DespachosCopilotoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosCopilotoPage {...ctx} />);
 const DespachosReportesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosReportesPage {...ctx} />);
 const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);
 const DespachosCierreMensualDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualDetallePage {...ctx} />);
@@ -1145,6 +1148,7 @@ export function App() {
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
+        <Route path="/despachos/:orgSlug/copiloto" element={<DespachosCopilotoRoute />} />
         <Route path="/despachos/:orgSlug/notificaciones" element={<DespachosNotificacionesRoute />} />
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
