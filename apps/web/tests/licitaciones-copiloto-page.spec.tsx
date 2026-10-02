@@ -82,7 +82,7 @@ async function esperar(ms = 30): Promise<void> {
 
 const pagina = (propertyId = "prop-1") => (
   <MemoryRouter>
-    <LicitacionesCopilotoPage apiBaseUrl={API} token="tok" propertyId={propertyId} orgSlug="demo" setPropertyId={() => undefined} properties={[]} session={{ token: "tok", refreshToken: "r", email: "a@b.mx", fullName: "Ana", organizations: [] }} />
+    <LicitacionesCopilotoPage apiBaseUrl={API} token="tok" propertyId={propertyId} orgSlug="demo" role="viewer" staffFullName="Ana" staffEmail="a@b.mx" />
   </MemoryRouter>
 );
 async function montar(propertyId?: string): Promise<HTMLElement> {
