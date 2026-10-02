@@ -74,6 +74,13 @@ describe("limites por turno (spec g.3)", () => {
     expect(t3.llm.requests).toHaveLength(2);
   });
 
+  it("si la ronda 0 agoto el limite de consultas con llamadas invalidas, no se concede la ronda de correccion", async () => {
+    const mala = { name: "ventas_por_dia", argumentsJson: JSON.stringify({ periodo: "hoy", organization_id: "x" }) };
+    const t = turn([{ toolCalls: [mala, mala, mala] }], { limits: { maxToolCallsPerTurn: 3 } });
+    await t.run();
+    expect(t.llm.requests).toHaveLength(2);
+  });
+
   it("tokens de salida: 150 al elegir herramienta y 350 al redactar", async () => {
     const t = turn([CALL, { text: BUENA }]);
     await t.run();

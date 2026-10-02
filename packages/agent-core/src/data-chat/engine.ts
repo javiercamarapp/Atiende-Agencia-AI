@@ -461,7 +461,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
         messages.push({ role: "tool", toolCallId: call.id, content: serializeForModel(tool, clipped, Math.min(limits.maxRows, limits.maxModelRows)) });
       }
       // Ninguna consulta se ejecuto (herramienta inexistente o argumentos invalidos): una ronda extra para que el modelo se corrija.
-      if (runs.length === 0 && repairsLeft > 0) {
+      if (runs.length === 0 && repairsLeft > 0 && toolCallsMade < limits.maxToolCallsPerTurn) {
         repairsLeft -= 1;
         roundLimit += 1;
       }
