@@ -39,7 +39,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -314,6 +314,8 @@ export interface AppDeps {
   readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-24 -- libro contable persistido (migracion 020). OPCIONAL a proposito (mismo criterio que `carteraRepo`): las rutas caen a `PostgresLibroRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly libroRepo?: (db: TenantDbSession) => LibroRepository;
+  /** D-35 + D-02 -- conciliacion bancaria persistida (sesiones, matches, sugerencias del nivel 4; migracion 021). OPCIONAL a proposito (mismo criterio que `libroRepo`): las rutas caen a `PostgresConciliacionPersistidaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
