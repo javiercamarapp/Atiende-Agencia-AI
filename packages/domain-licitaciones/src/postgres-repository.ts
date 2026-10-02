@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
+import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -79,7 +79,7 @@ import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { sha256Bytes, sha256Hex } from "./types.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
-import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 import type { PersistedProposalVersion, ProposalInputRecord } from "./proposal-version-registry.ts";
 import { WRITE_ROLES } from "./roles.ts";
@@ -2040,7 +2040,26 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   // ---- Fase 2 pieza 1: máquina de aprobaciones granular (AE-02/AE-11) ----
 
-  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval> {
+  async listExpedienteStageApprovals(organizationId: string, proposalId: string): Promise<{ mode: "doble" | "legacy"; approvals: readonly Approval[] }> {
+    // L-26: la columna `stage` solo existe tras la migracion 033. La sesion del request es UNA
+    // transaccion: un 42703 sin SAVEPOINT la dejaria abortada (25P02) y el COMMIT revertiria todo
+    // lo escrito por el request en silencio -- por eso `runWithSavepointFallback`, nunca try/catch.
+    return runWithSavepointFallback<{ mode: "doble" | "legacy"; approvals: readonly Approval[] }>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<ApprovalRow & { stage: ExpedienteApprovalStage | null }>(
+          `select ${APPROVAL_COLUMNS}, stage from licitaciones.approval
+           where organization_id = $1 and proposal_id = $2 and status = 'vigente' and scope = 'expediente' and scope_ref = 'expediente';`,
+          [organizationId, proposalId],
+        );
+        return { mode: "doble", approvals: rows.map((r) => ({ ...mapApproval(r), ...(r.stage ? { stage: r.stage } : {}) })) };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => ({ mode: "legacy", approvals: await this.activeApprovalsCovering(organizationId, proposalId, "expediente") }),
+    });
+  }
+
+  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs; stage?: ExpedienteApprovalStage }): Promise<Approval> {
     // AE-11: hidrata la máquina pura de dominio con la autoría de sección
     // REALMENTE persistida -- nunca confía en nada que el llamador declare.
     const { rows: authorRows } = await this.db.query<{ section_key: string; actor_id: string }>(
@@ -2055,9 +2074,20 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       sectionAuthors.set(scopeRef, set);
     }
 
+    // L-26: con etapa, la regla de la doble aprobacion necesita las aprobaciones vigentes (con etapa)
+    // REALMENTE persistidas. Base sin migrar -> `ExpedienteStageNotAvailableError` (la ruta lo traduce).
+    let stageSnapshot: readonly Approval[] = [];
+    if (input.stage !== undefined) {
+      const snapshot = await this.listExpedienteStageApprovals(organizationId, proposalId);
+      if (snapshot.mode === "legacy") throw new ExpedienteStageNotAvailableError();
+      stageSnapshot = snapshot.approvals;
+    }
+
     // Lanza `ApprovalRejectedError` si la regla rechaza (rol no autorizado,
-    // AE-02, o autoaprobación AE-11) -- ninguna fila se toca en ese caso.
-    new ApprovalWorkflow({ sectionAuthors }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash });
+    // AE-02, autoaprobación AE-11, o las reglas de etapa de L-26) -- ninguna fila se toca en ese caso.
+    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
+
+    if (input.stage !== undefined) return this.insertStagedApproval(organizationId, proposalId, input as typeof input & { stage: ExpedienteApprovalStage });
 
     // La validación pasó: invalida cualquier aprobación previa 'vigente' de
     // EXACTAMENTE el mismo scope/scopeRef antes de insertar la nueva (nunca
@@ -2075,6 +2105,49 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId, proposalId, input.scope, input.scopeRef, input.actorId, input.actorRole, input.inputsHash.hash],
     );
     return mapApproval(rows[0]!);
+  }
+
+  /**
+   * L-26: invalida la aprobacion previa de la MISMA etapa e inserta la nueva. La base lo respalda
+   * con un indice unico parcial (una vigente por etapa) y un trigger que impide que la misma
+   * persona de las dos etapas aunque dos requests se crucen: 23505/23514 de ese trigger son
+   * conflictos de negocio, no "migracion pendiente" -> `ApprovalRejectedError`.
+   */
+  private async insertStagedApproval(
+    organizationId: string,
+    proposalId: string,
+    input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs; stage: ExpedienteApprovalStage },
+  ): Promise<Approval> {
+    await this.db.query(
+      `update licitaciones.approval set status = 'invalidada', invalidated_at = now(), invalidated_reason = 'superseded_by_new_approval'
+       where organization_id = $1 and proposal_id = $2 and scope_ref = 'expediente' and stage = $3 and status = 'vigente';`,
+      [organizationId, proposalId, input.stage],
+    );
+    // 23505 (indice unico: ya hay una vigente de esta etapa) / 23514 (trigger: misma persona en las dos
+    // etapas) son conflictos de negocio de requests cruzados: se aislan en un SAVEPOINT (la sesion del
+    // request es UNA transaccion) y se traducen. Cualquier otro error se repropaga tal cual.
+    const { rows } = await runWithSavepointFallback<{ rows: (ApprovalRow & { stage: ExpedienteApprovalStage | null })[] }>({
+      session: this.db,
+      primary: () =>
+        this.db.query<ApprovalRow & { stage: ExpedienteApprovalStage | null }>(
+          `insert into licitaciones.approval (organization_id, proposal_id, scope, scope_ref, approver_id, approver_role, inputs_hash, stage)
+           values ($1, $2, 'expediente', 'expediente', $3, $4, $5, $6)
+           returning ${APPROVAL_COLUMNS}, stage;`,
+          [organizationId, proposalId, input.actorId, input.actorRole, input.inputsHash.hash, input.stage],
+        ),
+      isRecoverable: (err) => {
+        const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+        return code === "23505" || code === "23514";
+      },
+      fallback: async (err) => {
+        const message = err instanceof Error ? err.message : "";
+        if (message.includes("doble_aprobacion_mismo_actor")) {
+          throw new ApprovalRejectedError("doble_aprobacion_mismo_actor", "La aprobación técnico-legal y la económica deben darlas dos personas distintas.");
+        }
+        throw new ApprovalRejectedError("doble_aprobacion_conflicto_concurrente", "La aprobación no pudo registrarse: otra aprobación del mismo expediente se registró al mismo tiempo. Recarga e inténtalo de nuevo.");
+      },
+    });
+    return { ...mapApproval(rows[0]!), stage: input.stage };
   }
 
   async activeApprovalsCovering(organizationId: string, proposalId: string, scopeRef: string): Promise<readonly Approval[]> {
