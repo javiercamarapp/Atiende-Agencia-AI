@@ -187,7 +187,7 @@ describe("generarContenidoReporte: pipeline verificado", () => {
   });
 
   it("la entrada del analista respeta el tope de ~8k tokens recortando filas por igual", async () => {
-    const filas = Array.from({ length: 50 }, (_, i) => ({ dia: `2026-08-${String((i % 28) + 1).padStart(2, "0")} ${"x".repeat(55)}`, ventas: 100 + i, pedidos: i }));
+    const filas = Array.from({ length: 50 }, (_, i) => ({ dia: `2026-08-${String((i % 28) + 1).padStart(2, "0")} ${"x".repeat(55)}`, ventas: 100 + i, pedidos: i, nota1: "y".repeat(55), nota2: "z".repeat(55) }));
     const grande: ReporteTabla = { ...TABLA, rows: filas };
     const a = scriptedCompletion([{ text: JSON.stringify({ hallazgos: [] }) }]);
     await correr(a, scriptedCompletion([{ text: REDACCION_OK }]), [grande, { ...grande, tool: "t2", title: "T2" }, { ...grande, tool: "t3", title: "T3" }, { ...grande, tool: "t4", title: "T4" }]);
