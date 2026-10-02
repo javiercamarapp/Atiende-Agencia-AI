@@ -116,6 +116,7 @@ import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
+import { AvisosPage as CitasAvisosPage } from "./verticals/citas/pages/Avisos.tsx";
 import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
 import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
@@ -802,6 +803,8 @@ const CitasConfiguracionRoute = shellRoute(CitasShell, "/citas/login", (ctx) => 
 // aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
 const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasStaffPage {...ctx} />);
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
+// C-16 -- centro de avisos (por confirmar, recordatorios agotados, escalaciones de crisis con seguimiento).
+const CitasAvisosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAvisosPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 const CitasWhatsappMensajesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasWhatsappMensajesPage {...ctx} />);
 const CitasAgenteWhatsappRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAgenteWhatsappPage {...ctx} />);
@@ -1058,6 +1061,7 @@ export function App() {
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
+        <Route path="/citas/:orgSlug/avisos" element={<CitasAvisosRoute />} />
         <Route path="/citas/:orgSlug/notificaciones" element={<CitasNotificacionesRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
