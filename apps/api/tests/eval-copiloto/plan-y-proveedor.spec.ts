@@ -19,7 +19,7 @@ import {
 import { ALLOWED_PROVIDER_HOSTS } from "../../src/production/llm-models.js";
 import { VERTICALES_EVAL, mundoRepeticion } from "../../../../scripts/eval-copiloto/mundos.ts";
 import { leerCongelado } from "../../../../scripts/eval-copiloto/congelado.ts";
-import { cargarCasos, construirPlan, ejecutarPlan, finalistasDe, guionOro, leerLlave, parsearArgs, proyeccion, TOPE_HUMO_USD, TOPE_PILOTO_USD,
+import { cargarCasos, construirPlan, ejecutarPlan, finalistasDe, guionOro, leerLlave, parsearArgs, proyeccion, TOPE_HUMO_USD,
   TOPE_PILOTO_USD, TOPE_TOTAL_USD } from "../../../../scripts/eval-copiloto/ejecutar.ts";
 
 const { casos, congelados } = cargarCasos();
