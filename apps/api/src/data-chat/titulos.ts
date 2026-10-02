@@ -26,8 +26,9 @@ export function tituloPredeterminado(userText: string): string {
   return plano.length > 60 ? `${plano.slice(0, 60)}…` : plano;
 }
 
+// Controles C0/C1, marcas bidireccionales y de ancho cero (con `new RegExp` y escapes de cadena para que el archivo no lleve caracteres invisibles).
 // eslint-disable-next-line no-control-regex
-const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g;
+const CONTROL_RE = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]", "g");
 
 /** Limpia y valida el titulo del modelo. `null` = descartarlo (queda el determinista). */
 export function sanitizarTitulo(raw: string | undefined): string | null {

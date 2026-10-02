@@ -94,7 +94,7 @@ describe("Tope diario de turnos por rol", () => {
   });
 
   it("un valor fuera de rango no llama al servidor y muestra el motivo", async () => {
-    const fetchMock = vi.fn(async (url: string) => (url.includes("/por-rol") ? res({ disponible: true, filas: [] }) : res({ disponible: true, defaults: [{ role: "hoteles:data_chat", maxTurnosDia: 400 }], propios: [] })));
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => (url.includes("/por-rol") ? res({ disponible: true, filas: [] }) : res({ disponible: true, defaults: [{ role: "hoteles:data_chat", maxTurnosDia: 400 }], propios: [] })));
     vi.stubGlobal("fetch", fetchMock);
     rendered = render();
     await esperar();

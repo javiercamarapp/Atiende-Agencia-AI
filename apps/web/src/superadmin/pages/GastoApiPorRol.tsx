@@ -4,7 +4,7 @@
 // Las tres rutas exigen step-up con factor MFA activo (fetchConStepUp pide el codigo y reintenta). Cada bloque maneja cargando, error,
 // "no disponible aun" (base sin la migracion 0046) y vacio de verdad; nunca muestra cifras inventadas.
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import { fetchJson } from "../lib/fetch-json.ts";
 
 interface FilaPorRol {
@@ -36,7 +36,7 @@ export interface OrganizacionOpcion {
 }
 
 function usd(microUsd: number): string {
-  return `$${formatMoney(microUsd / 1_000_000, 4)}`;
+  return `$${(microUsd / 1_000_000).toLocaleString("es-MX", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
 }
 
 function FilaTope({ role, porDefecto, propio, turnosHoy, onGuardar }: { readonly role: string; readonly porDefecto: number; readonly propio: number | undefined; readonly turnosHoy: number | undefined; readonly onGuardar: (role: string, valor: number) => Promise<void> }) {

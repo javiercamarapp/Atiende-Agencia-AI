@@ -115,11 +115,13 @@ describe("step-up: el reporte y los topes por rol lo exigen con factor MFA activ
       ["GET", `/superadmin/gasto-api/organizaciones/${org}/topes-rol`, undefined],
       ["PUT", `/superadmin/gasto-api/organizaciones/${org}/topes-rol`, { role: "restaurantes:data_chat", maxTurnosDia: 30 }],
     ];
+    const llamar = (method: string, path: string, body: unknown, headers: Record<string, string>) =>
+      body === undefined ? s.app.request(path, { method, headers }) : req(s.app, method, path, body, headers);
     for (const [method, path, body] of rutas) {
-      const sin = await s.app.request(path, { method, headers: bearer(sa.token), ...(body ? jsonRequestInit(body, bearer(sa.token)) : {}), ...(body ? { method } : {}) });
+      const sin = await llamar(method, path, body, bearer(sa.token));
       expect(sin.status, `${method} ${path}`).toBe(403);
       expect(await sin.json()).toMatchObject({ code: "stepup_required" });
-      const con = await s.app.request(path, { method, ...(body ? jsonRequestInit(body, bearer(sa.token, { "x-stepup-token": stepUpToken })) : { headers: bearer(sa.token, { "x-stepup-token": stepUpToken }) }), method });
+      const con = await llamar(method, path, body, bearer(sa.token, { "x-stepup-token": stepUpToken }));
       expect(con.status, `${method} ${path} con step-up`).toBe(200);
     }
   });
