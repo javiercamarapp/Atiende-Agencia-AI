@@ -60,6 +60,7 @@ import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/s
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
 import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copiloto.tsx";
+import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
 import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -718,6 +719,8 @@ const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) 
 const RentasAuditoriaRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAuditoriaPage {...ctx} />);
 /** Rn-19 -- catálogo (propiedades, unidades, propietarios) y Rn-20 -- equipo (invitar, rol, baja). */
 const RentasCatalogoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCatalogoPage {...ctx} />);
+// CHAT-10 -- Copiloto ("Pregunta a tus datos") de rentas: pagina generica de @atiende/ui conectada al chat-datos real (admin_gestora/contador).
+const RentasCopilotoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCopilotoPage {...ctx} />);
 const RentasEquipoRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasEquipoPage {...ctx} />);
 
 /** Portal de propietario (Fase 3 backend, UI de esta fase) — 3 rutas PÚBLICAS, fuera
@@ -1050,6 +1053,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
         <Route path="/rentas/:orgSlug/equipo" element={<RentasEquipoRoute />} />
+        <Route path="/rentas/:orgSlug/copiloto" element={<RentasCopilotoRoute />} />
         {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
             segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
             declaración, así que "portal-propietario" nunca se confunde con un orgSlug
