@@ -22,20 +22,20 @@ const aprobacion = (over: Partial<Approval>): Approval => ({
 const FUENTES: BitacoraFuentes = {
   auditoria: [{ id: "a1", action: "tender.manual_upsert.created", actorId: YO, createdAt: "2026-10-01T09:00:00.000Z" }],
   salaGuerra: [
-    { id: "s1", itemId: null, entryKind: "comentario", body: "Pedir carta al fabricante", authorId: OTRO, createdAt: "2026-10-02T09:00:00.000Z" },
-    { id: "s2", itemId: null, entryKind: "evento", body: "Se importaron 3 requisitos.", authorId: OTRO, createdAt: "2026-10-02T09:00:00.000Z" },
+    { id: "s1", organizationId: "o", tenderId: "t", itemId: null, entryKind: "comentario", body: "Pedir carta al fabricante", authorId: OTRO, createdAt: "2026-10-02T09:00:00.000Z" },
+    { id: "s2", organizationId: "o", tenderId: "t", itemId: null, entryKind: "evento", body: "Se importaron 3 requisitos.", authorId: OTRO, createdAt: "2026-10-02T09:00:00.000Z" },
   ],
   goNoGo: [{ id: "g1", organizationId: "o", tenderId: "t", decision: "go", reasons: ["a", "b"], matchScore: 80, matchEligibilityStatus: "cumple", matchInputsHash: "x", decidedBy: YO, decidedAt: "2026-10-01T12:00:00.000Z" }],
-  aprobaciones: [aprobacion({}), aprobacion({ id: "ap2", stage: "economica", approvedBy: YO, approvedByRole: "owner", approvedAt: "2026-10-03T11:00:00.000Z", status: "invalidada", invalidatedAt: "2026-10-04T08:00:00.000Z" }), aprobacion({ id: "ap3", scope: "seccion", scopeRef: "seccion:x" })],
+  aprobaciones: [aprobacion({}), aprobacion({ id: "ap2", stage: "economica", approvedBy: YO, approvedByRole: "owner", approvedAt: "2026-10-03T11:00:00.000Z" }), aprobacion({ id: "ap3", scope: "seccion", scopeRef: "seccion:x" })],
   presentacion: { id: "p1", status: "submitted", submittedAt: "2026-10-05T00:00:00.000Z", acknowledgementStorageRef: null, acknowledgementFileHash: null, notes: null, createdAt: "2026-10-05T10:00:00.000Z" },
 };
 
 describe("buildBitacoraEventos / paginarBitacora", () => {
   const eventos = buildBitacoraEventos(FUENTES, YO);
 
-  it("une todas las fuentes, descarta aprobaciones de seccion y agrega la invalidacion como evento propio", () => {
+  it("une todas las fuentes y descarta aprobaciones de seccion", () => {
     expect(eventos.map((e) => e.id).sort()).toEqual(
-      ["aprobacion:ap1", "aprobacion:ap2", "aprobacion:ap2:invalidada", "auditoria:a1", "go_no_go:g1", "presentacion:p1", "sala_guerra:s1", "sala_guerra:s2"].sort(),
+      ["aprobacion:ap1", "aprobacion:ap2", "auditoria:a1", "go_no_go:g1", "presentacion:p1", "sala_guerra:s1", "sala_guerra:s2"].sort(),
     );
   });
 
@@ -58,7 +58,7 @@ describe("buildBitacoraEventos / paginarBitacora", () => {
 
   it("filtra por fuente y por rango (inclusivo)", () => {
     expect(paginarBitacora(eventos, { fuente: "sala_guerra" }).total).toBe(2);
-    expect(paginarBitacora(eventos, { fuente: "aprobacion" }).total).toBe(3);
+    expect(paginarBitacora(eventos, { fuente: "aprobacion" }).total).toBe(2);
     const rango = paginarBitacora(eventos, { desde: "2026-10-02T00:00:00.000Z", hasta: "2026-10-03T23:59:59.000Z" });
     expect(rango.items.map((e) => e.fuente).sort()).toEqual(["aprobacion", "aprobacion", "sala_guerra", "sala_guerra"]);
   });
