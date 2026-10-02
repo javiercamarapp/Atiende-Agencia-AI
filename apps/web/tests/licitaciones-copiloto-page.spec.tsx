@@ -116,7 +116,7 @@ describe("LicitacionesCopilotoPage", () => {
     expect(COPILOTO_LICITACIONES.categorias.map((c) => c.titulo)).toEqual(["Oportunidades", "Plazos y propuestas", "Resultados y contratos"]);
   });
 
-  it("elegir un chip hace POST NDJSON con SOLO pregunta + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
+  it("elegir un chip hace POST NDJSON de consulta DIRECTA (tool + args + label) + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
     click(porTexto(root, "¿Cómo va el semáforo de mis plazos?")!);
@@ -124,7 +124,8 @@ describe("LicitacionesCopilotoPage", () => {
     const post = llamadas.find((l) => l.method === "POST");
     expect(post?.url).toBe(`${API}/licitaciones/prop-1/chat-datos`);
     expect(post?.accept).toBe("application/x-ndjson");
-    expect(post?.body).toEqual({ question: "¿Cómo va el semáforo de mis plazos?", conversationId: "new" });
+    // El chip tiene consulta directa: viaja la herramienta con sus argumentos (sin modelo) y el texto del chip como etiqueta.
+    expect(post?.body).toEqual({ tool: "plazos_semaforo", label: "¿Cómo va el semáforo de mis plazos?", conversationId: "new" });
     expect(root.textContent).toContain("Tienes 7 convocatorias abiertas: 1 en rojo, 2 en amarillo y 4 en verde.");
     const fuente = [...root.querySelectorAll("a")].find((a) => a.textContent?.includes("Convocatorias de la organización"));
     expect(fuente?.getAttribute("href")).toBe("/licitaciones/demo/seguimiento");

@@ -332,7 +332,7 @@ export function buildProductionDeps(): AppDeps {
     // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
     demoRepo: (db) => new PostgresDemoRepository(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
-    dataChat: buildProductionDataChat(llmGateway),
+    dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway
       ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
       : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),

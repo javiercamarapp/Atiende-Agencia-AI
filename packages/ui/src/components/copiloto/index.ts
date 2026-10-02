@@ -1,5 +1,7 @@
 export { ChatDatosShell } from "./ChatDatosShell";
-export { CopilotoErrorTransporte } from "./tipos";
+export { SeccionFijadosCopiloto, MAX_FIJADOS_VISIBLES } from "./SeccionFijadosCopiloto";
+export type { SeccionFijadosCopilotoProps } from "./SeccionFijadosCopiloto";
+export { CopilotoErrorTransporte, FijadosErrorCliente } from "./tipos";
 export type {
   ChatDatosShellProps,
   ConversacionCompleta,
@@ -9,6 +11,7 @@ export type {
   CopilotoCelda,
   CopilotoColumna,
   CopilotoColumnaTipo,
+  CopilotoDirecta,
   CopilotoEvento,
   CopilotoFuente,
   CopilotoMensaje,
@@ -16,6 +19,10 @@ export type {
   CopilotoStatus,
   CopilotoTextos,
   CopilotoTransporte,
+  FijadoResultado,
+  FijadoResumen,
+  FijadosCliente,
+  FijadosFalla,
 } from "./tipos";
 export { faseSegunTiempo } from "./fases";
 export { textoAviso } from "./CopilotoMensaje";

@@ -71,6 +71,7 @@ const CUERPOS: Record<string, unknown> = {
     { fecha: "2026-09-30", estado: "completado", completadoEn: "2026-10-01T07:00:00.000Z" },
     { fecha: "2026-10-01", estado: "completado", completadoEn: "2026-10-02T07:30:00.000Z" },
   ],
+  pins: { disponible: true, pins: [] },
   mantenimiento: [{ id: "m1" }, { id: "m2" }],
   pedidosFnb: [
     { id: "p1", alergiaDeclarada: true, cocineroConfirmoEn: null },
@@ -100,6 +101,7 @@ function stubApi(opciones: { fallos?: readonly string[]; cuerpos?: Record<string
     "night-audit": "nightAudit",
     "mantenimiento/tickets": "mantenimiento",
     "pedidos-fnb": "pedidosFnb",
+    "chat-datos/pins": "pins",
   };
   fetchMock = vi.fn(async (url: string) => {
     const r = ruta(url);
@@ -147,7 +149,7 @@ describe("Resumen de hoteles (UNI-RES-hoteles) -- cada rol pide solo lo que el s
     rendered = pintar(ctxDe("owner"));
     await esperarCarga();
 
-    expect(rutasPedidas()).toEqual(["agentes", "aprobaciones", "night-audit", "pl", "recepcion", "reservas-agente/holds", "tickets"]);
+    expect(rutasPedidas()).toEqual(["agentes", "aprobaciones", "chat-datos/pins", "night-audit", "pl", "recepcion", "reservas-agente/holds", "tickets"]);
     const c = rendered.container;
     expect(cifra(c, "Ocupación")).toBe("75.0%");
     expect(cifra(c, "ADR")).toBe("$1,200");

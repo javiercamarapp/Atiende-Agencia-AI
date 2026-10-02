@@ -12,6 +12,7 @@
 //   - holds del agente de reservas ................... GET .../reservas-agente/holds?abiertas=1 (HOLD_VIEW_ROLES)
 //   - tarjetas de agentes ............................ GET .../agentes                  (AGENT_VIEW_ROLES)
 //   - ultima corrida ................................. GET .../night-audit              (owner/gm/accountant)
+//   - fijados del Copiloto ........................... GET .../chat-datos/pins            (owner/gm; los re-ejecuta el servidor)
 //   - atajos de piso ................................. GET .../mantenimiento/tickets y .../pedidos-fnb (solo su rol)
 // Cada rol solo pide lo que el servidor le deja leer (ver `capacidadesResumen`): ninguna llamada de este Resumen da 403 por
 // rol. No existe una bitacora de corridas de agentes: "Ultima corrida" muestra el ultimo night audit si lo hay y, si no, un
@@ -54,7 +55,7 @@ import { dineroMxConSigno } from "../lib/dinero.ts";
 import { formatFechaSolo, hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import { primerNombreOCorreo, saludoPorHora } from "../../../lib/greeting.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
-import { COPILOTO_HOTELES_ROLES } from "./Copiloto.tsx";
+import { COPILOTO_HOTELES_ROLES, HotelesFijadosCopiloto } from "./Copiloto.tsx";
 
 type PeriodDays = "7" | "30" | "90";
 const PERIOD_OPTIONS: ReadonlyArray<{ id: PeriodDays; rotulo: string }> = [
@@ -300,6 +301,9 @@ export function DashboardPage(ctx: HotelesShellContext) {
             </div>
           </Card>
         )}
+
+        {/* CHAT-15: tablero de fijados del Copiloto (owner/gm; para los demas roles no se pinta ni se pide). */}
+        <HotelesFijadosCopiloto {...ctx} />
       </ResumenLayout>
     </PageContainer>
   );

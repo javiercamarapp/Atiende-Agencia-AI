@@ -51,8 +51,10 @@ describe("ResumenPage (citas)", () => {
     await esperar();
 
     const text = rendered.container.textContent ?? "";
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe("https://api.test/v1/citas/properties/prop-1/resumen");
+    // El tablero de fijados del Copiloto hace su propia lectura (/chat-datos/pins); aqui se verifica la del RESUMEN.
+    const llamadasResumen = fetchMock.mock.calls.filter((c) => !String((c as unknown[])[0]).includes("/chat-datos/pins"));
+    expect(llamadasResumen).toHaveLength(1);
+    expect(String((llamadasResumen[0] as unknown[])[0])).toBe("https://api.test/v1/citas/properties/prop-1/resumen");
     expect(text).toContain("Citas hoy");
     expect(text).toContain("Citas esta semana");
     expect(text).toContain("Por confirmar");

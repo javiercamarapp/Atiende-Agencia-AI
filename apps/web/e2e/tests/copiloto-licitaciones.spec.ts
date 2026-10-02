@@ -34,7 +34,7 @@ test.describe("copiloto de licitaciones @copiloto", () => {
     // El POST fue NDJSON, con SOLO pregunta + conversationId "new" (sin ids de negocio ni organizacion).
     const posts = await mock.buscar({ metodo: "POST", ruta: /\/chat-datos$/ });
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.cuerpo).toEqual({ question: PREGUNTA, conversationId: "new" });
+    expect(posts[0]?.cuerpo).toEqual({ tool: "plazos_semaforo", label: PREGUNTA, conversationId: "new" });
     vigilante.verificar();
   });
 

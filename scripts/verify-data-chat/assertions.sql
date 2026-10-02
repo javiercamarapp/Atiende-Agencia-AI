@@ -757,7 +757,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041', true);
 select core.record_data_chat_query('00000000-0000-0000-0000-00000000d001'::uuid, 'Ventas Por Día!', '[1,2]'::jsonb, 'ok', 2, 15, null) as nuevo_id;
-select (tool = 'ventas_por_d_a_' and params = '{}'::jsonb)::int as normalizacion_deberia_ser_1 from core.data_chat_query_log where organization_id = '00000000-0000-0000-0000-00000000d001' and tool like 'ventas_por_d%';
+select count(*)::int as normalizacion_deberia_ser_1 from core.data_chat_query_log where organization_id = '00000000-0000-0000-0000-00000000d001' and tool = 'ventas_por_d_a_' and params = '{}'::jsonb;
 rollback;
 \echo ''
 \echo '=== C) base SIN migrar: SQLSTATE real + SAVEPOINT (mismo mecanismo que runWithSavepointFallback) ==='

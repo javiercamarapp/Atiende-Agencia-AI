@@ -42,6 +42,16 @@ export const COPILOTO_CITAS: CopilotoConfigVertical = {
       preguntas: ["¿Cuánto facturé por servicio este mes?", "¿Cuánto facturé por día esta semana?", "¿Cuántos clientes nuevos y recurrentes tuve este mes?"],
     },
   ],
+  directas: {
+    "¿Cuántas citas tengo esta semana?": { tool: "citas_por_dia", args: { periodo: "esta_semana" } },
+    "¿Cuántas citas se cancelaron o no asistieron el mes pasado?": { tool: "no_shows_y_cancelaciones", args: { periodo: "mes_pasado" } },
+    "¿Cuál es la ocupación de cada profesional este mes?": { tool: "ocupacion", args: { periodo: "este_mes", agrupar_por: "profesional" } },
+    "¿Cuánto facturé por servicio este mes?": { tool: "ingresos_por_servicio", args: { periodo: "este_mes" } },
+    "¿Cuántos recordatorios fallaron esta semana?": { tool: "recordatorios", args: { periodo: "esta_semana" } },
+    "¿Qué huecos libres tengo mañana?": { tool: "huecos_libres", args: { periodo: "manana" } },
+    "¿Cuánto facturé por día esta semana?": { tool: "ingresos_por_periodo", args: { periodo: "esta_semana" } },
+    "¿Cuántos clientes nuevos y recurrentes tuve este mes?": { tool: "clientes_nuevos_vs_recurrentes", args: { periodo: "este_mes" } },
+  },
   etiquetasHerramienta: {
     citas_por_dia: "Contando las citas por día",
     ocupacion: "Calculando la ocupación",
