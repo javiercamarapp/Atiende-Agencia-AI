@@ -22,6 +22,7 @@ test.describe("restaurantes repartidor", () => {
     await expect.poll(async () => (await mock.buscar({ metodo: "PATCH", ruta: "/repartidor/orders/" })).length).toBe(1);
     const [patch] = await mock.buscar({ metodo: "PATCH", ruta: "/repartidor/orders/" });
     expect(patch?.cuerpo).toMatchObject({ status: "problema", incidentNote: "El cliente no contesta el teléfono." });
+    await expect(d).toBeHidden();
     await expect(page.getByText("El cliente no contesta el teléfono.")).toBeVisible();
     vigilante.verificar();
   });
