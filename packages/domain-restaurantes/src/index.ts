@@ -87,7 +87,7 @@ export { normalizePhone, canonicalizeMexicanPhone, toWhatsAppRecipient } from ".
 export { RESTAURANTES_ROLES, MANAGER_ROLES, REPARTIDOR_ROLES, STAFF_INVITE_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, isRestaurantesRole } from "./roles.ts";
 export type { RestaurantesRole } from "./roles.ts";
 
-export { tokenizeForProductSearch, matchesProductSearch, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
+export { tokenizeForProductSearch, matchesProductSearch, sinAcentos, requiresTortillaChoice, extraerPackSize, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, UUID_PATTERN } from "./product-search.ts";
 
 export { DEFAULT_COMPLEMENTS, TORTILLA_CHOICES, buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, findExtraSalsaProduct, isTortillaChoice } from "./order-quote.ts";
 

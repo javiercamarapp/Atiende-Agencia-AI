@@ -12,6 +12,16 @@ test.describe("despachos @humo", () => {
     vigilante.verificar();
   });
 
+  // CHAT-11: la ruta del Copiloto entra al humo: abre sin errores de consola ni 5xx y pinta la portada real (h1 + chips de la config).
+  test("admin: el Copiloto abre desde su ruta con la portada y los chips, sin errores de consola ni 5xx", async ({ page, iniciarSesion, vigilante }) => {
+    await iniciarSesion("despachos", "admin");
+    await page.goto(`/despachos/${despachos.orgSlug}/copiloto`);
+    await afirmarPantallaSana(page, "copiloto");
+    await expect(page.getByRole("heading", { level: 1, name: "Pregunta a tus datos" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "¿Cuánto me deben mis clientes hoy?" })).toBeVisible();
+    vigilante.verificar();
+  });
+
   test("cierre mensual irreversible: Cancelar/Escape no escriben, texto incorrecto tampoco, el exacto cierra", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("despachos", "admin");
     await page.goto(`/despachos/${despachos.orgSlug}/cierre-mensual/${despachos.periodoId}`);

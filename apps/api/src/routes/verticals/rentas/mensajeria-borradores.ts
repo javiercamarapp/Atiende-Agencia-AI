@@ -16,6 +16,7 @@ import {
   BorradorIASinPropuestaError,
   CanalMensajeriaNoConfiguradoError,
   ContenidoProhibidoError,
+  DEFAULT_RENTAS_MENSAJERIA_AGENT_ROLE,
   GeneracionBorradorIAFallidaError,
   GeneradorBorradorIA,
   GeneradorBorradorPlantillas,
@@ -30,6 +31,7 @@ import {
 } from "@atiende/domain-rentas";
 import type { ActorAgente, BorradorEstado, BorradorRecord, ContextoBorrador, RentasVerticalRole, ResultadoBorrador } from "@atiende/domain-rentas";
 import { emitirNotificacion } from "@atiende/db";
+import { registrarCorridaBestEffort } from "../../../agentes/corridas.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -147,7 +149,16 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
         if (!deps.llmGateway) throw Errors.rentasMensajeriaAgentesDeshabilitado();
         const actor: ActorAgente = { usuarioId: c.get("userId"), rol: c.get("verticalRole") as RentasVerticalRole };
         const generador = new GeneradorBorradorIA(deps.llmGateway, actor, { tenantId: organizationId });
-        generado = await generador.generar({ texto: textoEntrada, idioma: "es" }, ctxBorrador);
+        // Bitacora de corridas (SA-L-07): una fila por borrador pedido a la IA, en sesion de sistema PROPIA (best-effort;
+        // nunca toca la transaccion de este request ni cambia su resultado).
+        const iniciadoEn = new Date();
+        try {
+          generado = await generador.generar({ texto: textoEntrada, idioma: "es" }, ctxBorrador);
+        } catch (errAgente) {
+          await registrarCorridaBestEffort(deps, { agente: DEFAULT_RENTAS_MENSAJERIA_AGENT_ROLE, vertical: "rentas", organizationId, disparo: "manual", estado: "fallo", error: errAgente, iniciadoEn, terminadoEn: new Date() });
+          throw errAgente;
+        }
+        await registrarCorridaBestEffort(deps, { agente: DEFAULT_RENTAS_MENSAJERIA_AGENT_ROLE, vertical: "rentas", organizationId, disparo: "manual", estado: "ok", iniciadoEn, terminadoEn: new Date() });
         generadoPor = "agente_llm";
       } else {
         generado = new GeneradorBorradorPlantillas().generar({ texto: textoEntrada, idioma: "es" }, ctxBorrador);

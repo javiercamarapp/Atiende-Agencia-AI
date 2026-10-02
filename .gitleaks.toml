@@ -40,6 +40,17 @@ paths = [
   '''(^|/)scripts/verify-restaurantes-demo-volumen/assertions\.sql$''',
 ]
 
+# assertions.sql del verify del seed demo de citas (C-27): archivo GENERADO (generar-assertions.ts) que embebe el plan del seed. Cada
+# cita lleva `"idempotencyKey":"<sha256 hex>"` (hash de "seed-citas-demo|<slug>|<clave>"): 64 caracteres hexadecimales de alta entropia
+# que la heuristica generica confunde con una llave de API, pero NO son un secreto (derivan de un slug de prueba y de una clave
+# corta). Excepcion deliberadamente estrecha: una sola regla heuristica y un solo archivo.
+[[allowlists]]
+description = "Hashes sha256 de claves de idempotencia de citas sinteticas en el assertions.sql generado del verify del seed demo de citas"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)scripts/verify-citas-demo/assertions\.sql$''',
+]
+
 # assertions.sql del verify de housekeeping residual y canal (H-26/H-29): los escenarios del secreto de voz usan cadenas de relleno
 # evidentes ('secreto-rotado-0123456789', 'secreto-nuevo-0123456789') para probar que el cliente no puede leerlo ni sellar otra
 # organizacion. NO son credenciales: la heuristica generica las confunde con una llave de API. Excepcion estrecha: una regla, un archivo.

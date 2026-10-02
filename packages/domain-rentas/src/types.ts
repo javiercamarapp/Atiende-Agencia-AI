@@ -206,6 +206,70 @@ export interface NewReglaCanalPricingInput {
   // `creado_por`.
 }
 
+// Rn-23 -- lectura de la configuracion completa y edicion/borrado por id. Cada
+// registro lleva `id` para que el panel pueda editar o borrar la fila exacta.
+export interface TarifaBaseRecord {
+  readonly id: string;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+  readonly vigenteDesde: string;
+}
+
+export interface TemporadaConfigRecord extends TemporadaRecord {
+  readonly moneda: string;
+}
+
+export interface ReglaCanalRecord {
+  readonly id: string;
+  readonly canalCodigo: string;
+  readonly markupBasisPoints: number;
+  readonly activo: boolean;
+}
+
+export interface ConfiguracionPricingUnidad {
+  /** Tarifa vigente HOY (dia de negocio): la de `vigenteDesde` mas reciente que ya empezo.
+   *  `null` si la unidad no tiene tarifa base que ya aplique. */
+  readonly tarifaBaseVigente: TarifaBaseRecord | null;
+  /** Historial completo de la tarifa base, mas reciente primero (nunca se borra). */
+  readonly historialTarifaBase: readonly TarifaBaseRecord[];
+  readonly temporadas: readonly TemporadaConfigRecord[];
+  readonly descuentosDuracion: readonly DescuentoDuracionRecord[];
+  readonly reglasMinStay: readonly ReglaMinStayRecord[];
+  readonly reglasCanal: readonly ReglaCanalRecord[];
+}
+
+export interface UpdateTemporadaInput {
+  readonly unidadId: string;
+  readonly id: string;
+  readonly nombre: string;
+  readonly rango: RangoFechas;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+}
+
+export interface UpdateDescuentoDuracionInput {
+  readonly unidadId: string;
+  readonly id: string;
+  readonly nochesMinimas: number;
+  readonly porcentajeDescuentoBasisPoints: number;
+  readonly fuente: string;
+}
+
+export interface UpdateReglaMinStayInput {
+  readonly unidadId: string;
+  readonly id: string;
+  readonly rango: RangoFechas;
+  readonly diaSemanaCheckIn: number | null;
+  readonly nochesMinimas: number;
+}
+
+export interface UpdateReglaCanalInput {
+  readonly unidadId: string;
+  readonly id: string;
+  readonly markupBasisPoints: number;
+  readonly activo: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Owner statement (Fase 2, Flujo 5) -- ver
 // migrations/005_finanzas_statement_payout_schema.sql.

@@ -9,7 +9,8 @@
 --      2x1 del lunes solo recoger y con alcance por sucursal (T2, T3 y T4), voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
---      promocion; reparar un precio alterado; renombrar por slug estable una sucursal sembrada por la version anterior.
+--      promocion; reparar un precio alterado; renombrar por slug estable una sucursal sembrada por la version anterior;
+--      unir los alias de busqueda (PM-C4) con los que el dueño ya agrego.
 --   D. Aislamiento: otra organizacion con nombres iguales queda intacta; un slug de otra vertical
 --      aborta; staff de otra organizacion y anon no leen lo sembrado.
 --   E. Agente de WhatsApp (perfil taqueria_pm con los datos del dueño), carga como DEMO (marca
@@ -249,6 +250,20 @@ select (
   and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug in ('t4-pendiente')) = 0
   and (select cardinality(property_ids) from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 3
 )::int as seed_renombra_por_slug_y_repara_alcance_deberia_ser_1;
+rollback;
+
+\echo '=== C5. PM-C4: los alias de busqueda quedan en products.search_keywords; re-ejecutar los UNE con los que el dueño ya agrego (no los borra), sin duplicar, y no toca los productos de otra organizacion ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.products set search_keywords = array['alias-del-dueno', 'bitek'] where name = 'Tacos de Bistec de Res (orden de 3)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+select public.seed_pm_demo();
+select (
+  -- comparacion como CONJUNTO (el orden de un array depende del collation de la base: C local vs en_US en CI)
+  (select search_keywords @> array['alias-del-dueno', 'bistek', 'bisté', 'bitek']::text[] and array['alias-del-dueno', 'bistek', 'bisté', 'bitek']::text[] @> search_keywords and cardinality(search_keywords) = 4 from restaurantes.products where name = 'Tacos de Bistec de Res (orden de 3)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
+  and (select search_keywords from restaurantes.products where name = 'Taco Al Pastor (individual)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = array['trompo']::text[]
+  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and 'chela' = any(pr.search_keywords)) = (select count(*) from restaurantes.products pr join restaurantes.categories c on c.id = pr.category_id join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm' and c.name = 'Cervezas')
+  and (select search_keywords from restaurantes.products where id = '00000000-0000-0000-0000-0000000e00c1') = '{}'::text[]
+)::int as alias_unidos_sin_pisar_al_dueno_ni_a_otra_org_deberia_ser_1;
 rollback;
 
 \echo '=== D1. AISLAMIENTO: la otra organizacion (mismo nombre de producto y de sucursal) queda intacta ==='

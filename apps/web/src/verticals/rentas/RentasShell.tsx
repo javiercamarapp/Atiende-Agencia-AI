@@ -30,7 +30,11 @@ import {
   Inbox,
   KeyRound,
   LayoutDashboard,
+  Lock,
+  MessageSquareText,
   RefreshCcw,
+  ShieldCheck,
+  Sparkles,
   Tag,
   Users,
   Wallet,
@@ -66,11 +70,16 @@ const RENTAS_SESSION: VerticalSessionAdapter<PropiedadOption> = {
   resolveActivePropertyId,
 };
 
+/** Roles con acceso al Copiloto = `FINANZAS_LECTURA_ROLES` de domain-rentas/src/roles.ts (duplicado aquí a propósito, igual que
+ * en Finanzas.tsx): solo oculta la entrada del Sidebar, la píldora y el botón a quien el servidor rechazaría con 403
+ * (admin-data-chat.ts); nunca es la única barrera. */
+const COPILOTO_ROLES: ReadonlySet<string> = new Set(["admin_gestora", "contador"]);
+
 /** UNI-6: categorías en el orden de Likida (Operación, Canales, Finanzas, Configuración, Control) con "Resumen" y "Calendario"
  * como raíz sin título. Mismas rutas y etiquetas exactas que antes, solo reagrupadas (la agrupación original se inspiró en el
  * AdminSidebar de atiende-rentas-vacacionales standalone). "Plataforma" se omite: notificaciones, perfil y cierre de sesión ya
  * viven en el pie del Sidebar. Catálogo y Equipo se quedan en "Configuración": cada página gatea su contenido por rol. */
-function buildSections(orgSlug: string): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacidad: boolean): SidebarSection[] {
   const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
   return [
     {
@@ -78,6 +87,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
       siempreAbierto: true,
       items: [
         { to: ruta(""), label: "Resumen", icon: LayoutDashboard, end: true },
+        // CHAT-10: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas.
+        ...(canSeeCopiloto ? [{ to: ruta("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
         { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
       ],
     },
@@ -86,6 +97,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
+        { to: ruta("plantillas"), label: "Plantillas", icon: MessageSquareText },
         { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
       ],
     },
@@ -117,13 +129,21 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         // Bitácora de auditoría del staff; AuditoriaPage gatea su propio contenido por admin_gestora.
         { to: ruta("auditoria"), label: "Auditoría", icon: ClipboardCheck },
+        // Rn-07: solicitudes ARCO de rentas (admin_gestora) y privacidad de TODA la organización (ARCO de todos los verticales, retención, aviso versionado).
+        // Solo admin_gestora: las dos páginas (y su RLS) bloquean a los demás roles, así que no se les ofrece la entrada.
+        ...(canSeePrivacidad
+          ? [
+              { to: ruta("privacidad"), label: "Privacidad", icon: Lock },
+              { to: ruta("privacidad-organizacion"), label: "Privacidad de la organización", icon: ShieldCheck },
+            ]
+          : []),
       ],
     },
   ];
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario en piso (incluido `Mis tareas`, único panel funcional del rol
- * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (los 13
+ * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (hasta 16
  * destinos), de modo que Precios, Finanzas, iCal, Monitor, Acceso al huésped, Reportes y Auditoría siguen alcanzables. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/rentas/${orgSlug}`;
@@ -170,6 +190,8 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
 
   const { session, branches, activeBranch, propertyId } = s;
   const org = session.organizations.find((o) => o.slug === orgSlug);
+  const puedeCopiloto = org ? COPILOTO_ROLES.has(org.rol) : false;
+  const puedePrivacidad = org?.rol === "admin_gestora";
 
   // "Chatea con tus datos": conexión real con el backend de rentas (catálogo cerrado, solo admin_gestora/contador en el
   // servidor). El servidor decide el alcance a partir del token; aquí solo van la propiedad activa y el texto.
@@ -202,7 +224,9 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       notificacionesHref={`/rentas/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="rentas"
-      sections={buildSections(orgSlug)}
+      copilotoHref={`/rentas/${orgSlug}/copiloto`}
+      ocultarChat={!puedeCopiloto}
+      sections={buildSections(orgSlug, puedeCopiloto, puedePrivacidad)}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: org?.rol, nombre: session.fullName, rolEtiqueta: etiquetaRol(org?.rol) }}
       onLogout={() => void s.logout()}

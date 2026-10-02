@@ -1,0 +1,15 @@
+id: lft-80-87
+tipo: contexto
+ordenamiento: "LFT"
+articulo_o_regla: "80 y 87"
+resumen: "Prima vacacional y aguinaldo, mínimos legales usados en las fórmulas simples de nómina."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFT.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar los mínimos vigentes."
+usado_en_codigo:
+  - "src/nomina/prestaciones.ts:3"
+  - "src/nomina/prestaciones.ts:10"
+  - "src/nomina/prestaciones.ts:17"

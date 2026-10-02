@@ -10,7 +10,7 @@
 // llamada REAL de prueba con Gemini Live por token efímero (voz/adaptador-gemini-live.ts);
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Mic, Wrench } from "lucide-react";
+import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -140,11 +140,11 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
 
   return (
     <div className="relative min-h-[620px] h-full">
-      <PageContainer padding="none" className="gap-4">
+      <PageContainer padding="none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Agente de voz</h1>
-            <p className="text-xs text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
+            <h1 className="sr-only">Agente de voz</h1>
+            <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
           </div>
           <Button type="button" onClick={() => setVistaPrevia(true)}>
             <Mic className="h-4 w-4 mr-1.5" strokeWidth={1.75} />
@@ -296,8 +296,8 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
 
         {PESTANAS_EDITABLES.has(pestana) && config.estado !== "cargando" ? (
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || guardando || borrador.vozId === null}>
-              {guardando ? "Guardando…" : "Guardar cambios"}
+            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || borrador.vozId === null} loading={guardando}>
+              Guardar cambios
             </Button>
             {sucio ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar.</span> : null}
             {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-xs text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}
@@ -336,7 +336,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-semibold">Servicio de voz</CardTitle>
+            <CardTitle>Servicio de voz</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm">
             {config.estado === "cargando" ? <EstadoCargando etiqueta="Consultando…" /> : null}
@@ -349,14 +349,14 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
 
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-semibold">Voz elegida</CardTitle>
+            <CardTitle>Voz elegida</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm">{voz ? `${voz.nombre} · ${voz.tono}` : <span className="text-muted-foreground">Sin elegir</span>}</CardContent>
         </Card>
 
         <Card className="sm:col-span-2">
           <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm font-semibold">Llamadas</CardTitle>
+            <CardTitle>Llamadas</CardTitle>
             <CardDescription>Datos reales del historial; sin cifras de relleno.</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm" data-testid="resumen-llamadas">
@@ -371,15 +371,17 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia }: { config: 
 
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">Antes de salir en vivo</CardTitle>
+          <CardTitle>Antes de salir en vivo</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <ul className="space-y-1.5 text-sm">
             {pasos.map((p) => (
               <li key={p.texto} data-ok={p.ok ? "true" : "false"} className="flex items-center gap-2">
-                <span aria-hidden className={p.ok ? "text-primary" : "text-muted-foreground"}>
-                  {p.ok ? "✓" : "○"}
-                </span>
+                {p.ok ? (
+                  <CheckCircle2 aria-hidden="true" className="size-4 shrink-0 text-success" strokeWidth={1.75} />
+                ) : (
+                  <Circle aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+                )}
                 <span className={p.ok ? "text-foreground" : "text-muted-foreground"}>{p.texto}</span>
               </li>
             ))}

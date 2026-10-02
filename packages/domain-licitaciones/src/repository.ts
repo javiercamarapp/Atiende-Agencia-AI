@@ -18,7 +18,7 @@ import type {
   GoNoGoDecisionRecord,
   TenderResolutionRecord,
 } from "./types.ts";
-import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
@@ -733,7 +733,16 @@ export interface LicitacionesRepository {
    * antes de insertar la nueva — nunca coexisten dos aprobaciones vigentes
    * para el mismo alcance exacto.
    */
-  approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval>;
+  approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs; stage?: ExpedienteApprovalStage }): Promise<Approval>;
+  /**
+   * L-26 (REQ-044): aprobaciones VIGENTES del alcance "expediente" con su etapa
+   * y el modo de la base: "doble" = existe la migracion 033 (etapas
+   * tecnica_legal/economica); "legacy" = base sin migrar, donde sigue vigente la
+   * aprobacion unica de siempre (las filas llegan sin `stage`). Nunca lanza por
+   * una base sin migrar. `approve(..., { stage })` sobre una base "legacy" lanza
+   * `ExpedienteStageNotAvailableError`.
+   */
+  listExpedienteStageApprovals(organizationId: string, proposalId: string): Promise<{ mode: "doble" | "legacy"; approvals: readonly Approval[] }>;
   /** Invalida toda aprobación vigente cuyo alcance cubra `input.scopeRef` (la aprobación exacta, o "expediente" cubriendo cualquier sección) y deja un registro de auditoría en `licitaciones.approval_change`. */
   recordChange(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; reason: string }): Promise<ChangeDetected>;
   /** Aprobaciones vigentes que cubren `scopeRef` (aprobación exacta, o "expediente" cubriendo cualquier sección). */

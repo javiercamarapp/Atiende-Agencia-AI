@@ -503,6 +503,34 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     this.availability.set(`${propertyId}:${roomTypeId}:${date}`, { totalRooms, bookedRooms });
   }
 
+  /** Solo lectura del inventario por noche de un tipo de habitacion en [desde, hasta] (ambas inclusive) mas su regla de sobreventa.
+   *  Lo usan los espejos en memoria del cambio de fechas y la lista de espera (H-28/H-12); no forma parte del puerto. */
+  readAvailability(
+    propertyId: string,
+    roomTypeId: string,
+    desde: string,
+    hasta: string,
+  ): { readonly noches: readonly { date: string; totalRooms: number; bookedRooms: number }[]; readonly overbooking: { maxOverbookRooms: number; occupancyThresholdPct: number } } {
+    const noches: { date: string; totalRooms: number; bookedRooms: number }[] = [];
+    for (const [key, row] of this.availability) {
+      const [p, t, date] = key.split(":");
+      if (p === propertyId && t === roomTypeId && date !== undefined && date >= desde && date <= hasta) noches.push({ date, totalRooms: row.totalRooms, bookedRooms: row.bookedRooms });
+    }
+    noches.sort((a, b) => (a.date < b.date ? -1 : 1));
+    const rt = this.roomTypes.get(roomTypeId);
+    return { noches, overbooking: { maxOverbookRooms: rt?.maxOverbookRooms ?? 0, occupancyThresholdPct: rt?.overbookingOccupancyThresholdPct ?? 95 } };
+  }
+
+  /** Reescribe fechas y total NETO de una reserva (equivalente en memoria del UPDATE de `change_reservation_dates`). */
+  updateReservationDates(propertyId: string, reservationId: string, checkInDate: string, checkOutDate: string, totalAmount: number): ReservationRecord | null {
+    const stored = this.reservations.get(reservationId);
+    if (!stored || stored.propertyId !== propertyId) return null;
+    stored.checkInDate = checkInDate;
+    stored.checkOutDate = checkOutDate;
+    stored.totalAmount = totalAmount;
+    return this.toReservationRecord(stored);
+  }
+
   /** Equivalente en memoria de `insert into hoteles.cancellation_policy(...)`. */
   seedCancellationPolicy(propertyId: string, policy: CancellationPolicyRecord): void {
     this.cancellationPolicies.set(propertyId, policy);

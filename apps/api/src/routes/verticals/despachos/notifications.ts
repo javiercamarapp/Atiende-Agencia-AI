@@ -41,6 +41,7 @@ import { avisarPagosProvisionalesPorVencer } from "./pagos-provisionales-aviso.t
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { crearGuardCorreo } from "../../../supresion/index.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts.
  * Exportado (fix a2b, parte B) para que el drenado post-commit de
@@ -62,7 +63,7 @@ export const INLINE_BATCH_SIZE = 5;
 export async function runDespachosEmailDispatch(deps: AppDeps, batchSize?: number): Promise<DespachosEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const repo = deps.despachosRepo(db);
-    return dispatchPendingEmailJobs(repo, deps.env.resend, { batchSize });
+    return dispatchPendingEmailJobs(repo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
   });
 }
 
@@ -129,7 +130,7 @@ export async function triggerDespachosEmailDispatchInline(deps: AppDeps, db: Ten
     session: db,
     savepointName: "sp_inline_email_dispatch",
     primary: async () => {
-      const summary = await dispatchPendingEmailJobs(despachosRepo, deps.env.resend, { batchSize });
+      const summary = await dispatchPendingEmailJobs(despachosRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
       if (summary.dead > 0) {
         console.error(`despachos email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
       }

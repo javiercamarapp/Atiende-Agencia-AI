@@ -1,0 +1,15 @@
+id: anexo-20
+tipo: norma
+ordenamiento: "Anexo 20"
+articulo_o_regla: "Guía de llenado del CFDI"
+resumen: "Estructura del CFDI: notas de crédito con CfdiRelacionados y TipoRelacion, fechas de timbrado."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "La URL es el índice oficial del SAT; falta la página del Anexo 20 vigente."
+usado_en_codigo:
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:192"
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:199"
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:233"

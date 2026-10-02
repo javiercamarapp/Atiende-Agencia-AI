@@ -62,7 +62,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { DATA_CHAT_RETRY_SUFFIX, NEW_PLATFORM_LLM_ROLES, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { DATA_CHAT_RETRY_SUFFIX, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -140,6 +140,11 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE,
   DESPACHOS_CONCILIACION_LLM_ROLE,
   LICITACIONES_JUNTA_QUESTION_AGENT_ROLE,
+  // CHAT-14: reporte PDF del Copiloto (analista y redactor, por tipo: financiero/general). Cada uno es apagable.
+  REPORTE_ANALISIS_FINANCIERO_ROLE,
+  REPORTE_ANALISIS_GENERAL_ROLE,
+  REPORTE_REDACCION_FINANCIERO_ROLE,
+  REPORTE_REDACCION_GENERAL_ROLE,
 ];
 
 /** Reintento por guardia de cifras: un rol "<vertical>:data_chat_retry" por cada rol de data-chat. */
@@ -259,7 +264,7 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   // El copiloto de superadmin/CFO (SA-33..35) todavia no tiene ruta que lo invoque, pero su escalera
   // premium ya existe para que se enchufe sin tocar el gateway (su interruptor de plataforma llegara
   // con ese trabajo: no esta en ALL_PRODUCTION_ROLES a proposito, un test lo ata a core.platform_switch).
-  for (const role of [...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES]) {
+  for (const role of new Set([...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES])) {
     gateway.registerLadder(role, buildRoleLadder(env, role, models)!);
   }
 

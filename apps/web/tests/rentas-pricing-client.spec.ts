@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   basisPointsAPorcentaje,
+  borrarConfiguracionPricing,
+  dineroDeCentavos,
+  editarConfiguracionPricing,
+  fetchConfiguracionPricing,
   centavosAPesos,
   crearDescuentoDuracion,
   crearReglaCanal,
@@ -171,5 +175,48 @@ describe("conversiones pesos/centavos y porcentaje/basis points", () => {
     expect(porcentajeABasisPoints(10)).toBe(1000);
     expect(porcentajeABasisPoints(15.5)).toBe(1550);
     expect(basisPointsAPorcentaje(1000)).toBe("10.00");
+  });
+});
+
+describe("Rn-23 -- lectura, edición y borrado de la configuración", () => {
+  it("fetchConfiguracionPricing pide GET .../configuracion-precios y devuelve lo guardado", async () => {
+    const cuerpo = { unidadId: "u1", tarifaBaseVigente: { id: "t1", precioNocheCentavos: 150000, moneda: "MXN", vigenteDesde: "2026-01-01" }, historialTarifaBase: [], temporadas: [], descuentosDuracion: [], reglasMinStay: [], reglasCanal: [] };
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/rentas/prop-1/unidades/u1/configuracion-precios");
+      return new Response(JSON.stringify(cuerpo), { status: 200 });
+    }) as unknown as typeof fetch;
+    const cfg = await fetchConfiguracionPricing(fetchImpl, "http://api.local", "tok", "prop-1", "u1");
+    expect(cfg.tarifaBaseVigente?.precioNocheCentavos).toBe(150000);
+  });
+
+  it("editarConfiguracionPricing hace PATCH con solo los cambios al id del recurso", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/rentas/prop-1/unidades/u1/temporadas/temp-9");
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(String(init?.body))).toEqual({ precioNocheCentavos: 300000 });
+      return new Response(JSON.stringify({ id: "temp-9" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await editarConfiguracionPricing(fetchImpl, "http://api.local", "tok", "prop-1", "u1", "temporadas", "temp-9", { precioNocheCentavos: 300000 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("borrarConfiguracionPricing hace DELETE; un 403 o un 503 honesto llegan como error legible", async () => {
+    const ok = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/rentas/prop-1/unidades/u1/min-stay/m1");
+      expect(init?.method).toBe("DELETE");
+      return new Response(JSON.stringify({ id: "m1", eliminada: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await borrarConfiguracionPricing(ok, "http://api.local", "tok", "prop-1", "u1", "min-stay", "m1");
+
+    const prohibido = vi.fn(async () => new Response(JSON.stringify({ message: "No tienes permiso para realizar esta acción." }), { status: 403 })) as unknown as typeof fetch;
+    await expect(borrarConfiguracionPricing(prohibido, "http://api.local", "tok", "prop-1", "u1", "temporadas", "t")).rejects.toThrow(/permiso/);
+    const sinMigrar = vi.fn(async () => new Response(JSON.stringify({ message: "No disponible aún: la base de datos todavía no tiene la migración de edición de precios (030)." }), { status: 503 })) as unknown as typeof fetch;
+    await expect(borrarConfiguracionPricing(sinMigrar, "http://api.local", "tok", "prop-1", "u1", "temporadas", "t")).rejects.toThrow(/No disponible aún/);
+  });
+
+  it("dineroDeCentavos usa separador de miles, sin sufijo para MXN y con código para otra moneda", () => {
+    expect(dineroDeCentavos(150000, "MXN")).toBe("$1,500.00");
+    expect(dineroDeCentavos(1250050, "MXN")).toBe("$12,500.50");
+    expect(dineroDeCentavos(5000, "USD")).toBe("$50.00 USD");
   });
 });

@@ -109,6 +109,35 @@ describe("SalaGuerraPage -- tablero", () => {
     expect(text).toContain("no envía nada a ComprasMX");
   });
 
+  it("L-25: el tablero incluye la tarjeta 'Gate final' (GET .../sala-guerra/gate)", async () => {
+    const gateBody = {
+      now: "2026-10-01T12:00:00.000Z",
+      tender: { id: "t1", title: "Adquisicion de equipo", submissionDeadline: "2026-10-20T18:00:00.000Z" },
+      proposalId: "p1",
+      presentado: false,
+      alerta: "no_aplica",
+      gate: {
+        listo: false,
+        veredicto: "no_listo",
+        condiciones: [{ id: "paquete", label: "Paquete de envío", color: "rojo", motivo: "Todavía no hay un paquete de envío ensamblado.", enlace: "paquete" }],
+        motivos: ["Todavía no hay un paquete de envío ensamblado."],
+        cuentaRegresiva: { estado: "abierto", msRestantes: 19 * 86_400_000, dias: 19, horas: 0, minutos: 0, fechaCierreLocal: "2026-10-20", horaCierreLocal: "12:00", zonaHoraria: "America/Mexico_City" },
+        holguraHoras: 456,
+        alerta24h: false,
+      },
+    };
+    stubFetch({ "GET /sala-guerra": () => ({ body: BOARD() }), "GET /sala-guerra/gate": () => ({ body: gateBody }), "PATCH /sala-guerra/items/i1": () => ({ body: ITEM({ status: "listo" }) }) });
+    mount(CTX);
+    await settle();
+    expect(calls("GET", "/sala-guerra/gate")).toHaveLength(1);
+    const text = rendered!.container.textContent!;
+    expect(text).toContain("Gate final");
+    expect(text).toContain("No listo");
+    expect(text).toContain("Todavía no hay un paquete de envío ensamblado.");
+    // La cuenta descuenta el tiempo transcurrido desde que llego la respuesta: 19 d exactos o 18 d 23 h 59 min.
+    expect(text).toMatch(/Cierra en (19 d 0 h \d+|18 d 23 h \d+) min/);
+  });
+
   it("L-22: muestra los dias habiles que quedan y avisa si la fecha limite cae en dia inhabil", async () => {
     const plazo = { fechaLimite: "2026-03-16", hoy: "2026-03-10", diasHabilesRestantes: 0, caeEnInhabil: true, motivoInhabil: "Natalicio de Benito Juárez", siguienteDiaHabil: "2026-03-17", avisos: ["La fecha límite cae en un día inhábil (Natalicio de Benito Juárez): confirme con la convocante si el plazo se recorre."], nota: "n" };
     stubFetch({ "GET /sala-guerra": () => ({ body: BOARD({ plazoPresentacion: plazo }) }) });

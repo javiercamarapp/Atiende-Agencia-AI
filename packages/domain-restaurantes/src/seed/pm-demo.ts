@@ -62,6 +62,11 @@ export interface PmSeedProduct {
   readonly precios_por_sucursal: Readonly<Record<string, number>>;
   /** Procedencia de cada precio; mismas llaves que `precios_por_sucursal`. */
   readonly fuente_precio: Readonly<Record<string, PmFuentePrecio>>;
+  /** Nombres con los que la gente pide el producto ("bitek", "chela"...): se cargan en `products.search_keywords` (PM-C4). Una
+   * palabra por alias, minusculas: la busqueda compara por token, sin acentos. */
+  readonly alias?: readonly string[];
+  /** Subconjunto de `alias` que es PROVISIONAL: propuesto en el cerebro §5.4 y pendiente del OK de Javier (P24). */
+  readonly alias_provisional_P24?: readonly string[];
 }
 
 export interface PmSeedPromotion {
@@ -208,6 +213,8 @@ export interface PmSeedPlan {
     readonly isPopular: boolean;
     readonly noDomicilio: boolean;
     readonly displayOrder: number;
+    /** Alias de busqueda (`products.search_keywords`); vacio si el producto no tiene. */
+    readonly searchKeywords: readonly string[];
   }[];
   readonly zones: readonly { readonly name: string; readonly lat: number; readonly lng: number }[];
   readonly policy: { readonly horario: unknown; readonly pedidoMinimoDomicilio: number; readonly pedidoMinimoRecoger: number | null; readonly propinaPolitica: string };
@@ -369,6 +376,14 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       productsByBranch[branchId] = (productsByBranch[branchId] ?? 0) + 1;
     }
     for (const branchId of Object.keys(p.fuente_precio ?? {})) if (!(branchId in branchPrices)) fail(`Producto "${p.nombre}": fuente_precio sin precio en ${branchId}.`);
+    const searchKeywords = p.alias ?? [];
+    for (const alias of searchKeywords) {
+      if (!/^[a-záéíóúüñ0-9][a-záéíóúüñ0-9.-]{0,38}$/.test(alias)) fail(`Producto "${p.nombre}": alias invalido "${alias}" (una palabra en minusculas, sin espacios).`);
+    }
+    if (new Set(searchKeywords).size !== searchKeywords.length) fail(`Producto "${p.nombre}": alias duplicados.`);
+    for (const provisional of p.alias_provisional_P24 ?? []) {
+      if (!searchKeywords.includes(provisional)) fail(`Producto "${p.nombre}": alias provisional "${provisional}" no esta en alias.`);
+    }
     const baseId = [...PRECIO_BASE_ORDEN, ...data.sucursales.map((br) => br.id)].find((id) => id in branchPrices)!;
     return {
       name: p.nombre,
@@ -381,6 +396,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       // Cervezas y Licores mezclan bebidas con y sin alcohol.
       noDomicilio: p.es_alcohol,
       displayOrder: index,
+      searchKeywords,
     };
   });
   const alcohol = products.filter((p) => p.noDomicilio).length;
@@ -635,13 +651,15 @@ begin
   -- 4) productos (identidad: organizacion + nombre; alcohol = no_domicilio; price = precio de REFERENCIA, el de cada sucursal va en 5)
   update restaurantes.products pr
     set category_id = c.id, description = x.description, price = x.price, is_popular = x."isPopular", display_order = x."displayOrder",
-        no_domicilio = x."noDomicilio", updated_at = now()
-    from jsonb_to_recordset(v->'products') as x(name text, "categorySlug" text, price numeric, description text, "isPopular" boolean, "noDomicilio" boolean, "displayOrder" int)
+        no_domicilio = x."noDomicilio", updated_at = now(),
+        -- alias de busqueda: se UNEN a los que ya tenga el producto (nunca se borran los que agrego el dueño)
+        search_keywords = array(select distinct k from unnest(pr.search_keywords || array(select jsonb_array_elements_text(x."searchKeywords"))) as k order by k)
+    from jsonb_to_recordset(v->'products') as x(name text, "categorySlug" text, price numeric, description text, "isPopular" boolean, "noDomicilio" boolean, "displayOrder" int, "searchKeywords" jsonb)
     join restaurantes.categories c on c.organization_id = v_org and c.slug = x."categorySlug"
     where pr.organization_id = v_org and pr.name = x.name;
-  insert into restaurantes.products (organization_id, category_id, name, description, price, is_popular, display_order, no_domicilio)
-    select v_org, c.id, x.name, x.description, x.price, x."isPopular", x."displayOrder", x."noDomicilio"
-    from jsonb_to_recordset(v->'products') as x(name text, "categorySlug" text, price numeric, description text, "isPopular" boolean, "noDomicilio" boolean, "displayOrder" int)
+  insert into restaurantes.products (organization_id, category_id, name, description, price, is_popular, display_order, no_domicilio, search_keywords)
+    select v_org, c.id, x.name, x.description, x.price, x."isPopular", x."displayOrder", x."noDomicilio", array(select jsonb_array_elements_text(x."searchKeywords"))
+    from jsonb_to_recordset(v->'products') as x(name text, "categorySlug" text, price numeric, description text, "isPopular" boolean, "noDomicilio" boolean, "displayOrder" int, "searchKeywords" jsonb)
     join restaurantes.categories c on c.organization_id = v_org and c.slug = x."categorySlug"
     where not exists (select 1 from restaurantes.products pr where pr.organization_id = v_org and pr.name = x.name);
 

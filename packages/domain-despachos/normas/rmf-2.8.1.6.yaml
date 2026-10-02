@@ -1,0 +1,15 @@
+id: rmf-2.8.1.6
+tipo: norma
+ordenamiento: "RMF"
+articulo_o_regla: "2.8.1.6"
+resumen: "Envío de la balanza de comprobación: día 3 del segundo mes siguiente (personas morales) o día 5 (personas físicas)."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El propio código marca POR VALIDAR los días 3 y 5."
+usado_en_codigo:
+  - "src/vencimientos/calendario-fiscal.ts:18"
+  - "src/vencimientos/calendario-fiscal.ts:278"
+  - "src/libro/balanza.ts:23"

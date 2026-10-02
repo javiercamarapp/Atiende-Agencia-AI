@@ -57,6 +57,8 @@ export interface DataTableProps<T> {
 
   /** Fila clicable accesible: foco con Tab, Enter/Espacio la activan. */
   readonly onFilaClick?: (fila: T) => void;
+  /** Atributos `data-*` de cada fila (en la tabla y en la tarjeta movil): ganchos estables para pruebas y e2e. */
+  readonly atributosFila?: (fila: T) => Readonly<Record<`data-${string}`, string>>;
 
   /** "auto" cambia a tarjetas por debajo de 768 px. @default "auto" */
   readonly vista?: "auto" | "tabla" | "tarjetas";
@@ -135,6 +137,7 @@ export function DataTable<T>({
   seleccion: seleccionControlada,
   onSeleccionChange,
   onFilaClick,
+  atributosFila,
   vista = "auto",
   className,
 }: DataTableProps<T>) {
@@ -254,6 +257,7 @@ export function DataTable<T>({
             return (
               <li
                 key={id}
+                {...atributosFila?.(fila)}
                 data-state={marcada ? "selected" : undefined}
                 tabIndex={onFilaClick ? 0 : undefined}
                 onClick={(e) => clicFila(e, fila)}
@@ -335,6 +339,7 @@ export function DataTable<T>({
               return (
                 <TableRow
                   key={id}
+                  {...atributosFila?.(fila)}
                   data-state={marcada ? "selected" : undefined}
                   tabIndex={onFilaClick ? 0 : undefined}
                   onClick={(e) => clicFila(e, fila)}

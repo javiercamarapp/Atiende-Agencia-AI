@@ -66,13 +66,13 @@ export type {
 export { sealInputs, computeInputsHash, requireValidHashedInputs, InvalidInputsHashError } from "./sealed-inputs.ts";
 export type { InputsHash, HashedInputs, ExpedienteInputs, ExpedienteInputCompanyDocument, ExpedienteInputRate, ExpedienteInputTemplate } from "./sealed-inputs.ts";
 
-export { evaluateExpedienteApproval, ApprovalWorkflow, APPROVER_ROLES, SUBMITTER_ROLES, resetApprovalCounters } from "./approval-workflow.ts";
-export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot } from "./approval-workflow.ts";
+export { evaluateExpedienteApproval, evaluateExpedienteStages, isExpedienteApprovalStage, EXPEDIENTE_APPROVAL_STAGES, ApprovalWorkflow, APPROVER_ROLES, SUBMITTER_ROLES, resetApprovalCounters } from "./approval-workflow.ts";
+export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot, ExpedienteApprovalStage, ExpedienteStageEvaluation } from "./approval-workflow.ts";
 
 export { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";
 
-export { PackageAssembler, USER_RESPONSIBILITY_NOTICE, verifyManifest } from "./package-assembler.ts";
+export { PackageAssembler, USER_RESPONSIBILITY_NOTICE, verifyManifest, verifyZipAgainstStoredManifest } from "./package-assembler.ts";
 export type {
   PackageStatus,
   PackageDocumentInput,
@@ -251,7 +251,7 @@ export type {
   RequirementFulfillmentMapping,
 } from "./technical-proposal.ts";
 
-export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, GoNoGoRejectedError, TenantConfigNotMigratedError } from "./errors.ts";
+export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, ExpedienteStageNotAvailableError, GoNoGoRejectedError, TenantConfigNotMigratedError } from "./errors.ts";
 
 export type {
   LicitacionesRepository,
@@ -290,7 +290,7 @@ export type {
   TenderVersion,
   PersistedTenderVersion,
 } from "./tender-version-registry.ts";
-export type { TenderChangeNotificationRecord, RecordTenderVersionResult } from "./repository.ts";
+export type { TenderChangeNotificationRecord, RecordTenderVersionResult, TenderAuditLogEntry, TenderAuditLogPage } from "./repository.ts";
 
 // ---- Fase 6: seguimiento post-adjudicación (REQ-051..055) ----
 export { CONTRACT_STATES, CONTRACT_INITIAL_STATUS, CONTRACT_TERMINAL_STATES, CONTRACT_TRANSITIONS, CONTRACT_ALERT_STATES, CONTRACT_DECISION_TRANSITIONS, CONTRACT_STEP_UP_TRANSITIONS, isContractStatus, checkTransition } from "./contract-lifecycle.ts";
@@ -531,3 +531,9 @@ export { calendarNoteOf, holidayDatesOf } from "./business-days.ts";
 export type { DiasInhabilesInput } from "./business-days.ts";
 export { InMemoryDiasInhabilesRepository, PostgresDiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
 export type { DiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
+
+// L-25: gate final de la sala de guerra (funcion pura) y L-29: bitacora por convocatoria (mezcla pura).
+export { evaluarGateSalaGuerra, buildCuentaRegresiva, resolveGateTimeZone, GATE_HOLGURA_HORAS, GATE_DEFAULT_TIME_ZONE } from "./gate-sala-guerra.ts";
+export type { GateColor, GateConditionId, GateLink, GateCondition, GateZipCheck, GatePackageInput, GateApprovalsInput, GateSalaGuerraInput, GateCuentaRegresiva, GateSalaGuerraResult } from "./gate-sala-guerra.ts";
+export { BITACORA_FUENTES, BITACORA_DEFAULT_LIMIT, BITACORA_MAX_LIMIT, isBitacoraFuente, buildBitacoraEventos, paginarBitacora } from "./bitacora-convocatoria.ts";
+export type { BitacoraFuente, BitacoraEvento, BitacoraFuentes, BitacoraFiltros, BitacoraPagina } from "./bitacora-convocatoria.ts";

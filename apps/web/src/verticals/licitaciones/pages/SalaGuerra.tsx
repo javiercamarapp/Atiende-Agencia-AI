@@ -18,6 +18,7 @@ import { SEMAFORO_TONES } from "../lib/status-tones.ts";
 import type { DeadlineSemaphore, SemaphoreColor, WarRoomBoardResponse, WarRoomItem, WarRoomItemKind, WarRoomItemStatus, WarRoomSeverity } from "../lib/sala-guerra-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 import { JuntaAclaracionesSection } from "./JuntaAclaraciones.tsx";
+import { GateFinalCard } from "../components/GateFinalCard.tsx";
 
 // Espejos cosmeticos de WRITE_ROLES / GO_NO_GO_ROLES (domain-licitaciones/roles.ts).
 export const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
@@ -308,6 +309,8 @@ export function SalaGuerraPage({ apiBaseUrl, token, propertyId, orgSlug, role }:
               </CardContent>
             </Card>
           </section>
+
+          <GateFinalCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} tenderId={tenderId} orgSlug={orgSlug} refreshKey={data.now} />
 
           <Card>
             <CardHeader>

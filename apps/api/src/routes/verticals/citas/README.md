@@ -6,6 +6,10 @@ Fase 1 construida — los 3 flujos elegidos (ver diseño Fase 1 citas):
   sistema (checkout web público + Server Tool del agente), SIN `authMiddleware` —
   mismo criterio que `restaurantesPublicRoutes`. Protegida por `originAllowed()`
   (web) o `x-atiende-tool-secret` (voz/WhatsApp), con rate-limit distinto por canal.
+- `publico.ts` — C-19, API pública de solo lectura de la página `/reservar/:orgSlug`: `GET .../publico/catalogo`
+  (negocio, zona horaria, servicios y profesionales activos, sin PII) y `POST .../publico/disponibilidad`
+  (`service_id`, `provider_id` opcional = «cualquiera», `date`). Sin sesión; `originAllowed` + rate limit por IP;
+  404 uniforme; un negocio no listo (`evaluarReservaPublica`) responde `{ lista:false, faltan }` sin datos. Sin SQL nueva.
 - `appointments-lifecycle.ts` — cancelar + reagendar, con 2 entradas de
   autenticación distintas (como en el origen): `x-atiende-tool-secret` para el
   agente, y `authMiddleware` + `dbSession` + `requirePropertyMembership("propertyId")`

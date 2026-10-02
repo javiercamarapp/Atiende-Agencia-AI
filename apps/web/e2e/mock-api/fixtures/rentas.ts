@@ -1,5 +1,5 @@
 // Fixtures de rentas vacacionales (Rentas Sol y Mar). Forma = apps/web/src/verticals/rentas/lib/calendario-client.ts.
-import { fallo } from "../respuestas.ts";
+import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
@@ -36,7 +36,89 @@ function ocupacionesSemilla(): Ocupacion[] {
   ];
 }
 
+// CHAT-10 -- Copiloto ("Pregunta a tus datos") de rentas: respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
+// conversacionId y seq; conversaciones guardadas por escenario). Solo admin_gestora ("admin") y contador ("finanzas") entran: el resto
+// recibe 403 como en la API real. Solo existe en la API simulada de e2e.
+interface ConversacionMock {
+  id: string;
+  titulo: string;
+  actualizadaEn: string;
+  mensajes: { id: string; role: "user" | "assistant"; text: string; status?: string; blocks?: unknown[]; sources?: unknown[]; seq: number }[];
+}
+const MOCK_ROLES_COPILOTO = ["admin", "finanzas"] as const;
+const BLOQUE_INGRESOS = {
+  kind: "table",
+  tool: "ingresos_por_canal",
+  title: "Ingresos por canal",
+  columns: [
+    { key: "canal", label: "Canal", kind: "text" },
+    { key: "reservas", label: "Reservas", kind: "integer" },
+    { key: "bruto", label: "Ingreso bruto", kind: "mxn" },
+  ],
+  rows: [
+    { canal: "Airbnb", reservas: 9, bruto: 31200 },
+    { canal: "Booking", reservas: 4, bruto: 12800 },
+    { canal: "Directa", reservas: 3, bruto: 9400 },
+  ],
+  chart: { kind: "bar", x: "canal", y: "bruto" },
+  truncated: false,
+};
+const TEXTO_INGRESOS = "Este mes ingresaste $53,400 MXN brutos en 16 reservas, la mayoría por Airbnb.";
+const FUENTE_INGRESOS = { tool: "ingresos_por_canal", source: "Reservas con llegada en el periodo", periodLabel: "este mes", scopeLabel: "todas tus propiedades" };
+const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rentas.copiloto.conversaciones", () => []);
+
 export const rutasRentas: readonly Ruta[] = [
+  { metodo: "GET", patron: `${R}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
+  { metodo: "GET", patron: `${R}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
+  {
+    metodo: "POST",
+    patron: `${R}/chat-datos`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; label?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? cuerpo.label ?? "");
+      const lista = conversacionesMock(p);
+      let conv = lista.find((c) => c.id === cuerpo.conversationId);
+      if (!conv) {
+        conv = { id: `00000000-0000-4000-8000-${String(lista.length + 1).padStart(12, "0")}`, titulo: pregunta.slice(0, 60), actualizadaEn: new Date().toISOString(), mensajes: [] };
+        lista.unshift(conv);
+      }
+      const seq = conv.mensajes.length + 2;
+      conv.mensajes.push({ id: `m-${seq - 1}`, role: "user", text: pregunta, seq: seq - 1 });
+      conv.mensajes.push({ id: `m-${seq}`, role: "assistant", text: TEXTO_INGRESOS, status: "ok", blocks: [BLOQUE_INGRESOS], sources: [FUENTE_INGRESOS], seq });
+      conv.actualizadaEn = new Date().toISOString();
+      return ndjson([
+        { t: "paso", fase: "inicio", herramienta: "ingresos_por_canal" },
+        { t: "paso", fase: "fin", herramienta: "ingresos_por_canal" },
+        { t: "fin", conversacionId: conv.id, seq, respuesta: { status: "ok", text: TEXTO_INGRESOS, blocks: [BLOQUE_INGRESOS], sources: [FUENTE_INGRESOS], toolsUsed: ["ingresos_por_canal"] } },
+      ]);
+    },
+  },
+  { metodo: "GET", patron: `${R}/chat-datos/conversaciones`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => ({ disponible: true, conversaciones: conversacionesMock(p).map((c) => ({ id: c.id, titulo: c.titulo, actualizadaEn: c.actualizadaEn, mensajes: c.mensajes.length })) }) },
+  { metodo: "GET", patron: `${R}/chat-datos/conversaciones/:cid`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => conversacionesMock(p).find((c) => c.id === p.params["cid"]) ?? fallo(404, "Conversación no encontrada.") },
+  {
+    metodo: "PATCH",
+    patron: `${R}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const c = conversacionesMock(p).find((x) => x.id === p.params["cid"]);
+      if (!c) return fallo(404, "Conversación no encontrada.");
+      c.titulo = String(((p.cuerpo ?? {}) as { titulo?: string }).titulo ?? c.titulo);
+      return { id: c.id, titulo: c.titulo };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${R}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const lista = conversacionesMock(p);
+      const i = lista.findIndex((x) => x.id === p.params["cid"]);
+      if (i < 0) return fallo(404, "Conversación no encontrada.");
+      lista.splice(i, 1);
+      return conStatus(204, undefined);
+    },
+  },
   { metodo: "GET", patron: "/v1/rentas/:org/admin/propiedades", manejador: () => ({ propiedades: [{ propertyId: PROP.id, nombre: PROP.nombre }] }) },
   { metodo: "GET", patron: `${R}/unidades`, manejador: () => ({ unidades: UNIDADES }) },
   { metodo: "GET", patron: `${R}/unidades/:uid/ocupaciones`, manejador: (p) => ({ ocupaciones: p.estado.obtener("rentas.ocupaciones", ocupacionesSemilla).filter((o) => o.unidadId === p.params.uid) }) },

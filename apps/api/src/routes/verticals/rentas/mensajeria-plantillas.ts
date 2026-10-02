@@ -16,7 +16,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { CANALES_MENSAJERIA, EVENTOS_PLANTILLA, MENSAJERIA_ESCRITURA_ROLES, MENSAJERIA_PLANTILLA_APROBACION_ROLES } from "@atiende/domain-rentas";
+import { CANALES_MENSAJERIA, EVENTOS_PLANTILLA, MENSAJERIA_ESCRITURA_ROLES, MENSAJERIA_PLANTILLA_APROBACION_ROLES, variablesNoSoportadas } from "@atiende/domain-rentas";
 import type { CanalMensajeriaCodigo, EventoPlantilla, IdiomaMensaje } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -112,7 +112,14 @@ export function rentasMensajeriaPlantillasRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     if (raw.cuerpo !== undefined || raw.activa !== undefined) {
       assertVerticalRole(c, MENSAJERIA_ESCRITURA_ROLES);
-      if (raw.cuerpo !== undefined) cambios.cuerpo = requireCuerpo(raw.cuerpo);
+      if (raw.cuerpo !== undefined) {
+        // H-056: editar el texto de una plantilla ya aprobada le quita la aprobacion -- sin esto, un operador podria
+        // cambiar el cuerpo y las automatizaciones seguirian usandolo sin que el tenant lo revisara. La aprobacion
+        // se otorga SIEMPRE en un paso aparte, sobre el texto que ya quedo guardado (la base lo refuerza con un trigger).
+        if (raw.aprobadaPorTenant !== undefined) throw Errors.validation("Edita el texto y aprueba la plantilla en dos pasos: cambiar el cuerpo quita la aprobación.");
+        cambios.cuerpo = requireCuerpo(raw.cuerpo);
+        if (actual.aprobadaPorTenant) cambios.aprobadaPorTenant = false;
+      }
       if (raw.activa !== undefined) {
         if (typeof raw.activa !== "boolean") throw Errors.validation("activa: se esperaba boolean.");
         cambios.activa = raw.activa;
@@ -123,6 +130,9 @@ export function rentasMensajeriaPlantillasRoutes(deps: AppDeps): Hono<CoreAuthHo
       // cuerpo -- ver cabecera del archivo.
       assertVerticalRole(c, MENSAJERIA_PLANTILLA_APROBACION_ROLES);
       if (typeof raw.aprobadaPorTenant !== "boolean") throw Errors.validation("aprobadaPorTenant: se esperaba boolean.");
+      // Una plantilla con variables que el sistema no sabe llenar nunca podria enviarse bien: no se aprueba.
+      const desconocidas = raw.aprobadaPorTenant ? variablesNoSoportadas(actual.cuerpo) : [];
+      if (desconocidas.length > 0) throw Errors.validation(`No se puede aprobar: la plantilla usa variables desconocidas (${desconocidas.join(", ")}).`);
       cambios.aprobadaPorTenant = raw.aprobadaPorTenant;
     }
 

@@ -28,6 +28,7 @@ import {
   MessageCircle,
   Receipt,
   ShieldAlert,
+  Sparkles,
   Star,
   Tags,
   TrendingUp,
@@ -46,6 +47,7 @@ import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import { crearChatConexionHoteles } from "./lib/data-chat-client.ts";
+import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
@@ -180,7 +182,11 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     {
       title: "Resumen",
       siempreAbierto: true,
-      items: [{ to: base, label: "Resumen", icon: LayoutDashboard, end: true }],
+      // CHAT-09: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, solo para owner/gm (los unicos que el servidor deja usarlo).
+      items: [
+        { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
+        ...(COPILOTO_HOTELES_ROLES.has(role) ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+      ],
     },
     {
       title: "Operación",
@@ -263,6 +269,8 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       token={session.token}
       notificacionesHref={`/hoteles/${orgSlug}/notificaciones`}
       chat={chatConexion}
+      copilotoHref={`${base}/copiloto`}
+      ocultarChat={!COPILOTO_HOTELES_ROLES.has(role)}
       vertical="hoteles"
       sections={sections}
       mobileItems={mobileItems}

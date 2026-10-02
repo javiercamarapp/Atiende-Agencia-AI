@@ -107,6 +107,32 @@ export interface ConversacionesRepository {
   rename(scope: ConversacionScope, id: string, titulo: string): Promise<boolean>;
   remove(scope: ConversacionScope, id: string): Promise<boolean>;
   append(scope: ConversacionScope, turno: TurnoAGuardar): Promise<ResultadoGuardado>;
+  /** CHAT-14: herramientas (con parametros tipados) que produjeron el mensaje `seq` del asistente de una conversacion
+   *  propia, para re-ejecutarlas con el alcance actual al generar el reporte PDF. `null` = no existe / ajena / no es un
+   *  mensaje del asistente / base sin migrar. OPCIONAL: un repositorio sin el no ofrece reportes (503 honesto). */
+  cargarFuenteReporte?(scope: ConversacionScope, id: string, seq: number): Promise<FuenteReporte | null>;
+}
+
+export interface FuenteReporte {
+  readonly seq: number;
+  readonly toolCalls: readonly { readonly tool: string; readonly args: Readonly<Record<string, string | number>> }[];
+}
+
+/** `tool_calls` guardado -> lista tipada; descarta cualquier elemento con forma inesperada (nunca confia en el JSON). */
+export function parseToolCallsGuardados(raw: unknown): FuenteReporte["toolCalls"] {
+  if (!Array.isArray(raw)) return [];
+  const out: { tool: string; args: Record<string, string | number> }[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o["tool"] !== "string" || o["tool"].length === 0 || o["tool"].length > 80) continue;
+    const args: Record<string, string | number> = {};
+    if (o["args"] !== null && typeof o["args"] === "object" && !Array.isArray(o["args"])) {
+      for (const [k, v] of Object.entries(o["args"] as Record<string, unknown>)) if (typeof v === "string" || (typeof v === "number" && Number.isFinite(v))) args[k] = v;
+    }
+    out.push({ tool: o["tool"], args });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -259,6 +285,29 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
     });
   }
 
+  async cargarFuenteReporte(scope: ConversacionScope, id: string, seq: number): Promise<FuenteReporte | null> {
+    return runWithSavepointFallback<FuenteReporte | null>({
+      session: this.db,
+      primary: async () => {
+        const conv = await this.db.query<{ id: string }>(
+          `select c.id from core.data_chat_conversation c
+            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id = $3::uuid and c.vertical = $4::text;`,
+          [id, scope.userId, scope.organizationId, scope.vertical],
+        );
+        if (!conv.rows[0]) return null;
+        const msg = await this.db.query<{ tool_calls: unknown }>(
+          `select m.tool_calls from core.data_chat_message m
+            where m.conversation_id = $1::uuid and m.seq = $2::int and m.role = 'assistant';`,
+          [id, seq],
+        );
+        const row = msg.rows[0];
+        return row ? { seq, toolCalls: parseToolCallsGuardados(row.tool_calls) } : null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => null,
+    });
+  }
+
   async append(scope: ConversacionScope, t: TurnoAGuardar): Promise<ResultadoGuardado> {
     return runWithSavepointFallback<ResultadoGuardado>({
       session: this.db,
@@ -297,7 +346,8 @@ function clip(text: string, max: number): string {
 
 /** Pregunta del usuario tal como se guarda: sin PII y sin controles. */
 export function redactQuestionForStorage(question: string, tool?: string): string {
-  const base = tool ? `Consulta directa: ${tool}` : question;
+  // Consulta directa (chip): `question` trae el texto del chip si lo mando; si no, el nombre de la herramienta.
+  const base = tool ? (question.trim() || `Consulta directa: ${tool}`) : question;
   return clip(redactPii(base.replace(/\s+/g, " ").trim()), 600);
 }
 

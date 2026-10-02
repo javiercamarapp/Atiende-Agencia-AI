@@ -57,8 +57,10 @@ export function CopilotoAcciones({
 }) {
   const [errorCsv, setErrorCsv] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  const [fijado, setFijado] = useState<"no" | "ok" | "error">("no");
+  // Estado de "Fijar" por indice de bloque (una respuesta puede traer varias tablas y cada una se fija por separado).
+  const [fijados, setFijados] = useState<Readonly<Record<number, "ok" | "error">>>({});
   const [fijando, setFijando] = useState(false);
+  const [pdf, setPdf] = useState<{ estado: "libre" | "generando" | "error"; mensaje?: string }>({ estado: "libre" });
   const temporizador = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(temporizador.current), []);
 
@@ -73,17 +75,29 @@ export function CopilotoAcciones({
     }
   };
 
-  const puedeFijar = Boolean(transporte.fijar && conversacionId && mensaje.seq !== undefined && mensaje.blocks?.length);
-  const fijar = async () => {
+  const bloquesFijables = transporte.fijar && conversacionId && mensaje.seq !== undefined ? (mensaje.blocks ?? []).map((b, i) => ({ b, i })).filter(({ b }) => b.columns.length > 0 && b.rows.length > 0) : [];
+  const fijar = async (indice: number) => {
     if (!transporte.fijar || !conversacionId || mensaje.seq === undefined || fijando) return;
     setFijando(true);
     try {
-      await transporte.fijar(conversacionId, mensaje.seq, 0);
-      setFijado("ok");
+      await transporte.fijar(conversacionId, mensaje.seq, indice);
+      setFijados((prev) => ({ ...prev, [indice]: "ok" }));
     } catch {
-      setFijado("error");
+      setFijados((prev) => ({ ...prev, [indice]: "error" }));
     } finally {
       setFijando(false);
+    }
+  };
+
+  const puedePdf = Boolean(transporte.descargarPdf && conversacionId && mensaje.seq !== undefined && mensaje.blocks?.length);
+  const descargarPdf = async () => {
+    if (!transporte.descargarPdf || !conversacionId || mensaje.seq === undefined || pdf.estado === "generando") return;
+    setPdf({ estado: "generando" });
+    try {
+      await transporte.descargarPdf(conversacionId, mensaje.seq);
+      setPdf({ estado: "libre" });
+    } catch (e) {
+      setPdf({ estado: "error", mensaje: e instanceof Error && e.message ? e.message : "No se pudo generar el PDF; intenta de nuevo." });
     }
   };
 
@@ -110,12 +124,25 @@ export function CopilotoAcciones({
           Descargar PDF
         </a>
       ) : null}
-      {puedeFijar ? (
-        <button type="button" className={BOTON} onClick={() => void fijar()} disabled={fijando || fijado === "ok"} aria-label="Fijar en el tablero">
-          <Pin className="w-3.5 h-3.5" aria-hidden />
-          {fijado === "ok" ? "Fijado" : "Fijar"}
+      {!urlPdf && puedePdf ? (
+        <button type="button" className={BOTON} onClick={() => void descargarPdf()} disabled={pdf.estado === "generando"} aria-label="Descargar PDF">
+          <FileDown className="w-3.5 h-3.5" aria-hidden />
+          {pdf.estado === "generando" ? "Generando PDF…" : "Descargar PDF"}
         </button>
       ) : null}
+      {bloquesFijables.map(({ b, i }) => (
+        <button
+          key={`fijar-${b.tool}-${i}`}
+          type="button"
+          className={BOTON}
+          onClick={() => void fijar(i)}
+          disabled={fijando || fijados[i] === "ok"}
+          aria-label={bloquesFijables.length > 1 ? `Fijar ${b.title} en el tablero` : "Fijar en el tablero"}
+        >
+          <Pin className="w-3.5 h-3.5" aria-hidden />
+          {fijados[i] === "ok" ? "Fijado" : bloquesFijables.length > 1 ? `Fijar: ${b.title}` : "Fijar"}
+        </button>
+      ))}
       {esUltima ? (
         <button type="button" className={BOTON} onClick={onRegenerar} disabled={ocupado} aria-label="Regenerar respuesta">
           <RotateCcw className="w-3.5 h-3.5" aria-hidden />
@@ -127,7 +154,12 @@ export function CopilotoAcciones({
           No se pudo crear el archivo CSV.
         </span>
       ) : null}
-      {fijado === "error" ? (
+      {pdf.estado === "error" ? (
+        <span role="alert" className="text-xs text-destructive">
+          {pdf.mensaje}
+        </span>
+      ) : null}
+      {Object.values(fijados).includes("error") ? (
         <span role="alert" className="text-xs text-destructive">
           No se pudo fijar; intenta de nuevo.
         </span>

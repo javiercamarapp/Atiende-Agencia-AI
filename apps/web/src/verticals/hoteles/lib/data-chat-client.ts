@@ -6,7 +6,7 @@ import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearHotelesSession, persistHotelesSession, readPersistedHotelesSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
 
-function hotelesAuthContext(): AuthedFetchContext<LoginSession> {
+export function hotelesAuthContext(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {
     vertical: "hoteles",

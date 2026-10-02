@@ -2,7 +2,7 @@
 // 42P01/42883 la deja abortada (25P02). AbortAwareFakeSession reproduce ese estado; el
 // repositorio debe degradar bajo SAVEPOINT y dejar la sesión utilizable.
 import { describe, expect, it } from "vitest";
-import { PostgresRentasAccesoRepository } from "../../src/index.ts";
+import { PostgresRentasAccesoRepository, createAccesoCipher } from "../../src/index.ts";
 import { AbortAwareFakeSession } from "../support/aborting-fake-session.ts";
 
 function pgError(code: string): Error & { code: string } {
@@ -26,14 +26,14 @@ describe("PostgresRentasAccesoRepository (staff) sobre base sin migrar", () => {
     });
   }
 
-  it("guardarInstruccion, obtenerInstruccion y listarBitacora también degradan", async () => {
+  it("guardarInstruccion, obtenerInstruccion (cifrada y heredada) y listarBitacora también degradan", async () => {
     const db = new AbortAwareFakeSession([
       { match: /from rentas\.unidad/, respond: () => [{ "?column?": 1 }] },
       { match: /rentas\.acceso_instruccion/, respond: () => pgError("42P01") },
       { match: /rentas\.acceso_bitacora/, respond: () => pgError("42P01") },
       { match: /left join rentas\.acceso_reserva/, respond: () => pgError("42P01") },
     ]);
-    const repo = new PostgresRentasAccesoRepository(db);
+    const repo = new PostgresRentasAccesoRepository(db, createAccesoCipher(Buffer.alloc(32, 3)));
     expect(await repo.obtenerInstruccion("p1", "u1")).toEqual({ disponible: false });
     expect(await repo.guardarInstruccion("o1", "p1", "u1", { direccionExacta: "x", codigoAcceso: null, instrucciones: null }, "a1")).toEqual({ disponible: false });
     expect(await repo.listarBitacora("p1", 10)).toEqual({ disponible: false });

@@ -1,0 +1,14 @@
+id: cff-29-29-a
+tipo: norma
+ordenamiento: "CFF"
+articulo_o_regla: "29 y 29-A"
+resumen: "Emisión de comprobantes fiscales digitales y requisitos de los CFDI; base de las validaciones locales de estructura del CFDI."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CFF.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El código no cita estos artículos de forma literal; la ficha documenta la base de las validaciones de CFDI y queda a confirmar por el fiscalista."
+usado_en_codigo:
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:150"
+  - "src/cfdi/modelo-cfdi.ts:1"

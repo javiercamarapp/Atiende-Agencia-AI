@@ -24,19 +24,26 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import type { TenantDbSession } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import {
   ApprovalRejectedError,
   DECISION_ROLES,
+  EXPEDIENTE_APPROVAL_STAGES,
+  ExpedienteStageNotAvailableError,
   IdempotencyConflictError,
   PackageAssembler,
   WRITE_ROLES,
   decodeBase64Content,
+  evaluateExpedienteStages,
+  isExpedienteApprovalStage,
   sealInputs,
 } from "@atiende/domain-licitaciones";
-import type { AssembleInput, ChecklistReport, ExpedienteInputs, PackageDocumentInput } from "@atiende/domain-licitaciones";
+import type { AssembleInput, ChecklistReport, ExpedienteApprovalStage, ExpedienteInputs, PackageDocumentInput } from "@atiende/domain-licitaciones";
 import type { Approval, LicitacionesRepository, LicitacionesRole } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { requireStepUp } from "../../../second-factor.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 function overallStatusOf(items: readonly { result: "verde" | "ambar" | "rojo" }[]): "verde" | "ambar" | "rojo" {
@@ -54,12 +61,33 @@ function overallStatusOf(items: readonly { result: "verde" | "ambar" | "rojo" }[
  * validación, nunca un 500 genérico.
  */
 function mapApprovalRejectedError(err: unknown): Error {
+  if (err instanceof ExpedienteStageNotAvailableError) return Errors.conflict(err.message);
   if (!(err instanceof ApprovalRejectedError)) return err instanceof Error ? err : new Error(String(err));
-  if (err.reasonCode === "scope_scopeRef_inconsistente") return Errors.validation(err.message);
+  if (err.reasonCode === "scope_scopeRef_inconsistente" || err.reasonCode === "etapa_solo_para_expediente") return Errors.validation(err.message);
+  // L-26: falta la 1/2 o dos requests se cruzaron -> es un conflicto de estado (409), no un permiso negado.
+  if (err.reasonCode === "tecnica_legal_requerida_para_economica" || err.reasonCode === "doble_aprobacion_conflicto_concurrente") return Errors.conflict(err.message);
+  // rol no autorizado, autoaprobacion, AE-11 y "la misma persona dio la otra etapa" -> 403.
   return Errors.forbidden(err.message);
 }
 
-interface CierreContext {
+const STAGE_LABEL: Readonly<Record<ExpedienteApprovalStage, string>> = {
+  tecnica_legal: "la aprobación técnico-legal (1/2)",
+  economica: "la aprobación económica (2/2)",
+};
+
+/** Motivo legible (en espanol) del 409 de `assemble` cuando el 2/2 no esta completo. */
+function missingStagesMessage(missing: readonly ExpedienteApprovalStage[], sameApprover: boolean): string {
+  if (sameApprover) return "El expediente no puede ensamblarse: las dos aprobaciones deben darlas personas distintas.";
+  const list = missing.map((m) => STAGE_LABEL[m]).join(" y ");
+  return `El expediente necesita la doble aprobación antes de ensamblar el paquete: falta ${list}.`;
+}
+
+/** Cuerpo de `POST .../expediente/approval`: solo la etapa. El hash de insumos NUNCA viene del cliente. */
+interface ExpedienteApprovalBody {
+  readonly stage?: unknown;
+}
+
+export interface CierreContext {
   readonly organizationId: string;
   readonly tenderId: string;
   readonly proposalId: string;
@@ -67,7 +95,7 @@ interface CierreContext {
 }
 
 /** Reconstruye el `AssembleInput` completo contra el estado VIVO del expediente — usado tanto por `assemble` como por la re-derivación de `latest`/`download` (AE-14), para que ambos caminos apliquen exactamente la misma lógica. */
-async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreContext): Promise<AssembleInput> {
+export async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreContext): Promise<AssembleInput> {
   const sections = await repo.loadProposalSectionsAsDocuments(ctx.organizationId, ctx.proposalId);
   const documents: PackageDocumentInput[] = sections.map((s) => {
     // Una sección (económica o técnica, Fase 2 pieza 3) cuyo contenido
@@ -106,7 +134,18 @@ async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreConte
   // solo `PackageAssembler` filtraría en memoria).
   await repo.syncExpedienteApprovalWithCurrentHash(ctx.organizationId, ctx.proposalId, sealed, raw as ExpedienteInputs);
 
-  const approvals: Approval[] = [...(await repo.activeApprovalsCovering(ctx.organizationId, ctx.proposalId, "expediente"))];
+  // L-26 (REQ-044): con la migracion 033 el gate es la DOBLE aprobacion -- `PackageAssembler` solo
+  // recibe aprobaciones de expediente cuando AMBAS etapas estan vigentes para el hash actual y las
+  // dieron personas distintas; si falta alguna recibe una lista vacia y el paquete queda en borrador.
+  // Base sin migrar ("legacy"): sigue valiendo la aprobacion unica de siempre.
+  const stageSnapshot = await repo.listExpedienteStageApprovals(ctx.organizationId, ctx.proposalId);
+  let approvals: Approval[];
+  if (stageSnapshot.mode === "doble") {
+    const evaluation = evaluateExpedienteStages(stageSnapshot.approvals, sealed.hash);
+    approvals = evaluation.complete ? [evaluation.tecnicaLegal!, evaluation.economica!] : [];
+  } else {
+    approvals = [...(await repo.activeApprovalsCovering(ctx.organizationId, ctx.proposalId, "expediente"))];
+  }
 
   // Fase 2 pieza 3: requisitos opcionales/condicionales que
   // `TechnicalProposalBuilder` marcó explícitamente "NO APLICA" (nunca
@@ -115,6 +154,22 @@ async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreConte
   const notApplicableRequirements = proposal?.generationReport?.technical?.notApplicableRequirements ?? [];
 
   return { expedienteId: ctx.proposalId, documents, checklist, approvals, currentInputsHash: sealed, correlationId: ctx.correlationId, notApplicableRequirements };
+}
+
+/**
+ * L-26: avisos in-app (catalogo de notificaciones) tras una etapa aprobada. Mejor esfuerzo: `emitirNotificacion`
+ * nunca lanza y corre en SAVEPOINT, asi que un fallo del aviso jamas revierte la aprobacion. Sin PII: el texto
+ * viene del catalogo y la clave de dedupe usa solo ids y un prefijo del hash de insumos.
+ */
+async function avisarEtapaAprobada(db: TenantDbSession, input: { organizationId: string; proposalId: string; stage: ExpedienteApprovalStage; hash: string }): Promise<void> {
+  const clave = `${input.proposalId}:${input.hash.slice(0, 12)}`;
+  await emitirNotificacion(db, {
+    evento: input.stage === "tecnica_legal" ? "licitaciones.expediente.aprobacion_pendiente" : "licitaciones.expediente.aprobado",
+    organizationId: input.organizationId,
+    clave,
+    entidadTipo: "expediente",
+    entidadId: input.proposalId,
+  });
 }
 
 export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -127,6 +182,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.use(`${propertyBase}/submission`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${propertyBase}/submission/declare`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${propertyBase}/expediente/approval`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(`${propertyBase}/expediente/approvals`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${propertyBase}/proposal/sections/:sectionKey/approval`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(`${propertyBase}/expediente/approval`, async (c) => {
@@ -138,27 +194,89 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // que este valor pertenece a DECISION_ROLES (subconjunto de LicitacionesRole).
     const verticalRole = c.get("verticalRole")! as LicitacionesRole;
     const tenderId = c.req.param("tenderId");
+    // El cuerpo es opcional (clientes de la era de aprobacion unica mandan `{}` o nada): solo la etapa.
+    const raw = await readJsonCapped<ExpedienteApprovalBody>(c.req.raw, 2 * 1024).catch(() => ({}) as ExpedienteApprovalBody);
 
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
     const proposal = await repo.findProposal(organizationId, tenderId);
     if (!proposal) throw Errors.notFound("Genere primero la propuesta antes de aprobar el expediente.");
 
+    // L-26 (REQ-044): con la migracion 033 el expediente se aprueba en DOS etapas por DOS personas, cada
+    // una con step-up (segundo factor reciente). Base sin migrar: aprobacion unica de siempre, sin cambios.
+    const { mode } = await repo.listExpedienteStageApprovals(organizationId, proposal.id);
+    let stage: ExpedienteApprovalStage | undefined;
+    if (mode === "doble") {
+      if (!isExpedienteApprovalStage(raw.stage)) throw Errors.validation(`stage requerido: ${EXPEDIENTE_APPROVAL_STAGES.join(" | ")}.`);
+      stage = raw.stage;
+      await requireStepUp(deps, { userId, organizationId, scope: "expediente_approval", token: c.req.header("x-step-up-token") });
+    } else if (raw.stage !== undefined) {
+      throw Errors.conflict("La doble aprobación del expediente aún no está disponible en esta base (falta la migración 033).");
+    }
+
     // El hash de insumos SIEMPRE se recalcula aquí, en vivo -- nunca se
     // acepta uno que el cliente proponga (mismo principio que el resto del
     // Flujo 3: nada de lo que decide "aprobado" viene del request).
-    const { raw } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
-    const sealed = sealInputs(raw as ExpedienteInputs);
+    const { raw: rawInputs } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
+    const sealed = sealInputs(rawInputs as ExpedienteInputs);
+    // Si los insumos cambiaron desde la ultima aprobacion, se invalidan AMBAS etapas antes de evaluar (AE-14).
+    await repo.syncExpedienteApprovalWithCurrentHash(organizationId, proposal.id, sealed, rawInputs as ExpedienteInputs);
     try {
       // Fase 2 pieza 1 (AE-02/AE-11): reemplaza al `approveExpediente` plano
       // de Fase 1 -- misma superficie pública, lógica interna reforzada
       // (rechaza autoaprobación de quien es autor de contenido de CUALQUIER
       // sección, ver approval-workflow.ts).
-      const approval = await repo.approve(organizationId, proposal.id, { scope: "expediente", scopeRef: "expediente", actorId: userId, actorRole: verticalRole, inputsHash: sealed });
-      return c.json({ id: approval.id, scope: approval.scope, scopeRef: approval.scopeRef, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.approvedAt }, 201);
+      const approval = await repo.approve(organizationId, proposal.id, { scope: "expediente", scopeRef: "expediente", actorId: userId, actorRole: verticalRole, inputsHash: sealed, ...(stage ? { stage } : {}) });
+      if (stage) await avisarEtapaAprobada(c.get("db"), { organizationId, proposalId: proposal.id, stage, hash: sealed.hash });
+      return c.json({ id: approval.id, scope: approval.scope, scopeRef: approval.scopeRef, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.approvedAt, ...(stage ? { stage } : {}) }, 201);
     } catch (err) {
       throw mapApprovalRejectedError(err);
     }
+  });
+
+  // L-26: estado de la doble aprobacion para la pantalla de cierre (lectura: cualquier miembro). Antes de
+  // responder invalida las etapas cuyo hash ya no coincide con los insumos vivos (mismo choke point AE-14 que
+  // `latest`/`download`), de modo que lo que se muestra es lo que `assemble` aceptaria en este instante.
+  app.get(`${propertyBase}/expediente/approvals`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
+    const tenderId = c.req.param("tenderId");
+
+    const tender = await repo.findTender(organizationId, tenderId);
+    if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
+    const proposal = await repo.findProposal(organizationId, tenderId);
+    if (!proposal) return c.json({ mode: "sin_propuesta" as const, stages: [], complete: false, missing: [...EXPEDIENTE_APPROVAL_STAGES] });
+
+    const { raw: rawInputs } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
+    const sealed = sealInputs(rawInputs as ExpedienteInputs);
+    await repo.syncExpedienteApprovalWithCurrentHash(organizationId, proposal.id, sealed, rawInputs as ExpedienteInputs);
+    const snapshot = await repo.listExpedienteStageApprovals(organizationId, proposal.id);
+
+    if (snapshot.mode === "legacy") {
+      // Base sin migrar: sigue la aprobacion unica; la pantalla muestra el boton de siempre.
+      const single = snapshot.approvals.find((a) => a.inputsHash === sealed.hash) ?? null;
+      return c.json({
+        mode: "legacy" as const,
+        stages: [],
+        complete: single !== null,
+        missing: single ? [] : [...EXPEDIENTE_APPROVAL_STAGES],
+        singleApproval: single ? { approvedAt: single.approvedAt, approvedByRole: single.approvedByRole, byYou: single.approvedBy === userId } : null,
+      });
+    }
+
+    const evaluation = evaluateExpedienteStages(snapshot.approvals, sealed.hash);
+    const view = (stage: ExpedienteApprovalStage, a: Approval | null) => ({
+      stage,
+      // Solo rol y "tu" (nunca el id ni el correo de otra persona de la organizacion).
+      approval: a ? { id: a.id, approvedAt: a.approvedAt, approvedByRole: a.approvedByRole, byYou: a.approvedBy === userId } : null,
+    });
+    return c.json({
+      mode: "doble" as const,
+      stages: [view("tecnica_legal", evaluation.tecnicaLegal), view("economica", evaluation.economica)],
+      complete: evaluation.complete,
+      missing: [...evaluation.missing],
+    });
   });
 
   // Fase 2 pieza 1: revisión granular incremental por sección (scope
@@ -210,6 +328,13 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "package.assemble", key: idempotencyKey, body: { proposalId: proposal.id } }, async () => {
         const input = await buildAssembleInput(repo, { organizationId, tenderId, proposalId: proposal.id, correlationId: requestId ?? null });
+        // L-26 (REQ-044): sin la doble aprobacion vigente para los insumos actuales NO se ensambla (409 con el
+        // motivo), en vez de producir un borrador. `buildAssembleInput` ya dejo los insumos sincronizados.
+        const stageSnapshot = await repo.listExpedienteStageApprovals(organizationId, proposal.id);
+        if (stageSnapshot.mode === "doble") {
+          const evaluation = evaluateExpedienteStages(stageSnapshot.approvals, input.currentInputsHash.hash);
+          if (!evaluation.complete) throw Errors.conflict(missingStagesMessage(evaluation.missing, evaluation.sameApprover));
+        }
         const assembled = await new PackageAssembler().assemble(input);
 
         const storageRef = await repo.writeManifestZip(organizationId, proposal.id, assembled.zip);
@@ -356,6 +481,10 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           acknowledgementFileHash,
           notes,
         });
+
+        // L-28: aviso in-app (catalogo) de que alguien declaro la presentacion. Mejor esfuerzo, sin PII;
+        // dedupe por propuesta (una declaracion nueva con otra clave de idempotencia no vuelve a avisar).
+        await emitirNotificacion(c.get("db"), { evento: "licitaciones.presentacion.declarada", organizationId, clave: proposal.id, entidadTipo: "expediente", entidadId: proposal.id });
 
         return { status: 201, body: submission };
       });

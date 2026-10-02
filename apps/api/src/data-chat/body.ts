@@ -9,6 +9,11 @@ export interface DataChatRequestBody {
   readonly question: string;
   readonly history: DataChatHistoryTurn[];
   readonly tool?: string;
+  /** Argumentos de la consulta directa (solo con `tool`): objeto plano de texto/numeros. El motor los valida con el esquema de
+   *  parametros de la herramienta; aqui solo se acota la forma y el tamano. */
+  readonly toolArgs?: Readonly<Record<string, string | number>>;
+  /** Texto del chip que origino la consulta directa (solo con `tool`): es lo que se guarda como mensaje del usuario. */
+  readonly label?: string;
   /** `"new"` = guardar este turno en una conversacion nueva; un uuid = continuar esa conversacion (el historial sale
    *  de la base). Ausente = el comportamiento de siempre: nada se guarda y el historial lo aporta el cuerpo. */
   readonly conversationId?: string;
@@ -18,13 +23,38 @@ export const MAX_BODY_HISTORY = 12;
 
 const TOOL_NAME_RE = /^[a-z0-9_]{1,60}$/;
 
+const MAX_TOOL_ARGS = 8;
+const MAX_LABEL_CHARS = 200;
+
+function parseToolArgs(raw: unknown): Record<string, string | number> | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("args: se esperaba un objeto.");
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length > MAX_TOOL_ARGS) throw Errors.validation("args: demasiados argumentos.");
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of entries) {
+    if (!/^[a-z_]{1,30}$/.test(k)) throw Errors.validation("args: nombre de argumento invalido.");
+    if (typeof v === "string" && v.length <= 200) out[k] = v;
+    else if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    else throw Errors.validation(`args.${k}: se esperaba texto corto o un numero.`);
+  }
+  return out;
+}
+
+function parseLabel(raw: unknown): string | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "string") throw Errors.validation("label: se esperaba texto.");
+  const flat = raw.replace(/\s+/g, " ").trim();
+  return flat.length === 0 ? undefined : flat.slice(0, MAX_LABEL_CHARS);
+}
+
 /** `tool` (opcional) es el boton del MODO SIN IA: nombre de una herramienta del catalogo, que el motor ejecuta
  *  directo sin llamar al modelo. Va en lugar de `question` (no ambos); el motor valida que exista en el catalogo. */
 export function parseDataChatBody(raw: unknown): DataChatRequestBody {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo inválido: se esperaba un objeto JSON.");
   const body = raw as Record<string, unknown>;
   for (const key of Object.keys(body)) {
-    if (key !== "question" && key !== "history" && key !== "tool" && key !== "conversationId") throw Errors.validation(`Campo no permitido: ${key.slice(0, 40)}.`);
+    if (key !== "question" && key !== "history" && key !== "tool" && key !== "args" && key !== "label" && key !== "conversationId") throw Errors.validation(`Campo no permitido: ${key.slice(0, 40)}.`);
   }
   const history: DataChatHistoryTurn[] = [];
   const rawHistory = body["history"];
@@ -47,8 +77,11 @@ export function parseDataChatBody(raw: unknown): DataChatRequestBody {
   if (body["tool"] !== undefined) {
     if (body["question"] !== undefined) throw Errors.validation("Usa 'question' o 'tool', no ambos.");
     if (typeof body["tool"] !== "string" || !TOOL_NAME_RE.test(body["tool"])) throw Errors.validation("tool: se esperaba el nombre de una consulta del catálogo.");
-    return { question: "", history, tool: body["tool"], ...extra };
+    const toolArgs = parseToolArgs(body["args"]);
+    const label = parseLabel(body["label"]);
+    return { question: "", history, tool: body["tool"], ...(toolArgs ? { toolArgs } : {}), ...(label ? { label } : {}), ...extra };
   }
+  if (body["args"] !== undefined || body["label"] !== undefined) throw Errors.validation("'args' y 'label' solo se aceptan junto con 'tool'.");
   if (typeof body["question"] !== "string") throw Errors.validation("question: se esperaba texto.");
   return { question: body["question"], history, ...extra };
 }

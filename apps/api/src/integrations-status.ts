@@ -118,6 +118,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["HOTELES_IDENTITY_KEY"],
   },
 
+  // ---- Rentas: cifrado de las instrucciones de acceso al huésped (Rn-29) ----
+  {
+    id: "rentas-acceso-cifrado",
+    nombre: "Rentas — cifrado del acceso al huésped (llave de cifrado)",
+    habilita:
+      "Cifrado AES-256-GCM en reposo de la dirección exacta, el código de acceso y las indicaciones de cada unidad (routes/verticals/rentas/acceso-huesped.ts, migración rentas 028). Opcional para arrancar: sin RENTAS_ACCESS_KEY, leer o guardar instrucciones responde 503 explícito 'no disponible: falta RENTAS_ACCESS_KEY' (nunca texto plano) y la liberación al huésped no entrega nada y queda como error del cron. Perder la llave vuelve ilegibles las instrucciones ya cifradas.",
+    variables: ["RENTAS_ACCESS_KEY"],
+  },
+
   // ---- Google ----
   {
     id: "google-staff-login",
@@ -312,6 +321,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // H-01 -- version de la llave de la boveda de identidad (default 1): metadato que se
   // escribe en cada sobre para la rotacion futura, nunca bloquea nada.
   "HOTELES_IDENTITY_KEY_VERSION",
+  // Rn-29 -- version de la llave del cifrado del acceso de rentas (default 1): metadato por fila para la rotacion futura.
+  "RENTAS_ACCESS_KEY_VERSION",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
   // Gateway LLM: modelos por rol (JSON) y ZDR global; opcionales, ver docs/LLM-GATEWAY.md.
   "LLM_MODELS_JSON",
@@ -323,6 +334,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "GOOGLE_STAFF_TOKEN_URL",
   "GOOGLE_STAFF_JWKS_URL",
   "GOOGLE_STAFF_ISSUER",
+  // D-28 -- URL del CSV publico 69-B del SAT; opcional, con valor oficial por defecto (NO VERIFICADO), ver apps/api/src/env.ts.
+  "EFOS_69B_URL",
   // apps/web (Vite) — tiene default de desarrollo razonable, nunca bloquea nada.
   "VITE_API_BASE_URL",
 ];

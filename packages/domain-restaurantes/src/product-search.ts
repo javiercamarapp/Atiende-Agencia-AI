@@ -71,6 +71,12 @@ const STOPWORDS_BUSQUEDA = new Set([
   "órdenes",
 ]);
 
+/** Minusculas y sin diacriticos (NFD): "Champiñón" y "champinon" comparan igual. Los clientes escriben sin acentos y el
+ * catalogo los trae; la comparacion se hace SIEMPRE sobre este texto, en la consulta y en los campos. */
+export function sinAcentos(texto: string): string {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 /**
  * Tokenizador compartido de búsqueda de productos — port literal, incluyendo los dos
  * gaps reales encontrados en producción el 3-sep-2026 (plural "tacos" -> "taco" y
@@ -78,8 +84,7 @@ const STOPWORDS_BUSQUEDA = new Set([
  * ("medio kilo" -> "500g") encontrada el mismo día.
  */
 export function tokenizeForProductSearch(query: string): string[] {
-  const normalizada = query
-    .toLowerCase()
+  const normalizada = sinAcentos(query)
     .replace(/\bcero\s+punto\s+cero\b/g, "0.0")
     .replace(/tres\s+cuartos?\s+de\s+kilo/g, "750g")
     .replace(/cuarto\s+de\s+kilo/g, "250g")
@@ -98,7 +103,7 @@ export function tokenizeForProductSearch(query: string): string[] {
     }
     tokens.push(t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t);
   }
-  return tokens.length > 0 ? tokens : [query.toLowerCase()];
+  return tokens.length > 0 ? tokens : [sinAcentos(query)];
 }
 
 /** Determina si un texto de búsqueda hace match contra un producto — un token hace
@@ -108,8 +113,16 @@ export function matchesProductSearch(
   tokens: readonly string[],
   fields: { readonly name: string; readonly description: string | null; readonly categoryName: string | null; readonly searchKeywords: readonly string[] },
 ): boolean {
-  const textoPlano = [fields.name, fields.description, fields.categoryName].filter(Boolean).join(" ").toLowerCase();
-  return tokens.every((t) => textoPlano.includes(t) || fields.searchKeywords.some((a) => a.toLowerCase().includes(t)));
+  const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));
+  const alias = fields.searchKeywords.map(sinAcentos);
+  return tokens.every((t) => textoPlano.includes(t) || alias.some((a) => a.includes(t)));
+}
+
+/** Tortilla obligatoria al cotizar: los productos "tacos" y los que el MENU dice que van "de maiz o harina" (quesadillas).
+ * Si el menu no lo dice, NO se exige (mejor una pregunta de menos que inventar una opcion que el platillo no tiene). */
+export function requiresTortillaChoice(productName: string, description: string | null | undefined): boolean {
+  if (/\btacos?\b/i.test(productName)) return true;
+  return /\bde\s+ma[ií]z\s+o\s+harina\b/i.test(description ?? "");
 }
 
 export function extraerPackSize(name: string, description: string | null): number | null {

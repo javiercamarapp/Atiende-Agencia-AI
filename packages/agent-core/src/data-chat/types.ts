@@ -144,6 +144,8 @@ export interface DataChatAuditEntry {
   readonly rowCount: number;
   readonly durationMs: number;
   readonly errorCode?: string;
+  /** Como se obtuvo el resultado: "directa" (chip/boton, sin modelo), "cache" (resultado guardado) o "llm" (la pidio el modelo). */
+  readonly route?: "directa" | "cache" | "llm";
 }
 
 export interface DataChatAuditSink {
@@ -156,7 +158,7 @@ export interface DataChatRateLimiter {
 }
 
 /** Ruta con la que se produjo el texto de un turno (medicion de costo, ver `RunDataChatTurnOptions.onUso`). */
-export type DataChatRoute = "directa" | "barato" | "escalado" | "determinista";
+export type DataChatRoute = "directa" | "cache" | "barato" | "escalado" | "determinista";
 
 /** Uso de un turno: lo que costo y por que ruta salio el texto. Solo cifras operativas (nunca preguntas, filas ni PII). */
 export interface DataChatUsage {
@@ -165,6 +167,8 @@ export interface DataChatUsage {
   readonly llmCalls: number;
   /** true si hubo una llamada al modelo escalado (cascada tras fallar la guardia de cifras). */
   readonly escalated: boolean;
+  /** Herramientas de este turno cuyo resultado salio de la cache (ausente si ninguna). */
+  readonly cacheHits?: number;
   /** Suma del costo reportado por el proveedor en cada llamada (USD). */
   readonly costUsd: number;
   /** Modelo que respondio la ultima llamada barata (el reportado por el proveedor), si se conoce. */

@@ -46,8 +46,8 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
   }, [apiBaseUrl, token, propertyId, search]);
 
   return (
-    <PageContainer padding="none" className="gap-4">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Clientes</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Clientes</h1>
 
       <div className="max-w-xs">
         <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
@@ -110,7 +110,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
   }, [apiBaseUrl, token, propertyId, customerId]);
 
   return (
-    <PageContainer padding="none" size="sm" className="gap-4">
+    <PageContainer padding="none">
       <Button asChild variant="ghost" size="sm" className="self-start px-2 text-muted-foreground">
         <Link to={`/restaurantes/${orgSlug}/clientes`}>
           <ArrowLeft />
@@ -141,7 +141,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
 
           <Card>
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-sm font-semibold">Direcciones guardadas</CardTitle>
+              <CardTitle>Direcciones guardadas</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {detail.addresses.length === 0 ? (
@@ -160,7 +160,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
 
           <Card>
             <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-sm font-semibold">Lo que más pide</CardTitle>
+              <CardTitle>Lo que más pide</CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {detail.frequentItems.length === 0 ? (

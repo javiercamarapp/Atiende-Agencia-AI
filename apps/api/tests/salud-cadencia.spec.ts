@@ -24,9 +24,18 @@ describe("minutosEsperadosDeCron", () => {
     expect(minutosEsperadosDeCron("0 */6 * * *")).toBe(360);
   });
 
-  it("día-mes/mes/día-semana distinto de '*' -> 0 (fuera de alcance soportado, nunca inventa)", () => {
-    expect(minutosEsperadosDeCron("0 5 * * 1")).toBe(0);
-    expect(minutosEsperadosDeCron("0 5 1 * *")).toBe(0);
+  it("semanal ('20 6 * * 0') -> 7 dias; mensual ('40 7 3 * *') -> 31 dias (el hueco maximo, nunca marca vencido un mes corto)", () => {
+    expect(minutosEsperadosDeCron("20 6 * * 0")).toBe(7 * 24 * 60);
+    expect(minutosEsperadosDeCron("0 5 * * 1")).toBe(7 * 24 * 60);
+    expect(minutosEsperadosDeCron("40 7 3 * *")).toBe(31 * 24 * 60);
+  });
+
+  it("combinaciones fuera de alcance -> 0 (mes fijo, dia-mes y dia-semana a la vez, semanal/mensual sin hora fija, dia-mes 0), nunca inventa", () => {
+    expect(minutosEsperadosDeCron("0 5 1 1 *")).toBe(0);
+    expect(minutosEsperadosDeCron("0 5 1 * 1")).toBe(0);
+    expect(minutosEsperadosDeCron("*/5 5 * * 1")).toBe(0);
+    expect(minutosEsperadosDeCron("0 * 3 * *")).toBe(0);
+    expect(minutosEsperadosDeCron("0 5 0 * *")).toBe(0);
   });
 
   it("lista o rango en minuto/hora -> 0 (no soportado, nunca un número inventado)", () => {
@@ -40,9 +49,9 @@ describe("minutosEsperadosDeCron", () => {
 });
 
 describe("cadenciaMinutosPorRuta / rutasDeCronDeclaradas", () => {
-  it("cubre los 29 crons reales de vercel.json, todos con cadencia determinable (> 0)", () => {
+  it("cubre los 33 crons reales de vercel.json, todos con cadencia determinable (> 0)", () => {
     const rutas = rutasDeCronDeclaradas();
-    expect(rutas.length).toBe(29);
+    expect(rutas.length).toBe(33);
 
     const mapa = cadenciaMinutosPorRuta();
     for (const ruta of rutas) {

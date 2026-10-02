@@ -1,0 +1,16 @@
+id: lisr-96
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "96 y 152"
+resumen: "Tarifa mensual y anual de ISR de personas físicas (Anexo 8 de la RMF); fuente única en isr-tablas.ts."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El código afirma haber verificado las tablas 2025 y 2026 contra el Anexo 8; no hay constancia en esta ficha. Falta firma del fiscalista."
+usado_en_codigo:
+  - "src/declaraciones/isr-tablas.ts:2"
+  - "src/declaraciones/isr-tablas.ts:87"
+  - "src/declaraciones/isr-engine.ts:95"
+  - "src/nomina/isr-nomina-tablas.ts:3"

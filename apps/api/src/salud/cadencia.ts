@@ -56,20 +56,29 @@ function esStep(campo: CampoCron): campo is { readonly step: number } {
  * declara `vencido` en ese caso (ver `./motor.ts::juzgarLatido`), nunca se
  * inventa un número.
  *
- * Cobertura deliberada (suficiente para los 17 crons reales de
- * `vercel.json`, todos diarios con minuto/hora fijos): día-mes/mes/
- * día-semana deben ser `*` (soporte de granularidad semanal/mensual fuera de
- * alcance hoy); minuto/hora pueden ser fijo, comodín, o un step (asterisco
- * seguido de barra y N, p. ej. cada 15 minutos).
+ * Cobertura deliberada: diarios/horarios/cada N con día-mes/mes/día-semana
+ * en `*`; minuto/hora pueden ser fijo, comodín, o un step (asterisco seguido
+ * de barra y N, p. ej. cada 15 minutos). Además, semanal (día-semana fijo) y
+ * mensual (día-mes fijo) SOLO con minuto y hora fijos (D-27/D-28).
  */
 export function minutosEsperadosDeCron(expresion: string): number {
   const partes = expresion.trim().split(/\s+/);
   if (partes.length !== 5) return 0;
   const [minuto, hora, diaMes, mes, diaSemana] = partes as [string, string, string, string, string];
-  if (diaMes !== "*" || mes !== "*" || diaSemana !== "*") return 0;
+  if (mes !== "*") return 0;
 
   const minutoP = parseCampo(minuto, 59);
   const horaP = parseCampo(hora, 23);
+
+  // Semanal ("M H * * D", D = dia de la semana 0-7) y mensual ("M H D * *"): solo con minuto y hora FIJOS. Mensual cuenta
+  // 31 dias (el hueco MAXIMO entre dos corridas), para que un cron mensual sano nunca se marque vencido por un mes corto.
+  if (esFijo(horaP) && esFijo(minutoP)) {
+    const semanal = diaMes === "*" && parseCampo(diaSemana, 7) !== "wildcard" && esFijo(parseCampo(diaSemana, 7));
+    if (semanal) return 7 * 24 * 60;
+    const mensual = diaSemana === "*" && esFijo(parseCampo(diaMes, 31)) && (parseCampo(diaMes, 31) as { fixed: number }).fixed >= 1;
+    if (mensual) return 31 * 24 * 60;
+  }
+  if (diaMes !== "*" || diaSemana !== "*") return 0;
 
   if (esFijo(horaP) && esFijo(minutoP)) return 24 * 60; // diario a una hora:minuto fijos
   if (horaP === "wildcard" && esFijo(minutoP)) return 60; // cada hora, en un minuto fijo

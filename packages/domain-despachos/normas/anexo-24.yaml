@@ -1,0 +1,15 @@
+id: anexo-24
+tipo: norma
+ordenamiento: "Anexo 24"
+articulo_o_regla: "Contabilidad electrónica"
+resumen: "Catálogo de cuentas y balanza de comprobación en el formato de contabilidad electrónica."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "La URL es el índice oficial del SAT; el código reconoce que no genera XML de pólizas del Anexo 24."
+usado_en_codigo:
+  - "src/contabilidad-electronica/types.ts:1"
+  - "src/contabilidad-electronica/catalogo-cuentas.ts:1"
+  - "src/libro/balanza.ts:23"

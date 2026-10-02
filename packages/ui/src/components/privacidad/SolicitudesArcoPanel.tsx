@@ -100,9 +100,11 @@ export interface SolicitudesArcoPanelProps {
   readonly ejecucionDias: number;
   /** Se invoca al confirmar una acción; la nota es obligatoria al rechazar. */
   readonly onCambiarEstado: (id: string, accion: SolicitudArcoAccion, nota: string | null) => Promise<void>;
+  /** Texto del estado "no disponible" cuando el canal de entrada no es WhatsApp/llamada (p. ej. solicitudes que el staff registra a mano). */
+  readonly mensajeNoDisponible?: string;
 }
 
-export function SolicitudesArcoPanel({ solicitudes, disponible, puedeGestionar, respuestaDias, ejecucionDias, onCambiarEstado }: SolicitudesArcoPanelProps) {
+export function SolicitudesArcoPanel({ solicitudes, disponible, puedeGestionar, respuestaDias, ejecucionDias, onCambiarEstado, mensajeNoDisponible }: SolicitudesArcoPanelProps) {
   const [accionando, setAccionando] = useState<{ id: string; accion: SolicitudArcoAccion } | null>(null);
   const [nota, setNota] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -113,7 +115,7 @@ export function SolicitudesArcoPanel({ solicitudes, disponible, puedeGestionar, 
       <EstadoVacio
         icon={ShieldCheck}
         titulo="Seguimiento ARCO no disponible aún"
-        mensaje="El seguimiento de solicitudes de derechos ARCO todavía no está habilitado en esta base de datos. Cuando se habilite, las solicitudes que lleguen por WhatsApp o por llamada aparecerán aquí."
+        mensaje={mensajeNoDisponible ?? "El seguimiento de solicitudes de derechos ARCO todavía no está habilitado en esta base de datos. Cuando se habilite, las solicitudes que lleguen por WhatsApp o por llamada aparecerán aquí."}
       />
     );
   }

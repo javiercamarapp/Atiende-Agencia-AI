@@ -27,6 +27,23 @@ export const BREAK_GLASS_RESOURCE_TYPES = [
   "otro",
 ] as const;
 
+/**
+ * Rn-29 -- datos que el romper-cristal NUNCA entrega, ni siquiera cifrados: las instrucciones de acceso al huesped
+ * (direccion exacta, codigo, indicaciones; tabla `rentas.acceso_instruccion`, sus sobres `*_cifrad*` y su bitacora).
+ * Ningun lector de 012/018/020 las selecciona y esta lista no es una categoria de `BREAK_GLASS_RESOURCE_TYPES`:
+ * pedirlas exige un acceso de negocio del admin autorizado (con bitacora), no una lectura de superadmin. La prueba
+ * `tests/break-glass/excluye-acceso.spec.ts` falla si un lector o una categoria las incluyen.
+ */
+export const BREAK_GLASS_DATOS_EXCLUIDOS = [
+  "acceso_instruccion",
+  "direccion_exacta",
+  "codigo_acceso",
+  "direccion_cifrada",
+  "codigo_cifrado",
+  "instrucciones_cifradas",
+  "acceso_siguiente_liberacion",
+] as const;
+
 export type BreakGlassResourceType = (typeof BREAK_GLASS_RESOURCE_TYPES)[number];
 
 export function isBreakGlassResourceType(value: string): value is BreakGlassResourceType {

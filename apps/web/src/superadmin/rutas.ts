@@ -12,8 +12,10 @@
 // Sin JSX ni hooks a proposito: lo importan el shell (cliente) y las pruebas.
 import {
   Activity,
+  Bot,
   AlertOctagon,
   ArrowLeftRight,
+  BellOff,
   Building2,
   Coins,
   DollarSign,
@@ -53,11 +55,10 @@ export interface SeccionSuperadmin {
 export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
 
 /**
- * Agentes: ninguna pagina real todavia (el Copiloto, el Panel de agentes y los agentes extractor,
- * conciliacion y WhatsApp estan en `PENDIENTES`). Las palancas por agente viven hoy en Interruptores
- * (Sistema).
+ * Agentes: hoy solo el Panel de agentes tiene pagina real (SA-L-08). El Copiloto y los agentes extractor, conciliacion
+ * y WhatsApp estan en `PENDIENTES`. Las palancas por agente viven aqui y tambien en Interruptores (Sistema).
  */
-export const AGENTES: readonly RutaSuperadmin[] = [];
+export const AGENTES: readonly RutaSuperadmin[] = [{ to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot }];
 
 export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
@@ -80,6 +81,7 @@ export const CONTROL: readonly RutaSuperadmin[] = [
   { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
   { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
   { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
+  { to: "/superadmin/supresion", label: "Supresión de contactos", icon: BellOff },
   { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
   { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
 ];
@@ -138,7 +140,6 @@ export interface PendienteSuperadmin {
  */
 export const PENDIENTES: readonly PendienteSuperadmin[] = [
   { seccion: "Agentes", label: "Copiloto", ruta: "/superadmin/copiloto", ticket: "SA-33/SA-34 (paridad2 §3)" },
-  { seccion: "Agentes", label: "Panel de agentes", ruta: "/superadmin/agentes", ticket: "paridad2 §2.2" },
   { seccion: "Agentes", label: "Agente extractor de documentos", ruta: "/superadmin/agente-extractor", ticket: "paridad2 §2.2" },
   { seccion: "Agentes", label: "Agente de conciliación", ruta: "/superadmin/agente-conciliacion", ticket: "paridad2 §2.2" },
   { seccion: "Agentes", label: "Agente de WhatsApp y voz", ruta: "/superadmin/agente-whatsapp", ticket: "paridad2 §2.2" },
