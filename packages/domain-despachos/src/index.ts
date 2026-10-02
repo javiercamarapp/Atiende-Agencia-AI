@@ -618,3 +618,6 @@ export * from "./libro/index.ts";
 
 // D-25: pagos provisionales de ISR/IVA (papel de trabajo por flujo de efectivo, pagos de REP persistidos).
 export * from "./pagos-provisionales/index.ts";
+
+// D-27: consulta publica del estatus de un CFDI ante el SAT (puerto + adaptador SOAP).
+export * from "./cfdi/estatus-sat/index.ts";
