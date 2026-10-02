@@ -9,7 +9,7 @@
 // El rol staff ve únicamente los conteos de citas; los tiles de agentes (configuración y entrega) son de owner/admin.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Bot, CalendarDays, CalendarX, Clock, LayoutDashboard, Mic, Sparkles, UserPlus } from "lucide-react";
+import { Bell, Bot, CalendarDays, CalendarX, Clock, Mic, Sparkles, UserPlus } from "lucide-react";
 import {
   EstadoCargando,
   EstadoError,
@@ -21,7 +21,6 @@ import {
   StatCard,
   StatusBadge,
   TileLink,
-  useTituloBarra,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
 import { saludoPorHora, primerNombreOCorreo } from "../../../lib/greeting.ts";
@@ -77,7 +76,6 @@ function descripcionPorCanal(resumen: CitasResumen, canal: "whatsapp" | "voice",
 }
 
 export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffFullName, staffEmail }: CitasShellContext) {
-  useTituloBarra("Resumen", LayoutDashboard);
   const [resumen, setResumen] = useState<CitasResumen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
@@ -126,7 +124,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
   if (resumen === null) {
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando el resumen…" />
+        <EstadoCargando variante="tarjeta" etiqueta="Cargando resumen…" />
       </PageContainer>
     );
   }
