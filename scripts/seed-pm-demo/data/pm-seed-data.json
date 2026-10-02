@@ -1,2498 +1,5356 @@
 {
- "version": "2026-10-01",
- "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos",
- "organizacion": {
-  "nombre": "Los Taquitos de PM",
-  "slug": "los-taquitos-de-pm",
-  "ciudad": "Mérida, Yucatán",
-  "zona_horaria": "America/Merida"
- },
- "sucursales": [
-  {
-   "id": "T1",
-   "nombre": "Prolongación Montejo",
-   "slug": "prol-montejo",
-   "direccion": "Calle 34 No. 382-C x 35 y 37, Col. Emiliano Zapata Norte, Mérida",
-   "telefono": "999 944 0342",
-   "lat": 21.028,
-   "lng": -89.61,
-   "menu": "grande",
-   "activa": true,
-   "zona_cliente": "zona centro y norte"
+  "version": "2026-10-01",
+  "fuente": "pm-datos.json del paquete PM (cuestionario del dueño + repo lostaquitosdepm); recortado: sin volumenes de pedidos ni datos operativos internos; precios por sucursal de los menus impresos T1-2026, T5-2026 y T3-2025 (scripts/seed-pm-demo/data/menus-impresos/)",
+  "organizacion": {
+    "nombre": "Los Taquitos de PM",
+    "slug": "los-taquitos-de-pm",
+    "ciudad": "Mérida, Yucatán",
+    "zona_horaria": "America/Merida"
   },
-  {
-   "id": "T2",
-   "nombre": "Francisco de Montejo",
-   "slug": "fco-montejo",
-   "direccion": "Calle 50 No. 329 x 53-B, Fracc. Francisco de Montejo, Mérida",
-   "telefono": "999 953 7122",
-   "lat": 21.035,
-   "lng": -89.605,
-   "menu": "chico",
-   "activa": true,
-   "zona_cliente": "norponiente"
-  },
-  {
-   "id": "T3",
-   "nombre": "Pensiones",
-   "slug": "pensiones",
-   "direccion": "Calle 11 No. 371 x Av. 32, San Damián, Mérida",
-   "telefono": "999 987 5410",
-   "lat": null,
-   "lng": null,
-   "menu": "chico",
-   "activa": true,
-   "zona_cliente": "poniente"
-  },
-  {
-   "id": "T4",
-   "nombre": "T4 (pendiente de datos)",
-   "slug": "t4-pendiente",
-   "direccion": null,
-   "telefono": null,
-   "lat": null,
-   "lng": null,
-   "menu": null,
-   "activa": false,
-   "nota": "Sucursal registrada sin direccion ni telefono (el cuestionario la lista con 0 pedidos). Se carga INACTIVA y sin menu hasta que el dueño confirme su identidad."
-  },
-  {
-   "id": "T7",
-   "nombre": "Victory Platz (García Lavín)",
-   "slug": "garcia-lavin",
-   "direccion": "Calle 32 No. 352 local 16 x 36 Diagonal, Fracc. Xaman Tan, Plaza Victory Platz, Mérida",
-   "telefono": "999 518 2637",
-   "lat": 21.0205,
-   "lng": -89.615,
-   "menu": "grande",
-   "activa": true,
-   "zona_cliente": "norte"
-  },
-  {
-   "id": "T8",
-   "nombre": "Victory Altabrisa",
-   "slug": "altabrisa",
-   "direccion": "Calle 7 No. 270 local 20, entre Periférico Norte y Calle 4, Vista Alegre, Plaza Victory Altabrisa, Mérida",
-   "telefono": "999 518 2857",
-   "lat": 21.0156,
-   "lng": -89.5982,
-   "menu": "grande",
-   "activa": true,
-   "zona_cliente": "nororiente"
-  }
- ],
- "horario_general": {
-  "abre": "12:00",
-  "cierra": "01:00",
-  "dias": [
-   0,
-   1,
-   2,
-   3,
-   4,
-   5,
-   6
+  "sucursales": [
+    {
+      "id": "T1",
+      "nombre": "Prolongación Montejo",
+      "slug": "prol-montejo",
+      "direccion": "Calle 34 No. 382-C x 35 y 37, Col. Emiliano Zapata Norte, Mérida",
+      "telefono": "999 944 0342",
+      "lat": 21.028,
+      "lng": -89.61,
+      "activa": true,
+      "zona_cliente": "zona centro y norte"
+    },
+    {
+      "id": "T2",
+      "nombre": "Francisco de Montejo",
+      "slug": "fco-montejo",
+      "direccion": "Calle 50 No. 329 x 53-B, Fracc. Francisco de Montejo, Mérida",
+      "telefono": "999 953 7122",
+      "lat": 21.035,
+      "lng": -89.605,
+      "activa": false,
+      "zona_cliente": "norponiente",
+      "nota": "Sin catalogo ni precios hasta que Javier conteste P5 (plan-integracion-cerebro: T2, T7 y T8 no se cargan por su cuenta). Queda inactiva: una sucursal activa necesita su catalogo."
+    },
+    {
+      "id": "T3",
+      "nombre": "Pensiones",
+      "slug": "pensiones",
+      "direccion": "Calle 11 No. 371 x Av. 32, San Damián, Mérida",
+      "telefono": "999 987 5410",
+      "lat": null,
+      "lng": null,
+      "activa": true,
+      "zona_cliente": "poniente",
+      "nota": "Catalogo y precios de la lista impresa T3-2025, por decision de Javier (cola-maestra:412). Sin coordenadas: no se inventan (P7, P9)."
+    },
+    {
+      "id": "T4",
+      "nombre": "Galerías",
+      "slug": "galerias",
+      "direccion": "Calle 60 No. 299-A, Carretera Mérida-Progreso Km 0.5, Col. Revolución Cordemex, Plaza Galerías Mérida (food court)",
+      "telefono": "999 941 9612",
+      "lat": null,
+      "lng": null,
+      "activa": false,
+      "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed."
+    },
+    {
+      "id": "T5",
+      "nombre": "Playa (Chicxulub)",
+      "slug": "playa",
+      "direccion": "C. 19 x 22 y 24, Chicxulub, Progreso",
+      "telefono": "969 688 4195",
+      "lat": 21.296,
+      "lng": -89.602,
+      "activa": false,
+      "coordenadas_aproximadas": true,
+      "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026."
+    },
+    {
+      "id": "T7",
+      "nombre": "García Lavín (Victory Platz)",
+      "slug": "garcia-lavin",
+      "direccion": "Calle 32 No. 352 local 16 x 36 Diagonal, Fracc. Xaman Tan, Plaza Victory Platz, Mérida",
+      "telefono": "999 518 2637",
+      "lat": 21.0205,
+      "lng": -89.615,
+      "activa": false,
+      "zona_cliente": "norte",
+      "nota": "Sin catalogo ni precios hasta que Javier conteste P5 (plan-integracion-cerebro: T2, T7 y T8 no se cargan por su cuenta). Queda inactiva: una sucursal activa necesita su catalogo."
+    },
+    {
+      "id": "T8",
+      "nombre": "Victory Altabrisa",
+      "slug": "altabrisa",
+      "direccion": "Calle 7 No. 270 local 20, entre Periférico Norte y Calle 4, Vista Alegre, Plaza Victory Altabrisa, Mérida",
+      "telefono": "999 518 2857",
+      "lat": 21.0156,
+      "lng": -89.5982,
+      "activa": false,
+      "zona_cliente": "nororiente",
+      "nota": "Sin catalogo ni precios hasta que Javier conteste P5 (plan-integracion-cerebro: T2, T7 y T8 no se cargan por su cuenta). Queda inactiva: una sucursal activa necesita su catalogo."
+    }
   ],
-  "nota": "12 pm a 1 am, doble turno de personal. La hora del cambio de turno no esta definida: no se inventa, se modela una sola franja."
- },
- "reglas": {
-  "pedido_minimo_domicilio": 200,
-  "pedido_minimo_recoger": null,
-  "propina_politica": "solo_tarjeta"
- },
- "categorias": [
-  "Tacos",
-  "Gringas",
-  "Mestizas",
-  "Alambre",
-  "Tacos Suizos",
-  "Boyo-Hamburguesas",
-  "Chetacos",
-  "Papas de PM",
-  "Francés Suizo",
-  "Entradas",
-  "Frijoles Charros",
-  "Quesadillas",
-  "Queso Fundido",
-  "Nachos",
-  "Pizza Quesobich",
-  "Platillos PM",
-  "Kilos a Domicilio",
-  "Postres",
-  "Refrescos",
-  "Aguas Frescas",
-  "Cervezas",
-  "Licores y Cocktails",
-  "Guarniciones Extra",
-  "Comida Regional"
- ],
- "productos": [
-  {
-   "nombre": "Taco Al Pastor (individual)",
-   "categoria": "Tacos",
-   "precio": 42,
-   "descripcion": "Orden individual",
-   "es_alcohol": false,
-   "popular": true,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Taco de Rajas (individual)",
-   "categoria": "Tacos",
-   "precio": 37,
-   "descripcion": "Orden individual",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Taco de Champiñones (individual)",
-   "categoria": "Tacos",
-   "precio": 38,
-   "descripcion": "Orden individual",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Chorizo (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 150,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Bistec de Res (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 194,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Pechuga de Pollo (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 184,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Chuleta de Cerdo (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 184,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Costilla de Res (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 189,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Arrachera (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 254,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Poc-Chuc (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 189,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos de Bistec Encebollado (orden de 3)",
-   "categoria": "Tacos",
-   "precio": 202,
-   "descripcion": "Orden de 3 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Pastor",
-   "categoria": "Gringas",
-   "precio": 194,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Bistec",
-   "categoria": "Gringas",
-   "precio": 224,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Pechuga de Pollo",
-   "categoria": "Gringas",
-   "precio": 212,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Chuleta",
-   "categoria": "Gringas",
-   "precio": 212,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Costilla",
-   "categoria": "Gringas",
-   "precio": 217,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Arrachera",
-   "categoria": "Gringas",
-   "precio": 299,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Gringa de Poc-Chuc",
-   "categoria": "Gringas",
-   "precio": 217,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Pastor",
-   "categoria": "Mestizas",
-   "precio": 168,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Poc-Chuc",
-   "categoria": "Mestizas",
-   "precio": 175,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Bistec",
-   "categoria": "Mestizas",
-   "precio": 194,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Pechuga",
-   "categoria": "Mestizas",
-   "precio": 184,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Chuleta",
-   "categoria": "Mestizas",
-   "precio": 184,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Costilla",
-   "categoria": "Mestizas",
-   "precio": 189,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Mestiza de Arrachera",
-   "categoria": "Mestizas",
-   "precio": 269,
-   "descripcion": "Orden de 2 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Pastor",
-   "categoria": "Alambre",
-   "precio": 276,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Bistec",
-   "categoria": "Alambre",
-   "precio": 283,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Pechuga",
-   "categoria": "Alambre",
-   "precio": 269,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Chuleta",
-   "categoria": "Alambre",
-   "precio": 269,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Costilla",
-   "categoria": "Alambre",
-   "precio": 276,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre de Arrachera",
-   "categoria": "Alambre",
-   "precio": 343,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Pastor",
-   "categoria": "Tacos Suizos",
-   "precio": 247,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Bistec",
-   "categoria": "Tacos Suizos",
-   "precio": 291,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Chuleta",
-   "categoria": "Tacos Suizos",
-   "precio": 284,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Pechuga",
-   "categoria": "Tacos Suizos",
-   "precio": 284,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Costilla",
-   "categoria": "Tacos Suizos",
-   "precio": 284,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Arrachera",
-   "categoria": "Tacos Suizos",
-   "precio": 373,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Poc-Chuc",
-   "categoria": "Tacos Suizos",
-   "precio": 284,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Chorizo",
-   "categoria": "Tacos Suizos",
-   "precio": 209,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suizo de Chile Poblano",
-   "categoria": "Tacos Suizos",
-   "precio": 204,
-   "descripcion": "Orden de 5 tacos",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Pastor",
-   "categoria": "Tacos Suizos",
-   "precio": 306,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Bistec",
-   "categoria": "Tacos Suizos",
-   "precio": 314,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Pechuga",
-   "categoria": "Tacos Suizos",
-   "precio": 306,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Chuleta",
-   "categoria": "Tacos Suizos",
-   "precio": 306,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Costilla",
-   "categoria": "Tacos Suizos",
-   "precio": 306,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alambre Suizo de Arrachera",
-   "categoria": "Tacos Suizos",
-   "precio": 371,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos Suizos de Chile Poblano y Bistec",
-   "categoria": "Tacos Suizos",
-   "precio": 328,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
-   "categoria": "Tacos Suizos",
-   "precio": 378,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Boyo-Hamburguesa Sencilla",
-   "categoria": "Boyo-Hamburguesas",
-   "precio": 194,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Boyo-Hamburguesa con Queso",
-   "categoria": "Boyo-Hamburguesas",
-   "precio": 224,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Boyo-Hamburguesa con Queso y Tocino",
-   "categoria": "Boyo-Hamburguesas",
-   "precio": 238,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Pastor",
-   "categoria": "Chetacos",
-   "precio": 291,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Champiñón",
-   "categoria": "Chetacos",
-   "precio": 306,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Bistec de Res",
-   "categoria": "Chetacos",
-   "precio": 314,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Chuleta de Cerdo",
-   "categoria": "Chetacos",
-   "precio": 306,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Pechuga",
-   "categoria": "Chetacos",
-   "precio": 306,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Costilla de Res",
-   "categoria": "Chetacos",
-   "precio": 306,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Poc-Chuc",
-   "categoria": "Chetacos",
-   "precio": 306,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chetaco de Arrachera",
-   "categoria": "Chetacos",
-   "precio": 373,
-   "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Tradicional",
-   "categoria": "Papas de PM",
-   "precio": 204,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Pastor",
-   "categoria": "Papas de PM",
-   "precio": 262,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Bistec",
-   "categoria": "Papas de PM",
-   "precio": 283,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Chuleta",
-   "categoria": "Papas de PM",
-   "precio": 276,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Pechuga",
-   "categoria": "Papas de PM",
-   "precio": 276,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Costilla",
-   "categoria": "Papas de PM",
-   "precio": 276,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papa Arrachera",
-   "categoria": "Papas de PM",
-   "precio": 352,
-   "descripcion": "Papa rellena",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Pastor",
-   "categoria": "Francés Suizo",
-   "precio": 262,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Champiñón",
-   "categoria": "Francés Suizo",
-   "precio": 262,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Bistec de Res",
-   "categoria": "Francés Suizo",
-   "precio": 283,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Chuleta de Cerdo",
-   "categoria": "Francés Suizo",
-   "precio": 276,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Pechuga",
-   "categoria": "Francés Suizo",
-   "precio": 276,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Costilla de Res",
-   "categoria": "Francés Suizo",
-   "precio": 276,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Poc-Chuc",
-   "categoria": "Francés Suizo",
-   "precio": 276,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Francés Suizo de Arrachera",
-   "categoria": "Francés Suizo",
-   "precio": 352,
-   "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijol con Tostada",
-   "categoria": "Entradas",
-   "precio": 93,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Guacamole",
-   "categoria": "Entradas",
-   "precio": 142,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Carbolla",
-   "categoria": "Entradas",
-   "precio": 106,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Cebollas Cambray",
-   "categoria": "Entradas",
-   "precio": 135,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chicharrón de Queso",
-   "categoria": "Entradas",
-   "precio": 172,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Alitas de Pollo",
-   "categoria": "Entradas",
-   "precio": 204,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Papas a la Francesa",
-   "categoria": "Entradas",
-   "precio": 113,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros Normal",
-   "categoria": "Frijoles Charros",
-   "precio": 123,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros Normal (1/2 orden)",
-   "categoria": "Frijoles Charros",
-   "precio": 82,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros con Queso",
-   "categoria": "Frijoles Charros",
-   "precio": 142,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros con Queso (1/2 orden)",
-   "categoria": "Frijoles Charros",
-   "precio": 106,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros Especiales",
-   "categoria": "Frijoles Charros",
-   "precio": 178,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Frijoles Charros Especiales (1/2 orden)",
-   "categoria": "Frijoles Charros",
-   "precio": 136,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesadilla de Natural",
-   "categoria": "Quesadillas",
-   "precio": 109,
-   "descripcion": "De maíz o harina",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesadilla de Rajas",
-   "categoria": "Quesadillas",
-   "precio": 124,
-   "descripcion": "De maíz o harina",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesadilla de Champiñones",
-   "categoria": "Quesadillas",
-   "precio": 127,
-   "descripcion": "De maíz o harina",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesadilla de Chorizo",
-   "categoria": "Quesadillas",
-   "precio": 135,
-   "descripcion": "De maíz o harina",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Fundido Natural",
-   "categoria": "Queso Fundido",
-   "precio": 160,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Fundido Rajas",
-   "categoria": "Queso Fundido",
-   "precio": 175,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Fundido Champiñones",
-   "categoria": "Queso Fundido",
-   "precio": 175,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Fundido Tocino",
-   "categoria": "Queso Fundido",
-   "precio": 179,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Fundido Chorizo",
-   "categoria": "Queso Fundido",
-   "precio": 179,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Pastor",
-   "categoria": "Nachos",
-   "precio": 328,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Pastor (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 232,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Champiñón",
-   "categoria": "Nachos",
-   "precio": 320,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Champiñón (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 232,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Bistec",
-   "categoria": "Nachos",
-   "precio": 373,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Bistec (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 262,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Pechuga",
-   "categoria": "Nachos",
-   "precio": 363,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Pechuga (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 249,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Chuleta",
-   "categoria": "Nachos",
-   "precio": 358,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Chuleta (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 249,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Costilla",
-   "categoria": "Nachos",
-   "precio": 367,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Costilla (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 255,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Arrachera",
-   "categoria": "Nachos",
-   "precio": 433,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Nachos de Arrachera (1/2 orden)",
-   "categoria": "Nachos",
-   "precio": 299,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Queso",
-   "categoria": "Pizza Quesobich",
-   "precio": 206,
-   "descripcion": "Pizza individual, orilla rellena de queso",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Pastor",
-   "categoria": "Pizza Quesobich",
-   "precio": 232,
-   "descripcion": "Pastor con piña",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Bistec",
-   "categoria": "Pizza Quesobich",
-   "precio": 254,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Pollo",
-   "categoria": "Pizza Quesobich",
-   "precio": 247,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Chuleta de Cerdo",
-   "categoria": "Pizza Quesobich",
-   "precio": 247,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Costilla de Res",
-   "categoria": "Pizza Quesobich",
-   "precio": 247,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich de Arrachera",
-   "categoria": "Pizza Quesobich",
-   "precio": 291,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Quesobich Vegetariana",
-   "categoria": "Pizza Quesobich",
-   "precio": 212,
-   "descripcion": "Champiñones, cebolla y rajas de chile poblano",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Crujientes de Pechuga de Pollo",
-   "categoria": "Platillos PM",
-   "precio": 329,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Pastor",
-   "categoria": "Platillos PM",
-   "precio": 335,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Bistec",
-   "categoria": "Platillos PM",
-   "precio": 404,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Pechuga de Pollo",
-   "categoria": "Platillos PM",
-   "precio": 378,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Chuleta de Cerdo",
-   "categoria": "Platillos PM",
-   "precio": 378,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Costilla de Res",
-   "categoria": "Platillos PM",
-   "precio": 388,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Arrachera",
-   "categoria": "Platillos PM",
-   "precio": 492,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Platillo de Poc-Chuc",
-   "categoria": "Platillos PM",
-   "precio": 368,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Fajitas de Bistec",
-   "categoria": "Platillos PM",
-   "precio": 404,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Fajitas de Pechuga",
-   "categoria": "Platillos PM",
-   "precio": 393,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Fajitas de Arrachera",
-   "categoria": "Platillos PM",
-   "precio": 492,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Parrillada para 2",
-   "categoria": "Platillos PM",
-   "precio": 612,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Parrillada para 4",
-   "categoria": "Platillos PM",
-   "precio": 1045,
-   "descripcion": "* No incluye guarniciones estándar",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pastor — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 225,
-   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pastor — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 450,
-   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pastor — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 675,
-   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pastor — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 900,
-   "descripcion": "Kilo completo $900. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 275,
-   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 550,
-   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 825,
-   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 1100,
-   "descripcion": "Kilo completo $1100. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res Encebollado — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 287.5,
-   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res Encebollado — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 575,
-   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res Encebollado — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 862.5,
-   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bistec de Res Encebollado — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 1150,
-   "descripcion": "Kilo completo $1150. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chuleta de Cerdo — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 237.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chuleta de Cerdo — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 475,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chuleta de Cerdo — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 712.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Chuleta de Cerdo — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 950,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pechuga de Pollo — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 237.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pechuga de Pollo — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 475,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pechuga de Pollo — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 712.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Pechuga de Pollo — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 950,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Poc-Chuc — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 237.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Poc-Chuc — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 475,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Poc-Chuc — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 712.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Poc-Chuc — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 950,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Arrachera — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 350,
-   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Arrachera — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 700,
-   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Arrachera — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 1050,
-   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Arrachera — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 1400,
-   "descripcion": "Kilo completo $1400. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Costilla de Res — 250 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 237.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Costilla de Res — 500 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 475,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Costilla de Res — 750 g",
-   "categoria": "Kilos a Domicilio",
-   "precio": 712.5,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Costilla de Res — 1 kg",
-   "categoria": "Kilos a Domicilio",
-   "precio": 950,
-   "descripcion": "Kilo completo $950. Incluye salsa roja, salsa verde, limones y tortillas.",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Crema Española",
-   "categoria": "Postres",
-   "precio": 83,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Crema de Coco",
-   "categoria": "Postres",
-   "precio": 83,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Flan",
-   "categoria": "Postres",
-   "precio": 83,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Queso Napolitano",
-   "categoria": "Postres",
-   "precio": 109,
-   "descripcion": "Receta de la casa",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Coca-Cola",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Botella o lata",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Coca-Cola Light",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Botella o lata",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Coca-Cola sin Azúcar",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Botella o lata",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Toronja Cristal",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Fanta",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Botella",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sprite",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Lata",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sprite Cero",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Lata",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sidral Mundet",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "Botella",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Agua Mineral Cristal",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "300ml",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Agua Purificada",
-   "categoria": "Refrescos",
-   "precio": 53,
-   "descripcion": "600ml",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Topo Chico",
-   "categoria": "Refrescos",
-   "precio": 74,
-   "descripcion": "355ml",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Limonada",
-   "categoria": "Refrescos",
-   "precio": 60,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Limonada con Soda",
-   "categoria": "Refrescos",
-   "precio": 73,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Limonada con Topo Chico",
-   "categoria": "Refrescos",
-   "precio": 100,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Naranjada",
-   "categoria": "Refrescos",
-   "precio": 60,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Naranjada con Soda",
-   "categoria": "Refrescos",
-   "precio": 73,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Naranjada con Topo Chico",
-   "categoria": "Refrescos",
-   "precio": 100,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suero con Soda",
-   "categoria": "Refrescos",
-   "precio": 79,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Suero con Topo Chico",
-   "categoria": "Refrescos",
-   "precio": 95,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Agua de Jamaica",
-   "categoria": "Aguas Frescas",
-   "precio": 60,
-   "descripcion": "Rellenable una vez",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Horchata",
-   "categoria": "Aguas Frescas",
-   "precio": 60,
-   "descripcion": "Rellenable una vez",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Té",
-   "categoria": "Aguas Frescas",
-   "precio": 60,
-   "descripcion": "Rellenable una vez",
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sol",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Superior",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tecate Light",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Heineken 0.0",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Heineken",
-   "categoria": "Cervezas",
-   "precio": 90,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Heineken Silver",
-   "categoria": "Cervezas",
-   "precio": 90,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Indio",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "XX Lager",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "XX Ámbar",
-   "categoria": "Cervezas",
-   "precio": 80,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Amstel Ultra",
-   "categoria": "Cervezas",
-   "precio": 90,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bohemia Clara",
-   "categoria": "Cervezas",
-   "precio": 90,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Bohemia Oscura",
-   "categoria": "Cervezas",
-   "precio": 90,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ceiba Dorada Premium",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ceiba Light Lager",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ceiba Mestiza",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ceiba Stout",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Patito Oscura",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Patito Lager",
-   "categoria": "Cervezas",
-   "precio": 120,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ojo Rojo",
-   "categoria": "Cervezas",
-   "precio": 44,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Vaso de Chelada",
-   "categoria": "Cervezas",
-   "precio": 22,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Vaso de Michelada",
-   "categoria": "Cervezas",
-   "precio": 30,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ron Appleton Especial",
-   "categoria": "Licores y Cocktails",
-   "precio": 117,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ron Bacardí Añejo",
-   "categoria": "Licores y Cocktails",
-   "precio": 113,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ron Bacardí Blanco",
-   "categoria": "Licores y Cocktails",
-   "precio": 106,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ron Bacardí Solera",
-   "categoria": "Licores y Cocktails",
-   "precio": 128,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tequila Don Julio Reposado",
-   "categoria": "Licores y Cocktails",
-   "precio": 168,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tequila Herradura Reposado",
-   "categoria": "Licores y Cocktails",
-   "precio": 139,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tequila Jimador",
-   "categoria": "Licores y Cocktails",
-   "precio": 106,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Tequila Tradicional",
-   "categoria": "Licores y Cocktails",
-   "precio": 113,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Vodka Absolut",
-   "categoria": "Licores y Cocktails",
-   "precio": 123,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Vodka Smirnoff",
-   "categoria": "Licores y Cocktails",
-   "precio": 109,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Whisky Buchanan's",
-   "categoria": "Licores y Cocktails",
-   "precio": 178,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Whisky Chivas Regal",
-   "categoria": "Licores y Cocktails",
-   "precio": 156,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Whisky J.W. Etiqueta Negra",
-   "categoria": "Licores y Cocktails",
-   "precio": 190,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Caribe Cooler",
-   "categoria": "Licores y Cocktails",
-   "precio": 110,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Conga",
-   "categoria": "Licores y Cocktails",
-   "precio": 114,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Conga sin Alcohol",
-   "categoria": "Licores y Cocktails",
-   "precio": 105,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Daiquiri",
-   "categoria": "Licores y Cocktails",
-   "precio": 109,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Daiquiri sin Alcohol",
-   "categoria": "Licores y Cocktails",
-   "precio": 96,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Limonada Eléctrica",
-   "categoria": "Licores y Cocktails",
-   "precio": 109,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Margarita",
-   "categoria": "Licores y Cocktails",
-   "precio": 109,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Margarita sin Alcohol",
-   "categoria": "Licores y Cocktails",
-   "precio": 100,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Piñada",
-   "categoria": "Licores y Cocktails",
-   "precio": 100,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Piña Colada",
-   "categoria": "Licores y Cocktails",
-   "precio": 112,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sangría",
-   "categoria": "Licores y Cocktails",
-   "precio": 112,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Sangría sin Alcohol",
-   "categoria": "Licores y Cocktails",
-   "precio": 100,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Vino Tinto Selección (copa)",
-   "categoria": "Licores y Cocktails",
-   "precio": 102,
-   "descripcion": null,
-   "es_alcohol": true,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Champiñón",
-   "categoria": "Guarniciones Extra",
-   "precio": 35,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Chile Poblano",
-   "categoria": "Guarniciones Extra",
-   "precio": 35,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Chorizo",
-   "categoria": "Guarniciones Extra",
-   "precio": 36,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Guacamole",
-   "categoria": "Guarniciones Extra",
-   "precio": 49,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Rajas",
-   "categoria": "Guarniciones Extra",
-   "precio": 35,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Tocino",
-   "categoria": "Guarniciones Extra",
-   "precio": 36,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Orden Tortilla de Harina",
-   "categoria": "Guarniciones Extra",
-   "precio": 24,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Orden Tortilla de Maíz",
-   "categoria": "Guarniciones Extra",
-   "precio": 22,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Extra Queso",
-   "categoria": "Guarniciones Extra",
-   "precio": 52,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "todas"
-  },
-  {
-   "nombre": "Ensalada de PM",
-   "categoria": "Entradas",
-   "precio": 206,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  },
-  {
-   "nombre": "Sopa de Lima",
-   "categoria": "Comida Regional",
-   "precio": 170,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  },
-  {
-   "nombre": "Papadzules (orden de 5)",
-   "categoria": "Comida Regional",
-   "precio": 194,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  },
-  {
-   "nombre": "Platillo de Cochinita",
-   "categoria": "Comida Regional",
-   "precio": 283,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  },
-  {
-   "nombre": "Tacos de Cochinita (orden de 4)",
-   "categoria": "Comida Regional",
-   "precio": 179,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  },
-  {
-   "nombre": "Francés de Cochinita",
-   "categoria": "Comida Regional",
-   "precio": 224,
-   "descripcion": null,
-   "es_alcohol": false,
-   "popular": false,
-   "alcance": "grandes"
-  }
- ],
- "promociones": [
-  {
-   "codigo": "LUNES2X1PM",
-   "nombre": "Lunes 2x1 en tacos al pastor",
-   "tipo": "bogo",
-   "dias": [
-    1
-   ],
-   "canales": [
-    "recoger"
-   ],
-   "productos": [
-    "Taco Al Pastor (individual)"
-   ],
-   "descripcion": "2x1 en tacos al pastor, solo para recoger (las promociones de PM no aplican a domicilio)."
-  }
- ],
- "promociones_no_modeladas": [
-  {
-   "id": "PROMO-MAR",
-   "nombre": "Martes nachos de pastor con 2 aguas de cortesía",
-   "motivo": "Es un combo con articulos de cortesia (2 aguas gratis, aun sin definir cuales): requiere un tipo de promocion distinto al 2x1. No se carga."
-  }
- ],
- "agente": {
-  "voice_id": "Kore",
-  "saludo": "Buenas tardes, gracias por llamar a Los Taquitos de PM, sucursal {sucursal}. Le atiende su asistente virtual.",
-  "secciones_comportamiento": [
-   "# VOZ Y TRATO",
-   "# REGLAS DURAS",
-   "# SEGURIDAD",
-   "# DATOS DEL NEGOCIO"
+  "horario_general": {
+    "abre": "12:00",
+    "cierra": "01:00",
+    "dias": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "nota": "12 pm a 1 am, doble turno de personal. La hora del cambio de turno no esta definida: no se inventa, se modela una sola franja."
+  },
+  "reglas": {
+    "pedido_minimo_domicilio": 200,
+    "pedido_minimo_recoger": null,
+    "propina_politica": "solo_tarjeta"
+  },
+  "categorias": [
+    "Tacos",
+    "Gringas",
+    "Mestizas",
+    "Alambre",
+    "Tacos Suizos",
+    "Boyo-Hamburguesas",
+    "Flautas de PM",
+    "Chetacos",
+    "Papas de PM",
+    "Francés Suizo",
+    "Entradas",
+    "Frijoles Charros",
+    "Quesadillas",
+    "Queso Fundido",
+    "Nachos",
+    "Pizza Quesobich",
+    "Platillos PM",
+    "Kilos a Domicilio",
+    "Postres",
+    "Refrescos",
+    "Aguas Frescas",
+    "Cervezas",
+    "Licores y Cocktails",
+    "Guarniciones Extra",
+    "Comida Regional"
+  ],
+  "productos": [
+    {
+      "nombre": "Taco Al Pastor (individual)",
+      "categoria": "Tacos",
+      "descripcion": "Orden individual",
+      "es_alcohol": false,
+      "popular": true,
+      "impreso": {
+        "categoria": "Tacos individuales",
+        "item": "Al pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 42,
+        "T5": 42,
+        "T3": 36
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Taco de Rajas (individual)",
+      "categoria": "Tacos",
+      "descripcion": "Orden individual",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos individuales",
+        "item": "Rajas"
+      },
+      "precios_por_sucursal": {
+        "T1": 37,
+        "T5": 37,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Taco de Champiñones (individual)",
+      "categoria": "Tacos",
+      "descripcion": "Orden individual",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos individuales",
+        "item": "Champiñones"
+      },
+      "precios_por_sucursal": {
+        "T1": 38,
+        "T5": 38,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Chorizo (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Chorizo"
+      },
+      "precios_por_sucursal": {
+        "T1": 150,
+        "T5": 150,
+        "T3": 127
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Bistec de Res (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Bistec de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 194,
+        "T5": 194,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Pechuga de Pollo (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Pechuga de pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 184,
+        "T5": 184,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Chuleta de Cerdo (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 184,
+        "T5": 184,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Costilla de Res (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 189,
+        "T5": 189,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Arrachera (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 254,
+        "T5": 254,
+        "T3": 215
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Poc-Chuc (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 189,
+        "T5": 189,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Bistec Encebollado (orden de 3)",
+      "categoria": "Tacos",
+      "descripcion": "Orden de 3 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos (orden de 3)",
+        "item": "Bistec encebollado"
+      },
+      "precios_por_sucursal": {
+        "T1": 202,
+        "T5": 202,
+        "T3": 171
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Pastor",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 194,
+        "T5": 194,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Bistec",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 224,
+        "T5": 224,
+        "T3": 190
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Pechuga de Pollo",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Pechuga de pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 212,
+        "T5": 212,
+        "T3": 184
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Chuleta",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 212,
+        "T5": 212,
+        "T3": 184
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Costilla",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 217,
+        "T5": 217,
+        "T3": 184
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Arrachera",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 299,
+        "T5": 299,
+        "T3": 253
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Gringa de Poc-Chuc",
+      "categoria": "Gringas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Gringas (orden de 2)",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 217,
+        "T5": 217,
+        "T3": 184
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Pastor",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 168,
+        "T5": 168,
+        "T3": 146
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Poc-Chuc",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 175,
+        "T5": 175,
+        "T3": 152
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Bistec",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 194,
+        "T5": 194,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Pechuga",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 184,
+        "T5": 184,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Chuleta",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 184,
+        "T5": 184,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Costilla",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 189,
+        "T5": 189,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Mestiza de Arrachera",
+      "categoria": "Mestizas",
+      "descripcion": "Orden de 2 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Mestizas (orden de 2)",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 269,
+        "T5": 269,
+        "T3": 228
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Pastor",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Bistec",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 283,
+        "T5": 283,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Pechuga",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 269,
+        "T5": 269,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Chuleta",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 269,
+        "T5": 269,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Costilla",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre de Arrachera",
+      "categoria": "Alambre",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Alambre (orden de 5)",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 343,
+        "T5": 343,
+        "T3": 298
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Pastor",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 247,
+        "T5": 247,
+        "T3": 209
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Bistec",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 291,
+        "T5": 291,
+        "T3": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Chuleta",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 284,
+        "T5": 284,
+        "T3": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Pechuga",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 284,
+        "T5": 284,
+        "T3": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Costilla",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 284,
+        "T5": 284,
+        "T3": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Arrachera",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 373,
+        "T5": 373,
+        "T3": 316
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Poc-Chuc",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de poc-chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 284,
+        "T5": 284,
+        "T3": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Chorizo",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de chorizo"
+      },
+      "precios_por_sucursal": {
+        "T1": 209,
+        "T5": 209,
+        "T3": 177
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suizo de Chile Poblano",
+      "categoria": "Tacos Suizos",
+      "descripcion": "Orden de 5 tacos",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Suizo de chile poblano"
+      },
+      "precios_por_sucursal": {
+        "T1": 204,
+        "T5": 204,
+        "T3": 177
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Pastor",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Bistec",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 314,
+        "T5": 314,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Pechuga",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Chuleta",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Costilla",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alambre Suizo de Arrachera",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Alambre suizo de arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 371,
+        "T5": 371,
+        "T3": 323
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos Suizos de Chile Poblano y Bistec",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Tacos suizos de chile poblano y bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 328,
+        "T5": 328,
+        "T3": 278
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
+      "categoria": "Tacos Suizos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Tacos suizos (orden de 5)",
+        "item": "Tacos suizos de chile poblano y arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 378,
+        "T5": 378,
+        "T3": 329
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Boyo-Hamburguesa Sencilla",
+      "categoria": "Boyo-Hamburguesas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Boyo-hamburguesas",
+        "item": "Boyo-hamburguesa sencilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 194,
+        "T5": 194,
+        "T3": 164
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Boyo-Hamburguesa con Queso",
+      "categoria": "Boyo-Hamburguesas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Boyo-hamburguesas",
+        "item": "Boyo-hamburguesa con queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 224,
+        "T5": 224,
+        "T3": 190
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Boyo-Hamburguesa con Queso y Tocino",
+      "categoria": "Boyo-Hamburguesas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Boyo-hamburguesas",
+        "item": "Boyo-hamburguesa con queso y tocino"
+      },
+      "precios_por_sucursal": {
+        "T1": 238,
+        "T5": 238,
+        "T3": 202
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Pastor",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 276
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Bistec de Res",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Bistec de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 299
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Chuleta de Cerdo",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 283
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Pechuga",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 283
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Costilla de Res",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 291
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Arrachera",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 363
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Flauta de Poc-Chuc",
+      "categoria": "Flautas de PM",
+      "descripcion": "Tortilla de maíz grande y frita, queso gratinado, crema, rellena de carne, con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Flautas de PM",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 291
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Pastor",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 291,
+        "T5": 291,
+        "T3": 253
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Champiñón",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Champiñón"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Bistec de Res",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Bistec de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 314,
+        "T5": 314,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Chuleta de Cerdo",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Pechuga",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Costilla de Res",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Poc-Chuc",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 306,
+        "T5": 306,
+        "T3": 266
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chetaco de Arrachera",
+      "categoria": "Chetacos",
+      "descripcion": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; con ensalada de lechuga y tomate",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Chetacos",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 373,
+        "T5": 373,
+        "T3": 316
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Tradicional",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Tradicional"
+      },
+      "precios_por_sucursal": {
+        "T1": 204,
+        "T5": 204,
+        "T3": 177
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Pastor",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 262,
+        "T5": 262,
+        "T3": 228
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Bistec",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 283,
+        "T5": 283,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Chuleta",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Pechuga",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Costilla",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papa Arrachera",
+      "categoria": "Papas de PM",
+      "descripcion": "Papa rellena",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Papas de PM",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 352,
+        "T5": 352,
+        "T3": 298
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Pastor",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 262,
+        "T5": 262,
+        "T3": 228
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Champiñón",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Champiñón"
+      },
+      "precios_por_sucursal": {
+        "T1": 262,
+        "T5": 262,
+        "T3": 228
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Bistec de Res",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Bistec de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 283,
+        "T5": 283,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Chuleta de Cerdo",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Pechuga",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Costilla de Res",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Poc-Chuc",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 276,
+        "T5": 276,
+        "T3": 240
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés Suizo de Arrachera",
+      "categoria": "Francés Suizo",
+      "descripcion": "Francés tostadito con guacamole, frijol, queso gratinado y carne, hecho en horno",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Francés suizo",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 352,
+        "T5": 352,
+        "T3": 298
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijol con Tostada",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Frijol con tostada"
+      },
+      "precios_por_sucursal": {
+        "T1": 93,
+        "T5": 93,
+        "T3": 83
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Guacamole",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Guacamole"
+      },
+      "precios_por_sucursal": {
+        "T1": 142,
+        "T5": 142,
+        "T3": 127
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Carbolla",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Carbolla"
+      },
+      "precios_por_sucursal": {
+        "T1": 106,
+        "T5": 106,
+        "T3": 90
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Cebollas Cambray",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Cebollas cambray"
+      },
+      "precios_por_sucursal": {
+        "T1": 135,
+        "T5": 135,
+        "T3": 114
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chicharrón de Queso",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Chicharrón de queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 172,
+        "T5": 172,
+        "T3": 146
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Alitas de Pollo",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Alitas de pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 204,
+        "T5": 204,
+        "T3": 177
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Papas a la Francesa",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Papas a la francesa"
+      },
+      "precios_por_sucursal": {
+        "T1": 113,
+        "T5": 113,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros Normal",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "Normal"
+      },
+      "precios_por_sucursal": {
+        "T1": 123,
+        "T5": 123,
+        "T3": 114
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros Normal (1/2 orden)",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "1/2 orden normal"
+      },
+      "precios_por_sucursal": {
+        "T1": 82,
+        "T5": 82,
+        "T3": 76
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros con Queso",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "Con queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 142,
+        "T5": 142,
+        "T3": 127
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros con Queso (1/2 orden)",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "1/2 orden con queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 106,
+        "T5": 106,
+        "T3": 95
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros Especiales",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "Especiales"
+      },
+      "precios_por_sucursal": {
+        "T1": 178,
+        "T5": 178,
+        "T3": 159
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Frijoles Charros Especiales (1/2 orden)",
+      "categoria": "Frijoles Charros",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Frijoles charros",
+        "item": "1/2 orden especiales"
+      },
+      "precios_por_sucursal": {
+        "T1": 136,
+        "T5": 136,
+        "T3": 121
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesadilla de Natural",
+      "categoria": "Quesadillas",
+      "descripcion": "De maíz o harina",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Quesadillas",
+        "item": "Natural"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 95
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesadilla de Rajas",
+      "categoria": "Quesadillas",
+      "descripcion": "De maíz o harina",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Quesadillas",
+        "item": "Rajas"
+      },
+      "precios_por_sucursal": {
+        "T1": 124,
+        "T5": 124,
+        "T3": 108
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesadilla de Champiñones",
+      "categoria": "Quesadillas",
+      "descripcion": "De maíz o harina",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Quesadillas",
+        "item": "Champiñones"
+      },
+      "precios_por_sucursal": {
+        "T1": 127,
+        "T5": 127,
+        "T3": 108
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesadilla de Chorizo",
+      "categoria": "Quesadillas",
+      "descripcion": "De maíz o harina",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Quesadillas",
+        "item": "Chorizo"
+      },
+      "precios_por_sucursal": {
+        "T1": 135,
+        "T5": 135,
+        "T3": 114
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Fundido Natural",
+      "categoria": "Queso Fundido",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Queso fundido",
+        "item": "Natural"
+      },
+      "precios_por_sucursal": {
+        "T1": 160,
+        "T5": 160,
+        "T3": 139
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Fundido Rajas",
+      "categoria": "Queso Fundido",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Queso fundido",
+        "item": "Rajas"
+      },
+      "precios_por_sucursal": {
+        "T1": 175,
+        "T5": 175,
+        "T3": 152
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Fundido Champiñones",
+      "categoria": "Queso Fundido",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Queso fundido",
+        "item": "Champiñones"
+      },
+      "precios_por_sucursal": {
+        "T1": 175,
+        "T5": 175,
+        "T3": 152
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Fundido Tocino",
+      "categoria": "Queso Fundido",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Queso fundido",
+        "item": "Tocino"
+      },
+      "precios_por_sucursal": {
+        "T1": 179,
+        "T5": 179,
+        "T3": 152
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Fundido Chorizo",
+      "categoria": "Queso Fundido",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Queso fundido",
+        "item": "Chorizo"
+      },
+      "precios_por_sucursal": {
+        "T1": 179,
+        "T5": 179,
+        "T3": 152
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Pastor",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 328,
+        "T5": 328,
+        "T3": 278
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Pastor (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 232,
+        "T5": 232,
+        "T3": 202
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Champiñón",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Champiñón"
+      },
+      "precios_por_sucursal": {
+        "T1": 320,
+        "T5": 320,
+        "T3": 278
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Champiñón (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de champiñón"
+      },
+      "precios_por_sucursal": {
+        "T1": 232,
+        "T5": 232,
+        "T3": 202
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Bistec",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 373,
+        "T5": 373,
+        "T3": 316
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Bistec (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 262,
+        "T5": 262,
+        "T3": 222
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Pechuga",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 363,
+        "T5": 363,
+        "T3": 316
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Pechuga (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de pechuga"
+      },
+      "precios_por_sucursal": {
+        "T1": 249,
+        "T5": 249,
+        "T3": 222
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Chuleta",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 358,
+        "T5": 358,
+        "T3": 311
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Chuleta (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de chuleta"
+      },
+      "precios_por_sucursal": {
+        "T1": 249,
+        "T5": 249,
+        "T3": 222
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Costilla",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 367,
+        "T5": 367,
+        "T3": 311
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Costilla (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de costilla"
+      },
+      "precios_por_sucursal": {
+        "T1": 255,
+        "T5": 255,
+        "T3": 222
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Arrachera",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 433,
+        "T5": 433,
+        "T3": 367
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Nachos de Arrachera (1/2 orden)",
+      "categoria": "Nachos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Nachos",
+        "item": "1/2 orden de arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 299,
+        "T5": 299,
+        "T3": 253
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Queso",
+      "categoria": "Pizza Quesobich",
+      "descripcion": "Pizza individual, orilla rellena de queso",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 206,
+        "T5": 206
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Pastor",
+      "categoria": "Pizza Quesobich",
+      "descripcion": "Pastor con piña",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 232,
+        "T5": 232
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Bistec",
+      "categoria": "Pizza Quesobich",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 254,
+        "T5": 254
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Pollo",
+      "categoria": "Pizza Quesobich",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 247,
+        "T5": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Chuleta de Cerdo",
+      "categoria": "Pizza Quesobich",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 247,
+        "T5": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Costilla de Res",
+      "categoria": "Pizza Quesobich",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 247,
+        "T5": 247
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich de Arrachera",
+      "categoria": "Pizza Quesobich",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "De arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 291,
+        "T5": 291
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Quesobich Vegetariana",
+      "categoria": "Pizza Quesobich",
+      "descripcion": "Champiñones, cebolla y rajas de chile poblano",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Pizza Quesobich (individual)",
+        "item": "Vegetariana"
+      },
+      "precios_por_sucursal": {
+        "T1": 212,
+        "T5": 212
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Crujientes de Pechuga de Pollo",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Crujientes de pechuga de pollo *"
+      },
+      "precios_por_sucursal": {
+        "T1": 329,
+        "T5": 329,
+        "T3": 304
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Pastor",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 335,
+        "T5": 335,
+        "T3": 291
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Bistec",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de bistec"
+      },
+      "precios_por_sucursal": {
+        "T1": 404,
+        "T5": 404,
+        "T3": 342
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Pechuga de Pollo",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de pechuga de pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 378,
+        "T5": 378,
+        "T3": 329
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Chuleta de Cerdo",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 378,
+        "T5": 378,
+        "T3": 329
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Costilla de Res",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 388,
+        "T5": 388,
+        "T3": 329
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Arrachera",
+      "categoria": "Platillos PM",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 492,
+        "T5": 492,
+        "T3": 417
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Poc-Chuc",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Platillo de poc-chuc *"
+      },
+      "precios_por_sucursal": {
+        "T1": 368,
+        "T5": 368,
+        "T3": 329
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Fajitas de Bistec",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Fajitas de bistec *"
+      },
+      "precios_por_sucursal": {
+        "T1": 404,
+        "T5": 404,
+        "T3": 342
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Fajitas de Pechuga",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Fajitas de pechuga *"
+      },
+      "precios_por_sucursal": {
+        "T1": 393,
+        "T5": 393,
+        "T3": 342
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Fajitas de Arrachera",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Fajitas de arrachera *"
+      },
+      "precios_por_sucursal": {
+        "T1": 492,
+        "T5": 492,
+        "T3": 417
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Parrillada para 2",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Parrillada para 2 *"
+      },
+      "precios_por_sucursal": {
+        "T1": 612,
+        "T5": 612,
+        "T3": 519
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Parrillada para 4",
+      "categoria": "Platillos PM",
+      "descripcion": "* No incluye guarniciones estándar",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Platillos PM",
+        "item": "Parrillada para 4 *"
+      },
+      "precios_por_sucursal": {
+        "T1": 1045,
+        "T5": 1045,
+        "T3": 886
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Pastor — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Pastor"
+      },
+      "precios_por_sucursal": {
+        "T1": 900,
+        "T5": 900,
+        "T3": 750
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Bistec de Res — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Bistec de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 1100,
+        "T5": 1100,
+        "T3": 950
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Bistec de Res Encebollado — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Bistec de res encebollado"
+      },
+      "precios_por_sucursal": {
+        "T1": 1150,
+        "T5": 1150,
+        "T3": 950
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Chuleta de Cerdo — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Chuleta de cerdo"
+      },
+      "precios_por_sucursal": {
+        "T1": 950,
+        "T5": 950,
+        "T3": 800
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Pechuga de Pollo — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Pechuga de pollo"
+      },
+      "precios_por_sucursal": {
+        "T1": 950,
+        "T5": 950,
+        "T3": 800
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Poc-Chuc — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Poc-Chuc"
+      },
+      "precios_por_sucursal": {
+        "T1": 950,
+        "T5": 950,
+        "T3": 800
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Arrachera — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Arrachera"
+      },
+      "precios_por_sucursal": {
+        "T1": 1400,
+        "T5": 1400,
+        "T3": 1200
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Costilla de Res — 1 kg",
+      "categoria": "Kilos a Domicilio",
+      "descripcion": "Kilo completo. Incluye salsa roja, salsa verde, limones y tortillas.",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Kilos a domicilio",
+        "item": "Costilla de res"
+      },
+      "precios_por_sucursal": {
+        "T1": 950,
+        "T5": 950,
+        "T3": 800
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Crema Española",
+      "categoria": "Postres",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Crema española"
+      },
+      "precios_por_sucursal": {
+        "T1": 83,
+        "T5": 83,
+        "T3": 70
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Crema de Coco",
+      "categoria": "Postres",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Crema de coco"
+      },
+      "precios_por_sucursal": {
+        "T1": 83,
+        "T5": 83,
+        "T3": 70
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Jericallas",
+      "categoria": "Postres",
+      "descripcion": "Postre típico de Guadalajara a base de huevo, leche y vainilla",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Jericallas"
+      },
+      "precios_por_sucursal": {
+        "T1": 83,
+        "T5": 83
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Flan",
+      "categoria": "Postres",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Flan"
+      },
+      "precios_por_sucursal": {
+        "T1": 83,
+        "T5": 83,
+        "T3": 70
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Café",
+      "categoria": "Postres",
+      "descripcion": "Café con leche: $11 adicionales (según el menú impreso)",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Café"
+      },
+      "precios_por_sucursal": {
+        "T1": 46,
+        "T5": 46
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Queso Napolitano",
+      "categoria": "Postres",
+      "descripcion": "Receta de la casa",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Postres",
+        "item": "Queso napolitano"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 95
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Coca-Cola",
+      "categoria": "Refrescos",
+      "descripcion": "Botella o lata",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Coca-Cola (botella o lata)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Coca-Cola Light",
+      "categoria": "Refrescos",
+      "descripcion": "Botella o lata",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Coca-Cola Light (botella o lata)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Coca-Cola sin Azúcar",
+      "categoria": "Refrescos",
+      "descripcion": "Botella o lata",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Coca-Cola sin azúcar (botella o lata)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Toronja Cristal",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Toronja Cristal"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Fanta",
+      "categoria": "Refrescos",
+      "descripcion": "Botella",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Fanta (botella)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sprite",
+      "categoria": "Refrescos",
+      "descripcion": "Lata",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Sprite (lata)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sprite Cero",
+      "categoria": "Refrescos",
+      "descripcion": "Lata",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Sprite Cero (lata)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sidral Mundet",
+      "categoria": "Refrescos",
+      "descripcion": "Botella",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Sidral Mundet (botella)"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Agua Mineral Cristal",
+      "categoria": "Refrescos",
+      "descripcion": "300ml",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Agua mineral Cristal 300 ml"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Agua Purificada",
+      "categoria": "Refrescos",
+      "descripcion": "600ml",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Agua purificada 600 ml"
+      },
+      "precios_por_sucursal": {
+        "T1": 53,
+        "T5": 53,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Topo Chico",
+      "categoria": "Refrescos",
+      "descripcion": "355ml",
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Refrescos 355 ml",
+        "item": "Topo Chico 355 ml"
+      },
+      "precios_por_sucursal": {
+        "T1": 74,
+        "T5": 74,
+        "T3": 63
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Limonada",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Limonada"
+      },
+      "precios_por_sucursal": {
+        "T1": 60,
+        "T5": 60,
+        "T3": 51
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Limonada con Soda",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Limonada con soda"
+      },
+      "precios_por_sucursal": {
+        "T1": 73,
+        "T5": 73,
+        "T3": 62
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Limonada con Topo Chico",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Limonada con Topo Chico"
+      },
+      "precios_por_sucursal": {
+        "T1": 100,
+        "T5": 100,
+        "T3": 83
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Naranjada",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Naranjada"
+      },
+      "precios_por_sucursal": {
+        "T1": 60,
+        "T5": 60,
+        "T3": 51
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Naranjada con Soda",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Naranjada con soda"
+      },
+      "precios_por_sucursal": {
+        "T1": 73,
+        "T5": 73,
+        "T3": 62
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Naranjada con Topo Chico",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Naranjada con Topo Chico"
+      },
+      "precios_por_sucursal": {
+        "T1": 100,
+        "T5": 100,
+        "T3": 83
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suero con Soda",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Suero con soda"
+      },
+      "precios_por_sucursal": {
+        "T1": 79,
+        "T5": 79,
+        "T3": 62
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Suero con Topo Chico",
+      "categoria": "Refrescos",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Limonadas, naranjadas y suero",
+        "item": "Suero con Topo Chico"
+      },
+      "precios_por_sucursal": {
+        "T1": 95,
+        "T5": 95,
+        "T3": 83
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Agua de Jamaica",
+      "categoria": "Aguas Frescas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Aguas frescas",
+        "item": "Jamaica"
+      },
+      "precios_por_sucursal": {
+        "T1": 60,
+        "T5": 60,
+        "T3": 51
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Horchata",
+      "categoria": "Aguas Frescas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Aguas frescas",
+        "item": "Horchata"
+      },
+      "precios_por_sucursal": {
+        "T1": 60,
+        "T5": 60,
+        "T3": 51
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Té",
+      "categoria": "Aguas Frescas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Aguas frescas",
+        "item": "Té"
+      },
+      "precios_por_sucursal": {
+        "T1": 60,
+        "T5": 60,
+        "T3": 51
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sol",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Sol"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 66
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Superior",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Superior"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 66
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tecate Light",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Tecate Light"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 66
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Heineken 0.0",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Heineken 0"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Heineken",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Heineken"
+      },
+      "precios_por_sucursal": {
+        "T1": 90,
+        "T5": 90,
+        "T3": 76
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Heineken Silver",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Heineken Silver"
+      },
+      "precios_por_sucursal": {
+        "T5": 90
+      },
+      "fuente_precio": {
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Indio",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Indio"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 66
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "XX Lager",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "XX Lager"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 67
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "XX Ámbar",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "XX Ámbar"
+      },
+      "precios_por_sucursal": {
+        "T1": 80,
+        "T5": 80,
+        "T3": 67
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Amstel Ultra",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Amstel Ultra"
+      },
+      "precios_por_sucursal": {
+        "T1": 90,
+        "T5": 90,
+        "T3": 76
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Bohemia Clara",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Bohemia Clara"
+      },
+      "precios_por_sucursal": {
+        "T1": 90,
+        "T5": 90,
+        "T3": 76
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Bohemia Oscura",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Bohemia Oscura"
+      },
+      "precios_por_sucursal": {
+        "T1": 90,
+        "T5": 90,
+        "T3": 76
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ceiba Dorada Premium",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Ceiba Dorada Premium"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ceiba Light Lager",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Ceiba Light Lager"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ceiba Mestiza",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Ceiba Mestiza"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ceiba Stout",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Ceiba Stout"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Patito Oscura",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Patito Oscura"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Patito Lager",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Patito Lager"
+      },
+      "precios_por_sucursal": {
+        "T1": 120,
+        "T5": 120,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ojo Rojo",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Ojo Rojo"
+      },
+      "precios_por_sucursal": {
+        "T1": 44,
+        "T5": 44,
+        "T3": 38
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Vaso de Chelada",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Vaso de chelada"
+      },
+      "precios_por_sucursal": {
+        "T1": 22,
+        "T5": 22,
+        "T3": 20
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Vaso de Michelada",
+      "categoria": "Cervezas",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cervezas",
+        "item": "Vaso de michelada"
+      },
+      "precios_por_sucursal": {
+        "T1": 30,
+        "T5": 30,
+        "T3": 25
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ron Appleton Especial",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Ron Appleton Especial"
+      },
+      "precios_por_sucursal": {
+        "T1": 117,
+        "T5": 117,
+        "T3": 108
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ron Bacardí Añejo",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Ron Bacardí Añejo"
+      },
+      "precios_por_sucursal": {
+        "T1": 113,
+        "T5": 113,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ron Bacardí Blanco",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Ron Bacardí Blanco"
+      },
+      "precios_por_sucursal": {
+        "T1": 106,
+        "T5": 106,
+        "T3": 95
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ron Bacardí Solera",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Ron Bacardí Solera"
+      },
+      "precios_por_sucursal": {
+        "T1": 128,
+        "T5": 128,
+        "T3": 114
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tequila Don Julio Reposado",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Tequila Don Julio Reposado"
+      },
+      "precios_por_sucursal": {
+        "T1": 168,
+        "T5": 168,
+        "T3": 146
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tequila Herradura Reposado",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Tequila Herradura Reposado"
+      },
+      "precios_por_sucursal": {
+        "T1": 139,
+        "T5": 139,
+        "T3": 121
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tequila Jimador",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Tequila Jimador"
+      },
+      "precios_por_sucursal": {
+        "T1": 106,
+        "T5": 106,
+        "T3": 95
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Tequila Tradicional",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Tequila Tradicional"
+      },
+      "precios_por_sucursal": {
+        "T1": 113,
+        "T5": 113,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Vodka Absolut",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Vodka Absolut"
+      },
+      "precios_por_sucursal": {
+        "T1": 123,
+        "T5": 123,
+        "T3": 114
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Vodka Smirnoff",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Vodka Smirnoff"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 101
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Whisky Buchanan's",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Whisky Buchanans"
+      },
+      "precios_por_sucursal": {
+        "T1": 178,
+        "T5": 178,
+        "T3": 159
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Whisky Chivas Regal",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Whisky Chivas Regal"
+      },
+      "precios_por_sucursal": {
+        "T1": 156,
+        "T5": 156,
+        "T3": 139
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Whisky J.W. Etiqueta Negra",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Licores",
+        "item": "Whisky J.W. Etiqueta Negra"
+      },
+      "precios_por_sucursal": {
+        "T1": 190,
+        "T5": 190,
+        "T3": 139
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Caribe Cooler",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Caribe Cooler"
+      },
+      "precios_por_sucursal": {
+        "T1": 110,
+        "T5": 110,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Conga",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Conga"
+      },
+      "precios_por_sucursal": {
+        "T1": 114,
+        "T5": 114,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Conga sin Alcohol",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Conga sin alcohol"
+      },
+      "precios_por_sucursal": {
+        "T1": 105,
+        "T5": 105,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Daiquiri",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Daiquiri"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Daiquiri sin Alcohol",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Daiquiri sin alcohol"
+      },
+      "precios_por_sucursal": {
+        "T1": 96,
+        "T5": 96,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Limonada Eléctrica",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Limonada eléctrica"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Margarita",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Margarita"
+      },
+      "precios_por_sucursal": {
+        "T1": 109,
+        "T5": 109,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Margarita sin Alcohol",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Margarita sin alcohol"
+      },
+      "precios_por_sucursal": {
+        "T1": 100,
+        "T5": 100,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Piñada",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Piñada"
+      },
+      "precios_por_sucursal": {
+        "T1": 100,
+        "T5": 100,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Piña Colada",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Piña colada"
+      },
+      "precios_por_sucursal": {
+        "T1": 112,
+        "T5": 112,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sangría",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Sangría"
+      },
+      "precios_por_sucursal": {
+        "T1": 112,
+        "T5": 112,
+        "T3": 97
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Sangría sin Alcohol",
+      "categoria": "Licores y Cocktails",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Cocktails",
+        "item": "Sangría sin alcohol"
+      },
+      "precios_por_sucursal": {
+        "T1": 100,
+        "T5": 100,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Vino Tinto Selección (copa)",
+      "categoria": "Licores y Cocktails",
+      "descripcion": "En Pensiones (T3) se sirve Concha y Toro",
+      "es_alcohol": true,
+      "popular": false,
+      "impreso": {
+        "categoria": "Digestivos",
+        "item": "Vino tinto selección, copa (T3: Concha y Toro)"
+      },
+      "precios_por_sucursal": {
+        "T1": 102,
+        "T5": 102,
+        "T3": 89
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Champiñón",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra champiñón"
+      },
+      "precios_por_sucursal": {
+        "T1": 35,
+        "T5": 35,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Chile Poblano",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra chile poblano"
+      },
+      "precios_por_sucursal": {
+        "T1": 35,
+        "T5": 35,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Chorizo",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra chorizo"
+      },
+      "precios_por_sucursal": {
+        "T1": 36,
+        "T5": 36,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Guacamole",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra guacamole"
+      },
+      "precios_por_sucursal": {
+        "T1": 49,
+        "T5": 49,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Rajas",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra rajas"
+      },
+      "precios_por_sucursal": {
+        "T1": 35,
+        "T5": 35,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Tocino",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Extra tocino"
+      },
+      "precios_por_sucursal": {
+        "T1": 36,
+        "T5": 36,
+        "T3": 32
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Orden Tortilla de Harina",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Orden tortilla harina"
+      },
+      "precios_por_sucursal": {
+        "T1": 24,
+        "T5": 24,
+        "T3": 20
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Orden Tortilla de Maíz",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Orden tortilla maíz"
+      },
+      "precios_por_sucursal": {
+        "T1": 22,
+        "T5": 22,
+        "T3": 20
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Extra Queso",
+      "categoria": "Guarniciones Extra",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Guarniciones extra",
+        "item": "Queso"
+      },
+      "precios_por_sucursal": {
+        "T1": 52,
+        "T5": 52,
+        "T3": 45
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso",
+        "T3": "impreso"
+      }
+    },
+    {
+      "nombre": "Ensalada de PM",
+      "categoria": "Entradas",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Entradas",
+        "item": "Ensalada de PM"
+      },
+      "precios_por_sucursal": {
+        "T1": 206,
+        "T5": 206
+      },
+      "fuente_precio": {
+        "T1": "impreso",
+        "T5": "impreso"
+      }
+    },
+    {
+      "nombre": "Sopa de Lima",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Sopa de lima"
+      },
+      "precios_por_sucursal": {
+        "T1": 170
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Papadzules (orden de 5)",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Papadzules"
+      },
+      "precios_por_sucursal": {
+        "T1": 194
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Codzitos (orden de 4)",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Codzitos"
+      },
+      "precios_por_sucursal": {
+        "T1": 131
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Platillo de Cochinita",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Platillo de cochinita"
+      },
+      "precios_por_sucursal": {
+        "T1": 283
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Tacos de Cochinita (orden de 4)",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Tacos de cochinita"
+      },
+      "precios_por_sucursal": {
+        "T1": 179
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    },
+    {
+      "nombre": "Francés de Cochinita",
+      "categoria": "Comida Regional",
+      "descripcion": null,
+      "es_alcohol": false,
+      "popular": false,
+      "impreso": {
+        "categoria": "Comida regional",
+        "item": "Francés de cochinita"
+      },
+      "precios_por_sucursal": {
+        "T1": 224
+      },
+      "fuente_precio": {
+        "T1": "impreso"
+      }
+    }
+  ],
+  "promociones": [
+    {
+      "codigo": "LUNES2X1PM",
+      "nombre": "Lunes 2x1 en tacos al pastor",
+      "tipo": "bogo",
+      "dias": [
+        1
+      ],
+      "canales": [
+        "recoger"
+      ],
+      "productos": [
+        "Taco Al Pastor (individual)"
+      ],
+      "descripcion": "2x1 en tacos al pastor, solo para recoger (las promociones de PM no aplican a domicilio).",
+      "sucursales": [
+        "T2",
+        "T3",
+        "T4"
+      ]
+    }
+  ],
+  "promociones_no_modeladas": [
+    {
+      "id": "PROMO-MAR",
+      "nombre": "Martes nachos de pastor con 2 aguas de cortesía",
+      "motivo": "Pendiente de datos P13 (que aguas de cortesia y si se promete). El tipo cortesia de la migracion 031 si permite modelarlo; se deja sin cargar hasta que Javier conteste."
+    }
+  ],
+  "agente": {
+    "voice_id": "Kore",
+    "saludo": "Gracias por llamar a Los Taquitos de PM, sucursal {sucursal}. Le atiende su asistente virtual.",
+    "secciones_comportamiento": [
+      "# VOZ Y TRATO",
+      "# REGLAS DURAS",
+      "# SEGURIDAD",
+      "# DATOS DEL NEGOCIO"
+    ]
+  },
+  "agente_whatsapp": {
+    "perfil": "taqueria_pm",
+    "nombre_agente": null,
+    "nota_nombre_agente": "El dueño aun no define el nombre del asistente (cuestionario: {Asistente} por definir): no se inventa; el agente se presenta como 'el asistente virtual'.",
+    "tono": "formal_directo",
+    "tiempo_entrega": "de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
+    "salsas": "roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero (soasado o picado con limón)",
+    "promociones": "lunes 2x1 en tacos al pastor, solo para recoger",
+    "motivos_escalacion_apagados": [],
+    "reglas_duras": [
+      "Alcohol: nunca a domicilio (se marca por producto: no_domicilio).",
+      "Pedido minimo a domicilio de $200 (no cuenta descuentos; sin costo de envio).",
+      "Propina solo con tarjeta.",
+      "Tacos de bistec: se venden en ordenes de 3; '3 de bistec' se interpreta como una orden (3 tacos) y se confirma con el cliente antes de cotizar."
+    ]
+  },
+  "pendientes_dueno": [
+    {
+      "id": "cambio_turno",
+      "titulo": "Hora del cambio de turno",
+      "detalle": "El horario es 12:00 a 01:00 con doble turno de personal, pero el dueño no dio la hora del cambio: se modela una sola franja y no se inventa.",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "abierta"
+    },
+    {
+      "id": "whatsapp_sucursal",
+      "titulo": "Numero de WhatsApp por sucursal",
+      "detalle": "Cada sucursal necesita su propio numero de WhatsApp Business; sin el, el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita).",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "coordenadas_t3",
+      "titulo": "Coordenadas de la sucursal Pensiones (T3)",
+      "detalle": "T3 no tiene latitud/longitud (P7, P9): no entra en la asignacion de sucursal por distancia y no se inventan coordenadas hasta que se confirmen.",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "abierta"
+    },
+    {
+      "id": "mapa_colonias",
+      "titulo": "Mapa de colonias por sucursal",
+      "detalle": "Las colonias de reparto de cada sucursal no estan cargadas: no hay cobertura de entrega configurada ni zonas por colonia; solo el punto de cada sucursal.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "catalogo_softrestaurant",
+      "titulo": "Catalogo de SoftRestaurant",
+      "detalle": "Falta el export del catalogo del POS (codigos de producto y modificadores) y la API del distribuidor: las comandas quedan en captura manual.",
+      "quien": "distribuidor_pos",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "nombre_asistente",
+      "titulo": "Nombre del asistente virtual",
+      "detalle": "El dueño no definio como se llama el asistente: el agente se presenta como 'el asistente virtual'.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "combo_martes",
+      "titulo": "Combo del martes (nachos + 2 aguas de cortesia)",
+      "detalle": "El tipo cortesia de la migracion 031 ya permite modelarlo, pero faltan datos (cuales aguas y si se promete, P13): no esta cargado y el agente no lo promete.",
+      "quien": "dueno",
+      "pantalla": "promociones",
+      "estado": "abierta"
+    },
+    {
+      "id": "identidad_t4",
+      "titulo": "Identidad de la sucursal T4",
+      "detalle": "T4 es Galerías (confirmado por Javier, cola-maestra:410): se registra con direccion y telefono de la web, inactiva y sin pedidos hasta que el dueño diga que recibe (P9).",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "resuelta"
+    },
+    {
+      "id": "P1",
+      "titulo": "Horario real, hora del último pedido y puentes",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Horario de la web; mientras tanto, solo las horas en que coinciden el dueño y la web (T2: lun-vie 6 pm-12 am); último pedido según el cierre; cerrada = no toma pedido; preguntar cuáles abren en puentes.",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "abierta"
+    },
+    {
+      "id": "P2",
+      "titulo": "¿El WhatsApp de cada sucursal es el mismo número que su teléfono?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: El WhatsApp de T2 es el 999 953 7122 y deja de contestarse en la app.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P3",
+      "titulo": "¿Qué hace el agente de T2 con un pedido de otra zona o de otra sucursal?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: T2 solo toma pedidos de T2; para otra zona o sucursal da el WhatsApp y el teléfono que le toca.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P4",
+      "titulo": "Paso a humano: ¿a quién, en cuánto tiempo y cómo en la voz de desborde?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Aviso al cajero en el panel y por WhatsApp; preguntar si los 10 s valen para el humano; en voz, recado y la sucursal devuelve la llamada.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P5",
+      "titulo": "¿Qué menú y qué precios usa cada sucursal?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Con tu OK: T2 = menú web de T2 a precios 2026; T7 y T8 = T1-2026; T3 con lista 2025 hasta confirmar.",
+      "quien": "dueno",
+      "pantalla": "productos",
+      "estado": "abierta"
+    },
+    {
+      "id": "P6",
+      "titulo": "2x1 en tacos al pastor: ¿qué días, en qué sucursales y para quién?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: 2x1 solo lunes, solo para recoger, solo en T2, T3 y T4.",
+      "quien": "dueno",
+      "pantalla": "promociones",
+      "estado": "abierta"
+    },
+    {
+      "id": "P7",
+      "titulo": "¿Qué colonias reparte cada sucursal?",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Colonias de T2 y de T7 o T8 al dueño; mientras tanto, la más cercana o un humano.",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "abierta"
+    },
+    {
+      "id": "P8",
+      "titulo": "Aviso de privacidad e historial de pedidos («lo de siempre»)",
+      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Razón social y correo de privacidad antes de conectar números; el aviso menciona el historial.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P9",
+      "titulo": "Dirección de T3 y pedidos en Galerías (T4)",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: T3 con la dirección del dueño (preguntar la de la web); Galerías no toma pedidos.",
+      "quien": "dueno",
+      "pantalla": "sucursales",
+      "estado": "abierta"
+    },
+    {
+      "id": "P10",
+      "titulo": "Productos que no sabemos si se venden en cada sucursal",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Codzitos y flautas en T7 y T8; T5 solo lo impreso; Ensalada no en T2 ni T3; Silver en T5 y T2; Jericallas y Café no en T2.",
+      "quien": "dueno",
+      "pantalla": "productos",
+      "estado": "abierta"
+    },
+    {
+      "id": "P11",
+      "titulo": "Kilos, medias órdenes y piezas sueltas",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Solo kilo completo, solo las medias impresas, bistec en órdenes de 3.",
+      "quien": "dueno",
+      "pantalla": "productos",
+      "estado": "abierta"
+    },
+    {
+      "id": "P12",
+      "titulo": "Ajustes, salsa doble y alergias",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Lista de ajustes; salsa doble no se cobra hasta tener precio; alergia siempre pasa a la sucursal.",
+      "quien": "dueno",
+      "pantalla": "productos",
+      "estado": "abierta"
+    },
+    {
+      "id": "P13",
+      "titulo": "Martes: nachos de pastor con 2 aguas",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Martes: nachos a precio de lista + 2 aguas por orden; no prometer hasta confirmar.",
+      "quien": "dueno",
+      "pantalla": "promociones",
+      "estado": "abierta"
+    },
+    {
+      "id": "P14",
+      "titulo": "Dirección incompleta y datos difíciles por teléfono",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Mínimo calle, número, cruzamientos o referencia y colonia; 2 intentos por teléfono.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P15",
+      "titulo": "Tiempos: lluvia, «¿dónde viene mi pedido?» y recoger «en 10 minutos»",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Lluvia solo si el cliente la menciona (1 h a 1 h 20); retraso = queja; «paso en 10 min» = avisar 15-30 min.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P16",
+      "titulo": "Propina y factura en pedidos a domicilio o para recoger",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Propina sin monto sugerido, en la comanda; factura: anotar y dar el enlace.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P17",
+      "titulo": "Alcohol en pedidos para recoger",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Sin alcohol en ningún pedido hasta saber la licencia; 0.0 y «sin alcohol» sí a domicilio.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P18",
+      "titulo": "Pedidos para más tarde o para otro día",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Para más tarde el mismo día sí; otro día, a un humano.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P19",
+      "titulo": "Pedidos grandes o raros y clientes que no recogen",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Se queda el umbral actual: pasa a la sucursal sin rechazar; preguntar qué es «fuera de lo normal».",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P20",
+      "titulo": "Agregar o cambiar algo de un pedido ya enviado",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Agregar después de confirmar lo decide la sucursal.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P21",
+      "titulo": "Producto agotado en hora pico",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: El cajero marca agotados en el panel.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P22",
+      "titulo": "Audios, fotos y «mándeme el menú» por WhatsApp",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Audios y fotos sí si la plataforma los recibe; menú en PDF solo si el dueño lo da.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P23",
+      "titulo": "Lo que el dueño prometió mandar",
+      "detalle": "Pregunta abierta para Javier (P1). Propuesta provisional: Pedir catálogo SoftRestaurant, llamadas y chats reales, línea base.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P24",
+      "titulo": "Nombres que usa la gente",
+      "detalle": "Pregunta abierta para Javier (P2). Propuesta provisional: Bitek = bistec; preguntar cuántos tacos de pastor y cuál agua.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    },
+    {
+      "id": "P25",
+      "titulo": "Nombre del asistente, celulares de eventos y reservaciones",
+      "detalle": "Pregunta abierta para Javier (P2). Propuesta provisional: Sin nombre propio; sin celulares personales; sin reservaciones.",
+      "quien": "dueno",
+      "pantalla": "configuracion",
+      "estado": "abierta"
+    }
   ]
- },
- "agente_whatsapp": {
-  "perfil": "taqueria_pm",
-  "nombre_agente": null,
-  "nota_nombre_agente": "El dueño aun no define el nombre del asistente (cuestionario: {Asistente} por definir): no se inventa; el agente se presenta como 'el asistente virtual'.",
-  "tono": "formal_directo",
-  "tiempo_entrega": "de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
-  "salsas": "roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero (soasado o picado con limón)",
-  "promociones": "lunes 2x1 en tacos al pastor, solo para recoger",
-  "motivos_escalacion_apagados": [],
-  "reglas_duras": [
-   "Alcohol: nunca a domicilio (se marca por producto: no_domicilio).",
-   "Pedido minimo a domicilio de $200 (no cuenta descuentos; sin costo de envio).",
-   "Propina solo con tarjeta.",
-   "Tacos de bistec: se venden en ordenes de 3; '3 de bistec' se interpreta como una orden (3 tacos) y se confirma con el cliente antes de cotizar."
-  ]
- },
- "pendientes_dueno": [
-  {
-   "id": "cambio_turno",
-   "titulo": "Hora del cambio de turno",
-   "detalle": "El horario es 12:00 a 01:00 con doble turno de personal, pero el dueño no dio la hora del cambio: se modela una sola franja y no se inventa.",
-   "quien": "dueno",
-   "pantalla": "sucursales"
-  },
-  {
-   "id": "whatsapp_sucursal",
-   "titulo": "Numero de WhatsApp por sucursal",
-   "detalle": "Cada sucursal necesita su propio numero de WhatsApp Business; sin el, el agente por WhatsApp real no recibe mensajes (la demo del widget no lo necesita).",
-   "quien": "dueno",
-   "pantalla": "configuracion"
-  },
-  {
-   "id": "coordenadas_t3",
-   "titulo": "Coordenadas de la sucursal Pensiones (T3)",
-   "detalle": "T3 no tiene latitud/longitud: no entra en la asignacion de sucursal por distancia hasta que se confirmen.",
-   "quien": "dueno",
-   "pantalla": "sucursales"
-  },
-  {
-   "id": "mapa_colonias",
-   "titulo": "Mapa de colonias por sucursal",
-   "detalle": "Las colonias de reparto de cada sucursal no estan cargadas: no hay cobertura de entrega configurada ni zonas por colonia; solo el punto de cada sucursal.",
-   "quien": "dueno",
-   "pantalla": "configuracion"
-  },
-  {
-   "id": "catalogo_softrestaurant",
-   "titulo": "Catalogo de SoftRestaurant",
-   "detalle": "Falta el export del catalogo del POS (codigos de producto y modificadores) y la API del distribuidor: las comandas quedan en captura manual.",
-   "quien": "distribuidor_pos",
-   "pantalla": "configuracion"
-  },
-  {
-   "id": "nombre_asistente",
-   "titulo": "Nombre del asistente virtual",
-   "detalle": "El dueño no definio como se llama el asistente: el agente se presenta como 'el asistente virtual'.",
-   "quien": "dueno",
-   "pantalla": "configuracion"
-  },
-  {
-   "id": "combo_martes",
-   "titulo": "Combo del martes (nachos + 2 aguas de cortesia)",
-   "detalle": "Requiere un tipo de promocion de cortesia y definir cuales aguas: no esta cargado y el agente no lo promete.",
-   "quien": "dueno",
-   "pantalla": "promociones"
-  },
-  {
-   "id": "identidad_t4",
-   "titulo": "Identidad de la sucursal T4",
-   "detalle": "T4 esta registrada sin direccion ni telefono (0 pedidos): queda inactiva y sin menu hasta que el dueño confirme que es.",
-   "quien": "dueno",
-   "pantalla": "sucursales"
-  }
- ]
 }

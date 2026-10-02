@@ -2,8 +2,9 @@
 -- arriba: public.seed_pm_demo()). Cada escenario corre en su propio `begin; ... rollback;` y ejecuta el
 -- seed dentro de la transaccion. `\set ON_ERROR_STOP off`: un escenario "RECHAZADO" termina en ERROR real.
 --
---   A. Resultado: 6 sucursales (5 activas, T4 inactiva y sin menu), 251 productos, 42 de alcohol
---      no_domicilio, 1243 precios por sucursal, comida regional solo en sucursales de menu grande.
+--   A. Resultado: 7 sucursales (solo T1 y T3 activas; T2, T4, T7 y T8 sin catalogo; T5 inactiva con el suyo),
+--      237 productos, 42 de alcohol no_domicilio, 669 precios por sucursal (T1 236 + T3 211 + T5 222), cada
+--      sucursal con el precio de su menu impreso, comida regional solo en T1, 0 fracciones de kilo.
 --   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina solo tarjeta), promocion
 --      2x1 del lunes solo recoger, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
@@ -36,34 +37,38 @@ insert into core.membership (user_id, organization_id, property_ids, platform_ro
   ('00000000-0000-0000-0000-0000000e0014', '00000000-0000-0000-0000-0000000e0002', null, 'owner', 'owner')
 on conflict do nothing;
 
-\echo '=== A1. 6 sucursales registradas (T4 incluida) ==='
+\echo '=== A1. 7 sucursales registradas (T4 Galerias y T5 Playa incluidas) ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as sucursales_deberia_ser_6 from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as sucursales_deberia_ser_7 from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== A2. 5 sucursales activas; T4 queda inactiva ==='
+\echo '=== A2. Solo T1 y T3 activas: T2, T7 y T8 esperan P5; T4 y T5 (fuera de temporada) inactivas ==='
 begin;
 select public.seed_pm_demo();
-select count(*) filter (where p.status = 'active')::int as activas_deberia_ser_5 from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*) filter (where p.status = 'active')::int as activas_deberia_ser_2 from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as activas_distintas_de_t1_t3_deberia_ser_0
+  from core.property p join core.organization o on o.id = p.organization_id join restaurantes.branch_detail bd on bd.property_id = p.id
+  where o.slug = 'los-taquitos-de-pm' and p.status = 'active' and bd.slug not in ('prol-montejo', 'pensiones');
 rollback;
 
-\echo '=== A3. T4 (inactiva) no recibe ningun producto ==='
+\echo '=== A3. T2, T4, T7 y T8 (sin catalogo) no reciben ningun precio ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as precios_de_t4_deberia_ser_0 from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id where bd.slug = 't4-pendiente';
+select count(*)::int as precios_de_sucursales_sin_catalogo_deberia_ser_0 from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id where bd.slug in ('fco-montejo', 'galerias', 'garcia-lavin', 'altabrisa');
 rollback;
 
-\echo '=== A4. 251 productos (245 + 6 regionales) ==='
+\echo '=== A4. 237 productos ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as productos_deberia_ser_251 from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as productos_deberia_ser_237 from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== A5. 1243 precios por sucursal (3 de menu grande x 251 + 2 de menu chico x 245) ==='
+\echo '=== A5. 669 precios por sucursal: T1 236 + T3 211 + T5 222 ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as precios_deberia_ser_1243 from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select count(*)::int as precios_deberia_ser_669 from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm';
+select bd.slug, count(*)::int as precios from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' group by bd.slug order by bd.slug;
 rollback;
 
 \echo '=== A6. 42 productos de alcohol marcados no_domicilio ==='
@@ -72,21 +77,50 @@ select public.seed_pm_demo();
 select count(*) filter (where pr.no_domicilio)::int as alcohol_no_domicilio_deberia_ser_42 from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== A7. La comida regional no existe en las sucursales de menu chico (Fco. Montejo y Pensiones) ==='
+\echo '=== A7. Comida regional y Flautas solo en T1; Codzitos solo en T1, T7 y T8 (T7 y T8 solo si Javier aprueba P5) ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as regionales_en_menu_chico_deberia_ser_0
+select count(*)::int as regionales_fuera_de_t1_deberia_ser_0
   from restaurantes.branch_products bp
   join restaurantes.branch_detail bd on bd.property_id = bp.property_id
   join restaurantes.products pr on pr.id = bp.product_id
   join restaurantes.categories c on c.id = pr.category_id
-  where bd.slug in ('fco-montejo', 'pensiones') and c.name = 'Comida Regional';
+  where bd.slug <> 'prol-montejo' and c.name in ('Comida Regional', 'Flautas de PM');
+select count(*)::int as codzitos_fuera_de_t1_t7_t8_deberia_ser_0
+  from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id
+  where pr.name = 'Codzitos (orden de 4)' and bd.slug not in ('prol-montejo', 'garcia-lavin', 'altabrisa');
 rollback;
 
-\echo '=== B1. Politica en las 6 sucursales: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta ==='
+\echo '=== A8. Taco al pastor: $42 en T1, $36 en T3 y $42 en T5 (precio de SU menu impreso); products.price es el de referencia T1 ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as politicas_correctas_deberia_ser_6
+select (
+  (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'prol-montejo') = 42
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'pensiones') = 36
+  and (select bp.price from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Taco Al Pastor (individual)' and bd.slug = 'playa') = 42
+  and (select pr.price from restaurantes.products pr join core.organization o on o.id = pr.organization_id where pr.name = 'Taco Al Pastor (individual)' and o.slug = 'los-taquitos-de-pm') = 42
+)::int as precio_por_sucursal_correcto_deberia_ser_1;
+rollback;
+
+\echo '=== A9. Heineken Silver solo en T5 (T2 solo con P5); Sprite no en T5; Ensalada y Quesobich no en T3; 0 fracciones de kilo disponibles ==='
+begin;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug <> 'playa') = 0
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Heineken Silver' and bd.slug = 'playa') = 1
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name in ('Sprite', 'Sprite Cero') and bd.slug = 'playa') = 0
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id where pr.name = 'Ensalada de PM' and bd.slug = 'pensiones') = 0
+  and (select count(*) from restaurantes.branch_products bp join restaurantes.branch_detail bd on bd.property_id = bp.property_id join restaurantes.products pr on pr.id = bp.product_id join restaurantes.categories c on c.id = pr.category_id where c.name = 'Pizza Quesobich' and bd.slug = 'pensiones') = 0
+)::int as exclusiones_por_sucursal_correctas_deberia_ser_1;
+select count(*)::int as fracciones_de_kilo_disponibles_deberia_ser_0
+  from restaurantes.branch_products bp join restaurantes.products pr on pr.id = bp.product_id
+  where bp.is_available and (pr.name like '% — 250 g' or pr.name like '% — 500 g' or pr.name like '% — 750 g');
+rollback;
+
+\echo '=== B1. Politica en las 7 sucursales: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as politicas_correctas_deberia_ser_7
   from restaurantes.branch_policy bp join core.organization o on o.id = bp.organization_id
   where o.slug = 'los-taquitos-de-pm' and bp.pedido_minimo_domicilio = 200 and bp.pedido_minimo_recoger is null and bp.propina_politica = 'solo_tarjeta'
     and bp.horario->0->>'abre' = '12:00' and bp.horario->0->>'cierra' = '01:00' and jsonb_array_length(bp.horario->0->'dias') = 7;
@@ -107,30 +141,32 @@ select public.seed_pm_demo();
 select count(*)::int as promos_auto_apply_deberia_ser_1 from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.code = 'LUNES2X1PM' and p.auto_apply;
 rollback;
 
-\echo '=== B3. La voz se carga DESHABILITADA (sin gasto de proveedores) en las 5 sucursales activas ==='
+\echo '=== B3. La voz se carga DESHABILITADA (sin gasto de proveedores) en las sucursales activas ==='
 begin;
 select public.seed_pm_demo();
 select count(*) filter (where vc.habilitado)::int as voz_habilitada_deberia_ser_0 from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== B4. Hay configuracion de voz en las 5 sucursales activas, con comportamiento dentro del tope ==='
+\echo '=== B4. Hay configuracion de voz en las 2 sucursales activas (T1 y T3), con comportamiento dentro del tope ==='
 begin;
 select public.seed_pm_demo();
-select count(*) filter (where char_length(vc.comportamiento) between 1 and 8000 and char_length(vc.mensaje_inicial) between 1 and 500)::int as voz_configurada_deberia_ser_5
+select count(*) filter (where char_length(vc.comportamiento) between 1 and 8000 and char_length(vc.mensaje_inicial) between 1 and 500)::int as voz_configurada_deberia_ser_2
   from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== B5. Zonas conocidas: una por sucursal con coordenadas (T3 y T4 no las tienen) ==='
+\echo '=== B5. Zonas conocidas: una por sucursal con coordenadas reales (T3 y T4 no las tienen; las de T5 son aproximadas y no entran) ==='
 begin;
 select public.seed_pm_demo();
 select count(*)::int as zonas_deberia_ser_4 from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== B6. Asignacion por colonia con la funcion SQL real: "Altabrisa" empata con la zona de Victory Altabrisa y devuelve esa sucursal ==='
+\echo '=== B6. Asignacion por colonia con la funcion SQL real: "Altabrisa" empata con la zona de Victory Altabrisa, pero esa sucursal esta inactiva (espera P5): se asigna la activa mas cercana (T1) y nunca la inactiva ==='
 begin;
 select public.seed_pm_demo();
-select count(*)::int as sucursal_asignada_altabrisa_deberia_ser_1
-  from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug = 'altabrisa' and n.distance_km = 0;
+select (
+  (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug = 'altabrisa') = 0
+  and (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug = 'prol-montejo' and n.distance_km > 0) = 1
+)::int as asigna_activa_mas_cercana_y_no_la_inactiva_deberia_ser_1;
 rollback;
 
 \echo '=== C1. IDEMPOTENCIA: ejecutar el seed dos veces deja exactamente los mismos conteos ==='
@@ -138,14 +174,14 @@ begin;
 select public.seed_pm_demo();
 select public.seed_pm_demo();
 select (
-  (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 6
-  and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm') = 6
-  and (select count(*) from restaurantes.categories c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 24
-  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 251
-  and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 1243
+  (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.categories c join core.organization o on o.id = c.organization_id where o.slug = 'los-taquitos-de-pm') = 25
+  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 237
+  and (select count(*) from restaurantes.branch_products bp join core.property p on p.id = bp.property_id join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 669
   and (select count(*) from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm') = 4
-  and (select count(*) from restaurantes.branch_policy bp join core.organization o on o.id = bp.organization_id where o.slug = 'los-taquitos-de-pm') = 6
-  and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm') = 5
+  and (select count(*) from restaurantes.branch_policy bp join core.organization o on o.id = bp.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm') = 2
   and (select count(*) from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id where o.slug = 'los-taquitos-de-pm') = 1
   and (select count(*) from core.organization where slug = 'los-taquitos-de-pm') = 1
 )::int as conteos_estables_tras_dos_corridas_deberia_ser_1;
@@ -158,7 +194,7 @@ update restaurantes.branch_voice_config set habilitado = true where organization
 update restaurantes.promotions set times_used = 7, is_active = false where code = 'LUNES2X1PM';
 select public.seed_pm_demo();
 select (
-  (select count(*) from restaurantes.branch_voice_config where habilitado) = 5
+  (select count(*) from restaurantes.branch_voice_config where habilitado) = 2
   and (select times_used from restaurantes.promotions where code = 'LUNES2X1PM') = 7
   and (select is_active from restaurantes.promotions where code = 'LUNES2X1PM') = false
 )::int as decisiones_del_dueno_intactas_deberia_ser_1;
@@ -254,13 +290,13 @@ select public.seed_pm_demo_marcado();
 select count(*)::int as widget_sigue_apagado_deberia_ser_1 from restaurantes.demo_organization where not activo;
 rollback;
 
-\echo '=== E6. Cuenta real y cuenta demo conviven sin mezclarse: 251 productos en cada una y una sola marca ==='
+\echo '=== E6. Cuenta real y cuenta demo conviven sin mezclarse: 237 productos en cada una y una sola marca ==='
 begin;
 select public.seed_pm_demo();
 select public.seed_pm_demo_marcado();
 select (
-  (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 251
-  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo') = 251
+  (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 237
+  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo') = 237
   and (select count(*) from restaurantes.demo_organization) = 1
 )::int as conviven_sin_mezclarse_deberia_ser_1;
 rollback;

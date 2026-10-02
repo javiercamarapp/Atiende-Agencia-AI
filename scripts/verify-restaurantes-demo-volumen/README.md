@@ -10,7 +10,7 @@ reales. Regenerar: `node scripts/seed-pm-demo/ejecutar.mjs verify-demo-volumen` 
 desincroniza).
 
 Cubre: coherencia (el total de cada pedido = suma de renglones menos el descuento del motor; renglones con nombre y precio del menu
-sembrado), reglas duras (minimo $200 a domicilio, sin alcohol a domicilio, propina solo con tarjeta, promocion solo al recoger), T4
+sembrado), reglas duras (minimo $200 a domicilio, sin alcohol a domicilio, propina solo con tarjeta, promocion solo al recoger), sucursales inactivas
 sin pedidos, contadores de cliente coherentes, rango de telefonos ficticio, handoffs/contactos/conversaciones ligados, idempotencia
 (dos corridas), rechazo de una organizacion NO demo y de telefonos fuera del rango, aislamiento entre organizaciones (cross-tenant, RLS y
 `anon`) y la limpieza (volumen y total) sin tocar el menu ni la configuracion del agente.

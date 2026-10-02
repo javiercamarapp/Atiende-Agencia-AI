@@ -1,5 +1,5 @@
 // Mundo en memoria de "Los Taquitos de PM" construido a partir del plan del seed (R-01): organizacion, sucursales con su
-// menu y precios, politica (horario 12:00-01:00, minimo $200, propina solo con tarjeta), alcohol `no_domicilio` y la
+// catalogo y precio por sucursal, politica (horario 12:00-01:00, minimo $200, propina solo con tarjeta), alcohol `no_domicilio` y la
 // promocion 2x1 del lunes. Es el MISMO repositorio en memoria real (`InMemoryRestaurantesRepository`) que usan las pruebas, asi
 // que sirve para correr el motor real de pedidos sin base de datos: el seed de volumen lo usa para verificar y para
 // generar su SQL de prueba (scripts/verify-restaurantes-demo-volumen).
@@ -44,9 +44,11 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
     const propertyId = newId("sucursal", b.slug);
     propertyBySlug.set(b.slug, propertyId);
     repo.seedBranch({ propertyId, organizationId, name: b.name, slug: b.slug, status: b.status, phone: b.phone, address: b.address, lat: b.lat, lng: b.lng });
-    if (!b.menu) continue;
+    if (b.catalogSize === 0) continue;
+    // Precio y disponibilidad POR SUCURSAL: sin llave en branchPrices el producto no existe en esa sucursal.
     for (const p of plan.products) {
-      if (b.menu === "grande" || p.scope === "todas") repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price: p.price, isAvailable: true });
+      const price = p.branchPrices[b.id];
+      if (price !== undefined) repo.seedBranchProduct({ propertyId, productId: productIds.get(p.name)!, price, isAvailable: true });
     }
     repo.seedBranchPolicy(propertyId, {
       horario: plan.policy.horario as never,

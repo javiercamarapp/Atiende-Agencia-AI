@@ -32,16 +32,17 @@ async function main(): Promise<number> {
   const plan = buildPmSeedPlan(data, agent, { demo: args.demo });
   const s = plan.summary;
   console.log(`Plan del seed "${plan.organization.name}" (slug ${plan.organization.slug}, datos ${data.version})`);
-  console.log(`  sucursales: ${s.branches} (${s.activeBranches} activas; T4 registrada e inactiva, sin menu)`);
+  console.log(`  sucursales: ${s.branches} (${s.activeBranches} activas; T4 registrada e inactiva; T2, T7 y T8 sin catalogo hasta la respuesta P5)`);
+  for (const b of plan.branches) console.log(`    - ${b.name} (${b.status}): ${b.catalogSize} productos`);
   console.log(`  productos: ${s.products} (${s.alcoholProducts} de alcohol => no_domicilio); precios por sucursal: ${s.branchProducts}`);
   console.log(`  zonas conocidas: ${s.zones} (puntos de las sucursales con coordenadas; el mapa de colonias del dueño sigue pendiente)`);
   console.log(`  promociones: ${s.promotions} cargada(s)`);
   for (const skipped of s.skippedPromotions) console.log(`  promocion NO cargada -> ${skipped}`);
-  console.log("  voz: se carga DESHABILITADA en las 5 sucursales activas (sin gasto de proveedores)");
+  console.log(`  voz: se carga DESHABILITADA en las ${plan.voice.greetings.length} sucursales activas (sin gasto de proveedores)`);
   console.log(`  agente de WhatsApp: perfil ${plan.whatsappAgent.perfil}, tono ${plan.whatsappAgent.toneStyle}, tiempo de entrega "${plan.whatsappAgent.deliveryTimeText}" (re-ejecutar no pisa lo que el dueño cambie)`);
   console.log(`  modo: ${plan.demo ? "DEMO (marca restaurantes.demo_organization)" : "cuenta normal (sin marca demo)"}`);
-  console.log(`  pendientes del dueño (no se inventan): ${plan.pendientes.length}`);
-  for (const p of plan.pendientes) console.log(`    - ${p.titulo}`);
+  console.log(`  pendientes del dueño (no se inventan): ${plan.pendientes.filter((x) => x.estado !== "resuelta").length} abiertos de ${plan.pendientes.length}`);
+  for (const p of plan.pendientes.filter((x) => x.estado !== "resuelta")) console.log(`    - ${p.titulo}`);
 
   if (!args.apply) {
     console.log("\nDRY-RUN: no se toco ninguna base. Para escribir: SEED_DATABASE_URL=... con --apply (ver --help).");

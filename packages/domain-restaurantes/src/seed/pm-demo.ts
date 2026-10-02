@@ -8,12 +8,14 @@
 // real `scripts/verify-restaurantes-seed-pm/` (que lo ejecuta dos veces para probar idempotencia).
 //
 // Reglas del modelo PM que el plan garantiza (y `buildPmSeedPlan` verifica antes de emitir SQL):
-//   * 6 sucursales. Solo 5 traen datos (T1, T2, T3, T7, T8); T4 se carga como sucursal REGISTRADA e
-//     INACTIVA, sin menu: no recibe domicilios ni se le asigna nada hasta que el dueño confirme su
-//     identidad.
+//   * 7 sucursales (T1, T2, T3, T4 Galerias, T5 Playa/Chicxulub, T7, T8). El catalogo y el precio de cada una
+//     salen de `precios_por_sucursal` de cada producto, ligados a los menus impresos T1-2026, T5-2026 y T3-2025
+//     (scripts/seed-pm-demo/data/menus-impresos/): una sucursal sin llave de precio NO vende ese producto.
+//     T2, T7 y T8 no se cargan mientras Javier no conteste P5 (quedan inactivas y sin catalogo); T4 se registra
+//     inactiva y sin catalogo (sin pedidos, P9); T5 queda inactiva (fuera de temporada) pero con su catalogo.
 //   * Todo producto de alcohol queda `no_domicilio = true` (el cuestionario prohibe alcohol a domicilio).
-//   * Menu grande (T1, T7, T8) = 251 productos; menu chico (T2, T3) = los 245 sin comida regional.
-//     Precios iguales en todas las sucursales (cuestionario).
+//   * `products.price` es solo el precio de REFERENCIA (T1-2026, o el primero disponible); la cotizacion usa el
+//     `branch_products.price` de cada sucursal. Nunca hay centavos ni fracciones de kilo (P11).
 //   * Horario 12:00-01:00 todos los dias (una franja: la hora de cambio de turno no esta definida y no
 //     se inventa), pedido minimo a domicilio $200, propina solo con tarjeta.
 //   * Promociones: solo el 2x1 del lunes (solo recoger). El combo del martes no se modela (ver
@@ -31,18 +33,29 @@ export interface PmSeedBranch {
   readonly telefono: string | null;
   readonly lat: number | null;
   readonly lng: number | null;
-  readonly menu: "grande" | "chico" | null;
+  /** `true` = las coordenadas son aproximadas (del repo): se guardan en la sucursal pero NO entran en `known_zone`. */
+  readonly coordenadas_aproximadas?: boolean;
+  /** Una sucursal activa necesita su catalogo (>= `MIN_PRODUCTOS_SUCURSAL_ACTIVA` productos). */
   readonly activa: boolean;
+  readonly zona_cliente?: string;
+  readonly nota?: string;
 }
+
+/** `impreso` = precio del menu impreso de la sucursal; `provisional_P5` = propuesta pendiente del OK de Javier (solo T2, T7 y T8). */
+export type PmFuentePrecio = "impreso" | "provisional_P5";
 
 export interface PmSeedProduct {
   readonly nombre: string;
   readonly categoria: string;
-  readonly precio: number;
   readonly descripcion: string | null;
   readonly es_alcohol: boolean;
   readonly popular: boolean;
-  readonly alcance: "todas" | "grandes";
+  /** Item de los menus impresos del que sale el precio (categoria + nombre impreso). Obligatorio si alguna fuente es `impreso`. */
+  readonly impreso?: { readonly categoria: string; readonly item: string };
+  /** id de sucursal (T1, T3...) -> precio entero en MXN. Si una sucursal no tiene la llave, el producto no existe en ella. */
+  readonly precios_por_sucursal: Readonly<Record<string, number>>;
+  /** Procedencia de cada precio; mismas llaves que `precios_por_sucursal`. */
+  readonly fuente_precio: Readonly<Record<string, PmFuentePrecio>>;
 }
 
 export interface PmSeedPromotion {
@@ -53,6 +66,8 @@ export interface PmSeedPromotion {
   readonly canales: readonly ("domicilio" | "recoger")[];
   readonly productos: readonly string[];
   readonly descripcion: string;
+  /** Sucursales donde aplica (dato para la migracion de alcance por sucursal de PM-C2; hoy el SQL del seed no lo usa). */
+  readonly sucursales?: readonly string[];
 }
 
 export interface PmSeedData {
@@ -88,6 +103,8 @@ export interface PmSeedPendiente {
   readonly detalle: string;
   readonly quien: "dueno" | "distribuidor_pos" | "plataforma";
   readonly pantalla: string;
+  /** `resuelta` = Javier ya contesto (p. ej. `P5` abre la carga de T2, T7 y T8). Sin valor = abierta. */
+  readonly estado?: "abierta" | "resuelta";
 }
 
 export interface PmAgentFiles {
@@ -170,6 +187,8 @@ export function validarArchivosAgente(files: PmAgentFiles): { readonly herramien
 export interface PmSeedPlan {
   readonly organization: { readonly name: string; readonly slug: string; readonly timezone: string };
   readonly branches: readonly {
+    /** id del seed (T1, T2...): llave de `products[].branchPrices`. */
+    readonly id: string;
     readonly name: string;
     readonly slug: string;
     readonly status: "active" | "inactive";
@@ -178,17 +197,20 @@ export interface PmSeedPlan {
     readonly lat: number | null;
     readonly lng: number | null;
     readonly displayOrder: number;
-    readonly menu: "grande" | "chico" | null;
+    /** Cuantos productos vende la sucursal (0 = registrada sin catalogo). */
+    readonly catalogSize: number;
   }[];
   readonly categories: readonly { readonly name: string; readonly slug: string; readonly displayOrder: number }[];
   readonly products: readonly {
     readonly name: string;
     readonly categorySlug: string;
+    /** Precio de REFERENCIA (T1-2026 o el primero disponible): la cotizacion usa `branchPrices`. */
     readonly price: number;
+    /** id de sucursal -> precio de esa sucursal. */
+    readonly branchPrices: Readonly<Record<string, number>>;
     readonly description: string | null;
     readonly isPopular: boolean;
     readonly noDomicilio: boolean;
-    readonly scope: "todas" | "grandes";
     readonly displayOrder: number;
   }[];
   readonly zones: readonly { readonly name: string; readonly lat: number; readonly lng: number }[];
@@ -201,6 +223,8 @@ export interface PmSeedPlan {
     readonly daysOfWeek: readonly number[];
     readonly channels: readonly string[];
     readonly productNames: readonly string[];
+    /** Ids de sucursal donde aplica (PM-C2); `null` = sin restriccion declarada. El SQL del seed todavia no lo usa. */
+    readonly branchIds: readonly string[] | null;
     /** Se aplica sola (sin codigo) al cotizar en el canal y dia que corresponden. El agente de WhatsApp NO manda codigos de
      * promocion: sin esto el 2x1 del lunes nunca se aplicaria y el cliente no veria el descuento en la cotizacion. */
     readonly autoApply: true;
@@ -231,6 +255,8 @@ export interface PmSeedPlan {
     readonly zones: number;
     readonly promotions: number;
     readonly skippedPromotions: readonly string[];
+    /** Productos por id de sucursal. */
+    readonly productsByBranch: Readonly<Record<string, number>>;
   };
 }
 
@@ -249,6 +275,20 @@ const TONOS = ["calido_cercano", "formal_directo", "profesional_neutro", "divert
 
 export const PM_DEMO_SLUG_SUFFIX = "-demo";
 
+/** Una sucursal ACTIVA vende al menos esto: el menu impreso mas chico (T3-2025) trae 211 productos. */
+export const MIN_PRODUCTOS_SUCURSAL_ACTIVA = 150;
+/** Sucursales cuyo catalogo espera la respuesta P5 de Javier (plan-integracion-cerebro, «Lo que NO entra»). */
+export const SUCURSALES_PENDIENTES_P5: readonly string[] = ["T2", "T7", "T8"];
+const PRECIO_BASE_ORDEN: readonly string[] = ["T1", "T5", "T3"];
+const FRACCION_DE_KILO = / — (250|500|750) g$/;
+
+/** Lo que cada sucursal NO vende segun los menus impresos y el repo (plan PM-C1 y P10): por categoria o por nombre. */
+const EXCLUSIONES_POR_SUCURSAL: Readonly<Record<string, { readonly categorias: readonly string[]; readonly nombres: readonly string[] }>> = {
+  T2: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Ensalada de PM", "Jericallas", "Café"] },
+  T3: { categorias: ["Comida Regional", "Flautas de PM", "Pizza Quesobich"], nombres: ["Ensalada de PM"] },
+  T5: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Sprite", "Sprite Cero"] },
+};
+
 export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: PmSeedOptions = {}): PmSeedPlan {
   validarArchivosAgente(agent);
 
@@ -260,22 +300,23 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   }
 
   // --- sucursales -----------------------------------------------------------------------------
-  if (data.sucursales.length !== 6) fail(`PM tiene 6 sucursales; los datos traen ${data.sucursales.length}.`);
+  if (data.sucursales.length !== 7) fail(`PM tiene 7 sucursales; los datos traen ${data.sucursales.length}.`);
   const slugs = new Set<string>();
   const nombres = new Set<string>();
+  const branchIds = new Set<string>();
   for (const b of data.sucursales) {
+    if (!/^[A-Za-z0-9]+$/.test(b.id) || branchIds.has(b.id)) fail(`Id de sucursal invalido o duplicado: ${b.id}`);
+    branchIds.add(b.id);
     if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(b.slug)) fail(`Slug de sucursal invalido: ${b.slug}`);
     if (slugs.has(b.slug) || nombres.has(b.nombre)) fail(`Sucursal duplicada: ${b.nombre}`);
     slugs.add(b.slug);
     nombres.add(b.nombre);
     if ((b.lat === null) !== (b.lng === null)) fail(`${b.nombre}: lat y lng deben venir juntas.`);
     if (b.lat !== null && (b.lat < -90 || b.lat > 90 || (b.lng as number) < -180 || (b.lng as number) > 180)) fail(`${b.nombre}: coordenadas fuera de rango.`);
-    if (b.activa && b.menu === null) fail(`${b.nombre}: una sucursal activa necesita menu (grande|chico).`);
-    if (!b.activa && b.menu !== null) fail(`${b.nombre}: una sucursal inactiva no recibe menu.`);
   }
-  const inactivas = data.sucursales.filter((b) => !b.activa);
-  if (inactivas.length !== 1 || inactivas[0]!.id !== "T4") fail("La unica sucursal inactiva debe ser T4 (pendiente de datos).");
-  if (data.sucursales.filter((b) => b.activa).length !== 5) fail("Deben ser 5 sucursales activas (T1, T2, T3, T7, T8).");
+  const t4 = data.sucursales.find((b) => b.id === "T4");
+  if (!t4 || t4.activa) fail("T4 (Galerias) debe estar registrada como inactiva: no recibe pedidos (P9).");
+  const p5Resuelta = (data.pendientes_dueno ?? []).some((p) => p.id === "P5" && p.estado === "resuelta");
 
   // --- horario / reglas ------------------------------------------------------------------------
   let horario: ReturnType<typeof validarHorario>;
@@ -294,40 +335,64 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   const categoriaPorNombre = new Map(categorias.map((c) => [c.name, c.slug]));
   if (categoriaPorNombre.size !== categorias.length || new Set(categorias.map((c) => c.slug)).size !== categorias.length) fail("Categorias duplicadas.");
   const productNames = new Set<string>();
+  const productsByBranch: Record<string, number> = Object.fromEntries(data.sucursales.map((br) => [br.id, 0]));
   const products = data.productos.map((p, index) => {
     const categorySlug = categoriaPorNombre.get(p.categoria);
     if (!categorySlug) fail(`Producto "${p.nombre}": categoria desconocida "${p.categoria}".`);
     if (!p.nombre.trim() || productNames.has(p.nombre)) fail(`Producto duplicado o sin nombre: "${p.nombre}".`);
     productNames.add(p.nombre);
-    if (!esPrecio(p.precio)) fail(`Producto "${p.nombre}": precio invalido.`);
-    if (p.alcance !== "todas" && p.alcance !== "grandes") fail(`Producto "${p.nombre}": alcance invalido.`);
+    if (FRACCION_DE_KILO.test(p.nombre)) fail(`Producto "${p.nombre}": las fracciones de kilo (250, 500 y 750 g) no estan en ningun menu impreso (P11); solo se vende el kilo completo.`);
+    const branchPrices: Record<string, number> = {};
+    const entradas = Object.entries(p.precios_por_sucursal ?? {});
+    if (entradas.length === 0) fail(`Producto "${p.nombre}": no tiene precio en ninguna sucursal.`);
+    for (const [branchId, price] of entradas) {
+      if (!branchIds.has(branchId)) fail(`Producto "${p.nombre}": sucursal desconocida "${branchId}" en precios_por_sucursal.`);
+      if (!esPrecio(price)) fail(`Producto "${p.nombre}": precio invalido en ${branchId}.`);
+      if (price % 1 !== 0) fail(`Producto "${p.nombre}": precio con centavos en ${branchId} (${price}); los menus impresos solo traen pesos enteros.`);
+      const fuente = p.fuente_precio?.[branchId];
+      if (fuente !== "impreso" && fuente !== "provisional_P5") fail(`Producto "${p.nombre}": falta fuente_precio (impreso | provisional_P5) en ${branchId}.`);
+      if (fuente === "impreso" && !p.impreso) fail(`Producto "${p.nombre}": un precio impreso necesita el item del menu en \`impreso\`.`);
+      const pendienteP5 = SUCURSALES_PENDIENTES_P5.includes(branchId);
+      if (pendienteP5 && !p5Resuelta) fail(`Producto "${p.nombre}": ${branchId} no se carga mientras Javier no conteste P5 (pendientes_dueno P5 resuelta).`);
+      if (fuente === "provisional_P5" && !pendienteP5) fail(`Producto "${p.nombre}": provisional_P5 solo aplica a T2, T7 y T8 (${branchId}).`);
+      if (fuente === "impreso" && pendienteP5) fail(`Producto "${p.nombre}": ${branchId} no tiene menu impreso; su precio es provisional_P5.`);
+      const exclusion = EXCLUSIONES_POR_SUCURSAL[branchId];
+      if (exclusion && (exclusion.categorias.includes(p.categoria) || exclusion.nombres.includes(p.nombre))) fail(`Producto "${p.nombre}": ${branchId} no lo vende segun su menu (plan PM-C1, P10).`);
+      if (branchId === "T4") fail(`Producto "${p.nombre}": T4 (Galerias) no recibe pedidos ni catalogo (P9).`);
+      branchPrices[branchId] = price;
+      productsByBranch[branchId] = (productsByBranch[branchId] ?? 0) + 1;
+    }
+    for (const branchId of Object.keys(p.fuente_precio ?? {})) if (!(branchId in branchPrices)) fail(`Producto "${p.nombre}": fuente_precio sin precio en ${branchId}.`);
+    const baseId = [...PRECIO_BASE_ORDEN, ...data.sucursales.map((br) => br.id)].find((id) => id in branchPrices)!;
     return {
       name: p.nombre,
       categorySlug,
-      price: p.precio,
+      price: branchPrices[baseId]!,
+      branchPrices,
       description: p.descripcion ?? null,
       isPopular: p.popular,
       // Alcohol: nunca a domicilio (regla dura del cuestionario). La marca vive en el producto, no en la categoria:
       // Cervezas y Licores mezclan bebidas con y sin alcohol.
       noDomicilio: p.es_alcohol,
-      scope: p.alcance,
       displayOrder: index,
     };
   });
   const alcohol = products.filter((p) => p.noDomicilio).length;
   if (alcohol === 0) fail("El menu no marca ningun producto de alcohol como no_domicilio.");
 
-  const grandes = data.sucursales.filter((b) => b.menu === "grande").length;
-  const chicas = data.sucursales.filter((b) => b.menu === "chico").length;
-  const soloGrandes = products.filter((p) => p.scope === "grandes").length;
-  const branchProducts = grandes * products.length + chicas * (products.length - soloGrandes);
+  for (const b of data.sucursales) {
+    const n = productsByBranch[b.id] ?? 0;
+    if (b.activa && n < MIN_PRODUCTOS_SUCURSAL_ACTIVA) fail(`${b.nombre}: una sucursal activa necesita al menos ${MIN_PRODUCTOS_SUCURSAL_ACTIVA} productos (tiene ${n}).`);
+  }
+  const branchProducts = Object.values(productsByBranch).reduce((acc, n) => acc + n, 0);
 
   // --- zonas: solo los puntos de referencia de sucursales CON coordenadas --------------------------
   // `known_zone` empata colonia/referencia -> punto (lat/lng). El mapa de colonias del dueño aun no
   // existe, asi que NO se inventan colonias ni coordenadas: cada sucursal con coordenadas aporta su
-  // propio punto (el nombre "Victory Altabrisa" ya empata con "Altabrisa"). Sin cobertura de entrega
+  // propio punto (el nombre "Victory Altabrisa" ya empata con "Altabrisa"). Las coordenadas APROXIMADAS (T5) no
+  // entran: una zona con un punto estimado no es un punto de referencia real. Sin cobertura de entrega
   // configurada (branch_delivery_zone): no se restringe ninguna entrega.
-  const zones = data.sucursales.filter((b) => b.lat !== null).map((b) => ({ name: b.nombre, lat: b.lat as number, lng: b.lng as number }));
+  const zones = data.sucursales.filter((b) => b.lat !== null && !b.coordenadas_aproximadas).map((b) => ({ name: b.nombre, lat: b.lat as number, lng: b.lng as number }));
 
   // --- promociones ---------------------------------------------------------------------------------
   const codes = new Set<string>();
@@ -340,7 +405,8 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     if (p.canales.includes("domicilio")) fail(`${p.codigo}: las promociones de PM no aplican a domicilio.`);
     if (p.canales.length === 0) fail(`${p.codigo}: debe declarar al menos un canal.`);
     for (const nombre of p.productos) if (!productNames.has(nombre)) fail(`${p.codigo}: el producto elegible "${nombre}" no existe en el menu.`);
-    return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos], autoApply: true as const };
+    for (const id of p.sucursales ?? []) if (!branchIds.has(id)) fail(`${p.codigo}: la sucursal "${id}" no existe.`);
+    return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos], branchIds: p.sucursales ? [...p.sucursales] : null, autoApply: true as const };
   });
 
   // --- agente de WhatsApp (config editable del perfil PM) --------------------------------------------------
@@ -361,6 +427,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   const idsPendientes = new Set<string>();
   for (const pend of pendientes) {
     if (!pend.id || idsPendientes.has(pend.id) || !pend.titulo || !pend.detalle) fail(`Pendiente del dueño invalido o duplicado: ${pend.id}`);
+    if (pend.estado !== undefined && pend.estado !== "abierta" && pend.estado !== "resuelta") fail(`Pendiente ${pend.id}: estado invalido.`);
     idsPendientes.add(pend.id);
   }
 
@@ -382,6 +449,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       timezone: data.organizacion.zona_horaria,
     },
     branches: data.sucursales.map((b, index) => ({
+      id: b.id,
       name: b.nombre,
       slug: b.slug,
       status: b.activa ? "active" : "inactive",
@@ -390,7 +458,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       lat: b.lat,
       lng: b.lng,
       displayOrder: index,
-      menu: b.menu,
+      catalogSize: productsByBranch[b.id] ?? 0,
     })),
     categories: categorias,
     products,
@@ -419,6 +487,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       zones: zones.length,
       promotions: promotions.length,
       skippedPromotions: data.promociones_no_modeladas.map((p) => `${p.id}: ${p.motivo}`),
+      productsByBranch,
     },
   };
 }
@@ -534,7 +603,7 @@ begin
     from jsonb_to_recordset(v->'categories') as c(name text, slug text, "displayOrder" int)
     on conflict (organization_id, slug) do update set name = excluded.name, display_order = excluded.display_order;
 
-  -- 4) productos (identidad: organizacion + nombre; alcohol = no_domicilio)
+  -- 4) productos (identidad: organizacion + nombre; alcohol = no_domicilio; price = precio de REFERENCIA, el de cada sucursal va en 5)
   update restaurantes.products pr
     set category_id = c.id, description = x.description, price = x.price, is_popular = x."isPopular", display_order = x."displayOrder",
         no_domicilio = x."noDomicilio", updated_at = now()
@@ -547,14 +616,17 @@ begin
     join restaurantes.categories c on c.organization_id = v_org and c.slug = x."categorySlug"
     where not exists (select 1 from restaurantes.products pr where pr.organization_id = v_org and pr.name = x.name);
 
-  -- 5) precio y disponibilidad por sucursal (menu grande = todo; chico = sin comida regional; T4 = nada)
-  insert into restaurantes.branch_products (property_id, product_id, price)
-    select p.id, pr.id, x.price
-    from jsonb_to_recordset(v->'branches') as b(name text, menu text)
+  -- 5) precio y disponibilidad POR SUCURSAL: una fila solo por cada sucursal con llave de precio en branchPrices (impreso de
+  -- cada sucursal); sin llave el producto no existe ahi. Insertar deja is_available = true; re-ejecutar solo repara el precio
+  -- y NUNCA vuelve a prender un producto que el cajero marco agotado.
+  insert into restaurantes.branch_products (property_id, product_id, price, is_available)
+    select p.id, pr.id, bpr.value::numeric, true
+    from jsonb_to_recordset(v->'branches') as b(id text, name text)
     join core.property p on p.organization_id = v_org and p.name = b.name
-    cross join jsonb_to_recordset(v->'products') as x(name text, price numeric, scope text)
+    cross join jsonb_to_recordset(v->'products') as x(name text, "branchPrices" jsonb)
+    cross join lateral jsonb_each_text(x."branchPrices") as bpr(key, value)
     join restaurantes.products pr on pr.organization_id = v_org and pr.name = x.name
-    where b.menu is not null and (b.menu = 'grande' or x.scope = 'todas')
+    where bpr.key = b.id
     on conflict (property_id, product_id) do update set price = excluded.price, updated_at = now();
 
   -- 6) zonas conocidas: puntos de referencia de las sucursales con coordenadas
