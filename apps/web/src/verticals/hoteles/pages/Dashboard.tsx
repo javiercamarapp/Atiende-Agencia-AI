@@ -102,7 +102,6 @@ function useCarga<T>(activo: boolean, cargar: () => Promise<T>, dependencias: re
       cancelado = true;
     };
     // `cargar` se recrea en cada render: la identidad de la carga la fijan `dependencias`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activo, ...dependencias]);
   return carga;
 }
