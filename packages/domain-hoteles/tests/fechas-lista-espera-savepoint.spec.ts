@@ -32,7 +32,7 @@ const input = { propertyId: P, reservationId: R, esperadaEntrada: "2031-07-03", 
 
 describe("PostgresCambioFechasRepository.aplicarCambio", () => {
   it("base sin la migracion 041 (42883) -> CambioFechasUnavailableError y la sesion sigue utilizable", async () => {
-    const s = new AbortAwareFakeSession([{ match: /change_reservation_dates/i, respond: () => pgError("42883", "function hoteles.change_reservation_dates does not exist") }, siguiente]);
+    const s = new AbortAwareFakeSession([{ match: /change_reservation_dates/i, respond: () => pgError("42883", "function hoteles.change_reservation_dates(uuid, date, date, date, date, numeric, numeric, text) does not exist") }, siguiente]);
     await expect(new PostgresCambioFechasRepository(s).aplicarCambio(input)).rejects.toBeInstanceOf(CambioFechasUnavailableError);
     await despues(s);
     expect(s.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
