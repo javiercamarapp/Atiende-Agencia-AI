@@ -1,3 +1,9 @@
+// Rn-23 · además de los 5 POST: GET .../configuracion-precios (lee todo lo guardado) y
+// PATCH/DELETE por id de temporada, descuento por duración, min-stay y regla de canal.
+// La tarifa base se versiona por `vigente_desde` (se edita con el mismo POST, nunca se borra).
+// DELETE de temporada/descuento/min-stay requiere la migración 030: contra la base sin migrar
+// Postgres responde 42501 y la ruta contesta 503 honesto ("no disponible aún"), nunca 500.
+//
 // Flujo 4 (Fase 2) · CRUD de configuración de pricing —
 // POST /rentas/:propertyId/unidades/:unidadId/{tarifa-base,temporadas,
 // descuentos-duracion,min-stay,reglas-canal}. Ver diseño Fase 2 rentas §3: el motor de
@@ -15,10 +21,12 @@
 //     un precio no determinista para el huésped (depende del orden de la query SQL).
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { runWithSavepointFallback } from "@atiende/db";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { encontrarMinStaySolapada, encontrarTemporadaSolapada, esRangoValido, PRICING_ESCRITURA_ROLES } from "@atiende/domain-rentas";
 import type { RangoFechas, RentasCalendarSyncRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -105,6 +113,29 @@ async function hoyIso(syncRepo: RentasCalendarSyncRepository, propertyId: string
   return hoyFechaNegocio(zonaHoraria);
 }
 
+function pgCode(err: unknown): string | undefined {
+  return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
+}
+
+/** Ejecuta una escritura de edición/borrado dentro de un SAVEPOINT (la sesión es UNA transacción
+ *  por request: un error de Postgres sin SAVEPOINT la deja abortada). 42501 = la base real aún
+ *  no tiene las políticas/GRANT de la migración 030 -> 503 honesto; 23505 = duplicado -> 409. */
+async function escrituraPricing<T>(db: TenantDbSession, primary: () => Promise<T>): Promise<T> {
+  return runWithSavepointFallback<T>({
+    session: db,
+    primary,
+    isRecoverable: (err) => pgCode(err) === "42501" || pgCode(err) === "23505",
+    fallback: async (err) => {
+      if (pgCode(err) === "23505") throw Errors.conflict("Ya existe una configuración con esos datos para esta unidad.");
+      throw Errors.serviceUnavailable("No disponible aún: la base de datos todavía no tiene la migración de edición de precios (030).");
+    },
+  });
+}
+
+function requireAlgunCampo(raw: Record<string, unknown>, campos: readonly string[]): void {
+  if (!campos.some((c) => raw[c] !== undefined)) throw Errors.validation(`Se esperaba al menos uno de: ${campos.join(", ")}.`);
+}
+
 interface TarifaBaseBody {
   readonly precioNocheCentavos?: unknown;
   readonly moneda?: unknown;
@@ -140,7 +171,18 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   const app = new Hono<CoreAuthHonoEnv>();
 
   const base = "/rentas/:propertyId/unidades/:unidadId";
-  const paths = [`${base}/tarifa-base`, `${base}/temporadas`, `${base}/descuentos-duracion`, `${base}/min-stay`, `${base}/reglas-canal`];
+  const paths = [
+    `${base}/tarifa-base`,
+    `${base}/temporadas`,
+    `${base}/descuentos-duracion`,
+    `${base}/min-stay`,
+    `${base}/reglas-canal`,
+    `${base}/configuracion-precios`,
+    `${base}/temporadas/:id`,
+    `${base}/descuentos-duracion/:id`,
+    `${base}/min-stay/:id`,
+    `${base}/reglas-canal/:id`,
+  ];
   for (const path of paths) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
@@ -332,6 +374,291 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
       despues: `canal ${canalCodigo}: ${markupBasisPoints}bp (activo: ${activo})`,
     });
     return c.json({ id, unidadId, canalCodigo, markupBasisPoints, activo }, 201);
+  });
+
+  // ---- Rn-23: GET .../configuracion-precios ----
+  // Lectura para CUALQUIER staff con acceso a la property (igual que el cotizador): RLS de
+  // select ya es `has_property_access`. Solo lee tablas de 002_pricing_schema.sql.
+  app.get(`${base}/configuracion-precios`, async (c) => {
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const repo = deps.rentasRepo(c.get("db"));
+    await requireUnidad(repo, propertyId, unidadId);
+    const hoy = await hoyIso(deps.rentasCalendarSyncRepo(c.get("db")), propertyId);
+    const config = await repo.loadConfiguracionPricing(unidadId, hoy);
+    return c.json({ unidadId, ...config });
+  });
+
+  // Monedas ya en uso por la unidad, SIN contar la fila `excluirId` (la que se está editando).
+  async function monedaDeOtrasFilas(repo: RentasRepository, unidadId: string, hoy: string, excluirTemporadaId?: string): Promise<string | null> {
+    const config = await repo.loadConfiguracionPricing(unidadId, hoy);
+    const base = config.historialTarifaBase[0];
+    if (base) return base.moneda;
+    return config.temporadas.find((t) => t.id !== excluirTemporadaId)?.moneda ?? null;
+  }
+
+  // ---- PATCH / DELETE .../temporadas/:id ----
+  app.patch(`${base}/temporadas/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const hoy = await hoyIso(deps.rentasCalendarSyncRepo(db), propertyId);
+
+    const raw = await readJsonCapped<TemporadaBody>(c.req.raw, 2 * 1024);
+    requireAlgunCampo(raw as Record<string, unknown>, ["nombre", "rango", "precioNocheCentavos", "moneda"]);
+    const existentes = (await repo.loadConfiguracionPricing(unidadId, hoy)).temporadas;
+    const actual = existentes.find((t) => t.id === id);
+    if (!actual) throw Errors.notFound("Temporada no encontrada en esta unidad.");
+
+    const nombre = raw.nombre === undefined ? actual.nombre : requireString(raw.nombre, "nombre", 200);
+    const rango = raw.rango === undefined ? actual.rango : requireRango(raw.rango);
+    const precioNocheCentavos = raw.precioNocheCentavos === undefined ? actual.precioNocheCentavos : requireNonNegativeInteger(raw.precioNocheCentavos, "precioNocheCentavos");
+    const moneda = raw.moneda === undefined ? actual.moneda : requireMoneda(raw.moneda);
+
+    const monedaExistente = await monedaDeOtrasFilas(repo, unidadId, hoy, id);
+    if (monedaExistente && monedaExistente !== moneda) throw Errors.rentasPricingMonedaInconsistente(monedaExistente);
+    const conflicto = encontrarTemporadaSolapada(existentes, rango, id);
+    if (conflicto) throw Errors.rentasPricingSolapado(conflicto.nombre, conflicto.rango);
+
+    const ok = await escrituraPricing(db, () => repo.updateTemporada({ unidadId, id, nombre, rango, precioNocheCentavos, moneda }));
+    if (!ok) throw Errors.notFound("Temporada no encontrada en esta unidad.");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.temporada.actualizada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "temporada",
+      antes: `"${actual.nombre}": ${actual.precioNocheCentavos} ${actual.moneda} (${actual.rango.inicio} a ${actual.rango.fin})`,
+      despues: `"${nombre}": ${precioNocheCentavos} ${moneda} (${rango.inicio} a ${rango.fin})`,
+    });
+    return c.json({ id, unidadId, nombre, rango, precioNocheCentavos, moneda });
+  });
+
+  app.delete(`${base}/temporadas/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const hoy = await hoyIso(deps.rentasCalendarSyncRepo(db), propertyId);
+    const actual = (await repo.loadConfiguracionPricing(unidadId, hoy)).temporadas.find((t) => t.id === id);
+    if (!actual) throw Errors.notFound("Temporada no encontrada en esta unidad.");
+    const ok = await escrituraPricing(db, () => repo.deleteTemporada(unidadId, id));
+    // 0 filas con la fila visible = RLS la protege (falta la política de borrado): mismo 503 honesto.
+    if (!ok) throw Errors.serviceUnavailable("No disponible aún: la base de datos todavía no permite borrar temporadas (migración 030 pendiente).");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.temporada.eliminada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "temporada",
+      antes: `"${actual.nombre}": ${actual.precioNocheCentavos} ${actual.moneda} (${actual.rango.inicio} a ${actual.rango.fin})`,
+      despues: null,
+    });
+    return c.json({ id, unidadId, eliminada: true });
+  });
+
+  // ---- PATCH / DELETE .../descuentos-duracion/:id ----
+  app.patch(`${base}/descuentos-duracion/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+
+    const raw = await readJsonCapped<DescuentoDuracionBody>(c.req.raw, 2 * 1024);
+    requireAlgunCampo(raw as Record<string, unknown>, ["nochesMinimas", "porcentajeDescuentoBasisPoints", "fuente"]);
+    const existentes = await repo.listDescuentosDuracion(unidadId);
+    const actual = existentes.find((d) => d.id === id);
+    if (!actual) throw Errors.notFound("Descuento no encontrado en esta unidad.");
+
+    const nochesMinimas = raw.nochesMinimas === undefined ? actual.nochesMinimas : requirePositiveInteger(raw.nochesMinimas, "nochesMinimas");
+    const porcentajeDescuentoBasisPoints =
+      raw.porcentajeDescuentoBasisPoints === undefined ? actual.porcentajeDescuentoBasisPoints : requireBasisPoints(raw.porcentajeDescuentoBasisPoints, "porcentajeDescuentoBasisPoints");
+    const fuente = raw.fuente === undefined ? actual.fuente : requireString(raw.fuente, "fuente", 300);
+    if (existentes.some((d) => d.id !== id && d.nochesMinimas === nochesMinimas)) {
+      throw Errors.conflict(`Ya existe un descuento para ${nochesMinimas}+ noches en esta unidad.`);
+    }
+
+    const ok = await escrituraPricing(db, () => repo.updateDescuentoDuracion({ unidadId, id, nochesMinimas, porcentajeDescuentoBasisPoints, fuente }));
+    if (!ok) throw Errors.notFound("Descuento no encontrado en esta unidad.");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.descuento_duracion.editado",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "porcentaje_descuento_basis_points",
+      antes: `${actual.nochesMinimas}+ noches: ${actual.porcentajeDescuentoBasisPoints}bp (${actual.fuente})`,
+      despues: `${nochesMinimas}+ noches: ${porcentajeDescuentoBasisPoints}bp (${fuente})`,
+    });
+    return c.json({ id, unidadId, nochesMinimas, porcentajeDescuentoBasisPoints, fuente });
+  });
+
+  app.delete(`${base}/descuentos-duracion/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const actual = (await repo.listDescuentosDuracion(unidadId)).find((d) => d.id === id);
+    if (!actual) throw Errors.notFound("Descuento no encontrado en esta unidad.");
+    const ok = await escrituraPricing(db, () => repo.deleteDescuentoDuracion(unidadId, id));
+    if (!ok) throw Errors.serviceUnavailable("No disponible aún: la base de datos todavía no permite borrar descuentos (migración 030 pendiente).");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.descuento_duracion.eliminado",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "porcentaje_descuento_basis_points",
+      antes: `${actual.nochesMinimas}+ noches: ${actual.porcentajeDescuentoBasisPoints}bp (${actual.fuente})`,
+      despues: null,
+    });
+    return c.json({ id, unidadId, eliminado: true });
+  });
+
+  // ---- PATCH / DELETE .../min-stay/:id ----
+  app.patch(`${base}/min-stay/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+
+    const raw = await readJsonCapped<MinStayBody>(c.req.raw, 2 * 1024);
+    requireAlgunCampo(raw as Record<string, unknown>, ["rango", "diaSemanaCheckIn", "nochesMinimas"]);
+    const existentes = await repo.listReglasMinStay(unidadId);
+    const actual = existentes.find((r) => r.id === id);
+    if (!actual) throw Errors.notFound("Regla de estancia mínima no encontrada en esta unidad.");
+
+    const rango = raw.rango === undefined ? actual.rango : requireRango(raw.rango);
+    const diaSemanaCheckIn = raw.diaSemanaCheckIn === undefined ? actual.diaSemanaCheckIn : requireDiaSemanaOptional(raw.diaSemanaCheckIn);
+    const nochesMinimas = raw.nochesMinimas === undefined ? actual.nochesMinimas : requirePositiveInteger(raw.nochesMinimas, "nochesMinimas");
+    const conflicto = encontrarMinStaySolapada(existentes, { rango, diaSemanaCheckIn }, id);
+    if (conflicto) throw Errors.rentasPricingSolapado(`regla min-stay existente (día ${conflicto.diaSemanaCheckIn ?? "todos"})`, conflicto.rango);
+
+    const ok = await escrituraPricing(db, () => repo.updateReglaMinStay({ unidadId, id, rango, diaSemanaCheckIn, nochesMinimas }));
+    if (!ok) throw Errors.notFound("Regla de estancia mínima no encontrada en esta unidad.");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.min_stay.editada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "noches_minimas",
+      antes: `${actual.nochesMinimas} noches (${actual.rango.inicio} a ${actual.rango.fin}, día ${actual.diaSemanaCheckIn ?? "todos"})`,
+      despues: `${nochesMinimas} noches (${rango.inicio} a ${rango.fin}, día ${diaSemanaCheckIn ?? "todos"})`,
+    });
+    return c.json({ id, unidadId, rango, diaSemanaCheckIn, nochesMinimas });
+  });
+
+  app.delete(`${base}/min-stay/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const actual = (await repo.listReglasMinStay(unidadId)).find((r) => r.id === id);
+    if (!actual) throw Errors.notFound("Regla de estancia mínima no encontrada en esta unidad.");
+    const ok = await escrituraPricing(db, () => repo.deleteReglaMinStay(unidadId, id));
+    if (!ok) throw Errors.serviceUnavailable("No disponible aún: la base de datos todavía no permite borrar reglas de estancia mínima (migración 030 pendiente).");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.min_stay.eliminada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "noches_minimas",
+      antes: `${actual.nochesMinimas} noches (${actual.rango.inicio} a ${actual.rango.fin}, día ${actual.diaSemanaCheckIn ?? "todos"})`,
+      despues: null,
+    });
+    return c.json({ id, unidadId, eliminada: true });
+  });
+
+  // ---- PATCH / DELETE .../reglas-canal/:id ----
+  app.patch(`${base}/reglas-canal/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const hoy = await hoyIso(deps.rentasCalendarSyncRepo(db), propertyId);
+
+    const raw = await readJsonCapped<ReglaCanalBody>(c.req.raw, 2 * 1024);
+    requireAlgunCampo(raw as Record<string, unknown>, ["markupBasisPoints", "activo"]);
+    const actual = (await repo.loadConfiguracionPricing(unidadId, hoy)).reglasCanal.find((r) => r.id === id);
+    if (!actual) throw Errors.notFound("Regla de canal no encontrada en esta unidad.");
+
+    const markupBasisPoints = raw.markupBasisPoints === undefined ? actual.markupBasisPoints : requireBasisPoints(raw.markupBasisPoints, "markupBasisPoints");
+    if (raw.activo !== undefined && typeof raw.activo !== "boolean") throw Errors.validation("activo: se esperaba un booleano.");
+    const activo = raw.activo === undefined ? actual.activo : raw.activo;
+
+    const ok = await escrituraPricing(db, () => repo.updateReglaCanalPricing({ unidadId, id, markupBasisPoints, activo }));
+    if (!ok) throw Errors.notFound("Regla de canal no encontrada en esta unidad.");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.regla_canal.editada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "markup_basis_points",
+      antes: `canal ${actual.canalCodigo}: ${actual.markupBasisPoints}bp (activo: ${actual.activo})`,
+      despues: `canal ${actual.canalCodigo}: ${markupBasisPoints}bp (activo: ${activo})`,
+    });
+    return c.json({ id, unidadId, canalCodigo: actual.canalCodigo, markupBasisPoints, activo });
+  });
+
+  app.delete(`${base}/reglas-canal/:id`, async (c) => {
+    assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const unidadId = c.req.param("unidadId");
+    const id = c.req.param("id");
+    const userId = c.get("userId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
+    const hoy = await hoyIso(deps.rentasCalendarSyncRepo(db), propertyId);
+    const actual = (await repo.loadConfiguracionPricing(unidadId, hoy)).reglasCanal.find((r) => r.id === id);
+    if (!actual) throw Errors.notFound("Regla de canal no encontrada en esta unidad.");
+    const ok = await escrituraPricing(db, () => repo.deleteReglaCanalPricing(unidadId, id));
+    if (!ok) throw Errors.serviceUnavailable("No disponible aún: la base de datos no permitió borrar la regla de canal.");
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.regla_canal.eliminada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "markup_basis_points",
+      antes: `canal ${actual.canalCodigo}: ${actual.markupBasisPoints}bp (activo: ${actual.activo})`,
+      despues: null,
+    });
+    return c.json({ id, unidadId, eliminada: true });
   });
 
   return app;
