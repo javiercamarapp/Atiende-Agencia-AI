@@ -36,7 +36,8 @@ describe("signImpersonationSelection / verifyImpersonationSelection", () => {
 
   it("una firma alterada (tamper) se rechaza", () => {
     const cookie = signImpersonationSelection("org-123", SECRET, NOW);
-    const tampered = cookie.slice(0, -4) + "AAAA";
+    const tampered = cookie.slice(0, -4) + (cookie.endsWith("AAAA") ? "BBBB" : "AAAA");
+    expect(tampered).not.toBe(cookie);
     expect(verifyImpersonationSelection(tampered, SECRET, NOW)).toBeNull();
   });
 
