@@ -64,6 +64,7 @@ import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
 import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
+import { HotelesCopilotoPage } from "./verticals/hoteles/pages/Copiloto.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
@@ -559,6 +560,8 @@ function HotelesLoginRoute() {
  * verticals/hoteles/pages/Dashboard.tsx para el detalle de las dos variantes por
  * rol. */
 const HotelesDashboardRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesDashboardPage {...ctx} />);
+// CHAT-09 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de hoteles (solo owner/gm).
+const HotelesCopilotoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCopilotoPage {...ctx} />);
 const HotelesReservasRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <ReservasPage {...ctx} />);
 
 function HotelesFolioRoute() {
@@ -1014,6 +1017,7 @@ export function App() {
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
+        <Route path="/hoteles/:orgSlug/copiloto" element={<HotelesCopilotoRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
