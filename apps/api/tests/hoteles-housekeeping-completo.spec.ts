@@ -4,7 +4,7 @@
 // packages/domain-hoteles/tests/housekeeping-savepoint.spec.ts (AbortAwareFakeSession).
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryHousekeepingRepository } from "@atiende/domain-hoteles";
+import { InMemoryHousekeepingRepository, InMemoryHousekeepingResidualRepository } from "@atiende/domain-hoteles";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
 
@@ -18,7 +18,8 @@ async function setup(opts?: { migrated?: boolean }) {
   hk.seedRoom({ id: room101, propertyId: ctx.propertyId, code: "101", roomType: "Doble", status: "sucia" });
   hk.seedRoom({ id: room102, propertyId: ctx.propertyId, code: "102", roomType: "Doble", status: "ocupada" });
   for (const s of Object.values(ctx.staff)) hk.seedStaff(ctx.propertyId, s.id);
-  const app = buildApp({ ...ctx.deps, hotelesHousekeepingRepo: (_db) => hk });
+  const residual = new InMemoryHousekeepingResidualRepository(hk, opts);
+  const app = buildApp({ ...ctx.deps, hotelesHousekeepingRepo: (_db) => hk, hotelesHousekeepingResidualRepo: (_db) => residual });
   const base = `/hoteles/${ctx.propertyId}/housekeeping`;
   return { ctx, hk, app, base, room101, room102 };
 }
