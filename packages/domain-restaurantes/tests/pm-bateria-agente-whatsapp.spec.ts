@@ -357,7 +357,7 @@ describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", 
     expect(prompt).toMatch(/solo si la entrega .* cae antes del cierre/);
   });
 
-  it("T-PC03 el saludo del prompt sigue la hora (martes 15:00 en Merida = buenas tardes)", () => {
+  it("T-PC03 el saludo del prompt sigue la hora (martes 14:00 en Merida (UTC-6) = buenas tardes)", () => {
     expect(prompt).toContain('"Buenas tardes, gracias por comunicarse a Los Taquitos de PM."');
     const noche = buildSystemPrompt(PM_CONFIG_POR_OMISION, sucursales, { isNew: true }, new Date("2026-10-07T03:00:00Z"));
     expect(noche).toContain('"Buenas noches, gracias por comunicarse a Los Taquitos de PM."');

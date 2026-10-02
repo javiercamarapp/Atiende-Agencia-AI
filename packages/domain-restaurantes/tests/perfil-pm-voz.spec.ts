@@ -73,6 +73,10 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     }
   });
 
+  it("H7 de voz conserva la regla de tarjeta: no pedir, no repetir y decir que no la necesita si la dicta", () => {
+    expect(voz).toMatch(/H7\. Nunca pida ni repita datos de tarjeta[^\n]*Si el cliente los dicta, diga que no los necesita/);
+  });
+
   it("tiene los mismos motivos de escalacion y los mismos nombres de herramienta del flujo que WhatsApp", () => {
     const motivosWa = /con estos motivos: ([^\n]+)\./.exec(whatsapp)![1]!.split(", ").map((m) => m.split(" ")[0]!);
     expect(motivosWa.length).toBeGreaterThanOrEqual(15);
