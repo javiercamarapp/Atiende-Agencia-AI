@@ -98,6 +98,9 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.plazo.por_vencer` | operacion | atencion | owner/admin, analyst, writer, reviewer | Hourglass | `/licitaciones/{orgSlug}/seguimiento` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/discover.ts` |
 | `licitaciones.convocatoria.nueva` | operacion | info | owner/admin, analyst | FilePlus2 | `/licitaciones/{orgSlug}/convocatorias` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/discover.ts` |
 | `licitaciones.fallo.publicado` | cierres | atencion | owner/admin, analyst, reviewer | Gavel | `/licitaciones/{orgSlug}/seguimiento` | una por convocatoria | 30 d | pendiente: requiere el detector de fallo en la fuente (depende de un agregador comercial sin proveedor elegido) |
+| `licitaciones.expediente.aprobacion_pendiente` | aprobaciones | atencion | owner/admin, analyst | ShieldCheck | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.expediente.aprobado` | cierres | info | owner/admin, analyst, writer | CircleCheckBig | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.presentacion.declarada` | cierres | info | owner/admin, analyst, reviewer | FileCheck2 | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta (clave = id de la propuesta) | 30 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
 
 ### citas
 
@@ -151,6 +154,10 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.
+- **L-26/L-28 (cierre del expediente de licitaciones)**: suma 3 eventos conectados en `apps/api/src/routes/verticals/licitaciones/cierre.ts`:
+  `licitaciones.expediente.aprobacion_pendiente` (se dio la 1/2 técnico-legal y falta la 2/2 económica, por otra persona),
+  `licitaciones.expediente.aprobado` (2/2 completa) y `licitaciones.presentacion.declarada`. Los tres enlazan a la lista de
+  convocatorias: el catálogo solo admite `{orgSlug}`, no el id de la convocatoria concreta.
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

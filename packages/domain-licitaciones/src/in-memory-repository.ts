@@ -9,7 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -74,7 +74,7 @@ import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { isoNow, sha256Hex } from "./types.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
-import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import type { Approval, ApprovalScope, ChangeDetected, ExpedienteApprovalStage } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import { WRITE_ROLES } from "./roles.ts";
@@ -166,6 +166,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly companyExperience = new Map<string, CompanyExperienceItemRecord[]>(); // orgId -> experiencia
   private readonly companySigners = new Map<string, CompanySignerRecord[]>(); // orgId -> firmantes
   private readonly proposalSections = new Map<string, Map<string, StoredProposalSection>>(); // proposalId -> sectionKey -> section
+  private expedienteStageMode: "doble" | "legacy" = "doble";
   private readonly approvals = new Map<string, Approval[]>(); // proposalId -> approvals (historial, todos los scopes)
   private readonly sectionAuthors = new Map<string, Map<string, Set<string>>>(); // proposalId -> scopeRef("seccion:<key>") -> actorIds (AE-11)
   private readonly approvalChanges = new Map<string, ChangeDetected[]>(); // proposalId -> cambios detectados (historial)
@@ -1191,19 +1192,34 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   // ---- Fase 2 pieza 1: máquina de aprobaciones granular (AE-02/AE-11) ----
 
-  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval> {
+  /** Solo pruebas: simula una base SIN la migracion 033 ("legacy": aprobacion unica, sin etapas). Por defecto "doble". */
+  setExpedienteStageMode(mode: "doble" | "legacy"): void {
+    this.expedienteStageMode = mode;
+  }
+
+  async listExpedienteStageApprovals(organizationId: string, proposalId: string): Promise<{ mode: "doble" | "legacy"; approvals: readonly Approval[] }> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const vigentes = (this.approvals.get(proposalId) ?? []).filter((a) => a.status === "vigente" && a.scope === "expediente" && a.scopeRef === "expediente");
+    // En modo "legacy" la base ni siquiera conoce la columna `stage`: las filas llegan sin ella.
+    const approvals = this.expedienteStageMode === "legacy" ? vigentes.map(({ stage: _stage, ...rest }) => rest) : vigentes;
+    return { mode: this.expedienteStageMode, approvals };
+  }
+
+  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs; stage?: ExpedienteApprovalStage }): Promise<Approval> {
     this.assertProposalOwnership(organizationId, proposalId);
     const sectionAuthors = this.sectionAuthors.get(proposalId) ?? new Map<string, Set<string>>();
+    if (input.stage !== undefined && this.expedienteStageMode === "legacy") throw new ExpedienteStageNotAvailableError();
+    const stageSnapshot = input.stage !== undefined ? (this.approvals.get(proposalId) ?? []).filter((a) => a.status === "vigente") : [];
 
     // Lanza `ApprovalRejectedError` si la regla rechaza -- ninguna fila se toca en ese caso.
-    new ApprovalWorkflow({ sectionAuthors }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash });
+    new ApprovalWorkflow({ sectionAuthors, approvals: stageSnapshot }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash, stage: input.stage });
 
     const nowIso = new Date().toISOString();
     const existing = this.approvals.get(proposalId) ?? [];
     // Invalida cualquier aprobación previa 'vigente' de EXACTAMENTE el mismo
     // scope/scopeRef (nunca coexisten dos vigentes del mismo alcance exacto).
     const invalidated = existing.map((a) =>
-      a.status === "vigente" && a.scopeRef === input.scopeRef ? { ...a, status: "invalidada" as const, invalidatedAt: nowIso, invalidatedReason: "superseded_by_new_approval" } : a,
+      a.status === "vigente" && a.scopeRef === input.scopeRef && a.stage === input.stage ? { ...a, status: "invalidada" as const, invalidatedAt: nowIso, invalidatedReason: "superseded_by_new_approval" } : a,
     );
     const created: Approval = {
       id: randomUUID(),
@@ -1214,6 +1230,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       approvedAt: nowIso,
       inputsHash: input.inputsHash.hash,
       status: "vigente",
+      ...(input.stage !== undefined ? { stage: input.stage } : {}),
     };
     this.approvals.set(proposalId, [...invalidated, created]);
     return created;

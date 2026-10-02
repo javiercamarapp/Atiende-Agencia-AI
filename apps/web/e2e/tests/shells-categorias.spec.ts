@@ -8,6 +8,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
+import { citas } from "../mock-api/fixtures/citas.ts";
 import { hoteles } from "../mock-api/fixtures/hoteles.ts";
 import { licitaciones } from "../mock-api/fixtures/licitaciones.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
@@ -31,7 +32,7 @@ const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
   despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: [] },
   licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: ["Pregunta a tus datos"], repetidos: [`/licitaciones/${licitaciones.orgSlug}/copiloto`] },
-  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: [] },
+  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: ["Pregunta a tus datos"], repetidos: [`/citas/${citas.orgSlug}/copiloto`] },
 };
 
 for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, Esperado][]) {
