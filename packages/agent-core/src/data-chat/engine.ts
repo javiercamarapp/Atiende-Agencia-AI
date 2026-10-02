@@ -8,7 +8,7 @@
 //  - Solo lectura, filas/tiempo acotados, PII redactada, bitácora sin resultados.
 //  - Tablas y cifras que ve el usuario salen de los RESULTADOS, no del texto del modelo; el
 //    texto del modelo solo se muestra si todos sus números existen en los resultados.
-import { isBudgetExceededError, isMonthlyBudgetExceededError } from "../gateway/errors.js";
+import { isBudgetExceededError, isMonthlyBudgetExceededError, isRoleDailyTurnLimitError } from "../gateway/errors.js";
 import { isKillSwitchEngagedError } from "../gateway/kill-switch.js";
 import type { LlmCompletionResult, LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
 import { toJsonSchema, parseArgs, type ParsedArgs } from "./params.js";
@@ -89,6 +89,8 @@ export interface RunDataChatTurnOptions {
   /** Medicion: se llama UNA vez por turno que llego a decidir ruta (nunca en turnos rechazados antes de empezar ni en modo
    *  sin IA) con la ruta, el numero de llamadas al modelo y su costo. Un callback que lance NO tumba el turno. */
   readonly onUso?: (uso: DataChatUsage) => void;
+  /** Rol del gateway de este turno (`<vertical>:data_chat`): se guarda en la fila de resumen del turno de la bitacora (CHAT-07). */
+  readonly auditRole?: string;
   /** Errores internos (nunca se muestran al usuario ni al modelo). */
   readonly onError?: (where: string, err: unknown) => void;
 }
@@ -340,13 +342,30 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   let costUsd = 0;
   let modelUsed: string | undefined;
   let escalated = false;
-  const reportUso = (route: DataChatRoute): void => {
-    if (!opts.onUso) return;
-    try {
-      const cacheHits = runs.filter((r) => r.fromCache).length;
-      opts.onUso({ route, llmCalls, escalated, ...(cacheHits > 0 ? { cacheHits } : {}), costUsd: Math.round(costUsd * 1e9) / 1e9, ...(modelUsed ? { model: modelUsed } : {}) });
-    } catch (err) {
-      onError("on_uso", err);
+  const reportUso = async (route: DataChatRoute): Promise<void> => {
+    const costMicroUsd = Math.round((Number.isFinite(costUsd) ? costUsd : 0) * 1e6);
+    if (opts.onUso) {
+      try {
+        const cacheHits = runs.filter((r) => r.fromCache).length;
+        opts.onUso({ route, llmCalls, escalated, ...(cacheHits > 0 ? { cacheHits } : {}), costUsd: Math.round(costUsd * 1e9) / 1e9, costMicroUsd, ...(modelUsed ? { model: modelUsed } : {}) });
+      } catch (err) {
+        onError("on_uso", err);
+      }
+    }
+    // CHAT-07: una fila de resumen del turno CON costo, modelo y rol, solo cuando hubo llamadas al modelo (las rutas directa y cache
+    // no cuestan nada y su fila de herramienta ya lleva la ruta). La ruta escalada es la unica que la bitacora llama "escalado".
+    if (llmCalls > 0 && opts.auditRole) {
+      await audit({
+        tool: null,
+        params: {},
+        outcome: "ok",
+        rowCount: 0,
+        durationMs: Date.now() - started,
+        route: route === "escalado" ? "escalado" : "llm",
+        costMicroUsd,
+        ...(modelUsed ? { model: modelUsed } : {}),
+        ...(opts.auditRole ? { role: opts.auditRole } : {}),
+      });
     }
   };
   /** Una llamada al modelo con tiempo maximo y contabilidad de costo. */
@@ -503,12 +522,32 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   } catch (err) {
     if (isDataChatAbortedError(err)) throw err;
+    // Modo sin IA: el turno cae a las consultas directas. La fila de bitacora lleva ruta `sin_ia` y el costo ya gastado (si hubo).
+    const sinIa = async (outcome: "budget_exceeded" | "error", errorCode: string): Promise<void> =>
+      audit({
+        tool: null,
+        params: {},
+        outcome,
+        rowCount: 0,
+        durationMs: Date.now() - started,
+        errorCode,
+        route: "sin_ia",
+        costMicroUsd: Math.round((Number.isFinite(costUsd) ? costUsd : 0) * 1e6),
+        ...(modelUsed ? { model: modelUsed } : {}),
+        ...(opts.auditRole ? { role: opts.auditRole } : {}),
+      });
+    if (isRoleDailyTurnLimitError(err)) {
+      await sinIa("budget_exceeded", "role_daily_cap");
+      return noAiAnswer("budget_exceeded", "budget", catalog);
+    }
     if (isMonthlyBudgetExceededError(err) || isBudgetExceededError(err)) {
-      await audit({ tool: null, params: {}, outcome: "budget_exceeded", rowCount: 0, durationMs: Date.now() - started });
+      await sinIa("budget_exceeded", isMonthlyBudgetExceededError(err) && err.scope === "copilot" ? "copiloto_subtope" : "budget");
       return noAiAnswer("budget_exceeded", "budget", catalog);
     }
     onError("llm", err);
-    return noAiAnswer("unavailable", isKillSwitchEngagedError(err) ? "kill_switch" : "provider_down", catalog);
+    const killed = isKillSwitchEngagedError(err);
+    if (opts.auditRole) await sinIa("error", killed ? "kill_switch" : "provider_down");
+    return noAiAnswer("unavailable", killed ? "kill_switch" : "provider_down", catalog);
   }
 
   // ---- armado de la respuesta ----
@@ -517,14 +556,14 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   const baseRoute: DataChatRoute = direct ? (runs.length > 0 && runs.every((r) => r.fromCache) ? "cache" : "directa") : "barato";
 
   if (runs.length === 0 && direct) {
-    reportUso("directa");
+    await reportUso("directa");
     return answer("clarify", `La consulta «${direct.label}» necesita más datos (por ejemplo un periodo). Escríbela como pregunta indicando lo que quieres ver.`);
   }
 
   if (runs.length === 0) {
     const asksBack = finalText.trim().endsWith("?") && finalText.trim().length <= 300;
     await audit({ tool: null, params: {}, outcome: "no_tool", rowCount: 0, durationMs: Date.now() - started });
-    reportUso(baseRoute);
+    await reportUso(baseRoute);
     if (asksBack && !containsLink(finalText) && unsupportedNumbers(finalText, allowedNumbers(question, [])).length === 0) {
       return answer("clarify", sanitizeNarrative(finalText));
     }
@@ -535,7 +574,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   const withRows = runs.filter((r) => r.result.status === "ok" && r.result.rows.length > 0);
 
   if (usable.length === 0) {
-    reportUso(baseRoute);
+    await reportUso(baseRoute);
     const clarify = runs.find((r) => r.result.status === "needs_clarification");
     if (clarify) return answer("clarify", clarify.result.message ?? "Necesito un dato más para consultar eso.", { toolsUsed });
     const unavailable = runs.find((r) => r.result.status === "unavailable");
@@ -551,7 +590,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   }));
 
   if (withRows.length === 0) {
-    reportUso(baseRoute);
+    await reportUso(baseRoute);
     const first = usable[0]!.result;
     const when = first.periodLabel ? ` en ${first.periodLabel}` : "";
     return answer("no_data", `No encontré datos de ${first.source}${when}. No tengo cifras que mostrar para eso.`, { sources, toolsUsed });
@@ -611,7 +650,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   }
 
-  reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated ? "escalado" : "barato") : "determinista");
+  await reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated ? "escalado" : "barato") : "determinista");
   return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
 }
 

@@ -18,13 +18,25 @@
 
 import { MonthlyBudgetExceededError } from './errors.js';
 
+/** Porcentaje del tope mensual de una organización reservado como TECHO del Copiloto. Debe coincidir con
+ *  `core.copiloto_subtope_pct()` (migración 0046). */
+export const COPILOTO_SUBTOPE_PCT = 30;
+
+/** true si `role` es del Copiloto ("Chatea con tus datos"): `<vertical>:data_chat` o su reintento `<vertical>:data_chat_retry`. */
+export function isCopilotoRole(role: string | undefined): boolean {
+  return role !== undefined && /:data_chat(_retry)?$/.test(role);
+}
+
 export interface OrgMonthlyBudgetStore {
   /** Reserva `amountMicroUsd` contra el mes en curso de `organizationId` (y,
    *  a la vez, contra el total de TODA la plataforma en ese mismo mes).
    *  Lanza `MonthlyBudgetExceededError` — con el `scope` que frenó — si
    *  cualquiera de los dos topes se excede; en ese caso NO debe quedar nada
-   *  reservado (la implementación es responsable de no dejar un residuo). */
-  reserve(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void>;
+   *  reservado (la implementación es responsable de no dejar un residuo).
+   *  `role` (opcional) permite el SUBTOPE del Copiloto: las reservas de los
+   *  roles `*:data_chat` y `*:data_chat_retry` no pasan del
+   *  `COPILOTO_SUBTOPE_PCT` % del tope de la organización (`scope: 'copilot'`). */
+  reserve(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<void>;
   /** Ajusta una reserva ya hecha al costo real (puede subir o bajar el
    *  comprometido del mes). No-op si `reservationId` no existe (idempotente,
    *  mismo criterio que `BudgetLedgerStore.settle`). */
@@ -62,7 +74,7 @@ export interface InMemoryOrgMonthlyBudgetLimits {
  * `new LlmGateway({...})` distintos) sin depender de Postgres real.
  */
 export class InMemoryOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
-  private readonly reservations = new Map<string, { organizationId: string; month: string; amountMicroUsd: number }>();
+  private readonly reservations = new Map<string, { organizationId: string; month: string; amountMicroUsd: number; role?: string }>();
 
   constructor(private readonly limits: InMemoryOrgMonthlyBudgetLimits) {}
 
@@ -85,7 +97,7 @@ export class InMemoryOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
     return { orgTotal, platformTotal };
   }
 
-  async reserve(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {
+  async reserve(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<void> {
     if (!Number.isFinite(amountMicroUsd) || amountMicroUsd <= 0) {
       throw new Error('org_monthly_budget: reserva inválida');
     }
@@ -100,7 +112,18 @@ export class InMemoryOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
       throw new MonthlyBudgetExceededError('platform', organizationId, platformTotal + amountMicroUsd, this.limits.platformCapMicroUsd);
     }
 
-    this.reservations.set(reservationId, { organizationId, month, amountMicroUsd });
+    if (isCopilotoRole(role)) {
+      let copilotoTotal = 0;
+      for (const r of this.reservations.values()) {
+        if (r.month === month && r.organizationId === organizationId && isCopilotoRole(r.role)) copilotoTotal += r.amountMicroUsd;
+      }
+      const copilotoCap = Math.floor((orgCap * COPILOTO_SUBTOPE_PCT) / 100);
+      if (copilotoTotal + amountMicroUsd > copilotoCap) {
+        throw new MonthlyBudgetExceededError('copilot', organizationId, copilotoTotal + amountMicroUsd, copilotoCap);
+      }
+    }
+
+    this.reservations.set(reservationId, { organizationId, month, amountMicroUsd, ...(role !== undefined ? { role } : {}) });
   }
 
   async settle(_organizationId: string, reservationId: string, actualMicroUsd: number): Promise<void> {
