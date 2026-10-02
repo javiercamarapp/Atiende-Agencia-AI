@@ -115,6 +115,7 @@ import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
 import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
 import { ResumenPage as CitasResumenPage } from "./verticals/citas/pages/Resumen.tsx";
+import { CitasCopilotoPage } from "./verticals/citas/pages/Copiloto.tsx";
 import { PrimerosPasosPage as CitasPrimerosPasosPage } from "./verticals/citas/pages/PrimerosPasos.tsx";
 import { ProveedorFichaPage, ProveedoresListPage } from "./verticals/citas/pages/Proveedores.tsx";
 import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Servicios.tsx";
@@ -782,6 +783,8 @@ function CitasRootRedirect() {
 }
 
 const CitasResumenRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasResumenPage {...ctx} />);
+// CHAT-13 -- Copiloto ("Pregunta a tus datos") de citas: pagina generica de @atiende/ui conectada al chat-datos real (solo owner/admin).
+const CitasCopilotoRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasCopilotoPage {...ctx} />);
 // C-06 -- checklist de primeros pasos (owner/admin; la pagina gatea por rol).
 const CitasPrimerosPasosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrimerosPasosPage {...ctx} />);
 
@@ -1091,6 +1094,7 @@ export function App() {
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
         <Route path="/citas/:orgSlug/resumen" element={<CitasResumenRoute />} />
+        <Route path="/citas/:orgSlug/copiloto" element={<CitasCopilotoRoute />} />
         <Route path="/citas/:orgSlug/primeros-pasos" element={<CitasPrimerosPasosRoute />} />
         <Route path="/citas/:orgSlug/agenda" element={<CitasAgendaRoute />} />
         <Route path="/citas/:orgSlug/proveedores" element={<CitasProveedoresRoute />} />

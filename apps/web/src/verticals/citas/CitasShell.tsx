@@ -26,6 +26,7 @@ import {
   Scissors,
   Settings,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Users,
 } from "lucide-react";
@@ -38,7 +39,8 @@ import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
-import { conexionChatDatosCitas } from "./lib/chat-datos-client.ts";
+import { crearChatConexionCitas } from "./lib/data-chat-client.ts";
+import { COPILOTO_CITAS_ROLES } from "./pages/Copiloto.tsx";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -89,7 +91,7 @@ export interface CitasShellProps {
  * de Likida (Negocio, Comunicación, Administrar) con "Resumen", "Agenda" y "Primeros pasos" como raíz sin título (agenda
  * operativa primero, como documenta README.md de este vertical). Mismos destinos y rutas que antes; ningún link se agrega ni se
  * quita. `to` construido con `orgSlug` porque `Sidebar` usa `NavLink` con rutas reales, no un callback de sección. */
-function buildSections(orgSlug: string): SidebarSection[] {
+function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[] {
   const base = `/citas/${orgSlug}`;
   return [
     {
@@ -98,6 +100,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
         { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
+        // CHAT-13 -- Copiloto ("Pregunta a tus datos"): justo debajo de Resumen, solo para owner/admin (los unicos que el servidor deja usarlo).
+        ...(puedeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
         { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
         // C-16 -- centro de avisos: por confirmar, recordatorios agotados y escalaciones de crisis con seguimiento.
         { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
@@ -193,7 +197,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       token={session.token}
       notificacionesHref={`/citas/${orgSlug}/notificaciones`}
       vertical="citas"
-      sections={buildSections(orgSlug)}
+      sections={buildSections(orgSlug, COPILOTO_CITAS_ROLES.has(role))}
       mobileItems={buildMobileItems(orgSlug)}
       user={user}
       onLogout={() => void s.logout()}
@@ -202,7 +206,9 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       branchSelector={branchSelector}
       mobileSelector={branches.length > 1 ? branchSelector : null}
       contentKey={propertyId}
-      chat={conexionChatDatosCitas(fetch, apiBaseUrl, session.token, propertyId)}
+      chat={crearChatConexionCitas(apiBaseUrl, session.token, propertyId)}
+      copilotoHref={`/citas/${orgSlug}/copiloto`}
+      ocultarChat={!COPILOTO_CITAS_ROLES.has(role)}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role, staffFullName: session.fullName, staffEmail: session.email })}
     </VerticalShellConectado>

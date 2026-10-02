@@ -19,7 +19,7 @@ export interface DataChatRespuesta {
 }
 
 export interface DataChatClientConfig<S extends AuthedSession> {
-  readonly vertical: "hoteles" | "rentas";
+  readonly vertical: "hoteles" | "rentas" | "citas";
   /** Contexto de refresh de la sesion de ESA vertical (se construye en cada llamada: no toca localStorage hasta que hace falta). */
   readonly authContext: () => AuthedFetchContext<S>;
 }
