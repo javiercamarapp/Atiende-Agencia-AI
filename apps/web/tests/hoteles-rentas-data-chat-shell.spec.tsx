@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos" conectado en los shells de HOTELES y RENTAS sin reescribirlos: el boton del header sale de
+// "Chatea con tus datos" conectado en los shells de HOTELES (CHAT-09) y RENTAS (CHAT-10): enlace a la pagina del Copiloto sin reescribirlos: el boton del header sale de
 // "Pronto" solo cuando el servidor confirma (GET .../chat-datos/estado) que el asistente esta activo para ese rol, abre la
 // conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa. Si el servidor no lo confirma (403 por rol,
 // proveedor sin configurar, error), sigue el aviso honesto de siempre.
@@ -94,66 +94,95 @@ async function renderRentas(rol: string) {
   });
 }
 
-/** El boton del header de ESCRITORIO (el del menu movil solo existe con la hoja abierta). */
-function botonChat(): HTMLButtonElement {
-  // Con el shell unico (VerticalShell) el primer `div.hidden.md:block` es la envoltura del Sidebar: se busca la del header.
-  const desktop = [...rendered!.container.querySelectorAll("div.hidden.md\\:block")].find((d) => d.querySelector("header"))!;
-  return [...desktop.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement;
-}
+// CHAT-10: en rentas el Copiloto es una PAGINA (/rentas/:org/copiloto), solo admin_gestora/contador (FINANZAS_LECTURA_ROLES del servidor).
+// Con el asistente activo el boton del header es un enlace (ya no abre el dialogo); los roles que el servidor rechaza (403) no ven el
+// boton ni consultan /estado; sin confirmacion del servidor un rol permitido ve el aviso honesto "Pronto" (boton, nunca enlace).
+describe("RentasShell — Chatea con tus datos (CHAT-10)", () => {
+  const enlaceChat = () => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.includes("Chatea con tus datos"));
+  const textoChat = () => [...rendered!.container.querySelectorAll("a, button")].filter((e) => e.textContent?.includes("Chatea con tus datos"));
 
-describe.each([
-  { nombre: "HotelesShell", render: renderHoteles, rolPermitido: "owner", ruta: "hoteles" },
-  { nombre: "RentasShell", render: renderRentas, rolPermitido: "admin_gestora", ruta: "rentas" },
-])("$nombre — Chatea con tus datos", ({ render, rolPermitido, ruta }) => {
-  it("con el asistente activo: sin 'Pronto', abre la conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa", async () => {
+  it.each(["admin_gestora", "contador"])("%s con el asistente activo: el boton es un enlace a /rentas/:org/copiloto y no abre dialogo", async (rol) => {
     const calls = stubFetch(() => json(200, { available: true }));
-    await render(rolPermitido);
-    expect(calls.some((c) => c.url === `https://api.test/${ruta}/prop-1/chat-datos/estado`)).toBe(true);
-    expect(botonChat().textContent).not.toContain("Pronto");
-
-    click(botonChat());
-    const dialogo = document.body.querySelector('[role="dialog"]')!;
-    const input = dialogo.querySelector("input") as HTMLInputElement;
-    expect(input).not.toBeNull();
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    await act(async () => {
-      setter.call(input, "¿Cómo voy este mes?");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      (dialogo.querySelector("form") as HTMLFormElement).dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      await flushMicrotasks();
-      await flushMicrotasks();
-    });
-    const post = calls.find((c) => c.init?.method === "POST")!;
-    expect(post.url).toBe(`https://api.test/${ruta}/prop-1/chat-datos`);
-    expect(Object.keys(JSON.parse(post.init!.body as string)).sort()).toEqual(["history", "question"]);
-    expect(JSON.parse(post.init!.body as string).question).toBe("¿Cómo voy este mes?");
-    expect(dialogo.textContent).toContain("Listo.");
-    expect(dialogo.textContent).toContain("Fuente: Fuente de prueba");
+    await renderRentas(rol);
+    expect(calls.some((c) => c.url === "https://api.test/rentas/prop-1/chat-datos/estado")).toBe(true);
+    expect(enlaceChat()?.getAttribute("href")).toBe("/rentas/demo/copiloto");
+    expect(enlaceChat()?.textContent).not.toContain("Pronto");
+    click(enlaceChat()!);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
   });
 
-  it("rol sin acceso (el servidor responde 403 en /estado): sigue 'Pronto' y el aviso honesto, nunca una conversacion", async () => {
-    stubFetch(() => json(403, {}));
-    await render("housekeeping");
-    expect(botonChat().textContent).toContain("Pronto");
-    click(botonChat());
+  it.each(["operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario", "limpieza", "housekeeping"])(
+    "%s: no hay boton 'Chatea con tus datos' ni se consulta /estado (el servidor responde 403 de todas formas)",
+    async (rol) => {
+      const calls = stubFetch(() => json(403, {}));
+      await renderRentas(rol);
+      expect(textoChat()).toHaveLength(0);
+      expect(calls.some((c) => c.url.includes("/chat-datos"))).toBe(false);
+    },
+  );
+
+  it("admin_gestora con asistente sin proveedor (available=false) o servidor caido: sigue 'Pronto' y el aviso honesto, nunca una conversacion", async () => {
+    stubFetch(() => json(200, { available: false }));
+    await renderRentas("admin_gestora");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
+    click(textoChat()[0]!);
     const dialogo = document.body.querySelector('[role="dialog"]')!;
     expect(dialogo.textContent).toContain("todavía no está disponible");
     expect(dialogo.querySelector("input")).toBeNull();
-  });
-
-  it("asistente sin proveedor (available=false) o servidor caido: sigue 'Pronto'", async () => {
-    stubFetch(() => json(200, { available: false }));
-    await render(rolPermitido);
-    expect(botonChat().textContent).toContain("Pronto");
     rendered!.unmount();
     rendered = undefined;
     vi.unstubAllGlobals();
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new Error("offline");
     }));
-    await render(rolPermitido);
-    expect(botonChat().textContent).toContain("Pronto");
+    await renderRentas("contador");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
+  });
+});
+
+// CHAT-09: en hoteles el Copiloto es una PAGINA (/hoteles/:org/copiloto), solo owner/gm. Con el asistente activo el boton del header es un
+// enlace (ya no abre el dialogo ni manda la pregunta desde ahi: eso lo cubre hoteles-copiloto-page.spec.tsx). Los roles que el servidor
+// rechaza (403) no ven el boton ni consultan /estado: ya no hay "Pronto" para ellos.
+describe("HotelesShell — Chatea con tus datos (CHAT-09)", () => {
+  const enlaceChat = () => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.includes("Chatea con tus datos"));
+  const textoChat = () => [...rendered!.container.querySelectorAll("a, button")].filter((e) => e.textContent?.includes("Chatea con tus datos"));
+
+  it("owner/gm con el asistente activo: el boton es un enlace a la pagina del Copiloto y no abre el dialogo", async () => {
+    for (const rol of ["owner", "gm"]) {
+      const calls = stubFetch(() => json(200, { available: true }));
+      await renderHoteles(rol);
+      expect(calls.some((c) => c.url === "https://api.test/hoteles/prop-1/chat-datos/estado")).toBe(true);
+      expect(enlaceChat()?.getAttribute("href")).toBe("/hoteles/demo/copiloto");
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+      rendered!.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("rol sin acceso: no hay boton 'Chatea con tus datos' ni se consulta /estado", async () => {
+    const calls = stubFetch(() => json(403, {}));
+    await renderHoteles("housekeeping");
+    expect(textoChat()).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes("/chat-datos"))).toBe(false);
+  });
+
+  it("owner con asistente sin proveedor (available=false) o servidor caido: sigue 'Pronto' (boton, nunca enlace)", async () => {
+    stubFetch(() => json(200, { available: false }));
+    await renderHoteles("owner");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
+    rendered!.unmount();
+    rendered = undefined;
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("offline");
+    }));
+    await renderHoteles("owner");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
   });
 });

@@ -6,7 +6,7 @@ import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearRentasSession, persistRentasSession, readPersistedRentasSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
 
-function rentasAuthContext(): AuthedFetchContext<LoginSession> {
+export function rentasAuthContext(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {
     vertical: "rentas",
