@@ -320,3 +320,275 @@ select count(*) as campos_de_acceso_filtrados_deberia_ser_0 from (
   union all select to_jsonb(t)::text from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-000000f29033', '00000000-0000-0000-0000-000000f29001', null, 50, 0) t
 ) x where j ilike '%Calle 60%' or j like '%4821%' or j like '%v1.AAAA%' or j ilike '%direccion%' or j ilike '%codigo_acceso%' or j ilike '%cifrad%';
 rollback;
+
+\echo ''
+\echo '=== C. Rn-07: solicitudes ARCO propias de rentas ==='
+\echo ''
+
+\echo '--- C1. el admin de la gestora registra una solicitud; los plazos los calcula la base (20 + 15 dias) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select out_creada::int as creada_deberia_ser_1 from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'Titular Uno', 'titular1@example.com', 'Quiere copia de sus datos');
+select count(*) as plazos_20_y_35_dias_deberia_ser_1 from rentas.arco_solicitud
+ where respuesta_vence_en - recibida_en = interval '20 days' and ejecucion_vence_en - recibida_en = interval '35 days' and registrada_por = '00000000-0000-0000-0000-000000f29030';
+select count(*) as evento_registrada_deberia_ser_1 from rentas.arco_evento where evento = 'registrada' and hacia_estado = 'recibida';
+rollback;
+
+\echo '--- C2. registrar dos veces el mismo contacto y derecho es idempotente (una sola abierta) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'Titular Uno', 'titular1@example.com');
+select out_creada::int as segunda_no_crea_deberia_ser_0 from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'telefono', 'Titular Uno', ' TITULAR1@example.com ');
+select count(*) as una_sola_fila_deberia_ser_1 from rentas.arco_solicitud;
+rollback;
+
+\echo '--- C3. un rol que no es admin_gestora (contador) NO registra -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29031', true);
+select * from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'X', 'x@example.com') as should_fail;
+rollback;
+
+\echo '--- C4. el admin de OTRA organizacion NO registra en la Org A (cross-tenant) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29032', true);
+select * from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'X', 'x@example.com') as should_fail;
+rollback;
+
+\echo '--- C5. anon no lee, no escribe ni ejecuta -- RECHAZADO (tres intentos) ---'
+begin;
+set local role anon;
+select * from rentas.arco_solicitud as should_fail;
+rollback;
+begin;
+set local role anon;
+select * from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'X', 'x@example.com') as should_fail;
+rollback;
+begin;
+set local role anon;
+select * from rentas.arco_evento as should_fail;
+rollback;
+
+\echo '--- C6. cross-tenant en lectura: el admin A ve su solicitud, el admin B ve 0 ---'
+begin;
+insert into rentas.arco_solicitud (organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29001', 'cancelacion', 'correo', 'Titular Dos', 'titular2@example.com', now() + interval '20 days', now() + interval '35 days');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select count(*) as admin_a_ve_1_deberia_ser_1 from rentas.arco_solicitud;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29032', true);
+select count(*) as admin_b_ve_0_deberia_ser_0 from rentas.arco_solicitud;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29031', true);
+select count(*) as contador_ve_0_deberia_ser_0 from rentas.arco_solicitud;
+rollback;
+
+\echo '--- C7. el staff NO escribe directo en la tabla (sin GRANT de escritura) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+insert into rentas.arco_solicitud (organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'X', 'x@example.com', now(), now()) returning 1 as should_fail;
+rollback;
+
+\echo '--- C8. cambio de estado: recibida -> en_proceso -> resuelta; bitacora completa; resuelta es terminal ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'rectificacion', 'presencial', 'Titular Tres', 'titular3@example.com');
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29001', (select id from rentas.arco_solicitud limit 1), 'en_proceso', null) as paso_1;
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29001', (select id from rentas.arco_solicitud limit 1), 'resuelta', 'Dato corregido') as paso_2;
+select count(*) as cerrada_con_fecha_y_nota_deberia_ser_1 from rentas.arco_solicitud where estado = 'resuelta' and resuelta_en is not null and nota_resolucion = 'Dato corregido' and atendida_por = '00000000-0000-0000-0000-000000f29030';
+select count(*) as tres_eventos_deberia_ser_3 from rentas.arco_evento;
+rollback;
+
+\echo '--- C9. una solicitud resuelta NO vuelve a cambiar de estado (55000) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'oposicion', 'correo', 'Titular Cuatro', 'titular4@example.com');
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29001', (select id from rentas.arco_solicitud limit 1), 'resuelta', 'ok');
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29001', (select id from rentas.arco_solicitud limit 1), 'en_proceso', null) as should_fail;
+rollback;
+
+\echo '--- C10. rechazar exige el motivo (22023) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'oposicion', 'correo', 'Titular Cinco', 'titular5@example.com');
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29001', (select id from rentas.arco_solicitud limit 1), 'rechazada', null) as should_fail;
+rollback;
+
+\echo '--- C11. el admin B NO cambia el estado de una solicitud de la Org A (cross-tenant) -- RECHAZADO ---'
+begin;
+insert into rentas.arco_solicitud (id, organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29070', '00000000-0000-0000-0000-000000f29001', 'cancelacion', 'correo', 'Titular Dos', 'titular2@example.com', now() + interval '20 days', now() + interval '35 days');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29032', true);
+select rentas.arco_cambiar_estado('00000000-0000-0000-0000-000000f29002', '00000000-0000-0000-0000-000000f29070', 'en_proceso', null) as should_fail;
+rollback;
+
+\echo '--- C12. la bitacora ARCO es append-only (UPDATE y DELETE bloqueados incluso para el dueno) -- RECHAZADO ---'
+begin;
+insert into rentas.arco_solicitud (id, organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29071', '00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'T', 't@example.com', now() + interval '20 days', now() + interval '35 days');
+insert into rentas.arco_evento (organization_id, solicitud_id, evento, hacia_estado) values ('00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29071', 'registrada', 'recibida');
+update rentas.arco_evento set nota = 'reescrita' returning 1 as should_fail;
+rollback;
+begin;
+insert into rentas.arco_solicitud (id, organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29071', '00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'T', 't@example.com', now() + interval '20 days', now() + interval '35 days');
+insert into rentas.arco_evento (organization_id, solicitud_id, evento, hacia_estado) values ('00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29071', 'registrada', 'recibida');
+delete from rentas.arco_evento returning 1 as should_fail;
+rollback;
+
+\echo '--- C13. la fecha de recepcion no puede ser futura ni anterior a 60 dias (22023) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select * from rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'X', 'x@example.com', null, now() - interval '61 days') as should_fail;
+rollback;
+
+\echo '--- C14. core._arco_union() incluye rentas con estado normalizado, sin datos del titular; la vencida se marca ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select rentas.arco_registrar('00000000-0000-0000-0000-000000f29001', 'acceso', 'correo', 'Titular Seis', 'titular6@example.com', null, now() - interval '50 days');
+select count(*) as visible_en_la_vista_de_org_deberia_ser_1 from core.org_list_arco_requests('00000000-0000-0000-0000-000000f29001', true, 50, 0)
+ where out_vertical = 'rentas' and out_status_bucket = 'abierta' and out_native_status = 'recibida' and out_is_overdue;
+select count(*) as admin_b_no_la_ve_deberia_ser_0 from core.org_list_arco_requests('00000000-0000-0000-0000-000000f29002', true, 50, 0) where out_vertical = 'rentas';
+rollback;
+
+\echo ''
+\echo '=== B. Rn-30: retencion de plataforma de rentas ==='
+\echo ''
+
+\echo '--- B1. el catalogo trae las dos clases de rentas con ejecutor plataforma y defecto 90 dias ---'
+select count(*) as clases_deberia_ser_2 from core.retention_class where vertical = 'rentas' and executor = 'plataforma' and default_days = 90 and min_days = 30 and max_days = 730;
+
+\echo '--- B2. la plataforma lista los pares (org rentas, clase) a purgar ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) as pares_de_la_org_a_deberia_ser_2 from core.system_list_purge_targets(null, 50, '00000000-0000-0000-0000-000000f29001');
+rollback;
+
+\echo '--- B3. un staff autenticado NO dispara la purga (solo sistema) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+select * from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', true, 10) as should_fail;
+rollback;
+
+\echo '--- B4. la funcion de purga del vertical NO es invocable por la aplicacion (authenticated ni anon) -- RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select * from rentas.system_purge_retencion('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', now(), true, 10) as should_fail;
+rollback;
+begin;
+set local role anon;
+select * from rentas.system_purge_retencion('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', now(), true, 10) as should_fail;
+rollback;
+
+\echo '--- B5. huesped_pii: simulacion no toca nada; ejecucion anonimiza solo al vencido sin ARCO abierta ni estancia reciente ---'
+begin;
+insert into rentas.guest_minimo (id, organization_id, property_id, nombre, contacto, created_at) values
+  ('00000000-0000-0000-0000-000000f29081', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'Viejo Vencido', 'vencido@example.com', '2025-01-01'),
+  ('00000000-0000-0000-0000-000000f29082', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'Viejo Con ARCO', 'conarco@example.com', '2025-01-01'),
+  ('00000000-0000-0000-0000-000000f29083', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'Reciente', 'reciente@example.com', now()),
+  ('00000000-0000-0000-0000-000000f29084', '00000000-0000-0000-0000-000000f29002', '00000000-0000-0000-0000-000000f29011', 'Viejo De Otra Org', 'otraorg@example.com', '2025-01-01');
+insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante, huesped_minimo_id) values
+  ('00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', '00000000-0000-0000-0000-000000f29022', daterange('2025-02-01', '2025-02-03', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, '00000000-0000-0000-0000-000000f29081');
+insert into rentas.arco_solicitud (organization_id, derecho, canal, solicitante_nombre, solicitante_contacto, respuesta_vence_en, ejecucion_vence_en)
+values ('00000000-0000-0000-0000-000000f29001', 'cancelacion', 'correo', 'Otro Nombre', 'ConArco@example.com', now() + interval '20 days', now() + interval '35 days');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'simulacion' and out_rows_affected = 1 and out_rows_protected = 1 and out_retention_days = 90)::int as simulacion_cuenta_1_y_protege_1_deberia_ser_1
+  from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', true, 500);
+reset role;
+select count(*) as simulacion_no_toco_nada_deberia_ser_4 from rentas.guest_minimo where nombre is not null and id in ('00000000-0000-0000-0000-000000f29081','00000000-0000-0000-0000-000000f29082','00000000-0000-0000-0000-000000f29083','00000000-0000-0000-0000-000000f29084');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'ok' and out_rows_affected = 1 and out_rows_anonymized = 1 and out_rows_protected = 1)::int as ejecucion_anonimiza_1_deberia_ser_1
+  from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', false, 500);
+reset role;
+select count(*) as vencido_anonimizado_deberia_ser_1 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f29081' and nombre is null and contacto is null;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+select count(*) as con_arco_reciente_y_otra_org_intactos_deberia_ser_3 from rentas.guest_minimo where nombre is not null and id in ('00000000-0000-0000-0000-000000f29082','00000000-0000-0000-0000-000000f29083','00000000-0000-0000-0000-000000f29084');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+select count(*) as la_reserva_se_conserva_deberia_ser_1 from rentas.ocupacion where huesped_minimo_id = '00000000-0000-0000-0000-000000f29081';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+select count(*) as dos_corridas_registradas_sin_pii_deberia_ser_2 from core.purge_run_log where organization_id = '00000000-0000-0000-0000-000000f29001' and data_class = 'rentas_huesped_pii';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+rollback;
+
+\echo '--- B6. un huesped con estancia futura NO se anonimiza aunque su fila sea vieja ---'
+begin;
+insert into rentas.guest_minimo (id, organization_id, property_id, nombre, contacto, created_at) values
+  ('00000000-0000-0000-0000-000000f29085', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'Con Estancia Futura', 'futura@example.com', '2025-01-01');
+insert into rentas.ocupacion (organization_id, property_id, unidad_id, rango, capa, razon, estado, bloqueante, huesped_minimo_id) values
+  ('00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', '00000000-0000-0000-0000-000000f29022', daterange('2027-06-01', '2027-06-03', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, '00000000-0000-0000-0000-000000f29085');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select out_rows_affected as nada_que_purgar_deberia_ser_0 from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', false, 500);
+reset role;
+select count(*) as sigue_intacto_deberia_ser_1 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f29085' and nombre is not null;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+rollback;
+
+\echo '--- B7. un bloqueo por retencion legal impide la purga y queda registrado ---'
+begin;
+insert into rentas.guest_minimo (id, organization_id, property_id, nombre, contacto, created_at) values
+  ('00000000-0000-0000-0000-000000f29081', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'Viejo Bloqueado', 'bloqueado@example.com', '2025-01-01');
+insert into core.purge_hold (organization_id, data_class, reason, placed_by) values
+  ('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', 'Retencion legal por requerimiento de autoridad (verificacion)', '00000000-0000-0000-0000-000000f29030');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'bloqueada' and out_rows_affected = 0)::int as bloqueada_deberia_ser_1 from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_huesped_pii', false, 500);
+reset role;
+select count(*) as sigue_intacto_deberia_ser_1 from rentas.guest_minimo where id = '00000000-0000-0000-0000-000000f29081' and nombre is not null;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+rollback;
+
+\echo '--- B8. acceso_instrucciones: borra solo el sobre de la unidad sin reservas vigentes ni recientes y deja bitacora sin contenido ---'
+begin;
+-- Unidad A2 (f29022): sobre viejo y SIN reserva vigente (solo una pasada de 2025) -> elegible.
+-- Unidad A1 (f29020): sobre viejo pero con reserva futura (2027) -> protegida.
+-- Unidad B1 (f29021, Org B): sobre viejo pero otra organizacion -> intacta.
+insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_cifrada, key_version, updated_at) values
+  ('00000000-0000-0000-0000-000000f29022', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA', 1, '2025-01-01'),
+  ('00000000-0000-0000-0000-000000f29021', '00000000-0000-0000-0000-000000f29002', '00000000-0000-0000-0000-000000f29011', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA', 1, '2025-01-01');
+update rentas.acceso_instruccion set updated_at = '2025-01-01' where unidad_id = '00000000-0000-0000-0000-000000f29020';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'simulacion' and out_rows_affected = 1)::int as simulacion_cuenta_1_deberia_ser_1 from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_acceso_instrucciones', true, 500);
+reset role;
+select count(*) as simulacion_no_borro_deberia_ser_3 from rentas.acceso_instruccion;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (out_status = 'ok' and out_rows_affected = 1)::int as ejecucion_borra_1_deberia_ser_1 from core.system_run_retention_purge('00000000-0000-0000-0000-000000f29001', 'rentas_acceso_instrucciones', false, 500);
+reset role;
+select count(*) as unidad_sin_reservas_borrada_deberia_ser_0 from rentas.acceso_instruccion where unidad_id = '00000000-0000-0000-0000-000000f29022';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+select count(*) as con_reserva_futura_y_otra_org_intactas_deberia_ser_2 from rentas.acceso_instruccion where unidad_id in ('00000000-0000-0000-0000-000000f29020', '00000000-0000-0000-0000-000000f29021');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+reset role;
+select count(*) as bitacora_purga_sin_contenido_deberia_ser_1 from rentas.acceso_instruccion_bitacora where evento = 'purga_retencion' and actor_id is null and unidad_id = '00000000-0000-0000-0000-000000f29022';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+rollback;
