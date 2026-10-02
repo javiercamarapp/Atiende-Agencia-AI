@@ -31,6 +31,8 @@ import {
   IDENTITY_CAPTURE_ROLES,
   IdentityVaultService,
   PRIVACY_LAWYER_CHECKLIST,
+  PostgresGuestDataRepository,
+  correoMisDatos,
   PRIVACY_LEGAL_DISCLAIMER,
   PostgresIdentityRepository,
   arcoDeadline,
@@ -48,6 +50,7 @@ import {
   parsePrivacyReason,
   type ArcoRequestRecord,
   type BlockedAccessRequestRecord,
+  type GuestDataRepository,
   type IdentityRepository,
   type LegalHoldRecord,
   type PrivacyEventRecord,
@@ -58,6 +61,8 @@ import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseLimit, readBody, requireUuid, resolveCipher, serializeIdentity, toApiError } from "./identidad.ts";
 import { privacyRepo, serializeConsent } from "./privacidad-comun.ts";
+import { MIS_DATOS_TTL_SECONDS, issueMisDatosToken, privacyPublicKey } from "../../../privacy-public-token.ts";
+import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 
 function identityRepo(deps: AppDeps, c: Context<CoreAuthHonoEnv>): IdentityRepository {
   const db = c.get("db");
@@ -254,6 +259,42 @@ export function hotelesPrivacidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     });
     const after = await guarded(() => repo.findArco(propertyId, id));
     return c.json({ resultado: result, solicitud: after ? serializeArco(after, today) : null });
+  });
+
+  // H-30 -- enlace "mis datos" (derecho de acceso): solo sobre una solicitud de ACCESO ya procedente/ejecutada (la base lo exige) y por owner/gm.
+  // Liga el huesped a la solicitud, firma un enlace de vida corta (24 h; sin datos personales en la URL: el token va en el fragmento)
+  // y, si el titular dejo correo, lo encola en la cola de correo existente. El token solo se devuelve a quien lo emite.
+  app.post("/hoteles/:propertyId/privacidad/arco/:solicitudId/enlace-mis-datos", async (c) => {
+    admin(c);
+    const propertyId = c.req.param("propertyId");
+    const id = requireUuid(c.req.param("solicitudId"), "solicitudId");
+    const body = await readBody(c);
+    const guestId = requireUuid(typeof body.huespedId === "string" ? body.huespedId : "", "huespedId");
+    const enviarCorreo = body.enviarCorreo === undefined ? true : body.enviarCorreo === true;
+    const repo = privacyRepo(deps, c);
+    if (!(await guarded(() => repo.findArco(propertyId, id)))) throw Errors.notFound("Solicitud ARCO no encontrada.");
+    const guestData: GuestDataRepository = deps.hotelesGuestDataRepo ? deps.hotelesGuestDataRepo(c.get("db")) : new PostgresGuestDataRepository(c.get("db"));
+    const grant = await guarded(() => guestData.grantAccess(id, guestId));
+    const { token, expiresAt } = issueMisDatosToken(privacyPublicKey(deps.env.internalSecret), grant.organizationId, id);
+    const url = `${deps.env.appBaseUrl}/hoteles/${grant.orgSlug}/mis-datos#token=${token}`;
+    let correo: "encolado" | "sin_correo" | "omitido" = "omitido";
+    if (enviarCorreo) {
+      if (grant.contact && grant.contact.includes("@")) {
+        const hoteles = deps.hotelesRepo(c.get("db"));
+        const mail = correoMisDatos({ to: grant.contact, hotelNombre: grant.orgName, folio: grant.folio, url, horas: MIS_DATOS_TTL_SECONDS / 3600 });
+        try {
+          await hoteles.runWithRowSavepoint(() => hoteles.enqueueMessagingOutbox(propertyId, grant.organizationId, "email", "arco.mis_datos", `arco-mis-datos:${id}:${expiresAt.slice(0, 13)}`, { to: mail.to, subject: mail.subject, html: mail.html, text: mail.text }));
+          await triggerHotelesEmailDispatchInline(deps, c.get("db"), hoteles);
+          correo = "encolado";
+        } catch {
+          // La cola no esta disponible (base sin migrar o error): el enlace igual se devuelve para entregarlo a mano.
+          correo = "omitido";
+        }
+      } else {
+        correo = "sin_correo";
+      }
+    }
+    return c.json({ enlace: url, venceEn: expiresAt, correo, envioDeCorreo: deps.env.resend.apiKey ? "habilitado" : "pendiente_de_configuracion" });
   });
 
   app.post("/hoteles/:propertyId/privacidad/arco/:solicitudId/prorroga", async (c) => {

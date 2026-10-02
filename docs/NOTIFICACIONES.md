@@ -66,6 +66,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `hoteles.housekeeping.inspeccion_rechazada` | operacion | atencion | owner/admin, gm, frontdesk, housekeeping | ClipboardX | `/hoteles/{orgSlug}/housekeeping` | una por tarea y por rechazo | 3 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping.ts` |
 | `hoteles.housekeeping.sin_cupo` | operacion | atencion | owner/admin, gm, frontdesk | UsersRound | `/hoteles/{orgSlug}/housekeeping` | una por propiedad por dia | 2 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping-residual.ts` |
 | `hoteles.canal.whatsapp_actualizado` | seguridad | atencion | owner/admin, gm | MessageSquareLock | `/hoteles/{orgSlug}/mensajeria` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/mensajeria-config.ts` |
+| `hoteles.arco.solicitud_publica` | operacion | atencion | owner/admin, gm | ShieldAlert | `/hoteles/{orgSlug}/identidad` | una por solicitud (clave = id) | 14 d | conectado: `apps/api/src/routes/verticals/hoteles/privacidad-publica.ts` (se emite cuando el titular confirma el codigo de su correo (la solicitud publica pasa de pendiente_verificacion a recibida)) |
 
 ### rentas
 
