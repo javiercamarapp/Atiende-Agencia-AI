@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInvoice, fetchInvoices, importarCfdiXml, registrarEstadoSat } from "../src/verticals/despachos/lib/cfdi-client.ts";
+import { fetchInvoice, fetchInvoices, importarCfdiXml, registrarEstadoSat, verificarEstatusSat } from "../src/verticals/despachos/lib/cfdi-client.ts";
 
 const SAMPLE_INVOICE = {
   id: "inv1",
@@ -101,5 +101,22 @@ describe("D-22: sentido (emitido/recibido) y estado SAT", () => {
   it("un CFDI cancelado que se intenta cambiar (409) propaga el mensaje del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: "conflict", message: "un CFDI cancelado no cambia de estado" }), { status: 409 })) as unknown as typeof fetch;
     await expect(registrarEstadoSat(fetchImpl, "http://api.local", "tok", "prop-1", "inv1", "vigente")).rejects.toThrow(/cancelado/);
+  });
+});
+
+describe("D-27: verificarEstatusSat", () => {
+  it("pide POST .../cfdi/:id/verificar-estatus-sat y devuelve el resultado tal cual", async () => {
+    const resultado = { consultado: true, estadoSat: "vigente", estadoSatVerificadoEn: "2026-10-02T00:00:00Z", esCancelable: "Cancelable sin aceptación", estatusCancelacion: null };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/despachos/prop-1/cfdi/inv1/verificar-estatus-sat");
+      expect(init?.method).toBe("POST");
+      return new Response(JSON.stringify(resultado), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await verificarEstatusSat(fetchImpl, "http://api.local", "tok", "prop-1", "inv1")).toEqual(resultado);
+  });
+
+  it("429 (limite de frecuencia) -> propaga el mensaje real del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Demasiadas verificaciones en el SAT." }), { status: 429 })) as unknown as typeof fetch;
+    await expect(verificarEstatusSat(fetchImpl, "http://api.local", "tok", "prop-1", "inv1")).rejects.toThrow("Demasiadas verificaciones en el SAT.");
   });
 });
