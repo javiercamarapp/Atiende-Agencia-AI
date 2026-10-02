@@ -12,8 +12,10 @@
 --     no tiene EXECUTE sobre ninguna (revoke de public/anon). Ninguna tabla recibe GRANT a anon.
 --   * Las tablas nuevas no tienen GRANT ni policy para clientes: todo pasa por funciones security definer con
 --     search_path fijo (sin using (true)).
---   * El codigo de verificacion NUNCA se guarda en claro: la API manda un HMAC-SHA256 (llave del servidor) y la base
---     solo lo compara; expira, tiene 5 intentos y es de un solo uso (used_at).
+--   * Verificacion: la API manda a la base un HMAC-SHA256 del codigo (llave del servidor) y la base solo compara ese
+--     hash (no guarda el codigo en arco_public_verification); expira, tiene 5 intentos y es de un solo uso (used_at).
+--     Matiz: el correo con el codigo (y el de 'mis datos' con su token) viaja en claro en el payload de
+--     hoteles.messaging_outbox, que solo lee service_role (008); no es legible por clientes.
 --   * La exportacion del staff y la bitacora son UNA sola funcion definer: no existe un camino que exporte sin
 --     dejar huella en privacy_event_log. El documento de identidad nunca sale: solo id, tipo, estado y vigencia.
 
@@ -389,3 +391,98 @@ end;
 $$;
 revoke all on function hoteles.arco_access_snapshot(uuid, text) from public, anon;
 grant execute on function hoteles.arco_access_snapshot(uuid, text) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 9) core._arco_union(): el estado nuevo 'pendiente_verificacion' de hoteles se clasifica como 'por_confirmar'
+--    (igual que 'pendiente_confirmacion' de citas y restaurantes). Sin esto caia en el ELSE 'resuelta' y una solicitud
+--    publica sin verificar (incluida la de bots o spam) aparecia en las vistas ARCO consolidadas de organizacion y
+--    plataforma como resuelta, falseando el reporte de cumplimiento. Mismo cuerpo, firma, search_path y REVOKE que
+--    en 0036 (solo cambia esa rama del CASE); 'por_confirmar' no es abierta ni vencida, asi que no corre plazo.
+-- ---------------------------------------------------------------------------
+create or replace function core._arco_union()
+returns table (
+  organization_id uuid, vertical text, request_id uuid, right_type text, channel text,
+  native_status text, status_bucket text, opened_at timestamptz,
+  response_due_at timestamptz, execution_due_at timestamptz, due_at timestamptz,
+  resolved_at timestamptz, is_open boolean, is_overdue boolean
+)
+language sql stable security definer set search_path = core, citas, restaurantes, hoteles, pg_temp as $$
+  with u as (
+    select r.organization_id, 'citas'::text as vertical, r.id as request_id, r.right_type, r.channel,
+           r.status as native_status,
+           case r.status when 'pendiente_confirmacion' then 'por_confirmar' when 'recibida' then 'abierta'
+             when 'en_proceso' then 'en_proceso' when 'bloqueada' then 'bloqueada' when 'resuelta' then 'resuelta'
+             when 'rechazada' then 'rechazada' else 'cerrada' end as status_bucket,
+           r.requested_at as opened_at, r.response_due_at, r.execution_due_at, r.resolved_at
+      from citas.data_rights_requests r
+    union all
+    select r.organization_id, 'restaurantes', r.id, r.right_type, r.channel, r.status,
+           case r.status when 'pendiente_confirmacion' then 'por_confirmar' when 'recibida' then 'abierta'
+             when 'en_proceso' then 'en_proceso' when 'bloqueada' then 'bloqueada' when 'resuelta' then 'resuelta'
+             when 'rechazada' then 'rechazada' else 'cerrada' end,
+           r.requested_at, r.response_due_at, r.execution_due_at, r.resolved_at
+      from restaurantes.data_rights_requests r
+    union all
+    select a.organization_id, 'hoteles', a.id, a.right_type, a.channel, a.status,
+           case a.status when 'pendiente_verificacion' then 'por_confirmar' when 'recibida' then 'abierta' when 'en_revision' then 'en_proceso'
+             when 'procedente' then 'en_proceso' when 'improcedente' then 'rechazada' else 'resuelta' end,
+           a.created_at, a.response_due_on::timestamp at time zone 'UTC',
+           a.execution_due_on::timestamp at time zone 'UTC', a.executed_at
+      from hoteles.arco_request a
+  )
+  select u.organization_id, u.vertical, u.request_id, u.right_type, u.channel, u.native_status, u.status_bucket,
+         u.opened_at, u.response_due_at, u.execution_due_at,
+         case when u.status_bucket = 'abierta' then u.response_due_at else coalesce(u.execution_due_at, u.response_due_at) end,
+         u.resolved_at,
+         u.status_bucket in ('abierta', 'en_proceso', 'bloqueada'),
+         u.status_bucket in ('abierta', 'en_proceso', 'bloqueada')
+           and case when u.status_bucket = 'abierta' then u.response_due_at else coalesce(u.execution_due_at, u.response_due_at) end < now()
+    from u;
+$$;
+revoke all on function core._arco_union() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 10) hoteles.extend_arco_request(): rechaza prorrogar una solicitud 'pendiente_verificacion'. Defensa en profundidad:
+--     el plazo real empieza al verificar (public_arco_verify lo recalcula), asi que prorrogar antes gastaba la unica
+--     prorroga sin efecto. Mismo cuerpo, permisos y GRANT que en 032; solo se agrega ese rechazo.
+-- ---------------------------------------------------------------------------
+create or replace function hoteles.extend_arco_request(p_request_id uuid, p_reason text)
+returns void language plpgsql security definer set search_path = core, hoteles, pg_temp as $$
+declare
+  v_req hoteles.arco_request%rowtype;
+  v_reason text := btrim(coalesce(p_reason, ''));
+begin
+  if auth.uid() is null then
+    raise exception 'extend_arco_request: requiere sesion de staff' using errcode = '42501';
+  end if;
+  select * into v_req from hoteles.arco_request where id = p_request_id for update;
+  if not found or not hoteles.can_manage_catalog(v_req.property_id) then
+    raise exception 'solicitud no disponible' using errcode = '42501';
+  end if;
+  if length(v_reason) < 10 or length(v_reason) > 300 then
+    raise exception 'motivo_invalido: el motivo de la prorroga debe tener entre 10 y 300 caracteres' using errcode = '22023';
+  end if;
+  if v_req.status = 'pendiente_verificacion' then
+    raise exception 'estado_invalido: la solicitud aun no esta verificada por el titular' using errcode = 'P0001';
+  end if;
+  if v_req.status in ('improcedente', 'ejecutada') then
+    raise exception 'estado_invalido: la solicitud ya esta resuelta' using errcode = 'P0001';
+  end if;
+  if v_req.extended_at is not null then
+    raise exception 'prorroga_agotada: la prorroga solo se puede usar una vez' using errcode = 'P0001';
+  end if;
+  if v_req.status = 'procedente' then
+    update hoteles.arco_request
+       set execution_due_on = execution_due_on + 15, extension_phase = 'ejecucion', extension_reason = v_reason, extended_at = now(), extended_by = auth.uid(), updated_at = now()
+     where id = p_request_id;
+  else
+    update hoteles.arco_request
+       set response_due_on = response_due_on + 20, extension_phase = 'respuesta', extension_reason = v_reason, extended_at = now(), extended_by = auth.uid(), updated_at = now()
+     where id = p_request_id;
+  end if;
+  perform hoteles.privacy_log_event(v_req.organization_id, v_req.property_id, 'arco', p_request_id, 'arco_prorroga', v_reason);
+end;
+$$;
+revoke all on function hoteles.extend_arco_request(uuid, text) from public, anon;
+grant execute on function hoteles.extend_arco_request(uuid, text) to authenticated;
