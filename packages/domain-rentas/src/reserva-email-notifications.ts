@@ -95,7 +95,7 @@ export async function enqueueReservaEmailCore(repo: RentasRepository, organizati
     }
   }
 
-  await repo.enqueueMessagingOutbox(ocupacion.propertyId, organizationId, "email", event, dedupeKey, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto });
+  await repo.enqueueMessagingOutbox(ocupacion.propertyId, organizationId, "email", event, dedupeKey, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto, transaccional: true }); // SA-L-46: correo de SU reserva; la lista de supresion no lo bloquea.
 
   return { enqueued: true };
 }

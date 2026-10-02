@@ -161,7 +161,7 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
       throw new Error(`Evento de correo de cita desconocido: ${String(event)}`);
   }
 
-  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, { to: customer.email, subject: correo.asunto, html: correo.html, text: correo.texto });
+  await repo.enqueueMessagingOutbox(organizationId, "email", event, dedupeKey, { to: customer.email, subject: correo.asunto, html: correo.html, text: correo.texto, transaccional: true }); // SA-L-46: correo de SU cita; la lista de supresion no lo bloquea.
 
   return { enqueued: true };
 }

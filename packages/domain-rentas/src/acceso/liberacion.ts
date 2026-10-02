@@ -81,7 +81,7 @@ async function procesarSiguiente(ctx: ContextoLiberacion, excluir: readonly stri
     codigoAcceso: cand.codigoAcceso,
     instrucciones: cand.instrucciones,
   });
-  await ctx.rentas.enqueueMessagingOutbox(cand.propertyId, cand.organizationId, "email", EVENTO_OUTBOX_ACCESO, `acceso:${cand.ocupacionId}`, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto });
+  await ctx.rentas.enqueueMessagingOutbox(cand.propertyId, cand.organizationId, "email", EVENTO_OUTBOX_ACCESO, `acceso:${cand.ocupacionId}`, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto, transaccional: true }); // SA-L-46: acceso a SU reserva; la lista de supresion no lo bloquea.
   await ctx.acceso.marcarLiberada(cand.ocupacionId);
   return { tipo: "liberada", id: cand.ocupacionId };
 }
