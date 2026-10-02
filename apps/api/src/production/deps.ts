@@ -100,6 +100,7 @@ import {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
@@ -450,7 +451,11 @@ export function buildProductionDeps(): AppDeps {
     // plataforma pendiente.
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
     rentasReportesRepo: (db) => new PostgresRentasReportesRepository(db),
-    rentasAccesoRepo: (db) => new PostgresRentasAccesoRepository(db),
+    // Rn-29: las instrucciones de acceso se cifran en la app con RENTAS_ACCESS_KEY (sin llave: 503 explicito, nunca texto plano).
+    rentasAccesoRepo: (db) => {
+      const { cipher, error } = cifradorAccesoDeEntorno(env);
+      return new PostgresRentasAccesoRepository(db, cipher, error);
+    },
     rentasCatalogoRepo: (db) => new PostgresRentasCatalogoRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS

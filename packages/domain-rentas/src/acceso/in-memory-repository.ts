@@ -3,19 +3,44 @@
 // scripts/verify-rentas-reportes-acceso): entrega las `pendientes` sembradas que no estén
 // excluidas ni ya liberadas. Sí modela la idempotencia, el dedupe de la bitácora y la
 // disponibilidad de la migración.
+import { accesoAad } from "./cipher.ts";
+import type { AccesoCipher, CampoAcceso } from "./cipher.ts";
+import { AccesoNoDisponibleError } from "./errores.ts";
 import type { RentasAccesoRepository } from "./repository.ts";
 import { POLITICA_ACCESO_POR_DEFECTO } from "./tipos.ts";
-import type { EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
+import type { ResumenBarridoCifrado, EventoAccesoRecord, ReservaAccesoRecord, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ResultadoAcceso, ResultadoConfirmarPago } from "./tipos.ts";
 import type { EntradaInstruccion, EntradaPolitica } from "./validacion.ts";
 
+/** Fila como la guarda la base tras la migracion 028: SOLO sobres cifrados (nunca el texto plano). */
+interface FilaInstruccion {
+  readonly unidadId: string;
+  readonly propertyId: string;
+  readonly direccionCifrada: string;
+  readonly codigoCifrado: string | null;
+  readonly instruccionesCifradas: string | null;
+}
+
 export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
+  /** Sin `cipher` el doble se comporta como la API sin RENTAS_ACCESS_KEY: leer/escribir/cifrar lanzan `AccesoNoDisponibleError`. */
+  constructor(private readonly cipher: AccesoCipher | null = null) {}
+
+  private exigirCipher(): AccesoCipher {
+    if (!this.cipher) throw new AccesoNoDisponibleError("llave_no_configurada");
+    return this.cipher;
+  }
+
+  /** Bitacora de lecturas/escrituras de instrucciones (sin contenido). */
+  readonly bitacoraInstrucciones: { unidadId: string; evento: "lectura_admin" | "escritura_admin" | "cifrado_inicial" }[] = [];
+  /** Filas heredadas en texto plano (previas a la migracion 028), pendientes de barrido. */
+  readonly instruccionesHeredadas = new Map<string, InstruccionAcceso & { propertyId: string }>();
   migracion025Disponible = true;
   readonly pendientes: LiberacionPendiente[] = [];
   readonly liberadas = new Set<string>();
   readonly pagosConfirmados = new Set<string>();
   readonly reservasConocidas = new Set<string>();
   readonly politicas = new Map<string, PoliticaAcceso>();
-  readonly instrucciones = new Map<string, InstruccionAcceso & { propertyId: string }>();
+  /** Lo que hay en la "base": solo sobres. */
+  readonly instrucciones = new Map<string, FilaInstruccion>();
   readonly unidadesPorProperty = new Map<string, Set<string>>();
   readonly bitacora: (EventoAccesoRecord & { propertyId: string })[] = [];
   /** Llamadas hechas al motor (para afirmar que un camino no llegó a tocarlo). */
@@ -42,18 +67,64 @@ export class InMemoryRentasAccesoRepository implements RentasAccesoRepository {
     return { disponible: true, valor: p };
   }
 
+  private sobre(unidadId: string, propertyId: string, campo: CampoAcceso, v: string | null): string | null {
+    return v === null ? null : this.exigirCipher().encrypt(v, accesoAad(unidadId, propertyId, campo));
+  }
+
   async obtenerInstruccion(propertyId: string, unidadId: string): Promise<ResultadoAcceso<InstruccionAcceso | null>> {
+    const cipher = this.exigirCipher();
     if (!this.migracion025Disponible) return { disponible: false };
-    const i = this.instrucciones.get(unidadId);
-    return { disponible: true, valor: i && i.propertyId === propertyId ? { unidadId: i.unidadId, direccionExacta: i.direccionExacta, codigoAcceso: i.codigoAcceso, instrucciones: i.instrucciones } : null };
+    const f = this.instrucciones.get(unidadId);
+    if (f && f.propertyId === propertyId) {
+      this.bitacoraInstrucciones.push({ unidadId, evento: "lectura_admin" });
+      return {
+        disponible: true,
+        valor: {
+          unidadId,
+          direccionExacta: cipher.decrypt(f.direccionCifrada, accesoAad(unidadId, propertyId, "direccion")),
+          codigoAcceso: f.codigoCifrado === null ? null : cipher.decrypt(f.codigoCifrado, accesoAad(unidadId, propertyId, "codigo")),
+          instrucciones: f.instruccionesCifradas === null ? null : cipher.decrypt(f.instruccionesCifradas, accesoAad(unidadId, propertyId, "instrucciones")),
+        },
+      };
+    }
+    const h = this.instruccionesHeredadas.get(unidadId);
+    if (h && h.propertyId === propertyId) return { disponible: true, valor: { unidadId, direccionExacta: h.direccionExacta, codigoAcceso: h.codigoAcceso, instrucciones: h.instrucciones } };
+    return { disponible: true, valor: null };
   }
 
   async guardarInstruccion(_org: string, propertyId: string, unidadId: string, entrada: EntradaInstruccion): Promise<ResultadoAcceso<InstruccionAcceso | null>> {
+    this.exigirCipher();
     if (!this.migracion025Disponible) return { disponible: false };
     if (!this.unidadesPorProperty.get(propertyId)?.has(unidadId)) return { disponible: true, valor: null };
-    const i = { unidadId, propertyId, ...entrada };
-    this.instrucciones.set(unidadId, i);
+    this.instrucciones.set(unidadId, {
+      unidadId,
+      propertyId,
+      direccionCifrada: this.sobre(unidadId, propertyId, "direccion", entrada.direccionExacta)!,
+      codigoCifrado: this.sobre(unidadId, propertyId, "codigo", entrada.codigoAcceso),
+      instruccionesCifradas: this.sobre(unidadId, propertyId, "instrucciones", entrada.instrucciones),
+    });
+    this.instruccionesHeredadas.delete(unidadId);
+    this.bitacoraInstrucciones.push({ unidadId, evento: "escritura_admin" });
     return { disponible: true, valor: { unidadId, ...entrada } };
+  }
+
+  async cifrarPendientes(limite: number): Promise<ResumenBarridoCifrado> {
+    this.exigirCipher();
+    if (!this.migracion025Disponible) return { disponible: false, cifradas: 0, fallidas: 0 };
+    let cifradas = 0;
+    for (const [unidadId, h] of [...this.instruccionesHeredadas].slice(0, limite)) {
+      this.instrucciones.set(unidadId, {
+        unidadId,
+        propertyId: h.propertyId,
+        direccionCifrada: this.sobre(unidadId, h.propertyId, "direccion", h.direccionExacta)!,
+        codigoCifrado: this.sobre(unidadId, h.propertyId, "codigo", h.codigoAcceso),
+        instruccionesCifradas: this.sobre(unidadId, h.propertyId, "instrucciones", h.instrucciones),
+      });
+      this.instruccionesHeredadas.delete(unidadId);
+      this.bitacoraInstrucciones.push({ unidadId, evento: "cifrado_inicial" });
+      cifradas += 1;
+    }
+    return { disponible: true, cifradas, fallidas: 0 };
   }
 
   async confirmarPago(ocupacionId: string, confirmado: boolean): Promise<ResultadoConfirmarPago> {
