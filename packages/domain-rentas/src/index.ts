@@ -388,3 +388,6 @@ export {
 export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
 export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from "./staff-invite-email.ts";
+
+// ---- Rn-26: Resumen operativo (agregados sin PII) ----
+export * from "./resumen/index.ts";
