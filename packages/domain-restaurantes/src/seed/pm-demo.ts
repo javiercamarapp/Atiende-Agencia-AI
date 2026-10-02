@@ -24,6 +24,8 @@
 //   * Sin secretos ni usuarios: nunca crea credenciales; la membresia del dueño es opcional y solo
 //     enlaza a un usuario de staff que YA existe.
 import { validarHorario } from "../horarios.ts";
+import { COMPORTAMIENTO_VOZ_MAX, comportamientoVozPm } from "../voz/perfil-voz-pm.ts";
+import { PM_AGENT_NAME_POR_OMISION } from "../whatsapp/perfil-pm.ts";
 
 export interface PmSeedBranch {
   readonly id: string;
@@ -85,7 +87,7 @@ export interface PmSeedData {
   readonly productos: readonly PmSeedProduct[];
   readonly promociones: readonly PmSeedPromotion[];
   readonly promociones_no_modeladas: readonly { readonly id: string; readonly nombre: string; readonly motivo: string }[];
-  readonly agente: { readonly voice_id: string; readonly saludo: string; readonly secciones_comportamiento: readonly string[] };
+  readonly agente: { readonly voice_id: string; readonly saludo: string };
   /** Configuracion del agente de WhatsApp (migraciones 029/033): perfil `taqueria_pm` con los textos editables del dueño. */
   readonly agente_whatsapp: {
     readonly perfil: "taqueria_pm";
@@ -113,8 +115,6 @@ export interface PmSeedPendiente {
 }
 
 export interface PmAgentFiles {
-  /** Contenido de agente-pm-system-prompt.txt. */
-  readonly systemPrompt: string;
   /** agente-pm-tools.json ya parseado. */
   readonly tools: unknown;
   /** agente-pm-evals.json ya parseado. */
@@ -124,7 +124,7 @@ export interface PmAgentFiles {
 export class PmSeedError extends Error {}
 
 /** Limites reales de `restaurantes.branch_voice_config` (migracion 025). */
-export const COMPORTAMIENTO_MAX = 8000;
+export const COMPORTAMIENTO_MAX = COMPORTAMIENTO_VOZ_MAX;
 export const MENSAJE_INICIAL_MAX = 500;
 
 export function slugify(text: string): string {
@@ -146,25 +146,19 @@ function esPrecio(n: unknown): n is number {
   return typeof n === "number" && Number.isFinite(n) && n > 0 && n < 100000;
 }
 
-/** Extrae del prompt completo solo las secciones pedidas (`# TITULO ...` hasta el siguiente `# `). El
- * comportamiento de voz tiene tope de 8000 caracteres (migracion 025): el flujo, las herramientas, la
- * escalacion y los ejemplos viven en los archivos del agente (tools.json/evals.json), no aqui. */
-export function extraerComportamiento(systemPrompt: string, secciones: readonly string[]): string {
-  const bloques = systemPrompt.split(/^(?=# )/m);
-  const elegidos: string[] = [];
-  for (const titulo of secciones) {
-    const bloque = bloques.find((b) => b.startsWith(titulo));
-    if (!bloque) fail(`El prompt del agente no tiene la seccion "${titulo}".`);
-    elegidos.push(bloque.trim());
+/** El comportamiento de voz sembrado sale del MISMO perfil que WhatsApp (`comportamientoVozPm`), no de un archivo aparte. Falla si
+ * PROMETE el combo del martes (nachos con aguas de cortesia: no esta cargado, P13) o si no trae la instruccion de que lo confirma la
+ * sucursal; la palabra "martes" si puede aparecer porque el prompt debe decir justo eso. */
+export function validarComportamientoVoz(comportamiento: string): void {
+  if (/2 aguas de cortes[ií]a|dos aguas de cortes[ií]a|nachos[^.\n]{0,40}\b(2|dos) aguas|elige (dos|2) aguas/i.test(comportamiento)) {
+    fail("El comportamiento de voz promete el combo del martes (aguas de cortesia), que NO esta cargado como promocion (P13).");
   }
-  const texto = elegidos.join("\n\n");
-  if (texto.length > COMPORTAMIENTO_MAX) fail(`El comportamiento del agente mide ${texto.length} caracteres; el maximo es ${COMPORTAMIENTO_MAX}.`);
-  return texto;
+  if (!/la confirma la sucursal al recoger/.test(comportamiento)) fail("El comportamiento de voz no dice que el combo del martes lo confirma la sucursal al recoger.");
+  if (comportamiento.length > COMPORTAMIENTO_VOZ_MAX) fail(`El comportamiento del agente mide ${comportamiento.length} caracteres; el maximo es ${COMPORTAMIENTO_VOZ_MAX}.`);
 }
 
-/** Valida los archivos del agente (prompt, tools, evals) y la coherencia entre ellos. */
+/** Valida los archivos del agente (tools y evals) y la coherencia entre ellos. El prompt ya no es un archivo: ver `validarComportamientoVoz`. */
 export function validarArchivosAgente(files: PmAgentFiles): { readonly herramientas: readonly string[]; readonly casos: number } {
-  if (typeof files.systemPrompt !== "string" || files.systemPrompt.trim().length < 500) fail("El prompt del agente esta vacio o es demasiado corto.");
   if (!Array.isArray(files.tools) || files.tools.length === 0) fail("tools.json debe ser una lista no vacia.");
   const nombres: string[] = [];
   for (const tool of files.tools as Array<Record<string, unknown>>) {
@@ -181,10 +175,6 @@ export function validarArchivosAgente(files: PmAgentFiles): { readonly herramien
     if (typeof caso.id !== "string" || !caso.id) fail("Un caso de evals.json no tiene id.");
     if (ids.has(caso.id)) fail(`Caso duplicado en evals.json: ${caso.id}`);
     ids.add(caso.id);
-  }
-  // El prompt solo puede mandar llamar herramientas que existen en tools.json.
-  for (const nombre of nombres) {
-    if (!files.systemPrompt.includes(nombre)) fail(`El prompt del agente no menciona la herramienta ${nombre} de tools.json.`);
   }
   return { herramientas: nombres, casos: evals.casos.length };
 }
@@ -447,7 +437,16 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   }
 
   // --- agente -----------------------------------------------------------------------------------------
-  const comportamiento = extraerComportamiento(agent.systemPrompt, data.agente.secciones_comportamiento);
+  const comportamiento = comportamientoVozPm({
+    businessName: data.organizacion.nombre,
+    agentName: aw.nombre_agente ?? PM_AGENT_NAME_POR_OMISION,
+    deliveryTimeText: aw.tiempo_entrega,
+    branches: data.sucursales.filter((b) => b.activa).map((b) => ({ propertyId: b.id, slug: b.slug, name: b.nombre, address: null })),
+    salsasTexto: aw.salsas,
+    promosTexto: aw.promociones,
+    motivosDesactivados: aw.motivos_escalacion_apagados,
+  });
+  validarComportamientoVoz(comportamiento);
   const greetings = data.sucursales
     .filter((b) => b.activa)
     .map((b) => {
