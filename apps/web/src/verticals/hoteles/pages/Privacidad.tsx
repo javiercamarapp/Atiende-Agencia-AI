@@ -48,7 +48,6 @@ import { buscarHuespedes } from "../lib/huespedes-client.ts";
 import type { GuestOption } from "../lib/huespedes-client.ts";
 import type {
   AccesoSummary,
-  ArcoCanal,
   ArcoCanalStaff,
   ArcoDerecho,
   ArcoSummary,
@@ -589,7 +588,7 @@ function EnlaceMisDatosPanel({ apiBaseUrl, token, propertyId, arco }: { apiBaseU
         </div>
       )}
       <div className="flex items-center gap-2">
-        <Checkbox id={`mis-datos-c-${arco.id}`} checked={enviarCorreo && tieneCorreo} disabled={!tieneCorreo} onCheckedChange={(v) => setEnviarCorreo(v === true)} />
+        <Checkbox id={`mis-datos-c-${arco.id}`} checked={enviarCorreo && tieneCorreo} disabled={!tieneCorreo} onChange={(e) => setEnviarCorreo(e.target.checked)} />
         <Label htmlFor={`mis-datos-c-${arco.id}`}>{tieneCorreo ? "Enviar el enlace al correo del titular" : "El titular no dejó un correo: copia el enlace y entrégalo por otro medio"}</Label>
       </div>
       <div>

@@ -239,7 +239,7 @@ describe("cliente de privacidad publica", () => {
     await expect(crearClientePrivacidadPublica(g as unknown as typeof fetch, API, "demo").solicitar({ derecho: "acceso", nombre: "Ana", correo: "x" })).rejects.toBeInstanceOf(PrivacidadPublicaError);
   });
   it("codifica el slug del hotel en la URL", async () => {
-    const f = vi.fn(async () => json({ disponible: true, hotel: { nombre: null }, propiedades: [] }));
+    const f = vi.fn(async (_url: string) => json({ disponible: true, hotel: { nombre: null }, propiedades: [] }));
     await crearClientePrivacidadPublica(f as unknown as typeof fetch, API, "hotel demo/x").aviso();
     expect(String(f.mock.calls[0]![0])).toBe(`${API}/v1/hoteles/hotel%20demo%2Fx/privacidad`);
   });
