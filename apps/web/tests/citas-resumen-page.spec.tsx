@@ -78,7 +78,7 @@ describe("ResumenPage (citas)", () => {
     expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
     expect(rendered.container.querySelector("h1")?.textContent).toMatch(/^(Buenos días|Buenas tardes|Buenas noches), Sam$/);
     expect(texto()).toContain("29 de septiembre");
-    expect(texto()).toContain("America/Merida");
+    expect(texto()).toContain("3 citas hoy");
     // Destacado "Citas hoy" = 3 (odómetro de 3 dígitos).
     const odometro = rendered.container.querySelector('[data-testid="odometro"]');
     expect(odometro?.getAttribute("aria-label")).toContain("Citas hoy");

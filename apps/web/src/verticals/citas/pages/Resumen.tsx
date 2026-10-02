@@ -155,7 +155,8 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
       <ResumenLayout
         saludo={saludoPorHora()}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
-        subtitulo={`${formatDiaNegocio(resumen.today.date)} · ${resumen.timezone}`}
+        // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra de hoy viaja en el subtítulo.
+        subtitulo={`${formatDiaNegocio(resumen.today.date)} · ${plural(resumen.today.total, "cita hoy", "citas hoy")}`}
         destacado={<Odometro valor={resumen.today.total} digitos={Math.max(3, String(resumen.today.total).length)} etiqueta="Citas hoy" tamano="md" />}
         kpis={kpis}
         acciones={<PillLink to={`${base}/agenda`}>Ver agenda</PillLink>}
