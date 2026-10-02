@@ -95,6 +95,7 @@ describe("CitasShell — nav móvil", () => {
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
       "Resumen",
       "Agenda",
+      "Avisos",
       "Primeros pasos",
       "Proveedores",
       "Servicios",
