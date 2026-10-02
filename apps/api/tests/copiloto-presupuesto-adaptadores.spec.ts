@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MonthlyBudgetExceededError, RoleDailyTurnLimitExceededError } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import {
+  BanderaConTtl,
   FALLBACK_VENTANA_MIN_LLAMADAS,
   ProductionLlmUsageRecorder,
   ProductionOrgMonthlyBudgetStore,
@@ -34,6 +35,20 @@ function motor(responder: Responder) {
 
 const sinMigrar = () => Object.assign(new Error("function core.reserve_llm_monthly_budget(uuid, unknown, integer, unknown) does not exist"), { code: "42883" });
 const ahora = new Date("2026-10-02T15:30:00Z");
+
+describe("BanderaConTtl (base sin migrar)", () => {
+  it("queda activa solo durante el TTL: despues se vuelve a intentar (las instancias calientes recuperan la 0047 sin reciclarse)", () => {
+    let t = 1_000;
+    const b = new BanderaConTtl(60_000, () => t);
+    expect(b.activa).toBe(false);
+    b.marcar();
+    expect(b.activa).toBe(true);
+    t += 59_999;
+    expect(b.activa).toBe(true);
+    t += 2;
+    expect(b.activa).toBe(false);
+  });
+});
 
 describe("funciones puras de avisos", () => {
   it("clavesAvisoUmbral: 80 % exacto de la organizacion y/o de la plataforma, una clave por organizacion/mes y una de plataforma/mes", () => {

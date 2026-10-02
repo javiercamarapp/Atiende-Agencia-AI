@@ -43,6 +43,18 @@ export const FALLBACK_VENTANA_MIN_LLAMADAS = 20;
 /** Porcentaje de llamadas de la hora que cayeron a un modelo de respaldo a partir del cual se avisa (estrictamente mayor). */
 export const FALLBACK_UMBRAL_PCT = 5;
 
+/** Cuanto dura la memoria de "la base aun no tiene la 0047". Pasado ese tiempo se vuelve a intentar: tras aplicar la migracion, las instancias
+ *  calientes recuperan subtope, tope diario y ventana sin esperar a reciclarse. */
+export const MIGRACION_PENDIENTE_TTL_MS = 60_000;
+
+/** Bandera "base sin migrar" que EXPIRA (en vez de quedar pegada por instancia). */
+export class BanderaConTtl {
+  private hasta = 0;
+  constructor(private readonly ttlMs: number = MIGRACION_PENDIENTE_TTL_MS, private readonly ahora: () => number = Date.now) {}
+  get activa(): boolean { return this.ahora() < this.hasta; }
+  marcar(): void { this.hasta = this.ahora() + this.ttlMs; }
+}
+
 /** Claves de dedupe de los avisos al 80 % tras una reserva exitosa (una por organizacion/mes y una de plataforma/mes). Funcion pura. */
 export function clavesAvisoUmbral(organizationId: string, totals: LlmMonthlyReservationTotals, ahora: Date): string[] {
   const mes = ahora.toISOString().slice(0, 7);
@@ -92,7 +104,7 @@ export async function notificarFallbackAltoBestEffort(engine: TenancyEngine, emi
 }
 
 export class ProductionLlmUsageRecorder implements UsageRecorder {
-  private ventanaNoDisponible = false;
+  private readonly ventanaNoDisponible = new BanderaConTtl();
   private readonly fallbackAvisado = new Set<string>();
 
   constructor(private readonly engine: TenancyEngine) {}
@@ -100,12 +112,12 @@ export class ProductionLlmUsageRecorder implements UsageRecorder {
   /** Ventana horaria de respaldos (migracion 0047): cuenta la llamada y avisa si mas del 5 % de la hora cayo a un modelo de respaldo.
    *  Corre en su PROPIA sesion de sistema y es best-effort: nunca lanza ni toca el registro de uso de arriba. */
   private async registrarVentana(fallbackUsed: boolean): Promise<void> {
-    if (this.ventanaNoDisponible) return;
+    if (this.ventanaNoDisponible.activa) return;
     try {
       const w = await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).recordHourWindow(fallbackUsed));
       if (fallbackSuperaUmbral(w.calls, w.fallbacks)) await notificarFallbackAltoBestEffort(this.engine, this.fallbackAvisado, new Date(), (w.fallbacks * 100) / w.calls);
     } catch (err) {
-      if (isMigrationPendingError(err)) this.ventanaNoDisponible = true; // base sin migrar (0047): sin ventana, nunca un error
+      if (isMigrationPendingError(err)) this.ventanaNoDisponible.marcar(); // base sin migrar (0047): sin ventana, nunca un error
     }
   }
 
@@ -166,12 +178,12 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
   private readonly topeNotificado = new Set<string>();
   private readonly umbralNotificado = new Set<string>();
   /** La base aun no tiene la reserva con rol (migracion 0047): se usa la de 3 argumentos sin reintentar la nueva en cada llamada. */
-  private sinReservaConRol = false;
+  private readonly sinReservaConRol = new BanderaConTtl();
 
   constructor(private readonly engine: TenancyEngine) {}
 
   private async reservarUnaVez(organizationId: string, reservationId: string, amountMicroUsd: number, role: string | undefined): Promise<LlmMonthlyReservationTotals | null> {
-    const conRol = role !== undefined && !this.sinReservaConRol;
+    const conRol = role !== undefined && !this.sinReservaConRol.activa;
     try {
       return await this.engine.withAppSession({ userId: null }, (session) =>
         new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd, conRol ? role : undefined),
@@ -179,7 +191,7 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
     } catch (err) {
       // Base sin migrar: el error 42883 aborta ESA transaccion; el camino anterior corre en una sesion nueva.
       if (conRol && isMigrationPendingError(err)) {
-        this.sinReservaConRol = true;
+        this.sinReservaConRol.marcar();
         return this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd));
       }
       throw err;
@@ -229,18 +241,18 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
  * proteccion de uso, y el dinero sigue protegido por el tope mensual (que si es fail-closed).
  */
 export class ProductionRoleDailyTurnStore implements RoleDailyTurnStore {
-  private noDisponible = false;
+  private readonly noDisponible = new BanderaConTtl();
 
   constructor(private readonly engine: TenancyEngine) {}
 
   async consume(organizationId: string, role: string): Promise<void> {
     const defaultLimit = defaultRoleDailyTurnLimit(role);
-    if (defaultLimit === undefined || this.noDisponible) return;
+    if (defaultLimit === undefined || this.noDisponible.activa) return;
     let result;
     try {
       result = await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).consumeRoleTurn(organizationId, role, defaultLimit));
     } catch (err) {
-      if (isMigrationPendingError(err)) this.noDisponible = true;
+      if (isMigrationPendingError(err)) this.noDisponible.marcar();
       else console.error(JSON.stringify({ level: "error", event: "llm_role_turn_store_failed", message: err instanceof Error ? err.message.slice(0, 200) : "error", role }));
       return;
     }
