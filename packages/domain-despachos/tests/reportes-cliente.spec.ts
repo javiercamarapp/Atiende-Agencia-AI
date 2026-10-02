@@ -105,7 +105,7 @@ describe("reporte de balanza", () => {
     const r = construirReporteBalanza(ENTRADA, [invoice("1"), invoice("2", { categoria: "honorarios", subtotal: 3000, total: 3480, iva: 480 }), invoice("3")]);
     const [balanza, resumen] = r.secciones;
     expect(balanza!.filas).toEqual([]);
-    expect(balanza!.sinDatosMotivo).toContain("no persiste asientos");
+    expect(balanza!.sinDatosMotivo).toContain("no tiene pólizas");
     expect(resumen!.titulo).toContain("no es la balanza");
     expect(resumen!.filas[0]).toMatchObject({ categoria: "Honorarios", total: 3480 });
     expect(resumen!.totales).toMatchObject({ cfdi: 3, subtotal: 5000, iva: 800, total: 5800 });
@@ -114,6 +114,22 @@ describe("reporte de balanza", () => {
 
   it("sin CFDI en el período todo es sin datos", () => {
     expect(construirReporteBalanza(ENTRADA, []).sinDatos).toBe(true);
+  });
+
+  it("con la balanza del libro (D-24) la sección se llena con las cuentas del libro, en pesos, con totales; los centavos no se pierden", () => {
+    const r = construirReporteBalanza(ENTRADA, [], [
+      { cuenta: "1050000", descripcion: "Clientes", naturaleza: "D", saldoInicialCentavos: 0, debeCentavos: 116005, haberCentavos: 0, saldoFinalCentavos: 116005 },
+      { cuenta: "4080000", descripcion: "Ingresos por servicios", naturaleza: "A", saldoInicialCentavos: 0, debeCentavos: 0, haberCentavos: 116005, saldoFinalCentavos: 116005 },
+    ]);
+    const balanza = r.secciones[0]!;
+    expect(balanza.sinDatosMotivo).toBeNull();
+    expect(balanza.filas[0]).toMatchObject({ cuenta: "1050000 Clientes", debe: 1160.05, haber: 0 });
+    expect(balanza.totales).toMatchObject({ debe: 1160.05, haber: 1160.05 });
+    expect(r.sinDatos).toBe(false);
+  });
+
+  it("una balanza del libro vacía conserva el 'sin datos' honesto", () => {
+    expect(construirReporteBalanza(ENTRADA, [], []).secciones[0]!.sinDatosMotivo).toContain("no tiene pólizas");
   });
 });
 

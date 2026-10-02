@@ -234,3 +234,24 @@ describe("CFDI del periodo con su poliza", () => {
     expect((await app.request(`${base()}/cfdi?periodo=2026-07`)).status).toBe(401);
   });
 });
+
+describe("reporte de balanza desde el libro (D-01 + D-24)", () => {
+  it("con polizas registradas, el reporte de balanza trae las cuentas y totales del libro; sin polizas queda 'sin datos' con su motivo", async () => {
+    const app = buildApp(ctx.deps);
+    const vacio = (await (await app.request(`/despachos/${ctx.propertyId}/reportes/balanza?periodo=2026-07`, req(ctx.staff.auditor.token, "GET"))).json()) as { secciones: { sinDatosMotivo: string | null }[] };
+    expect(vacio.secciones[0]!.sinDatosMotivo).toMatch(/no tiene pólizas/);
+    await app.request(`${base()}/polizas`, req(ctx.staff.admin.token, "POST", POLIZA));
+    const res = await app.request(`/despachos/${ctx.propertyId}/reportes/balanza?periodo=2026-07`, req(ctx.staff.auditor.token, "GET"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { secciones: { sinDatosMotivo: string | null; filas: { cuenta: string; debe: number; haber: number }[]; totales: { debe: number; haber: number } | null }[] };
+    const s = body.secciones[0]!;
+    expect(s.sinDatosMotivo).toBeNull();
+    expect(s.filas.find((f) => f.cuenta.startsWith("1050000"))).toMatchObject({ debe: 1160, haber: 0 });
+    expect(s.totales).toMatchObject({ debe: 1160, haber: 1160 });
+  });
+  it("base sin migrar (020): el reporte sigue respondiendo 200 con la seccion 'sin datos'", async () => {
+    ctx.libroRepo.disponible = false;
+    const res = await buildApp(ctx.deps).request(`/despachos/${ctx.propertyId}/reportes/balanza?periodo=2026-07`, req(ctx.staff.auditor.token, "GET"));
+    expect(res.status).toBe(200);
+  });
+});
