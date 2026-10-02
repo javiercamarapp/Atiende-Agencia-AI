@@ -1,0 +1,15 @@
+id: lisr-9-206-209
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "9, 206 y 209"
+resumen: "ISR de personas morales (30 por ciento) y RESICO de personas morales."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "RESICO persona moral: confirmar el régimen y su tratamiento (ver D-34, pregunta 5)."
+usado_en_codigo:
+  - "src/declaraciones/isr-engine.ts:117"
+  - "src/declaraciones/isr-engine.ts:148"
+  - "src/declaraciones/isr-tablas.ts:163"

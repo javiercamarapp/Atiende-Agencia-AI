@@ -1,0 +1,15 @@
+id: lisr-106
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "106"
+resumen: "Pagos provisionales de personas físicas con actividad empresarial o servicios profesionales (régimen 612)."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El escalado de la tarifa mensual por meses transcurridos y la tabla fija del ejercicio están pendientes (ver D-34, pregunta 6)."
+usado_en_codigo:
+  - "src/pagos-provisionales/engine.ts:17"
+  - "src/pagos-provisionales/engine.ts:80"
+  - "src/pagos-provisionales/engine.ts:93"

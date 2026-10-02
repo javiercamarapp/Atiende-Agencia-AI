@@ -1,0 +1,13 @@
+id: cff-89
+tipo: norma
+ordenamiento: "CFF"
+articulo_o_regla: "89"
+resumen: "Citado en el motor de vencimientos como fundamento de que todo escalamiento exige revisión humana."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CFF.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "La cita del código es dudosa: el art. 89 CFF trata delitos fiscales; confirmar si ese es el fundamento buscado."
+usado_en_codigo:
+  - "src/vencimientos/engine.ts:61"
