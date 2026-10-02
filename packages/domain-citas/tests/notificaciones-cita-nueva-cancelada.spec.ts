@@ -11,6 +11,7 @@ const CITA = "00000000-0000-4000-8000-0000000000c1";
 const EMITIR = /core\.emit_notification/i;
 const CREAR = /citas\.create_appointment_idempotent/i;
 const CANCELAR_AGENTE = /citas\.cancel_appointment_idempotent/i;
+const LEER_CITA = /from citas\.appointments where id/i;
 const CANCELAR_PANEL = /citas\.cancel_appointment_from_panel/i;
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente/i, respond: () => [{ ok: 1 }] };
 
@@ -69,7 +70,7 @@ describe("citas.cita.nueva", () => {
 
 describe("citas.cita.cancelada", () => {
   it("la cancelacion por el cliente/agente emite UN aviso con la clave de la cita", async () => {
-    const { session, vistos } = conRegistro([{ match: CANCELAR_AGENTE, respond: () => [{ result: fila("cancelled") }] }, { match: EMITIR, respond: () => [{ emit_notification: 1 }] }]);
+    const { session, vistos } = conRegistro([{ match: LEER_CITA, respond: () => [fila("confirmed")] }, { match: CANCELAR_AGENTE, respond: () => [{ result: fila("cancelled") }] }, { match: EMITIR, respond: () => [{ emit_notification: 1 }] }]);
     const r = await new PostgresCitasRepository(session).cancelAppointmentIdempotent(ORG, CITA);
     expect(r.outcome).toBe("cancelled");
     expect(vistos).toHaveLength(1);
@@ -85,13 +86,17 @@ describe("citas.cita.cancelada", () => {
   });
 
   it("cancelar una cita ya cancelada (reintento) no vuelve a avisar", async () => {
-    const { session, vistos } = conRegistro([{ match: CANCELAR_AGENTE, respond: () => [{ result: fila("completed") }] }, { match: EMITIR, respond: () => [{ emit_notification: 1 }] }]);
-    await new PostgresCitasRepository(session).cancelAppointmentIdempotent(ORG, CITA);
+    // La funcion real devuelve la fila con status 'cancelled' tanto si esta llamada la cancelo como si ya lo estaba (no-op): lo que las
+    // distingue es el estado previo leido antes de llamarla.
+    const { session, vistos } = conRegistro([{ match: LEER_CITA, respond: () => [fila("cancelled")] }, { match: CANCELAR_AGENTE, respond: () => [{ result: fila("cancelled") }] }, { match: EMITIR, respond: () => [{ emit_notification: 1 }] }]);
+    const r = await new PostgresCitasRepository(session).cancelAppointmentIdempotent(ORG, CITA);
+    expect(r.outcome).toBe("cancelled");
     expect(vistos).toHaveLength(0);
   });
 
   it("base sin migrar (42883 al emitir): la cancelacion se devuelve y la sesion sigue viva", async () => {
     const session = new AbortAwareFakeSession([
+      { match: LEER_CITA, respond: () => [fila("confirmed")] },
       { match: CANCELAR_AGENTE, respond: () => [{ result: fila("cancelled") }] },
       { match: EMITIR, respond: () => Object.assign(new Error("function core.emit_notification does not exist"), { code: "42883" }) },
       SIGUIENTE,

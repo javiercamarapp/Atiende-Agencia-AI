@@ -883,12 +883,16 @@ export class PostgresCitasRepository implements CitasRepository {
   // arriba -- `runWithRowSavepoint` alrededor del RPC para que el catch de abajo
   // mapee AT404/AT409/AT403 sobre una sesión ya recuperada, no una abortada.
   private async runCancelRpc(fn: "cancel_appointment_idempotent" | "cancel_appointment_from_panel", organizationId: string, appointmentId: string): Promise<CancelResult> {
+    // `cancel_appointment_idempotent` devuelve la fila tal cual cuando YA estaba cancelada (no-op), asi que el resultado no distingue
+    // "la cancele ahora" de "ya estaba cancelada": se lee el estado previo (misma sesion, en secuencia) para avisar solo lo primero.
+    const estabaCancelada = fn === "cancel_appointment_idempotent" ? (await this.findAppointmentForOrganization(organizationId, appointmentId))?.status === "cancelled" : false;
     try {
       const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ [key: string]: AppointmentRow }>(`select citas.${fn}($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       // Notificacion in-app (`citas.cita.cancelada`): SOLO cuando la cancelacion la hace el cliente/agente (RPC de sistema), no cuando la
-      // hace el propio staff desde el panel; una por cita cancelada (clave = id) y solo si esta llamada la cancelo de verdad.
-      if (fn === "cancel_appointment_idempotent" && appointment.status === "cancelled") {
+      // hace el propio staff desde el panel; una por cita cancelada (clave = id) y solo si ESTA llamada la cancelo (un reintento sobre una
+      // cita ya cancelada no reemite, ni siquiera pasada la vigencia de la dedupe).
+      if (fn === "cancel_appointment_idempotent" && appointment.status === "cancelled" && !estabaCancelada) {
         await emitirNotificacion(this.db, { evento: "citas.cita.cancelada", organizationId: appointment.organizationId, propertyId: appointment.propertyId, clave: appointment.id, entidadTipo: "appointment", entidadId: appointment.id });
       }
       return { outcome: appointment.status === "cancelled" ? "cancelled" : "already_cancelled", appointment };

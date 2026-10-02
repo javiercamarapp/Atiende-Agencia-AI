@@ -64,6 +64,7 @@ describe("PostgresCitasRepository — SAVEPOINT alrededor de los RPC de ciclo de
 
   it("cancelAppointmentIdempotent (runCancelRpc): AT409 -> conflict_invalid_status, sesión utilizable después", async () => {
     const session = new AbortAwareFakeSession([
+      { match: /from citas\.appointments where id/, respond: () => [] }, // lectura previa del estado (para no reemitir el aviso de cancelacion)
       { match: /citas\.cancel_appointment_idempotent/, respond: () => pgError("AT409", "already completed") },
       { match: /select 1/, respond: () => [] },
     ]);
