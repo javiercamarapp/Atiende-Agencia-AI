@@ -30,7 +30,6 @@ export async function tryEnqueueStaffInviteEmail(
           subject: correo.asunto,
           html: correo.html,
           text: correo.texto,
-          transaccional: true, // SA-L-46: invitacion que se pidio explicitamente; la lista de supresion no la bloquea.
         }),
       isRecoverable: () => true,
       fallback: (err) => {
