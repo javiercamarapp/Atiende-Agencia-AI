@@ -3,23 +3,28 @@
 // dedupe vencida y se lo llevaria cualquier owner/admin nuevo que abra la pantalla).
 //
 // Mecanica: se mide el checklist ANTES de la escritura; solo si estaba incompleto se mide DESPUES y, si ahora esta completo, se
-// emite (clave de dedupe = organizacion). Una escritura que lanza no emite. Si la medicion falla (base sin migrar, RLS) no se avisa:
-// jamas se cambia el resultado de la escritura de negocio. Todo en secuencia sobre la misma sesion (nunca Promise.all).
+// emite (clave de dedupe = organizacion). Una escritura que lanza no emite. Si la medicion falla (base sin migrar, RLS, timeout) no se
+// avisa: la medicion corre dentro de un SAVEPOINT (runWithSavepointFallback), asi que un error de Postgres en sus lecturas se revierte
+// al savepoint y la sesion compartida del request sigue viva (sin 25P02 en la escritura ni ROLLBACK en el COMMIT). Todo en secuencia
+// sobre la misma sesion (nunca Promise.all).
 import type { Context } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { emitirNotificacion } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import { cargarOnboarding } from "@atiende/domain-restaurantes";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 async function checklistCompleto(deps: AppDeps, c: Context<CoreAuthHonoEnv>, organizationId: string): Promise<boolean | null> {
-  try {
-    // El checklist es de TODA la organizacion: un staff acotado a algunas sucursales vería un subconjunto y daria un falso "listo".
-    if ((await resolveEffectivePropertyIds(deps, c, organizationId, null)) !== null) return null;
-    return (await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId)).listoParaOperar;
-  } catch {
-    return null;
-  }
+  return runWithSavepointFallback<boolean | null>({
+    session: c.get("db"),
+    primary: async () => {
+      // El checklist es de TODA la organizacion: un staff acotado a algunas sucursales vería un subconjunto y daria un falso "listo".
+      if ((await resolveEffectivePropertyIds(deps, c, organizationId, null)) !== null) return null;
+      return (await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId)).listoParaOperar;
+    },
+    isRecoverable: () => true,
+    fallback: async () => null,
+  });
 }
 
 export async function conAvisoOnboardingListo<T>(deps: AppDeps, c: Context<CoreAuthHonoEnv>, organizationId: string, escribir: () => Promise<T>): Promise<T> {
