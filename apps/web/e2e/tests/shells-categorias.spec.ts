@@ -8,6 +8,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
+import { hoteles } from "../mock-api/fixtures/hoteles.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 interface Esperado {
@@ -24,7 +25,8 @@ const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
   // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
   // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
   restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
-  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: [] },
+  // CHAT-09: igual que restaurantes, la API simulada activa el asistente de hoteles (owner): pildora "Pregunta a tus datos" que repite "Copiloto".
+  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: ["Pregunta a tus datos"], repetidos: [`/hoteles/${hoteles.orgSlug}/copiloto`] },
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
   despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: [] },
   licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: [] },
