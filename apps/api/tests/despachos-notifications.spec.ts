@@ -221,3 +221,15 @@ describe("Disparo inline + cron: la misma fila nunca se envía dos veces", () =>
     expect(fetchMock).toHaveBeenCalledTimes(1); // sigue en 1 -- nunca se reenvía.
   });
 });
+
+describe("POST /internal/despachos/cobranza-reminders -- aviso de pagos provisionales (D-25)", () => {
+  it("el cron reporta el resultado del aviso y su respuesta sigue siendo 200 aunque la base no lo soporte", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const res = await buildApp(ctx.deps).request("/internal/despachos/cobranza-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; pagos_provisionales_aviso: { estado: string; emitidas: number } };
+    expect(body.ok).toBe(true);
+    expect(["ok", "no_disponible", "error"]).toContain(body.pagos_provisionales_aviso.estado);
+    expect(body.pagos_provisionales_aviso.emitidas).toBe(0);
+  });
+});
