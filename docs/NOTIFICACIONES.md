@@ -76,6 +76,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 |---|---|---|---|---|---|---|---|---|
 | `despachos.cobranza.recordatorios` | cobranza | atencion | owner/admin, contador | Receipt | `/despachos/{orgSlug}/cola-cobranza` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/notifications.ts` |
 | `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por dia | 7 d | pendiente: calendario fiscal de vencimientos: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
+| `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
 | `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por hallazgo | 30 d | pendiente: ingesta EFOS 69-B del worker: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
 
 ### licitaciones

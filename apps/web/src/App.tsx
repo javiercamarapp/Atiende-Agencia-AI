@@ -163,6 +163,8 @@ import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCata
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
 import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
+import { LibroContablePage } from "./verticals/despachos/pages/LibroContable.tsx";
+import { PagosProvisionalesPage } from "./verticals/despachos/pages/PagosProvisionales.tsx";
 import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
 import { ConfiguracionPage as DespachosConfiguracionPage } from "./verticals/despachos/pages/Configuracion.tsx";
 import { PortalClientePage as DespachosPortalClientePage } from "./verticals/despachos/pages/PortalCliente.tsx";
@@ -917,6 +919,8 @@ const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/l
 const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
 const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
+const DespachosLibroContableRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <LibroContablePage {...ctx} />);
+const DespachosPagosProvisionalesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PagosProvisionalesPage {...ctx} />);
 const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
@@ -1107,6 +1111,8 @@ export function App() {
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
+        <Route path="/despachos/:orgSlug/libro-contable" element={<DespachosLibroContableRoute />} />
+        <Route path="/despachos/:orgSlug/pagos-provisionales" element={<DespachosPagosProvisionalesRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
