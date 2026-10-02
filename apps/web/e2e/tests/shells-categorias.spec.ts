@@ -29,7 +29,7 @@ const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
   hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: ["Pregunta a tus datos"], repetidos: [`/hoteles/${hoteles.orgSlug}/copiloto`] },
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
   despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: [] },
-  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: [] },
+  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: ["Pregunta a tus datos"], repetidos: [`/licitaciones/${licitaciones.orgSlug}/copiloto`] },
   citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: [] },
 };
 
