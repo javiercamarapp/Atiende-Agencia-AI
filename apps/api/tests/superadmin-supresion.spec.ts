@@ -90,10 +90,10 @@ describe("POST /superadmin/supresion/no-contactar", () => {
 
   it("valida tipo y valor sin tocar la base", async () => {
     const { app, session } = montar([]);
-    expect((await post(app, { tipo: "otro", valor: "x" })).status).toBe(422);
-    expect((await post(app, { tipo: "telefono", valor: "" })).status).toBe(422);
-    expect((await post(app, { tipo: "telefono", valor: "abc" })).status).toBe(422);
-    expect((await post(app, { tipo: "correo", valor: "sin-arroba" })).status).toBe(422);
+    expect((await post(app, { tipo: "otro", valor: "x" })).status).toBe(400);
+    expect((await post(app, { tipo: "telefono", valor: "" })).status).toBe(400);
+    expect((await post(app, { tipo: "telefono", valor: "abc" })).status).toBe(400);
+    expect((await post(app, { tipo: "correo", valor: "sin-arroba" })).status).toBe(400);
     expect(session.calls).toEqual([]);
   });
 
