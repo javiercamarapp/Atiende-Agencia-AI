@@ -404,6 +404,17 @@ function advertirAgenteNoDisponible(metodo: string, err: unknown): void {
   );
 }
 
+/**
+ * El horario ya no esta disponible: AT423 es el rechazo normal del `EXCLUDE` (la RPC lo lanza al perder la carrera) y 40P01 (deadlock_detected)
+ * es el MISMO caso cuando dos reservas del mismo proveedor/horario se disparan al mismo tiempo. Cada transaccion inserta su fila y luego espera la
+ * de la otra para comprobar el `EXCLUDE`; Postgres detecta el ciclo y aborta a una de las dos con 40P01 en vez de 23P01. La prueba real de
+ * concurrencia (scripts/verify-citas-concurrencia, C-17) lo reprodujo al reagendar y crear a la vez: sin este mapeo, la que perdia la carrera
+ * respondia un 500 en vez del 409 "horario no disponible". Nunca hay doble cita en ningun caso: la fila de la perdedora no se confirma.
+ */
+export function esConflictoDeHorario(code: unknown): boolean {
+  return code === "AT423" || code === "40P01";
+}
+
 function sqlState(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
@@ -843,7 +854,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "created", appointment: mapAppointment(rows[0]!.create_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT409") return { outcome: "conflict_idempotency_reused" };
       throw err;
     }
@@ -1011,7 +1022,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "created", appointment };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
@@ -1047,7 +1058,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "rescheduled", appointment: mapAppointment(rows[0]!.reschedule_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
       throw err;
@@ -1072,7 +1083,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "reassigned", appointment: mapAppointment(rows[0]!.reassign_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
       throw err;
