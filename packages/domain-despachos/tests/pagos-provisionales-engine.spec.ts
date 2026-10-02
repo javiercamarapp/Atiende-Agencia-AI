@@ -1,8 +1,8 @@
 // D-25: motor del papel de pagos provisionales ISR/IVA. Cada cifra esperada está calculada a mano (centavos enteros).
 import { describe, expect, it } from "vitest";
 import { aplicarTablaIsr } from "../src/declaraciones/isr-engine.ts";
-import { ISR_MENSUAL_2026 } from "../src/declaraciones/isr-tablas.ts";
-import { calcularPapelProvisional, coeficienteAMicros, isrTarifaAcumuladaCentavos, tasaResicoBp } from "../src/pagos-provisionales/index.ts";
+import { ISR_MENSUAL_2025, ISR_MENSUAL_2026 } from "../src/declaraciones/isr-tablas.ts";
+import { calcularPapelProvisional, coeficienteAMicros, isrTarifaAcumuladaCentavos, tasaResicoBp, tipoPersonaPorRfc } from "../src/pagos-provisionales/index.ts";
 import type { EntradaPapel, FacturaProvisional, PagoRepProvisional } from "../src/pagos-provisionales/index.ts";
 
 let contador = 0;
@@ -16,7 +16,7 @@ function factura(p: Partial<FacturaProvisional> & { base?: number }): FacturaPro
   };
 }
 function entrada(parcial: Partial<EntradaPapel>): EntradaPapel {
-  return { ejercicio: 2026, mes: 7, regimen: "601", facturas: [], pagos: [], pagosDisponibles: true, isr: {}, iva: {}, pagosPreviosIsrPresentadosCentavos: 0, saldoFavorIvaMesAnteriorCentavos: null, ...parcial };
+  return { ejercicio: 2026, mes: 7, regimen: "601", rfc: "XAXX010101000", facturas: [], pagos: [], pagosDisponibles: true, isr: {}, iva: {}, pagosPreviosIsrPresentadosCentavos: 0, saldoFavorIvaMesAnteriorCentavos: null, ...parcial };
 }
 
 describe("PM 601: coeficiente de utilidad (LISR 14) e IVA", () => {
@@ -72,6 +72,38 @@ describe("PM 601: coeficiente de utilidad (LISR 14) e IVA", () => {
   });
 });
 
+describe("PM 601: el ISR es por ingresos NOMINALES (LISR 17), el IVA por flujo (LIVA 1-B)", () => {
+  const ppd = factura({ id: "ppdm", metodoPago: "PPD", formaPago: "99", base: 5_000_000, fecha: "2026-07-05" });
+  it("un CFDI PPD emitido en el mes y NO cobrado entra al ISR 601 (nominal) pero no al IVA trasladado (flujo)", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [ppd, factura({ base: 1_000_000 })], isr: { coeficienteUtilidad: "0.5" } }));
+    expect(p.isr.lineas.find((l) => l.clave === "ingresos")?.centavos).toBe(6_000_000);
+    expect(p.isr.baseCentavos).toBe(3_000_000); // 6,000,000 x 0.5
+    expect(p.isr.determinadoCentavos).toBe(900_000);
+    expect(p.iva.lineas.find((l) => l.clave === "trasladado")?.centavos).toBe(160_000); // solo el PUE
+    expect(p.advertencias.join(" ")).toMatch(/ISR 601: el ingreso se acumula por CFDI emitido/);
+    expect(p.advertencias.join(" ")).toMatch(/el ISR 601 sí los acumula/);
+  });
+  it("el cobro posterior del PPD (REP) NO duplica el ingreso nominal ya acumulado al emitir", () => {
+    const pago: PagoRepProvisional = { invoiceId: "ppdm", fechaPago: "2026-07-20", flujo: "trasladado", importePagadoCentavos: 5_800_000, baseCentavos: 5_000_000, ivaCentavos: 800_000, ivaRetenidoCentavos: 0 };
+    const p = calcularPapelProvisional(entrada({ facturas: [ppd], pagos: [pago], isr: { coeficienteUtilidad: "1" } }));
+    expect(p.isr.baseCentavos).toBe(5_000_000);
+    expect(p.iva.lineas.find((l) => l.clave === "trasladado")?.centavos).toBe(800_000);
+  });
+  it("una nota de crédito emitida resta del ingreso nominal; cancelados, sin montos y moneda extranjera no cuentan", () => {
+    const p = calcularPapelProvisional(
+      entrada({
+        facturas: [factura({ base: 10_000_000 }), factura({ tipo: "E", base: 2_000_000 }), factura({ estadoSat: "cancelado" }), factura({ moneda: "USD" }), factura({ subtotalCentavos: null })],
+        isr: { coeficienteUtilidad: "1" },
+      }),
+    );
+    expect(p.isr.baseCentavos).toBe(8_000_000);
+  });
+  it("sin pagos de complemento disponibles el ISR 601 igual cuenta el PPD emitido (no depende de la migración de pagos)", () => {
+    const p = calcularPapelProvisional(entrada({ facturas: [ppd], pagosDisponibles: false, isr: { coeficienteUtilidad: "1" } }));
+    expect(p.isr.baseCentavos).toBe(5_000_000);
+  });
+});
+
 describe("PF 612: utilidad acumulada y tarifa del art. 96 escalada", () => {
   it("ingresos 300,000 - deducciones 100,000 en el mes 3: ISR = 41,208.25 (calculado a mano)", () => {
     const p = calcularPapelProvisional(
@@ -120,6 +152,45 @@ describe("PF 626 RESICO: tasa mensual sobre ingresos cobrados", () => {
   });
 });
 
+describe("626 y 612 son de personas físicas; la tabla del 612 sale del ejercicio", () => {
+  it("626 con RFC de persona moral (12) responde no soportado, sin cifras; el IVA sí sale", () => {
+    const p = calcularPapelProvisional(entrada({ regimen: "626", rfc: "ABC010101AB1", facturas: [factura({ base: 3_000_000 })] }));
+    expect(p.isr.estado).toBe("no_soportado");
+    expect(p.isr.motivo).toMatch(/persona moral/);
+    expect(p.isr.determinadoCentavos).toBe(0);
+    expect(p.iva.estado).toBe("calculado");
+  });
+  it("626 sin RFC utilizable tampoco se calcula", () => {
+    expect(calcularPapelProvisional(entrada({ regimen: "626", rfc: null, facturas: [factura({})] })).isr.estado).toBe("no_soportado");
+  });
+  it("626 con RFC de persona física (13) sí se calcula", () => {
+    expect(calcularPapelProvisional(entrada({ regimen: "626", facturas: [factura({ base: 3_000_000 })] })).isr.determinadoCentavos).toBe(33_000);
+  });
+  it("612 con RFC de persona moral es no soportado", () => {
+    const p = calcularPapelProvisional(entrada({ regimen: "612", rfc: "ABC010101AB1", facturas: [factura({ base: 3_000_000 })] }));
+    expect(p.isr.estado).toBe("no_soportado");
+  });
+  it("612 usa la tabla del ejercicio: 2025 difiere de 2026; un ejercicio sin tabla es no soportado", () => {
+    const f2025 = [factura({ base: 20_000_000, fecha: "2025-01-10" })];
+    const p2025 = calcularPapelProvisional(entrada({ ejercicio: 2025, mes: 1, regimen: "612", facturas: f2025 }));
+    const f2026 = [factura({ base: 20_000_000, fecha: "2026-01-10" })];
+    const p2026 = calcularPapelProvisional(entrada({ ejercicio: 2026, mes: 1, regimen: "612", facturas: f2026 }));
+    expect(p2025.isr.determinadoCentavos).toBe(isrTarifaAcumuladaCentavos(20_000_000, 1, ISR_MENSUAL_2025));
+    expect(p2026.isr.determinadoCentavos).toBe(isrTarifaAcumuladaCentavos(20_000_000, 1, ISR_MENSUAL_2026));
+    expect(p2025.isr.determinadoCentavos).not.toBe(p2026.isr.determinadoCentavos);
+    const p2027 = calcularPapelProvisional(entrada({ ejercicio: 2027, mes: 1, regimen: "612", facturas: [factura({ base: 20_000_000, fecha: "2027-01-10" })] }));
+    expect(p2027.isr.estado).toBe("no_soportado");
+    expect(p2027.isr.motivo).toMatch(/2027/);
+    expect(p2027.isr.determinadoCentavos).toBe(0);
+  });
+  it("tipoPersonaPorRfc distingue por longitud", () => {
+    expect(tipoPersonaPorRfc("ABC010101AB1")).toBe("moral");
+    expect(tipoPersonaPorRfc("ABCD010101AB1")).toBe("fisica");
+    expect(tipoPersonaPorRfc("")).toBeNull();
+    expect(tipoPersonaPorRfc(null)).toBeNull();
+  });
+});
+
 describe("régimen sin papel modelado", () => {
   it("603 no calcula ISR (lo dice) y el IVA sigue calculándose", () => {
     const p = calcularPapelProvisional(entrada({ regimen: "603", facturas: [factura({})] }));
@@ -133,20 +204,20 @@ describe("flujo de efectivo: PPD por complemento de pago", () => {
   const ppd = factura({ id: "ppd1", metodoPago: "PPD", formaPago: "99", base: 5_000_000, fecha: "2026-06-20" });
   const pago = (parcial: Partial<PagoRepProvisional>): PagoRepProvisional => ({ invoiceId: "ppd1", fechaPago: "2026-07-15", flujo: "trasladado", importePagadoCentavos: 2_900_000, baseCentavos: 2_500_000, ivaCentavos: 400_000, ivaRetenidoCentavos: 0, ...parcial });
 
-  it("el CFDI PPD NO cuenta el día de su emisión; cuenta por el pago, en el mes del pago", () => {
-    const sinPago = calcularPapelProvisional(entrada({ mes: 6, facturas: [ppd], isr: { coeficienteUtilidad: "1" } }));
+  it("flujo (612 e IVA): el CFDI PPD NO cuenta el día de su emisión; cuenta por el pago, en el mes del pago", () => {
+    const sinPago = calcularPapelProvisional(entrada({ mes: 6, regimen: "612", facturas: [ppd] }));
     expect(sinPago.isr.baseCentavos).toBe(0);
     expect(sinPago.pendientesPpd).toEqual({ cantidad: 1, importeCentavos: 5_800_000 });
     expect(sinPago.advertencias.join(" ")).toMatch(/no tienen complemento de pago/);
 
-    const julio = calcularPapelProvisional(entrada({ mes: 7, facturas: [ppd], pagos: [pago({})], isr: { coeficienteUtilidad: "1" } }));
+    const julio = calcularPapelProvisional(entrada({ mes: 7, regimen: "612", facturas: [ppd], pagos: [pago({})] }));
     expect(julio.isr.baseCentavos).toBe(2_500_000);
     expect(julio.iva.lineas.find((l) => l.clave === "trasladado")?.centavos).toBe(400_000);
     expect(julio.pendientesPpd.cantidad).toBe(0);
   });
 
   it("un pago de agosto no entra al papel de julio", () => {
-    const p = calcularPapelProvisional(entrada({ mes: 7, facturas: [ppd], pagos: [pago({ fechaPago: "2026-08-02" })], isr: { coeficienteUtilidad: "1" } }));
+    const p = calcularPapelProvisional(entrada({ mes: 7, regimen: "612", facturas: [ppd], pagos: [pago({ fechaPago: "2026-08-02" })] }));
     expect(p.isr.baseCentavos).toBe(0);
   });
 

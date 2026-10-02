@@ -66,6 +66,8 @@ export interface EntradaPapel {
   /** 1-12. */
   readonly mes: number;
   readonly regimen: string;
+  /** RFC del contribuyente: 12 caracteres = persona moral, 13 = persona física. Define a quién aplican el 612 y el 626 (solo PF). */
+  readonly rfc?: string | null;
   /** CFDI del ejercicio hasta el mes (inclusive); el motor filtra por fecha. */
   readonly facturas: readonly FacturaProvisional[];
   readonly pagos: readonly PagoRepProvisional[];

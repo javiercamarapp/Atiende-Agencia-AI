@@ -9,12 +9,17 @@
 //    de sentido indeterminado, sin método de pago, y -- como deducción o acreditamiento -- los inválidos (EFOS definitivo u otro
 //    hallazgo), los pagados en efectivo por más de $2,000.00 (LISR 27-III, LIVA 5-I) y los de uso personal/sin efectos (D01-D10,
 //    S01, CP01). Los de uso I01-I08 (inversiones) NO se deducen de golpe (LISR 31-34): se reportan aparte; su IVA sí se acredita.
-//  - ISR 601 (LISR 14): utilidad fiscal estimada = ingresos nominales acumulados x coeficiente de utilidad - pérdidas pendientes;
-//    ISR = 30%; menos pagos provisionales previos y retenciones. El coeficiente es un DATO del contador (no se calcula aquí).
+//  - ISR 601 (LISR 14 y 17): utilidad fiscal estimada = INGRESOS NOMINALES acumulados x coeficiente de utilidad - pérdidas pendientes;
+//    ISR = 30%; menos pagos provisionales previos y retenciones. Los ingresos nominales de una persona moral se acumulan al expedir
+//    el CFDI (LISR 17): son los CFDI emitidos del periodo por su FECHA, incluidos los PPD aún no cobrados (NO flujo de efectivo).
+//    Quedan fuera (a validar con el fiscalista): anticipos o cobros sin CFDI y entregas/servicios aún sin CFDI. El coeficiente es un
+//    DATO del contador (no se calcula aquí). El IVA sí es por flujo (LIVA 1-B) también para el 601.
 //  - ISR 612 (LISR 106): (ingresos cobrados - deducciones pagadas) acumulados - pérdidas pendientes, con la tarifa del art. 96
 //    escalada al periodo acumulado (tarifa mensual x meses transcurridos). ADVERTENCIA: el escalado de la tarifa es la práctica
-//    habitual pero va a la lista del fiscalista.
-//  - ISR 626 (LISR 113-E): tasa mensual (1.00 a 2.50%) sobre los ingresos cobrados del MES, sin deducciones.
+//    habitual pero va a la lista del fiscalista. Solo con tabla mensual del ejercicio verificada (2025, 2026); otro ejercicio = no soportado.
+//    Solo personas físicas: un RFC de persona moral en 612 es no soportado.
+//  - ISR 626 (LISR 113-E): tasa mensual (1.00 a 2.50%) sobre los ingresos cobrados del MES, sin deducciones. RESICO PF: el RFC debe
+//    ser de persona física (13); persona moral (12) o sin RFC = no soportado.
 //  - IVA (LIVA 5 y 6): IVA trasladado cobrado - IVA acreditable pagado - IVA retenido - saldo a favor anterior; si es negativo, a favor.
 import { proporcionCentavos } from "../cfdi/rep.ts";
 import type {
@@ -27,7 +32,8 @@ import type {
   ResultadoImpuesto,
 } from "./types.ts";
 import { esRegimenIsrSoportado } from "./types.ts";
-import { ISR_MENSUAL_2026 } from "../declaraciones/isr-tablas.ts";
+import { ISR_MENSUAL_2025, ISR_MENSUAL_2026 } from "../declaraciones/isr-tablas.ts";
+import type { TablaIsr } from "../declaraciones/isr-tablas.ts";
 
 /** Umbral del pago en efectivo no deducible: $2,000.00 (LISR 27-III). */
 export const LIMITE_EFECTIVO_CENTAVOS = 200_000;
@@ -71,12 +77,24 @@ export function tasaResicoBp(ingresoMensualCentavos: number): number | null {
   return null;
 }
 
-/** Tarifa del art. 96 (tabla mensual vigente) escalada a `meses` meses, en centavos enteros. Tasa en puntos base (0.0192 -> 192). */
-export function isrTarifaAcumuladaCentavos(baseCentavos: number, meses: number): number {
+/** Tabla mensual del art. 96 por ejercicio. Solo los ejercicios con tabla verificada en isr-tablas.ts; otro ejercicio = undefined ("no soportado"). */
+const TABLAS_ISR_MENSUAL: Readonly<Record<number, TablaIsr>> = { 2025: ISR_MENSUAL_2025, 2026: ISR_MENSUAL_2026 };
+export function tablaIsrMensualDe(ejercicio: number): TablaIsr | undefined {
+  return TABLAS_ISR_MENSUAL[ejercicio];
+}
+
+/** Persona moral = RFC de 12 caracteres; persona física = 13; null si no hay RFC utilizable. */
+export function tipoPersonaPorRfc(rfc: string | null | undefined): "moral" | "fisica" | null {
+  const largo = typeof rfc === "string" ? rfc.trim().length : 0;
+  return largo === 12 ? "moral" : largo === 13 ? "fisica" : null;
+}
+
+/** Tarifa del art. 96 (tabla mensual del ejercicio; por omisión la 2026) escalada a `meses` meses, en centavos enteros. Tasa en puntos base (0.0192 -> 192). */
+export function isrTarifaAcumuladaCentavos(baseCentavos: number, meses: number, tabla: TablaIsr = ISR_MENSUAL_2026): number {
   if (baseCentavos <= 0) return 0;
   const m = BigInt(meses);
-  for (let i = ISR_MENSUAL_2026.length - 1; i >= 0; i -= 1) {
-    const [limiteInferior, , cuotaFija, tasa] = ISR_MENSUAL_2026[i]!;
+  for (let i = tabla.length - 1; i >= 0; i -= 1) {
+    const [limiteInferior, , cuotaFija, tasa] = tabla[i]!;
     const liCentavos = BigInt(Math.round(limiteInferior * 100)) * m;
     if (BigInt(baseCentavos) >= liCentavos || i === 0) {
       const excedente = BigInt(baseCentavos) > liCentavos ? BigInt(baseCentavos) - liCentavos : 0n;
@@ -113,6 +131,24 @@ interface Clasificacion {
 
 const mesDe = (fecha: string): number => Number(fecha.slice(5, 7));
 const anioDe = (fecha: string): number => Number(fecha.slice(0, 4));
+
+/** Ingresos nominales (LISR 17) de personas morales: CFDI emitidos I/E del ejercicio hasta el mes, por su FECHA (los PPD cuentan aunque no
+ * estén cobrados), sin IVA y en centavos con signo (la nota de crédito resta). Sin cancelados, no encontrados, sin montos ni moneda extranjera
+ * (sin método de pago tampoco; esos casos ya se reportan en `exclusiones` por el clasificador de flujo). Las retenciones NO se toman de aquí: se acreditan por flujo. */
+function ingresosNominalesEmitidos(e: EntradaPapel): { baseCentavos: number; documentos: number } {
+  let baseCentavos = 0;
+  let documentos = 0;
+  for (const f of e.facturas) {
+    if (f.direccion !== "emitido" || (f.tipo !== "I" && f.tipo !== "E")) continue;
+    if (anioDe(f.fecha) !== e.ejercicio || mesDe(f.fecha) < 1 || mesDe(f.fecha) > e.mes) continue;
+    if (f.estadoSat === "cancelado" || f.estadoSat === "no_encontrado") continue;
+    if (f.totalCentavos == null || f.subtotalCentavos == null || (f.moneda ?? "MXN") !== "MXN") continue;
+    if (f.metodoPago !== "PUE" && f.metodoPago !== "PPD") continue;
+    baseCentavos += (f.tipo === "E" ? -1 : 1) * (f.subtotalCentavos - (f.descuentoCentavos ?? 0));
+    documentos += 1;
+  }
+  return { baseCentavos, documentos };
+}
 
 function clasificar(e: EntradaPapel): Clasificacion {
   const emitidos: Normalizado[] = [];
@@ -243,7 +279,7 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
   if (!esRegimenIsrSoportado(regimen)) {
     return sinCalcular("ISR", "no_soportado", `El papel de ISR para el régimen ${regimen} aún no está modelado (soportados: 601, 612 y 626). El IVA sí se calcula.`);
   }
-  const ingresos = suma(c.emitidos.map((x) => x.baseCentavos));
+  const ingresosFlujo = suma(c.emitidos.map((x) => x.baseCentavos));
   const retenciones = suma(c.emitidos.map((x) => x.isrRetenidoCentavos));
   const pagosPrevios = e.pagosPreviosIsrPresentadosCentavos + parametroCentavos(params.ajustePagosPreviosCentavos);
   const perdidas = parametroCentavos(params.perdidasPendientesCentavos);
@@ -252,11 +288,13 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
   if (regimen === "601") {
     const micros = coeficienteAMicros(params.coeficienteUtilidad);
     if (micros === null) return sinCalcular("ISR", "faltan_parametros", "Captura el coeficiente de utilidad del contribuyente (art. 14 LISR, del último ejercicio de 12 meses) para calcular el pago provisional.");
+    // Persona moral: ingresos NOMINALES (LISR 17), no el flujo de efectivo con que se calcula el IVA.
+    const ingresos = ingresosNominalesEmitidos(e).baseCentavos;
     const utilidad = porFraccion(Math.max(0, ingresos), BigInt(micros), 1_000_000n);
     const base = Math.max(0, utilidad - perdidas);
     const isr = porFraccion(base, TASA_PM_PORCENTAJE, 100n);
     lineas.push(
-      { clave: "ingresos", concepto: "Ingresos nominales acumulados (cobrados, sin IVA)", centavos: ingresos },
+      { clave: "ingresos", concepto: "Ingresos nominales acumulados (CFDI emitidos del periodo, incluidos PPD aún no cobrados; sin IVA)", centavos: ingresos },
       { clave: "utilidad", concepto: "Utilidad fiscal estimada (ingresos x coeficiente)", centavos: utilidad, detalle: `coeficiente ${params.coeficienteUtilidad}` },
       { clave: "perdidas", concepto: "Pérdidas fiscales pendientes de amortizar", centavos: perdidas },
       { clave: "base", concepto: "Base del pago provisional", centavos: base },
@@ -267,11 +305,15 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
     return resultado("ISR", lineas, base, isr, pagosPrevios + retenciones);
   }
 
+  const ingresos = ingresosFlujo;
   if (regimen === "612") {
+    if (tipoPersonaPorRfc(e.rfc) === "moral") return sinCalcular("ISR", "no_soportado", "El régimen 612 es de personas físicas y el RFC del cliente es de persona moral (12 caracteres): revisa la ficha del cliente o valida con el fiscalista. El IVA sí se calcula.");
+    const tabla = tablaIsrMensualDe(e.ejercicio);
+    if (!tabla) return sinCalcular("ISR", "no_soportado", `No hay tabla mensual del art. 96 verificada para el ejercicio ${e.ejercicio} (disponibles: ${Object.keys(TABLAS_ISR_MENSUAL).join(", ")}): no se calcula un número engañoso. El IVA sí se calcula.`);
     const deducciones = suma(c.recibidos.map((x) => x.baseCentavos)) + suma(c.nominas.map((x) => x.baseCentavos));
     const utilidad = ingresos - deducciones;
     const base = Math.max(0, utilidad - perdidas);
-    const isr = isrTarifaAcumuladaCentavos(base, e.mes);
+    const isr = isrTarifaAcumuladaCentavos(base, e.mes, tabla);
     lineas.push(
       { clave: "ingresos", concepto: "Ingresos acumulados cobrados (sin IVA)", centavos: ingresos },
       { clave: "deducciones", concepto: "Deducciones acumuladas efectivamente pagadas (sin IVA)", centavos: deducciones },
@@ -285,6 +327,9 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
     return resultado("ISR", lineas, base, isr, pagosPrevios + retenciones);
   }
 
+  // 626 RESICO PF: solo personas físicas (LISR 113-E). Las morales tributan por el título II / RESICO PM (aún no modelado).
+  const persona = tipoPersonaPorRfc(e.rfc);
+  if (persona !== "fisica") return sinCalcular("ISR", "no_soportado", persona === "moral" ? "El régimen 626 (RESICO persona física) no aplica a un RFC de persona moral (12 caracteres): el papel de ISR de personas morales en 626 no está soportado; valida con el fiscalista. El IVA sí se calcula." : "No hay RFC de persona física (13 caracteres) en la ficha del cliente: sin él no se puede confirmar que el 626 sea RESICO PF. El IVA sí se calcula.");
   // 626 RESICO PF: tasa sobre los ingresos cobrados del MES; sin deducciones ni pagos previos acreditables.
   const delMes = c.emitidos.filter((x) => x.mes === e.mes);
   const ingresoMes = suma(delMes.map((x) => x.baseCentavos));
@@ -319,8 +364,9 @@ export function calcularPapelProvisional(e: EntradaPapel): PapelProvisional {
   const c = clasificar(e);
   const advertencias = [...c.advertencias];
   if (!e.pagosDisponibles) advertencias.push("Los pagos de complementos de pago (REP) no están disponibles en esta base: los CFDI PPD no se contaron.");
-  if (c.pendientesPpd.cantidad > 0) advertencias.push(`${c.pendientesPpd.cantidad} CFDI PPD del periodo no tienen complemento de pago registrado: no cuentan como flujo de efectivo hasta que lo registres.`);
+  if (c.pendientesPpd.cantidad > 0) advertencias.push(`${c.pendientesPpd.cantidad} CFDI PPD del periodo no tienen complemento de pago registrado: no cuentan como flujo de efectivo (IVA${e.regimen === "601" ? "; el ISR 601 sí los acumula como ingreso nominal" : ", ISR"}) hasta que lo registres.`);
   const isr = calcularIsr(e, c, e.isr);
+  if (e.regimen === "601" && isr.estado === "calculado") advertencias.push("ISR 601: el ingreso se acumula por CFDI emitido (LISR 17: incluye PPD no cobrados); anticipos o cobros sin CFDI y entregas sin CFDI no se incluyen. El IVA sí es por flujo de efectivo (LIVA 1-B). Valida ambos criterios con el fiscalista.");
   if (e.regimen === "612" && isr.estado === "calculado") advertencias.push("ISR 612: la tarifa del art. 96 se escala al periodo acumulado (tarifa mensual x meses); confírmalo con el fiscalista antes de presentar.");
   if (e.regimen === "626" && isr.estado === "calculado") {
     const acumulado = suma(c.emitidos.map((x) => x.baseCentavos));

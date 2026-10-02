@@ -167,6 +167,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
       ejercicio,
       mes,
       regimen,
+      rfc: ficha.rfc,
       facturas: base.facturas,
       pagos: base.pagos,
       pagosDisponibles: base.pagosDisponibles,
