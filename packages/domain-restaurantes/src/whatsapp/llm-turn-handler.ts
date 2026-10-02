@@ -33,7 +33,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
-import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt } from "./perfil-pm.ts";
+import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -95,9 +95,8 @@ export const ORDER_IDENTITY_AND_COMPLEMENT_RULES = `REGLAS DURAS DE IDENTIDAD Y 
  * la hora. */
 export function saludoSegunHora(timezone: string, ahora: Date = new Date()): string {
   const hora = Number(new Intl.DateTimeFormat("es-MX", { timeZone: timezone, hour: "numeric", hourCycle: "h23" }).format(ahora));
-  if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 19) return "Buenas tardes";
-  return "Buenas noches";
+  const saludo = saludoPorHora(hora);
+  return `${saludo.charAt(0).toUpperCase()}${saludo.slice(1)}`;
 }
 
 export function customerContextBlock(customer: CustomerLookupResult): string {

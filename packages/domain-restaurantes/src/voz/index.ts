@@ -19,7 +19,7 @@ export { PostgresVozKpiRepository } from "./postgres-kpi-repository.ts";
 export { InMemoryVozKpiRepository, diaVacio, siguienteDia } from "./in-memory-kpi-repository.ts";
 export { CallStateMachine, LIMITES_POR_DEFECTO } from "./llamada/maquina.ts";
 export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada } from "./llamada/maquina.ts";
-export { MENSAJES_PREGRABADOS, MENSAJE_IDS } from "./llamada/mensajes.ts";
+export { MENSAJES_PREGRABADOS, MENSAJE_IDS, mensajeSaludoRespaldo } from "./llamada/mensajes.ts";
 export type { MensajeId } from "./llamada/mensajes.ts";
 export { evaluarInicioLlamada } from "./llamada/inicio.ts";
 export type { DecisionInicio, EntradaInicioLlamada } from "./llamada/inicio.ts";
