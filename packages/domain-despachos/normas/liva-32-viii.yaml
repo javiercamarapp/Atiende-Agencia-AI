@@ -1,0 +1,15 @@
+id: liva-32-viii
+tipo: norma
+ordenamiento: "LIVA"
+articulo_o_regla: "32 fracción VIII"
+resumen: "Obligación de presentar la información de operaciones con terceros (DIOT)."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LIVA.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Inconsistencia entre archivos: diot-layout.ts cita LIVA 32-VIII y reglas-fiscales-avanzadas.ts cita Art. 32 LISR y Art. 31 LIVA. Pendiente de aclarar (ver D-34)."
+usado_en_codigo:
+  - "src/declaraciones/diot-layout.ts:3"
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:271"
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:311"

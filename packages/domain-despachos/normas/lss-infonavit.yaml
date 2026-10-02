@@ -1,0 +1,16 @@
+id: lss-infonavit
+tipo: norma
+ordenamiento: "LSS / Ley del INFONAVIT"
+articulo_o_regla: "LSS 28, 105-109; INFONAVIT 29-II"
+resumen: "Tope de SBC, cuotas obrero-patronales IMSS y aportación patronal al INFONAVIT en 2026."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LSS.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Tasas y UMA 2026 son constantes del código sin fuente comprobada."
+usado_en_codigo:
+  - "src/nomina/imss-engine.ts:24"
+  - "src/nomina/imss-engine.ts:40"
+  - "src/nomina/imss-engine.ts:44"
+  - "src/nomina/imss-engine.ts:51"

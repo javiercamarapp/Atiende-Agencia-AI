@@ -1,0 +1,14 @@
+id: lisr-14-17
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "14 y 17"
+resumen: "Pagos provisionales de personas morales (coeficiente de utilidad) e ingresos nominales acumulables al expedir el CFDI."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El motor acumula PPD sin cobrar para el 601; el fiscalista debe confirmarlo (ver D-34, pregunta 6)."
+usado_en_codigo:
+  - "src/pagos-provisionales/engine.ts:12"
+  - "src/pagos-provisionales/engine.ts:14"

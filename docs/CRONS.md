@@ -49,6 +49,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/hoteles/tickets-sla` | `*/10 * * * *` | Escala tickets con SLA vencido y avisa al 75 % del SLA (idempotente en SQL) |
 | `/internal/hoteles/aprobaciones-expiracion` | `20 * * * *` | Marca como expiradas las aprobaciones humanas vencidas (idempotente en SQL) |
 | `/internal/rentas/acceso-huesped` | `10 * * * *` | Libera instrucciones de acceso (una transacción por reserva, dedupe_key en el outbox, tope de 50) |
+| `/internal/rentas/mensajes-automaticos` | `40 * * * *` | Crea borradores `pendiente_aprobacion` (nunca envía) desde plantillas aprobadas por evento: pre-llegada, check-in, check-out, reseña (una transacción por reserva, marca de idempotencia por reserva+evento, ventana de 24 h en la zona de la propiedad, tope de 50) |
 | `/internal/hoteles/grupos-liberacion` | `30 9 * * *` | Libera bloqueos de grupos por cutoff (zona de la property) y vence cotizaciones (idempotente en SQL) |
 | `/internal/restaurantes/privacidad-retencion` | `30 8 * * *` | Purga por retención de conversaciones de WhatsApp y voz (lotes de 500, máx. 10 por corrida) |
 

@@ -1,0 +1,13 @@
+id: lisr-113-174
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "113 y 174"
+resumen: "Subsidio para el empleo en nómina."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El código cita 'ingreso máximo actualizado según Anexo 8 RMF 2026'; falta cotejarlo."
+usado_en_codigo:
+  - "src/nomina/subsidio-empleo.ts:5"

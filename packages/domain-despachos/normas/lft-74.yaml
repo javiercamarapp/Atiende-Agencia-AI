@@ -1,0 +1,14 @@
+id: lft-74
+tipo: contexto
+ordenamiento: "LFT"
+articulo_o_regla: "74"
+resumen: "Días de descanso obligatorio; base de los feriados que el calendario trata como inhábiles."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LFT.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Contexto del cálculo de días hábiles; falta cotejar con el texto vigente."
+usado_en_codigo:
+  - "src/vencimientos/calendario-fiscal.ts:11"
+  - "src/vencimientos/calendario-fiscal.ts:88"

@@ -32,6 +32,7 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/rentas/ical-sync": { vertical: "rentas", nombre: "Sincronización iCal de rentas" },
   "/internal/rentas/checkout-sweep": { vertical: "rentas", nombre: "Barrido de check-out" },
   "/internal/rentas/acceso-huesped": { vertical: "rentas", nombre: "Acceso de huéspedes" },
+  "/internal/rentas/mensajes-automaticos": { vertical: "rentas", nombre: "Mensajes automáticos a huéspedes" },
   "/internal/whatsapp/dispatch": { vertical: "plataforma", nombre: "Despacho de WhatsApp" },
   "/internal/superadmin/resumen-diario": { vertical: "plataforma", nombre: "Parte diario" },
   "/internal/superadmin/mantenimiento": { vertical: "plataforma", nombre: "Mantenimiento de plataforma" },

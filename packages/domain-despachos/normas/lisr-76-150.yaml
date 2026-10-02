@@ -1,0 +1,15 @@
+id: lisr-76-150
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "76 y 150"
+resumen: "Declaración anual: 31 de marzo (personas morales) y 30 de abril (personas físicas)."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar fracciones y fechas con el texto vigente."
+usado_en_codigo:
+  - "src/vencimientos/calendario-fiscal.ts:19"
+  - "src/vencimientos/calendario-fiscal.ts:288"
+  - "src/vencimientos/calendario-fiscal.ts:290"
