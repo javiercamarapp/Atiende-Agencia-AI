@@ -413,8 +413,8 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
    *  respuesta, o `undefined` si fallo por cualquier motivo (interruptor apagado, tope, tiempo, error): el llamador cae a su comportamiento de siempre. */
   const callAux = async (fn: DataChatCompletion, system: string, content: string, where: string): Promise<string | undefined> => {
     try {
-      llmCalls += 1;
       const r = await raceAbort(withLlmTimeout(fn({ system, messages: [{ role: "user", content }], maxOutputTokens: 8, temperature: 0 }), AUX_TIMEOUT_MS), opts.signal);
+      llmCalls += 1; // solo cuenta una llamada que llego al modelo: interruptor apagado, tope o error de red no suman
       costUsd += Number.isFinite(r.costUsd) ? r.costUsd : 0;
       return firstWord(r.text);
     } catch (err) {
@@ -428,11 +428,23 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   // cosa (BASE, respuesta rara, fallo) deja el flujo exacto de siempre.
   let primary: DataChatCompletion = opts.complete;
   let routedEscalated = false;
+  /** El enrutador mando al modelo fuerte pero su rol (tope diario/subtope) se agoto: el turno siguio con el modelo base. */
+  let routedFellBack = false;
   if (!direct && opts.completeRouter && opts.completeRetry) {
     throwIfAborted(opts.signal);
     const decision = await callAux(opts.completeRouter, ROUTER_SYSTEM, `Pregunta: ${redactPii(question).slice(0, 300)}`, "router");
     if (decision === "ESCALAR") {
-      primary = opts.completeRetry;
+      const retry = opts.completeRetry;
+      // Si el rol de reintento agota su tope (diario o mensual) el turno vuelve al modelo base, que puede tener cupo: no cae a modo sin IA.
+      primary = async (req) => {
+        try {
+          return await retry(req);
+        } catch (err) {
+          if (!(isRoleDailyTurnLimitError(err) || isMonthlyBudgetExceededError(err) || isBudgetExceededError(err))) throw err;
+          routedFellBack = true;
+          return opts.complete(req);
+        }
+      };
       routedEscalated = true;
     }
   }
@@ -613,7 +625,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   // ---- armado de la respuesta ----
   const toolsUsed = [...new Set(runs.map((r) => r.tool.name))];
 
-  const baseRoute: DataChatRoute = direct ? (runs.length > 0 && runs.every((r) => r.fromCache) ? "cache" : "directa") : routedEscalated ? "escalado" : "barato";
+  const baseRoute: DataChatRoute = direct ? (runs.length > 0 && runs.every((r) => r.fromCache) ? "cache" : "directa") : routedEscalated && !routedFellBack ? "escalado" : "barato";
 
   if (runs.length === 0 && direct) {
     await reportUso("directa");
@@ -729,7 +741,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   }
 
-  await reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated || routedEscalated ? "escalado" : "barato") : "determinista");
+  await reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated || (routedEscalated && !routedFellBack) ? "escalado" : "barato") : "determinista");
   return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
 }
 

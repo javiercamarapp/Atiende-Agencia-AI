@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "../../src/gateway/index.js";
 import { gatewayCompletion } from "../../src/data-chat/gateway-completion.js";
+import { RoleDailyTurnLimitExceededError } from "../../src/gateway/errors.js";
 import { runDataChatTurn, type RunDataChatTurnOptions } from "../../src/data-chat/engine.js";
 import { scriptedCompletion, type ScriptStep } from "../../src/data-chat/scripted-llm.js";
 import type { DataChatUsage } from "../../src/data-chat/types.js";
@@ -89,6 +90,27 @@ describe("enrutador de turno", () => {
     expect(a.status).toBe("ok");
     expect(base.requests).toHaveLength(2);
     expect(t.errores).toContain("router");
+  });
+
+  it("ESCALAR pero el rol de reintento agoto su tope diario: el turno vuelve al modelo base (no cae a modo sin IA) y la ruta es 'barato'", async () => {
+    const base = scriptedCompletion([CALL, { text: BUENA }]);
+    const fuerte = scriptedCompletion([() => new RoleDailyTurnLimitExceededError("hoteles:data_chat_retry", "org", 100, 100), () => new RoleDailyTurnLimitExceededError("hoteles:data_chat_retry", "org", 100, 100)]);
+    const t = run({ complete: base.complete, completeRetry: fuerte.complete, completeRouter: scriptedCompletion([{ text: "ESCALAR" }]).complete });
+    const a = await t.p;
+    expect(a.status).toBe("ok");
+    expect(a.text).toBe(BUENA);
+    expect(base.requests).toHaveLength(2);
+    expect(t.usos[0]).toEqual(expect.objectContaining({ route: "barato" }));
+  });
+
+  it("si el enrutador no llega al modelo (interruptor apagado) NO cuenta como llamada del turno", async () => {
+    const t = run({
+      complete: scriptedCompletion([CALL, { text: BUENA }]).complete,
+      completeRetry: scriptedCompletion([{ text: BUENA }]).complete,
+      completeRouter: scriptedCompletion([() => new Error("kill switch")]).complete,
+    });
+    await t.p;
+    expect(t.usos).toEqual([expect.objectContaining({ llmCalls: 2 })]);
   });
 
   it("sin modelo de reintento el enrutador ni se invoca (no hay a quien escalar); sin enrutador, cero llamadas extra", async () => {
