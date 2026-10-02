@@ -307,6 +307,18 @@ export {
 } from "./contract-billing.ts";
 export type { PaymentDeadlineResult, ContractInvoiceStatus, InvoiceStatusInput, ReceivableLineInput, ReceivablesTotals } from "./contract-billing.ts";
 
+// L-23 -- regimen legal por fecha de convocatoria.
+export {
+  LAASSP_2025_ENTRADA_EN_VIGOR,
+  LAASSP_2000_PLAZO_PAGO_DIAS_NATURALES,
+  PlazoRegimenNoVerificableError,
+  resolveRegimenLegal,
+  computePaymentDueDateByRegime,
+  computeInconformidadDeadlineByRegime,
+  buildInconformidadContentByRegime,
+} from "./regimen-legal.ts";
+export type { RegimenLegalId, RegimenFuente, RegimenLegalResolucion, PaymentDeadlineByRegimeResult, InconformidadDeadlineByRegime } from "./regimen-legal.ts";
+
 export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
 export type { ContractFieldKey, ExtractedContractField, ContractFieldPageText } from "./contract-extraction.ts";
 

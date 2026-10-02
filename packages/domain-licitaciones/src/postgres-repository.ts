@@ -65,10 +65,11 @@ import { CONTRACT_INITIAL_STATUS, checkTransition, isContractStatus } from "./co
 import type { ContractStatus } from "./contract-lifecycle.ts";
 import { extractContractFields } from "./contract-extraction.ts";
 import type { ContractFieldKey } from "./contract-extraction.ts";
-import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
+import { classifyInvoiceStatus, summarizeReceivables } from "./contract-billing.ts";
+import { buildInconformidadContentByRegime, computePaymentDueDateByRegime } from "./regimen-legal.ts";
 import { mensajeRecordatorioPlazo, officialOnlyCalendar } from "./dias-inhabiles.ts";
 import { PostgresDiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
-import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
+import { INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
 import type { InconformidadFundamento } from "./inconformidad.ts";
 import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
@@ -2490,7 +2491,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord> {
     const contract = await this.requireContractRow(organizationId, tenderId);
-    const due = computePaymentDueDate(input.invoiceVerifiedOn, input.calendario ?? officialOnlyCalendar());
+    const due = computePaymentDueDateByRegime(input.invoiceVerifiedOn, input.convocatoriaPublicadaEn, input.calendario ?? officialOnlyCalendar());
     const { rows } = await this.db.query<ContractInvoiceRow>(
       `insert into licitaciones.contract_invoice (organization_id, contract_id, concepto, amount, invoice_verified_on, due_date, legal_reference, created_by)
        values ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -2548,13 +2549,14 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   }
 
   async createInconformidadDraft(organizationId: string, tenderId: string, input: CreateInconformidadDraftInput): Promise<InconformidadDraftRecord> {
-    const content = buildInconformidadContent({
+    const content = buildInconformidadContentByRegime({
       falloNotifiedOn: input.falloNotifiedOn,
       bajoTratados: input.bajoTratados,
       hechos: input.hechos,
       agravios: input.agravios,
       pruebas: input.pruebas,
       holidays: input.calendario ?? officialOnlyCalendar(),
+      convocatoriaPublicadaEn: input.convocatoriaPublicadaEn,
     });
     const versionRes = await this.db.query<{ next_version: number }>(
       `select coalesce(max(version), 0) + 1 as next_version from licitaciones.inconformidad_draft where organization_id = $1 and tender_id = $2;`,

@@ -62,9 +62,10 @@ import type {
 import { CONTRACT_INITIAL_STATUS, checkTransition, isContractStatus } from "./contract-lifecycle.ts";
 import type { ContractStatus } from "./contract-lifecycle.ts";
 import { extractContractFields } from "./contract-extraction.ts";
-import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
+import { classifyInvoiceStatus, summarizeReceivables } from "./contract-billing.ts";
+import { buildInconformidadContentByRegime, computePaymentDueDateByRegime } from "./regimen-legal.ts";
 import { mensajeRecordatorioPlazo, officialOnlyCalendar } from "./dias-inhabiles.ts";
-import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
+import { INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
 import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
 import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./renewal-radar.ts";
 import type { RenewalCandidateContract } from "./renewal-radar.ts";
@@ -1588,7 +1589,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord> {
     const contract = this.requireContract(organizationId, tenderId);
-    const due = computePaymentDueDate(input.invoiceVerifiedOn, input.calendario ?? officialOnlyCalendar());
+    const due = computePaymentDueDateByRegime(input.invoiceVerifiedOn, input.convocatoriaPublicadaEn, input.calendario ?? officialOnlyCalendar());
     const record: ContractInvoiceRecord = {
       id: randomUUID(),
       contractId: contract.id,
@@ -1640,13 +1641,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const key = `${organizationId}:${tenderId}`;
     const existingVersions = this.inconformidadDrafts.get(key) ?? [];
     const version = existingVersions.length + 1;
-    const content = buildInconformidadContent({
+    const content = buildInconformidadContentByRegime({
       falloNotifiedOn: input.falloNotifiedOn,
       bajoTratados: input.bajoTratados,
       hechos: input.hechos,
       agravios: input.agravios,
       pruebas: input.pruebas,
       holidays: input.calendario ?? officialOnlyCalendar(),
+      convocatoriaPublicadaEn: input.convocatoriaPublicadaEn,
     });
     const record: InconformidadDraftRecord = {
       id: randomUUID(),

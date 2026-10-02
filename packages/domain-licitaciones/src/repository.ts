@@ -413,6 +413,8 @@ export interface CreateContractInvoiceInput {
   readonly actorId: string;
   /** L-22: calendario efectivo (oficiales + organizacion + convocatoria) con el que se cuenta el plazo. Si falta, solo los oficiales de plataforma (`officialOnlyCalendar`). */
   readonly calendario?: CalendarioPlazos;
+  /** L-23: fecha "YYYY-MM-DD" de publicacion de la convocatoria; decide el regimen legal del plazo (LAASSP 2000 abrogada vs nueva). Si falta, se aplica el regimen vigente y el resultado lo declara. */
+  readonly convocatoriaPublicadaEn?: string | null;
 }
 
 export interface ReceivablesSummary {
@@ -458,6 +460,8 @@ export interface CreateInconformidadDraftInput {
   readonly actorId: string;
   /** L-22: calendario efectivo con el que se cuenta el plazo del art. 95. Si falta, solo los oficiales de plataforma. */
   readonly calendario?: CalendarioPlazos;
+  /** L-23: fecha "YYYY-MM-DD" de publicacion de la convocatoria; con una anterior al 2025-04-17 el borrador se niega (plazo del regimen abrogado sin verificar). Si falta, regimen vigente declarado. */
+  readonly convocatoriaPublicadaEn?: string | null;
 }
 
 export interface FalloAutopsyRecord {
