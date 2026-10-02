@@ -39,6 +39,8 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
   'deepseek/deepseek-v4.1-flash': { inPerM: 0.6, outPerM: 2.4, verifiedAt: '2026-10-02' },
   'deepseek/deepseek-v4-pro': { inPerM: 1.91, outPerM: 3.83, verifiedAt: '2026-10-02' },
   'qwen/qwen3-235b-a22b-2507': { inPerM: 0.25, outPerM: 1, verifiedAt: '2026-10-02' },
+  // Respaldo candidato del piloto (1-oct-2026): DeepInfra 0.075/0.20 y Parasail 0.09/0.30 por 1M; se reserva con el MAS CARO.
+  'mistralai/mistral-small-3.2-24b-instruct': { inPerM: 0.09, outPerM: 0.3, verifiedAt: '2026-10-01' },
 };
 
 /** Precio de lista de un modelo, o `undefined` si no esta en la tabla. Acepta el id de OpenRouter

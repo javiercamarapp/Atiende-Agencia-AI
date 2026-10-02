@@ -116,6 +116,10 @@ export interface LlmProvider {
   /** Modelo concreto al que apunta este escalon (si aplica): el estimador de costo lo usa para
    *  reservar con el precio real del modelo en vez de un tope generico. */
   readonly model?: string;
+  /** Tope de tokens de salida que ESTE escalon realmente manda al proveedor para `req` (puede ser mayor que
+   *  `req.maxOutputTokens`: p.ej. el piso `minMaxTokens` de un modelo que razona). El estimador de costo lo
+   *  usa para no sub-reservar; sin el, se usa `req.maxOutputTokens`. */
+  effectiveMaxOutputTokens?(req: LlmCompletionRequest): number;
   /** ISO 3166-1 alpha-2, p.ej. 'US', 'DE', 'FR'. */
   readonly countryOfResidence: string;
   complete(req: LlmCompletionRequest): Promise<LlmCompletionResult>;

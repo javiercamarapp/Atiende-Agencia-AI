@@ -201,13 +201,19 @@ export class OpenRouterProvider implements LlmProvider {
     this.sleep = opts.sleep ?? defaultSleep;
   }
 
+  /** Tope de tokens de salida que realmente se manda (incluye razonamiento): el pedido o el fijo del escalon, nunca menos
+   *  que su piso `minMaxTokens`. Es lo que debe usar el estimador de costo para reservar. */
+  effectiveMaxOutputTokens(request: LlmCompletionRequest): number {
+    const params = this.opts.params ?? {};
+    return Math.max(params.maxTokens ?? request.maxOutputTokens ?? 500, params.minMaxTokens ?? 0);
+  }
+
   /** Cuerpo JSON de la peticion (exportado como metodo para poder probar el contrato sin red). */
   buildBody(request: LlmCompletionRequest): Record<string, unknown> {
     const params = this.opts.params ?? {};
     const tools = toOpenAiWireTools(request.tools);
     const toolChoice = toOpenAiWireToolChoice(request.tools, request.toolChoice);
-    const requested = params.maxTokens ?? request.maxOutputTokens ?? 500;
-    const maxTokens = Math.max(requested, params.minMaxTokens ?? 0);
+    const maxTokens = this.effectiveMaxOutputTokens(request);
 
     const body: Record<string, unknown> = {
       model: this.model,
