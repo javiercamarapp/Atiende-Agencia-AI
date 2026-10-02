@@ -564,6 +564,7 @@ export function buildProductionDeps(): AppDeps {
     // productos distintos de la misma cuenta, nunca dos integraciones
     // separadas.
     saasBillingStripeClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
+    saasBillingPortalClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingCustomerLookup: env.stripe.secretKey ? new StripeSaasBillingCustomerLookup(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingWebhookSecret: env.stripe.webhookSecret,
   };
