@@ -143,28 +143,70 @@ export interface DataChatRateLimiter {
   allow(key: string, limit: number, windowMs: number): Promise<boolean>;
 }
 
+/** Ruta con la que se produjo el texto de un turno (medicion de costo, ver `RunDataChatTurnOptions.onUso`). */
+export type DataChatRoute = "directa" | "barato" | "escalado" | "determinista";
+
+/** Uso de un turno: lo que costo y por que ruta salio el texto. Solo cifras operativas (nunca preguntas, filas ni PII). */
+export interface DataChatUsage {
+  readonly route: DataChatRoute;
+  /** Llamadas al modelo de este turno (incluye la escalada, si la hubo). */
+  readonly llmCalls: number;
+  /** true si hubo una llamada al modelo escalado (cascada tras fallar la guardia de cifras). */
+  readonly escalated: boolean;
+  /** Suma del costo reportado por el proveedor en cada llamada (USD). */
+  readonly costUsd: number;
+  /** Modelo que respondio la ultima llamada barata (el reportado por el proveedor), si se conoce. */
+  readonly model?: string;
+}
+
 export interface DataChatLimits {
   readonly maxQuestionChars: number;
   readonly maxHistoryTurns: number;
   readonly maxHistoryTurnChars: number;
+  /** Rondas de herramientas (el turno agrega una ronda final de redaccion sin herramientas). */
   readonly maxToolRounds: number;
   readonly maxToolCallsPerTurn: number;
+  /** Rondas EXTRA de herramientas solo cuando ninguna consulta llego a ejecutarse (el modelo pidio una herramienta o
+   *  argumentos invalidos): una oportunidad de corregirse. Con resultados en mano nunca se usa, asi que un turno normal
+   *  sigue en 2 llamadas al modelo. */
+  readonly maxRepairRounds: number;
+  /** Filas que recorta el motor para la UI y el PDF (el modelo ve `maxModelRows`). */
   readonly maxRows: number;
+  /** Filas por herramienta que se le mandan al MODELO (<= maxRows). */
+  readonly maxModelRows: number;
   readonly toolTimeoutMs: number;
+  /** Techo general de tokens de salida; se aplica como tope sobre los dos siguientes y al reintento escalado. */
   readonly maxOutputTokens: number;
+  /** Tokens de salida al ELEGIR herramienta (antes de ver resultados). */
+  readonly maxOutputTokensChoose: number;
+  /** Tokens de salida al REDACTAR (despues de ver resultados). */
+  readonly maxOutputTokensWrite: number;
+  /** Largo maximo de la descripcion de cada herramienta que se manda al modelo. */
+  readonly maxToolDescriptionChars: number;
+  /** Tiempo maximo de UNA llamada al modelo. */
+  readonly llmCallTimeoutMs: number;
+  /** Tiempo maximo de todo el turno: pasado, ya no se llama al modelo y se responde con las cifras deterministas. */
+  readonly turnTimeoutMs: number;
   readonly userRateLimit: { readonly limit: number; readonly windowMs: number };
   readonly orgRateLimit: { readonly limit: number; readonly windowMs: number };
 }
 
 export const DEFAULT_DATA_CHAT_LIMITS: DataChatLimits = {
   maxQuestionChars: 600,
-  maxHistoryTurns: 6,
+  maxHistoryTurns: 4,
   maxHistoryTurnChars: 600,
-  maxToolRounds: 3,
-  maxToolCallsPerTurn: 4,
+  maxToolRounds: 1,
+  maxToolCallsPerTurn: 3,
+  maxRepairRounds: 1,
   maxRows: 50,
+  maxModelRows: 20,
   toolTimeoutMs: 8_000,
   maxOutputTokens: 500,
+  maxOutputTokensChoose: 150,
+  maxOutputTokensWrite: 350,
+  maxToolDescriptionChars: 160,
+  llmCallTimeoutMs: 20_000,
+  turnTimeoutMs: 45_000,
   userRateLimit: { limit: 20, windowMs: 10 * 60_000 },
   orgRateLimit: { limit: 120, windowMs: 60 * 60_000 },
 };
