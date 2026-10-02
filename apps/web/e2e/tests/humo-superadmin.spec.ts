@@ -7,11 +7,32 @@ test.describe("superadmin @humo", () => {
     const aterrizaje = await iniciarSesion("superadmin");
     expect(aterrizaje).toBe("/superadmin");
     await afirmarPantallaSana(page, "resumen");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(page.getByTestId("odometro")).toBeVisible();
+    await expect(page.getByText("Operaciones atendidas", { exact: true })).toBeVisible();
     // SA-L-01: el listado de organizaciones ya no es la raiz; vive en su propia ruta.
     await page.goto("/superadmin/organizaciones");
     await afirmarPantallaSana(page, "organizaciones");
     await expect(page.getByText("Taqueria El Faro")).toBeVisible();
     await recorrerSecciones(page, { minimo: 18 });
+    vigilante.verificar();
+  });
+
+  test("resumen: 'Entrar' abre el dialogo con motivo; Cancelar y Escape no escriben; el parte diario vive en su ruta", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("superadmin");
+    await expect(page.getByText("Orquestación de agentes")).toBeVisible();
+    // Cero botones muertos: no existe /superadmin/analitica, asi que la pildora no se pinta.
+    await expect(page.getByRole("link", { name: /Ver analítica/ })).toHaveCount(0);
+    const entrar = page.getByRole("button", { name: /^Entrar a / }).first();
+    await expect(entrar).toBeVisible();
+    await afirmarCancelarNoEscribe(page, mock, entrar, { nombre: /Entrar a /, verificarFoco: false });
+
+    await page.getByRole("link", { name: /Ver parte diario/ }).click();
+    await expect(page).toHaveURL(/\/superadmin\/parte-diario$/);
+    await afirmarPantallaSana(page, "parte diario");
+    // La ruta vieja redirige sin 404.
+    await page.goto("/superadmin/resumen");
+    await expect(page).toHaveURL(/\/superadmin$/);
     vigilante.verificar();
   });
 
