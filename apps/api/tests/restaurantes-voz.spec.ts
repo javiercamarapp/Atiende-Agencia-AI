@@ -417,7 +417,10 @@ describe("registrador de sistema /internal/restaurantes/voz/*", () => {
       const t = await construir();
       const { tokenPreview, sesionId } = await emitir(t);
       const [p, f] = tokenPreview.split(".") as [string, string];
-      expect((await post(t, "/previews/consumir", { token: `${p}.${f.slice(0, -2)}AA` })).status).toBe(401);
+      // El primer carácter de la firma usa sus 6 bits: cambiarlo SIEMPRE altera los bytes decodificados (sin 1/4096 de flake).
+      const alterado = `${p}.${f[0] === "A" ? "B" : "A"}${f.slice(1)}`;
+      expect(alterado).not.toBe(tokenPreview);
+      expect((await post(t, "/previews/consumir", { token: alterado })).status).toBe(401);
       expect((await post(t, "/previews/consumir", {})).status).toBe(401);
       const entrada = { sessionId: sesionId, organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, voiceId: "Kore", proveedor: "gemini-3.8-live" };
       const viejo = firmarPreviewToken(SECRETO, entrada, new Date(Date.now() - 600_000), 60).token;

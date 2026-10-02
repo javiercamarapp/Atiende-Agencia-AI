@@ -65,7 +65,10 @@ describe("token efimero de preview (HMAC)", () => {
     const [p, f] = token.split(".") as [string, string];
     const payloadAjeno = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, "base64url").toString()), org: "org-2" })).toString("base64url");
     expect(verificarPreviewToken(SECRETO, `${payloadAjeno}.${f}`, AHORA)).toEqual({ ok: false, razon: "firma" });
-    expect(verificarPreviewToken(SECRETO, `${p}.${f.slice(0, -2)}AA`, AHORA)).toEqual({ ok: false, razon: "firma" });
+    // El primer carácter de la firma usa sus 6 bits: cambiarlo SIEMPRE altera los bytes decodificados.
+    const firmaAlterada = `${f[0] === "A" ? "B" : "A"}${f.slice(1)}`;
+    expect(firmaAlterada).not.toBe(f);
+    expect(verificarPreviewToken(SECRETO, `${p}.${firmaAlterada}`, AHORA)).toEqual({ ok: false, razon: "firma" });
     expect(verificarPreviewToken("test-otro-secreto-igualmente", token, AHORA)).toEqual({ ok: false, razon: "firma" });
   });
 
