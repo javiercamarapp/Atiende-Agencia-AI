@@ -11,6 +11,11 @@
 // `withHeartbeat` no existiera -- ningún caller de las rutas de cron ve un
 // comportamiento distinto por estar instrumentado.
 //
+// Bitacora de corridas (SA-L-07): ademas del latido, cada corrida real deja una fila en `core.agent_run`
+// (`../agentes/corridas.ts::registrarCorridaBestEffort`) con estado ok | parcial | fallo y duracion; el error va
+// redactado y a 500 caracteres o menos. Mismo contrato best-effort que el latido: una bitacora rota NUNCA tumba ni
+// altera la corrida, y contra la base sin la 0044 se omite en silencio. Una pausa por interruptor NO es una corrida.
+//
 // Por qué el registro SÍ se espera (`await`), nunca "fire and forget": una
 // función serverless de Vercel puede congelarse/terminar justo después de
 // responder (mismo problema documentado en
@@ -37,6 +42,7 @@
 // unidades que sí funcionaron ya persistieron, aislado por unidad), solo el
 // latido debe dejar de mentir.
 import { emitirNotificacion } from "@atiende/db";
+import { registrarCorridaBestEffort, verticalDeCron } from "../agentes/corridas.ts";
 import type { AppDeps } from "../deps.ts";
 
 const MAX_ERROR_LENGTH = 500;
@@ -144,10 +150,22 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
 
     try {
       const response = await handler();
-      await registrarLatidoBestEffort(deps, cronName, "ok", null, startedAt, new Date());
+      const finishedAt = new Date();
+      await registrarLatidoBestEffort(deps, cronName, "ok", null, startedAt, finishedAt);
+      await registrarCorridaBestEffort(deps, { agente: cronName, vertical: verticalDeCron(cronName), disparo: "cron", estado: "ok", iniciadoEn: startedAt, terminadoEn: finishedAt });
       return response;
     } catch (err) {
-      await registrarLatidoBestEffort(deps, cronName, "error", truncarError(err), startedAt, new Date());
+      const finishedAt = new Date();
+      await registrarLatidoBestEffort(deps, cronName, "error", truncarError(err), startedAt, finishedAt);
+      await registrarCorridaBestEffort(deps, {
+        agente: cronName,
+        vertical: verticalDeCron(cronName),
+        disparo: "cron",
+        estado: err instanceof CronPartialFailureError ? "parcial" : "fallo",
+        error: err,
+        iniciadoEn: startedAt,
+        terminadoEn: finishedAt,
+      });
       await notificarFalloCronBestEffort(deps, cronName, err);
       await notificarFalloCronEnAppBestEffort(deps, cronName);
       // `CronPartialFailureError`: el handler YA construyó la Response real (200

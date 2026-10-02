@@ -215,6 +215,18 @@ export type {
 } from "./superadmin-consola-repository.ts";
 export { InMemoryConsolaRepository, PostgresConsolaRepository } from "./superadmin-consola-repository.ts";
 export type {
+  AgentPanelRow,
+  AgentRunRow,
+  AgentRunRepository,
+  DisparoCorrida,
+  EstadoAgente,
+  EstadoCorrida,
+  FiltrosCorridas,
+  FuenteAgentes,
+  RegistrarCorridaInput,
+} from "./superadmin-agentes-repository.ts";
+export { InMemoryAgentRunRepository, PostgresAgentRunRepository } from "./superadmin-agentes-repository.ts";
+export type {
   ArcoPage,
   ArcoQuery,
   ArcoRequestRow,

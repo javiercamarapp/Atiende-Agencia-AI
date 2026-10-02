@@ -1,4 +1,5 @@
 import type {
+  AgentRunRepository,
   AuthzAuditRepository,
   CoreRepository,
   CoreStaffRepository,
@@ -601,6 +602,15 @@ export interface AppDeps {
    *  del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL: ausente o migracion sin aplicar -> los campos
    *  salen `null` con su razon y `disponible: false` (200), nunca un 500. */
   readonly consolaRepo?: (db: TenantDbSession) => ConsolaRepository;
+  /** Bitacora de corridas de agentes y panel de agentes (SA-L-07/SA-L-08; ver
+   *  packages/db/migrations/0044_superadmin_corridas_y_panel_agentes.sql, routes/superadmin-agentes.ts y
+   *  agentes/corridas.ts). Fabrica por sesion: la escritura y la purga son SOLO-SISTEMA (una transaccion PROPIA por
+   *  llamada, `withAppSession({ userId: null })`); las lecturas, con la sesion del caller. OPCIONAL: ausente o migracion
+   *  sin aplicar -> `disponible: false` (200) y la escritura se omite en silencio; withHeartbeat sigue como siempre. */
+  readonly agentRunRepo?: (db: TenantDbSession) => AgentRunRepository;
+  /** Modelo principal (id de OpenRouter) de un rol del gateway segun la ruta vigente (defaults + LLM_MODELS_JSON).
+   *  `null` = el rol no tiene ruta. OPCIONAL: ausente -> el panel resuelve contra los defaults del repo. */
+  readonly modeloPrincipalDeRol?: (role: string) => string | null;
   /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
    *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
    *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,

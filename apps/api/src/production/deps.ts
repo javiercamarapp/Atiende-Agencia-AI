@@ -91,6 +91,7 @@ import {
   PostgresCfoRepository,
   PostgresPylRepository,
   PostgresCfoZoneRepository,
+  PostgresAgentRunRepository,
   PostgresConsolaRepository,
   PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
@@ -122,10 +123,13 @@ import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
+import { conBitacoraDeTurno } from "../agentes/corridas.ts";
+import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
 import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
+  loadLlmModelsConfig,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
   HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
@@ -297,6 +301,11 @@ export function buildProductionDeps(): AppDeps {
   // tests/CI — este constructor solo corre en producción real.
   const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates }) }) : undefined;
 
+  // Bitacora de corridas (SA-L-07): cada turno de WhatsApp deja una fila en core.agent_run (best-effort, sesion de
+  // sistema propia por escritura; ver ../agentes/corridas.ts). Sin la 0044 aplicada se omite en silencio.
+  const depsBitacora = { engine, agentRunRepo: (db: TenantDbSession) => new PostgresAgentRunRepository(db) };
+  const modelosLlm = loadLlmModelsConfig(env);
+
   cached = {
     env,
     engine,
@@ -324,12 +333,16 @@ export function buildProductionDeps(): AppDeps {
     demoRepo: (db) => new PostgresDemoRepository(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
     dataChat: buildProductionDataChat(llmGateway),
-    turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
+    turnHandler: llmGateway
+      ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
+      : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
       ? new StripeHotelesPaymentsPort(fetch, { secretKey: env.stripe.secretKey })
       : notProductionReady<PaymentsPort>("hotelesPaymentsPort (falta configurar STRIPE_SECRET_KEY)"),
-    hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar OPENROUTER_API_KEY)"),
+    hotelesTurnHandler: llmGateway
+      ? conBitacoraDeTurno(buildRealHotelesTurnHandler(engine, llmGateway), { deps: depsBitacora, agente: HOTELES_WHATSAPP_AGENT_ROLE, vertical: "hoteles" })
+      : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar OPENROUTER_API_KEY)"),
     // Fase 5 (H5/REQ-BO-001/002) — Fix hallazgo auditoría (este comentario ANTES
     // afirmaba incorrectamente que "SÍ se conecta un CfdiPort real de punta a
     // punta"; es falso en este monorepo, se corrige aquí). `FinkokAdapter`/
@@ -398,7 +411,9 @@ export function buildProductionDeps(): AppDeps {
     // SÍ pueden disparar 2 llamadas al LLM en paralelo (costo doble, respuesta
     // duplicada) aunque el traslape de horario nunca ocurra (el cliente solo está
     // platicando, cancelando, o preguntando disponibilidad).
-    citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar OPENROUTER_API_KEY)"),
+    citasTurnHandler: llmGateway
+      ? conBitacoraDeTurno(buildRealCitasTurnHandler(engine, llmGateway), { deps: depsBitacora, agente: CITAS_WHATSAPP_AGENT_ROLE, vertical: "citas" })
+      : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar OPENROUTER_API_KEY)"),
     citasConversationGuard: createDefaultConversationGuard(),
     // Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
     // notProductionReady (muerto)") -- ver buildRealGoogleCalendarPortResolver más
@@ -519,6 +534,8 @@ export function buildProductionDeps(): AppDeps {
     pylRepo: (db) => new PostgresPylRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
+    agentRunRepo: depsBitacora.agentRunRepo,
+    modeloPrincipalDeRol: (role) => resolveRoleRoute(role, modelosLlm).models[0]?.model ?? null,
     contratosRepo: (db) => new PostgresContratosRepository(db),
     privacidadPlataformaRepo: (db) => new PostgresPlataformaPrivacidadRepository(db),
     platformSwitchGuard,
