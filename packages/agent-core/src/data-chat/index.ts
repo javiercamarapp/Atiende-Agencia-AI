@@ -6,5 +6,6 @@ export * from "./format.js";
 export * from "./sanitize.js";
 export * from "./numbers-guard.js";
 export * from "./engine.js";
+export * from "./cache.js";
 export * from "./scripted-llm.js";
 export * from "./gateway-completion.js";
