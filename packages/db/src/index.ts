@@ -59,6 +59,11 @@ export type {
   LlmUsageByOrganizationRow,
   LlmUsageByProviderModelRow,
   LlmPlatformBudgetRow,
+  LlmMonthlyReservationTotals,
+  LlmUsageByOrgRoleMonthRow,
+  LlmOrgRoleLimitRow,
+  LlmRoleTurnResult,
+  LlmHourWindow,
 } from "./llm-usage-repository.ts";
 export {
   LlmMonthlyBudgetExceededError,

@@ -74,6 +74,44 @@ export interface LlmPlatformBudgetRow {
   readonly spendThisMonthMicroUsd: number;
 }
 
+/** Totales del mes tras una reserva exitosa (para avisar al 80 %). Solo la reserva con rol (migracion 0046) los devuelve. */
+export interface LlmMonthlyReservationTotals {
+  readonly orgTotalMicroUsd: number;
+  readonly orgCapMicroUsd: number;
+  readonly platformTotalMicroUsd: number;
+  readonly platformCapMicroUsd: number;
+}
+
+/** Gasto agregado por organizacion, rol y mes (reporte de Gasto API, migracion 0046). */
+export interface LlmUsageByOrgRoleMonthRow {
+  readonly organizationId: string;
+  readonly organizationName: string;
+  readonly role: string;
+  readonly month: string;
+  readonly costMicroUsd: number;
+  readonly callCount: number;
+  readonly fallbackCallCount: number;
+  readonly tokensIn: number;
+  readonly tokensOut: number;
+}
+
+export interface LlmOrgRoleLimitRow {
+  readonly role: string;
+  readonly maxTurnosDia: number;
+  readonly turnosHoy: number;
+}
+
+export interface LlmRoleTurnResult {
+  readonly allowed: boolean;
+  readonly used: number;
+  readonly maxTurnos: number;
+}
+
+export interface LlmHourWindow {
+  readonly calls: number;
+  readonly fallbacks: number;
+}
+
 /** Puerto de `MonthlyBudgetExceededError` (`@atiende/agent-core`) — el
  *  adaptador de producción (`llm-usage-gateway-adapters.ts`) traduce ESTE
  *  error al de agent-core, para que agent-core no dependa de `@atiende/db`
@@ -81,7 +119,7 @@ export interface LlmPlatformBudgetRow {
  *  en agent-core, sin acoplarlo a Postgres). */
 export class LlmMonthlyBudgetExceededError extends Error {
   constructor(
-    readonly scope: "organization" | "platform",
+    readonly scope: "organization" | "platform" | "copilot",
     readonly organizationId: string,
     readonly requestedMicroUsd: number,
     readonly limitMicroUsd: number,
@@ -104,8 +142,12 @@ export interface LlmUsageRepository {
   recordUsage(event: LlmUsageEventInput): Promise<void>;
   /** Lanza `LlmMonthlyBudgetExceededError` si cualquiera de los dos topes
    *  (organización/plataforma) se excede — nunca deja una reserva a medias. */
-  reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void>;
+  reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<LlmMonthlyReservationTotals | null>;
   settleMonthlyBudget(reservationId: string, actualMicroUsd: number): Promise<void>;
+  /** Consume un turno LLM del dia para (organizacion, rol) (migracion 0046). Solo sistema. */
+  consumeRoleTurn(organizationId: string, role: string, defaultLimit: number): Promise<LlmRoleTurnResult>;
+  /** Cuenta una llamada (y si cayo a un modelo de respaldo) en la hora en curso; devuelve los totales de la hora. Solo sistema. */
+  recordHourWindow(fallbackUsed: boolean): Promise<LlmHourWindow>;
 
   // ---- back office de plataforma (control de gasto de API de LLM) ----
   getUsageSummaryForSuperadmin(callerId: string, from: string, to: string): Promise<LlmUsageSummaryRow>;
@@ -114,6 +156,10 @@ export interface LlmUsageRepository {
   getPlatformBudgetForSuperadmin(callerId: string): Promise<LlmPlatformBudgetRow>;
   setOrgMonthlyCapForSuperadmin(callerId: string, organizationId: string, monthlyCapMicroUsd: number, alertThresholdPct: number): Promise<void>;
   setPlatformMonthlyCapForSuperadmin(callerId: string, monthlyCapMicroUsd: number, alertThresholdPct: number): Promise<void>;
+  /** Gasto por organizacion/rol/mes (migracion 0046; sin ella la funcion SQL no existe y el llamador lo trata como "no disponible"). */
+  listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]>;
+  listOrgRoleLimitsForSuperadmin(callerId: string, organizationId: string): Promise<readonly LlmOrgRoleLimitRow[]>;
+  setOrgRoleLimitForSuperadmin(callerId: string, organizationId: string, role: string, maxTurnosDia: number): Promise<void>;
 }
 
 /** Default aplicado tanto por Postgres (`core.default_llm_org_monthly_cap_micro_usd()`)
@@ -165,6 +211,25 @@ interface PlatformBudgetRawRow {
   spend_this_month_micro_usd: string;
 }
 
+interface ReservationTotalsRawRow {
+  org_total_micro_usd: string;
+  org_cap_micro_usd: string;
+  platform_total_micro_usd: string;
+  platform_cap_micro_usd: string;
+}
+
+interface UsageByOrgRoleMonthRawRow {
+  organization_id: string;
+  organization_name: string;
+  role: string;
+  month: string;
+  cost_micro_usd: string;
+  call_count: string;
+  fallback_call_count: string;
+  tokens_in: string;
+  tokens_out: string;
+}
+
 function n(v: string | number | null | undefined): number {
   return v === null || v === undefined ? 0 : Number(v);
 }
@@ -176,9 +241,9 @@ function n(v: string | number | null | undefined): number {
  *  frente a errores de Postgres (ver `markNotificationRead`::code === "P0002"). */
 function parseMonthlyBudgetExceeded(err: unknown): LlmMonthlyBudgetExceededError | null {
   const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  const match = /llm_monthly_budget_exceeded:(organization|platform):([^:]+):(\d+):(\d+)/.exec(message);
+  const match = /llm_monthly_budget_exceeded:(organization|platform|copilot):([^:]+):(\d+):(\d+)/.exec(message);
   if (!match) return null;
-  const [, scope, organizationId, requested, limit] = match as unknown as [string, "organization" | "platform", string, string, string];
+  const [, scope, organizationId, requested, limit] = match as unknown as [string, "organization" | "platform" | "copilot", string, string, string];
   return new LlmMonthlyBudgetExceededError(scope, organizationId, Number(requested), Number(limit));
 }
 
@@ -214,12 +279,76 @@ export class PostgresLlmUsageRepository implements LlmUsageRepository {
     });
   }
 
-  async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {
+  async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<LlmMonthlyReservationTotals | null> {
     try {
+      // Con rol: sobrecarga de 4 argumentos (migracion 0046; subtope del Copiloto y totales para avisar al 80 %). Si todavia no
+      // existe, el error 42883 deja ESTA transaccion abortada: el llamador (ProductionOrgMonthlyBudgetStore) reintenta sin rol en
+      // una sesion nueva, nunca en esta.
+      if (role !== undefined) {
+        const { rows } = await this.db.query<ReservationTotalsRawRow>(
+          `select org_total_micro_usd, org_cap_micro_usd, platform_total_micro_usd, platform_cap_micro_usd from core.reserve_llm_monthly_budget($1, $2, $3, $4);`,
+          [organizationId, reservationId, Math.trunc(amountMicroUsd), role],
+        );
+        const r = rows[0];
+        return r
+          ? { orgTotalMicroUsd: n(r.org_total_micro_usd), orgCapMicroUsd: n(r.org_cap_micro_usd), platformTotalMicroUsd: n(r.platform_total_micro_usd), platformCapMicroUsd: n(r.platform_cap_micro_usd) }
+          : null;
+      }
       await this.db.query(`select core.reserve_llm_monthly_budget($1, $2, $3);`, [organizationId, reservationId, Math.trunc(amountMicroUsd)]);
+      return null;
     } catch (err) {
       const parsed = parseMonthlyBudgetExceeded(err);
       if (parsed) throw parsed;
+      throw err;
+    }
+  }
+
+  async consumeRoleTurn(organizationId: string, role: string, defaultLimit: number): Promise<LlmRoleTurnResult> {
+    const { rows } = await this.db.query<{ allowed: boolean; used: number | string; max_turnos: number | string }>(
+      `select allowed, used, max_turnos from core.consume_llm_role_turn($1, $2, $3);`,
+      [organizationId, role, Math.trunc(defaultLimit)],
+    );
+    const r = rows[0];
+    return { allowed: r?.allowed === true, used: n(r?.used), maxTurnos: n(r?.max_turnos) };
+  }
+
+  async recordHourWindow(fallbackUsed: boolean): Promise<LlmHourWindow> {
+    const { rows } = await this.db.query<{ calls: number | string; fallbacks: number | string }>(`select calls, fallbacks from core.record_llm_hour_window($1);`, [fallbackUsed]);
+    return { calls: n(rows[0]?.calls), fallbacks: n(rows[0]?.fallbacks) };
+  }
+
+  async listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]> {
+    const { rows } = await this.db.query<UsageByOrgRoleMonthRawRow>(
+      `select organization_id, organization_name, role, month, cost_micro_usd, call_count, fallback_call_count, tokens_in, tokens_out
+       from core.get_llm_usage_by_org_role_month_for_superadmin($1, $2, $3);`,
+      [callerId, from, to],
+    );
+    return rows.map((r) => ({
+      organizationId: r.organization_id,
+      organizationName: r.organization_name,
+      role: r.role,
+      month: r.month,
+      costMicroUsd: n(r.cost_micro_usd),
+      callCount: n(r.call_count),
+      fallbackCallCount: n(r.fallback_call_count),
+      tokensIn: n(r.tokens_in),
+      tokensOut: n(r.tokens_out),
+    }));
+  }
+
+  async listOrgRoleLimitsForSuperadmin(callerId: string, organizationId: string): Promise<readonly LlmOrgRoleLimitRow[]> {
+    const { rows } = await this.db.query<{ role: string; max_turnos_dia: number | string; turnos_hoy: number | string }>(
+      `select role, max_turnos_dia, turnos_hoy from core.list_llm_org_role_limits_for_superadmin($1, $2);`,
+      [callerId, organizationId],
+    );
+    return rows.map((r) => ({ role: r.role, maxTurnosDia: n(r.max_turnos_dia), turnosHoy: n(r.turnos_hoy) }));
+  }
+
+  async setOrgRoleLimitForSuperadmin(callerId: string, organizationId: string, role: string, maxTurnosDia: number): Promise<void> {
+    try {
+      await this.db.query(`select core.set_llm_org_role_limit_for_superadmin($1, $2, $3, $4);`, [callerId, organizationId, role, Math.trunc(maxTurnosDia)]);
+    } catch (err) {
+      if ((err as { code?: string } | null)?.code === "P0002") throw new LlmOrganizationNotFoundError(organizationId);
       throw err;
     }
   }
@@ -344,7 +473,10 @@ export class InMemoryLlmUsageRepository implements LlmUsageRepository {
   private readonly usageByKey = new Map<string, UsageDailyKeyed>();
   private readonly orgBudgets = new Map<string, { monthlyCapMicroUsd: number; alertThresholdPct: number }>();
   private platformBudget = { monthlyCapMicroUsd: 1_000_000_000, alertThresholdPct: DEFAULT_LLM_ALERT_THRESHOLD_PCT };
-  private readonly monthlyReservations = new Map<string, { organizationId: string; month: string; amountMicroUsd: number }>();
+  private readonly monthlyReservations = new Map<string, { organizationId: string; month: string; amountMicroUsd: number; role?: string }>();
+  private readonly roleTurns = new Map<string, number>();
+  private readonly roleLimits = new Map<string, number>();
+  private hourWindow = { calls: 0, fallbacks: 0 };
   private readonly isSuperadmin = new Set<string>();
 
   seedOrganization(org: InMemoryLlmUsageOrganization): void {
@@ -394,15 +526,20 @@ export class InMemoryLlmUsageRepository implements LlmUsageRepository {
     }
   }
 
-  async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {
+  async reserveMonthlyBudget(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<LlmMonthlyReservationTotals | null> {
     const month = this.month();
     const orgCap = this.orgCapFor(organizationId);
     let orgTotal = 0;
     let platformTotal = 0;
+    let copilotoTotal = 0;
+    const isCopiloto = (r?: string): boolean => r !== undefined && /:data_chat(_retry)?$/.test(r);
     for (const r of this.monthlyReservations.values()) {
       if (r.month !== month) continue;
       platformTotal += r.amountMicroUsd;
-      if (r.organizationId === organizationId) orgTotal += r.amountMicroUsd;
+      if (r.organizationId === organizationId) {
+        orgTotal += r.amountMicroUsd;
+        if (isCopiloto(r.role)) copilotoTotal += r.amountMicroUsd;
+      }
     }
     if (orgTotal + amountMicroUsd > orgCap) {
       throw new LlmMonthlyBudgetExceededError("organization", organizationId, orgTotal + amountMicroUsd, orgCap);
@@ -410,7 +547,65 @@ export class InMemoryLlmUsageRepository implements LlmUsageRepository {
     if (platformTotal + amountMicroUsd > this.platformBudget.monthlyCapMicroUsd) {
       throw new LlmMonthlyBudgetExceededError("platform", organizationId, platformTotal + amountMicroUsd, this.platformBudget.monthlyCapMicroUsd);
     }
-    this.monthlyReservations.set(reservationId, { organizationId, month, amountMicroUsd });
+    if (isCopiloto(role)) {
+      const copilotoCap = Math.floor((orgCap * 30) / 100);
+      if (copilotoTotal + amountMicroUsd > copilotoCap) throw new LlmMonthlyBudgetExceededError("copilot", organizationId, copilotoTotal + amountMicroUsd, copilotoCap);
+    }
+    this.monthlyReservations.set(reservationId, { organizationId, month, amountMicroUsd, ...(role !== undefined ? { role } : {}) });
+    if (role === undefined) return null;
+    return { orgTotalMicroUsd: orgTotal + amountMicroUsd, orgCapMicroUsd: orgCap, platformTotalMicroUsd: platformTotal + amountMicroUsd, platformCapMicroUsd: this.platformBudget.monthlyCapMicroUsd };
+  }
+
+  async consumeRoleTurn(organizationId: string, role: string, defaultLimit: number): Promise<LlmRoleTurnResult> {
+    const max = this.roleLimits.get(`${organizationId}|${role}`) ?? defaultLimit;
+    const key = `${this.today()}|${organizationId}|${role}`;
+    const used = this.roleTurns.get(key) ?? 0;
+    if (used >= max) return { allowed: false, used, maxTurnos: max };
+    this.roleTurns.set(key, used + 1);
+    return { allowed: true, used: used + 1, maxTurnos: max };
+  }
+
+  async recordHourWindow(fallbackUsed: boolean): Promise<LlmHourWindow> {
+    this.hourWindow = { calls: this.hourWindow.calls + 1, fallbacks: this.hourWindow.fallbacks + (fallbackUsed ? 1 : 0) };
+    return this.hourWindow;
+  }
+
+  async listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]> {
+    if (!this.isSuperadmin.has(callerId)) return [];
+    const acc = new Map<string, LlmUsageByOrgRoleMonthRow>();
+    for (const u of this.usageInRange(from, to)) {
+      const month = u.usageDate.slice(0, 7);
+      const key = `${u.organizationId}|${u.role}|${month}`;
+      const prev = acc.get(key);
+      acc.set(key, {
+        organizationId: u.organizationId,
+        organizationName: this.organizations.get(u.organizationId)?.name ?? u.organizationId,
+        role: u.role,
+        month,
+        costMicroUsd: (prev?.costMicroUsd ?? 0) + u.costMicroUsd,
+        callCount: (prev?.callCount ?? 0) + u.callCount,
+        fallbackCallCount: (prev?.fallbackCallCount ?? 0) + u.fallbackCallCount,
+        tokensIn: (prev?.tokensIn ?? 0) + u.tokensIn,
+        tokensOut: (prev?.tokensOut ?? 0) + u.tokensOut,
+      });
+    }
+    return [...acc.values()].sort((a, b) => b.month.localeCompare(a.month) || b.costMicroUsd - a.costMicroUsd);
+  }
+
+  async listOrgRoleLimitsForSuperadmin(callerId: string, organizationId: string): Promise<readonly LlmOrgRoleLimitRow[]> {
+    if (!this.isSuperadmin.has(callerId)) return [];
+    const rows: LlmOrgRoleLimitRow[] = [];
+    for (const [key, max] of this.roleLimits) {
+      const [org, role] = key.split("|") as [string, string];
+      if (org === organizationId) rows.push({ role, maxTurnosDia: max, turnosHoy: this.roleTurns.get(`${this.today()}|${org}|${role}`) ?? 0 });
+    }
+    return rows.sort((a, b) => a.role.localeCompare(b.role));
+  }
+
+  async setOrgRoleLimitForSuperadmin(callerId: string, organizationId: string, role: string, maxTurnosDia: number): Promise<void> {
+    if (!this.isSuperadmin.has(callerId)) throw new Error("forbidden");
+    if (!this.organizations.has(organizationId)) throw new LlmOrganizationNotFoundError(organizationId);
+    this.roleLimits.set(`${organizationId}|${role}`, maxTurnosDia);
   }
 
   async settleMonthlyBudget(reservationId: string, actualMicroUsd: number): Promise<void> {

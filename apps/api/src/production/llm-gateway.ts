@@ -59,7 +59,7 @@ import {
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { emitirNotificacion } from "@atiende/db";
-import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
+import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
 import { DATA_CHAT_RETRY_SUFFIX, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
@@ -257,6 +257,8 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
     orgMonthlyBudgetStore: new ProductionOrgMonthlyBudgetStore(engine),
+    // Tope diario de turnos por rol (CHAT-07): sin tope por defecto para los roles que no lo declaran.
+    roleTurnStore: new ProductionRoleDailyTurnStore(engine),
     // Interruptor de plataforma (kill switch por agente/global) -- opcional.
     killSwitch,
   });

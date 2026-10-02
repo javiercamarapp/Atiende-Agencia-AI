@@ -18,7 +18,7 @@
 //     función. Antes de este fix abrían sesión de sistema igual que las
 //     internas, lo que dejaba `auth.uid()` siempre NULL y el `p_caller_id`
 //     recibido como parámetro plano sin atar a ninguna identidad real.
-import type { LlmUsageByOrganizationRow, LlmUsageByProviderModelRow, LlmUsageRepository, LlmPlatformBudgetRow, LlmUsageSummaryRow } from "@atiende/db";
+import type { LlmOrgRoleLimitRow, LlmUsageByOrgRoleMonthRow, LlmUsageByOrganizationRow, LlmUsageByProviderModelRow, LlmUsageRepository, LlmPlatformBudgetRow, LlmUsageSummaryRow } from "@atiende/db";
 import { PostgresLlmUsageRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -35,6 +35,14 @@ export class ProductionLlmUsageRepository implements LlmUsageRepository {
 
   settleMonthlyBudget(...args: Parameters<LlmUsageRepository["settleMonthlyBudget"]>): ReturnType<LlmUsageRepository["settleMonthlyBudget"]> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).settleMonthlyBudget(...args));
+  }
+
+  consumeRoleTurn(...args: Parameters<LlmUsageRepository["consumeRoleTurn"]>): ReturnType<LlmUsageRepository["consumeRoleTurn"]> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).consumeRoleTurn(...args));
+  }
+
+  recordHourWindow(...args: Parameters<LlmUsageRepository["recordHourWindow"]>): ReturnType<LlmUsageRepository["recordHourWindow"]> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).recordHourWindow(...args));
   }
 
   // Hallazgo de seguridad (ver `packages/db/migrations/0011_superadmin_caller_
@@ -66,5 +74,18 @@ export class ProductionLlmUsageRepository implements LlmUsageRepository {
 
   setPlatformMonthlyCapForSuperadmin(callerId: string, monthlyCapMicroUsd: number, alertThresholdPct: number): Promise<void> {
     return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).setPlatformMonthlyCapForSuperadmin(callerId, monthlyCapMicroUsd, alertThresholdPct));
+  }
+
+  // CHAT-07 (migracion 0046): reporte por organizacion/rol/mes y tope diario por rol, tambien COMO el caller autenticado.
+  listUsageByOrgRoleMonthForSuperadmin(callerId: string, from: string, to: string): Promise<readonly LlmUsageByOrgRoleMonthRow[]> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).listUsageByOrgRoleMonthForSuperadmin(callerId, from, to));
+  }
+
+  listOrgRoleLimitsForSuperadmin(callerId: string, organizationId: string): Promise<readonly LlmOrgRoleLimitRow[]> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).listOrgRoleLimitsForSuperadmin(callerId, organizationId));
+  }
+
+  setOrgRoleLimitForSuperadmin(callerId: string, organizationId: string, role: string, maxTurnosDia: number): Promise<void> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresLlmUsageRepository(session).setOrgRoleLimitForSuperadmin(callerId, organizationId, role, maxTurnosDia));
   }
 }
