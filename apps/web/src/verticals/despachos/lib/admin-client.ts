@@ -27,7 +27,8 @@ export interface BranchOption {
   readonly name: string;
 }
 
-function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+/** Contexto de refresh de sesion de despachos (lo reutiliza el transporte del Copiloto, CHAT-11). */
+export function despachosAuthContext(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {
     vertical: "despachos",
@@ -43,7 +44,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   };
 }
 
-export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     throw new DespachosAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
@@ -60,7 +61,7 @@ export async function fetchBlob(
   url: string,
   token: string,
   fallbackNombre: string,
-  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
 ): Promise<{ readonly blob: Blob; readonly nombre: string }> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
@@ -76,7 +77,7 @@ export async function postJson<T>(
   token: string,
   payload: unknown = {},
   extraHeaders: Record<string, string> = {},
-  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
     fetchImpl(url, {
@@ -102,7 +103,7 @@ export async function patchJson<T>(
   token: string,
   payload: unknown = {},
   extraHeaders: Record<string, string> = {},
-  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
     fetchImpl(url, {
@@ -125,7 +126,7 @@ export async function putJson<T>(
   token: string,
   payload: unknown = {},
   extraHeaders: Record<string, string> = {},
-  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
     fetchImpl(url, {
@@ -150,7 +151,7 @@ export async function postXml<T>(
   token: string,
   rawBody: string,
   contentType = "application/xml",
-  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
     fetchImpl(url, {
@@ -169,7 +170,7 @@ export async function postXml<T>(
  * de auditoría (severidad ALTA, "Alta de organización/staff imposible sin SQL"):
  * revocar una invitación de staff (admin-staff.ts) es la primera necesidad real de
  * este verbo en despachos. */
-export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
