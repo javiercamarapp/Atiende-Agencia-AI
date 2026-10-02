@@ -156,7 +156,7 @@ real salió ~3 veces más barato):
 |---|---|---|---|---|
 | Humo | 12 | 1 | Luna | 0.015 USD (real: 0.003 a 0.005) |
 | Piloto | 180 | 1 | candidatos elegibles de la fase piloto | tope duro 12 USD (`--max-usd` mayor se rechaza); el piloto real del 1-oct-2026 costó 2.07 USD |
-| Barrido | 360 | 3 | Luna + DeepSeek V4.1 Flash + DeepSeek V4 Pro (Muse Spark ya no es elegible) | ~4.3 USD (proyección) |
+| Barrido | 360 | 3 | Luna + DeepSeek V4.1 Flash + DeepSeek V4 Pro (Muse Spark 1.3 contributor ya no es elegible; la variante sin sufijo sigue en la escalera de produccion) | ~4.3 USD (proyección) |
 | Bake-off | 40 tareas | 1 | 4 brazos | 4.0 USD |
 
 Total con holgura < 45 USD (saldo de OpenRouter ~59.68 USD). Esta PR **no** corrió el piloto ni el barrido.
