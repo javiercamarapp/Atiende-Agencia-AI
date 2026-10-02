@@ -93,6 +93,8 @@ describe("catalogo de notificaciones", () => {
       const fila = doc.split("\n").find((l) => l.includes(`\`${e.id}\``));
       expect(fila, `${e.id} no aparece en docs/NOTIFICACIONES.md`).toBeDefined();
       expect(fila!, e.id).toContain(e.productor.estado);
+      if (e.productor.estado === "conectado" && e.productor.nota) expect(fila!, `${e.id}: la nota del catalogo falta en el doc`).toContain(e.productor.nota);
+      if (e.productor.estado === "pendiente") expect(fila!, `${e.id}: el motivo del catalogo falta en el doc`).toContain(e.productor.motivo);
     }
   });
 });
@@ -117,10 +119,16 @@ describe("el catalogo cumple las validaciones de core.emit_notification", () => 
     }
   });
 
-  it("todo evento conectado tiene al menos un destinatario posible: roles de vertical o, por defecto, owner/admin de la organizacion; los de superadmin ninguno de vertical", () => {
+  it("los roles de vertical son codigos validos, sin repetir y sin los implicitos owner/admin; los de superadmin no llevan roles de vertical", () => {
+    // owner/admin de la organizacion reciben TODO evento de vertical por defecto (los resuelve la base): listarlos seria ruido o un error.
     for (const e of CATALOGO_NOTIFICACIONES) {
       if (e.ambito === "superadmin") expect(e.roles, e.id).toEqual([]);
-      else for (const r of e.roles) expect(r, e.id).toMatch(/^[a-z_]+(:[a-z_]+)?$/);
+      expect(new Set(e.roles).size, `${e.id}: roles repetidos`).toBe(e.roles.length);
+      for (const r of e.roles) {
+        expect(r, e.id).toMatch(/^[a-z_]+(:[a-z_]+)?$/);
+        expect(["owner", "admin"], `${e.id}: ${r} ya es destinatario implicito`).not.toContain(r);
+      }
     }
   });
+
 });

@@ -5,6 +5,7 @@
 // scripts/verify-notificaciones-productor contra Postgres real; aqui el puente reemplaza `{orgSlug}` como lo hace la base.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { eventoPorId } from "@atiende/db";
 import type { InMemoryCoreRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
@@ -46,9 +47,21 @@ describe("la campana recibe los eventos del ciclo", () => {
     const [primero, segundo] = (await (await get(app, `/despachos/${ctx.propertyId}/vencimientos`, token)).json()) as { id: string }[];
     expect((await app.request(`/despachos/${ctx.propertyId}/vencimientos/${primero!.id}/escalar`, authedJson(token, {}))).status).toBe(201);
 
-    const lista = (await (await get(app, "/notifications", token)).json()) as { notifications: Array<{ id: string; tipo: string; severidad: string; categoria: string; enlace: string; readAt: string | null }>; unreadCount: number };
+    const lista = (await (await get(app, "/notifications", token)).json()) as { notifications: Array<{ id: string; tipo: string; titulo: string; severidad: string; categoria: string; enlace: string; readAt: string | null }>; unreadCount: number };
     expect(lista.unreadCount).toBe(1);
-    expect(lista.notifications[0]).toMatchObject({ tipo: "despachos.fiscal.vencimiento_escalado", severidad: "atencion", categoria: "fiscal", enlace: "/despachos/despacho-de-prueba/vencimientos", readAt: null });
+    // Lo que sirve la campana debe ser lo que el CATALOGO define para el evento (titulo, severidad, categoria, enlace con el slug ya
+    // resuelto, cuerpo con el nivel numerico), no un literal copiado del puente de este test.
+    const catalogo = eventoPorId("despachos.fiscal.vencimiento_escalado")!;
+    expect(lista.notifications[0]).toMatchObject({
+      tipo: catalogo.id,
+      titulo: catalogo.titulo,
+      severidad: catalogo.severidad,
+      categoria: catalogo.categoria,
+      enlace: catalogo.enlace.replace("{orgSlug}", "despacho-de-prueba"),
+      readAt: null,
+    });
+    expect(lista.notifications[0]!.enlace).not.toContain("{orgSlug}");
+    expect((lista.notifications[0] as unknown as { cuerpo: string }).cuerpo).toMatch(/^Nivel de escalamiento: \d+\.$/);
 
     expect((await app.request(`/notifications/${lista.notifications[0]!.id}/read`, { method: "POST", headers: { authorization: `Bearer ${token}` } })).status).toBeLessThan(300);
     expect(((await (await get(app, "/notifications/unread-count", token)).json()) as { unreadCount: number }).unreadCount).toBe(0);
