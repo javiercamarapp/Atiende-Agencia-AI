@@ -167,8 +167,9 @@ describe("salvaguardas de los argumentos", () => {
 
 function correr(script: string, args: string[], env: Record<string, string> = {}): { code: number; out: string } {
   try {
-    const out = execFileSync("node", ["--experimental-strip-types", "--no-warnings", path.join(REPO, "scripts/seed-citas-demo", script), ...args], {
-      env: { PATH: process.env.PATH ?? "", ...env },
+    // Ruta absoluta del propio Node y entorno MINIMO: la CLI no hereda ninguna variable (ni DATABASE_URL) del proceso de prueba.
+    const out = execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", path.join(REPO, "scripts/seed-citas-demo", script), ...args], {
+      env: { ...env },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
