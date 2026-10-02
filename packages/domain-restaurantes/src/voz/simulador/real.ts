@@ -57,7 +57,7 @@ export async function ejecutarPruebaCiegaReal(opts: OpcionesRealVoz, ahora: () =
     { propertyId: mundoRef.propertyId, slug: "fco-montejo", name: "Francisco de Montejo", address: null },
     { propertyId: "altabrisa", slug: "altabrisa", name: "Altabrisa", address: null },
   ];
-  const instruccion = instruccionVozPm(branches, "lunes 18:30", "lunes");
+  const instruccion = instruccionVozPm(branches, "lunes 18:30", "lunes", "fco-montejo");
   const seleccion = GUIONES_ES_MX.filter((g) => !g.soloFalso && (!opts.guiones || opts.guiones.some((id) => g.id.startsWith(id))));
   const resultados: ResultadoRealVoz["resultados"][number][] = [];
   const noCorridos: string[] = [];

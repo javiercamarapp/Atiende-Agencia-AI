@@ -74,9 +74,9 @@ redactados.
 
 ### Mensajes pregrabados
 
-Ids y textos en `mensajes.ts` (`saludo_respaldo`, `silencio_reprompt`, `silencio_despedida`, `pedir_repetir`, `handoff`, `aviso_duracion`,
+Ids y textos en `mensajes.ts` (`saludo_respaldo` sin hora y sus tres variantes `saludo_respaldo_dias`, `_tardes` y `_noches`, que elige `mensajeSaludoRespaldo(hora local de Mérida)`; `silencio_reprompt`, `silencio_despedida`, `pedir_repetir`, `handoff`, `aviso_duracion`,
 `limite_duracion`, `limite_costo`, `tope_mensual`, `proveedor_caido`, `tool_timeout`, `despedida`). El worker debe reproducirlos desde audio local,
-porque la síntesis del proveedor puede ser justo lo que falló. **Pendiente: grabar/sintetizar los 12 audios una vez y publicarlos con el worker.**
+porque la síntesis del proveedor puede ser justo lo que falló. **Pendiente: grabar/sintetizar los 15 audios una vez y publicarlos con el worker.**
 
 ## 5. Prueba ciega es-MX, paso a paso
 
