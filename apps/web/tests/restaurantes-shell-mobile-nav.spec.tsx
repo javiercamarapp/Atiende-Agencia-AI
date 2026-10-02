@@ -22,6 +22,7 @@ import type { BranchOption } from "../src/verticals/restaurantes/dashboard-clien
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -95,29 +96,61 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
     const labels = [...bottomNav.querySelectorAll("a span")].map((s) => s.textContent);
-    expect(labels).toEqual(["Panel", "Pedidos", "Historial", "Productos"]);
+    expect(labels).toEqual(["Resumen", "Pedidos", "Historial", "Productos"]);
     const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
     expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
     click(mas);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
-      "Panel (KPIs)",
+      "Resumen",
       "Pedidos",
       "Conversaciones",
       "Turnos",
       "Historial",
       "Productos",
       "Promociones",
-      "Sucursales",
       "Clientes",
+      "Sucursales",
+      "Agente de voz",
       "Primeros pasos",
+      "Configuración",
       "Staff",
       "Auditoría",
-      "Configuración",
-      "Agente de voz",
       "Privacidad",
       "Privacidad de la organización",
     ]);
+  });
+
+  // UNI-6: marco de Likida -- "Resumen" raiz sin titulo, categorias en el orden de Likida, acordeon exclusivo y tarjeta de usuario con nombre + rol.
+  it("el Sidebar agrupa los destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario con nombre y rol legible", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Operación", "Catálogo", "Clientes", "Agente", "Configuración"]);
+    // Abre la primera categoria; "Resumen" (raiz) esta siempre, sin boton ni titulo.
+    expect(categoriasAbiertas(root)).toEqual(["Operación"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Pedidos", "Conversaciones", "Turnos", "Historial"]);
+    abrirCategoria(root, "Catálogo");
+    expect(categoriasAbiertas(root)).toEqual(["Catálogo"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Productos", "Promociones"]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Manager Demo", rol: "Propietario" });
+  });
+
+  it("un rol sin gestion (staff) no ve Agente ni Configuracion, pero conserva el resto", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage().setItem("atiende.restaurantes.session", JSON.stringify({ ...SESSION, organizations: [{ ...SESSION.organizations[0], rol: "staff" }] }));
+    fetchBranchesMock.mockResolvedValue([{ propertyId: "prop-1", name: "Sucursal Centro", slug: "centro" }]);
+    rendered = renderComponent(
+      <MemoryRouter>
+        <RestaurantesShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={() => {}}>
+          {() => <div>child</div>}
+        </RestaurantesShell>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(categoriasSidebar(rendered.container)).toEqual(["Operación", "Catálogo", "Clientes"]);
+    expect(tarjetaUsuario(rendered.container).rol).toBe("Equipo");
   });
 
   it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical restaurantes", async () => {
@@ -125,9 +158,9 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     const root = rendered.container;
     expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
     expect(root.querySelector("main#contenido-principal")!.getAttribute("tabindex")).toBe("-1");
-    const equipo = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Equipo"))!;
-    click(equipo);
-    expect(window.localStorage.getItem("atiende:restaurantes:sidebar:grupo")).toBe("Equipo");
+    const configuracion = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Configuración"))!;
+    click(configuracion);
+    expect(window.localStorage.getItem("atiende:restaurantes:sidebar:grupo")).toBe("Configuración");
   });
 
   it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {
