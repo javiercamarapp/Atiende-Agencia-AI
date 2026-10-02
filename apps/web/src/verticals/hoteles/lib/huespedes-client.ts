@@ -1,6 +1,6 @@
 // H-27 -- cliente de la ficha de huesped (CRM). Consume apps/api/src/routes/verticals/hoteles/huespedes.ts (ficha, notas) y el
 // catalogo `GET .../huespedes` de reservas.ts (busqueda). `fetchImpl` inyectado (mismo criterio que el resto de lib/*.ts).
-import { fetchJson, sendJson } from "./admin-client.ts";
+import { fetchBlob, fetchJson, sendJson } from "./admin-client.ts";
 import { searchGuests } from "./reservas-client.ts";
 import type { GuestOption } from "./reservas-client.ts";
 
@@ -67,4 +67,13 @@ export const HUESPED_CRM_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "f
 /** Un numero de tarjeta o documento (13 a 19 digitos, con espacios o guiones) no se guarda en una nota: se avisa antes de enviar. */
 export function notaTieneDatoSensible(texto: string): boolean {
   return /[0-9]{13,19}/.test(texto.replace(/[ -]/g, ""));
+}
+
+// H-30 -- exportacion de datos del huesped (derecho de acceso/portabilidad). Espejo cosmetico de IDENTITY_ADMIN_ROLES: el servidor
+// (owner/gm) es la barrera real; cada exportacion queda registrada en la bitacora de privacidad.
+export const HUESPED_EXPORT_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
+export type ExportFormato = "json" | "csv";
+
+export function exportarDatosHuesped(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, guestId: string, formato: ExportFormato): Promise<Blob> {
+  return fetchBlob(fetchImpl, `${base(apiBaseUrl, propertyId, guestId)}/exportar-datos?formato=${formato}`, token);
 }
