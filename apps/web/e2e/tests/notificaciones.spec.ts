@@ -67,7 +67,8 @@ for (const { objetivo, destino } of CONSOLAS) {
       // "Todas" muestra tambien lo leido; un filtro de categoria sin resultados lo dice.
       await page.getByRole("button", { name: "Todas", exact: true }).click();
       await expect(tarjetas).toHaveCount(4);
-      await page.getByRole("button", { name: "Fiscal", exact: true }).click();
+      // Dentro de <main>: el Sidebar de despachos tambien tiene una categoria "Fiscal".
+      await page.locator("main").getByRole("button", { name: "Fiscal", exact: true }).click();
       await expect(page.getByText("Sin resultados.")).toBeVisible();
       vigilante.verificar();
     });

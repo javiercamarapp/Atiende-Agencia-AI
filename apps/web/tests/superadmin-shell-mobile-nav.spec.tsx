@@ -8,9 +8,10 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
-import { PIE_SUPERADMIN, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
+import { PIE_SUPERADMIN, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 vi.mock("../src/lib/useNotifications.ts", () => ({
   useNotifications: () => ({ items: [], unreadCount: 0, loading: false, refetch: () => {}, onMarkRead: () => {}, onMarkAllRead: () => {} }),
@@ -77,6 +78,22 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(mains[0]!.id).toBe("contenido-principal");
     expect(mains[0]!.textContent).toContain("child");
     expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
+  });
+
+  it("el Sidebar sigue el mapa de rutas: Resumen raíz, categorías en el orden de Likida con acordeón exclusivo, pie y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    const titulos = SECCIONES.map((s) => s.title);
+    expect(categoriasSidebar(root)).toEqual(titulos);
+    expect(categoriasAbiertas(root)).toHaveLength(1);
+    for (const sec of SECCIONES) {
+      if (!categoriasAbiertas(root).includes(sec.title)) abrirCategoria(root, sec.title);
+      expect(categoriasAbiertas(root)).toEqual([sec.title]);
+      expect(linksSidebar(root)).toEqual(["Resumen", ...sec.items.map((i) => i.label)]);
+    }
+    const pie = [...root.querySelectorAll<HTMLAnchorElement>("aside > div a")].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
+    expect(pie).toEqual(PIE_SUPERADMIN.map((p) => [p.label, p.to]));
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Root", rol: "Superadmin" });
   });
 
   it('"Más" abre TODOS los destinos del mapa de rutas (SA-L-01) más las 2 píldoras del pie: sin entradas fantasma', async () => {

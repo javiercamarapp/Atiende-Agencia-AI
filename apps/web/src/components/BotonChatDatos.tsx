@@ -9,12 +9,18 @@ import { Button } from "@atiende/ui";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 
-export function BotonChatDatos({ className, nombreNegocio, chat }: { className?: string; nombreNegocio?: string; chat?: ChatDatosConexion }) {
-  const [abierto, setAbierto] = useState(false);
+/**
+ * Disponibilidad REAL del asistente: solo es `true` cuando el servidor lo confirma para la sucursal activa
+ * (`chat.clave`). Sin `chat`, o si la consulta falla, es `false`. Lo comparten el boton de la barra y la
+ * pildora "Pregunta a tus datos" del pie del Sidebar.
+ */
+export function useChatDatosDisponible(chat: ChatDatosConexion | undefined): boolean {
   const [disponible, setDisponible] = useState(false);
-
   useEffect(() => {
-    if (!chat) return;
+    if (!chat) {
+      setDisponible(false);
+      return;
+    }
     let vigente = true;
     void chat.disponible().then((ok) => {
       if (vigente) setDisponible(ok);
@@ -24,6 +30,12 @@ export function BotonChatDatos({ className, nombreNegocio, chat }: { className?:
     };
     // `chat` se recrea en cada render del shell; la disponibilidad depende solo de la sucursal activa.
   }, [chat?.clave]);
+  return disponible;
+}
+
+export function BotonChatDatos({ className, nombreNegocio, chat }: { className?: string; nombreNegocio?: string; chat?: ChatDatosConexion }) {
+  const [abierto, setAbierto] = useState(false);
+  const disponible = useChatDatosDisponible(chat);
 
   return (
     <>

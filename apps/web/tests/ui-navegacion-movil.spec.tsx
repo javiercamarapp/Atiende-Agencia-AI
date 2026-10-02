@@ -153,6 +153,17 @@ describe("BottomNav: la barra del panel del chofer de Likida (UNI-1)", () => {
     expect([...hoja.querySelectorAll("p")].find((p) => p.textContent === "Operación")!.className).toContain("font-mono");
   });
 
+  it("la hoja 'Más' no pinta titulo para la seccion raiz (siempreAbierto), solo para las categorias", () => {
+    render("/h/demo");
+    click(botonPorTexto("Más", rendered!.container)!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    const titulos = [...hoja.querySelectorAll("p.font-mono")].map((p) => p.textContent);
+    expect(titulos).not.toContain("Panel");
+    expect(titulos).toContain("Operación");
+    // El destino de la raiz sigue alcanzable en la hoja.
+    expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toContain("Resumen");
+  });
+
   it("el cierre de la hoja mide 44 px (size-11) y cierra", () => {
     render("/h/demo");
     click(botonPorTexto("Más", rendered!.container)!);

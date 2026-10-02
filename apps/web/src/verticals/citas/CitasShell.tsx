@@ -32,6 +32,7 @@ import { VerticalShellConectado } from "../../components/VerticalShellConectado.
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
@@ -83,16 +84,15 @@ export interface CitasShellProps {
   readonly children: (ctx: CitasShellContext) => ReactNode;
 }
 
-/** Mapa de navegación de citas — misma anatomía de acordeón que AppShell.tsx de
- * atiende-hoteles, agrupada por lo que ya documenta README.md de este vertical
- * (agenda operativa primero, catálogo/operación del negocio después,
- * administración al final). `to` construido con `orgSlug` porque `Sidebar` usa
- * `NavLink` con rutas reales, no un callback de sección. */
+/** Mapa de navegación de citas — misma anatomía de acordeón que AppShell.tsx de atiende-hoteles. UNI-6: categorías en el orden
+ * de Likida (Negocio, Comunicación, Administrar) con "Resumen", "Agenda" y "Primeros pasos" como raíz sin título (agenda
+ * operativa primero, como documenta README.md de este vertical). Mismos destinos y rutas que antes; ningún link se agrega ni se
+ * quita. `to` construido con `orgSlug` porque `Sidebar` usa `NavLink` con rutas reales, no un callback de sección. */
 function buildSections(orgSlug: string): SidebarSection[] {
   const base = `/citas/${orgSlug}`;
   return [
     {
-      title: "Agenda",
+      title: "Resumen",
       siempreAbierto: true,
       items: [
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
@@ -112,13 +112,18 @@ function buildSections(orgSlug: string): SidebarSection[] {
       ],
     },
     {
+      title: "Comunicación",
+      items: [
+        // C-04 -- agente y mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
+        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
+        { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
+      ],
+    },
+    {
       title: "Administrar",
       items: [
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
-        // C-04 -- mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
-        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
-        { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
         // FASE 3 (producto) — bitácora de auditoría del staff (ver
         // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
         // owner/admin la ven con datos reales -- `AuditoriaPage` misma gatea su
@@ -131,13 +136,13 @@ function buildSections(orgSlug: string): SidebarSection[] {
   ];
 }
 
-/** Barra inferior móvil: los 4 destinos operativos más usados; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y
- * lista TODAS las secciones, así Disponibilidad, Configuración, Staff, Auditoría y Privacidad también se alcanzan en móvil. */
+/** Barra inferior móvil: Resumen y los 3 destinos operativos más usados (etiquetas que caben en 1/5 de 375 px sin recortarse); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y
+ * lista TODAS las secciones, así Proveedores, Disponibilidad, Configuración, Staff, Auditoría y Privacidad también se alcanzan en móvil. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/citas/${orgSlug}`;
   return [
+    { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
     { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
-    { to: `${base}/proveedores`, label: "Proveedores", icon: UserRound },
     { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
     { to: `${base}/clientes`, label: "Clientes", icon: Users },
   ];
@@ -153,7 +158,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
 
   const { session, branches, activeBranch, propertyId, orgId, role } = s;
-  const user = { email: session.email, rol: role };
+  const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) };
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.

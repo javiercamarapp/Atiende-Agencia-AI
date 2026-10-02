@@ -72,7 +72,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
-  const user = { email: session.email, nombre: session.fullName?.trim() || undefined, rol: loggingOut ? "Saliendo…" : "Superadmin" };
+  const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
   const campana = (className?: string) => (
     <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
@@ -81,6 +81,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
     <VerticalShell
       vertical="superadmin"
       sections={SECTIONS}
+      sidebarPie={SIDEBAR_PIE}
       mobileItems={MOBILE_ITEMS}
       sidebarPie={SIDEBAR_PIE}
       user={user}
