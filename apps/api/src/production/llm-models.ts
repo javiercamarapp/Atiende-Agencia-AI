@@ -114,6 +114,11 @@ export const VERIFIED_MODEL_HOSTS: Readonly<Record<string, VerifiedModelHosts>> 
     zdr: true,
     note: "DeepSeek V4 Pro: DeepInfra, Parasail y Azure (azure/us) con endpoint ZDR.",
   },
+  "openai/gpt-oss-120b": {
+    hosts: ["deepinfra", "baseten", "coreweave", "amazon-bedrock", "google-vertex"],
+    zdr: true,
+    note: "gpt-oss-120b: DeepInfra, Baseten, CoreWeave, Amazon Bedrock y Google Vertex con endpoint ZDR (1-oct-2026). OpenAI y Azure NO lo sirven, por eso no vale el default por autor.",
+  },
   "qwen/qwen3-235b-a22b-2507": {
     hosts: ["google-vertex", "parasail", "deepinfra"],
     zdr: true,

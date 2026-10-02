@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { DATA_CHAT_RETRY_ROLES, buildRoleLadder, loadLlmModelsConfig } from "../src/production/llm-gateway.ts";
-import { DATA_CHAT_RETRY_SUFFIX, ALLOWED_PROVIDER_HOSTS, VERIFIED_MODEL_HOSTS, parseLlmModelsJson, resolveRoleRoute, routingForModel } from "../src/production/llm-models.ts";
+import { DATA_CHAT_RETRY_SUFFIX, ALLOWED_PROVIDER_HOSTS, VERIFIED_MODEL_HOSTS, defaultHostsForModel, parseLlmModelsJson, resolveRoleRoute, routingForModel } from "../src/production/llm-models.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -85,6 +85,14 @@ describe("LLM_MODELS_JSON: rol barato y rol escalado por entorno", () => {
     expect(mal.config.roles["*:data_chat"]).toBeUndefined();
     const noVerificado = parseLlmModelsJson(json(["together"]));
     expect(noVerificado.errors.join(" ")).toMatch(/no estan verificados/);
+  });
+
+  it("gpt-oss-120b se enruta a sus proveedores reales (no a openai/azure) y solo se estrecha a ellos", () => {
+    expect(defaultHostsForModel("openai/gpt-oss-120b")).toEqual(["deepinfra", "baseten", "coreweave", "amazon-bedrock", "google-vertex"]);
+    const json = (only: string[]) => JSON.stringify({ roles: { "*:data_chat": { models: [{ model: "openai/gpt-oss-120b", temperature: "omit" }], routing: { only } } } });
+    expect(parseLlmModelsJson(json(["deepinfra"])).errors).toEqual([]);
+    expect(parseLlmModelsJson(json(["openai"])).errors.join(" ")).toMatch(/no estan verificados/);
+    expect(parseLlmModelsJson(JSON.stringify({ roles: { "*:data_chat": { models: [{ model: "openai/gpt-oss-120b", temperature: "omit" }] } } })).errors).toEqual([]);
   });
 
   it("Qwen 3.7 Flash, Muse Spark 1.3 (contributor) y Llama 4 Maverick (sin ruta EE.UU./ZDR) se rechazan y el rol conserva la escalera actual", () => {
