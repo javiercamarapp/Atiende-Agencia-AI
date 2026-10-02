@@ -81,7 +81,7 @@ describe("POST /licitaciones/:propertyId/tenders -- alta/actualización manual (
 
     // Genera una propuesta real para esa convocatoria y sella una aprobación "expediente" vigente.
     await app.request(`/licitaciones/${ctx.propertyId}/tenders/${tenderId}/proposal`, authedJson(ctx.staff.writer.token));
-    const approveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, {}));
+    const approveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, { stage: "tecnica_legal" }));
     expect(approveRes.status).toBe(201);
 
     const proposalRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${tenderId}/proposal`, authedJson(ctx.staff.writer.token));

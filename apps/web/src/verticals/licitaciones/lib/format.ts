@@ -152,3 +152,8 @@ export const OWN_PROPOSAL_STATUS_LABELS: Record<string, string> = {
 export function formatOwnProposalStatus(status: string): string {
   return OWN_PROPOSAL_STATUS_LABELS[status] ?? status;
 }
+
+/** Fecha y hora legibles (zona del navegador), p. ej. el momento de una aprobacion o de una presentacion. */
+export function formatDateTime(iso: string): string {
+  return DATE_TIME_FORMATTER.format(new Date(iso));
+}
