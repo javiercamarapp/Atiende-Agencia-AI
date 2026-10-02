@@ -18,7 +18,7 @@ import { AbortAwareFakeSession } from "../support/aborting-fake-session.ts";
 
 const KEY = Buffer.alloc(32, 7);
 const OTRA = Buffer.alloc(32, 9);
-const SOBRE_RE = /^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{4,}$/;
+const SOBRE_RE = /^v[0-9]{1,3}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]*$/;
 const U = "11111111-1111-4111-8111-111111111111";
 const P = "22222222-2222-4222-8222-222222222222";
 const CODIGO = "PIN-4821#";
@@ -35,6 +35,17 @@ describe("cifrador AES-256-GCM", () => {
     expect(c.decrypt(sobre, aad)).toBe(DIRECCION);
     // dos cifrados del mismo texto no coinciden (iv aleatorio)
     expect(c.encrypt(DIRECCION, aad)).not.toBe(sobre);
+  });
+
+  it("valores cortos de 1 y 2 caracteres dan un sobre valido para el CHECK y hacen ida y vuelta (sin relleno, el texto cifrado mide lo mismo que el plano)", () => {
+    const c = createAccesoCipher(KEY);
+    for (const [campo, corto] of [["codigo", "7"], ["codigo", "12"], ["instrucciones", "ok"], ["direccion", "a"]] as const) {
+      const aad = accesoAad(U, P, campo);
+      const sobre = c.encrypt(corto, aad);
+      expect(sobre).toMatch(SOBRE_RE);
+      expect(sobre.split(".")[3]!.length).toBeLessThan(4);
+      expect(c.decrypt(sobre, aad)).toBe(corto);
+    }
   });
 
   it("rechaza una llave invalida y distingue 'sin llave' de 'llave mal formada'", () => {

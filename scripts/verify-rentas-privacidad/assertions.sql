@@ -87,6 +87,15 @@ values ('00000000-0000-0000-0000-000000f29022', '00000000-0000-0000-0000-000000f
 select count(*) as insertada_sin_claro_deberia_ser_1 from rentas.acceso_instruccion where unidad_id = '00000000-0000-0000-0000-000000f29022' and direccion_exacta is null and direccion_cifrada is not null;
 rollback;
 
+\echo '--- A2b. un valor corto (1-2 caracteres) produce un sobre de 2-3 caracteres de texto cifrado y el CHECK lo ACEPTA ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f29030', true);
+insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_cifrada, codigo_cifrado, instrucciones_cifradas, key_version, updated_by)
+values ('00000000-0000-0000-0000-000000f29022', '00000000-0000-0000-0000-000000f29001', '00000000-0000-0000-0000-000000f29010', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AA', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAA', 1, '00000000-0000-0000-0000-000000f29030');
+select count(*) as sobres_cortos_aceptados_deberia_ser_1 from rentas.acceso_instruccion where unidad_id = '00000000-0000-0000-0000-000000f29022' and codigo_cifrado is not null and instrucciones_cifradas is not null;
+rollback;
+
 \echo '--- A3. el staff NO puede fijar un texto plano NUEVO sobre la fila heredada -- RECHAZADO ---'
 begin;
 set local role authenticated;
