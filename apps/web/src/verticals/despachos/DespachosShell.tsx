@@ -38,6 +38,7 @@ import {
   Link2,
   LayoutDashboard,
   Settings,
+  Sparkles,
   Undo2,
   UsersRound,
   Wallet,
@@ -56,6 +57,7 @@ import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { AltaPrimerCliente } from "./pages/Cartera.tsx";
+import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -120,7 +122,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "configuracion", label: "Configuración" },
 ];
 
-function buildSidebarSections(orgSlug: string): SidebarSection[] {
+function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSection[] {
   const to = (path: string) => `/despachos/${orgSlug}/${path}`;
   const item = (path: string) => {
     const found = NAV_ITEMS.find((i) => i.to === path)!;
@@ -132,6 +134,8 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
       siempreAbierto: true,
       items: [
         { ...item("dashboard"), icon: LayoutDashboard },
+        // CHAT-11: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, solo para los roles que el servidor deja usar chat-datos.
+        ...(conCopiloto ? [{ to: to("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
         { ...item("cierre-mensual"), icon: CalendarCheck },
       ],
     },
@@ -211,6 +215,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   // "Chatea con tus datos": conexión real con el backend de despachos (motor compartido, catálogo cerrado de
   // solo lectura). El servidor decide el alcance (organización, clientes, rol) a partir del token; aquí solo
   // van el cliente activo y el texto.
+  const conCopiloto = COPILOTO_DESPACHOS_ROLES.has(role);
   const chatConexion = conexionChatDatosDespachos(fetch, apiBaseUrl, session.token, propertyId);
 
   // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
@@ -239,8 +244,10 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       token={session.token}
       notificacionesHref={`/despachos/${orgSlug}/notificaciones`}
       chat={chatConexion}
+      copilotoHref={`/despachos/${orgSlug}/copiloto`}
+      ocultarChat={!conCopiloto}
       vertical="despachos"
-      sections={buildSidebarSections(orgSlug)}
+      sections={buildSidebarSections(orgSlug, conCopiloto)}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
