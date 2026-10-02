@@ -161,7 +161,7 @@ export function buildOrderQuoteFromProducts(
     if (item.tortilla !== undefined && !isTortillaChoice(item.tortilla)) {
       throw new OrderValidationError(`Tortilla inválida para ${product.name}: elige maíz, harina o mixta.`);
     }
-    const requiresTortilla = /\btacos?\b/i.test(product.name);
+    const requiresTortilla = product.requiresTortilla ?? /\btacos?\b/i.test(product.name);
     if (requiresTortilla && !item.tortilla) {
       throw new OrderValidationError(`Antes de continuar, confirma si ${product.name} va con tortilla de maíz, harina o mixta.`);
     }
