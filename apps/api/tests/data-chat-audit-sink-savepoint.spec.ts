@@ -29,7 +29,7 @@ describe("PostgresDataChatAuditSink", () => {
     const original = session.query.bind(session);
     session.query = (async (sql: string, params?: unknown[]) => (seen.push(params ?? []), original(sql, params))) as typeof session.query;
     await new PostgresDataChatAuditSink(session).record(ENTRY);
-    expect(seen[0]).toEqual([ENTRY.organizationId, "ventas_por_dia", '{"periodo":"hoy"}', "ok", 3, 12, null]);
+    expect(seen[0]).toEqual([ENTRY.organizationId, "ventas_por_dia", '{"periodo":"hoy"}', "ok", 3, 12, null, null]);
   });
 
   it("migración 0029 pendiente (42883): degrada a log estructurado, NO lanza y la transacción sigue utilizable (sin 25P02)", async () => {

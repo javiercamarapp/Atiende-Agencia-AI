@@ -97,7 +97,7 @@ function TablaDatos({ bloque }: { bloque: CopilotoBloque }) {
 }
 
 /** Bloque del servidor: la grafica que eligio el catalogo si hay con que dibujarla; si no, la tabla. */
-function BloqueDatos({ bloque }: { bloque: CopilotoBloque }) {
+export function BloqueDatos({ bloque }: { bloque: CopilotoBloque }) {
   if (planGrafica(bloque)) return <GraficaBloque bloque={bloque} tabla={<TablaDatos bloque={bloque} />} />;
   return <TarjetaTabla bloque={bloque} />;
 }

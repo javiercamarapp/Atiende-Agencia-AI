@@ -40,7 +40,8 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { Efos69bSource } from "@atiende/worker";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -324,6 +325,12 @@ export interface AppDeps {
   readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
+  /** D-27 -- consulta publica del estatus de un CFDI ante el SAT (puerto). OPCIONAL a proposito: sin el, las rutas usan el adaptador SOAP real (`ConsultaCfdiSatSoap`); los tests inyectan un doble (jamas se llama al SAT en pruebas). */
+  readonly consultaCfdiSat?: ConsultaCfdiSatPort;
+  /** D-26/D-27/D-28 -- repositorio de SOLO SISTEMA de los crons de despachos (migracion 022). OPCIONAL a proposito: los crons caen a `PostgresCronSatRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
+  readonly cronSatRepo?: (db: TenantDbSession) => CronSatRepository;
+  /** D-28 -- fuente de la lista 69-B del SAT para el cron mensual. OPCIONAL a proposito: sin ella el cron usa `HttpEfos69bSource` (URL de `EFOS_69B_URL`); los tests inyectan una fuente fija. */
+  readonly efos69bSource?: Efos69bSource;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un

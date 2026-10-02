@@ -11,7 +11,7 @@ import { CopilotoHistorial, TOPE_HISTORIAL } from "./CopilotoHistorial";
 import { CopilotoMensajeVista } from "./CopilotoMensaje";
 import { CopilotoPensando } from "./CopilotoPensando";
 import { CopilotoPortada } from "./CopilotoPortada";
-import type { ChatDatosShellProps } from "./tipos";
+import type { ChatDatosShellProps, CopilotoDirecta } from "./tipos";
 import { useCopiloto } from "./useCopiloto";
 
 const DURACION_PANEL_MS = 480;
@@ -29,6 +29,7 @@ export function ChatDatosShell({
   textos,
   sugerencias,
   categorias,
+  directas,
   etiquetasHerramienta,
   rutasFuente,
   maxCaracteres,
@@ -82,13 +83,15 @@ export function ChatDatosShell({
     }, DURACION_PANEL_MS);
   }, []);
 
-  const preguntar = (pregunta: string) => {
+  const preguntar = (pregunta: string, directa?: CopilotoDirecta) => {
     const q = pregunta.trim().slice(0, maxCaracteres);
     if (!q || enviando) return;
     setTexto("");
     setCategoriasVisibles(false);
-    copiloto.enviar(q);
+    copiloto.enviar(q, directa);
   };
+  // Chips, tarjetas y sugerencias alternas: si el servidor puede resolverlos sin modelo (consulta directa), van por esa ruta.
+  const preguntarChip = (pregunta: string) => preguntar(pregunta, directas?.[pregunta.trim()]);
 
   const hilo = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -151,7 +154,7 @@ export function ChatDatosShell({
                 sugerenciasAlternas={sugerencias.slice(0, 3)}
                 ocupado={enviando}
                 onRegenerar={copiloto.regenerar}
-                onPreguntar={preguntar}
+                onPreguntar={preguntarChip}
                 vertical={vertical}
               />
             ))}
@@ -159,7 +162,7 @@ export function ChatDatosShell({
           </div>
         ) : null}
 
-        {!hayConversacion && categoriasVisibles ? <CopilotoCategorias id={idCategorias} categorias={categorias} onElegir={preguntar} /> : null}
+        {!hayConversacion && categoriasVisibles ? <CopilotoCategorias id={idCategorias} categorias={categorias} onElegir={preguntarChip} /> : null}
 
         <div className="w-full flex justify-center sticky bottom-[calc(63px+var(--safe-area-bottom))] md:bottom-0">
           <CopilotoCompositor
@@ -185,7 +188,7 @@ export function ChatDatosShell({
                   <button
                     key={s}
                     type="button"
-                    onClick={() => preguntar(s)}
+                    onClick={() => preguntarChip(s)}
                     className="text-xs rounded-full px-3 py-1 bg-copiloto/10 text-copiloto border border-copiloto/20 hover:bg-copiloto/20 transition-colors"
                   >
                     {s}

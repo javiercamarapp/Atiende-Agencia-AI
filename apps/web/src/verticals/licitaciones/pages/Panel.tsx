@@ -5,6 +5,7 @@
 // calcula; solo cuenta lo que existe. Cada tarjeta enlaza a la pagina donde se
 // actua sobre ese numero.
 import { useEffect, useState } from "react";
+import { LicitacionesFijadosCopiloto } from "./Copiloto.tsx";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, PageContainer } from "@atiende/ui";
@@ -142,6 +143,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
           </Card>
         ))}
       </div>
+      <LicitacionesFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
     </PageContainer>
   );
 }

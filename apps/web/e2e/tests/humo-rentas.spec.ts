@@ -66,7 +66,7 @@ test.describe("rentas @humo", () => {
 
     const posts = await mock.buscar({ metodo: "POST", ruta: "/chat-datos" });
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.cuerpo).toEqual({ question: PREGUNTA, conversationId: "new" });
+    expect(posts[0]?.cuerpo).toEqual({ tool: "ingresos_por_canal", args: { periodo: "este_mes" }, label: PREGUNTA, conversationId: "new" });
     vigilante.verificar();
   });
 

@@ -37,3 +37,14 @@ export type { CobranzaReminderSweepResult, CobranzaReminderPropertyResult, RunCo
 // despachos: ingesta mensual de la lista 69-B del SAT (D-04), con adaptador de fuente.
 export { runEfos69bIngestion, FixtureEfos69bSource } from "./jobs/despachos/efos-69b-ingestion.ts";
 export type { Efos69bSource, Efos69bIngestionResult } from "./jobs/despachos/efos-69b-ingestion.ts";
+// D-28: adaptador HTTP de la fuente 69-B (descarga del CSV publico con tope de tamano y streaming).
+export { HttpEfos69bSource, Efos69bDescargaError, EFOS_69B_URL_DEFECTO } from "./jobs/despachos/efos-69b-http-source.ts";
+export type { HttpEfos69bSourceOpciones } from "./jobs/despachos/efos-69b-http-source.ts";
+// despachos (D-26/D-27/D-28): barridos de sistema de los crons de estatus SAT, vencimientos y descarga 69-B.
+export { runCfdiEstatusSatSweep } from "./jobs/despachos/cfdi-estatus-sat.ts";
+export type { CfdiEstatusSatResultado, RunCfdiEstatusSatOpciones } from "./jobs/despachos/cfdi-estatus-sat.ts";
+export { runVencimientosBarridoSistema } from "./jobs/despachos/vencimientos-barrido.ts";
+export type { VencimientosBarridoResultado, RunVencimientosBarridoOpciones } from "./jobs/despachos/vencimientos-barrido.ts";
+export { runEfos69bDescarga } from "./jobs/despachos/efos-69b-descarga.ts";
+export type { Efos69bDescargaResultado } from "./jobs/despachos/efos-69b-descarga.ts";
+export type { NotificacionCron, NotificarCron, UnidadCronSat, WithUnidadCronSat } from "./jobs/despachos/cron-comun.ts";

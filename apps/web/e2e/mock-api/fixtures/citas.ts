@@ -114,6 +114,7 @@ function slotsPublicos(fecha: string, proveedores: readonly string[], tomados: r
 }
 
 export const rutasCitas: readonly Ruta[] = [
+  { metodo: "GET", patron: `${C}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   {
     metodo: "GET",
     patron: "/v1/citas/:org/publico/catalogo",
@@ -165,8 +166,8 @@ export const rutasCitas: readonly Ruta[] = [
     patron: `${C}/chat-datos`,
     roles: MOCK_ROLES_COPILOTO,
     manejador: (p) => {
-      const cuerpo = (p.cuerpo ?? {}) as { question?: string; conversationId?: string };
-      const pregunta = String(cuerpo.question ?? "");
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; label?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? cuerpo.label ?? "");
       const lista = conversacionesMock(p);
       let conv = lista.find((c) => c.id === cuerpo.conversationId);
       if (!conv) {

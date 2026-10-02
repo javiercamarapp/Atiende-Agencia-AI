@@ -130,7 +130,8 @@ describe("RentasDashboardPage (Resumen operativo)", () => {
     expect(reintentar).toBeDefined();
     click(reintentar!);
     await esperar();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // El tablero de fijados del Copiloto hace su propia lectura (/chat-datos/pins): el reintento es del RESUMEN.
+    expect(fetchMock.mock.calls.filter(([u]) => !String(u).includes("/chat-datos/pins"))).toHaveLength(2);
     expect(rendered.container.textContent).toContain("Llegadas hoy");
   });
 
