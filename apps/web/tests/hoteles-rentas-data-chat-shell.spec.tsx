@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos" conectado en los shells de HOTELES y RENTAS sin reescribirlos: el boton del header sale de
+// "Chatea con tus datos" conectado en los shells de RENTAS (dialogo) y HOTELES (CHAT-09: enlace a la pagina del Copiloto) sin reescribirlos: el boton del header sale de
 // "Pronto" solo cuando el servidor confirma (GET .../chat-datos/estado) que el asistente esta activo para ese rol, abre la
 // conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa. Si el servidor no lo confirma (403 por rol,
 // proveedor sin configurar, error), sigue el aviso honesto de siempre.
@@ -102,7 +102,6 @@ function botonChat(): HTMLButtonElement {
 }
 
 describe.each([
-  { nombre: "HotelesShell", render: renderHoteles, rolPermitido: "owner", ruta: "hoteles" },
   { nombre: "RentasShell", render: renderRentas, rolPermitido: "admin_gestora", ruta: "rentas" },
 ])("$nombre — Chatea con tus datos", ({ render, rolPermitido, ruta }) => {
   it("con el asistente activo: sin 'Pronto', abre la conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa", async () => {
@@ -155,5 +154,49 @@ describe.each([
     }));
     await render(rolPermitido);
     expect(botonChat().textContent).toContain("Pronto");
+  });
+});
+
+// CHAT-09: en hoteles el Copiloto es una PAGINA (/hoteles/:org/copiloto), solo owner/gm. Con el asistente activo el boton del header es un
+// enlace (ya no abre el dialogo ni manda la pregunta desde ahi: eso lo cubre hoteles-copiloto-page.spec.tsx). Los roles que el servidor
+// rechaza (403) no ven el boton ni consultan /estado: ya no hay "Pronto" para ellos.
+describe("HotelesShell — Chatea con tus datos (CHAT-09)", () => {
+  const enlaceChat = () => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.includes("Chatea con tus datos"));
+  const textoChat = () => [...rendered!.container.querySelectorAll("a, button")].filter((e) => e.textContent?.includes("Chatea con tus datos"));
+
+  it("owner/gm con el asistente activo: el boton es un enlace a la pagina del Copiloto y no abre el dialogo", async () => {
+    for (const rol of ["owner", "gm"]) {
+      const calls = stubFetch(() => json(200, { available: true }));
+      await renderHoteles(rol);
+      expect(calls.some((c) => c.url === "https://api.test/hoteles/prop-1/chat-datos/estado")).toBe(true);
+      expect(enlaceChat()?.getAttribute("href")).toBe("/hoteles/demo/copiloto");
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+      rendered!.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("rol sin acceso: no hay boton 'Chatea con tus datos' ni se consulta /estado", async () => {
+    const calls = stubFetch(() => json(403, {}));
+    await renderHoteles("housekeeping");
+    expect(textoChat()).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes("/chat-datos"))).toBe(false);
+  });
+
+  it("owner con asistente sin proveedor (available=false) o servidor caido: sigue 'Pronto' (boton, nunca enlace)", async () => {
+    stubFetch(() => json(200, { available: false }));
+    await renderHoteles("owner");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
+    rendered!.unmount();
+    rendered = undefined;
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("offline");
+    }));
+    await renderHoteles("owner");
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
   });
 });

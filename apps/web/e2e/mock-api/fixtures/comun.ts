@@ -77,8 +77,8 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
   return fila;
 }
 
-/** "Chatea con tus datos" no esta disponible en el mock de hoteles/rentas/etc.: la SPA debe mostrarlo de forma honesta (`available: false`).
- *  Restaurantes (CHAT-08) lo sirve activo desde fixtures/restaurantes.ts. */
+/** "Chatea con tus datos" no esta disponible en el mock de rentas/etc.: la SPA debe mostrarlo de forma honesta (`available: false`).
+ *  Restaurantes (CHAT-08) y hoteles (CHAT-09) lo sirven activo desde sus fixtures. */
 const ESTADO_CHAT = () => ({ available: false });
 
 export const rutasComunes: readonly Ruta[] = [
@@ -107,7 +107,6 @@ export const rutasComunes: readonly Ruta[] = [
       n.readAt = n.readAt ?? MARCA_LECTURA;
       return { ok: true, unreadCount: noLeidas(todas) };
     } },
-  { metodo: "GET", patron: "/hoteles/:id/chat-datos/estado", manejador: ESTADO_CHAT },
   { metodo: "GET", patron: "/rentas/:id/chat-datos/estado", manejador: ESTADO_CHAT },
   { metodo: "GET", patron: "/despachos/:id/chat-datos/estado", manejador: ESTADO_CHAT },
   { metodo: "GET", patron: "/licitaciones/:id/chat-datos/estado", manejador: ESTADO_CHAT },

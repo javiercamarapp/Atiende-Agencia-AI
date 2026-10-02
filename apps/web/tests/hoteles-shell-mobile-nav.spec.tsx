@@ -93,14 +93,14 @@ describe("HotelesShell — nav móvil", () => {
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"]);
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Recepción", "Reservas", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Recepción", "Reservas", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
     abrirCategoria(root, "Finanzas");
     expect(categoriasAbiertas(root)).toEqual(["Finanzas"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "P&L", "Revenue", "CFDI", "Fraude"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "P&L", "Revenue", "CFDI", "Fraude"]);
     abrirCategoria(root, "Huéspedes");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Huéspedes", "Pedidos F&B", "Reputación", "Identidad", "Grupos"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Huéspedes", "Pedidos F&B", "Reputación", "Identidad", "Grupos"]);
     abrirCategoria(root, "Agentes");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Agentes", "Aprobaciones"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Agentes", "Aprobaciones"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "GM Demo", rol: "Propietario" });
   });
 
@@ -124,6 +124,49 @@ describe("HotelesShell — nav móvil", () => {
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/hoteles/demo/fraude");
     expect(hrefs).toEqual(expect.arrayContaining(["/hoteles/demo/recepcion", "/hoteles/demo/huespedes"]));
+    // CHAT-09: el Copiloto tambien esta en la hoja "Más" (solo owner/gm).
+    expect(hrefs).toContain("/hoteles/demo/copiloto");
+  });
+
+  // CHAT-09: el Copiloto es una PÁGINA solo para owner/gm (los únicos roles que el servidor deja usar chat-datos). Con el asistente
+  // activo, el botón del header y la píldora del pie son enlaces a /hoteles/:org/copiloto y ya no abren el diálogo viejo.
+  it("owner/gm: con el asistente activo, el botón del header y la píldora del pie enlazan a la página del Copiloto", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
+    for (const rol of ["owner", "gm"]) {
+      rendered = await renderShell(undefined, rol);
+      const root = rendered.container;
+      const hrefs = (texto: string) => [...root.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
+      expect(hrefs("Chatea con tus datos")).toContain("/hoteles/demo/copiloto");
+      expect(hrefs("Pregunta a tus datos")).toContain("/hoteles/demo/copiloto");
+      expect(hrefs("Copiloto")).toContain("/hoteles/demo/copiloto");
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      rendered.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("un rol sin acceso (frontdesk, accountant) no ve la entrada Copiloto, ni el botón del chat ni la píldora, y no consulta /estado", async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    for (const rol of ["frontdesk", "reservations", "housekeeping", "maintenance", "fnb", "accountant"]) {
+      rendered = await renderShell(undefined, rol);
+      const root = rendered.container;
+      expect(linksSidebar(root)).not.toContain("Copiloto");
+      const textos = [...root.querySelectorAll("a, button")].map((e) => e.textContent ?? "");
+      expect(textos.some((t) => t.includes("Chatea con tus datos") || t.includes("Pregunta a tus datos"))).toBe(false);
+      rendered.unmount();
+      rendered = undefined;
+    }
+    expect(fetchMock.mock.calls.filter(([u]) => u.includes("/chat-datos"))).toHaveLength(0);
+  });
+
+  it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "x" }), { status: 403 })));
+    rendered = await renderShell();
+    const root = rendered.container;
+    const boton = [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos"));
+    expect(boton?.textContent).toContain("Pronto");
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregunta a tus datos"))).toBe(false);
   });
 
   it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
