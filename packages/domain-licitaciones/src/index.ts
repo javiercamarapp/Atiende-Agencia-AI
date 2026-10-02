@@ -307,7 +307,7 @@ export {
 } from "./contract-billing.ts";
 export type { PaymentDeadlineResult, ContractInvoiceStatus, InvoiceStatusInput, ReceivableLineInput, ReceivablesTotals } from "./contract-billing.ts";
 
-// L-23 -- regimen legal por fecha de convocatoria.
+// L-23 -- regimen legal por fecha de convocatoria; L-24 -- registro normativo versionado.
 export {
   LAASSP_2025_ENTRADA_EN_VIGOR,
   LAASSP_2000_PLAZO_PAGO_DIAS_NATURALES,
@@ -318,6 +318,8 @@ export {
   buildInconformidadContentByRegime,
 } from "./regimen-legal.ts";
 export type { RegimenLegalId, RegimenFuente, RegimenLegalResolucion, PaymentDeadlineByRegimeResult, InconformidadDeadlineByRegime } from "./regimen-legal.ts";
+export { NORMAS_LICITACIONES, fichaNormaPorId, fichasParaCita, extraerCitasNormativas } from "./normas.ts";
+export type { NormaFicha, NormaLey, NormaEstadoVerificacion, NormaVigencia, NormaCitaEnCodigo } from "./normas.ts";
 
 export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
 export type { ContractFieldKey, ExtractedContractField, ContractFieldPageText } from "./contract-extraction.ts";
