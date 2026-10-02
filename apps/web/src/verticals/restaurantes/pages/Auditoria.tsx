@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -187,47 +187,54 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
           {!error && items !== null && disponible && items.length > 0 && (
             <Card>
+              <CardHeader className="p-3 pb-2">
+                <CardTitle>Acciones del staff</CardTitle>
+              </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cuándo</TableHead>
-                      <TableHead>Quién</TableHead>
-                      <TableHead>Acción</TableHead>
-                      <TableHead>Campo</TableHead>
-                      <TableHead>Antes</TableHead>
-                      <TableHead>Después</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</TableCell>
-                        {/* La ruta hoy solo trae el uuid del staff (`actorUserId`, ver
-                            auditoria-client.ts) -- sin resolver a nombre/email todavía
-                            (mismo hueco conocido que rentas dejó documentado). Mostrar
-                            el uuid completo, con truncamiento visual + title, es mejor
-                            que omitir por completo QUIÉN hizo la acción. */}
-                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[110px] truncate" title={item.actorUserId}>
+                <DataTable<AuditLogEntry>
+                  etiqueta="Acciones del staff de esta sucursal"
+                  filas={items}
+                  obtenerId={(item) => item.id}
+                  paginacion={false}
+                  columnas={[
+                    {
+                      id: "cuando",
+                      encabezado: "Cuándo",
+                      principal: true,
+                      className: "whitespace-nowrap",
+                      celda: (item) => <span className="text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</span>,
+                    },
+                    {
+                      // La ruta hoy solo trae el uuid del staff (`actorUserId`, ver auditoria-client.ts) -- sin resolver a nombre/email
+                      // todavía (mismo hueco conocido que rentas dejó documentado). Mostrar el uuid completo, con truncamiento
+                      // visual + title, es mejor que omitir por completo QUIÉN hizo la acción.
+                      id: "quien",
+                      encabezado: "Quién",
+                      celda: (item) => (
+                        <span className="block max-w-[110px] truncate font-mono text-xs text-muted-foreground" title={item.actorUserId}>
                           {item.actorUserId}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
-                              {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
-                            </StatusBadge>
-                            <span className="text-xs text-muted-foreground" title={item.action}>
-                              {etiquetaAccion(item.action)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">{item.campo ?? "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{item.antes ?? "—"}</TableCell>
-                        <TableCell className="text-xs">{item.despues ?? "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </span>
+                      ),
+                    },
+                    {
+                      id: "accion",
+                      encabezado: "Acción",
+                      celda: (item) => (
+                        <div className="flex flex-col gap-1">
+                          <StatusBadge tone="neutral" dot={false} className="w-fit text-2xs">
+                            {AUDIT_LOG_ENTITY_TYPE_LABELS[item.entityType as AuditLogEntityType] ?? item.entityType}
+                          </StatusBadge>
+                          <span className="text-xs text-muted-foreground" title={item.action}>
+                            {etiquetaAccion(item.action)}
+                          </span>
+                        </div>
+                      ),
+                    },
+                    { id: "campo", encabezado: "Campo", celda: (item) => <span className="text-xs">{item.campo ?? "—"}</span> },
+                    { id: "antes", encabezado: "Antes", celda: (item) => <span className="text-xs text-muted-foreground">{item.antes ?? "—"}</span> },
+                    { id: "despues", encabezado: "Después", celda: (item) => <span className="text-xs">{item.despues ?? "—"}</span> },
+                  ]}
+                />
               </CardContent>
             </Card>
           )}
@@ -238,8 +245,8 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
                 {items.length} de {total}
               </span>
               {nextOffset !== null && (
-                <Button type="button" variant="outline" size="sm" onClick={cargarMas} disabled={cargandoMas}>
-                  {cargandoMas ? "Cargando…" : "Cargar más"}
+                <Button type="button" variant="outline" size="sm" onClick={cargarMas} loading={cargandoMas}>
+                  Cargar más
                 </Button>
               )}
             </div>

@@ -3,7 +3,7 @@
 // vacío honesto hasta que exista backend: nunca se muestran llamadas inventadas.
 import { useEffect, useState } from "react";
 import { MessageSquareText } from "lucide-react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo } from "@atiende/ui";
 import type { LineaTranscripcion } from "@atiende/ui";
 import type { ConversacionVoz } from "../lib/voz-client.ts";
 import { etiquetaResultado, formatoCostoUsd, formatoDuracion, formatoInstante } from "./formato-voz.ts";
@@ -70,34 +70,36 @@ export function PestanaConversaciones({ conversaciones, onReintentar, cargarDeta
   }
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
-      <Table className="text-xs">
-        <TableHeader className="bg-muted/50">
-          <TableRow className="text-left">
-            <TableHead className="h-auto px-3 py-2">Fecha</TableHead>
-            <TableHead className="h-auto px-3 py-2">Duración</TableHead>
-            <TableHead className="h-auto px-3 py-2">Costo</TableHead>
-            <TableHead className="h-auto px-3 py-2">Resultado</TableHead>
-            <TableHead className="h-auto px-3 py-2" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {lista.map((c) => (
-            <TableRow key={c.id} data-conversacion={c.id}>
-              <TableCell className="px-3 py-2">{formatoInstante(c.iniciadaEn)}</TableCell>
-              <TableCell className="px-3 py-2 tabular-nums">{formatoDuracion(c.duracionSegundos)}</TableCell>
-              <TableCell className="px-3 py-2 tabular-nums">{formatoCostoUsd(c.costoUsd)}</TableCell>
-              <TableCell className="px-3 py-2">{etiquetaResultado(c.resultado)}</TableCell>
-              <TableCell className="px-3 py-2 text-right">
+    <Card>
+      <CardHeader className="p-3 pb-2">
+        <CardTitle>Conversaciones de voz</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <DataTable<ConversacionVoz>
+          etiqueta="Conversaciones de voz de esta sucursal"
+          filas={lista}
+          obtenerId={(c) => c.id}
+          atributosFila={(c) => ({ "data-conversacion": c.id })}
+          columnas={[
+            { id: "fecha", encabezado: "Fecha", principal: true, celda: (c) => formatoInstante(c.iniciadaEn) },
+            { id: "duracion", encabezado: "Duración", className: "tabular-nums", celda: (c) => formatoDuracion(c.duracionSegundos) },
+            { id: "costo", encabezado: "Costo", className: "tabular-nums", celda: (c) => formatoCostoUsd(c.costoUsd) },
+            { id: "resultado", encabezado: "Resultado", celda: (c) => etiquetaResultado(c.resultado) },
+            {
+              id: "acciones",
+              encabezado: <span className="sr-only">Acciones</span>,
+              etiqueta: "Acciones",
+              alinear: "right",
+              celda: (c) => (
                 <Button type="button" variant="outline" size="sm" onClick={() => setAbiertaId(c.id)}>
                   Ver transcripción
                 </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+              ),
+            },
+          ]}
+        />
+      </CardContent>
+    </Card>
   );
 }
 

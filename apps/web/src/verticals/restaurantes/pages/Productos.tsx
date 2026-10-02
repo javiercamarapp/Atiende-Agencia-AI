@@ -18,21 +18,13 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
-  EstadoCargando,
+  DataTable,
   EstadoError,
-  EstadoVacio,
   FormDialog,
   FormField,
   Input,
   NativeSelect,
   PageContainer,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   formatMoney,
   StatusBadge,
 } from "@atiende/ui";
@@ -265,79 +257,73 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         </Card>
       )}
 
-      {!products && !error && <EstadoCargando etiqueta="Cargando catálogo…" />}
-      {products && products.length === 0 && <EstadoVacio mensaje="Este negocio todavía no tiene productos en su catálogo." />}
-
-      {products && products.length > 0 && (
+      {(products || !error) && (
         <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle>Catálogo</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableCaption className="sr-only">Catálogo de productos de esta sucursal</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Producto</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Precio en esta sucursal</TableHead>
-                  <TableHead>Disponible aquí</TableHead>
-                  <TableHead>Popular</TableHead>
-                  {marks && <TableHead>No a domicilio</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium text-foreground">{p.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{p.categoryName ?? "—"}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          aria-label={`Precio de ${p.name} en esta sucursal`}
-                          defaultValue={p.branch?.price ?? p.price}
-                          onBlur={(e) => void handlePriceChange(p, e.target.value)}
-                          disabled={savingId === p.id}
-                          className="w-[100px]"
-                        />
-                        {p.branch === null && (
-                          <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={p.branch?.isAvailable ? "default" : "outline"}
-                        onClick={() => void handleToggleAvailability(p)}
+            <DataTable<Product>
+              etiqueta="catálogo de productos de esta sucursal"
+              filas={products ?? []}
+              obtenerId={(p) => p.id}
+              estado={!products ? "loading" : products.length === 0 ? "empty" : "ok"}
+              vacio={{ titulo: "Sin productos", mensaje: "Este negocio todavía no tiene productos en su catálogo." }}
+              paginacion={{ tamano: 25 }}
+              columnas={[
+                { id: "producto", encabezado: "Producto", principal: true, celda: (p) => <span className="font-medium text-foreground">{p.name}</span>, valorOrden: (p) => p.name },
+                { id: "categoria", encabezado: "Categoría", celda: (p) => <span className="text-muted-foreground">{p.categoryName ?? "—"}</span>, valorOrden: (p) => p.categoryName },
+                {
+                  id: "precio",
+                  encabezado: "Precio en esta sucursal",
+                  celda: (p) => (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        aria-label={`Precio de ${p.name} en esta sucursal`}
+                        defaultValue={p.branch?.price ?? p.price}
+                        onBlur={(e) => void handlePriceChange(p, e.target.value)}
                         disabled={savingId === p.id}
-                      >
-                        {p.branch?.isAvailable ? "Disponible" : "No disponible"}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`Marcar ${p.name} como popular`}
-                        checked={p.isPopular}
-                        onChange={() => void handleTogglePopular(p)}
-                        disabled={savingId === p.id}
+                        className="w-[100px]"
                       />
-                    </TableCell>
-                    {marks && (
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`${p.name}: no se vende a domicilio`}
-                          checked={marks.productIds.includes(p.id)}
-                          onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
-                          disabled={savingId === p.id}
-                        />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      {p.branch === null && <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>}
+                    </div>
+                  ),
+                },
+                {
+                  id: "disponible",
+                  encabezado: "Disponible aquí",
+                  celda: (p) => (
+                    <Button type="button" size="sm" variant={p.branch?.isAvailable ? "default" : "outline"} onClick={() => void handleToggleAvailability(p)} disabled={savingId === p.id}>
+                      {p.branch?.isAvailable ? "Disponible" : "No disponible"}
+                    </Button>
+                  ),
+                },
+                {
+                  id: "popular",
+                  encabezado: "Popular",
+                  celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id} />,
+                },
+                ...(marks
+                  ? [
+                      {
+                        id: "no-domicilio",
+                        encabezado: "No a domicilio",
+                        celda: (p: Product) => (
+                          <Checkbox
+                            aria-label={`${p.name}: no se vende a domicilio`}
+                            checked={marks.productIds.includes(p.id)}
+                            onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
+                            disabled={savingId === p.id}
+                          />
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </CardContent>
         </Card>
       )}

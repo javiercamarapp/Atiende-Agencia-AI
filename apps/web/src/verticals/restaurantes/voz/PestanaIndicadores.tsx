@@ -4,9 +4,9 @@
 // servidor): ninguna acción de esta pantalla envía WhatsApp ni correo. Sin dato = "—" (nunca 0 inventado).
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Clock, DollarSign, Headset, PhoneCall, ShoppingBag, TriangleAlert } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, StatCard, DataTable } from "@atiende/ui";
 import { evaluarVozAlertas, fetchVozAlertas, fetchVozKpi, updateVozUmbrales } from "../lib/voz-kpi-client.ts";
-import type { VozAlerta, VozKpi, VozUmbrales } from "../lib/voz-kpi-client.ts";
+import type { VozAlerta, VozKpi, VozKpiDiaSerie, VozUmbrales } from "../lib/voz-kpi-client.ts";
 import { desdeError } from "./carga.ts";
 import type { Carga } from "./carga.ts";
 import { etiquetaAlerta, formatoDia, formatoMs, formatoMxn, formatoPct, pesosACentavos } from "./formato-kpi.ts";
@@ -105,35 +105,30 @@ export function PestanaIndicadores({ apiBaseUrl, token, propertyId, fetchImpl }:
       </section>
 
       <section aria-label="Últimos 14 días" className="space-y-2">
-        <h3 className="text-sm font-medium text-foreground">Últimos 14 días</h3>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Día</TableHead>
-                <TableHead className="text-right">Llamadas</TableHead>
-                <TableHead className="text-right">Pedidos</TableHead>
-                <TableHead className="text-right">A persona</TableHead>
-                <TableHead className="text-right">Errores</TableHead>
-                <TableHead className="text-right">p95 herr.</TableHead>
-                <TableHead className="text-right">Costo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...kpi.serie].reverse().map((d) => (
-                <TableRow key={d.fecha} data-dia={d.fecha}>
-                  <TableCell>{formatoDia(d.fecha)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{d.llamadas}</TableCell>
-                  <TableCell className="text-right tabular-nums">{d.pedidosVoz}</TableCell>
-                  <TableCell className="text-right tabular-nums">{d.escaladas}</TableCell>
-                  <TableCell className="text-right tabular-nums">{d.erroresProveedor}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatoMs(d.toolP95Ms)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatoMxn(d.costoCentavosMxn)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle>Últimos 14 días</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <DataTable<VozKpiDiaSerie>
+              etiqueta="Indicadores de voz de los últimos 14 días"
+              filas={[...kpi.serie].reverse()}
+              obtenerId={(d) => d.fecha}
+              atributosFila={(d) => ({ "data-dia": d.fecha })}
+              vacio={{ titulo: "Sin días con datos", mensaje: "Todavía no hay actividad de voz en los últimos 14 días." }}
+              paginacion={false}
+              columnas={[
+                { id: "dia", encabezado: "Día", principal: true, celda: (d) => formatoDia(d.fecha) },
+                { id: "llamadas", encabezado: "Llamadas", alinear: "right", className: "tabular-nums", celda: (d) => d.llamadas },
+                { id: "pedidos", encabezado: "Pedidos", alinear: "right", className: "tabular-nums", celda: (d) => d.pedidosVoz },
+                { id: "persona", encabezado: "A persona", alinear: "right", className: "tabular-nums", celda: (d) => d.escaladas },
+                { id: "errores", encabezado: "Errores", alinear: "right", className: "tabular-nums", celda: (d) => d.erroresProveedor },
+                { id: "p95", encabezado: "p95 herr.", alinear: "right", className: "tabular-nums", celda: (d) => formatoMs(d.toolP95Ms) },
+                { id: "costo", encabezado: "Costo", alinear: "right", className: "tabular-nums", celda: (d) => formatoMxn(d.costoCentavosMxn) },
+              ]}
+            />
+          </CardContent>
+        </Card>
       </section>
 
       <FormularioUmbrales umbrales={umbrales} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} fetchImpl={fetchImpl} onGuardado={reintentar} />

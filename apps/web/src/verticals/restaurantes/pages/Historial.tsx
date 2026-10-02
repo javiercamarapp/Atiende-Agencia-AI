@@ -12,22 +12,17 @@ import {
   Button,
   Card,
   CardContent,
+  CardHeader,
+  CardTitle,
+  DataTable,
   EstadoError,
-  EstadoVacio,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   formatMoney,
   statusTone,
+FormField,
 } from "@atiende/ui";
 import { ChevronDown } from "lucide-react";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
@@ -86,10 +81,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
       <h1 className="sr-only">Historial de órdenes</h1>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="restaurantes-historial-estado" className="text-xs text-muted-foreground">
-            Estado
-          </Label>
+        <FormField label="Estado">
           <NativeSelect
             id="restaurantes-historial-estado"
             value={statusFilter}
@@ -103,59 +95,46 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
               </option>
             ))}
           </NativeSelect>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="restaurantes-historial-desde" className="text-xs text-muted-foreground">
-            Desde
-          </Label>
+        </FormField>
+        <FormField label="Desde">
           <Input id="restaurantes-historial-desde" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="restaurantes-historial-hasta" className="text-xs text-muted-foreground">
-            Hasta
-          </Label>
+        </FormField>
+        <FormField label="Hasta">
           <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
-        </div>
+        </FormField>
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load(true)} />}
 
-      {orders.length === 0 && !loading && !error && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableCaption className="sr-only">Historial de órdenes de esta sucursal</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Sucursal</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell className="whitespace-nowrap">{new Date(o.createdAt).toLocaleString("es-MX")}</TableCell>
-                  <TableCell>{o.customerName}</TableCell>
-                  <TableCell className="text-muted-foreground">{o.branch ?? "—"}</TableCell>
-                  <TableCell>
-                    <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge>
-                  </TableCell>
-                  <TableCell className="tabular-nums">${formatMoney(o.total)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {!(error && orders.length === 0) && (
+        <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle>Órdenes</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <DataTable<OrderSummary>
+              etiqueta="Historial de órdenes de esta sucursal"
+              filas={orders}
+              obtenerId={(o) => o.id}
+              estado={loading && orders.length === 0 ? "loading" : orders.length === 0 ? "empty" : "ok"}
+              vacio={{ titulo: "Sin pedidos", mensaje: "No hay pedidos en este filtro." }}
+              paginacion={false}
+              columnas={[
+                { id: "fecha", encabezado: "Fecha", principal: true, className: "whitespace-nowrap", celda: (o) => new Date(o.createdAt).toLocaleString("es-MX") },
+                { id: "cliente", encabezado: "Cliente", celda: (o) => o.customerName },
+                { id: "sucursal", encabezado: "Sucursal", celda: (o) => <span className="text-muted-foreground">{o.branch ?? "—"}</span> },
+                { id: "estado", encabezado: "Estado", celda: (o) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge> },
+                { id: "total", encabezado: "Total", alinear: "right", className: "tabular-nums", celda: (o) => `$${formatMoney(o.total)}` },
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {nextCursor && (
-        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void load(false)} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void load(false)} loading={loading}>
           <ChevronDown />
-          {loading ? "Cargando…" : "Cargar más"}
+          Cargar más
         </Button>
       )}
     </PageContainer>

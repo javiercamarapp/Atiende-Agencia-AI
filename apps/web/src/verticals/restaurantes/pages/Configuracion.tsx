@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge, FormField } from "@atiende/ui";
 import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -192,10 +192,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
           {!whatsapp && !error && <EstadoCargando etiqueta="Cargando…" />}
           {whatsapp && (
             <form onSubmit={handleSaveWhatsapp} className="flex flex-wrap items-end gap-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="config-whatsapp-phone-number-id" className="text-xs text-muted-foreground">
-                  phone_number_id
-                </Label>
+              <FormField label="phone_number_id">
                 <Input
                   id="config-whatsapp-phone-number-id"
                   value={phoneNumberId}
@@ -207,7 +204,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                   className="w-auto min-w-[240px]"
                   required
                 />
-              </div>
+              </FormField>
               <Button type="submit" loading={savingWhatsapp}>
 Guardar
               </Button>
@@ -273,24 +270,15 @@ Guardar
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <form onSubmit={handleCreateZone} className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="config-zona-nombre" className="text-xs text-muted-foreground">
-                Nombre
-              </Label>
+            <FormField label="Nombre">
               <Input id="config-zona-nombre" value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="Altabrisa" className="w-auto min-w-[160px]" required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="config-zona-lat" className="text-xs text-muted-foreground">
-                Latitud
-              </Label>
+            </FormField>
+            <FormField label="Latitud">
               <Input id="config-zona-lat" value={zoneLat} onChange={(e) => setZoneLat(e.target.value)} placeholder="21.0619" className="w-auto min-w-[110px]" required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="config-zona-lng" className="text-xs text-muted-foreground">
-                Longitud
-              </Label>
+            </FormField>
+            <FormField label="Longitud">
               <Input id="config-zona-lng" value={zoneLng} onChange={(e) => setZoneLng(e.target.value)} placeholder="-89.6216" className="w-auto min-w-[110px]" required />
-            </div>
+            </FormField>
             <Button type="submit" disabled={creatingZone}>
               {creatingZone ? "Agregando…" : "Agregar zona"}
             </Button>
