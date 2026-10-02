@@ -19,12 +19,15 @@
 // cierre.ts) -- esta pantalla nunca lo calcula ni lo asume, solo refleja lo
 // que el servidor acaba de recalcular.
 //
-// Fuera de esta pieza a propósito (post-adjudicación, alcance de rondas
-// futuras -- ver README de este vertical): declarar que el expediente YA se
-// presentó ante el portal (`GET`/`POST .../submission[/declare]`), y el alta
-// del contrato mismo con sus documentos/autopsia del fallo/radar de
-// renovaciones. Cobranza del contrato e inconformidades ya tienen pantalla
-// propia (Fase 15, `pages/PostAdjudicacion.tsx`, enlazada arriba).
+// L-26 (REQ-044): la aprobación del expediente es DOBLE (técnico-legal 1/2 y
+// económica 2/2, dos personas distintas, cada una con step-up TOTP) --
+// `components/AprobacionExpediente.tsx`. L-28: la pestaña "Presentación"
+// (`components/PresentacionPortal.tsx`) registra que el expediente YA se
+// presentó ante el portal (`GET`/`POST .../submission[/declare]`); Atiende
+// nunca envía la oferta. El alta del contrato mismo con sus documentos/autopsia
+// del fallo/radar de renovaciones es post-adjudicación. Cobranza del contrato e
+// inconformidades ya tienen pantalla propia (Fase 15, `pages/PostAdjudicacion.tsx`,
+// enlazada arriba).
 //
 // Fase "sistema de diseño real" (contenido) — los tres bloques (checklist /
 // aprobación / paquete) pasan a `Tabs` sobre `Card`, los pills de resultado y
@@ -33,7 +36,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Download, ListChecks, Package, Plus, X } from "lucide-react";
+import { ArrowLeft, Download, ListChecks, Package, Plus, X } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import { PAQUETE_CIERRE_TONES, RESULTADO_CUMPLIMIENTO_TONES } from "../lib/status-tones.ts";
@@ -43,14 +46,17 @@ import type { RequirementItemRecord } from "../lib/requirements-client.ts";
 import { fetchChecklist, runChecklist } from "../lib/checklist-client.ts";
 import type { ChecklistFileArtifact, ChecklistSignatureRequirement, ChecklistSummary } from "../lib/checklist-client.ts";
 import {
-  approveExpediente,
   approveProposalSection,
   assemblePackage,
   downloadPackage,
+  fetchExpedienteApprovals,
   fetchLatestPackage,
   PackageDownloadConflictError,
 } from "../lib/cierre-client.ts";
-import type { ApprovalResult, PackageStatusResult } from "../lib/cierre-client.ts";
+import { EXPEDIENTE_STAGE_LABELS } from "../lib/cierre-client.ts";
+import type { ApprovalResult, ExpedienteApprovalsState, PackageStatusResult } from "../lib/cierre-client.ts";
+import { AprobacionExpediente } from "../components/AprobacionExpediente.tsx";
+import { PresentacionPortal } from "../components/PresentacionPortal.tsx";
 import { formatComplianceResult, formatDate } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -155,9 +161,11 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
   const [checklistError, setChecklistError] = useState<string | null>(null);
 
   // ---- Aprobaciones ----
-  const [approvingExpediente, setApprovingExpediente] = useState(false);
-  const [expedienteApprovalError, setExpedienteApprovalError] = useState<string | null>(null);
-  const [expedienteApprovalResult, setExpedienteApprovalResult] = useState<ApprovalResult | null>(null);
+  // L-26: estado de la doble aprobacion (lo pinta `AprobacionExpediente`; aqui tambien gatea "Ensamblar paquete").
+  const [approvals, setApprovals] = useState<ExpedienteApprovalsState | null>(null);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
+  // L-26: con la doble aprobacion disponible, sin el 2/2 vigente el servidor responde 409 al ensamblar: el boton lo anticipa.
+  const awaitingApprovals = approvals?.mode === "doble" && !approvals.complete;
 
   const [sectionKeyToApprove, setSectionKeyToApprove] = useState(KNOWN_SECTION_KEYS[0]!.value);
   const [approvingSection, setApprovingSection] = useState(false);
@@ -180,6 +188,8 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
         fetchChecklist(fetch, apiBaseUrl, token, propertyId, id),
         fetchLatestPackage(fetch, apiBaseUrl, token, propertyId, id),
       ]);
+      // El estado de las aprobaciones se pide aparte: si falla, la pantalla sigue (con el error en su pestaña).
+      await loadApprovals(id);
       setTender(tenderData);
       setItems(itemsData);
       setChecklist(checklistData);
@@ -188,6 +198,27 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
       setLoadError(err instanceof Error ? err.message : "No se pudo cargar la convocatoria.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** Pide el estado de la doble aprobacion; un fallo se queda en la pestana "Aprobacion" y no tumba el resto de la pantalla. */
+  async function loadApprovals(id: string) {
+    try {
+      setApprovals(await fetchExpedienteApprovals(fetch, apiBaseUrl, token, propertyId, id));
+      setApprovalsError(null);
+    } catch (err) {
+      setApprovalsError(err instanceof Error ? err.message : "No se pudo consultar el estado de las aprobaciones.");
+    }
+  }
+
+  /** Tras una aprobacion cambia lo que "listo" significa: refresca aprobaciones y paquete (que el servidor re-deriva). */
+  async function reloadAfterApproval() {
+    if (!tenderId) return;
+    await loadApprovals(tenderId);
+    try {
+      setLatestPackage(await fetchLatestPackage(fetch, apiBaseUrl, token, propertyId, tenderId));
+    } catch {
+      // el estado del paquete se vuelve a pedir al ensamblar/descargar; no se tapa la aprobacion ya registrada
     }
   }
 
@@ -306,20 +337,6 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
     }
   }
 
-  async function handleApproveExpediente() {
-    if (!tenderId) return;
-    setExpedienteApprovalError(null);
-    setApprovingExpediente(true);
-    try {
-      const result = await approveExpediente(fetch, apiBaseUrl, token, propertyId, tenderId);
-      setExpedienteApprovalResult(result);
-    } catch (err) {
-      setExpedienteApprovalError(err instanceof Error ? err.message : "No se pudo aprobar el expediente.");
-    } finally {
-      setApprovingExpediente(false);
-    }
-  }
-
   async function handleApproveSection() {
     if (!tenderId) return;
     setSectionApprovalError(null);
@@ -387,7 +404,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
         </Link>
         <h1 className="font-display text-xl font-semibold text-foreground">Cierre del expediente</h1>
         <p className="text-sm text-muted-foreground">
-          Corre el checklist de integridad, aprueba el expediente y ensambla/descarga el paquete final antes de presentarlo ante el portal oficial. La declaración de que YA se presentó no vive en esta pantalla todavía.
+          Corre el checklist de integridad, aprueba el expediente (dos aprobaciones, por dos personas), ensambla/descarga el paquete final y, cuando lo presentes tú en el portal oficial, declara aquí la presentación. Atiende nunca envía la oferta.
         </p>
         <Link
           to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`}
@@ -402,6 +419,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
           <TabsTrigger value="checklist">Checklist</TabsTrigger>
           <TabsTrigger value="aprobacion">Aprobación</TabsTrigger>
           <TabsTrigger value="paquete">Paquete final</TabsTrigger>
+          <TabsTrigger value="presentacion">Presentación</TabsTrigger>
         </TabsList>
 
         <TabsContent value="checklist">
@@ -550,63 +568,57 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
         </TabsContent>
 
         <TabsContent value="aprobacion">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Aprobación del expediente</CardTitle>
-              <CardDescription>
-                Único gate real hacia "listo" (DECISION_ROLES: owner/admin/analyst). El hash de insumos aprobado siempre se recalcula en vivo -- nunca se acepta uno propuesto desde aquí. Quien haya redactado contenido de cualquier sección no puede autoaprobarse.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {canApprove ? (
-                <Button type="button" size="sm" className="self-start" onClick={() => void handleApproveExpediente()} disabled={approvingExpediente}>
-                  <CheckCircle2 />
-                  {approvingExpediente ? "Aprobando…" : "Aprobar expediente completo"}
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede aprobar el expediente -- solo DECISION_ROLES (owner/admin/analyst).</p>
-              )}
-
-              {expedienteApprovalError && (
-                <p role="alert" className="text-sm text-destructive">
-                  {expedienteApprovalError}
-                </p>
-              )}
-              {expedienteApprovalResult && (
-                <p role="status" className="text-xs font-medium text-success">
-                  Aprobado {formatDate(expedienteApprovalResult.decidedAt)} · estatus {expedienteApprovalResult.status}.
-                </p>
-              )}
-
-              {canApprove && (
-                <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
-                  <div className="flex flex-[1_1_260px] flex-col gap-1.5">
-                    <Label htmlFor="cierre-seccion">Aprobación granular por sección (revisión incremental, no gatea "listo")</Label>
-                    <NativeSelect id="cierre-seccion" value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)}>
-                      {KNOWN_SECTION_KEYS.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
+          <div className="flex flex-col gap-4">
+            <AprobacionExpediente
+              apiBaseUrl={apiBaseUrl}
+              token={token}
+              propertyId={propertyId}
+              tenderId={tenderId}
+              orgSlug={orgSlug}
+              role={role}
+              canApprove={canApprove}
+              state={approvals}
+              stateError={approvalsError}
+              onChanged={reloadAfterApproval}
+            />
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Aprobación por sección</CardTitle>
+                <CardDescription>Revisión incremental: no gatea «listo» (solo el 2/2 del expediente lo hace).</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {canApprove ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-[1_1_260px] flex-col gap-1.5">
+                      <Label htmlFor="cierre-seccion">Sección a aprobar</Label>
+                      <NativeSelect id="cierre-seccion" value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)}>
+                        {KNOWN_SECTION_KEYS.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
+                      {approvingSection ? "Aprobando…" : "Aprobar sección"}
+                    </Button>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
-                    {approvingSection ? "Aprobando…" : "Aprobar sección"}
-                  </Button>
-                </div>
-              )}
-              {sectionApprovalError && (
-                <p role="alert" className="text-sm text-destructive">
-                  {sectionApprovalError}
-                </p>
-              )}
-              {sectionApprovalResult && (
-                <p role="status" className="text-xs font-medium text-success">
-                  Sección "{sectionApprovalResult.scopeRef}" aprobada {formatDate(sectionApprovalResult.decidedAt)}.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede aprobar secciones -- solo propietario, administrador o analista.</p>
+                )}
+                {sectionApprovalError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {sectionApprovalError}
+                  </p>
+                )}
+                {sectionApprovalResult && (
+                  <p role="status" className="text-xs font-medium text-success">
+                    Sección "{sectionApprovalResult.scopeRef}" aprobada {formatDate(sectionApprovalResult.decidedAt)}.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="paquete">
@@ -617,7 +629,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                 Paquete final {latestPackage && <StatusPill status={latestPackage.status} />}
               </CardTitle>
               <CardDescription>
-                El ensamblado recalcula el estado contra el expediente vivo cada vez -- "listo" solo si el checklist está en verde, hay una aprobación de expediente vigente y ningún documento requerido falta. La presentación y firma las realiza el usuario; el sistema no envía ofertas.
+                El ensamblado recalcula el estado contra el expediente vivo cada vez -- "listo" solo si el checklist está en verde, la doble aprobación del expediente (2/2) está vigente y ningún documento requerido falta. La presentación y firma las realiza el usuario; el sistema no envía ofertas.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -643,7 +655,7 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
 
               <div className="flex flex-wrap items-center gap-2">
                 {canAssemble ? (
-                  <Button type="button" size="sm" onClick={() => void handleAssemble()} disabled={assembling}>
+                  <Button type="button" size="sm" onClick={() => void handleAssemble()} disabled={assembling || awaitingApprovals}>
                     <Package />
                     {assembling ? "Ensamblando…" : "Ensamblar paquete"}
                   </Button>
@@ -656,6 +668,11 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
                 </Button>
               </div>
 
+              {awaitingApprovals && (
+                <p className="text-xs text-muted-foreground">
+                  Para ensamblar falta{approvals!.missing.length > 1 ? "n" : ""} {approvals!.missing.map((m) => EXPEDIENTE_STAGE_LABELS[m]).join(" y ")} -- ver la pestaña «Aprobación».
+                </p>
+              )}
               {assembleError && (
                 <p role="alert" className="text-sm text-destructive">
                   {assembleError}
@@ -668,6 +685,18 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="presentacion">
+          <PresentacionPortal
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            propertyId={propertyId}
+            tenderId={tenderId}
+            canDeclare={canAssemble}
+            role={role}
+            packageStatus={latestPackage?.status ?? null}
+          />
         </TabsContent>
       </Tabs>
     </PageContainer>

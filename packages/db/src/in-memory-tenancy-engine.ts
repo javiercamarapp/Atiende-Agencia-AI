@@ -47,6 +47,8 @@ function isMembershipPropertyJoinQuery(sql: string): boolean {
 export class InMemoryTenancyEngine implements TenancyEngine {
   private readonly properties = new Map<string, SeedTenancyProperty>();
   private readonly memberships: SeedTenancyMembership[] = [];
+  /** SA-L-46: lista de supresion de plataforma (core.supresion_contacto), solo `tipo:hash` (como la real). */
+  private readonly suprimidos = new Set<string>();
 
   seedProperty(property: SeedTenancyProperty): void {
     this.properties.set(property.id, property);
@@ -73,6 +75,17 @@ export class InMemoryTenancyEngine implements TenancyEngine {
             )
             .map((m) => ({ organization_id: m.organizationId, platform_role: m.platformRole, vertical_role: m.verticalRole }));
           return { rows: rows as unknown as R[] };
+        }
+        // SA-L-46: core.esta_suprimido / core.registrar_supresion (migracion 0043), modelo minimo en memoria.
+        if (sql.includes("core.esta_suprimido")) {
+          const [tipo, hash] = params as [string, string];
+          return { rows: [{ suprimido: this.suprimidos.has(`${tipo}:${hash}`) }] as unknown as R[] };
+        }
+        if (sql.includes("core.registrar_supresion")) {
+          const [tipo, hash] = params as [string, string];
+          const nueva = !this.suprimidos.has(`${tipo}:${hash}`);
+          this.suprimidos.add(`${tipo}:${hash}`);
+          return { rows: [{ nueva }] as unknown as R[] };
         }
         throw new Error(
           `InMemoryTenancyEngine: consulta SQL no soportada (alcance angosto a propósito, ver comentario de archivo): ${sql}`,

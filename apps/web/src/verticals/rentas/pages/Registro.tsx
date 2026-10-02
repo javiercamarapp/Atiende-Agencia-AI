@@ -234,6 +234,17 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
             {error}
           </p>
         )}
+        <p className="m-0 text-pretty text-xs leading-[1.7] text-muted-foreground">
+          Al continuar, aceptas los{" "}
+          <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+            Términos de Servicio
+          </a>{" "}
+          y el{" "}
+          <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+            Aviso de Privacidad
+          </a>{" "}
+          de atiende.ai.
+        </p>
         <Button type="submit" disabled={submitting} size="lg" className="w-full">
           {submitting ? "Creando cuenta…" : "Crear mi cuenta"}
         </Button>

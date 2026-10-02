@@ -458,6 +458,10 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
           return { rows: [] as R[] };
         }
 
+        // SA-L-46: lista de supresion de plataforma (core.supresion_contacto): en memoria nadie esta suprimido.
+        if (n.includes("core.esta_suprimido")) return { rows: [{ suprimido: false }] as unknown as R[] };
+        if (n.includes("core.registrar_supresion")) return { rows: [{ nueva: true }] as unknown as R[] };
+
         throw new Error(`InMemoryRentasTenancyEngine: consulta SQL no soportada (alcance angosto a propósito): ${sql}`);
       },
       exec: async (sql: string) => {

@@ -58,8 +58,10 @@ describe("catalogo de notificaciones", () => {
   it("cada enlace es una ruta interna que existe en apps/web", () => {
     for (const e of CATALOGO_NOTIFICACIONES) {
       expect(e.enlace, e.id).toMatch(/^\/[A-Za-z0-9_{][A-Za-z0-9_{}/.?&=#%:@+~-]*$/);
-      const ruta = e.enlace.replace("{orgSlug}", ":orgSlug");
-      expect(rutasWeb.has(ruta), `${e.id}: la ruta ${ruta} no existe en apps/web`).toBe(true);
+      // `{orgSlug}` lo resuelve la base y `{entidadId}` el productor: ambos equivalen a un parametro de ruta (`:param`) de apps/web.
+      const ruta = e.enlace.replace("{orgSlug}", ":orgSlug").replace("{entidadId}", ":entidadId");
+      const normalizar = (r: string) => r.replace(/:\w+/g, ":p");
+      expect([...rutasWeb].some((r) => normalizar(r) === normalizar(ruta)), `${e.id}: la ruta ${ruta} no existe en apps/web`).toBe(true);
       expect(e.enlace.includes("{orgSlug}"), e.id).toBe(e.ambito !== "superadmin");
     }
   });

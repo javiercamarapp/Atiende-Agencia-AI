@@ -44,6 +44,8 @@ import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
 import { SuperAdminPrivacidadPage } from "./superadmin/pages/Privacidad.tsx";
+import { SuperAdminSupresionPage } from "./superadmin/pages/Supresion.tsx";
+import { SuperAdminAgentesPage } from "./superadmin/pages/Agentes.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
@@ -57,6 +59,7 @@ import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
 import { SucursalPage as StorefrontSucursalPage } from "./verticals/restaurantes/storefront/SucursalPage.tsx";
 import { RastreoPage as StorefrontRastreoPage } from "./verticals/restaurantes/storefront/RastreoPage.tsx";
+import { ReservarPage } from "./verticals/citas/reserva/ReservarPage.tsx";
 import { PrivacidadStorefrontPage } from "./verticals/restaurantes/storefront/PrivacidadStorefront.tsx";
 import { RestaurantesPrimerosPasosPage } from "./verticals/restaurantes/pages/PrimerosPasos.tsx";
 import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copiloto.tsx";
@@ -101,6 +104,8 @@ import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/Ica
 import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
 import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
 import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
+import { PlantillasPage as RentasPlantillasPage } from "./verticals/rentas/pages/Plantillas.tsx";
+import { PrivacidadPage as RentasPrivacidadPage } from "./verticals/rentas/pages/Privacidad.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
 import { CatalogoPage as RentasCatalogoPage } from "./verticals/rentas/pages/Catalogo.tsx";
 import { EquipoPage as RentasEquipoPage } from "./verticals/rentas/pages/Equipo.tsx";
@@ -113,6 +118,7 @@ import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
 import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
 import { ResumenPage as CitasResumenPage } from "./verticals/citas/pages/Resumen.tsx";
+import { CitasCopilotoPage } from "./verticals/citas/pages/Copiloto.tsx";
 import { PrimerosPasosPage as CitasPrimerosPasosPage } from "./verticals/citas/pages/PrimerosPasos.tsx";
 import { ProveedorFichaPage, ProveedoresListPage } from "./verticals/citas/pages/Proveedores.tsx";
 import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Servicios.tsx";
@@ -127,6 +133,7 @@ import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
@@ -151,6 +158,7 @@ import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.ts
 import { SalaGuerraPage } from "./verticals/licitaciones/pages/SalaGuerra.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
+import { DespachosCopilotoPage } from "./verticals/despachos/pages/Copiloto.tsx";
 import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
 import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -290,6 +298,11 @@ function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
   return <DemoWhatsAppPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
+// Pagina PUBLICA de reservas de citas (C-19): sin login ni shell; solo necesita el slug del negocio.
+function ReservarCitasRoute() {
+  const { orgSlug = "" } = useParams();
+  return <ReservarPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
 function StorefrontPrivacidadRoute() {
   const { orgSlug = "" } = useParams();
   return <PrivacidadStorefrontPage orgSlug={orgSlug} />;
@@ -425,6 +438,24 @@ function SuperAdminPrivacidadRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminSupresionRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminSupresionPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminAgentesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminAgentesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -713,6 +744,10 @@ const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <R
 const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
 const RentasReportesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasReportesPage {...ctx} />);
 const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAccesoHuespedPage {...ctx} />);
+const RentasPlantillasRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasPlantillasPage {...ctx} />);
+// Rn-07 -- privacidad: solicitudes ARCO de rentas (admin_gestora) y privacidad de la organizacion (PL-13: ARCO de todos los verticales, retencion, aviso versionado).
+const RentasPrivacidadRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasPrivacidadPage {...ctx} />);
+const RentasPrivacidadOrganizacionRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <PrivacidadOrganizacionPage apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 
 /** Bitácora de auditoría del staff (r5) — cierra el hueco detectado al diseñar el
  * panel de superadmin: rentas no tenía ninguna pantalla que mostrara qué hizo cada
@@ -767,6 +802,8 @@ function CitasRootRedirect() {
 }
 
 const CitasResumenRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasResumenPage {...ctx} />);
+// CHAT-13 -- Copiloto ("Pregunta a tus datos") de citas: pagina generica de @atiende/ui conectada al chat-datos real (solo owner/admin).
+const CitasCopilotoRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasCopilotoPage {...ctx} />);
 // C-06 -- checklist de primeros pasos (owner/admin; la pagina gatea por rol).
 const CitasPrimerosPasosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrimerosPasosPage {...ctx} />);
 
@@ -870,6 +907,8 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 // L-01: verificación en dos pasos + cierre de otras sesiones.
+// CHAT-12 -- Copiloto ("Pregunta a tus datos") de licitaciones: pagina generica de @atiende/ui conectada al chat-datos real.
+const LicitacionesCopilotoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesCopilotoPage {...ctx} />);
 const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesPanelPage {...ctx} />);
 const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
 const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SeguimientoPage {...ctx} />);
@@ -919,6 +958,8 @@ function DespachosRootRedirect() {
 }
 
 const DespachosDashboardRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosDashboardPage {...ctx} />);
+// CHAT-11 -- Copiloto ("Pregunta a tus datos"): pagina generica de @atiende/ui conectada al chat-datos real de despachos (admin, contador, auditor, readonly).
+const DespachosCopilotoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosCopilotoPage {...ctx} />);
 const DespachosReportesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosReportesPage {...ctx} />);
 const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);
 const DespachosCierreMensualDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualDetallePage {...ctx} />);
@@ -983,6 +1024,7 @@ export function App() {
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/demo/:orgSlug" element={<DemoWhatsAppRoute />} />
+        <Route path="/reservar/:orgSlug" element={<ReservarCitasRoute />} />
         <Route path="/pedir/:orgSlug" element={<StorefrontRestauranteRoute />} />
         <Route path="/pedir/:orgSlug/privacidad" element={<StorefrontPrivacidadRoute />} />
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
@@ -1002,6 +1044,8 @@ export function App() {
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
+        <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
+        <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
@@ -1053,6 +1097,9 @@ export function App() {
         <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
         <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
         <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
+        <Route path="/rentas/:orgSlug/plantillas" element={<RentasPlantillasRoute />} />
+        <Route path="/rentas/:orgSlug/privacidad" element={<RentasPrivacidadRoute />} />
+        <Route path="/rentas/:orgSlug/privacidad-organizacion" element={<RentasPrivacidadOrganizacionRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
@@ -1071,6 +1118,7 @@ export function App() {
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
         <Route path="/citas/:orgSlug/resumen" element={<CitasResumenRoute />} />
+        <Route path="/citas/:orgSlug/copiloto" element={<CitasCopilotoRoute />} />
         <Route path="/citas/:orgSlug/primeros-pasos" element={<CitasPrimerosPasosRoute />} />
         <Route path="/citas/:orgSlug/agenda" element={<CitasAgendaRoute />} />
         <Route path="/citas/:orgSlug/proveedores" element={<CitasProveedoresRoute />} />
@@ -1113,6 +1161,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
         <Route path="/licitaciones/:orgSlug/dias-inhabiles" element={<LicitacionesDiasInhabilesRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
+        <Route path="/licitaciones/:orgSlug/copiloto" element={<LicitacionesCopilotoRoute />} />
         <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />
         <Route path="/licitaciones/:orgSlug/aprobaciones" element={<LicitacionesAprobacionesRoute />} />
@@ -1120,6 +1169,7 @@ export function App() {
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
+        <Route path="/despachos/:orgSlug/copiloto" element={<DespachosCopilotoRoute />} />
         <Route path="/despachos/:orgSlug/notificaciones" element={<DespachosNotificacionesRoute />} />
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />

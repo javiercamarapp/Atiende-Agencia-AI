@@ -1,0 +1,14 @@
+id: rmf-2.7.1.29
+tipo: norma
+ordenamiento: "RMF"
+articulo_o_regla: "2.7.1.29"
+resumen: "Forma de pago por definir (99) y complemento de recepción de pagos (REP): sustenta el análisis de PPD y REP."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Likida ya verificó esta regla contra el PDF oficial de la RMF 2026; en despachos no se ha repetido la lectura. La URL es el índice oficial, no la página de la regla."
+usado_en_codigo:
+  - "src/cfdi/rep.ts:7"
+  - "src/pagos-provisionales/rep-pagos.ts:1"

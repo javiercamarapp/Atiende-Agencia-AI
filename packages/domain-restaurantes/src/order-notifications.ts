@@ -143,6 +143,7 @@ export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRe
     to: recipient,
     phone_number_id: phoneNumberId,
     body: message,
+    transaccional: true, // SA-L-46: estado de SU pedido; la lista de supresion no la bloquea.
     // R-27: el aviso es PROACTIVO (puede caer fuera de la ventana de 24 h): se declara la plantilla HSM del
     // estado y el gateway decide si usarla (solo si el operador la declaro aprobada); `body` es el respaldo.
     ...(plantilla ? { template: plantilla } : {}),
@@ -373,6 +374,7 @@ export async function notifyCustomerOrderConfirmationEmailCore(repo: Restaurante
     subject: correo.asunto,
     html: correo.html,
     text: correo.texto,
+    transaccional: true, // SA-L-46: confirmacion de SU pedido; la lista de supresion no la bloquea.
   });
   return { enqueued: true };
 }

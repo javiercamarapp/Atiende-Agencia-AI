@@ -1,21 +1,14 @@
-// Fase 5 (conciliación bancaria): expone el motor de matching determinístico de
-// niveles 1-3 (ver @atiende/domain-despachos/conciliacion/matching-engine.ts) más
-// las reglas de alerta (comisiones, movimientos grandes, aging, duplicados). El
-// nivel 4 (LLM, asistido con aprobación humana obligatoria) SÍ está portado desde
-// Fase 11 (ver @atiende/domain-despachos/conciliacion/llm-matching-agent.ts::
-// sugerirMatchesLLM/aprobarSugerenciaLLM) pero, igual que
-// TechnicalProposalDraftAgent de licitaciones Fase 9, todavía no tiene endpoint
-// HTTP propio en este archivo -- es un incremento natural futuro (mismo patrón que
-// `/matching` de abajo: recibir `unmatchedBank`/`unmatchedBooks` del resultado de
-// `/matching`, invocar `sugerirMatchesLLM` con `deps.llmGateway`, y un segundo POST
-// para `aprobarSugerenciaLLM`), no bloqueante para el valor del motor de dominio.
-// Mismo criterio que declaraciones.ts/nomina.ts: es un endpoint puro/
-// calculadora — el cliente HTTP manda los movimientos bancarios ya parseados
-// (el parsing de CSV/OFX lo hace `POST .../importar-estado-de-cuenta`, D-03) y el
-// motor los concilia contra los CFDI YA INGERIDOS de esta property
-// (`repo.listInvoices`) sin necesitar una tabla nueva de "trabajo de conciliación" —
-// ese es el alcance explícito de esta fase; persistir el historial de conciliaciones
-// corridas es un incremento natural futuro, no bloqueante para el valor del motor.
+// Fase 5 (conciliación bancaria): expone el motor de matching determinístico de niveles 1-3 (ver
+// @atiende/domain-despachos/conciliacion/matching-engine.ts) más las reglas de alerta (comisiones, movimientos
+// grandes, aging, duplicados). Los endpoints de ESTE archivo `/matching`, `/alertas`, `/clasificar-deposito`,
+// `/verificar-spei` y `/importar-estado-de-cuenta` son calculadoras/vistas previas: no guardan conciliaciones.
+//
+// D-35 + D-02: la conciliación PERSISTIDA (sesiones por periodo, matches confirmados, deshacer, sugerencias del
+// nivel 4 con aprobación humana obligatoria) vive en ./conciliacion-persistida.ts y se registra al final de
+// `despachosConciliacionRoutes` (migración 021). El nivel 4 (LLM) responde 503 honesto sin `deps.llmGateway`.
+//
+// `/matching` recibe movimientos ya parseados y los concilia contra los CFDI YA INGERIDOS de esta property
+// (`repo.listInvoices`); el parsing de CSV/OFX lo hace `POST .../importar-estado-de-cuenta`, D-03.
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
@@ -38,6 +31,7 @@ import type { BancoMx, FormatoEstadoCuenta, MovimientoBancario, RegistroConcilia
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { registrarConciliacionPersistida } from "./conciliacion-persistida.ts";
 
 interface MovimientoBody {
   readonly fecha?: unknown;
@@ -300,6 +294,9 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     }
     throw Errors.validation("Se requiere claveRastreo o rfc.");
   });
+
+  // D-35 + D-02: sesiones persistidas, confirmar/deshacer y nivel 4 (LLM) con aprobación humana. Comparten la cadena de middleware de arriba.
+  registrarConciliacionPersistida(app, deps, invoiceARegistroConciliable);
 
   return app;
 }

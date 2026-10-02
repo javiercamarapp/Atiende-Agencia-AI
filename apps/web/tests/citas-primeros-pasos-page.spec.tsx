@@ -101,6 +101,36 @@ describe("PrimerosPasosPage (citas)", () => {
     expect(text).not.toContain("Aún no estás listo");
   });
 
+  it("C-19: negocio listo muestra 'Tu página de reservas' con su enlace publico y Copiar lo manda al portapapeles; no listo no la muestra", async () => {
+    const escribir = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText: escribir } });
+    stubFetch(INCOMPLETO);
+    rendered = render();
+    await esperar();
+    expect(rendered.container.textContent).not.toContain("Tu página de reservas");
+    rendered.unmount();
+
+    stubFetch({ ...INCOMPLETO, pasos: INCOMPLETO.pasos.map((p) => ({ ...p, estado: "completo" })), completados: 7, progresoPct: 100, faltanParaPublicar: [], listoParaRecibirCitas: true });
+    rendered = render();
+    await esperar();
+    const url = `${window.location.origin}/reservar/demo`;
+    expect(rendered.container.textContent).toContain("Tu página de reservas");
+    expect(rendered.container.querySelector(`a[href="${url}"]`)).not.toBeNull();
+    await act(async () => boton("Copiar").click());
+    expect(escribir).toHaveBeenCalledWith(url);
+    expect(rendered.container.textContent).toContain("Enlace copiado.");
+  });
+
+  it("C-19: si el portapapeles falla lo dice y deja el enlace visible", async () => {
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async () => { throw new Error("denegado"); }) } });
+    stubFetch({ ...INCOMPLETO, pasos: INCOMPLETO.pasos.map((p) => ({ ...p, estado: "completo" })), completados: 7, progresoPct: 100, faltanParaPublicar: [], listoParaRecibirCitas: true });
+    rendered = render();
+    await esperar();
+    await act(async () => boton("Copiar").click());
+    expect(rendered.container.textContent).toContain("No pudimos copiarlo automáticamente");
+    expect(rendered.container.querySelector('a[href$="/reservar/demo"]')).not.toBeNull();
+  });
+
   it("los pasos requeridos no se pueden descartar ni posponer", async () => {
     stubFetch(INCOMPLETO);
     rendered = render();

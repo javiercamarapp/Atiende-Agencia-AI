@@ -8,3 +8,4 @@ export * from "./numbers-guard.js";
 export * from "./engine.js";
 export * from "./scripted-llm.js";
 export * from "./gateway-completion.js";
+export * from "./reporte.js";

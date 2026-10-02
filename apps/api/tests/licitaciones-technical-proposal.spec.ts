@@ -109,7 +109,12 @@ describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate",
     const proposalBody = (await proposalRes.json()) as { generationReport: { technical?: { usedCompanyDocumentIds?: string[] } } };
     expect(proposalBody.generationReport.technical?.usedCompanyDocumentIds).toEqual(["doc-acta-1"]);
 
-    // El expediente completo aún no está "ready" (falta checklist/aprobación),
+    // L-26: assemble exige la doble aprobación (2/2, dos personas que no redactaron nada).
+    const approvalUrl = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`;
+    expect((await app.request(approvalUrl, authedJson(ctx.staff.analyst.token, { stage: "tecnica_legal" }))).status).toBe(201);
+    expect((await app.request(approvalUrl, authedJson(ctx.staff.owner.token, { stage: "economica" }))).status).toBe(201);
+
+    // El expediente completo aún no está "ready" (falta el checklist),
     // pero la sección técnica ya NO cuenta como faltante -- assemble no debe
     // listarla en `missing` como bloqueo por falta de contenido técnico.
     const assembleRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-tech-1" }));

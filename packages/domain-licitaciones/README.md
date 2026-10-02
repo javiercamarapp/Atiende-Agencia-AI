@@ -102,3 +102,7 @@ Migración `030_whatsapp_avisos_y_decisiones.sql` (espejo `20240101000236_...`) 
 ## L-08 — KYC negativo 69-B
 
 Migración `031_licitaciones_kyc_69b.sql` (espejo `20240101000245_...`) y módulos `kyc-69b.ts` (puro: RFC estricto, lote, semáforo, alerta) y `kyc-69b-repository.ts` (Postgres con SAVEPOINT + versión en memoria). Lee la edición vigente de la lista 69-B que ya ingiere despachos (`despachos.efos_*`) con una función definer de solo lectura; la bitácora de consultas es privada por organización. Verificación contra Postgres real: `scripts/verify-licitaciones-kyc-69b/`. No valida el dígito verificador del RFC (solo su forma).
+
+## L-26 — doble aprobación del expediente (REQ-044)
+
+Migración `033_expediente_doble_aprobacion.sql` (espejo `20240101000280_...`): columna `licitaciones.approval.stage` (`tecnica_legal` | `economica`), índice único parcial (una vigente por etapa), trigger que impide que una misma persona dé las dos etapas y que la económica exista sin la técnico-legal del mismo hash, y policy de insert con `approver_id = auth.uid()` para las etapas. Dominio: `approval-workflow.ts` (`ApprovalWorkflow.approve({ stage })`, `evaluateExpedienteStages`); repositorios: `listExpedienteStageApprovals` (modo `doble` | `legacy` por SAVEPOINT, nunca falla en una base sin migrar). Las aprobaciones únicas previas vigentes se **invalidan** al migrar (con historial): no se convierten en 1/2. Verificación contra Postgres real: `scripts/verify-licitaciones-doble-aprobacion/`.

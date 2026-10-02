@@ -36,6 +36,14 @@ export interface ApiEnv {
   /** Version de la llave de arriba (`HOTELES_IDENTITY_KEY_VERSION`, default 1); se guarda
    *  en cada sobre para la rotacion futura. */
   readonly hotelesIdentityKeyVersion: number;
+  /** Rn-29 -- llave AES-256-GCM (32 bytes en base64) del cifrado en reposo de las instrucciones de acceso al huesped de rentas
+   *  (`RENTAS_ACCESS_KEY`). `null` cuando no esta configurada: leer/escribir instrucciones y la liberacion al huesped responden
+   *  "no disponible: falta RENTAS_ACCESS_KEY" (503 / error de cron sin contenido), NUNCA un 500 ni texto plano. */
+  readonly rentasAccessKey: string | null;
+  /** Version de la llave de arriba (`RENTAS_ACCESS_KEY_VERSION`, default 1); se guarda en cada fila para la rotacion futura. */
+  readonly rentasAccessKeyVersion: number;
+  /** D-28 -- URL del CSV publico "Listado completo 69-B" del SAT para el cron mensual (`EFOS_69B_URL`). Vacia = valor oficial por defecto, marcado NO VERIFICADO en `HttpEfos69bSource`. OPCIONAL: ningun fixture la exige. */
+  readonly efos69bUrl?: string;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
    * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
    * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
@@ -199,6 +207,9 @@ export function loadApiEnv(): ApiEnv {
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
+    rentasAccessKey: process.env.RENTAS_ACCESS_KEY ?? null,
+    rentasAccessKeyVersion: Number(process.env.RENTAS_ACCESS_KEY_VERSION ?? 1),
+    efos69bUrl: process.env.EFOS_69B_URL || undefined,
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
     googleOAuth:

@@ -23,6 +23,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-recepcion.spec.ts",
+  "apps/api/tests/hoteles-fechas-lista-espera-reloj.spec.ts",
   "apps/api/tests/hoteles-huespedes.spec.ts",
   "apps/api/tests/despachos-bookkeeping-servidor-hoy.spec.ts",
   "apps/api/tests/despachos-cierre-mensual-servidor-hoy.spec.ts",

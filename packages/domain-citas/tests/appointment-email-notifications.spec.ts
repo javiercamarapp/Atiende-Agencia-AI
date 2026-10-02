@@ -139,3 +139,29 @@ describe("tryEnqueueAppointmentEmail", () => {
     expect(result).toEqual({ enqueued: false, reason: "appointment_not_found" });
   });
 });
+
+// SA-L-46: la marca `transaccional` (que salta la lista de supresion) solo va en la confirmacion, el cambio o la
+// cancelacion de SU cita; el recordatorio y los avisos de completada / no asistio son proactivos y se suprimen.
+describe("enqueueAppointmentEmailCore: marca transaccional (SA-L-46)", () => {
+  const casos: ReadonlyArray<readonly [Parameters<typeof enqueueAppointmentEmailCore>[2], boolean]> = [
+    ["appointment.created", true],
+    ["appointment.confirmed", true],
+    ["appointment.modified", true],
+    ["appointment.rescheduled", true],
+    ["appointment.cancelled", true],
+    ["appointment.reminder_24h", false],
+    ["appointment.completed", false],
+    ["appointment.no_show", false],
+  ];
+  it.each(casos)("%s -> transaccional=%s", async (event, esperado) => {
+    const fixture = buildCitasFixture();
+    const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
+    const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
+    const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, event, appointment.id);
+    expect(result.enqueued).toBe(true);
+    const job = fixture.repo.getOutbox().find((o) => o.channel === "email" && o.eventType === event);
+    const payload = job!.payload as { transaccional?: unknown };
+    if (esperado) expect(payload.transaccional).toBe(true);
+    else expect(payload.transaccional).toBeUndefined();
+  });
+});

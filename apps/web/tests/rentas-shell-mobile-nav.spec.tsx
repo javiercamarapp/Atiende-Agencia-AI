@@ -101,25 +101,25 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });
 
-  it('el botón "Más" abre los 14 destinos (13 + Copiloto para admin_gestora), incluidos Copiloto, Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
+  it('el botón "Más" abre los 17 destinos (14 + Copiloto + 2 de Privacidad para admin_gestora), incluidos Copiloto, Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(14);
+    expect(hrefs).toHaveLength(17);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
+      expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/plantillas", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
     );
   });
 
   // UNI-6: marco de Likida -- Resumen y Calendario raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 14 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 17 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Canales", "Finanzas", "Configuración", "Control"]);
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Aprobaciones", "Mis tareas", "Acceso al huésped"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Aprobaciones", "Mis tareas", "Plantillas", "Acceso al huésped"]);
     abrirCategoria(root, "Canales");
     expect(categoriasAbiertas(root)).toEqual(["Canales"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Sincronización iCal", "Monitor de conflictos"]);
@@ -128,7 +128,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     abrirCategoria(root, "Configuración");
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Catálogo", "Equipo"]);
     abrirCategoria(root, "Control");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Auditoría"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Calendario", "Auditoría", "Privacidad", "Privacidad de la organización"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Gestora Demo", rol: "Administrador gestora" });
   });
 
@@ -224,7 +224,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(14);
     expect(hrefs).not.toContain("/rentas/demo/copiloto");
   });
 });

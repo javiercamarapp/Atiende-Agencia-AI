@@ -1,0 +1,14 @@
+id: rmf-2.7.1.35
+tipo: norma
+ordenamiento: "RMF"
+articulo_o_regla: "2.7.1.35"
+resumen: "Plazo de 72 horas para timbrar el CFDI; el motor lo replica por días completos, no por horas."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Defecto heredado documentado en el código (trunca a días completos). Falta confirmar que la regla vigente es la 2.7.1.35."
+usado_en_codigo:
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:22"
+  - "src/cfdi/reglas-fiscales-avanzadas.ts:239"

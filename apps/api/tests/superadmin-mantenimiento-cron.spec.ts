@@ -9,7 +9,7 @@
 // debe seguir 'ok' porque no es un fallo real del cron.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { InMemorySaludRepository, InMemorySuperadminAccionesRepository } from "@atiende/db";
+import { InMemoryAgentRunRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps } from "./fixtures.ts";
 
@@ -91,5 +91,33 @@ describe("POST/GET /internal/superadmin/mantenimiento", () => {
 
     const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
     expect(res.status).toBe(500);
+  });
+
+  it("purga la bitacora de corridas (retencion 90 dias) y lo reporta; el propio cron queda registrado en agent_run", async () => {
+    const base = await buildTestDeps();
+    const agentRuns = new InMemoryAgentRunRepository();
+    const app = buildApp({ ...base.deps, agentRunRepo: () => agentRuns });
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, corridasPurgadas: 0 });
+    expect(agentRuns.purgas).toBe(1);
+    expect(agentRuns.registradas).toEqual([expect.objectContaining({ agente: CRON_PATH, vertical: "plataforma", disparo: "cron", estado: "ok" })]);
+  });
+
+  it("si la purga falla (o la 0044 no esta aplicada), el cron sigue respondiendo 200 igual que antes", async () => {
+    const base = await buildTestDeps();
+    const agentRuns = new InMemoryAgentRunRepository();
+    agentRuns.purgarCorridas = async () => {
+      throw Object.assign(new Error("conexion perdida"), { code: "57P01" });
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const app = buildApp({ ...base.deps, agentRunRepo: () => agentRuns });
+      const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true, corridasPurgadas: null });
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

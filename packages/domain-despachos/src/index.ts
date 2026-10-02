@@ -123,6 +123,7 @@ export {
   DECLARACIONES_ROLES,
   NOMINA_ROLES,
   CONCILIACION_ROLES,
+  VER_CONCILIACION_ROLES,
   VER_MIGRACION_CATALOGO_ROLES,
   MIGRACION_CATALOGO_ROLES,
   DECIDIR_MAPEO_MIGRACION_ROLES,
@@ -615,6 +616,14 @@ export { EstadoSatNoDisponibleError, EstadoSatInvalidoError, InvoiceNoEncontrado
 
 // D-24: libro contable persistido (catálogo por cliente, pólizas con folio, balanza derivada, póliza de un CFDI).
 export * from "./libro/index.ts";
+// D-35 + D-02: conciliación bancaria persistida (sesiones, matches confirmados, sugerencias del nivel 4 con aprobación humana).
+export * from "./conciliacion/persistida/index.ts";
 
 // D-25: pagos provisionales de ISR/IVA (papel de trabajo por flujo de efectivo, pagos de REP persistidos).
 export * from "./pagos-provisionales/index.ts";
+
+// D-27: consulta publica del estatus de un CFDI ante el SAT (puerto + adaptador SOAP).
+export * from "./cfdi/estatus-sat/index.ts";
+
+// D-26/D-27/D-28: repositorio de solo sistema de los crons (migracion 022).
+export * from "./cron-sat/index.ts";

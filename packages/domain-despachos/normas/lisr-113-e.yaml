@@ -1,0 +1,16 @@
+id: lisr-113-e
+tipo: norma
+ordenamiento: "LISR"
+articulo_o_regla: "113-E"
+resumen: "RESICO de personas físicas (régimen 626): tasas mensuales de 1.00 a 2.50 por ciento y tope anual de 3,500,000 pesos."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar tasas, tope y retenciones aplicables (ver D-34, pregunta 5)."
+usado_en_codigo:
+  - "src/declaraciones/isr-tablas.ts:129"
+  - "src/pagos-provisionales/engine.ts:21"
+  - "src/pagos-provisionales/engine.ts:42"
+  - "src/pagos-provisionales/engine.ts:45"

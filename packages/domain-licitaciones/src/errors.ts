@@ -9,6 +9,18 @@ export class IdempotencyConflictError extends Error {
 }
 
 /**
+ * L-26: la base todavia no tiene la migracion 033 (etapas de la doble aprobacion
+ * del expediente). La ruta lo traduce a 409/503 honesto con la aprobacion unica
+ * previa intacta -- nunca un 500.
+ */
+export class ExpedienteStageNotAvailableError extends Error {
+  constructor() {
+    super("La doble aprobación del expediente aún no está disponible en esta base (falta la migración 033).");
+    this.name = "ExpedienteStageNotAvailableError";
+  }
+}
+
+/**
  * AE-01 (ver dates.ts::resolveExpedienteAsOfIso): la convocatoria todavía no
  * tiene `submissionDeadline` fijado, así que no se puede evaluar de forma
  * segura la vigencia de tarifas/documentos de empresa a la fecha del acto.

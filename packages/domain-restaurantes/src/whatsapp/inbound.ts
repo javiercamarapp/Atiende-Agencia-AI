@@ -156,6 +156,7 @@ export async function handleInboundWhatsAppMessage(
           to: phone,
           phone_number_id: phoneNumberId,
           body: reply,
+          transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
         });
       }
 

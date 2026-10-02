@@ -30,7 +30,7 @@ import type {
   ReceivableReminderRow,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
-import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
+import type { NuevoLoteEstadoCuenta, NuevoMovimientoEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import { construirTareasDesdePlantilla } from "./cierre-mensual/engine.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
@@ -693,6 +693,13 @@ export class InMemoryDespachosRepository implements DespachosRepository {
 
   // ---- Libro de estados de cuenta importados (D-03, migración 015) ----
   private readonly estadoCuentaHashes = new Map<string, Set<string>>();
+  /** Movimientos completos del libro (D-35: la conciliación persistida los lee por periodo). */
+  private readonly estadoCuentaMovimientos = new Map<string, Array<NuevoMovimientoEstadoCuenta & { readonly id: string }>>();
+
+  /** Doble en memoria de `select ... from despachos.estado_cuenta_movimiento where property_id = $1` (solo lectura, para el doble de la conciliación persistida). */
+  listEstadoCuentaMovimientosGuardados(propertyId: string): readonly (NuevoMovimientoEstadoCuenta & { readonly id: string })[] {
+    return this.estadoCuentaMovimientos.get(propertyId) ?? [];
+  }
 
   async listEstadoCuentaHashesExistentes(propertyId: string, hashes: readonly string[]): Promise<ReadonlySet<string>> {
     const guardados = this.estadoCuentaHashes.get(propertyId);
@@ -705,6 +712,9 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     for (const m of lote.movimientos) {
       if (guardados.has(m.hash)) continue;
       guardados.add(m.hash);
+      const lista = this.estadoCuentaMovimientos.get(lote.propertyId) ?? [];
+      lista.push({ ...m, id: randomUUID() });
+      this.estadoCuentaMovimientos.set(lote.propertyId, lista);
       insertados++;
     }
     this.estadoCuentaHashes.set(lote.propertyId, guardados);

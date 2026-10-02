@@ -61,6 +61,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `hoteles.aprobacion.expirada` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldAlert | `/hoteles/{orgSlug}/aprobaciones` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/agentes-expiracion-cron.ts` |
 | `hoteles.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, gm, reservations | ShieldCheck | `/hoteles/{orgSlug}/aprobaciones` | una por solicitud | 3 d | conectado: `packages/domain-hoteles/src/agentes/postgres-repository.ts` |
 | `hoteles.grupo.por_liberar` | cierres | atencion | owner/admin, gm, reservations | Users | `/hoteles/{orgSlug}/grupos` | una por propiedad por dia | 5 d | pendiente: cron grupos-liberacion: falta decidir el umbral de aviso con producto |
+| `hoteles.lista_espera.disponible` | operacion | atencion | owner/admin, gm, frontdesk, reservations | Hourglass | `/hoteles/{orgSlug}/reservas` | una por entrada ofrecida (clave = id de la entrada) | 3 d | conectado: `apps/api/src/routes/verticals/hoteles/lista-espera-ofertas.ts` (se emite al cancelar una reserva o acortar fechas y encontrar una entrada compatible; el aviso al huesped por WhatsApp no esta conectado (depende de Meta, H-23)) |
 | `hoteles.night_audit.fallo` | cierres | critica | owner/admin, gm, accountant | MoonStar | `/hoteles/{orgSlug}/reservas` | una por propiedad por noche | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/night-audit.ts` |
 | `hoteles.grupo.liberado` | cierres | atencion | owner/admin, gm, reservations | Users | `/hoteles/{orgSlug}/grupos` | una por propiedad por dia | 7 d | conectado: `apps/api/src/routes/verticals/hoteles/grupos-liberacion-cron.ts` |
 | `hoteles.housekeeping.inspeccion_rechazada` | operacion | atencion | owner/admin, gm, frontdesk, housekeeping | ClipboardX | `/hoteles/{orgSlug}/housekeeping` | una por tarea y por rechazo | 3 d | conectado: `apps/api/src/routes/verticals/hoteles/housekeeping.ts` |
@@ -75,18 +76,22 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `rentas.reserva.nueva_ical` | operacion | info | owner/admin, admin_gestora, operador:acceso_total, operador:calendario_mensajeria | CalendarPlus | `/rentas/{orgSlug}/calendario` | una por property por dia (clave = property + dia) | 5 d | conectado: `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` |
 | `rentas.conflicto.detectado` | operacion | critica | owner/admin, admin_gestora, operador:acceso_total | CalendarX | `/rentas/{orgSlug}/calendario` | una por property por dia (clave = property + dia) | 7 d | conectado: `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` |
 | `rentas.aprobacion.pendiente` | aprobaciones | atencion | owner/admin, admin_gestora, operador:calendario_mensajeria | MessageSquareWarning | `/rentas/{orgSlug}/aprobaciones` | una por mensaje | 3 d | conectado: `apps/api/src/routes/verticals/rentas/mensajeria-borradores.ts` |
+| `rentas.privacidad.arco_registrada` | seguridad | atencion | owner/admin, admin_gestora | ShieldAlert | `/rentas/{orgSlug}/privacidad` | una por solicitud | 30 d | conectado: `apps/api/src/routes/verticals/rentas/privacidad.ts` |
+| `rentas.privacidad.arco_por_vencer` | seguridad | critica | owner/admin, admin_gestora | CalendarClock | `/rentas/{orgSlug}/privacidad` | una por organizacion por dia (clave = organizacion + dia) | 7 d | pendiente: Requiere un cron diario que revise los plazos de las solicitudes abiertas; no se agenda en este PR (decision de costo, igual que la purga PL-13). |
 
 ### despachos
 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
 | `despachos.cobranza.recordatorios` | cobranza | atencion | owner/admin, contador | Receipt | `/despachos/{orgSlug}/cola-cobranza` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/notifications.ts` |
-| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 7 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (depende de accion manual: el barrido solo lo dispara el boton del panel, no hay cron (hueco heredado de #303)) |
-| `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por CFDI ingerido (clave = id del CFDI) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` |
-| `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (depende de accion manual: el barrido solo lo dispara el boton del panel, no hay cron (hueco heredado de #303)) |
+| `despachos.fiscal.vencimiento_proximo` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 7 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (lo dispara el boton del panel y el cron diario /internal/despachos/vencimientos-barrido (D-26)) |
+| `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por CFDI ingerido (clave = id del CFDI) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` (tambien lo emite el cron mensual /internal/despachos/efos-69b/descarga, apps/api/src/routes/verticals/despachos/cron-sat.ts, con la misma clave: un CFDI no se avisa dos veces) |
+| `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (lo dispara el boton del panel y el cron diario /internal/despachos/vencimientos-barrido (D-26)) |
 | `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` (depende de accion manual: sale al escalar a mano un vencimiento desde el panel, no hay cron) |
 | `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago guardado (clave = property + folio fiscal del REP) | 14 d | pendiente: el analisis de REP (POST .../cfdi/rep/analizar) no guarda nada y lo pueden llamar roles de solo lectura: emitir ahi llenaria la campana con XML arbitrario; se conecta cuando el REP se persista |
+| `despachos.cfdi.cancelado` | fiscal | critica | owner/admin, contador | FileX | `/despachos/{orgSlug}/cfdi/{entidadId}` | una por CFDI (clave = id del CFDI; la cancelacion es terminal) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi-estatus-sat.ts` (tambien lo emite el cron semanal de estatus SAT (apps/worker/src/jobs/despachos/cfdi-estatus-sat.ts, via cron-sat.ts); el mismo CFDI no se avisa dos veces) |
 | `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
+| `despachos.conciliacion.sugerencias_pendientes` | aprobaciones | atencion | owner/admin, contador | Sparkles | `/despachos/{orgSlug}/conciliacion` | una por sesion de conciliacion (clave = id de la sesion) | 7 d | conectado: `apps/api/src/routes/verticals/despachos/conciliacion-persistida.ts` |
 
 ### licitaciones
 
@@ -95,6 +100,10 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.plazo.por_vencer` | operacion | atencion | owner/admin, analyst, writer, reviewer | Hourglass | `/licitaciones/{orgSlug}/seguimiento` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/discover.ts` |
 | `licitaciones.convocatoria.nueva` | operacion | info | owner/admin, analyst | FilePlus2 | `/licitaciones/{orgSlug}/convocatorias` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/discover.ts` |
 | `licitaciones.fallo.publicado` | cierres | atencion | owner/admin, analyst, reviewer | Gavel | `/licitaciones/{orgSlug}/seguimiento` | una por convocatoria | 30 d | pendiente: requiere el detector de fallo en la fuente (depende de un agregador comercial sin proveedor elegido) |
+| `licitaciones.expediente.aprobacion_pendiente` | aprobaciones | atencion | owner/admin, analyst | ShieldCheck | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.expediente.aprobado` | cierres | info | owner/admin, analyst, writer | CircleCheckBig | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta y estado de insumos (clave = id de la propuesta + prefijo del hash de insumos) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.presentacion.declarada` | cierres | info | owner/admin, analyst, reviewer | FileCheck2 | `/licitaciones/{orgSlug}/convocatorias` | una por propuesta (clave = id de la propuesta) | 30 d | conectado: `apps/api/src/routes/verticals/licitaciones/cierre.ts` |
+| `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
 
 ### citas
 
@@ -113,6 +122,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
 | `superadmin.cfo.alerta` | cobranza | critica | superadmins de plataforma | ChartNoAxesCombined | `/superadmin/cfo` | una por regla por mes | 31 d | conectado: `apps/api/src/routes/internal/superadmin-alertas-cfo.ts` |
+| `superadmin.agente.fallo` | agentes | critica | superadmins de plataforma | Bot | `/superadmin/agentes` | una por agente por dia | 7 d | conectado: `apps/api/src/agentes/corridas.ts` (una corrida en `fallo` de un agente marcado `vivo` en `core.agent_definition`; los crons ya avisan con `superadmin.cron.fallo`) |
 | `superadmin.cron.fallo` | salud | critica | superadmins de plataforma | ServerCrash | `/superadmin/resumen` | una por cron por dia | 7 d | conectado: `apps/api/src/salud/with-heartbeat.ts` |
 | `superadmin.costo.ia_umbral` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/gasto-api` | una por umbral (80, 100) por mes | 31 d | conectado: `apps/api/src/production/llm-usage-gateway-adapters.ts` emite el umbral 100 (tope mensual agotado, de organizacion o de plataforma); el aviso de 80 % queda pendiente: el guard no devuelve el uso acumulado y falta una funcion SQL de solo lectura que lo calcule |
 | `superadmin.llm.modelo_caido` | salud | critica | superadmins de plataforma | TriangleAlert | `/superadmin/salud` | una por modelo por dia | 7 d | conectado: `apps/api/src/production/llm-gateway.ts` (cuando el circuit breaker de un modelo pasa a abierto) |
@@ -144,10 +154,21 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
   productores marcados `conectado`.
-- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 42 eventos, 38 con productor conectado y 4 pendientes (tras traer main, que sumó `despachos.pago_provisional.por_vencer` y los 4 avisos de citas de C-16). Los que se agregaron
+- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 43 eventos, 39 con productor conectado y 4 pendientes (tras traer main, que sumó `despachos.pago_provisional.por_vencer` y los 4 avisos de citas de C-16; D-02 suma `despachos.conciliacion.sugerencias_pendientes`). Los que se agregaron
   (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.
+- **D-26/D-27/D-28 (crons de despachos)**: suma `despachos.cfdi.cancelado` (critica, owner/admin y contador, enlace al DETALLE del CFDI con el marcador
+  `{entidadId}`, que `emitirNotificacion` sustituye por el `entidadId` de la emision) y conecta los productores de `despachos.efos.alerta`,
+  `despachos.fiscal.vencimiento_proximo` y `despachos.fiscal.vencimiento_vencido` a los crons nuevos (`apps/api/src/routes/verticals/despachos/cron-sat.ts`).
+- **L-26/L-28 (cierre del expediente de licitaciones)**: suma 3 eventos conectados en `apps/api/src/routes/verticals/licitaciones/cierre.ts`:
+  `licitaciones.expediente.aprobacion_pendiente` (se dio la 1/2 técnico-legal y falta la 2/2 económica, por otra persona),
+  `licitaciones.expediente.aprobado` (2/2 completa) y `licitaciones.presentacion.declarada`. Los tres enlazan a la lista de
+  convocatorias: el catálogo solo admite `{orgSlug}`, no el id de la convocatoria concreta.
+- **L-25 (gate final de la sala de guerra)**: suma `licitaciones.sala_guerra.paquete_no_listo`, conectado en
+  `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts`: se emite cuando `GET .../sala-guerra/gate` detecta que faltan
+  menos de 24 horas para el cierre, aun no se declaro la presentacion y el paquete no esta listo. Dedupe por convocatoria;
+  el enlace va a la lista de convocatorias (el catalogo solo admite `{orgSlug}`).
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

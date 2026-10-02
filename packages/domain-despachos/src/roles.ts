@@ -89,6 +89,10 @@ export const NOMINA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
  * conciliacion.ts. */
 export const CONCILIACION_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 
+/** D-35 -- quién puede VER las sesiones de conciliación persistidas, sus matches y sugerencias del nivel 4 (solo lectura:
+ * confirmar, deshacer, cerrar, sugerir con IA y aprobar/rechazar siguen siendo `CONCILIACION_ROLES`). */
+export const VER_CONCILIACION_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+
 /** Quién puede VER los mapeos de migración de catálogo contable y su
  * clasificación sugerida — es lectura de un análisis, no una decisión.
  * Aplica SOLO a los 2 GET (mapeos/mapeos/:id) de migracion-catalogo.ts. */

@@ -87,7 +87,7 @@ export function licitacionesWhatsAppRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   async function enqueueReply(organizationId: string, dedupeKey: string, to: string, body: string): Promise<void> {
     if (!waRepoFactory) return;
     try {
-      await deps.engine.withAppSession({ userId: null }, (db) => waRepoFactory(db).enqueueOutbox(organizationId, "reply", dedupeKey, { to, body }));
+      await deps.engine.withAppSession({ userId: null }, (db) => waRepoFactory(db).enqueueOutbox(organizationId, "reply", dedupeKey, { to, body, transaccional: true }));
     } catch (err) {
       console.error("licitaciones whatsapp: no se pudo encolar la respuesta (best-effort):", err instanceof Error ? err.message : err);
     }

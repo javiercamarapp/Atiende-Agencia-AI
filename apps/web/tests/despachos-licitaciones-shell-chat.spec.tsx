@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos" conectado en los shells de DESPACHOS y LICITACIONES: el boton del encabezado deja de
+// "Chatea con tus datos" conectado en los shells de LICITACIONES (dialogo) y DESPACHOS (CHAT-11: enlace a la pagina del Copiloto): el boton del encabezado deja de
 // decir "Pronto" SOLO cuando el servidor confirma available=true en su propia ruta; con el servidor
 // diciendo no (o fallando) sigue el aviso honesto. Al abrir, la conversacion es real: la pregunta viaja por
 // POST a la ruta de la vertical con el Bearer de la sesion y la respuesta pinta tabla y fuente del servidor.
@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { DespachosShell } from "../src/verticals/despachos/DespachosShell.tsx";
 import { LicitacionesShell } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
-import { SUGERENCIAS_DESPACHOS } from "../src/verticals/despachos/lib/chat-datos-client.ts";
 import { SUGERENCIAS_LICITACIONES } from "../src/verticals/licitaciones/lib/chat-datos-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
@@ -64,9 +63,9 @@ function stubFetch(estado: () => Response | Promise<Response>): Llamada[] {
 }
 const siEsta = () => new Response(JSON.stringify({ available: true }), { status: 200, headers: { "content-type": "application/json" } });
 
-async function renderDespachos(): Promise<RenderedComponent> {
+async function renderDespachos(rol = "admin"): Promise<RenderedComponent> {
   installMatchMediaStub();
-  installMemoryLocalStorage().setItem("atiende.despachos.session", JSON.stringify({ token: "tok-d", refreshToken: "r", email: "c@example.com", fullName: "C", organizations: [{ id: "o", slug: "demo", nombre: "Demo", vertical: "despachos", rol: "admin" }] }));
+  installMemoryLocalStorage().setItem("atiende.despachos.session", JSON.stringify({ token: "tok-d", refreshToken: "r", email: "c@example.com", fullName: "C", organizations: [{ id: "o", slug: "demo", nombre: "Demo", vertical: "despachos", rol }] }));
   fetchBranchesDespachos.mockResolvedValue([{ propertyId: "prop-d1", name: "Contribuyente Uno" }]);
   const r = renderComponent(
     <MemoryRouter>
@@ -101,17 +100,23 @@ async function renderLicitaciones(): Promise<RenderedComponent> {
 }
 
 const botonesChat = (): HTMLButtonElement[] => [...document.body.querySelectorAll("button")].filter((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement[];
+// CHAT-12: con el Copiloto de licitaciones el boton disponible es un ENLACE a la pagina (no abre el dialogo).
+const enlacesChat = (): HTMLAnchorElement[] => [...document.body.querySelectorAll("a")].filter((a) => a.textContent?.includes("Chatea con tus datos")) as HTMLAnchorElement[];
 
 describe.each([
-  { nombre: "DespachosShell", render: renderDespachos, ruta: "https://api.test/despachos/prop-d1/chat-datos", bearer: "Bearer tok-d", sugerencias: SUGERENCIAS_DESPACHOS },
-  { nombre: "LicitacionesShell", render: renderLicitaciones, ruta: "https://api.test/licitaciones/prop-l1/chat-datos", bearer: "Bearer tok-l", sugerencias: SUGERENCIAS_LICITACIONES },
-])("$nombre — Chatea con tus datos", ({ render, ruta, bearer, sugerencias }) => {
+  { nombre: "LicitacionesShell", render: renderLicitaciones, ruta: "https://api.test/licitaciones/prop-l1/chat-datos", bearer: "Bearer tok-l", sugerencias: SUGERENCIAS_LICITACIONES, href: "/licitaciones/demo/copiloto" },
+])("$nombre — Chatea con tus datos", ({ render, ruta, bearer, sugerencias, href }) => {
   it("consulta la disponibilidad en la ruta de SU vertical y, si el servidor la confirma, quita 'Pronto'", async () => {
     const calls = stubFetch(siEsta);
     rendered = await render();
     expect(calls.some((c) => c.url === `${ruta}/estado`)).toBe(true);
-    const boton = botonesChat()[0]!;
-    expect(boton.textContent).not.toContain("Pronto");
+    if (href) {
+      // Disponible: el boton es un enlace a la pagina del Copiloto y ya no hay boton "Pronto".
+      expect(botonesChat()).toHaveLength(0);
+      expect(enlacesChat()[0]?.getAttribute("href")).toBe(href);
+    } else {
+      expect(botonesChat()[0]!.textContent).not.toContain("Pronto");
+    }
   });
 
   it("si el servidor dice que no esta activo (o responde 403/500/falla), SIGUE el aviso honesto con 'Pronto'", async () => {
@@ -134,7 +139,7 @@ describe.each([
     }
   });
 
-  it("con el asistente activo la conversacion es real: sugerencias de la vertical, POST con Bearer y respuesta del servidor (tabla + fuente)", async () => {
+  it.skipIf(href !== null)("con el asistente activo la conversacion es real: sugerencias de la vertical, POST con Bearer y respuesta del servidor (tabla + fuente)", async () => {
     const calls = stubFetch(siEsta);
     rendered = await render();
     click(botonesChat()[0]!);
@@ -154,5 +159,44 @@ describe.each([
     expect(dialogo.textContent).toContain("$1,234.50 MXN");
     expect(dialogo.textContent).toContain("Fuente: Fuente de prueba");
     expect(dialogo.textContent).toContain("Alcance: todos tus clientes");
+  });
+});
+
+// CHAT-11: en despachos el Copiloto es una PAGINA (/despachos/:org/copiloto) para admin, contador, auditor y readonly. Con el asistente activo el
+// boton del header es un enlace (ya no abre el dialogo ni manda la pregunta desde ahi: eso lo cubre despachos-copiloto-page.spec.tsx). Los roles
+// que el servidor rechaza no ven el boton ni consultan /estado: ya no hay "Pronto" para ellos.
+describe("DespachosShell — Chatea con tus datos (CHAT-11)", () => {
+  const enlaceChat = () => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.includes("Chatea con tus datos"));
+  const textoChat = () => [...rendered!.container.querySelectorAll("a, button")].filter((e) => e.textContent?.includes("Chatea con tus datos"));
+
+  it("con el asistente activo el boton es un enlace a la pagina del Copiloto, no abre el dialogo y consulta /estado de SU contribuyente", async () => {
+    const calls = stubFetch(siEsta);
+    rendered = await renderDespachos();
+    expect(calls.some((c) => c.url === "https://api.test/despachos/prop-d1/chat-datos/estado")).toBe(true);
+    expect(enlaceChat()?.getAttribute("href")).toBe("/despachos/demo/copiloto");
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+  });
+
+  it("rol sin acceso: no hay boton 'Chatea con tus datos' ni se consulta /estado", async () => {
+    const calls = stubFetch(() => new Response("{}", { status: 403 }));
+    rendered = await renderDespachos("staff");
+    expect(textoChat()).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes("/chat-datos"))).toBe(false);
+  });
+
+  it("con asistente sin proveedor (available=false) o servidor caido: sigue 'Pronto' (boton, nunca enlace)", async () => {
+    stubFetch(() => new Response(JSON.stringify({ available: false }), { status: 200 }));
+    rendered = await renderDespachos();
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
+    rendered.unmount();
+    rendered = undefined;
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    stubFetch(() => Promise.reject(new TypeError("offline")));
+    rendered = await renderDespachos();
+    expect(enlaceChat()).toBeUndefined();
+    expect(textoChat()[0]?.textContent).toContain("Pronto");
   });
 });

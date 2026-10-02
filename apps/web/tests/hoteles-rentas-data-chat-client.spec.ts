@@ -1,10 +1,13 @@
-// Cliente de "Chatea con tus datos" de hoteles y rentas: rutas, cuerpo sin identidad, tope de historial, refresh de
+// Cliente de "Chatea con tus datos" de hoteles, rentas y citas: rutas, cuerpo sin identidad, tope de historial, refresh de
 // sesion de CADA vertical y degradacion honesta ante errores. `fetch` inyectado: nada toca la red.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hotelesDataChat, SUGERENCIAS_HOTELES } from "../src/verticals/hoteles/lib/data-chat-client.ts";
 import { rentasDataChat, SUGERENCIAS_RENTAS } from "../src/verticals/rentas/lib/data-chat-client.ts";
 import { persistHotelesSession, readPersistedHotelesSession } from "../src/verticals/hoteles/lib/auth-client.ts";
 import { persistRentasSession, readPersistedRentasSession } from "../src/verticals/rentas/lib/auth-client.ts";
+import { citasDataChat } from "../src/verticals/citas/lib/data-chat-client.ts";
+import { SUGERENCIAS_COPILOTO_CITAS } from "../src/lib/copiloto/config/citas.ts";
+import { persistCitasSession, readPersistedCitasSession } from "../src/verticals/citas/lib/auth-client.ts";
 import type { SessionStorageLike } from "../src/lib/auth-client.ts";
 
 function fakeLocalStorage(): SessionStorageLike {
@@ -19,6 +22,8 @@ const mk = (res: () => Promise<Response>) => (async () => res()) as unknown as t
 const CASES = [
   { nombre: "hoteles", cliente: hotelesDataChat, ruta: "hoteles", sugerencias: SUGERENCIAS_HOTELES, persist: persistHotelesSession, read: readPersistedHotelesSession },
   { nombre: "rentas", cliente: rentasDataChat, ruta: "rentas", sugerencias: SUGERENCIAS_RENTAS, persist: persistRentasSession, read: readPersistedRentasSession },
+  // CHAT-13: citas usa el mismo cliente generico con la sesion de citas.
+  { nombre: "citas", cliente: citasDataChat, ruta: "citas", sugerencias: SUGERENCIAS_COPILOTO_CITAS, persist: persistCitasSession, read: readPersistedCitasSession },
 ] as const;
 
 describe.each(CASES)("data-chat-client de $nombre", ({ cliente, ruta, sugerencias, persist, read }) => {

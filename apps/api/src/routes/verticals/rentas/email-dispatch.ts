@@ -34,6 +34,7 @@ import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { crearGuardCorreo } from "../../../supresion/index.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts.
  * Exportado (fix a2b, parte B) para que el drenado post-commit de
@@ -55,7 +56,7 @@ export const INLINE_BATCH_SIZE = 5;
 export async function runRentasEmailDispatch(deps: AppDeps, batchSize?: number): Promise<RentasEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const rentasRepo = deps.rentasRepo(db);
-    return dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
+    return dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
   });
 }
 
@@ -119,7 +120,7 @@ export async function triggerRentasEmailDispatchInline(deps: AppDeps, db: Tenant
   const summary = await runWithSavepointFallback<RentasEmailDispatchSummary | undefined>({
     session: db,
     savepointName: "sp_inline_email_dispatch",
-    primary: () => dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize }),
+    primary: () => dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) }),
     isRecoverable: () => true,
     fallback: (err) => {
       console.error("rentas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
