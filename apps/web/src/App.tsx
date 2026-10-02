@@ -66,6 +66,7 @@ import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { HousekeepingPage } from "./verticals/hoteles/pages/Housekeeping.tsx";
+import { MensajeriaPage } from "./verticals/hoteles/pages/Mensajeria.tsx";
 import { TicketsPage } from "./verticals/hoteles/pages/Tickets.tsx";
 import { AgentesPage } from "./verticals/hoteles/pages/Agentes.tsx";
 import { AprobacionesAgentesPage } from "./verticals/hoteles/pages/Aprobaciones.tsx";
@@ -565,6 +566,8 @@ function HotelesFolioRoute() {
 const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <MantenimientoPage {...ctx} />);
 // H-04 — housekeeping completo (tablero, tareas, inspección, fuera de servicio, reporte).
 const HotelesHousekeepingRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HousekeepingPage {...ctx} />);
+// H-29 — canal WhatsApp + agente de voz editables (owner/gm; el servidor responde 403 al resto).
+const HotelesMensajeriaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <MensajeriaPage {...ctx} />);
 // H-05 — tickets de huésped con SLA, escalación y bitácora (cualquier rol hotelero; el servidor filtra por rol).
 const HotelesTicketsRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <TicketsPage {...ctx} />);
 const HotelesAgentesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AgentesPage {...ctx} />);
@@ -996,6 +999,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/housekeeping" element={<HotelesHousekeepingRoute />} />
+        <Route path="/hoteles/:orgSlug/mensajeria" element={<HotelesMensajeriaRoute />} />
         <Route path="/hoteles/:orgSlug/tickets" element={<HotelesTicketsRoute />} />
         <Route path="/hoteles/:orgSlug/agentes" element={<HotelesAgentesRoute />} />
         <Route path="/hoteles/:orgSlug/aprobaciones" element={<HotelesAprobacionesRoute />} />
