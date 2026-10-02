@@ -153,7 +153,7 @@ Nunca un 500 ni una transacción abortada. Los tests usan `AbortAwareFakeSession
 - Sin cron: la purga no corre sola (decisión de costo).
 - Hoteles: solo se documenta su retención y se lee su ARCO; su purga sigue siendo `sweep_identity_retention`.
 - Despachos y licitaciones no tienen ARCO propio todavía.
-- Rentas: la mensajería con huéspedes (`rentas.mensajeria_*`) y las notas de reserva no entran todavía en la retención de PII; no hay canal
+- Rentas: la mensajería con huéspedes (`rentas.conversacion` y `rentas.mensaje`) y las notas de reserva no entran todavía en la retención de PII; no hay canal
   público de alta de solicitudes ARCO (las registra el staff).
 - Los cambios de política de retención guardan quién y cuándo (`updated_by/updated_at`), no un historial.
 - La acción sobre una solicitud (responder, cambiar estado) sigue en el panel de cada vertical.
