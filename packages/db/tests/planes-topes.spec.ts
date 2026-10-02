@@ -48,9 +48,9 @@ describe("decidirEnvio", () => {
 
 describe("registrarMensaje", () => {
   it("mapea el cruce de umbral y el excedente", async () => {
-    const session = new AbortAwareFakeSession([{ match: record, respond: () => [{ r: { registrado: true, periodo: "2026-10-01", cruce: "excedido", usado: 1001, limite: 1000, accion: "avisar", excedente: 1 } }] }]);
+    const session = new AbortAwareFakeSession([{ match: record, respond: () => [{ r: { registrado: true, periodo: "2026-10-01", cruce: "excedido", usado: 1001, limite: 1000, accion: "avisar", excedente: 1, slug: "hotel-a" } }] }]);
     expect(await registrarMensaje(session, { organizationId: ORG, refTipo: "wa_outbox_citas", refId: "m1" })).toEqual({
-      disponible: true, registrado: true, periodo: "2026-10-01", cruce: "excedido", usado: 1001, limite: 1000, accion: "avisar", excedente: 1,
+      disponible: true, registrado: true, periodo: "2026-10-01", cruce: "excedido", usado: 1001, limite: 1000, accion: "avisar", excedente: 1, slug: "hotel-a",
     });
   });
 
@@ -73,14 +73,14 @@ describe("lecturas", () => {
 
   it("leerUsoOrganizacion mapea el documento", async () => {
     const doc = {
-      organizationId: ORG, periodo: "2026-10-01", zonaHoraria: "America/Merida",
+      organizationId: ORG, slug: "hotel-a", vertical: "hoteles", periodo: "2026-10-01", zonaHoraria: "America/Merida",
       mensajes: { usado: 801, limite: 1000, accion: "pausar", excedente: 0, proactivosOmitidos: 2 },
       plan: { id: "pl16-test", nombre: "Plan" },
       prueba: { activa: true, terminaEn: "2026-11-10T18:00:00+00:00", diasRestantes: 7 },
     };
     const session = new AbortAwareFakeSession([{ match: usage, respond: () => [{ r: doc }] }]);
     const r = await leerUsoOrganizacion(session, USER, ORG);
-    expect(r.disponible && r.uso).toMatchObject({ periodo: "2026-10-01", zonaHoraria: "America/Merida", mensajes: { usado: 801, limite: 1000, accion: "pausar", proactivosOmitidos: 2 }, plan: { id: "pl16-test" }, prueba: { activa: true, diasRestantes: 7, terminaEn: "2026-11-10T18:00:00.000Z" } });
+    expect(r.disponible && r.uso).toMatchObject({ slug: "hotel-a", vertical: "hoteles", periodo: "2026-10-01", zonaHoraria: "America/Merida", mensajes: { usado: 801, limite: 1000, accion: "pausar", proactivosOmitidos: 2 }, plan: { id: "pl16-test" }, prueba: { activa: true, diasRestantes: 7, terminaEn: "2026-11-10T18:00:00.000Z" } });
   });
 
   it("listarUsoSuperadmin: base sin migrar -> no disponible", async () => {

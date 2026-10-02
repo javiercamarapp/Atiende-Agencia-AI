@@ -37,6 +37,8 @@ export interface RegistroMensaje {
   readonly limite: number | null;
   readonly accion: AccionTopeMensajes | null;
   readonly excedente: number | null;
+  /** Slug de la organizacion (codigo, no PII): lo usan los avisos de plataforma para identificarla. */
+  readonly slug: string | null;
 }
 
 export interface UsoMensajes {
@@ -49,6 +51,8 @@ export interface UsoMensajes {
 
 export interface UsoOrganizacion {
   readonly organizationId: string;
+  readonly slug: string;
+  readonly vertical: string;
   readonly periodo: string;
   readonly zonaHoraria: string;
   readonly mensajes: UsoMensajes;
@@ -103,7 +107,7 @@ function iso(value: unknown): string {
 }
 
 const DECISION_NO_DISPONIBLE: DecisionEnvio = { disponible: false, permitir: true, motivo: null, usado: null, limite: null };
-const REGISTRO_NO_DISPONIBLE: RegistroMensaje = { disponible: false, registrado: false, periodo: null, cruce: "ninguno", usado: null, limite: null, accion: null, excedente: null };
+const REGISTRO_NO_DISPONIBLE: RegistroMensaje = { disponible: false, registrado: false, periodo: null, cruce: "ninguno", usado: null, limite: null, accion: null, excedente: null, slug: null };
 
 /** Decide si un envio puede salir. Solo bloquea un proactivo NO critico en un plan con accion `pausar` y tope consumido. */
 export async function decidirEnvio(
@@ -148,7 +152,7 @@ export async function registrarMensaje(
       const r = rows[0]?.r ?? {};
       const cruce = r.cruce === "aviso80" || r.cruce === "excedido" ? r.cruce : "ninguno";
       const accion = r.accion === "avisar" || r.accion === "cobrar" || r.accion === "pausar" ? r.accion : null;
-      return { disponible: true, registrado: r.registrado === true, periodo: typeof r.periodo === "string" ? r.periodo : null, cruce, usado: num(r.usado), limite: num(r.limite), accion, excedente: num(r.excedente) };
+      return { disponible: true, registrado: r.registrado === true, periodo: typeof r.periodo === "string" ? r.periodo : null, cruce, usado: num(r.usado), limite: num(r.limite), accion, excedente: num(r.excedente), slug: typeof r.slug === "string" ? r.slug : null };
     },
     isRecoverable: isMigrationPendingError,
     fallback: async () => REGISTRO_NO_DISPONIBLE,
@@ -162,6 +166,8 @@ function mapUso(r: Record<string, unknown>): UsoOrganizacion {
   const accion = m.accion === "avisar" || m.accion === "cobrar" || m.accion === "pausar" ? m.accion : null;
   return {
     organizationId: String(r.organizationId),
+    slug: String(r.slug),
+    vertical: String(r.vertical),
     periodo: dateText(r.periodo),
     zonaHoraria: String(r.zonaHoraria),
     mensajes: { usado: num(m.usado) ?? 0, limite: num(m.limite), accion, excedente: num(m.excedente) ?? 0, proactivosOmitidos: num(m.proactivosOmitidos) ?? 0 },
@@ -213,8 +219,10 @@ export async function listarUsoSuperadmin(session: TenantDbSession, callerId: st
 }
 
 /** Reclama los avisos de fin de prueba de HOY (7/3/1 dias) y los reintentos de correo pendientes. Cada aviso exitoso sale una vez. */
-export async function reclamarAvisosPrueba(session: TenantDbSession, now: Date = new Date()): Promise<{ readonly disponible: boolean; readonly avisos: readonly AvisoPrueba[] }> {
-  return runWithSavepointFallback({
+export type ReclamoAvisosPrueba = { readonly disponible: boolean; readonly avisos: readonly AvisoPrueba[] };
+
+export async function reclamarAvisosPrueba(session: TenantDbSession, now: Date = new Date()): Promise<ReclamoAvisosPrueba> {
+  return runWithSavepointFallback<ReclamoAvisosPrueba>({
     session,
     primary: async () => {
       const { rows } = await session.query<Record<string, unknown>>("select * from core.trial_notice_claim($1::timestamptz);", [now.toISOString()]);
@@ -230,7 +238,7 @@ export async function reclamarAvisosPrueba(session: TenantDbSession, now: Date =
       return { disponible: true, avisos };
     },
     isRecoverable: isMigrationPendingError,
-    fallback: async () => ({ disponible: false, avisos: [] as readonly AvisoPrueba[] }),
+    fallback: async () => ({ disponible: false, avisos: [] }),
   });
 }
 

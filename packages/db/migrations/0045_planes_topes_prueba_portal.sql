@@ -211,7 +211,8 @@ begin
   return jsonb_build_object(
     'registrado', v_insertados = 1, 'periodo', v_periodo, 'cruce', v_cruce,
     'usado', v_snap.usado, 'limite', v_snap.limite, 'accion', v_snap.accion,
-    'excedente', v_snap.excedente, 'omitidos', v_snap.omitidos
+    'excedente', v_snap.excedente, 'omitidos', v_snap.omitidos,
+    'slug', (select o.slug from core.organization o where o.id = p_organization_id)
   );
 end;
 $$;
@@ -343,7 +344,7 @@ begin
   ) then
     return null;
   end if;
-  select o.id, o.status, o.timezone, o.trial_ends_at into v_org from core.organization o where o.id = p_organization_id;
+  select o.id, o.status, o.timezone, o.trial_ends_at, o.slug, o.vertical into v_org from core.organization o where o.id = p_organization_id;
   if v_org.id is null then
     return null;
   end if;
@@ -355,6 +356,8 @@ begin
   end if;
   return jsonb_build_object(
     'organizationId', p_organization_id,
+    'slug', v_org.slug,
+    'vertical', v_org.vertical,
     'periodo', v_periodo,
     'zonaHoraria', v_org.timezone,
     'mensajes', jsonb_build_object(

@@ -329,3 +329,15 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c101', true);
 select ((core.message_usage_for_org('00000000-0000-0000-0000-00000000c101', '00000000-0000-0000-0000-00000000a103') #>> '{prueba,activa}') = 'true')::int as prueba_activa_deberia_ser_1;
 rollback;
+
+\echo '44. el registro devuelve el slug de la organizacion (codigo para los avisos de plataforma, sin PII)'
+begin;
+select (core.message_usage_record('00000000-0000-0000-0000-00000000a101', 'wa_test', 'slug-1', now())->>'slug' = 'hotel-a-pl16')::int as slug_en_registro_deberia_ser_1;
+rollback;
+
+\echo '45. la lectura del cliente devuelve slug y vertical (para volver desde el portal de facturacion)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c101', true);
+select ((core.message_usage_for_org('00000000-0000-0000-0000-00000000c101', '00000000-0000-0000-0000-00000000a101')->>'slug') = 'hotel-a-pl16' and (core.message_usage_for_org('00000000-0000-0000-0000-00000000c101', '00000000-0000-0000-0000-00000000a101')->>'vertical') = 'hoteles')::int as slug_y_vertical_deberia_ser_1;
+rollback;
