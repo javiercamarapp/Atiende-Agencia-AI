@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { faseSegunTiempo, TICK_FASES_MS, TIMEOUT_TURNO_MS } from "./fases";
 import {
   CopilotoErrorTransporte,
+  type CopilotoDirecta,
   type CopilotoEvento,
   type CopilotoMensaje,
   type CopilotoRespuesta,
@@ -31,7 +32,8 @@ export interface UseCopiloto {
   readonly conversacionId: string | undefined;
   readonly abriendo: boolean;
   readonly errorAbrir: boolean;
-  enviar(pregunta: string): void;
+  /** `directa` = el chip se resuelve sin modelo (el texto es solo la etiqueta del mensaje). */
+  enviar(pregunta: string, directa?: CopilotoDirecta): void;
   detener(): void;
   nuevo(): void;
   abrir(id: string): void;
@@ -85,8 +87,11 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
     return () => clearInterval(id);
   }, [enviando]);
 
+  // Ultima consulta directa enviada: "Regenerar" de la respuesta de un chip repite la MISMA consulta directa.
+  const directaRef = useRef<{ readonly texto: string; readonly directa: CopilotoDirecta } | undefined>(undefined);
+
   const turno = useCallback(
-    async (pregunta: string, base: readonly CopilotoMensaje[]) => {
+    async (pregunta: string, base: readonly CopilotoMensaje[], directa?: CopilotoDirecta) => {
       if (ocupado.current) return;
       ocupado.current = true;
       const ctl = new AbortController();
@@ -131,6 +136,7 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
       try {
         const devuelta = await transporteRef.current.enviar({
           pregunta,
+          ...(directa ? { directa } : {}),
           ...(conversacionRef.current ? { conversacionId: conversacionRef.current } : {}),
           senal: ctl.signal,
           onEvento: alEvento,
@@ -181,10 +187,11 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
   );
 
   const enviar = useCallback(
-    (pregunta: string) => {
+    (pregunta: string, directa?: CopilotoDirecta) => {
       const q = pregunta.trim();
       if (!q || ocupado.current) return;
-      void turno(q, mensajesRef.current);
+      directaRef.current = directa ? { texto: q, directa } : undefined;
+      void turno(q, mensajesRef.current, directa);
     },
     [turno],
   );
@@ -243,7 +250,8 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
     while (i >= 0 && lista[i]?.role !== "user") i--;
     const pregunta = lista[i]?.text;
     if (i < 0 || !pregunta) return;
-    void turno(pregunta, lista.slice(0, i));
+    const previa = directaRef.current;
+    void turno(pregunta, lista.slice(0, i), previa && previa.texto === pregunta ? previa.directa : undefined);
   }, [turno]);
 
   // Conversacion inicial (?c=<id>) y limpieza al desmontar.

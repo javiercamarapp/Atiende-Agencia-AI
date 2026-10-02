@@ -68,14 +68,15 @@ const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", p
 const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
 
 export const rutasRestaurantes: readonly Ruta[] = [
+  { metodo: "GET", patron: `${B}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   { metodo: "GET", patron: `${B}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
   {
     metodo: "POST",
     patron: `${B}/chat-datos`,
     roles: MOCK_ROLES_COPILOTO,
     manejador: (p) => {
-      const cuerpo = (p.cuerpo ?? {}) as { question?: string; conversationId?: string };
-      const pregunta = String(cuerpo.question ?? "");
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; label?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? cuerpo.label ?? "");
       const lista = conversacionesMock(p);
       let conv = lista.find((c) => c.id === cuerpo.conversationId);
       if (!conv) {

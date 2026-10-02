@@ -10,7 +10,7 @@
 // consultas corren con la sesion RLS del usuario, nunca con una de sistema. La logica vive en
 // @atiende/agent-core/data-chat (motor) y @atiende/domain-despachos (catalogo): aqui solo se valida entrada.
 // Sin migracion nueva: la bitacora (core.data_chat_query_log, 0029) ya acepta la vertical despachos.
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
@@ -20,6 +20,8 @@ import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
+import { mountPinsRoutes, type PinsTurnContext } from "../../../data-chat/pins.ts";
+import { NO_LLM_COMPLETION, directTurnOptions } from "../../../data-chat/turno.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
@@ -40,42 +42,55 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json(await buildDataChatEstado(deps, c.get("db"), { organizationId: c.get("organizationId"), userId: c.get("userId") }, available));
   });
 
-  app.post(base, async (c) => {
-    assertVerticalRole(c, VER_DASHBOARD_ROLES);
-    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
-
-    const dataChat = deps.dataChat;
-    const completion = dataChat?.completion;
-    if (!dataChat || !completion || !dataChat.despachosReader) {
-      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
-    }
-
+  // Alcance y catalogo de un turno, SIEMPRE desde la membership verificada del request (los usan el POST del chat y los fijados).
+  const turnContext = async (c: Context<CoreAuthHonoEnv>): Promise<PinsTurnContext | undefined> => {
+    const readerFor = deps.dataChat?.despachosReader;
+    if (!readerFor) return undefined;
     const db = c.get("db");
     const organizationId = c.get("organizationId");
     const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
     // `findPropertyConfig` degrada a null (nunca lanza) en la base sin la migracion 012.
     const config = await deps.despachosRepo(db).findPropertyConfig(c.req.param("propertyId") ?? "");
+    return {
+      catalogFor: (d) => buildDespachosDataChatCatalog(readerFor(d)),
+      scope: {
+        organizationId,
+        userId: c.get("userId"),
+        vertical: "despachos",
+        verticalRole: c.get("verticalRole") ?? "",
+        allowedPropertyIds,
+        timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
+      },
+    };
+  };
+
+  app.post(base, async (c) => {
+    assertVerticalRole(c, VER_DASHBOARD_ROLES);
+    const { question, history, tool, toolArgs, label, conversationId } = await parseDataChatRequest(c);
+
+    const dataChat = deps.dataChat;
+    const completion = dataChat?.completion;
+    // La ruta directa (chip/boton, `tool`) no usa modelo: funciona aunque no haya proveedor de IA configurado.
+    if (!dataChat || (!completion && !tool) || !dataChat.despachosReader) {
+      return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
+    }
+
+    const db = c.get("db");
+    const organizationId = c.get("organizationId");
+    const turn = (await turnContext(c))!;
 
     const userId = c.get("userId");
-    const verticalRole = c.get("verticalRole") ?? "";
     // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
     const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "despachos" }, propertyId: c.req.param("propertyId") ?? null });
     return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
-      persist.finish(turnDb, question, tool, await runDataChatTurn({
-        catalog: buildDespachosDataChatCatalog(dataChat.despachosReader!(turnDb)),
-        scope: {
-          organizationId,
-          userId,
-          vertical: "despachos",
-          verticalRole,
-          allowedPropertyIds,
-          timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
-        },
+      persist.finish(turnDb, label ?? question, tool, await runDataChatTurn({
+        catalog: turn.catalogFor(turnDb)!,
+        scope: turn.scope,
         question,
         history: persist.history,
-        ...(tool ? { directTool: tool } : {}),
-        complete: completion(organizationId, DESPACHOS_DATA_CHAT_ROLE),
-        completeRetry: completion(organizationId, `despachos:${DATA_CHAT_RETRY_SUFFIX}`),
+        ...directTurnOptions(dataChat, tool, toolArgs),
+        complete: completion ? completion(organizationId, DESPACHOS_DATA_CHAT_ROLE) : NO_LLM_COMPLETION,
+        ...(completion ? { completeRetry: completion(organizationId, `despachos:${DATA_CHAT_RETRY_SUFFIX}`) } : {}),
         rateLimiter: dataChat.rateLimiter,
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
@@ -87,6 +102,7 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   mountConversacionesRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES });
+  mountPinsRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES, turnContext });
   // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
   mountReporteRoutes(app, deps, {
     base,

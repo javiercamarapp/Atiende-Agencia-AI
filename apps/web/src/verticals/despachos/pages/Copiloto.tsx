@@ -5,9 +5,10 @@
 // llaman al backend: ven el estado "sin acceso" directo.
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_DESPACHOS } from "../../../lib/copiloto/config/despachos.ts";
+import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
 import { CopilotoPage } from "../../../pages/CopilotoPage.tsx";
@@ -51,4 +52,18 @@ function DespachosCopilotoConectado({ apiBaseUrl, token, propertyId, orgSlug }: 
       orgSlug={orgSlug}
     />
   );
+}
+
+/** Lo minimo que necesita el tablero de fijados del contexto del shell (la pagina de Resumen lo pasa tal cual). `role` es opcional: sin el, decide el servidor (403). */
+export type DespachosFijadosCopilotoProps = Pick<DespachosShellContext, "apiBaseUrl" | "token" | "propertyId" | "orgSlug"> & { readonly role?: string };
+
+/** Tablero de fijados del Copiloto para la pagina de Resumen (solo los roles con Copiloto). */
+export function DespachosFijadosCopiloto({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosFijadosCopilotoProps) {
+  const cliente = useMemo(() => {
+    const baseUrl = despachosChatBaseUrl(apiBaseUrl, propertyId);
+    const fetchImpl: typeof fetch = (...args) => fetch(...args);
+    return crearClienteFijados({ baseUrl, fetchImpl, token, conAuth: (hacer) => withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(baseUrl), despachosAuthContext(), token, hacer) });
+  }, [apiBaseUrl, propertyId, token]);
+  if (role !== undefined && !COPILOTO_DESPACHOS_ROLES.has(role)) return null;
+  return <SeccionFijadosCopiloto cliente={cliente} rutaCopiloto={`/despachos/${encodeURIComponent(orgSlug)}/copiloto`} />;
 }

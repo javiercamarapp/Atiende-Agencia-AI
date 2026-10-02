@@ -5,6 +5,7 @@
 // su razón, nunca como cero (mismo criterio que `StatCard.sinDato`). No hay carga por persona:
 // el modelo no asigna responsables a revisiones/tareas, la carga es por cliente.
 import { useEffect, useState } from "react";
+import { DespachosFijadosCopiloto } from "./Copiloto.tsx";
 import { AlertTriangle, CalendarCheck, CheckCircle2, ClipboardList, HandCoins, ShieldAlert, Users, Wallet } from "lucide-react";
 import { Card, CardContent, DataTable, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge, statusTone } from "@atiende/ui";
 import { fetchDashboardDespacho } from "../lib/dashboard-client.ts";
@@ -229,6 +230,7 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId }: Despac
               { id: "anomalias", encabezado: "Anomalías", className: "min-w-64", celda: (c) => <ListaAnomalias anomalias={c.anomalias} /> },
             ]}
           />
+          <DespachosFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />
         </>
       )}
     </PageContainer>

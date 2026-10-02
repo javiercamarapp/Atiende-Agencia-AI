@@ -49,6 +49,16 @@ export const COPILOTO_RENTAS: CopilotoConfigVertical = {
       ],
     },
   ],
+  directas: {
+    "¿Cuál fue la ocupación por unidad el mes pasado?": { tool: "ocupacion_por_unidad", args: { periodo: "mes_pasado" } },
+    "¿Cuánto ingresé por canal este mes?": { tool: "ingresos_por_canal", args: { periodo: "este_mes" } },
+    "¿Cuánto ingresó cada propietario este mes?": { tool: "ingresos_por_propietario", args: { periodo: "este_mes" } },
+    "¿Qué conflictos de calendario siguen abiertos?": { tool: "conflictos_calendario_abiertos" },
+    "¿Qué limpiezas están pendientes hasta hoy?": { tool: "tareas_pendientes", args: { tipo: "limpieza" } },
+    "¿Cuántas noches reservé y cuántas bloqueé este mes?": { tool: "ocupacion_por_unidad", args: { periodo: "este_mes" } },
+    "¿Qué pagos de canal recibí este mes y cuáles siguen sin conciliar?": { tool: "pagos_de_canal", args: { periodo: "este_mes" } },
+    "¿Qué liquidaciones a propietarios generé el mes pasado?": { tool: "liquidaciones_propietarios", args: { periodo: "mes_pasado" } },
+  },
   etiquetasHerramienta: {
     ocupacion_por_unidad: "Calculando la ocupación por unidad",
     ingresos_por_canal: "Sumando los ingresos por canal",

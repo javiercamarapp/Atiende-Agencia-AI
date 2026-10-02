@@ -4,9 +4,10 @@
 // Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven el estado "sin acceso" directo.
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_HOTELES } from "../../../lib/copiloto/config/hoteles.ts";
+import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
 import { CopilotoPage } from "../../../pages/CopilotoPage.tsx";
@@ -53,4 +54,18 @@ function HotelesCopilotoConectado({ apiBaseUrl, token, propertyId, orgSlug }: Ho
       orgSlug={orgSlug}
     />
   );
+}
+
+/** Lo minimo que necesita el tablero de fijados del contexto del shell (la pagina de Resumen lo pasa tal cual). `role` es opcional: sin el, decide el servidor (403). */
+export type HotelesFijadosCopilotoProps = Pick<HotelesShellContext, "apiBaseUrl" | "token" | "propertyId" | "orgSlug"> & { readonly role?: string };
+
+/** Tablero de fijados del Copiloto para la pagina de Resumen: solo owner/gm (los unicos que el servidor deja usar el Copiloto). */
+export function HotelesFijadosCopiloto({ apiBaseUrl, token, propertyId, orgSlug, role }: HotelesFijadosCopilotoProps) {
+  const cliente = useMemo(() => {
+    const baseUrl = urlChatDatosHoteles(apiBaseUrl, propertyId);
+    const fetchImpl: typeof fetch = (...args) => fetch(...args);
+    return crearClienteFijados({ baseUrl, fetchImpl, token, conAuth: (hacer) => withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(baseUrl), hotelesAuthContext(), token, hacer) });
+  }, [apiBaseUrl, propertyId, token]);
+  if (role !== undefined && !COPILOTO_HOTELES_ROLES.has(role)) return null;
+  return <SeccionFijadosCopiloto cliente={cliente} rutaCopiloto={`/hoteles/${encodeURIComponent(orgSlug)}/copiloto`} />;
 }

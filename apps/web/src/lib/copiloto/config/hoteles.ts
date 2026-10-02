@@ -41,6 +41,15 @@ export const COPILOTO_HOTELES: CopilotoConfigVertical = {
       preguntas: ["¿Cuántos tickets abiertos tengo con el SLA vencido?", "¿Cuántas tareas de housekeeping tengo pendientes hoy?"],
     },
   ],
+  directas: {
+    "¿Cómo va la ocupación esta semana?": { tool: "ocupacion_adr_revpar", args: { periodo: "esta_semana" } },
+    "¿Cuál fue el ADR y el RevPAR de los últimos 30 días?": { tool: "ocupacion_adr_revpar", args: { periodo: "ultimos_30_dias" } },
+    "¿Cuánto ingresé por habitaciones y A&B este mes?": { tool: "ingresos_por_periodo", args: { periodo: "este_mes" } },
+    "¿Qué llegadas y salidas tengo mañana?": { tool: "llegadas_y_salidas", args: { periodo: "manana" } },
+    "¿Cuántas reservas se cancelaron este mes?": { tool: "cancelaciones", args: { periodo: "este_mes" } },
+    "¿Cuántos tickets abiertos tengo con el SLA vencido?": { tool: "tickets_abiertos_sla" },
+    "¿Cuántas tareas de housekeeping tengo pendientes hoy?": { tool: "housekeeping_pendiente" },
+  },
   etiquetasHerramienta: {
     ocupacion_adr_revpar: "Calculando ocupación, ADR y RevPAR",
     ingresos_por_periodo: "Sumando los ingresos por periodo",
