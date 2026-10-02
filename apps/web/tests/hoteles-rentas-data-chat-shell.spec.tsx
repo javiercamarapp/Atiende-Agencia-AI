@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// "Chatea con tus datos" conectado en los shells de HOTELES y RENTAS sin reescribirlos: el boton del header sale de
+// "Chatea con tus datos" conectado en los shells de HOTELES (dialogo) y RENTAS (CHAT-10: enlace a la pagina del Copiloto) sin reescribirlos: el boton del header sale de
 // "Pronto" solo cuando el servidor confirma (GET .../chat-datos/estado) que el asistente esta activo para ese rol, abre la
 // conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa. Si el servidor no lo confirma (403 por rol,
 // proveedor sin configurar, error), sigue el aviso honesto de siempre.
@@ -103,7 +103,6 @@ function botonChat(): HTMLButtonElement {
 
 describe.each([
   { nombre: "HotelesShell", render: renderHoteles, rolPermitido: "owner", ruta: "hoteles" },
-  { nombre: "RentasShell", render: renderRentas, rolPermitido: "admin_gestora", ruta: "rentas" },
 ])("$nombre — Chatea con tus datos", ({ render, rolPermitido, ruta }) => {
   it("con el asistente activo: sin 'Pronto', abre la conversacion real y manda SOLO la pregunta a la ruta de la propiedad activa", async () => {
     const calls = stubFetch(() => json(200, { available: true }));
@@ -155,5 +154,61 @@ describe.each([
     }));
     await render(rolPermitido);
     expect(botonChat().textContent).toContain("Pronto");
+  });
+});
+
+// CHAT-10: en RENTAS el boton del header es un ENLACE a la pagina del Copiloto (ya no abre el dialogo) y solo existe para
+// admin_gestora/contador; los demas roles no lo ven (el servidor igual responde 403). Sin confirmacion del servidor sigue
+// siendo el aviso honesto "Pronto" (solo para un rol permitido).
+function enlaceChatRentas(): HTMLAnchorElement | undefined {
+  const desktop = [...rendered!.container.querySelectorAll("div.hidden.md\\:block")].find((d) => d.querySelector("header"))!;
+  return [...desktop.querySelectorAll("a")].find((a) => a.textContent?.includes("Chatea con tus datos")) as HTMLAnchorElement | undefined;
+}
+function botonProntoRentas(): HTMLButtonElement | undefined {
+  const desktop = [...rendered!.container.querySelectorAll("div.hidden.md\\:block")].find((d) => d.querySelector("header"))!;
+  return [...desktop.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos")) as HTMLButtonElement | undefined;
+}
+
+describe("RentasShell — Chatea con tus datos (CHAT-10)", () => {
+  it.each(["admin_gestora", "contador"])("%s con el asistente activo: el boton es un enlace a /rentas/:org/copiloto y no abre dialogo", async (rol) => {
+    const calls = stubFetch(() => json(200, { available: true }));
+    await renderRentas(rol);
+    expect(calls.some((c) => c.url === "https://api.test/rentas/prop-1/chat-datos/estado")).toBe(true);
+    const enlace = enlaceChatRentas();
+    expect(enlace?.getAttribute("href")).toBe("/rentas/demo/copiloto");
+    expect(enlace?.textContent).not.toContain("Pronto");
+    click(enlace!);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+  });
+
+  it.each(["operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario", "limpieza", "housekeeping"])(
+    "%s no ve el boton ni consulta /estado (el servidor responde 403 de todas formas)",
+    async (rol) => {
+      const calls = stubFetch(() => json(403, {}));
+      await renderRentas(rol);
+      expect(enlaceChatRentas()).toBeUndefined();
+      expect(botonProntoRentas()).toBeUndefined();
+      expect(calls.filter((c) => c.url.endsWith("/chat-datos/estado"))).toHaveLength(0);
+    },
+  );
+
+  it("asistente sin proveedor (available=false) o servidor caido: un rol permitido ve 'Pronto' y el aviso honesto, nunca una conversacion", async () => {
+    stubFetch(() => json(200, { available: false }));
+    await renderRentas("admin_gestora");
+    expect(enlaceChatRentas()).toBeUndefined();
+    expect(botonProntoRentas()?.textContent).toContain("Pronto");
+    click(botonProntoRentas()!);
+    const dialogo = document.body.querySelector('[role="dialog"]')!;
+    expect(dialogo.textContent).toContain("todavía no está disponible");
+    expect(dialogo.querySelector("input")).toBeNull();
+    rendered!.unmount();
+    rendered = undefined;
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("offline");
+    }));
+    await renderRentas("contador");
+    expect(botonProntoRentas()?.textContent).toContain("Pronto");
   });
 });
