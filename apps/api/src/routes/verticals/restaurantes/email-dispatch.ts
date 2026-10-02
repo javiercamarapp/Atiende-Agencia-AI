@@ -39,6 +39,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { crearGuardCorreo } from "../../../supresion/index.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -56,7 +57,7 @@ export const INLINE_BATCH_SIZE = 5;
 export async function runRestaurantesEmailDispatch(deps: AppDeps, batchSize?: number): Promise<EmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const restaurantesRepo = deps.restaurantesRepo(db);
-    return dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize });
+    return dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
   });
 }
 
@@ -118,7 +119,7 @@ export async function triggerRestaurantesEmailDispatchInline(deps: AppDeps, db: 
     session: db,
     savepointName: "sp_inline_email_dispatch",
     primary: async () => {
-      const summary = await dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize });
+      const summary = await dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
       if (summary.dead > 0) {
         console.error(`restaurantes email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
       }

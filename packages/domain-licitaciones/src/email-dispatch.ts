@@ -49,6 +49,13 @@ export const MAX_EMAIL_DISPATCH_ATTEMPTS = 5;
  * cualquier otro fallo de Resend. */
 export const RESEND_FETCH_TIMEOUT_MS = 4_000;
 
+/** SA-L-46: motivo con que un correo suprimido se marca no enviado (`last_error` del outbox). Sin reintento. */
+export const EMAIL_SUPPRESSED_ERROR = "suprimido";
+
+/** SA-L-46: decide si un correo esta en la lista de supresion de plataforma (`true` = NO contactar). FAIL-CLOSED: si no
+ *  puede verificarlo debe LANZAR; el job se trata como un fallo de envio (reintento con backoff, `dead` al agotar). */
+export type EmailSuppressionGuard = (correo: string) => Promise<boolean>;
+
 export interface ResendConfig {
   readonly apiKey: string | null;
   readonly from: string;
@@ -107,6 +114,8 @@ export interface EmailDispatchSummary {
    * en vez de tratarlo como un fallo real -- pegar la API key nunca debe
    * encontrar el outbox ya vaciado de intentos. */
   notConfigured: boolean;
+  /** SA-L-46: correos proactivos no enviados por la lista de supresion de plataforma. Solo presente cuando es mayor que 0. */
+  suppressed?: number;
 }
 
 function emptySummary(): EmailDispatchSummary {
@@ -122,7 +131,7 @@ function emptySummary(): EmailDispatchSummary {
  * intentos) o 'dead' (agotó los 5 intentos — un humano debe revisarlo). Un job
  * con datos raros nunca tumba el lote completo de los demás.
  */
-export async function dispatchPendingEmailJobs(repo: LicitacionesRepository, config: ResendConfig, opts: { readonly fetchImpl?: typeof fetch; readonly batchSize?: number } = {}): Promise<EmailDispatchSummary> {
+export async function dispatchPendingEmailJobs(repo: LicitacionesRepository, config: ResendConfig, opts: { readonly fetchImpl?: typeof fetch; readonly batchSize?: number; readonly suppression?: EmailSuppressionGuard } = {}): Promise<EmailDispatchSummary> {
   // Fix a2b (CRÍTICO) -- ver comentario de cabecera: sin proveedor configurado
   // NUNCA se reclama el lote (cross-tenant, cuenta intento), pase lo que pase
   // con `batchSize`/`fetchImpl`.
@@ -139,6 +148,22 @@ export async function dispatchPendingEmailJobs(repo: LicitacionesRepository, con
 
   for (const job of jobs) {
     try {
+      // SA-L-46: lista de supresion de plataforma. Solo avisos proactivos: `payload.transaccional === true` (la
+      // respuesta que el cliente pidio) se exenta. Una lectura que falla NO envia (fail-closed).
+      const destino = job.payload?.to;
+      if (opts.suppression && job.payload?.transaccional !== true && typeof destino === "string" && destino !== "") {
+        let suprimido: boolean;
+        try {
+          suprimido = await opts.suppression(destino);
+        } catch {
+          throw new Error("supresion_no_verificable");
+        }
+        if (suprimido) {
+          await repo.completeEmailOutboxJob(job.id, "dead", EMAIL_SUPPRESSED_ERROR);
+          summary.suppressed = (summary.suppressed ?? 0) + 1;
+          continue;
+        }
+      }
       await sendEmailOutboxJob(fetchImpl, job, config);
       await repo.completeEmailOutboxJob(job.id, "sent", null);
       summary.sent += 1;

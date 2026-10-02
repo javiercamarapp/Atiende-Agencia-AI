@@ -48,6 +48,7 @@ import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { crearGuardCorreo } from "../../../supresion/index.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -66,7 +67,7 @@ export const INLINE_BATCH_SIZE = 5;
 export async function runLicitacionesEmailDispatch(deps: AppDeps, batchSize?: number): Promise<LicitacionesEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const repo = deps.licitacionesRepo(db);
-    return dispatchPendingEmailJobs(repo, deps.env.resend, { batchSize });
+    return dispatchPendingEmailJobs(repo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
   });
 }
 
@@ -127,7 +128,7 @@ export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, db: 
     session: db,
     savepointName: "sp_inline_email_dispatch",
     primary: async () => {
-      const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
+      const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
       if (summary.dead > 0) {
         console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
       }
