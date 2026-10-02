@@ -12,7 +12,7 @@ node scripts/verify-real-postgres-ci/run-gate.mjs scripts/verify-hoteles-privaci
 En CI lo ejecuta el gate `Postgres real` (auto-descubre `scripts/verify-*`). Verificación técnica de una
 implementación; NO es asesoría legal.
 
-## Qué prueba (22 escenarios numerados en assertions.sql)
+## Qué prueba (22 escenarios (dos pasadas: migraciones en orden y secuencia de la base real, con 278 aplicada antes que 277) numerados en assertions.sql)
 
 - Funciones públicas solo-sistema (`auth.uid()` nulo): un usuario autenticado de otro tenant y `anon` no las alcanzan (42501).
 - Aviso vigente por slug: solo properties activas de hoteles; A1 con aviso, A2 sin aviso (no se inventa); slug de restaurantes o inexistente = 0 filas.
