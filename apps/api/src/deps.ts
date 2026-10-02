@@ -24,7 +24,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -199,6 +199,12 @@ export interface AppDeps {
   /** H-28 -- recepcion (llegadas, salidas, en casa, cambio de habitacion; migracion 038). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresRecepcionRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesRecepcionRepo?: (db: TenantDbSession) => RecepcionRepository;
+  /** H-28 -- cambio de fechas con recotizacion (migracion 041). OPCIONAL: en produccion no se define y las rutas usan
+   *  `PostgresCambioFechasRepository` (SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesFechasRepo?: (db: TenantDbSession) => CambioFechasRepository;
+  /** H-12 -- lista de espera (migracion 041). OPCIONAL: en produccion no se define y las rutas usan `PostgresListaEsperaRepository`
+   *  (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesListaEsperaRepo?: (db: TenantDbSession) => ListaEsperaRepository;
   /** H-27 -- ficha de huesped (notas, preferencias, historial; migracion 038). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresHuespedesRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesHuespedesRepo?: (db: TenantDbSession) => HuespedesRepository;

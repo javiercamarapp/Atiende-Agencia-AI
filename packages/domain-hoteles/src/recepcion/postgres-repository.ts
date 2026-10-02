@@ -172,10 +172,14 @@ export class PostgresRecepcionRepository implements RecepcionRepository {
     });
   }
 
-  async cambiarHabitacion(_propertyId: string, reservationId: string, newRoomId: string, reason: string | null): Promise<{ readonly fromRoomId: string | null; readonly toRoomId: string }> {
+  async cambiarHabitacion(propertyId: string, reservationId: string, newRoomId: string, reason: string | null): Promise<{ readonly fromRoomId: string | null; readonly toRoomId: string }> {
     return runWithSavepointFallback({
       session: this.db,
       primary: async () => {
+        // La funcion SQL resuelve la property desde la reserva (no la recibe): se exige aqui que la reserva sea de ESTA property.
+        // Si no lo es, "no encontrada" (indistinguible de que no exista), sin llegar a bloquear ni tocar la fila ajena.
+        const propia = await this.db.query<{ id: string }>(`select id from hoteles.reservation where id = $1::uuid and property_id = $2::uuid;`, [reservationId, propertyId]);
+        if (!propia.rows[0]) throw new RecepcionNotFoundError("Reserva");
         const { rows } = await this.db.query<{ from_room_id: string | null; to_room_id: string }>(
           `select from_room_id, to_room_id from hoteles.change_reservation_room($1::uuid, $2::uuid, $3::text);`,
           [reservationId, newRoomId, reason],
