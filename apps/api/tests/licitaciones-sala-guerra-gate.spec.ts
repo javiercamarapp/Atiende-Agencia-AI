@@ -2,6 +2,7 @@
 // misma maquina de dominio que Postgres): ZIP alterado -> rojo, sin paquete / checklist en rojo -> no listo,
 // holgura < 24 h visible + aviso in-app deduplicado, doble aprobacion 2/2 exigida, base sin migrar y cross-tenant.
 import JSZip from "jszip";
+import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { InMemorySalaGuerraRepository } from "@atiende/domain-licitaciones";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
@@ -205,5 +206,66 @@ describe("GET .../sala-guerra/gate (L-25)", () => {
       expect(crudo).not.toContain(p.id);
       expect(crudo).not.toContain(p.email);
     }
+  });
+
+  it("COMPATIBILIDAD storage_ref legacy: si la lectura del ZIP falla con 22P02 dentro de la transaccion compartida, SAVEPOINT la recupera, el gate marca 'ilegible' y el aviso/COMMIT siguen (no 500, no 25P02)", async () => {
+    const base = await setup({ cierre: enHoras(10) });
+    await expedienteListo(base);
+    const ctx = base.ctx;
+    let abortada = false;
+    let savepoints = 0;
+    let rollbacksToSavepoint = 0;
+    let consultasTrasRecuperar = 0;
+    const envolver = (session: TenantDbSession): TenantDbSession => ({
+      exec: async (sql) => {
+        if (/^\s*savepoint/i.test(sql)) savepoints += 1;
+        if (/^\s*rollback to savepoint/i.test(sql)) {
+          abortada = false;
+          rollbacksToSavepoint += 1;
+          return;
+        }
+        if (abortada) throw Object.assign(new Error("current transaction is aborted"), { code: "25P02" });
+        return session.exec(sql);
+      },
+      query: async <T>(sql: string, params?: unknown[]) => {
+        if (abortada) throw Object.assign(new Error("current transaction is aborted"), { code: "25P02" });
+        if (/marcador_post_lectura/.test(sql)) {
+          if (rollbacksToSavepoint > 0) consultasTrasRecuperar += 1;
+          return { rows: [] as T[] };
+        }
+        return session.query<T>(sql, params);
+      },
+    });
+    const engine: TenancyEngine = { withAppSession: (claims, fn) => ctx.deps.engine.withAppSession(claims, (session) => fn(envolver(session))) };
+    const { deps: conAvisos, emisiones } = conEmisiones({ ...ctx.deps, engine });
+    const app = buildApp({
+      ...conAvisos,
+      licitacionesSalaGuerraRepo: () => new InMemorySalaGuerraRepository(),
+      licitacionesRepo: (db) => {
+        const real = ctx.deps.licitacionesRepo(db);
+        return new Proxy(real, {
+          get(target, prop, receiver) {
+            if (prop === "readManifestZip") {
+              return async () => {
+                abortada = true;
+                throw Object.assign(new Error('invalid input syntax for type uuid: "/var/data/legacy.zip"'), { code: "22P02" });
+              };
+            }
+            if (prop === "findSubmission") return async (...args: [string, string]) => (await db.query("select 1 as marcador_post_lectura"), target.findSubmission(...args));
+            const v = Reflect.get(target, prop, receiver);
+            return typeof v === "function" ? v.bind(target) : v;
+          },
+        });
+      },
+    });
+    const res = await app.request(base.url("sala-guerra/gate"), authedJson(ctx.staff.viewer.token));
+    expect(res.status).toBe(200);
+    const g = (await res.json()) as Json;
+    expect(savepoints).toBeGreaterThan(0);
+    expect(rollbacksToSavepoint).toBeGreaterThan(0);
+    expect(cond(g, "zip_manifiesto").color).toBe("rojo");
+    expect(g.gate.listo).toBe(false);
+    expect(g.alerta).not.toBe("error");
+    expect(emisiones.filter((e) => e.evento === "licitaciones.sala_guerra.paquete_no_listo").length).toBe(1);
   });
 });
