@@ -8,7 +8,9 @@ test.describe("superadmin @humo", () => {
     expect(aterrizaje).toBe("/superadmin");
     await afirmarPantallaSana(page, "resumen");
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    await expect(page.getByTestId("odometro")).toBeVisible();
+    // El odometro solo se pinta desde `sm`; en movil el MRR va en texto.
+    if ((page.viewportSize()?.width ?? 0) >= 640) await expect(page.getByTestId("odometro")).toBeVisible();
+    else await expect(page.getByText(/MRR.*\$48,900.*meta \$1,000,000/)).toBeVisible();
     await expect(page.getByText("Operaciones atendidas", { exact: true })).toBeVisible();
     // SA-L-01: el listado de organizaciones ya no es la raiz; vive en su propia ruta.
     await page.goto("/superadmin/organizaciones");
