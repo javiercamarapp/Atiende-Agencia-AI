@@ -65,13 +65,12 @@ import type {
 import { formatMoney } from "../lib/format.ts";
 import { NIVEL_COINCIDENCIA_TONES, SEVERIDAD_ALERTA_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
+import { SesionesConciliacion } from "./ConciliacionSesiones.tsx";
 
-// Mismo conjunto que CONCILIACION_ROLES (@atiende/domain-despachos/roles.ts) --
-// las 4 rutas de conciliacion.ts exigen este rol en CADA llamada (a diferencia de
-// vencimientos/cobranza, este módulo no tiene ningún GET de solo lectura), así que
-// a diferencia de esas páginas aquí no hay una vista degradada para otros roles:
-// el servidor rechazaría cualquier acción igual. Cosmético -- nunca la única
-// barrera.
+// Mismo conjunto que CONCILIACION_ROLES (@atiende/domain-despachos/roles.ts) -- las rutas de
+// matching/alertas/clasificar/SPEI y toda escritura de la conciliación guardada exigen este rol.
+// auditor/readonly SÍ ven las sesiones guardadas (VER_CONCILIACION_ROLES) pero en solo lectura.
+// Cosmético -- nunca la única barrera.
 const CONCILIACION_ROLES = new Set(["admin", "contador"]);
 
 interface MovimientoFila {
@@ -452,12 +451,14 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
   }
 
   if (!puedeGestionar) {
+    // Solo lectura (auditor/readonly): ven las sesiones guardadas y sus conciliaciones; matching, alertas y verificaciones siguen siendo de admin/contador.
     return (
-      <PageContainer padding="none" className="gap-2 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
-        <p role="alert" className="text-destructive text-sm">
-          Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr matching, alertas ni verificaciones -- el servidor las rechazaría igual.
-        </p>
+      <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
+        <header>
+          <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Consulta de las sesiones de conciliación guardadas. Tu rol ({role}) no puede confirmar, deshacer ni correr matching, alertas o verificaciones.</p>
+        </header>
+        <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar={false} />
       </PageContainer>
     );
   }
@@ -475,6 +476,8 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           <Link to={`/despachos/${orgSlug}/conciliacion/importar`}>Importar estado de cuenta</Link>
         </Button>
       </header>
+
+      <SesionesConciliacion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeGestionar />
 
       <Card>
         <CardHeader className="pb-3">
