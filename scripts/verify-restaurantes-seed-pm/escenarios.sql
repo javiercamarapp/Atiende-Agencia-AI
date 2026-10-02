@@ -6,10 +6,10 @@
 --      237 productos, 42 de alcohol no_domicilio, 669 precios por sucursal (T1 236 + T3 211 + T5 222), cada
 --      sucursal con el precio de su menu impreso, comida regional solo en T1, 0 fracciones de kilo.
 --   B. Reglas del modelo: politica (horario 12:00-01:00, minimo $200, propina solo tarjeta), promocion
---      2x1 del lunes solo recoger, voz deshabilitada, zonas de sucursales con coordenadas, asignacion
+--      2x1 del lunes solo recoger y con alcance por sucursal (T2, T3 y T4), voz deshabilitada, zonas de sucursales con coordenadas, asignacion
 --      por colonia con la funcion SQL real.
 --   C. Idempotencia: ejecutar dos veces no duplica nada; no reactiva la voz ni reinicia usos de la
---      promocion; reparar un precio alterado.
+--      promocion; reparar un precio alterado; renombrar por slug estable una sucursal sembrada por la version anterior.
 --   D. Aislamiento: otra organizacion con nombres iguales queda intacta; un slug de otra vertical
 --      aborta; staff de otra organizacion y anon no leen lo sembrado.
 --   E. Agente de WhatsApp (perfil taqueria_pm con los datos del dueño), carga como DEMO (marca
@@ -141,6 +141,15 @@ select public.seed_pm_demo();
 select count(*)::int as promos_auto_apply_deberia_ser_1 from restaurantes.promotions p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.code = 'LUNES2X1PM' and p.auto_apply;
 rollback;
 
+\echo '=== B2c. PM-C2: el 2x1 queda con ALCANCE por sucursal (property_ids): exactamente T2 Francisco de Montejo, T3 Pensiones y T4 Galerias; T1, T7 y T8 quedan fuera ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as alcance_2x1_solo_t2_t3_t4_deberia_ser_1
+  from restaurantes.promotions pm join core.organization o on o.id = pm.organization_id
+  where o.slug = 'los-taquitos-de-pm' and pm.code = 'LUNES2X1PM' and cardinality(pm.property_ids) = 3
+    and (select array_agg(bd.slug order by bd.slug) from restaurantes.branch_detail bd where bd.property_id = any(pm.property_ids)) = array['fco-montejo', 'galerias', 'pensiones']::text[];
+rollback;
+
 \echo '=== B3. La voz se carga DESHABILITADA (sin gasto de proveedores) en las sucursales activas ==='
 begin;
 select public.seed_pm_demo();
@@ -210,6 +219,24 @@ select (
   (select price from restaurantes.products where name = 'Taco Al Pastor (individual)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 42
   and (select no_domicilio from restaurantes.products where name = 'Heineken' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm'))
 )::int as seed_repara_deberia_ser_1;
+rollback;
+
+\echo '=== C4. PM-C2: re-ejecutar el seed sobre una base con la version ANTERIOR (T4 "t4-pendiente", T7 con el nombre viejo) la renombra por slug estable: sin choque de unique(slug) ni sucursales duplicadas ==='
+begin;
+select public.seed_pm_demo();
+update core.property set name = 'T4 (pendiente de datos)' where name = 'Galerías' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+update restaurantes.branch_detail set slug = 't4-pendiente' where slug = 'galerias' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+update core.property set name = 'Victory Platz (García Lavín)' where name = 'García Lavín (Victory Platz)' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+update restaurantes.promotions set property_ids = null where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm');
+select public.seed_pm_demo();
+select (
+  (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm') = 7
+  and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('Galerías', 'García Lavín (Victory Platz)')) = 2
+  and (select count(*) from core.property p join core.organization o on o.id = p.organization_id where o.slug = 'los-taquitos-de-pm' and p.name in ('T4 (pendiente de datos)', 'Victory Platz (García Lavín)')) = 0
+  and (select count(*) from restaurantes.branch_detail bd join core.organization o on o.id = bd.organization_id where o.slug = 'los-taquitos-de-pm' and bd.slug in ('t4-pendiente')) = 0
+  and (select cardinality(property_ids) from restaurantes.promotions where code = 'LUNES2X1PM' and organization_id = (select id from core.organization where slug = 'los-taquitos-de-pm')) = 3
+)::int as seed_renombra_por_slug_y_repara_alcance_deberia_ser_1;
 rollback;
 
 \echo '=== D1. AISLAMIENTO: la otra organizacion (mismo nombre de producto y de sucursal) queda intacta ==='

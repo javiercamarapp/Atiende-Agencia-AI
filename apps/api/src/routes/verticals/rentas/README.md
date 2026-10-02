@@ -85,6 +85,10 @@ techo mínimo de roles.
   `&formato=json|csv|pdf`, filtros `unidad_id`/`propietario_id`/`canal`). Roles
   `FINANZAS_LECTURA_ROLES` (admin_gestora, contador). Solo lectura sobre tablas de 001/003: no
   requiere migración. Cálculo y anti doble conteo en `@atiende/domain-rentas` (`src/reportes/`).
+- `resumen.ts`: `GET /rentas/:propertyId/resumen` (Rn-26, Resumen operativo). Agregados reales sin PII (llegadas/salidas de hoy en la zona de
+  la property, ocupación del mes vía el reporte de Rn-03, conflictos abiertos, tareas pendientes/vencidas, borradores por aprobar, feeds con
+  problema) más la última corrida de los agentes con fuente real por propiedad. Cada bloque degrada solo (`no_disponible`) bajo SAVEPOINT y
+  se oculta (`sin_permiso`) según el rol; `limpieza` recibe 403. No requiere migración. Lecturas en `@atiende/domain-rentas` (`src/resumen/`).
 
 ## Acceso al huésped (Rn-04) y confirmar bloqueo (Rn-05)
 

@@ -202,6 +202,19 @@ export { InMemoryPylRepository, PostgresPylRepository } from "./superadmin-pyl-r
 export type { CfoAccessLogRow, CfoZoneRepository, CfoZoneRoleRow, ZonaCfoAccion, ZonaCfoRol } from "./superadmin-zona-cfo-repository.ts";
 export { InMemoryCfoZoneRepository, PostgresCfoZoneRepository } from "./superadmin-zona-cfo-repository.ts";
 export type {
+  ConsolaAgenteActividadRow,
+  ConsolaAlcanceRow,
+  ConsolaConversacionesWaRow,
+  ConsolaCostoDiarioRow,
+  ConsolaCostoHistoricoRow,
+  ConsolaOperacionRow,
+  ConsolaOrganizacionRow,
+  ConsolaRepository,
+  ConsolaResueltasSinHumanoRow,
+  FuenteConsola,
+} from "./superadmin-consola-repository.ts";
+export { InMemoryConsolaRepository, PostgresConsolaRepository } from "./superadmin-consola-repository.ts";
+export type {
   ArcoPage,
   ArcoQuery,
   ArcoRequestRow,

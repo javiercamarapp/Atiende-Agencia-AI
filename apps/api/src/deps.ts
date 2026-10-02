@@ -9,6 +9,7 @@ import type {
   CfoRepository,
   PylRepository,
   CfoZoneRepository,
+  ConsolaRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
@@ -50,6 +51,7 @@ import type {
   RentasAccesoRepository,
   RentasCatalogoRepository,
   RentasReportesRepository,
+  RentasResumenRepository,
   RentasMensajeriaRepository,
   RentasOnboardingRepository,
   RentasOwnerPortalRepository,
@@ -341,6 +343,8 @@ export interface AppDeps {
    * sobre la sesión del request cuando no se inyecta (los fixtures de los demás verticales
    * no lo necesitan); los tests de ruta inyectan el doble en memoria. */
   readonly rentasReportesRepo?: (db: TenantDbSession) => RentasReportesRepository;
+  /** Rn-26 -- agregados del Resumen operativo de rentas. OPCIONAL por la misma razón que `rentasReportesRepo`: la ruta cae a `PostgresRentasResumenRepository` sobre la sesión del request y los tests inyectan el doble en memoria. */
+  readonly rentasResumenRepo?: (db: TenantDbSession) => RentasResumenRepository;
   /** Rn-04 -- liberación de instrucciones de acceso al huésped (migración 025). OPCIONAL por la
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
@@ -578,6 +582,11 @@ export interface AppDeps {
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
    *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
   readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
+  /** Resumen y actividad de agentes de la consola de superadmin (SA-L-05/SA-L-06; ver
+   *  packages/db/migrations/0042_superadmin_consola_resumen.sql y routes/superadmin-consola.ts). Fabrica por sesion
+   *  del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL: ausente o migracion sin aplicar -> los campos
+   *  salen `null` con su razon y `disponible: false` (200), nunca un 500. */
+  readonly consolaRepo?: (db: TenantDbSession) => ConsolaRepository;
   /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
    *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
    *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,

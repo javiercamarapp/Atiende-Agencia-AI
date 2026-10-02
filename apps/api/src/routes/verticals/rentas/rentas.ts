@@ -18,6 +18,7 @@ import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
 import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
 import { rentasReportesRoutes } from "./reportes.ts";
+import { rentasResumenRoutes } from "./resumen.ts";
 import { rentasAccesoHuespedRoutes } from "./acceso-huesped.ts";
 import { rentasMensajeriaConversacionesRoutes } from "./mensajeria-conversaciones.ts";
 import { rentasMensajeriaBorradoresRoutes } from "./mensajeria-borradores.ts";
@@ -86,6 +87,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasIcalMonitorRoutes(deps));
   // Rn-03 -- reporte de ocupación e ingresos (solo lectura, roles de finanzas).
   app.route("/", rentasReportesRoutes(deps));
+  // Rn-26 -- Resumen operativo (agregados sin PII, degrada por bloque).
+  app.route("/", rentasResumenRoutes(deps));
   // Rn-04 -- liberación de instrucciones de acceso al huésped (config de staff + cron interno).
   app.route("/", rentasAccesoHuespedRoutes(deps));
   // Cron interno (Fase 5) -- mismo patrón que citas/google-calendar-sync.ts: sin

@@ -26,7 +26,7 @@ de nada, ni tareas programadas. **No toca** ninguna otra organización (si el sl
 
 1. **Migraciones aplicadas** en la base destino. El *preflight* de cada script lista exactamente cuáles faltan y sale con código 3 sin
    escribir nada. Para la demo completa hacen falta, además de las anteriores del esquema de restaurantes: `022`, `023`, `025`, `027`,
-   `028`, `029`, `031`, `033` y **`037_demo_organization.sql`** (la nueva de este trabajo; espejo
+   `028`, `029`, `031`, `033`, **`038_promociones_por_sucursal.sql`** (alcance del 2x1 por sucursal: sin ella el preflight aborta) y **`037_demo_organization.sql`** (la nueva de este trabajo; espejo
    `supabase/migrations/20240101000253_037_restaurantes_demo_organization.sql`). Aplicarlas es una decisión aparte (`docs/DEPLOY.md`).
 2. **Código desplegado**: el chat público `/demo/<slug>` y el endpoint `/v1/restaurantes/demo/<slug>/…` ya están en el despliegue.
 3. **Una cadena de conexión de propietario** (la que puede saltarse RLS y ejecutar `restaurantes.demo_limpiar`), en la variable

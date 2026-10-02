@@ -550,6 +550,10 @@ export interface Promotion {
   readonly courtesyProductIds: readonly string[] | null;
   /** Solo type==='cortesia': piezas gratis POR cada unidad disparadora en el pedido (1..10). */
   readonly courtesyQuantity: number | null;
+  /** Migracion 038 (PM-C2) -- sucursales (`core.property.id`) donde vale la promocion: `null`/ausente = todas (conducta
+   * anterior; tambien contra la base SIN migrar, donde no hay alcance que leer). Una lista = SOLO esas sucursales; una
+   * lista vacia no vale en ninguna (la base la rechaza con CHECK, pero el motor cierra por defecto). */
+  readonly propertyIds?: readonly string[] | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -573,6 +577,8 @@ export interface NewPromotionInput {
   readonly autoApply?: boolean;
   readonly courtesyProductIds?: readonly string[] | null;
   readonly courtesyQuantity?: number | null;
+  /** Migracion 038: sucursales donde vale (`null` = todas). */
+  readonly propertyIds?: readonly string[] | null;
 }
 
 export interface PromotionPatch {
@@ -594,6 +600,8 @@ export interface PromotionPatch {
   readonly autoApply?: boolean;
   readonly courtesyProductIds?: readonly string[] | null;
   readonly courtesyQuantity?: number | null;
+  /** Migracion 038: sucursales donde vale (`null` = todas). */
+  readonly propertyIds?: readonly string[] | null;
 }
 
 // ---------------------------------------------------------------------------
