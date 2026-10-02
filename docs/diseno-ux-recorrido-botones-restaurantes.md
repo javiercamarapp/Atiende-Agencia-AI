@@ -66,3 +66,18 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 | H-5 | `Dashboard` renderizaba un `<main>` dentro del `<main>` del shell (HTML invalido) | `PageContainer` (div) |
 | H-6 | Las listas de productos de una promocion eran `<select multiple>` (poco usable en movil/teclado) | grupos de casillas con `role="group"`; conservan el orden del catalogo |
 | H-7 (NO corregido) | El item "Panel (KPIs)" del Sidebar de escritorio tambien se ve activo en subrutas (el `Sidebar` compartido no soporta `end`) | fuera de alcance (`packages/ui`); queda en knownGaps |
+
+## UNI-C (oleada C de unificacion): controles que cambiaron
+
+Capturas antes/despues (escritorio y movil, claro y oscuro) en `docs/diseno-ux-capturas-unic-restaurantes/` (`antes-*` / `despues-*`: Pedidos, Productos, Historial, Staff, Promociones, Repartidor y los dos dialogos de alta nuevos).
+
+| Pantalla | Antes | Ahora (mismo endpoint, mismo payload) |
+|---|---|---|
+| Todas las de panel | titulo visible duplicado (barra + `h1`) | `h1` solo para lectores de pantalla; el nombre lo pinta la barra del shell; avisos de rol con `Callout`; `CardTitle` de 14 px |
+| Pedidos | "Marcar Cancelado" -> `AlertDialog` local | `useConfirm` (peligro): "Volver"/Escape no llaman al API; confirmar -> PATCH `orders/:id/status`; transiciones con `Button loading` |
+| Repartidor | "Reportar incidencia" -> `AlertDialog` + textarea | `useConfirm().pedirTexto`: nota obligatoria (max. 2000), "Volver"/Escape no llaman al API; confirmar -> PATCH `repartidor/orders/:id/status` con `incidentNote`; botones sin `h-9` suelto |
+| Staff | formulario "Invitar" siempre abierto | CTA "Invitar a alguien" -> `FormDialog` con `FormField` (error por campo); token de la invitacion en un `Callout`; "Revocar" ahora pide confirmacion (`useConfirm`) |
+| Productos | dos formularios siempre abiertos + tabla a mano | CTA "Nueva categoria" / "Nuevo producto" -> `FormDialog`; catalogo en `DataTable` (orden por producto y categoria, 25 por pagina) |
+| Promociones | `toFixed(2)`, campos con `Label` suelto | `formatMoney` (`$1,500.00`); campos con `FormField`; "Desactivar" variante `danger` y `Button loading` |
+| Historial, Auditoria, Conversaciones de voz, Indicadores de voz | `<Table>` a mano | `DataTable` en `Card` (tarjetas en movil); "Cargar mas" con `Button loading` |
+| Agente de voz | glifo de texto en "Antes de salir en vivo" | iconos lucide |
