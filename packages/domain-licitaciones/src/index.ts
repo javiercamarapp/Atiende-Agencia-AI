@@ -72,7 +72,7 @@ export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot,
 export { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";
 
-export { PackageAssembler, USER_RESPONSIBILITY_NOTICE, verifyManifest } from "./package-assembler.ts";
+export { PackageAssembler, USER_RESPONSIBILITY_NOTICE, verifyManifest, verifyZipAgainstStoredManifest } from "./package-assembler.ts";
 export type {
   PackageStatus,
   PackageDocumentInput,
@@ -531,3 +531,9 @@ export { calendarNoteOf, holidayDatesOf } from "./business-days.ts";
 export type { DiasInhabilesInput } from "./business-days.ts";
 export { InMemoryDiasInhabilesRepository, PostgresDiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
 export type { DiasInhabilesRepository } from "./dias-inhabiles-repository.ts";
+
+// L-25: gate final de la sala de guerra (funcion pura) y L-29: bitacora por convocatoria (mezcla pura).
+export { evaluarGateSalaGuerra, buildCuentaRegresiva, resolveGateTimeZone, GATE_HOLGURA_HORAS, GATE_DEFAULT_TIME_ZONE } from "./gate-sala-guerra.ts";
+export type { GateColor, GateConditionId, GateLink, GateCondition, GateZipCheck, GatePackageInput, GateApprovalsInput, GateSalaGuerraInput, GateCuentaRegresiva, GateSalaGuerraResult } from "./gate-sala-guerra.ts";
+export { BITACORA_FUENTES, BITACORA_DEFAULT_LIMIT, BITACORA_MAX_LIMIT, isBitacoraFuente, buildBitacoraEventos, paginarBitacora } from "./bitacora-convocatoria.ts";
+export type { BitacoraFuente, BitacoraEvento, BitacoraFuentes, BitacoraFiltros, BitacoraPagina } from "./bitacora-convocatoria.ts";

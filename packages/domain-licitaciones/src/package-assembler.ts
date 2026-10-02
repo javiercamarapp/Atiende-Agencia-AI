@@ -315,3 +315,41 @@ export async function verifyManifest(zip: Uint8Array): Promise<ManifestVerificat
 
   return { ok: mismatches.length === 0 && missingFromZip.length === 0, mismatches, missingFromZip };
 }
+
+/**
+ * L-25: verifica los bytes del ZIP ALMACENADO contra el manifiesto ALMACENADO aparte (el de la base de
+ * datos), no contra el `manifiesto.json` que viaja dentro del mismo ZIP: quien altera un documento del
+ * ZIP podria alterar tambien el manifiesto interno, pero no el que vive en la tabla. Un ZIP que no se
+ * puede abrir o cuyo manifiesto guardado no tiene la forma esperada devuelve `state: "ilegible"`
+ * (fail-visible: el gate lo muestra en rojo, nunca lanza).
+ */
+export async function verifyZipAgainstStoredManifest(
+  zip: Uint8Array,
+  stored: { readonly status: "draft" | "ready"; readonly manifest: unknown },
+): Promise<{ readonly state: "ok"; readonly documentos: number } | { readonly state: "no_coincide"; readonly documentos: string[]; readonly faltantes: string[] } | { readonly state: "ilegible" }> {
+  const docs = (stored.manifest as { documents?: unknown } | null)?.documents;
+  if (!Array.isArray(docs)) return { state: "ilegible" };
+  let loaded: JSZip;
+  try {
+    loaded = await JSZip.loadAsync(zip);
+  } catch {
+    return { state: "ilegible" };
+  }
+  const prefix = stored.status === "draft" ? "BORRADOR_" : "";
+  const documentos: string[] = [];
+  const faltantes: string[] = [];
+  let verificados = 0;
+  for (const raw of docs as PackageManifestDocumentEntry[]) {
+    if (!raw || typeof raw.documentId !== "string" || !raw.present || typeof raw.sha256 !== "string") continue;
+    const entry = loaded.file(`${prefix}${raw.filename}`);
+    if (!entry) {
+      faltantes.push(raw.documentId);
+      continue;
+    }
+    const bytes = await entry.async("uint8array");
+    if (sha256Bytes(bytes) !== raw.sha256) documentos.push(raw.documentId);
+    else verificados += 1;
+  }
+  if (documentos.length > 0 || faltantes.length > 0) return { state: "no_coincide", documentos, faltantes };
+  return { state: "ok", documentos: verificados };
+}
