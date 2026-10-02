@@ -27,7 +27,7 @@ export { TicketCocinaDialog, TicketCocinaVista, type TicketCocinaDialogProps, ty
 export { GoogleIcon } from "./components/GoogleIcon.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
-export { StatCard, TrendStatCard } from "./components/StatCard.js";
+export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";

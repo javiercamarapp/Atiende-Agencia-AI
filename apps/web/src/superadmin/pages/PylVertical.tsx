@@ -284,10 +284,10 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
             </p>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard icon={TrendingUp} label="Ingreso reconocido" value={mxn(p.total.ingresoMxn)} nota={p.total.organizacionesSinIngreso > 0 ? `${p.total.organizacionesSinIngreso} cliente(s) sin ingreso conocido (no suman)` : `vs. mes anterior ${delta(c.total.ingreso)}`} />
-            <StatCard icon={Wallet} label="COGS directo" value={mxn(p.total.cogsDirectoMxn)} nota={`vs. mes anterior ${delta(c.total.cogsDirecto)}`} sinDato={p.total.cogsDirectoMxn === null ? "Falta el tipo de cambio" : undefined} />
-            <StatCard icon={Percent} label="Margen de contribución" value={pct(p.total.contribucionPct)} nota={p.total.contribucionMxn === null ? undefined : mxn(p.total.contribucionMxn)} sinDato={p.total.contribucionPct === null ? "Falta tipo de cambio o ingreso conocido" : undefined} />
-            <StatCard icon={Landmark} label="Margen bruto" value={pct(p.total.margenBrutoPct)} nota={p.total.margenBrutoMxn === null ? undefined : mxn(p.total.margenBrutoMxn)} sinDato={p.total.margenBrutoPct === null ? (p.infra.disponible ? "Falta tipo de cambio o ingreso conocido" : "Falta capturar la infraestructura del mes") : undefined} />
+            <StatCard variante="neutra" icon={TrendingUp} label="Ingreso reconocido" value={mxn(p.total.ingresoMxn)} nota={p.total.organizacionesSinIngreso > 0 ? `${p.total.organizacionesSinIngreso} cliente(s) sin ingreso conocido (no suman)` : `vs. mes anterior ${delta(c.total.ingreso)}`} />
+            <StatCard variante="neutra" icon={Wallet} label="COGS directo" value={mxn(p.total.cogsDirectoMxn)} nota={`vs. mes anterior ${delta(c.total.cogsDirecto)}`} sinDato={p.total.cogsDirectoMxn === null ? "Falta el tipo de cambio" : undefined} />
+            <StatCard variante="neutra" icon={Percent} label="Margen de contribución" value={pct(p.total.contribucionPct)} nota={p.total.contribucionMxn === null ? undefined : mxn(p.total.contribucionMxn)} sinDato={p.total.contribucionPct === null ? "Falta tipo de cambio o ingreso conocido" : undefined} />
+            <StatCard variante="neutra" icon={Landmark} label="Margen bruto" value={pct(p.total.margenBrutoPct)} nota={p.total.margenBrutoMxn === null ? undefined : mxn(p.total.margenBrutoMxn)} sinDato={p.total.margenBrutoPct === null ? (p.infra.disponible ? "Falta tipo de cambio o ingreso conocido" : "Falta capturar la infraestructura del mes") : undefined} />
           </div>
 
           <Card>
