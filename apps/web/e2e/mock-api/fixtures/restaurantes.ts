@@ -1,6 +1,6 @@
 // Fixtures de restaurantes (Taqueria El Faro). Forma de cada respuesta = tipos de apps/web/src/verticals/restaurantes/lib.
 // Rutas por `:id` = propertyId (la lista de sucursales cuelga del slug de la organizacion).
-import { fallo } from "../respuestas.ts";
+import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
@@ -41,7 +41,83 @@ const clientesKpis = {
   tierDistribution: { metric: "frecuencia", BLACK: 2, PLATINUM: 5, GOLD: 11, BLUE: 30, withoutTier: 13 },
 };
 
+// CHAT-08 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con
+// conversacionId y seq; conversaciones guardadas por escenario). Solo existe en la API simulada de e2e.
+interface ConversacionMock {
+  id: string;
+  titulo: string;
+  actualizadaEn: string;
+  mensajes: { id: string; role: "user" | "assistant"; text: string; status?: string; blocks?: unknown[]; sources?: unknown[]; seq: number }[];
+}
+const MOCK_ROLES_COPILOTO = ["owner", "admin", "staff"] as const;
+const BLOQUE_VENTAS = {
+  kind: "table",
+  tool: "ventas_por_dia",
+  title: "Ventas por día",
+  columns: [
+    { key: "dia", label: "Día", kind: "text" },
+    { key: "ventas", label: "Ventas", kind: "mxn" },
+    { key: "pedidos", label: "Pedidos", kind: "integer" },
+  ],
+  rows: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((dia, i) => ({ dia, ventas: 2100 + i * 310, pedidos: 11 + i })),
+  chart: { kind: "bar", x: "dia", y: "ventas" },
+  truncated: false,
+};
+const TEXTO_VENTAS = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos.";
+const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", periodLabel: "últimos 7 días", scopeLabel: "todas tus sucursales" };
+const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
+
 export const rutasRestaurantes: readonly Ruta[] = [
+  { metodo: "GET", patron: `${B}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
+  {
+    metodo: "POST",
+    patron: `${B}/chat-datos`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? "");
+      const lista = conversacionesMock(p);
+      let conv = lista.find((c) => c.id === cuerpo.conversationId);
+      if (!conv) {
+        conv = { id: `00000000-0000-4000-8000-${String(lista.length + 1).padStart(12, "0")}`, titulo: pregunta.slice(0, 60), actualizadaEn: new Date().toISOString(), mensajes: [] };
+        lista.unshift(conv);
+      }
+      const seq = conv.mensajes.length + 2;
+      conv.mensajes.push({ id: `m-${seq - 1}`, role: "user", text: pregunta, seq: seq - 1 });
+      conv.mensajes.push({ id: `m-${seq}`, role: "assistant", text: TEXTO_VENTAS, status: "ok", blocks: [BLOQUE_VENTAS], sources: [FUENTE_VENTAS], seq });
+      conv.actualizadaEn = new Date().toISOString();
+      return ndjson([
+        { t: "paso", fase: "inicio", herramienta: "ventas_por_dia" },
+        { t: "paso", fase: "fin", herramienta: "ventas_por_dia" },
+        { t: "fin", conversacionId: conv.id, seq, respuesta: { status: "ok", text: TEXTO_VENTAS, blocks: [BLOQUE_VENTAS], sources: [FUENTE_VENTAS], toolsUsed: ["ventas_por_dia"] } },
+      ]);
+    },
+  },
+  { metodo: "GET", patron: `${B}/chat-datos/conversaciones`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => ({ disponible: true, conversaciones: conversacionesMock(p).map((c) => ({ id: c.id, titulo: c.titulo, actualizadaEn: c.actualizadaEn, mensajes: c.mensajes.length })) }) },
+  { metodo: "GET", patron: `${B}/chat-datos/conversaciones/:cid`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => conversacionesMock(p).find((c) => c.id === p.params["cid"]) ?? fallo(404, "Conversación no encontrada.") },
+  {
+    metodo: "PATCH",
+    patron: `${B}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const c = conversacionesMock(p).find((x) => x.id === p.params["cid"]);
+      if (!c) return fallo(404, "Conversación no encontrada.");
+      c.titulo = String(((p.cuerpo ?? {}) as { titulo?: string }).titulo ?? c.titulo);
+      return { id: c.id, titulo: c.titulo };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${B}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const lista = conversacionesMock(p);
+      const i = lista.findIndex((x) => x.id === p.params["cid"]);
+      if (i < 0) return fallo(404, "Conversación no encontrada.");
+      lista.splice(i, 1);
+      return conStatus(204, undefined);
+    },
+  },
   { metodo: "GET", patron: "/v1/restaurantes/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre, slug: "centro" }] }) },
   { metodo: "GET", patron: `${B}/kpis/sales`, manejador: () => kpisVentas },
   { metodo: "GET", patron: `${B}/kpis/sales/trend`, manejador: () => ({ buckets: ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((label, i) => ({ label, revenue: 2100 + i * 310, orders: 11 + i })) }) },

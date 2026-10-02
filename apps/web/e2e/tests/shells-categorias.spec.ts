@@ -8,17 +8,22 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
+import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 interface Esperado {
   readonly categorias: readonly string[];
   readonly barra: readonly string[];
   /** Etiquetas del pie del Sidebar que son enlaces reales (solo superadmin las trae siempre; las verticales dependen del asistente). */
   readonly pie: readonly string[];
+  /** Destinos que la hoja "Más" repite a proposito (el pie lleva a una pantalla que tambien es un destino del menu). */
+  readonly repetidos?: readonly string[];
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"] },
-  restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: [] },
+  superadmin: { categorias: ["Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
+  // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
+  // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
+  restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
   hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: [] },
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
   despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: [] },
@@ -71,9 +76,10 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       // Cada destino de la barra tambien esta en la hoja.
       const hrefsHoja = await hoja.getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
       for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
-      // Solo "Costos de IA" (pie de superadmin) repite el destino de "Gasto de API de LLM"; en las verticales no se repite nada.
+      // Solo los destinos declarados en `repetidos` se repiten: "Costos de IA" (superadmin, repite "Gasto de API de LLM") y la pildora
+      // "Pregunta a tus datos" (restaurantes, repite "Copiloto"); en el resto no se repite nada.
       const duplicados = hrefsHoja.filter((h, i) => hrefsHoja.indexOf(h) !== i);
-      expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual(objetivo === "superadmin" ? ["/superadmin/gasto-api"] : []);
+      expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual([...(esperado.repetidos ?? [])]);
       if (objetivo === "superadmin") expect(hrefsHoja).toContain("/superadmin/paneles");
       vigilante.verificar();
     });

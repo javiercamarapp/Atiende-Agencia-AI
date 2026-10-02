@@ -117,7 +117,7 @@ export interface CopilotoTransporte {
 export class CopilotoErrorTransporte extends Error {
   readonly status: CopilotoStatus;
   readonly reintentarEnSeg?: number;
-  constructor(status: CopilotoStatus, mensaje = status, reintentarEnSeg?: number) {
+  constructor(status: CopilotoStatus, mensaje: string = status, reintentarEnSeg?: number) {
     super(mensaje);
     this.name = "CopilotoErrorTransporte";
     this.status = status;
