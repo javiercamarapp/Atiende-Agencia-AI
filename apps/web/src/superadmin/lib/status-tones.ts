@@ -34,3 +34,9 @@ export const PROSPECTO_ESTADO_TONES: Tabla = { nuevo: "info", ganado: "success",
 
 /** Riesgo de margen de una organizacion (costos y margen). */
 export const RIESGO_MARGEN_TONES: Tabla = { alto: "danger", medio: "warning", bajo: "success" };
+
+/** Estado de una corrida de agente o cron (bitacora SA-L-07): ok verde, parcial ambar, fallo rojo. */
+export const CORRIDA_ESTADO_TONES: Tabla = { ok: "success", parcial: "warning", fallo: "danger" };
+
+/** Estado de un agente en el catalogo (SA-L-08): vivo verde, pausado ambar, disenado informativo, retirado neutro. */
+export const AGENTE_ESTADO_TONES: Tabla = { vivo: "success", pausado: "warning", disenado: "info", retirado: "neutral" };

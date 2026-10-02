@@ -23,7 +23,7 @@ interface Esperado {
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
+  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
   // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
   // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
   restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
