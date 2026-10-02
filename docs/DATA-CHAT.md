@@ -68,8 +68,18 @@ en CTE separados). Solo admin_gestora/contador: lo financiero lo protege la RLS 
   sucursal: filtro `$2` fijado por el servidor + RLS de `core.property` (`has_property_access`) vía el JOIN de cada
   consulta. `scripts/verify-data-chat` prueba cross-tenant (ambos sentidos), gerente de una sucursal (aunque la
   app pasara `null` o un id ajeno) y `anon`.
-- **Límites.** 50 filas, 8 s (timeout del motor + `statement_timeout` de Postgres), 3 rondas de herramientas, 4
-  llamadas por pregunta, pregunta ≤ 600 caracteres, historial ≤ 6 turnos, salida del modelo ≤ 500 tokens.
+- **Límites** (`DEFAULT_DATA_CHAT_LIMITS`, CHAT-05): la tabla y el PDF reciben hasta 50 filas y al modelo le llegan 20 (con aviso
+  de recorte para que no calcule totales); 8 s por herramienta (timeout del motor + `statement_timeout` de Postgres), 20 s por
+  llamada al modelo y 45 s por turno (pasado el tiempo, o si el modelo se cuelga al redactar, se responde con las cifras
+  deterministas sin perder los resultados); 2 llamadas al modelo por turno (elegir herramienta y redactar), 3 consultas por pregunta,
+  pregunta ≤ 600 caracteres, historial ≤ 4 turnos (las respuestas viejas del asistente van resumidas a su primera frase), salida
+  del modelo ≤ 150 tokens al elegir herramienta y ≤ 350 al redactar (el piso `minMaxTokens` del escalón puede subirlo en modelos que razonan).
+- **Cascada y medición.** La narrativa del modelo solo se muestra si pasa la guardia de cifras. Si no pasa, hay EXACTAMENTE UNA
+  llamada al modelo escalado (rol `<vertical>:data_chat_retry`, `completeRetry`) y, si tampoco pasa o falla, el resumen determinista;
+  nunca una segunda escalada. `onUso` entrega por turno la ruta (`directa`, `barato`, `escalado`, `determinista`), las llamadas al
+  modelo y el costo reportado por el proveedor; las rutas de las 6 verticales lo registran como una línea `data_chat_uso` en los logs
+  (sin pregunta, filas ni PII). Persistirlo por organización y rol requiere migración (columnas de `core.data_chat_query_log`,
+  spec g.5): fuera de este lote.
 - **PII.** Las consultas devuelven agregados (clientes recurrentes = solo conteos); además toda celda de texto
   que llega al modelo se sanitiza y se redactan teléfonos, correos, tarjetas y enlaces.
 - **Bitácora.** Quién, organización, herramienta, parámetros tipados, resultado como conteo y duración. Nunca
