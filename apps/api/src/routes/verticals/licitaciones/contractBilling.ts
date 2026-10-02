@@ -8,7 +8,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { WRITE_ROLES, assertValidDecimalString, calendarioAvisos } from "@atiende/domain-licitaciones";
+import { WRITE_ROLES, assertValidDecimalString, calendarioAvisos, isValidDateOnly, resolveRegimenLegal } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -18,9 +18,18 @@ interface CreateInvoiceBody {
   readonly concepto?: unknown;
   readonly amount?: unknown;
   readonly invoiceVerifiedOn?: unknown;
+  /** L-23: fecha de publicacion de la convocatoria ("YYYY-MM-DD"); decide el regimen legal del plazo. Opcional. */
+  readonly convocatoriaPublicadaEn?: unknown;
 }
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `undefined`/`null`/"" = no declarada; cualquier otra cosa debe ser una fecha real "YYYY-MM-DD". */
+function parseConvocatoriaPublicadaEn(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string" || !isValidDateOnly(raw)) throw Errors.validation('convocatoriaPublicadaEn: se esperaba una fecha real "YYYY-MM-DD".');
+  return raw;
+}
 
 export function licitacionesContractBillingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -59,11 +68,14 @@ export function licitacionesContractBillingRoutes(deps: AppDeps): Hono<CoreAuthH
       throw Errors.validation('invoiceVerifiedOn: se esperaba "YYYY-MM-DD".');
     }
 
+    const convocatoriaPublicadaEn = parseConvocatoriaPublicadaEn(raw.convocatoriaPublicadaEn);
+
     await requireContract(repo, organizationId, tenderId);
     // L-22: el plazo del art. 73 se cuenta con el calendario efectivo (oficiales + organizacion + convocatoria).
     const calendario = await resolveCalendarioFor(deps, c, tenderId);
-    const invoice = await repo.createContractInvoice(organizationId, tenderId, { concepto: raw.concepto, amount: raw.amount, invoiceVerifiedOn: raw.invoiceVerifiedOn, actorId, calendario });
-    return c.json({ ...invoice, calendario: { nota: calendario.note, avisos: calendarioAvisos(calendario, raw.invoiceVerifiedOn, invoice.dueDate) } }, 201);
+    // L-23: el regimen (LAASSP nueva 17 dias habiles / abrogada 20 dias naturales) sale de la fecha de la convocatoria.
+    const invoice = await repo.createContractInvoice(organizationId, tenderId, { concepto: raw.concepto, amount: raw.amount, invoiceVerifiedOn: raw.invoiceVerifiedOn, actorId, calendario, convocatoriaPublicadaEn });
+    return c.json({ ...invoice, regimenLegal: resolveRegimenLegal(convocatoriaPublicadaEn), calendario: { nota: calendario.note, avisos: calendarioAvisos(calendario, raw.invoiceVerifiedOn, invoice.dueDate) } }, 201);
   });
 
   app.get(invoicesBase, async (c) => {
