@@ -517,7 +517,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                       key={next}
                       type="button"
                       size="sm"
-
+                      variant={next === "cancelado" ? "danger" : "outline"}
                       onClick={() => void handleChangeStatus(o, next)}
                       loading={changingId === o.id}
                     >
