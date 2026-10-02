@@ -9,16 +9,12 @@
 // YYYY-MM-DD) -- ver su comentario de cabecera para por qué apps/web nunca importa
 // tipos de @atiende/domain-rentas directamente.
 //
-// Límite real conocido, no un stub disfrazado: pricing-config.ts (Fase 2 del
-// backend) solo expone los 5 POST de escritura, NUNCA un GET que liste la
-// configuración ya guardada de una unidad (tarifa base vigente, temporadas,
-// descuentos, reglas min-stay, reglas por canal) -- confirmado leyendo el archivo
-// completo, no hay ningún otro endpoint de rentas que lo haga. Agregar ese GET es
-// trabajo de backend fuera del alcance de este hallazgo ("6 endpoints" son
-// exactamente estos 6). pages/Precios.tsx compensa mostrando lo que se configuró
-// EN ESTA SESIÓN del navegador (nunca inventa datos ni pretende ser un historial
-// persistente) -- ver el comentario de esa página.
-import { fetchJson, sendJson } from "./admin-client.ts";
+// Rn-23: pricing-config.ts ahora expone GET .../configuracion-precios (lo ya guardado de la
+// unidad) y PATCH/DELETE por id de temporada, descuento, min-stay y regla de canal; Precios.tsx
+// muestra lo persistido, lo edita y lo borra (la tarifa base se versiona: se cambia con el POST
+// y su historial no se borra).
+import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+import { formatMoney } from "@atiende/ui";
 import { fetchUnidades } from "./calendario-client.ts";
 import type { RangoFechas, UnidadOption } from "./calendario-client.ts";
 
@@ -213,6 +209,90 @@ export async function crearReglaCanal(
   input: ReglaCanalInput,
 ): Promise<ReglaCanalCreada> {
   return sendJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/unidades/${unidadId}/reglas-canal`, token, "POST", input);
+}
+
+// ---- Rn-23: lectura, edición y borrado ----
+
+export interface TarifaBaseRegistro {
+  readonly id: string;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+  readonly vigenteDesde: string;
+}
+export interface TemporadaRegistro {
+  readonly id: string;
+  readonly nombre: string;
+  readonly rango: RangoFechas;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+}
+export interface DescuentoRegistro {
+  readonly id: string;
+  readonly nochesMinimas: number;
+  readonly porcentajeDescuentoBasisPoints: number;
+  readonly fuente: string;
+}
+export interface MinStayRegistro {
+  readonly id: string;
+  readonly rango: RangoFechas;
+  readonly diaSemanaCheckIn: number | null;
+  readonly nochesMinimas: number;
+}
+export interface ReglaCanalRegistro {
+  readonly id: string;
+  readonly canalCodigo: string;
+  readonly markupBasisPoints: number;
+  readonly activo: boolean;
+}
+export interface ConfiguracionPricing {
+  readonly unidadId: string;
+  readonly tarifaBaseVigente: TarifaBaseRegistro | null;
+  readonly historialTarifaBase: readonly TarifaBaseRegistro[];
+  readonly temporadas: readonly TemporadaRegistro[];
+  readonly descuentosDuracion: readonly DescuentoRegistro[];
+  readonly reglasMinStay: readonly MinStayRegistro[];
+  readonly reglasCanal: readonly ReglaCanalRegistro[];
+}
+
+const rutaUnidad = (apiBaseUrl: string, propertyId: string, unidadId: string) => `${apiBaseUrl}/rentas/${propertyId}/unidades/${unidadId}`;
+
+export async function fetchConfiguracionPricing(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, unidadId: string): Promise<ConfiguracionPricing> {
+  return fetchJson<ConfiguracionPricing>(fetchImpl, `${rutaUnidad(apiBaseUrl, propertyId, unidadId)}/configuracion-precios`, token);
+}
+
+export type RecursoPricing = "temporadas" | "descuentos-duracion" | "min-stay" | "reglas-canal";
+
+/** PATCH parcial: solo los campos enviados cambian. */
+export async function editarConfiguracionPricing<T>(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  unidadId: string,
+  recurso: RecursoPricing,
+  id: string,
+  cambios: Readonly<Record<string, unknown>>,
+): Promise<T> {
+  return sendJson<T>(fetchImpl, `${rutaUnidad(apiBaseUrl, propertyId, unidadId)}/${recurso}/${id}`, token, "PATCH", cambios);
+}
+
+export async function borrarConfiguracionPricing(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  unidadId: string,
+  recurso: RecursoPricing,
+  id: string,
+): Promise<void> {
+  await deleteJson<unknown>(fetchImpl, `${rutaUnidad(apiBaseUrl, propertyId, unidadId)}/${recurso}/${id}`, token);
+}
+
+/** Dinero para pantalla: separador de miles del formateador único de @atiende/ui, sin sufijo
+ * para MXN (moneda por defecto de la plataforma); otra moneda lleva su código. */
+export function dineroDeCentavos(centavos: number, moneda: string): string {
+  const monto = `$${formatMoney(centavos / 100, 2)}`;
+  return moneda === "MXN" ? monto : `${monto} ${moneda}`;
 }
 
 /** `precioNocheCentavos`/`markupBasisPoints`/etc. son la unidad que el servidor
