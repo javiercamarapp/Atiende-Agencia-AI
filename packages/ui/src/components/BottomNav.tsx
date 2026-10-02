@@ -113,7 +113,8 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
             </SheetHeader>
             {(moreSections ?? []).map((section) => (
               <div key={section.title} className="mt-3">
-                <p className={claseTituloGrupo}>{section.title}</p>
+                {/* La seccion raiz ("Resumen") va sin titulo, igual que en el Sidebar de escritorio. */}
+                {!section.siempreAbierto && <p className={claseTituloGrupo}>{section.title}</p>}
                 <div className="flex flex-col">
                   {section.items.map((item) => (
                     <NavLink

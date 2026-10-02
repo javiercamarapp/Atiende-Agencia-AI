@@ -19,3 +19,5 @@ export type {
 } from "./tipos";
 export { faseSegunTiempo } from "./fases";
 export { textoAviso } from "./CopilotoMensaje";
+export { GraficaBloque, Kpi, Sparkline, planGrafica } from "./CopilotoGraficas";
+export { bloqueACsv, nombreArchivoCsv } from "./formato";

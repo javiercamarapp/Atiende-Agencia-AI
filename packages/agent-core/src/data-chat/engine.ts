@@ -437,6 +437,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     columns: r.result.columns,
     rows: r.result.rows,
     chart: r.result.chart,
+    ...(r.result.sparkline ? { sparkline: r.result.sparkline } : {}),
     truncated: r.truncated,
   }));
 

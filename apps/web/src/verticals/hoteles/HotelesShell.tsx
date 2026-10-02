@@ -39,6 +39,7 @@ import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -169,51 +170,64 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
   const base = `/hoteles/${orgSlug}`;
 
-  // Mismas rutas y etiquetas de siempre, agrupadas por función: "Panel" fijo, "Operación" (día a día) y "Administración"
-  // (P&L/Revenue/Catálogo/Agentes, solo para los roles que ya podían verlos — ver *_NAV_ROLES arriba).
+  // UNI-6: categorías en el orden de Likida (Operación, Huéspedes, Finanzas, Agentes, Configuración) con "Resumen" como raíz
+  // sin título. Mismas rutas, etiquetas y gates de rol que antes (ver *_NAV_ROLES arriba): solo se reagrupan. Una categoría
+  // cuyo rol activo no ve ningún destino se omite por completo (un acordeón vacío confunde).
   const sections: SidebarSection[] = [
     {
-      title: "Panel",
+      title: "Resumen",
       siempreAbierto: true,
-      items: [{ to: base, label: "Dashboard", icon: LayoutDashboard }],
+      items: [{ to: base, label: "Resumen", icon: LayoutDashboard, end: true }],
     },
     {
       title: "Operación",
       items: [
         ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/recepcion`, label: "Recepción", icon: ConciergeBell }] : []),
         { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
-        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/huespedes`, label: "Huéspedes", icon: UserRound }] : []),
         ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
-        { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
         { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
+        { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
         { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
-        { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
-        { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
+      ],
+    },
+    {
+      title: "Huéspedes",
+      items: [
+        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/huespedes`, label: "Huéspedes", icon: UserRound }] : []),
         ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
         ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
         ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
-        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
         ...(GRUPOS_NAV_ROLES.has(role) ? [{ to: `${base}/grupos`, label: "Grupos", icon: UsersRound }] : []),
       ],
     },
     {
-      title: "Administración",
+      title: "Finanzas",
       items: [
         ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
         ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: "Revenue", icon: Gauge }] : []),
-        ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
-        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: "Agentes", icon: Bot }] : []),
+        { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
+        { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
       ],
     },
-    // "Administración" se omite por completo si el rol activo no ve ningún destino de ese grupo (un acordeón vacío confunde).
+    {
+      title: "Agentes",
+      items: [
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: "Agentes", icon: Bot }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
+      ],
+    },
+    {
+      title: "Configuración",
+      items: [...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : [])],
+    },
   ].filter((sec) => sec.items.length > 0);
 
-  // Hoteles tiene hasta 14 destinos: la barra trae los 4 de uso diario (visibles para todos los roles) y "Más" (lo agrega
-  // `VerticalShell`) abre TODAS las secciones del mismo árbol que el Sidebar de escritorio, ya filtradas por rol.
+  // Hoteles tiene hasta 16 destinos: la barra trae 4 de uso diario (visibles para todos los roles, con etiqueta completa) y
+  // "Más" (lo agrega `VerticalShell`) abre TODAS las secciones del mismo árbol que el Sidebar de escritorio, ya filtradas por rol.
   const mobileItems: BottomNavItem[] = [
-    { to: base, label: "Inicio", icon: LayoutDashboard, end: true },
+    { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
     { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
-    { to: `${base}/mantenimiento`, label: "Mant.", icon: Wrench },
+    { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
     { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
   ];
 
@@ -246,7 +260,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       vertical="hoteles"
       sections={sections}
       mobileItems={mobileItems}
-      user={{ email: session.email, rol: role }}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/hoteles/${orgSlug}` }}

@@ -17,8 +17,11 @@ export interface CopilotoBloque {
   readonly title: string;
   readonly columns: readonly CopilotoColumna[];
   readonly rows: readonly Readonly<Record<string, CopilotoCelda>>[];
-  /** Grafica que el catalogo eligio para este bloque (la dibuja CHAT-02; mientras tanto se muestra la tabla). */
-  readonly chart?: { readonly kind: "bar" | "line" | "donut"; readonly x: string; readonly y: string };
+  /** Representacion que el CATALOGO eligio para este bloque (nunca el modelo). Si los datos no alcanzan para
+   *  dibujarla, el bloque se muestra como tabla. `kpi`: 1 fila con 1-4 columnas numericas. */
+  readonly chart?: { readonly kind: "bar" | "line" | "donut" | "kpi"; readonly x: string; readonly y: string };
+  /** Mini serie por fila (`series[i]` es de `rows[i]`): se dibuja como sparkline en una columna extra. */
+  readonly sparkline?: { readonly label: string; readonly series: readonly (readonly number[])[] };
   readonly truncated: boolean;
 }
 
@@ -150,6 +153,8 @@ export interface ChatDatosShellProps {
   /** Herramienta -> ruta interna de la pantalla fuente (lista blanca: solo rutas que empiezan con "/"). */
   readonly rutasFuente?: Readonly<Record<string, string>>;
   readonly maxCaracteres: number;
+  /** Vertical (p. ej. "restaurantes"): solo se usa para nombrar los archivos CSV descargados. */
+  readonly vertical?: string;
   readonly uso?: { readonly pct: number; readonly etiqueta: string };
   readonly conversacionInicial?: string;
   readonly onConversacionCambia?: (id?: string) => void;

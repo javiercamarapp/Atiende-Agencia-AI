@@ -32,10 +32,20 @@ export interface DataChatColumn {
   readonly kind: ColumnKind;
 }
 
+/** Representacion visual que el CATALOGO elige para un bloque (nunca el modelo). Cambio aditivo:
+ *  `donut` (composicion, hasta 6 segmentos) y `kpi` (1 fila con 1-4 columnas numericas; `x`/`y` solo
+ *  indican la columna principal, la UI muestra las columnas numericas de la primera fila). */
 export interface DataChatChartSpec {
-  readonly kind: "bar" | "line";
+  readonly kind: "bar" | "line" | "donut" | "kpi";
   readonly x: string;
   readonly y: string;
+}
+
+/** Mini serie por fila para una tabla (aditivo): `series[i]` pertenece a `rows[i]`; la UI la dibuja como
+ *  sparkline en una columna extra con `label` como encabezado. Solo numeros finitos. */
+export interface DataChatSparkline {
+  readonly label: string;
+  readonly series: readonly (readonly number[])[];
 }
 
 export type DataChatToolStatus = "ok" | "empty" | "unavailable" | "needs_clarification" | "error";
@@ -53,6 +63,7 @@ export interface DataChatToolResult {
   readonly columns: readonly DataChatColumn[];
   readonly rows: readonly Readonly<Record<string, Cell>>[];
   readonly chart?: DataChatChartSpec;
+  readonly sparkline?: DataChatSparkline;
   /** Texto determinista corto con la cifra principal; el usuario siempre lo ve aunque el modelo falle. */
   readonly summary?: string;
 }
@@ -84,6 +95,7 @@ export interface DataChatBlock {
   readonly columns: readonly DataChatColumn[];
   readonly rows: readonly Readonly<Record<string, Cell>>[];
   readonly chart?: DataChatChartSpec;
+  readonly sparkline?: DataChatSparkline;
   readonly truncated: boolean;
 }
 

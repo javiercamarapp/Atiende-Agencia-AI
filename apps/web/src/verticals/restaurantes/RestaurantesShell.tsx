@@ -35,6 +35,7 @@ import { VerticalShellConectado } from "../../components/VerticalShellConectado.
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -88,13 +89,16 @@ export interface RestaurantesShellProps {
  * rechazaría de todas formas (403 en admin-staff.ts) — nunca la única barrera. */
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
+// UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
+// "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
+// (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
 function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
-      title: "Panel",
+      title: "Resumen",
       siempreAbierto: true,
-      items: [{ to: base, label: "Panel (KPIs)", icon: LayoutDashboard }],
+      items: [{ to: base, label: "Resumen", icon: LayoutDashboard, end: true }],
     },
     {
       title: "Operación",
@@ -104,37 +108,42 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
+      ],
+    },
+    {
+      title: "Catálogo",
+      items: [
         { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
         { to: `${base}/promociones`, label: "Promociones", icon: Tag },
       ],
     },
     {
-      title: "Negocio",
+      title: "Clientes",
       items: [
-        { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
         { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
       ],
     },
   ];
   if (canSeeStaff) {
-    // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin
-    // (mismo mandato que el servidor exige, ver apps/api/src/routes/verticals/
-    // restaurantes/auditoria.ts) -- reusa el mismo `canSeeStaff`
-    // (STAFF_NAV_ROLES = {"owner","admin"}) en vez de una lista nueva: ambos
-    // links comparten exactamente el mismo umbral de rol.
+    // Agente de voz (config, vista previa, conversaciones) -- mismo umbral owner/admin: la configuración del agente es
+    // de gestión, no de operación.
     sections.push({
-      title: "Equipo",
+      title: "Agente",
+      items: [{ to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic }],
+    });
+    // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
+    // ver apps/api/src/routes/verticals/restaurantes/auditoria.ts) -- reusa el mismo `canSeeStaff`
+    // (STAFF_NAV_ROLES = {"owner","admin"}) en vez de una lista nueva: todos estos links comparten el mismo umbral de rol.
+    sections.push({
+      title: "Configuración",
       items: [
         // R-33: checklist de onboarding calculado con datos reales (mismo umbral owner/admin).
         { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ListChecks },
+        // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas.
+        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: UserCog },
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
-        // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas, mismo
-        // umbral owner/admin (STAFF_NAV_ROLES) que Staff/Auditoría.
-        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
-        // Agente de voz (config, vista previa, conversaciones) -- mismo umbral
-        // owner/admin: la configuración del agente es de gestión, no de operación.
-        { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
         // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
         { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
         // PL-13 -- privacidad de TODA la organizacion (ARCO de todos los verticales, retención, purgas, aviso versionado).
@@ -151,7 +160,7 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/restaurantes/${orgSlug}`;
   return [
-    { to: base, label: "Panel", icon: LayoutDashboard, end: true },
+    { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
     { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
     { to: `${base}/historial`, label: "Historial", icon: History },
     { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
@@ -220,7 +229,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role))}
       mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role }}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, fecha: fechaCortaEsMx(), resumenTo: `/restaurantes/${orgSlug}` }}

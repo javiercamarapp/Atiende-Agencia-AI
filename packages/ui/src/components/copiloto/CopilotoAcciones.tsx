@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, FileDown, Pin, RotateCcw } from "lucide-react";
-import { bloqueATsv } from "./formato";
-import type { CopilotoMensaje, CopilotoTransporte } from "./tipos";
+import { Check, Copy, FileDown, Pin, RotateCcw, Sheet } from "lucide-react";
+import { bloqueACsv, bloqueATsv, nombreArchivoCsv } from "./formato";
+import type { CopilotoBloque, CopilotoMensaje, CopilotoTransporte } from "./tipos";
 
 const BOTON = "flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50";
 
@@ -13,6 +13,23 @@ export function textoParaCopiar(m: CopilotoMensaje): string {
     partes.push(`Fuentes: ${m.sources.map((s) => [s.source, s.periodLabel, s.scopeLabel].filter(Boolean).join(" · ")).join("; ")}`);
   }
   return partes.filter(Boolean).join("\n\n");
+}
+
+/** Descarga el CSV (UTF-8 con BOM) de un bloque en el navegador. Devuelve false si el navegador no puede crear el archivo. */
+export function descargarCsv(bloque: CopilotoBloque, vertical: string | undefined, ahora: Date = new Date()): boolean {
+  try {
+    const url = URL.createObjectURL(new Blob([bloqueACsv(bloque)], { type: "text/csv;charset=utf-8" }));
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = nombreArchivoCsv(vertical, bloque.tool, ahora);
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -27,6 +44,7 @@ export function CopilotoAcciones({
   esUltima,
   ocupado,
   onRegenerar,
+  vertical,
 }: {
   mensaje: CopilotoMensaje;
   conversacionId: string | undefined;
@@ -34,7 +52,10 @@ export function CopilotoAcciones({
   esUltima: boolean;
   ocupado: boolean;
   onRegenerar: () => void;
+  /** Vertical para el nombre del archivo CSV (opcional). */
+  vertical?: string;
 }) {
+  const [errorCsv, setErrorCsv] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [fijado, setFijado] = useState<"no" | "ok" | "error">("no");
   const [fijando, setFijando] = useState(false);
@@ -66,6 +87,9 @@ export function CopilotoAcciones({
     }
   };
 
+  const bloquesCsv = (mensaje.blocks ?? []).filter((b) => b.columns.length > 0 && b.rows.length > 0);
+  const csv = (b: CopilotoBloque) => setErrorCsv(!descargarCsv(b, vertical));
+
   const urlPdf = transporte.urlPdf && conversacionId && mensaje.seq !== undefined ? transporte.urlPdf(conversacionId, mensaje.seq) : undefined;
 
   return (
@@ -74,6 +98,12 @@ export function CopilotoAcciones({
         {copiado ? <Check className="w-3.5 h-3.5" aria-hidden /> : <Copy className="w-3.5 h-3.5" aria-hidden />}
         {copiado ? "Copiado" : "Copiar"}
       </button>
+      {bloquesCsv.map((b, i) => (
+        <button key={`${b.tool}-${i}`} type="button" className={BOTON} onClick={() => csv(b)} aria-label={bloquesCsv.length > 1 ? `Descargar CSV de ${b.title}` : "Descargar CSV"}>
+          <Sheet className="w-3.5 h-3.5" aria-hidden />
+          {bloquesCsv.length > 1 ? `CSV: ${b.title}` : "CSV"}
+        </button>
+      ))}
       {urlPdf ? (
         <a className={BOTON} href={urlPdf} download aria-label="Descargar PDF">
           <FileDown className="w-3.5 h-3.5" aria-hidden />
@@ -91,6 +121,11 @@ export function CopilotoAcciones({
           <RotateCcw className="w-3.5 h-3.5" aria-hidden />
           Regenerar
         </button>
+      ) : null}
+      {errorCsv ? (
+        <span role="alert" className="text-xs text-destructive">
+          No se pudo crear el archivo CSV.
+        </span>
       ) : null}
       {fijado === "error" ? (
         <span role="alert" className="text-xs text-destructive">

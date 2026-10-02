@@ -53,8 +53,8 @@ describe("RestaurantesShell — entrada Agente de voz", () => {
   it("owner y admin la ven y apunta a la ruta del agente", async () => {
     for (const rol of ["owner", "admin"]) {
       const root = await renderShell(rol);
-      // El Sidebar es un acordeón: el grupo "Equipo" arranca cerrado.
-      click([...root.querySelectorAll<HTMLButtonElement>("aside button")].find((b) => b.textContent?.includes("Equipo"))!);
+      // El Sidebar es un acordeón: la categoría "Agente" (solo owner/admin) arranca cerrada.
+      click([...root.querySelectorAll<HTMLButtonElement>("aside button")].find((b) => b.textContent?.trim() === "Agente")!);
       expect(enlaceVoz(root)?.getAttribute("href")).toBe("/restaurantes/demo/agente-voz");
       rendered!.unmount();
       rendered = undefined;
@@ -63,7 +63,7 @@ describe("RestaurantesShell — entrada Agente de voz", () => {
 
   it("el staff de operación no la ve", async () => {
     const root = await renderShell("staff");
-    expect([...root.querySelectorAll("aside button")].some((b) => b.textContent?.includes("Equipo"))).toBe(false); // sin grupo Equipo, sin la entrada
+    expect([...root.querySelectorAll("aside button")].some((b) => b.textContent?.trim() === "Agente")).toBe(false); // sin categoría Agente, sin la entrada
     expect(enlaceVoz(root)).toBeUndefined();
     expect([...root.querySelectorAll("aside a")].some((a) => a.textContent?.includes("Pedidos"))).toBe(true);
   });
