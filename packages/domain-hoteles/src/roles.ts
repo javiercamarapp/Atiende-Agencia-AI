@@ -113,6 +113,12 @@ export const HOUSEKEEPING_SHIFT_PUBLISH_ROLES: readonly HotelRole[] = ["owner", 
 export const HOUSEKEEPING_TASK_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "housekeeping"];
 /** Ver el tablero/reporte de limpieza: operadores de limpieza + mantenimiento (que inhabilita/rehabilita). */
 export const HOUSEKEEPING_BOARD_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "housekeeping", "maintenance"];
+// H-26 (migracion 039) -- housekeeping residual. Espejo de hoteles.can_configure_property (config: owner/gm) y de
+// can_work_housekeeping (fotos, blancos, opt-out); la asignacion automatica la dispara supervision.
+export const HOUSEKEEPING_CONFIG_ROLES: readonly HotelRole[] = ["owner", "gm"];
+export const HOUSEKEEPING_AUTO_ASSIGN_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
+/** Configuracion del canal de WhatsApp y del agente de voz (H-29): owner/gm, igual que hoteles.can_configure_property. */
+export const MENSAJERIA_CONFIG_ROLES: readonly HotelRole[] = ["owner", "gm"];
 /** Inhabilitar / rehabilitar una habitacion (fuera de servicio / fuera de orden): housekeeping NO decide inhabilitar. */
 export const ROOM_OUT_OF_SERVICE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "maintenance"];
 

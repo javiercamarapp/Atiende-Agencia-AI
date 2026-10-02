@@ -19,8 +19,9 @@ export interface HousekeepingRepository {
    *  (`tareasDisponibles: false`) si la migracion 033 no esta aplicada. */
   getBoard(propertyId: string, workDate: string): Promise<HousekeepingBoardResult>;
   /** Crea las tareas del dia para habitaciones `sucia`/`ocupada` sin tarea activa y sin
-   *  inhabilitacion activa. Idempotente. Devuelve cuantas creo. */
-  generateDay(propertyId: string, workDate: string, createdBy: string): Promise<number>;
+   *  inhabilitacion activa. Idempotente. Devuelve cuantas creo. `skipStayRoomIds` (H-26): habitaciones con opt-out
+   *  de limpieza activo ese dia; a esas NO se les genera la tarea de estancia (la de salida si se genera). */
+  generateDay(propertyId: string, workDate: string, createdBy: string, skipStayRoomIds?: readonly string[]): Promise<number>;
   createTask(input: NewHousekeepingTaskInput): Promise<HousekeepingTaskRecord>;
   findTask(propertyId: string, taskId: string): Promise<HousekeepingTaskRecord | null>;
   /** Vacio honesto si la migracion 033 no esta aplicada. */
