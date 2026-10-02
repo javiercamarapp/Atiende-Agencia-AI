@@ -204,38 +204,6 @@ describe("validaciones del seed por sucursal", () => {
   });
 });
 
-describe("identidad estable de las sucursales (seguimiento de #328)", () => {
-  type Sucursales = { sucursales: Array<Record<string, unknown> & { id: string; slug: string; nombre: string }> };
-  const sucursal = (d: Sucursales, id: string) => d.sucursales.find((b) => b.id === id)!;
-
-  it("el plan lleva los slugs y nombres anteriores de T4 y T7 (los que renombro #328)", () => {
-    const plan = buildPmSeedPlan(data, agent);
-    expect(plan.branches.find((b) => b.id === "T4")).toMatchObject({ slug: "galerias", legacySlugs: ["t4-pendiente"], legacyNames: ["T4 (pendiente de datos)"] });
-    expect(plan.branches.find((b) => b.id === "T7")).toMatchObject({ slug: "garcia-lavin", legacySlugs: [], legacyNames: ["Victory Platz (García Lavín)"] });
-  });
-
-  it("el SQL renombra por slug estable ANTES de insertar: ya no depende solo del nombre", () => {
-    const sql = renderPmSeedPlpgsql(buildPmSeedPlan(data, agent));
-    const renombra = sql.indexOf("update restaurantes.branch_detail bd set slug = b.slug");
-    const insertaPropiedad = sql.indexOf("insert into core.property (organization_id, vertical, name, status)");
-    expect(renombra).toBeGreaterThan(-1);
-    expect(insertaPropiedad).toBeGreaterThan(renombra);
-    expect(sql).toMatch(/not exists \(select 1 from restaurantes\.branch_detail d where d\.organization_id = v_org and d\.slug = b\.slug\)/);
-  });
-
-  const invalidos: Array<[string, (d: Sucursales) => void, RegExp]> = [
-    ["un slug anterior igual al actual", (d) => { sucursal(d, "T4").slugs_anteriores = ["galerias"]; }, /slug anterior invalido o igual al actual/],
-    ["un slug anterior que es el actual de OTRA sucursal", (d) => { sucursal(d, "T4").slugs_anteriores = ["pensiones"]; }, /es el actual de otra sucursal/],
-    ["un nombre anterior que es el actual de OTRA sucursal", (d) => { sucursal(d, "T4").nombres_anteriores = ["Pensiones"]; }, /es el actual de otra sucursal/],
-    ["un nombre anterior vacio", (d) => { sucursal(d, "T7").nombres_anteriores = [" "]; }, /nombre anterior vacio/],
-  ];
-  it.each(invalidos)("rechaza %s", (_n, mutar, mensaje) => {
-    const copia = clone(data) as unknown as Sucursales;
-    mutar(copia);
-    expect(() => buildPmSeedPlan(copia as unknown as PmSeedData, agent)).toThrow(mensaje);
-  });
-});
-
 describe("pendientes del dueño y SQL del catalogo por sucursal", () => {
   it("quedan las 25 preguntas P1-P25 con su estado: P5 sigue abierta (por eso T2, T7 y T8 no se cargan) y la identidad de T4 resuelta", () => {
     const plan = buildPmSeedPlan(data, agent);

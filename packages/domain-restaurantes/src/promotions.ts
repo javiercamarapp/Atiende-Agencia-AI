@@ -106,6 +106,10 @@ export function assertPromotionApplicable(
   /** Dia de NEGOCIO (0-6) cuando difiere del dia calendario: la cola de un turno que cruza la medianoche
    * (00:30 del martes dentro del turno 18:00-01:00 del lunes) cuenta como lunes. Sin valor = dia calendario. */
   diaNegocio?: number,
+  /** Sucursal del pedido (`core.property.id`). Una promocion con alcance por sucursal (`propertyIds`, migracion 038) solo
+   * vale en esas sucursales: sin sucursal del pedido NO se puede verificar y la promocion no aplica (cierra por defecto,
+   * igual que el canal). Sin alcance (`null`/ausente) vale en todas, como antes. */
+  propertyId?: string,
 ): void {
   if (!promotion.isActive) {
     throw new PromotionError(`El código "${promotion.code}" ya no está activo.`);
@@ -133,6 +137,9 @@ export function assertPromotionApplicable(
   // se puede verificar, asi que una promocion restringida NO aplica (cierra por defecto).
   if (promotion.channels && promotion.channels.length > 0 && (canal === undefined || !promotion.channels.includes(canal))) {
     throw new PromotionError(`El código "${promotion.code}" no aplica a pedidos ${canal === "domicilio" ? "a domicilio" : canal === "recoger" ? "para recoger" : "de este tipo"}.`);
+  }
+  if (promotion.propertyIds != null && (propertyId === undefined || !promotion.propertyIds.includes(propertyId))) {
+    throw new PromotionError(`El código "${promotion.code}" no aplica en esta sucursal.`);
   }
   if (promotion.maxUses !== null && promotion.timesUsed >= promotion.maxUses) {
     throw new PromotionError(`El código "${promotion.code}" ya alcanzó su límite de usos.`);
@@ -203,9 +210,11 @@ export function applyPromotionToOrder(args: {
   readonly zonaHoraria: string;
   /** Dia de negocio (0-6), ver `assertPromotionApplicable`. */
   readonly diaNegocio?: number;
+  /** Sucursal del pedido, ver `assertPromotionApplicable` (alcance por sucursal, migracion 038). */
+  readonly propertyId?: string;
 }): { readonly total: number; readonly discount: number } {
   const { promotion, orderTotal } = args;
-  assertPromotionApplicable(promotion, orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio);
+  assertPromotionApplicable(promotion, orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio, args.propertyId);
   let discount: number;
   if (promotion.type === "cortesia") {
     discount = Math.min(computeCortesiaDiscount(promotion, args.items), orderTotal);
@@ -287,6 +296,9 @@ export function selectAutomaticPromotion(args: {
   readonly now: Date;
   readonly zonaHoraria: string;
   readonly diaNegocio?: number;
+  /** Sucursal del pedido (alcance por sucursal, migracion 038): una promocion automatica con alcance que no incluye esta
+   * sucursal se ignora en silencio (ni descuenta ni se sugiere). */
+  readonly propertyId?: string;
 }): AutomaticPromotionResult {
   let best: { promotion: Promotion; discount: number; total: number } | null = null;
   const suggestions: AutomaticPromotionSuggestion[] = [];
@@ -295,14 +307,14 @@ export function selectAutomaticPromotion(args: {
     if (!promotion.autoApply || !promotion.isActive) continue;
     if (!promotion.channels || promotion.channels.length === 0) continue;
     try {
-      assertPromotionApplicable(promotion, args.orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio);
+      assertPromotionApplicable(promotion, args.orderTotal, args.now, args.zonaHoraria, args.canal, args.diaNegocio, args.propertyId);
     } catch (err) {
       if (err instanceof PromotionError) continue; // hoy / en este canal no vale
       throw err;
     }
     let result: { total: number; discount: number } | null = null;
     try {
-      result = applyPromotionToOrder({ promotion, orderTotal: args.orderTotal, items: args.items, canal: args.canal, now: args.now, zonaHoraria: args.zonaHoraria, diaNegocio: args.diaNegocio });
+      result = applyPromotionToOrder({ promotion, orderTotal: args.orderTotal, items: args.items, canal: args.canal, now: args.now, zonaHoraria: args.zonaHoraria, diaNegocio: args.diaNegocio, propertyId: args.propertyId });
     } catch (err) {
       if (!(err instanceof PromotionError)) throw err;
     }

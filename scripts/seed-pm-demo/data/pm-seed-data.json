@@ -47,8 +47,9 @@
       "id": "T4",
       "nombre": "Galerías",
       "slug": "galerias",
-      "slugs_anteriores": ["t4-pendiente"],
-      "nombres_anteriores": ["T4 (pendiente de datos)"],
+      "slugs_anteriores": [
+        "t4-pendiente"
+      ],
       "direccion": "Calle 60 No. 299-A, Carretera Mérida-Progreso Km 0.5, Col. Revolución Cordemex, Plaza Galerías Mérida (food court)",
       "telefono": "999 941 9612",
       "lat": null,
@@ -72,7 +73,6 @@
       "id": "T7",
       "nombre": "García Lavín (Victory Platz)",
       "slug": "garcia-lavin",
-      "nombres_anteriores": ["Victory Platz (García Lavín)"],
       "direccion": "Calle 32 No. 352 local 16 x 36 Diagonal, Fracc. Xaman Tan, Plaza Victory Platz, Mérida",
       "telefono": "999 518 2637",
       "lat": 21.0205,

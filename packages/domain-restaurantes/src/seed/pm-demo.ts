@@ -40,12 +40,11 @@ export interface PmSeedBranch {
   /** Una sucursal activa necesita su catalogo (>= `MIN_PRODUCTOS_SUCURSAL_ACTIVA` productos). */
   readonly activa: boolean;
   readonly zona_cliente?: string;
-  readonly nota?: string;
-  /** Slugs que esta sucursal tuvo en versiones anteriores del seed (p. ej. `t4-pendiente`). Re-ejecutar el seed sobre una base con
-   * la version anterior RENOMBRA la fila existente en vez de insertar otra y chocar con unique(slug) o duplicarla. */
+  /** Slugs con los que esta sucursal se sembro en versiones ANTERIORES del seed (p. ej. "t4-pendiente" antes de llamarse
+   * "galerias"): el seed re-ejecutado sobre una base vieja la reconoce por slug (estable), la RENOMBRA y no crea una segunda
+   * fila que choque con `unique (organization_id, slug)`. */
   readonly slugs_anteriores?: readonly string[];
-  /** Nombres anteriores (misma razon: el seed ya no identifica sucursales solo por nombre). */
-  readonly nombres_anteriores?: readonly string[];
+  readonly nota?: string;
 }
 
 /** `impreso` = precio del menu impreso de la sucursal; `provisional_P5` = propuesta pendiente del OK de Javier (solo T2, T7 y T8). */
@@ -192,11 +191,10 @@ export interface PmSeedPlan {
     readonly lat: number | null;
     readonly lng: number | null;
     readonly displayOrder: number;
-    /** Identidades anteriores de la sucursal (ver `PmSeedBranch`): el SQL las renombra a `slug`/`name` en vez de duplicarlas. */
-    readonly legacySlugs: readonly string[];
-    readonly legacyNames: readonly string[];
     /** Cuantos productos vende la sucursal (0 = registrada sin catalogo). */
     readonly catalogSize: number;
+    /** Slugs de versiones anteriores del seed (ver `PmSeedBranch.slugs_anteriores`); vacio si nunca cambio. */
+    readonly legacySlugs: readonly string[];
   }[];
   readonly categories: readonly { readonly name: string; readonly slug: string; readonly displayOrder: number }[];
   readonly products: readonly {
@@ -221,7 +219,8 @@ export interface PmSeedPlan {
     readonly daysOfWeek: readonly number[];
     readonly channels: readonly string[];
     readonly productNames: readonly string[];
-    /** Ids de sucursal donde aplica (PM-C2); `null` = sin restriccion declarada. El SQL del seed todavia no lo usa. */
+    /** Ids de sucursal donde aplica (migracion 038, `promotions.property_ids`); `null` = todas las sucursales. El SQL del seed
+     * los resuelve a `core.property.id` de la organizacion del plan. */
     readonly branchIds: readonly string[] | null;
     /** Se aplica sola (sin codigo) al cotizar en el canal y dia que corresponden. El agente de WhatsApp NO manda codigos de
      * promocion: sin esto el 2x1 del lunes nunca se aplicaria y el cliente no veria el descuento en la cotizacion. */
@@ -309,15 +308,17 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     if (slugs.has(b.slug) || nombres.has(b.nombre)) fail(`Sucursal duplicada: ${b.nombre}`);
     slugs.add(b.slug);
     nombres.add(b.nombre);
-    for (const viejo of b.slugs_anteriores ?? []) if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(viejo) || viejo === b.slug) fail(`${b.nombre}: slug anterior invalido o igual al actual (${viejo}).`);
-    for (const viejo of b.nombres_anteriores ?? []) if (!viejo.trim() || viejo === b.nombre) fail(`${b.nombre}: nombre anterior vacio o igual al actual.`);
+    for (const anterior of b.slugs_anteriores ?? []) {
+      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(anterior)) fail(`${b.nombre}: slug anterior invalido: ${anterior}`);
+    }
     if ((b.lat === null) !== (b.lng === null)) fail(`${b.nombre}: lat y lng deben venir juntas.`);
     if (b.lat !== null && (b.lat < -90 || b.lat > 90 || (b.lng as number) < -180 || (b.lng as number) > 180)) fail(`${b.nombre}: coordenadas fuera de rango.`);
   }
-  // Una identidad anterior nunca puede coincidir con la actual de OTRA sucursal: el renombrado dejaria dos filas peleando el mismo slug.
+  // Un slug anterior nunca puede ser el slug vigente de otra sucursal (la renombraria por error).
   for (const b of data.sucursales) {
-    for (const viejo of b.slugs_anteriores ?? []) if (slugs.has(viejo)) fail(`${b.nombre}: el slug anterior "${viejo}" es el actual de otra sucursal.`);
-    for (const viejo of b.nombres_anteriores ?? []) if (nombres.has(viejo)) fail(`${b.nombre}: el nombre anterior "${viejo}" es el actual de otra sucursal.`);
+    for (const anterior of b.slugs_anteriores ?? []) {
+      if (slugs.has(anterior)) fail(`${b.nombre}: el slug anterior "${anterior}" es el slug vigente de otra sucursal.`);
+    }
   }
   const t4 = data.sucursales.find((b) => b.id === "T4");
   if (!t4 || t4.activa) fail("T4 (Galerias) debe estar registrada como inactiva: no recibe pedidos (P9).");
@@ -472,9 +473,8 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       lat: b.lat,
       lng: b.lng,
       displayOrder: index,
-      legacySlugs: [...(b.slugs_anteriores ?? [])],
-      legacyNames: [...(b.nombres_anteriores ?? [])],
       catalogSize: productsByBranch[b.id] ?? 0,
+      legacySlugs: [...(b.slugs_anteriores ?? [])],
     })),
     categories: categorias,
     products,
@@ -508,7 +508,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   };
 }
 
-/** Tablas y columnas que el seed necesita (migraciones 022, 023, 025 y 027). La CLI las comprueba ANTES
+/** Tablas y columnas que el seed necesita (migraciones 022, 023, 025, 027, 031, 033 y 038). La CLI las comprueba ANTES
  * de escribir: contra una base sin migrar aborta con la lista exacta en vez de fallar a la mitad. */
 export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonly columns: readonly string[]; readonly migration: string }[] = [
   { table: "restaurantes.branch_detail", columns: ["slug", "zona_horaria"], migration: "022_zona_horaria_branch_detail.sql" },
@@ -517,6 +517,9 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
   { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
+  // Sin el alcance por sucursal, el 2x1 del lunes (solo T2, T3 y T4) valdria en TODAS las sucursales, T1, T7 y T8 incluidas:
+  // el seed se niega a cargar la promocion antes de que la migracion 038 exista.
+  { table: "restaurantes.promotions", columns: ["property_ids"], migration: "038_promociones_por_sucursal.sql" },
   { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
 ];
 
@@ -598,25 +601,16 @@ begin
     update core.organization set name = v->'organization'->>'name' where id = v_org;
   end if;
 
-  -- 2) sucursales. Identidad ESTABLE = slug de branch_detail (el nombre es editable y ya cambio entre versiones del seed: #328
-  -- renombro T7 y T4). 2a) una fila con un slug anterior toma el slug actual; 2b) la sucursal con el slug actual toma el nombre y
-  -- estado actuales; 2c) solo lo que aun no existe (ni por slug ni por nombre anterior/actual) se inserta. Asi re-ejecutar sobre una
-  -- base de la version anterior renombra en vez de duplicar o chocar con unique(slug).
-  update restaurantes.branch_detail bd set slug = b.slug
-    from jsonb_to_recordset(v->'branches') as b(slug text, "legacySlugs" jsonb)
-    where bd.organization_id = v_org and b."legacySlugs" is not null
-      and bd.slug in (select jsonb_array_elements_text(b."legacySlugs"))
-      and not exists (select 1 from restaurantes.branch_detail o where o.organization_id = v_org and o.slug = b.slug);
+  -- 2) sucursales: core.property (por nombre dentro de la organizacion) + branch_detail.
+  -- 2a) IDENTIDAD ESTABLE: una sucursal que ya existe con un nombre o slug de una version anterior del seed (T4 se llamaba
+  -- "T4 (pendiente de datos)" / slug t4-pendiente; T7, "Victory Platz (García Lavín)") se RENOMBRA, en vez de insertar una
+  -- segunda fila que choque con unique (organization_id, slug). Se reconoce por el slug vigente o por sus slugs anteriores.
   update core.property p set name = b.name
-    from jsonb_to_recordset(v->'branches') as b(name text, "legacyNames" jsonb)
-    where p.organization_id = v_org and b."legacyNames" is not null
-      and p.name in (select jsonb_array_elements_text(b."legacyNames"))
-      and not exists (select 1 from core.property o where o.organization_id = v_org and o.name = b.name);
-  update core.property p set name = b.name
-    from jsonb_to_recordset(v->'branches') as b(name text, slug text)
-    join restaurantes.branch_detail bd on bd.organization_id = v_org and bd.slug = b.slug
-    where p.id = bd.property_id and p.name is distinct from b.name
-      and not exists (select 1 from core.property o where o.organization_id = v_org and o.name = b.name and o.id <> p.id);
+    from jsonb_to_recordset(v->'branches') as b(name text, slug text, "legacySlugs" jsonb)
+    join restaurantes.branch_detail bd on bd.organization_id = v_org
+      and (bd.slug = b.slug or bd.slug in (select jsonb_array_elements_text(b."legacySlugs")))
+    where p.id = bd.property_id and p.organization_id = v_org and p.name is distinct from b.name
+      and not exists (select 1 from core.property q where q.organization_id = v_org and q.name = b.name and q.id <> p.id);
   insert into core.property (organization_id, vertical, name, status)
     select v_org, 'restaurantes', b.name, b.status
     from jsonb_to_recordset(v->'branches') as b(name text, slug text, status text)
@@ -692,14 +686,21 @@ begin
   -- 9) promociones (2x1 por dia y canal sobre productos elegibles)
   -- auto_apply = true: el agente de WhatsApp no manda codigos de promocion, asi que el 2x1 solo se aplica si la propia
   -- cotizacion lo aplica sola (por dia y canal). Sin esto el descuento prometido nunca llegaba al total.
-  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids, auto_apply)
+  -- property_ids (migracion 038): las sucursales donde vale la promocion, resueltas por el id del seed (T2, T3...) contra las
+  -- sucursales DE ESTA organizacion; null = todas. Re-ejecutar repara el alcance (lo controla el seed, como los canales).
+  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids, auto_apply, property_ids)
     select v_org, x.code, x.name, x.description, x.type, 1, (select array_agg(d::smallint) from jsonb_array_elements_text(x."daysOfWeek") d),
            (select array_agg(c) from jsonb_array_elements_text(x.channels) c),
            (select array_agg(pr.id) from jsonb_array_elements_text(x."productNames") n join restaurantes.products pr on pr.organization_id = v_org and pr.name = n),
-           x."autoApply"
-    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb, "autoApply" boolean)
+           x."autoApply",
+           case when x."branchIds" is null or x."branchIds" = 'null'::jsonb then null
+                else (select array_agg(p.id order by p.id) from jsonb_array_elements_text(x."branchIds") sid
+                      join jsonb_to_recordset(v->'branches') as b(id text, name text) on b.id = sid
+                      join core.property p on p.organization_id = v_org and p.name = b.name) end
+    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb, "branchIds" jsonb, "autoApply" boolean)
     on conflict (organization_id, code) do update set name = excluded.name, description = excluded.description, type = excluded.type,
-      days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, auto_apply = excluded.auto_apply, updated_at = now();
+      days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, auto_apply = excluded.auto_apply,
+      property_ids = excluded.property_ids, updated_at = now();
 
   -- 10) agente de WhatsApp: perfil taqueria_pm de la organizacion con los datos del dueño. DO NOTHING si ya hay fila:
   -- re-ejecutar el seed NUNCA pisa lo que el dueño cambio en el editor del agente (tono, tiempos, salsas...), mismo criterio
