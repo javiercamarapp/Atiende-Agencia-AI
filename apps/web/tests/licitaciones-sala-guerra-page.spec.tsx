@@ -109,7 +109,7 @@ describe("SalaGuerraPage -- tablero", () => {
     expect(text).toContain("no envía nada a ComprasMX");
   });
 
-  it("L-25: el tablero incluye la tarjeta 'Gate final' (GET .../sala-guerra/gate) y la recarga cuando el tablero se recarga", async () => {
+  it("L-25: el tablero incluye la tarjeta 'Gate final' (GET .../sala-guerra/gate)", async () => {
     const gateBody = {
       now: "2026-10-01T12:00:00.000Z",
       tender: { id: "t1", title: "Adquisicion de equipo", submissionDeadline: "2026-10-20T18:00:00.000Z" },
