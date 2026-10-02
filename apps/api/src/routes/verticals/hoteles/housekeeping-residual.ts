@@ -269,8 +269,9 @@ export function registerHousekeepingResidualRoutes(app: Hono<CoreAuthHonoEnv>, d
 
   app.post("/hoteles/:propertyId/housekeeping/opt-out", async (c) => {
     assertVerticalRole(c, HOUSEKEEPING_TASK_ROLES);
-    const raw = await smallBody(c);
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo invalido: se esperaba un objeto.");
+    const parsed = await smallBody(c);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw Errors.validation("Cuerpo invalido: se esperaba un objeto.");
+    const raw = parsed as Record<string, unknown>;
     const roomId = h.requireUuid(raw.roomId, "roomId");
     const origen = raw.origen === undefined ? "recepcion" : raw.origen;
     if (!(STAFF_OPT_OUT_SOURCES as readonly unknown[]).includes(origen)) throw Errors.validation(`origen: se esperaba ${STAFF_OPT_OUT_SOURCES.join("|")}.`);
