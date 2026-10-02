@@ -17,7 +17,7 @@ interface Esperado {
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Salud", "Acciones", "Prospectos"], pie: ["Costos de IA", "Ver los otros paneles"] },
+  superadmin: { categorias: ["Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"] },
   restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: [] },
   hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: [] },
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
@@ -71,9 +71,9 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       // Cada destino de la barra tambien esta en la hoja.
       const hrefsHoja = await hoja.getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
       for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
-      // Solo "Costos de IA" (pie de superadmin) repite el destino de "Costos y margen"; en las verticales no se repite nada.
+      // Solo "Costos de IA" (pie de superadmin) repite el destino de "Gasto de API de LLM"; en las verticales no se repite nada.
       const duplicados = hrefsHoja.filter((h, i) => hrefsHoja.indexOf(h) !== i);
-      expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual(objetivo === "superadmin" ? ["/superadmin/costos-margen"] : []);
+      expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual(objetivo === "superadmin" ? ["/superadmin/gasto-api"] : []);
       if (objetivo === "superadmin") expect(hrefsHoja).toContain("/superadmin/paneles");
       vigilante.verificar();
     });

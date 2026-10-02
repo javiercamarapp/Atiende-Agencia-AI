@@ -8,7 +8,7 @@
 // (no aplica a un panel de plataforma).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, ArrowLeftRight, Building2, Coins, DollarSign, FileSignature, KeyRound, LayoutDashboard, LayoutGrid, Lock, LineChart, ListChecks, Newspaper, Plug, Power, Receipt, ReceiptText, ShieldAlert, ShieldCheck, ShieldOff, Tags, TrendingUp } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import { NotificationBell, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
@@ -18,6 +18,7 @@ import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/au
 import type { LoginSession } from "./lib/auth-client.ts";
 import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
+import { MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
 
 export interface SuperAdminShellProps {
@@ -26,74 +27,16 @@ export interface SuperAdminShellProps {
   readonly children: (ctx: { readonly apiBaseUrl: string; readonly token: string }) => ReactNode;
 }
 
-// UNI-6: el menú de HOY con el marco de Likida. Las categorías siguen el orden de Likida (Agentes, Negocio, Plataforma,
-// Control, Sistema) con "Resumen" (/superadmin) como raíz sin título; las entradas son exactamente las de antes, solo
-// reagrupadas, y "Entrar a los otros paneles" pasa al pie como "Ver los otros paneles". El menú objetivo de 41 entradas es un
-// lote aparte (SA-L): aquí no se agrega ni se quita ninguna ruta.
+// Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
 const SECTIONS: SidebarSection[] = [
-  {
-    title: "Resumen",
-    siempreAbierto: true,
-    items: [{ to: "/superadmin", label: "Resumen", icon: LayoutDashboard, end: true }],
-  },
-  {
-    title: "Agentes",
-    items: [{ to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign }],
-  },
-  {
-    title: "Negocio",
-    items: [
-      { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
-      { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
-      { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
-      { to: "/superadmin/contratos", label: "Contratos por cliente", icon: FileSignature },
-      { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
-      { to: "/superadmin/cfo", label: "Dashboard CFO", icon: LineChart },
-      { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
-      { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
-      { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
-    ],
-  },
-  {
-    title: "Plataforma",
-    items: [
-      { to: "/superadmin/integraciones", label: "Integraciones", icon: Plug },
-      { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
-      { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
-    ],
-  },
-  {
-    title: "Control",
-    items: [
-      { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },
-      { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
-      { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
-      { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
-      { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
-    ],
-  },
-  {
-    title: "Sistema",
-    items: [
-      { to: "/superadmin/salud", label: "Salud operativa", icon: Activity },
-      { to: "/superadmin/resumen", label: "Resumen diario", icon: Newspaper },
-    ],
-  },
+  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }] },
+  ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
 ];
 
-/** Pie del Sidebar (y sección "Cuenta" de la hoja "Más" en móvil): ambos destinos existen hoy y son reales. */
-const SIDEBAR_PIE: SidebarPiePildora[] = [
-  { label: "Costos de IA", to: "/superadmin/costos-margen" },
-  { label: "Ver los otros paneles", to: "/superadmin/paneles", icon: ArrowLeftRight },
-];
+const SIDEBAR_PIE: SidebarPiePildora[] = PIE_SUPERADMIN.map((p) => ({ ...p }));
 
-/** Barra inferior móvil: los 4 destinos de uso diario (etiquetas completas); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
-const MOBILE_ITEMS: BottomNavItem[] = [
-  { to: "/superadmin", label: "Resumen", icon: LayoutDashboard, end: true },
-  { to: "/superadmin/salud", label: "Salud", icon: Activity },
-  { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
-  { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
-];
+/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
+const MOBILE_ITEMS: BottomNavItem[] = MOVIL_SUPERADMIN.map((i) => ({ ...i }));
 
 export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperAdminShellProps) {
   const [session, setSession] = useState<LoginSession | null>(null);

@@ -2,8 +2,8 @@
 // período, en JSON (pantalla), PDF o Excel (.xlsx).
 //   GET /despachos/:propertyId/reportes/:tipo?periodo=YYYY-MM&formato=json|pdf|xlsx
 //
-// Solo lectura, calculada desde datos reales (CFDI 4.0 ingeridos y vencimientos fiscales
-// SAT); lo que el modelo no persiste se devuelve "sin datos" con su motivo — ver
+// Solo lectura, calculada desde datos reales (CFDI 4.0 ingeridos, vencimientos fiscales
+// SAT y, para la balanza, el libro contable de D-24); lo que el modelo no persiste se devuelve "sin datos" con su motivo — ver
 // `@atiende/domain-despachos::reportes/builders.ts`. Roles de lectura (`VER_REPORTES_ROLES`);
 // la membership de property aplica igual que en el resto de rutas de staff. Sin migración.
 // Sin llamadas al SAT ni a PACs.
@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
+import { PostgresLibroRepository, TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
 import type { TipoReporteCliente } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -61,7 +61,12 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.serviceUnavailable("Los reportes por período aún no están disponibles en esta base de datos: falta aplicar la migración 006 (fecha de emisión del CFDI).");
     }
     const vencimientos = await repo.listDeadlines(propertyId);
-    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo) });
+    // D-24: la balanza sale del libro contable persistido cuando hay pólizas en el periodo; base sin migrar (020) o sin pólizas -> "sin datos".
+    const balanzaLibro =
+      tipo === "balanza"
+        ? (await (deps.libroRepo ? deps.libroRepo(c.get("db")) : new PostgresLibroRepository(c.get("db"))).balanza(propertyId, Number(periodo.slice(0, 4)), Number(periodo.slice(5, 7)))).datos
+        : undefined;
+    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
 
     if (formato === "json") return c.json(reporte);
 

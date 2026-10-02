@@ -21,7 +21,7 @@ const PANTALLAS: readonly Pantalla[] = [
   { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos` },
   { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial` },
   { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
-  { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin" },
+  { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin/organizaciones" },
 ];
 
 test.describe("superficies de Likida @ds @oscuro", () => {

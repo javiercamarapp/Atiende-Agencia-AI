@@ -49,6 +49,8 @@ export interface CreateInvoiceInput {
   readonly amount: string;
   /** "YYYY-MM-DD" -- fecha en que se verificó la factura; el vencimiento (17 días hábiles, Art. 73 LAASSP) lo calcula el servidor a partir de esta fecha, nunca el cliente. */
   readonly invoiceVerifiedOn: string;
+  /** "YYYY-MM-DD" opcional (L-23): fecha de publicación de la convocatoria; decide el régimen legal del plazo (LAASSP nueva 17 días hábiles / abrogada 20 días naturales). Sin ella el servidor aplica el régimen vigente y lo declara. */
+  readonly convocatoriaPublicadaEn?: string;
 }
 
 /** Marcador explícito del 404 "sin contrato" de `requireContract` en `contractBilling.ts`, para que la página lo distinga de cualquier otro error y muestre la explicación correcta en vez de un mensaje genérico. */

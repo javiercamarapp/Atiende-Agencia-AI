@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { VerticalShellEstado, NativeSelect } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
+  BellRing,
   Bot,
   CalendarCheck,
   CalendarClock,
@@ -98,6 +99,8 @@ function buildSections(orgSlug: string): SidebarSection[] {
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
         { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
         { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
+        // C-16 -- centro de avisos: por confirmar, recordatorios agotados y escalaciones de crisis con seguimiento.
+        { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
         // C-06 -- checklist de primeros pasos y panel "listo para recibir citas" (owner/admin; la página gatea por rol).
         { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ClipboardCheck },
       ],

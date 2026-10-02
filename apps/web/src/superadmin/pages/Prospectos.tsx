@@ -168,9 +168,9 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <StatCard label="Prospectos totales" value={String(prospectos.length)} icon={Building2} />
-        <StatCard label="En proceso" value={String(activos.length)} icon={TrendingUp} />
-        <StatCard label="Ganados" value={String(ganados)} icon={Building2} />
+        <StatCard variante="neutra" label="Prospectos totales" value={String(prospectos.length)} icon={Building2} />
+        <StatCard variante="neutra" label="En proceso" value={String(activos.length)} icon={TrendingUp} />
+        <StatCard variante="neutra" label="Ganados" value={String(ganados)} icon={Building2} />
       </div>
 
       {error && (

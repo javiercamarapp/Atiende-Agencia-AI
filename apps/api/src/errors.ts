@@ -37,6 +37,8 @@ export const Errors = {
   impuestoNoCoincide: (calculado: number, recibido: number) =>
     new ApiError(422, "impuesto_no_coincide", `El impuesto calculado server-side (${calculado}) no coincide con el recibido (${recibido}).`),
   // ---- licitaciones (checklist/propuesta económica, ver diseño Fase 1 §4.1/§4.2) ----
+  /** L-23: el plazo del regimen legal de la convocatoria (LAASSP abrogada) no esta verificado y no se calcula. */
+  plazoRegimenNoVerificable: (message: string) => new ApiError(422, "plazo_regimen_no_verificable", message),
   submissionDeadlineUnknown: (message: string) => new ApiError(422, "submission_deadline_unknown", message),
   // ---- licitaciones (Fase 11 -- pipeline real de extracción de texto de PDF, ver
   // domain-licitaciones/text-extraction.ts): ningún documento subido produjo texto

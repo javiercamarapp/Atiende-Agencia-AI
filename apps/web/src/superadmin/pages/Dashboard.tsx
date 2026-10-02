@@ -68,10 +68,10 @@ export function SuperAdminDashboardPage({ apiBaseUrl, token }: { readonly apiBas
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <StatCard label="Organizaciones" value={String(organizations.length)} icon={Building2} />
-        <StatCard label="Staff total" value={String(totalStaff)} icon={Users} />
+        <StatCard variante="neutra" label="Organizaciones" value={String(organizations.length)} icon={Building2} />
+        <StatCard variante="neutra" label="Staff total" value={String(totalStaff)} icon={Users} />
         {[...porVertical.entries()].map(([vertical, count]) => (
-          <StatCard key={vertical} label={NOMBRE_VERTICAL[vertical] ?? vertical} value={String(count)} icon={Building2} />
+          <StatCard variante="neutra" key={vertical} label={NOMBRE_VERTICAL[vertical] ?? vertical} value={String(count)} icon={Building2} />
         ))}
       </div>
 

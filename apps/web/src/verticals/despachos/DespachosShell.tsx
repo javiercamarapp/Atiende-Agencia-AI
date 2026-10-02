@@ -20,7 +20,9 @@
 // remonte mostrarían el del contribuyente anterior.
 import type { ReactNode } from "react";
 import {
+  BookMarked,
   BookOpen,
+  Calculator,
   Briefcase,
   CalendarCheck,
   CalendarClock,
@@ -110,6 +112,8 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "devolucion-iva", label: "Devolución de IVA" },
   { to: "bookkeeping", label: "Bookkeeping" },
   { to: "reportes", label: "Reportes de cliente" },
+  { to: "libro-contable", label: "Libro contable" },
+  { to: "pagos-provisionales", label: "Pagos provisionales" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
   { to: "portal-cliente", label: "Portal del cliente" },
   { to: "staff", label: "Staff" },
@@ -144,6 +148,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
       title: "Fiscal",
       items: [
         { ...item("declaraciones"), icon: FileSpreadsheet },
+        { ...item("pagos-provisionales"), icon: Calculator },
         { ...item("contabilidad-electronica"), icon: FileDigit },
         { ...item("devolucion-iva"), icon: Undo2 },
         { ...item("nomina"), icon: Wallet },
@@ -153,6 +158,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
       title: "Contabilidad",
       items: [
         { ...item("conciliacion"), icon: Landmark },
+        { ...item("libro-contable"), icon: BookMarked },
         { ...item("bookkeeping"), icon: BookOpen },
         { ...item("reportes"), icon: FileBarChart },
         { ...item("migracion-catalogo"), icon: FolderInput },
@@ -171,7 +177,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario (etiquetas completas); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista
- * TODAS las secciones fiscales/contables (los 18 destinos de `buildSidebarSections`, sin curarlos a ojo). */
+ * TODAS las secciones fiscales/contables (los 20 destinos de `buildSidebarSections`, sin curarlos a ojo). */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/despachos/${orgSlug}`;
   return [

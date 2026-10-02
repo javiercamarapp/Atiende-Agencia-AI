@@ -35,6 +35,32 @@ describe("Fase 6 pieza 3 (REQ-053) -- redactor de inconformidades", () => {
     expect(body.viability).toBe("alta"); // 1 prueba para 1 agravio.
   });
 
+  it("L-23: convocatoria de la ley abrogada -> 422 sin borrador (el plazo no esta verificado); ley nueva -> 6 dias habiles", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/inconformidad`;
+    const payload = { hechos: ["h"], agravios: ["a"], pruebas: ["p"], falloNotifiedOn: "2026-01-05", bajoTratados: false };
+
+    const vieja = await app.request(url, authedJson(ctx.staff.writer.token, { ...payload, convocatoriaPublicadaEn: "2025-04-16" }));
+    expect(vieja.status).toBe(422);
+    const viejaBody = (await vieja.json()) as { error?: { code?: string; message?: string }; code?: string; message?: string };
+    expect(JSON.stringify(viejaBody)).toContain("plazo_regimen_no_verificable");
+    expect(JSON.stringify(viejaBody)).toMatch(/validar con abogado/i);
+
+    // El rechazo NO dejo ningun borrador.
+    const vacia = await app.request(url, authedJson(ctx.staff.viewer.token));
+    expect(((await vacia.json()) as { drafts: unknown[] }).drafts).toHaveLength(0);
+
+    const nueva = await app.request(url, authedJson(ctx.staff.writer.token, { ...payload, convocatoriaPublicadaEn: "2025-04-17" }));
+    expect(nueva.status).toBe(201);
+    const body = (await nueva.json()) as { plazo: { fechaLimite: string; diasHabiles: number }; regimenLegal: { regimen: string } };
+    expect(body.plazo).toMatchObject({ fechaLimite: "2026-01-13", diasHabiles: 6 });
+    expect(body.regimenLegal.regimen).toBe("laassp_2025");
+
+    const malaFecha = await app.request(url, authedJson(ctx.staff.writer.token, { ...payload, convocatoriaPublicadaEn: "2025-13-01" }));
+    expect(malaFecha.status).toBe(400);
+  });
+
   it("cada generación crea una VERSIÓN nueva -- nunca edita una existente", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
