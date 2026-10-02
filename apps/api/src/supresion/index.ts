@@ -4,3 +4,5 @@ export { avisarSupresionNoMigrada, crearGuardCorreo, crearGuardSupresion, crearG
 export type { GuardSupresion, MotivoSupresion, ResultadoRegistro } from "./acceso.ts";
 export { BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarMensajeBaja } from "./baja.ts";
 export type { ResultadoBaja } from "./baja.ts";
+export { agregarConteos, agregarNoContactar, listarSupresiones } from "./superadmin.ts";
+export type { GrupoSupresion, ListaSupresion, ResultadoNoContactar } from "./superadmin.ts";

@@ -50,6 +50,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/zona-cfo\/roles\/[^/]+$/, label: "asignar o retirar el rol finanzas" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/bitacora$/, label: "leer la bitacora de consultas financieras" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },
+  // Lista de supresion de plataforma (SA-L-46): agregar un contacto como "no contactar".
+  { method: "POST", pattern: /^\/superadmin\/supresion\/no-contactar$/, label: "agregar un contacto a la lista de no contactar" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {
