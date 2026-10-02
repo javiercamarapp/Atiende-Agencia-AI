@@ -73,11 +73,25 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
       }
 
       const filasDesatascadas = outbox.reduce((sum, q) => sum + (q.filasMovidas ?? 0), 0);
+
+      // Retencion de la bitacora de corridas (SA-L-07, clase `plataforma_agent_run`, 90 dias): purga por lotes en su
+      // PROPIA transaccion de sistema, best-effort -- un fallo (o la 0044 sin aplicar) nunca altera el resto del cron.
+      let corridasPurgadas: number | null = null;
+      const agentRunRepo = deps.agentRunRepo;
+      if (agentRunRepo) {
+        try {
+          corridasPurgadas = await deps.engine.withAppSession({ userId: null }, (db) => agentRunRepo(db).purgarCorridas(5000));
+        } catch (err) {
+          logEvent(c, "warn", "superadmin_mantenimiento_purga_corridas_fallo", { sqlstate: err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "desconocido" });
+        }
+      }
+
       return c.json({
         ok: true,
         outbox: outbox.map((q) => ({ queue: q.queueName, aplica: q.aplica, filasMovidas: q.filasMovidas, motivo: q.motivo })),
         filasDesatascadas,
         prospectosMarcados: prospectos.length,
+        ...(agentRunRepo ? { corridasPurgadas } : {}),
       });
     })();
   });
