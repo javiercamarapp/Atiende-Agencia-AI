@@ -271,7 +271,7 @@ export async function editarConfiguracionPricing<T>(
   unidadId: string,
   recurso: RecursoPricing,
   id: string,
-  cambios: Readonly<Record<string, unknown>>,
+  cambios: object,
 ): Promise<T> {
   return sendJson<T>(fetchImpl, `${rutaUnidad(apiBaseUrl, propertyId, unidadId)}/${recurso}/${id}`, token, "PATCH", cambios);
 }
