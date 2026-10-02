@@ -96,7 +96,8 @@ export async function seccionesDelPanel(page: Page): Promise<EnlaceNav[]> {
 export async function irASeccion(page: Page, enlace: EnlaceNav): Promise<void> {
   if (esMovil(page)) {
     const hoja = await abrirMasMovil(page);
-    await hoja.locator(`a[href="${enlace.href}"]`).click();
+    // `.first()`: una pildora de la seccion "Cuenta" puede repetir un destino del menu (p. ej. "Costos de IA" del superadmin).
+    await hoja.locator(`a[href="${enlace.href}"]`).first().click();
     await expect(hoja).toBeHidden();
   } else {
     await (await abrirGrupoDe(page, enlace.href)).click();
