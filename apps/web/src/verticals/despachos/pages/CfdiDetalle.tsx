@@ -4,8 +4,8 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, X } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@atiende/ui";
-import { fetchInvoice, registrarEstadoSat } from "../lib/cfdi-client.ts";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, notify } from "@atiende/ui";
+import { fetchInvoice, registrarEstadoSat, verificarEstatusSat } from "../lib/cfdi-client.ts";
 import type { EstadoSatCfdi, InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
@@ -58,6 +58,7 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
   const [nota, setNota] = useState("");
   const [resolviendo, setResolviendo] = useState(false);
   const [guardandoSat, setGuardandoSat] = useState(false);
+  const [verificandoSat, setVerificandoSat] = useState(false);
   const [errorSat, setErrorSat] = useState<string | null>(null);
 
   useEffect(() => {
@@ -126,6 +127,31 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
       setErrorSat(err instanceof Error ? err.message : "No se pudo registrar el estado SAT.");
     } finally {
       setGuardandoSat(false);
+    }
+  }
+
+  // D-27: consulta REAL al servicio publico del SAT. Si el SAT no responde, el estado no cambia (jamas pasa a "vigente" por error).
+  async function handleVerificarSat() {
+    if (!invoiceId) return;
+    setVerificandoSat(true);
+    setErrorSat(null);
+    try {
+      const r = await verificarEstatusSat(fetch, apiBaseUrl, token, propertyId, invoiceId);
+      setInvoice((prev) => (prev ? { ...prev, estadoSat: r.estadoSat, estadoSatVerificadoEn: r.estadoSatVerificadoEn } : prev));
+      if (!r.consultado) {
+        if (r.motivo === "ya_cancelado") notify.info("Este CFDI ya está cancelado ante el SAT; no cambia de estado.");
+        else notify.warning("El SAT no respondió. El estado no cambió; inténtalo de nuevo en unos minutos.");
+      } else if (r.estadoSat === "cancelado") {
+        notify.warning("El SAT reporta este CFDI como cancelado.", { description: r.estatusCancelacion ?? undefined });
+      } else {
+        notify.success(r.estadoSat === "vigente" ? "El SAT confirma que el CFDI está vigente." : "El SAT no encontró este CFDI.");
+      }
+    } catch (err) {
+      const mensaje = err instanceof Error ? err.message : "No se pudo verificar en el SAT.";
+      setErrorSat(mensaje);
+      notify.error("No se pudo verificar en el SAT", { description: mensaje });
+    } finally {
+      setVerificandoSat(false);
     }
   }
 
@@ -283,10 +309,13 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            {invoice.estadoSatVerificadoEn ? `Última verificación: ${formatDate(invoice.estadoSatVerificadoEn)}.` : "Todavía no se ha verificado ante el SAT; este sistema no consulta al SAT automáticamente, el estado lo captura el despacho."}
+            {invoice.estadoSatVerificadoEn ? `Última verificación: ${formatDate(invoice.estadoSatVerificadoEn)}.` : "Todavía no se ha verificado ante el SAT. Usa «Verificar en el SAT» o registra el estado a mano; además el sistema lo consulta una vez por semana."}
           </p>
           {ESTADO_SAT_ROLES.has(role) && (
             <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" variant="outline" loading={verificandoSat} loadingText="Consultando al SAT…" disabled={guardandoSat || invoice.estadoSat === "cancelado"} onClick={() => void handleVerificarSat()}>
+                Verificar en el SAT
+              </Button>
               <Label htmlFor="cfdi-estado-sat" className="text-xs text-muted-foreground">
                 Registrar estado
               </Label>
