@@ -8,9 +8,9 @@
 // (no aplica a un panel de plataforma).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, Coins, DollarSign, ExternalLink, FileSignature, KeyRound, LayoutGrid, Lock, LineChart, ListChecks, Newspaper, Plug, Power, Receipt, ReceiptText, ShieldAlert, ShieldCheck, ShieldOff, Tags, TrendingUp } from "lucide-react";
+import { Activity, AlertOctagon, ArrowLeftRight, Building2, Coins, DollarSign, FileSignature, KeyRound, LayoutDashboard, LayoutGrid, Lock, LineChart, ListChecks, Newspaper, Plug, Power, Receipt, ReceiptText, ShieldAlert, ShieldCheck, ShieldOff, Tags, TrendingUp } from "lucide-react";
 import { NotificationBell, VerticalShell, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
@@ -26,43 +26,73 @@ export interface SuperAdminShellProps {
   readonly children: (ctx: { readonly apiBaseUrl: string; readonly token: string }) => ReactNode;
 }
 
+// UNI-6: el menú de HOY con el marco de Likida. Las categorías siguen el orden de Likida (Agentes, Negocio, Plataforma,
+// Control, Sistema) con "Resumen" (/superadmin) como raíz sin título; las entradas son exactamente las de antes, solo
+// reagrupadas, y "Entrar a los otros paneles" pasa al pie como "Ver los otros paneles". El menú objetivo de 41 entradas es un
+// lote aparte (SA-L): aquí no se agrega ni se quita ninguna ruta.
 const SECTIONS: SidebarSection[] = [
   {
-    title: "Plataforma",
+    title: "Resumen",
     siempreAbierto: true,
+    items: [{ to: "/superadmin", label: "Resumen", icon: LayoutDashboard, end: true }],
+  },
+  {
+    title: "Agentes",
+    items: [{ to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign }],
+  },
+  {
+    title: "Negocio",
     items: [
-      { to: "/superadmin", label: "Organizaciones", icon: Building2, end: true },
       { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
-      { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
-      { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },
-      { to: "/superadmin/resumen", label: "Resumen diario", icon: Newspaper },
-      { to: "/superadmin/salud", label: "Salud operativa", icon: Activity },
-      { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
       { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
-      { to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign },
-      { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
-      { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
-      { to: "/superadmin/cfo", label: "Dashboard CFO", icon: LineChart },
-      { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
-      { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
       { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
       { to: "/superadmin/contratos", label: "Contratos por cliente", icon: FileSignature },
       { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
+      { to: "/superadmin/cfo", label: "Dashboard CFO", icon: LineChart },
+      { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
+      { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
+      { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
+    ],
+  },
+  {
+    title: "Plataforma",
+    items: [
+      { to: "/superadmin/integraciones", label: "Integraciones", icon: Plug },
+      { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
+      { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
+    ],
+  },
+  {
+    title: "Control",
+    items: [
+      { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },
+      { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
       { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
       { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
       { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
-      { to: "/superadmin/integraciones", label: "Integraciones", icon: Plug },
-      { to: "/superadmin/paneles", label: "Entrar a los otros paneles", icon: ExternalLink },
+    ],
+  },
+  {
+    title: "Sistema",
+    items: [
+      { to: "/superadmin/salud", label: "Salud operativa", icon: Activity },
+      { to: "/superadmin/resumen", label: "Resumen diario", icon: Newspaper },
     ],
   },
 ];
 
-/** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
+/** Pie del Sidebar (y sección "Cuenta" de la hoja "Más" en móvil): ambos destinos existen hoy y son reales. */
+const SIDEBAR_PIE: SidebarPiePildora[] = [
+  { label: "Costos de IA", to: "/superadmin/costos-margen" },
+  { label: "Ver los otros paneles", to: "/superadmin/paneles", icon: ArrowLeftRight },
+];
+
+/** Barra inferior móvil: los 4 destinos de uso diario (etiquetas completas); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
 const MOBILE_ITEMS: BottomNavItem[] = [
-  { to: "/superadmin", label: "Orgs", icon: Building2, end: true },
-  { to: "/superadmin/resumen", label: "Resumen", icon: Newspaper },
+  { to: "/superadmin", label: "Resumen", icon: LayoutDashboard, end: true },
   { to: "/superadmin/salud", label: "Salud", icon: Activity },
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
+  { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
 ];
 
 export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperAdminShellProps) {
@@ -99,7 +129,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
-  const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin" };
+  const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
   const campana = (className?: string) => (
     <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
@@ -108,6 +138,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
     <VerticalShell
       vertical="superadmin"
       sections={SECTIONS}
+      sidebarPie={SIDEBAR_PIE}
       mobileItems={MOBILE_ITEMS}
       user={user}
       onLogout={() => void handleLogout()}

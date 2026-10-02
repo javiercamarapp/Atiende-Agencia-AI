@@ -15,6 +15,7 @@ import { HotelesShell } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { PropertyOption } from "../src/verticals/hoteles/lib/discovery-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
 
@@ -44,9 +45,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderShell(properties: readonly PropertyOption[] = [{ propertyId: "prop-1", nombre: "Hotel Centro" }]): Promise<RenderedComponent> {
+async function renderShell(properties: readonly PropertyOption[] = [{ propertyId: "prop-1", nombre: "Hotel Centro" }], rol = "owner"): Promise<RenderedComponent> {
   installMatchMediaStub();
-  installMemoryLocalStorage().setItem("atiende.hoteles.session", JSON.stringify(SESSION));
+  installMemoryLocalStorage().setItem("atiende.hoteles.session", JSON.stringify({ ...SESSION, organizations: [{ ...SESSION.organizations[0], rol }] }));
   fetchPropertiesMock.mockResolvedValue(properties);
   const result = renderComponent(
     <MemoryRouter>
@@ -81,9 +82,34 @@ describe("HotelesShell — nav móvil", () => {
     expect([...nav!.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
       "/hoteles/demo",
       "/hoteles/demo/reservas",
-      "/hoteles/demo/mantenimiento",
+      "/hoteles/demo/tickets",
       "/hoteles/demo/asistencia",
     ]);
+  });
+
+  // UNI-6: marco de Likida -- Resumen raiz sin titulo, categorias en el orden de Likida, acordeon exclusivo y gates de rol intactos.
+  it("el Sidebar agrupa los destinos del owner en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"]);
+    expect(categoriasAbiertas(root)).toEqual(["Operación"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Recepción", "Reservas", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
+    abrirCategoria(root, "Finanzas");
+    expect(categoriasAbiertas(root)).toEqual(["Finanzas"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "P&L", "Revenue", "CFDI", "Fraude"]);
+    abrirCategoria(root, "Huéspedes");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Huéspedes", "Pedidos F&B", "Reputación", "Identidad", "Grupos"]);
+    abrirCategoria(root, "Agentes");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Agentes", "Aprobaciones"]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "GM Demo", rol: "Propietario" });
+  });
+
+  it("un rol operativo (housekeeping) solo ve las categorias con destinos para su rol: las vacias se omiten", async () => {
+    rendered = await renderShell(undefined, "housekeeping");
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Operación", "Finanzas"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Reservas", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
+    expect(tarjetaUsuario(root).rol).toBe("Housekeeping");
   });
 
   it('el botón "Más" abre TODOS los destinos del rol (los 16 del owner, con Recepción y Huéspedes), no solo los 4 de la barra', async () => {
@@ -93,7 +119,7 @@ describe("HotelesShell — nav móvil", () => {
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const etiquetas = [...hoja.querySelectorAll("a")].map((a) => a.textContent);
     expect(etiquetas).toEqual(
-      expect.arrayContaining(["Dashboard", "Reservas", "Mantenimiento", "Asistencia", "Fraude", "CFDI", "P&L", "Revenue", "Catálogo"]),
+      expect.arrayContaining(["Resumen", "Reservas", "Mantenimiento", "Asistencia", "Fraude", "CFDI", "P&L", "Revenue", "Catálogo"]),
     );
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/hoteles/demo/fraude");
@@ -148,9 +174,9 @@ describe("HotelesShell — nav móvil", () => {
     const root = rendered.container;
     expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
     expect(root.querySelector("main#contenido-principal")!.getAttribute("tabindex")).toBe("-1");
-    const operacion = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Administración"))!;
+    const operacion = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Finanzas"))!;
     click(operacion);
-    expect(window.localStorage.getItem("atiende:hoteles:sidebar:grupo")).toBe("Administración");
+    expect(window.localStorage.getItem("atiende:hoteles:sidebar:grupo")).toBe("Finanzas");
   });
 
   it("PR-6: cambiar de hotel con el selector persiste la elección y remonta la página (key=propertyId)", async () => {
