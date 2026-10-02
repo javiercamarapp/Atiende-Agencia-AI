@@ -1,63 +1,128 @@
-// Dashboard de KPIs (Fase 3, montado dentro de RestaurantesShell desde Fase 5.1) —
-// landing post-login real: `decideLandingPath()` (auth-client.ts) manda aquí tras
-// login con 1 sola organización. Vive DENTRO de RestaurantesShell (ver App.tsx),
-// igual que Productos/Sucursales/Pedidos/Historial/Clientes, así el manager que
-// entra al producto tiene la nav lateral completa (incluye el link "Panel (KPIs)"
-// de vuelta a esta misma página) en vez de quedar en un callejón sin salida donde
-// solo se podía llegar al back-office tecleando la URL a mano. Sesión/sucursal ya
-// las resuelve el Shell una sola vez — este componente solo consume el contexto,
-// mismo patrón que el resto de páginas de este vertical.
+// Resumen de restaurantes (landing del panel, ruta /restaurantes/:orgSlug): la composicion del Resumen de Likida con las
+// piezas de @atiende/ui (ResumenLayout, StatCard de dos capas, PillLink, ResumenSeccion/TileLink, AgentRunCard).
+// Vive DENTRO de RestaurantesShell: sesion y sucursal las resuelve el Shell; aqui solo se consume el contexto.
 //
-// Presentación real desde esta ronda: los `style={{...}}` inline de antes (tarjeta
-// hecha a mano, tiles de KPI hechos a mano, píldoras de periodo hechas a mano) se
-// reemplazan por los primitivos que `@atiende/ui` ya exporta — `StatCard` para cada
-// cifra, `Card`/`CardHeader`/`CardContent` para los paneles, `Tabs` para el selector
-// de periodo, `Button` para "Actualizar" y `Badge` para los tiers — exactamente el
-// mismo nivel de acabado que RestaurantesShell.tsx. TODA la lógica de carga/estado/
-// fetch de abajo es la MISMA: solo cambia el JSX.
-import { useEffect, useState } from "react";
+// TODO numero sale de un endpoint real: /admin/kpis/{sales,sales/trend,channels,customers} (los fetch de siempre, en
+// dashboard-client.ts). Sin dato = "—"; el delta solo existe con periodo comparable ("sin periodo comparable" si no hay
+// base, nunca un "0 %" inventado). Lo complementario (zona horaria de la sucursal, KPI de voz, bandeja de conversaciones)
+// se pide aparte y es "best effort": si falla o la base aun no tiene esa migracion, el bloque se muestra sin metrica y el
+// resto del Resumen no se afecta. "Horas de atencion ahorradas" NO se pinta: el endpoint la estima con un supuesto fijo
+// (~5 min por pedido), no la mide, y un rotulo tiene que ser verdad.
+// El rol repartidor no tiene Resumen: el Shell ya lo manda a /repartidor; aqui se repite como defensa en profundidad.
+import { useCallback, useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 import {
+  AgentRunCard,
   Button,
   Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   EstadoCargando,
   EstadoError,
+  EstadoVacio,
+  Odometro,
   PageContainer,
+  PillLink,
+  RadioSegmentado,
+  ResumenLayout,
+  ResumenSeccion,
+  SectionLabel,
   StatCard,
-  StatusBadge,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  statusTone,
+  TileLink,
 } from "@atiende/ui";
 import {
   Bot,
-  CalendarClock,
   ClipboardList,
-  Clock,
-  CreditCard,
-  Crown,
   DollarSign,
+  HandHelping,
   MessageCircle,
   Mic,
   Receipt,
   RefreshCw,
   Repeat,
   Sparkles,
-  Users,
 } from "lucide-react";
-import { fetchDashboardData, formatDays, formatInt, formatMoney, formatPct, formatSignedPct, PERIOD_OPTIONS } from "../dashboard-client.ts";
+import {
+  fetchDashboardData,
+  formatInt,
+  formatMoney,
+  PERIOD_OPTIONS,
+} from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
-import { CUSTOMER_TIER_META, CUSTOMER_TIER_TONES, tierBadgeClase } from "../lib/status-tones.ts";
-import { saludoConNombre } from "../../../lib/greeting.ts";
+import { fetchBranchTimezone } from "../lib/config-client.ts";
+import { fetchBandeja } from "../lib/conversaciones-client.ts";
+import { fetchVozKpi } from "../lib/voz-kpi-client.ts";
+import type { VozKpi } from "../lib/voz-kpi-client.ts";
+import {
+  actividadMasReciente,
+  cuandoEnZona,
+  deltaDe,
+  saludoEnZona,
+} from "../lib/resumen-formato.ts";
+import { primerNombreOCorreo } from "../../../lib/greeting.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-/** Sparkline SVG inline simple — no se agrega recharts como dependencia nueva solo
- * para dos mini-gráficas en una fase sobre todo de backend (ver diseño §3). El color
- * ahora es `currentColor`, así que lo define una clase de token del contenedor. */
-function Sparkline({ points, className }: { points: readonly number[]; className: string }) {
+/** Roles con Copiloto (= COPILOTO_ROLES del Shell): la pildora solo se pinta a quien el servidor deja entrar. */
+const ROLES_COPILOTO: ReadonlySet<string> = new Set([
+  "owner",
+  "admin",
+  "staff",
+]);
+
+/** Roles con la pantalla "Agente de voz" (= STAFF_NAV_ROLES del Shell): el tile solo se pinta a quien puede abrirla. */
+const ROLES_VOZ: ReadonlySet<string> = new Set(["owner", "admin"]);
+
+/** Datos complementarios (best effort): cada campo `null` = no disponible, el bloque se pinta sin metrica. */
+interface Extras {
+  readonly zona: string | null;
+  readonly voz: VozKpi | null;
+  readonly pendientes: number | null;
+  readonly ultimaWhatsapp: string | null;
+  readonly ultimaVoz: string | null;
+}
+
+const EXTRAS_VACIOS: Extras = {
+  zona: null,
+  voz: null,
+  pendientes: null,
+  ultimaWhatsapp: null,
+  ultimaVoz: null,
+};
+
+async function cargarExtras(
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+): Promise<Extras> {
+  const [tz, voz, pend, wa, vz] = await Promise.allSettled([
+    fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId),
+    fetchVozKpi(fetch, apiBaseUrl, token, propertyId),
+    fetchBandeja(fetch, apiBaseUrl, token, propertyId, { estado: "pendiente" }),
+    fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "whatsapp" }),
+    fetchBandeja(fetch, apiBaseUrl, token, propertyId, { canal: "voz" }),
+  ]);
+  const bandeja = (
+    r: PromiseSettledResult<Awaited<ReturnType<typeof fetchBandeja>>>,
+  ) =>
+    r.status === "fulfilled" && r.value.disponible !== false ? r.value : null;
+  const bPend = bandeja(pend);
+  const bWa = bandeja(wa);
+  const bVz = bandeja(vz);
+  return {
+    zona: tz.status === "fulfilled" ? tz.value.zonaHoraria : null,
+    voz: voz.status === "fulfilled" ? voz.value : null,
+    pendientes: bPend ? bPend.total : null,
+    ultimaWhatsapp: bWa ? actividadMasReciente(bWa.items) : null,
+    ultimaVoz: bVz ? actividadMasReciente(bVz.items) : null,
+  };
+}
+
+/** Sparkline SVG inline simple: no se agrega una libreria de graficas solo para dos mini-graficas. */
+function Sparkline({
+  points,
+  className,
+}: {
+  points: readonly number[];
+  className: string;
+}) {
   const width = 320;
   const height = 64;
   if (points.length === 0) return null;
@@ -65,191 +130,341 @@ function Sparkline({ points, className }: { points: readonly number[]; className
   const min = Math.min(...points, 0);
   const range = max - min || 1;
   const step = points.length > 1 ? width / (points.length - 1) : 0;
-  const coords = points.map((v, i) => `${(i * step).toFixed(1)},${(height - ((v - min) / range) * height).toFixed(1)}`);
+  const coords = points.map(
+    (v, i) =>
+      `${(i * step).toFixed(1)},${(height - ((v - min) / range) * height).toFixed(1)}`,
+  );
   return (
-    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Tendencia" className={className}>
-      <polyline fill="none" stroke="currentColor" strokeWidth={2} points={coords.join(" ")} />
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Tendencia"
+      className={className}
+    >
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        points={coords.join(" ")}
+      />
     </svg>
   );
 }
 
-function TituloSeccion({ children }: { children: string }) {
-  return <p className="m-0 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
+function plural(n: number, uno: string, varios: string): string {
+  return `${formatInt(n)} ${n === 1 ? uno : varios}`;
 }
 
-export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullName, staffEmail }: RestaurantesShellContext) {
+export function RestaurantesDashboardPage({
+  apiBaseUrl,
+  token,
+  propertyId,
+  orgSlug,
+  role,
+  staffFullName,
+  staffEmail,
+}: RestaurantesShellContext) {
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
+  const [extras, setExtras] = useState<Extras>(EXTRAS_VACIOS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadKpis(p: StatsPeriod) {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchDashboardData(fetch, apiBaseUrl, token, propertyId, p);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar los KPIs.");
-    } finally {
-      setLoading(false);
-    }
+  const cargar = useCallback(
+    async (p: StatsPeriod) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [result, ex] = await Promise.all([
+          fetchDashboardData(fetch, apiBaseUrl, token, propertyId, p),
+          cargarExtras(apiBaseUrl, token, propertyId),
+        ]);
+        setData(result);
+        setExtras(ex);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudieron cargar los KPIs.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiBaseUrl, token, propertyId],
+  );
+
+  useEffect(() => {
+    if (role === "repartidor") return;
+    void cargar(period);
+  }, [cargar, period, role]);
+
+  const base = `/restaurantes/${orgSlug}`;
+  // El repartidor no tiene Resumen (el Shell ya lo redirige): defensa en profundidad si se monta la pagina suelta.
+  if (role === "repartidor")
+    return <Navigate to={`${base}/repartidor`} replace />;
+
+  const selector = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <RadioSegmentado
+        name="resumen-periodo"
+        label="Periodo"
+        opciones={PERIOD_OPTIONS.map((o) => ({ id: o.id, rotulo: o.label }))}
+        value={period}
+        onChange={setPeriod}
+        className="justify-end gap-1.5"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        loading={loading}
+        onClick={() => void cargar(period)}
+        iconLeft={<RefreshCw />}
+      >
+        Actualizar
+      </Button>
+    </div>
+  );
+
+  if (error !== null) {
+    return (
+      <PageContainer padding="none" size="xl" className="gap-2.5 [&>*]:min-w-0">
+        <EstadoError mensaje={error} onReintentar={() => void cargar(period)} />
+      </PageContainer>
+    );
+  }
+  if (data === null) {
+    return (
+      <PageContainer padding="none" size="xl" className="gap-2.5 [&>*]:min-w-0">
+        <EstadoCargando variante="tarjeta" etiqueta="Cargando panel…" />
+      </PageContainer>
+    );
   }
 
-  // `loadKpis` se recrea cada render (depende de `token`/`apiBaseUrl`/`propertyId`,
-  // todos estables mientras el Shell no cambie de sesión/sucursal) — no está en el
-  // arreglo de dependencias a propósito, mismo patrón que el resto de páginas de este
-  // vertical (ver Productos.tsx). Este proyecto no tiene configurado
-  // eslint-plugin-react-hooks (no hay otro `// eslint-disable` de esa regla en
-  // apps/web), así que no hace falta silenciar nada.
-  useEffect(() => {
-    void loadKpis(period);
-  }, [apiBaseUrl, token, propertyId, period]);
+  const { sales, channels, customers, trend } = data;
+  const historico = period === "historico";
+  const nombre = primerNombreOCorreo(staffFullName, staffEmail);
+  const periodoCanales = channels.periodo.etiqueta;
+  const pedidosIa = channels.voice.orders + channels.whatsapp.orders;
+  const ingresosIa = channels.voice.revenue + channels.whatsapp.revenue;
+  const deltaNota = sales.periodLabel;
+
+  const kpis = [
+    <StatCard
+      key="ordenes"
+      variante="neutra"
+      icon={ClipboardList}
+      label="Número de órdenes"
+      value={formatInt(sales.orders)}
+      delta={historico ? undefined : deltaDe(sales.ordersChangePct)}
+      deltaNota={deltaNota}
+      nota={historico ? sales.periodLabel : undefined}
+    />,
+    <StatCard
+      key="promedio"
+      variante="neutra"
+      icon={Receipt}
+      label="Valor promedio"
+      value={formatMoney(sales.averageOrder)}
+      delta={historico ? undefined : deltaDe(sales.avgOrderChangePct)}
+      deltaNota={deltaNota}
+      nota={historico ? sales.periodLabel : undefined}
+    />,
+    <StatCard
+      key="pedidos-ia"
+      variante="neutra"
+      icon={Bot}
+      label="Pedidos por agentes IA"
+      value={formatInt(pedidosIa)}
+      nota={
+        channels.aiAdoptionPct === null
+          ? `Voz y WhatsApp · ${periodoCanales}`
+          : `${channels.aiAdoptionPct.toFixed(0)}% de los pedidos · ${periodoCanales}`
+      }
+    />,
+    <StatCard
+      key="ingresos-ia"
+      variante="neutra"
+      icon={Sparkles}
+      label="Ingresos por agentes IA"
+      value={formatMoney(ingresosIa)}
+      nota={`Voz y WhatsApp, sin cancelados · ${periodoCanales}`}
+    />,
+    <StatCard
+      key="whatsapp"
+      variante="neutra"
+      icon={MessageCircle}
+      label="Pedidos por WhatsApp"
+      value={formatInt(channels.whatsapp.orders)}
+      nota={periodoCanales}
+    />,
+    <StatCard
+      key="voz"
+      variante="neutra"
+      icon={Mic}
+      label="Pedidos por voz"
+      value={formatInt(channels.voice.orders)}
+      nota={periodoCanales}
+    />,
+    <StatCard
+      key="recurrentes"
+      variante="neutra"
+      icon={Repeat}
+      label="Clientes recurrentes"
+      value={
+        customers.recurringCustomerPct === null
+          ? "—"
+          : `${customers.recurringCustomerPct.toFixed(0)}%`
+      }
+      sinDato={
+        customers.recurringCustomerPct === null
+          ? "Aún no hay pedidos vinculados a clientes"
+          : undefined
+      }
+      nota="de quienes ya pidieron al menos una vez"
+    />,
+  ];
+
+  const saludo = saludoEnZona(new Date(), extras.zona);
+  const destacado = (
+    <div className="flex min-w-0 flex-col items-end gap-2.5">
+      <Odometro
+        valor={sales.revenue}
+        digitos={5}
+        prefijo="$"
+        etiqueta="Ventas netas"
+        tamano="md"
+      />
+      <p className="text-ui text-muted-foreground sm:hidden">
+        Ventas netas{" "}
+        <span className="font-medium tabular-nums text-foreground">
+          {formatMoney(sales.revenue)}
+        </span>
+      </p>
+      {selector}
+    </div>
+  );
+
+  const vozHoy = extras.voz?.diaDeHoy.llamadas;
+  const ultimaWa = extras.ultimaWhatsapp
+    ? cuandoEnZona(extras.ultimaWhatsapp, extras.zona)
+    : null;
+  const ultimaVz = extras.ultimaVoz
+    ? cuandoEnZona(extras.ultimaVoz, extras.zona)
+    : null;
 
   return (
-    <PageContainer padding="none">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="m-0 text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
-          <h1 className="m-0 font-display text-xl font-semibold text-foreground">Panel de {orgSlug}</h1>
+    <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
+      <ResumenLayout
+        saludo={saludo}
+        nombre={nombre}
+        subtitulo={`${orgSlug} · ${PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period}`}
+        destacado={destacado}
+        kpis={kpis}
+        acciones={
+          <>
+            <PillLink to={`${base}/pedidos`}>Ver pedidos</PillLink>
+            <PillLink to={`${base}/historial`}>Ver historial</PillLink>
+            {ROLES_COPILOTO.has(role) && (
+              <PillLink to={`${base}/copiloto`}>Pregunta a tus datos</PillLink>
+            )}
+          </>
+        }
+      >
+        <ResumenSeccion titulo="Orquestación de agentes">
+          <TileLink
+            to={`${base}/conversaciones`}
+            icon={MessageCircle}
+            titulo="WhatsApp"
+            descripcion={`${plural(channels.whatsappConversations.total, "conversación", "conversaciones")} · ${formatInt(channels.whatsappConversations.withOrder)} con pedido · ${periodoCanales}`}
+          />
+          {ROLES_VOZ.has(role) && (
+            <TileLink
+              to={`${base}/agente-voz`}
+              icon={Mic}
+              titulo="Voz"
+              descripcion={
+                vozHoy === undefined
+                  ? "Atención por llamada"
+                  : `${plural(vozHoy, "llamada", "llamadas")} hoy · ${plural(extras.voz!.mes.llamadas, "llamada", "llamadas")} en el mes`
+              }
+            />
+          )}
+          <TileLink
+            to={`${base}/conversaciones`}
+            icon={HandHelping}
+            titulo="Toma humana"
+            descripcion={
+              extras.pendientes === null
+                ? "Conversaciones que atiende una persona"
+                : extras.pendientes === 0
+                  ? "Ninguna conversación esperando a una persona"
+                  : `${plural(extras.pendientes, "conversación espera", "conversaciones esperan")} a una persona`
+            }
+          />
+        </ResumenSeccion>
+
+        <Card
+          className="p-3"
+          role="region"
+          aria-labelledby="resumen-ultima-corrida"
+        >
+          <SectionLabel id="resumen-ultima-corrida">
+            Agentes — última corrida
+          </SectionLabel>
+          <div className="mt-2">
+            {ultimaWa === null && ultimaVz === null ? (
+              <EstadoVacio
+                compacto
+                titulo="Sin bitácora de corridas"
+                mensaje="Aún no existe una bitácora de corridas de los agentes, ni hay conversaciones recientes que mostrar. Aparecerán aquí en cuanto el agente atienda una."
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {ultimaWa !== null && (
+                  <AgentRunCard
+                    nombre="Agente de WhatsApp"
+                    meta={`Última conversación: ${ultimaWa}`}
+                    href={`${base}/conversaciones`}
+                  />
+                )}
+                {ultimaVz !== null && (
+                  <AgentRunCard
+                    nombre="Agente de voz"
+                    meta={`Última llamada: ${ultimaVz}`}
+                    href={`${base}/conversaciones`}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
+          <Card className="p-3">
+            <SectionLabel>Ventas ($)</SectionLabel>
+            <div className="mt-2">
+              <Sparkline
+                points={trend.map((p) => p.revenue)}
+                className="text-foreground"
+              />
+            </div>
+          </Card>
+          <Card className="p-3">
+            <SectionLabel>Órdenes</SectionLabel>
+            <div className="mt-2">
+              <Sparkline
+                points={trend.map((p) => p.orders)}
+                className="text-foreground"
+              />
+            </div>
+          </Card>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Tabs value={period} onValueChange={(v) => setPeriod(v as StatsPeriod)}>
-            <TabsList className="flex-wrap">
-              {PERIOD_OPTIONS.map((opt) => (
-                <TabsTrigger key={opt.id} value={opt.id}>
-                  {opt.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadKpis(period)} disabled={loading}>
-            <RefreshCw className={loading ? "animate-spin" : undefined} />
-            {loading ? "Actualizando…" : "Actualizar"}
-          </Button>
-        </div>
-      </header>
-
-      {error && <EstadoError mensaje={error} onReintentar={() => void loadKpis(period)} />}
-
-      {!data && !error && <EstadoCargando etiqueta="Cargando panel…" />}
-
-      {data && (
-        <>
-          <section className="flex flex-col gap-3">
-            <TituloSeccion>Tus ventas</TituloSeccion>
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-              <StatCard
-                icon={DollarSign}
-                label="Ventas netas"
-                value={formatMoney(data.sales.revenue)}
-                nota={period === "historico" ? data.sales.periodLabel : `${formatSignedPct(data.sales.revenueChangePct)} ${data.sales.periodLabel}`}
-              />
-              <StatCard
-                icon={ClipboardList}
-                label="Órdenes (sin canceladas)"
-                value={formatInt(data.sales.orders)}
-                nota={period === "historico" ? data.sales.periodLabel : `${formatSignedPct(data.sales.ordersChangePct)} ${data.sales.periodLabel}`}
-              />
-              <StatCard
-                icon={Receipt}
-                label="Valor promedio"
-                value={formatMoney(data.sales.averageOrder)}
-                nota={period === "historico" ? data.sales.periodLabel : `${formatSignedPct(data.sales.avgOrderChangePct)} ${data.sales.periodLabel}`}
-              />
-            </div>
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">Ventas ($)</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <Sparkline points={data.trend.map((p) => p.revenue)} className="text-foreground" />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">Órdenes</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <Sparkline points={data.trend.map((p) => p.orders)} className="text-primary" />
-                </CardContent>
-              </Card>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <TituloSeccion>Impacto de tus agentes</TituloSeccion>
-            <p className="m-0 text-xs text-muted-foreground">Periodo: {data.channels.periodo.etiqueta}</p>
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-              <StatCard icon={Bot} label="Pedidos por agentes IA" value={formatPct(data.channels.aiAdoptionPct)} nota="% de los pedidos del periodo (voz y WhatsApp)" />
-              <StatCard icon={Sparkles} label="Ventas por agentes IA" value={formatPct(data.channels.aiRevenuePct)} nota="% de las ventas netas, sin pedidos cancelados" />
-              <StatCard
-                icon={Clock}
-                label="Horas de atención ahorradas"
-                value={`${data.channels.estimatedHoursSaved.toFixed(1)} h`}
-                nota="Estimado: ≈5 min de atención humana por pedido resuelto por un agente. Supuesto ajustable, no es una medición real."
-              />
-              <StatCard icon={Mic} label="Pedidos por voz" value={formatInt(data.channels.voice.orders)} />
-              <StatCard icon={MessageCircle} label="Pedidos por WhatsApp" value={formatInt(data.channels.whatsapp.orders)} />
-              <StatCard
-                icon={DollarSign}
-                label="Ventas por voz y WhatsApp"
-                value={formatMoney(data.channels.voice.revenue + data.channels.whatsapp.revenue)}
-                nota="Sin pedidos cancelados"
-              />
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <TituloSeccion>Clientes</TituloSeccion>
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-              <StatCard icon={Users} label="Clientes totales" value={formatInt(data.customers.totalCustomers)} />
-              <StatCard
-                icon={CreditCard}
-                label="Ticket promedio"
-                value={data.customers.averageOrderValue === null ? "Sin datos" : formatMoney(data.customers.averageOrderValue)}
-              />
-              <StatCard
-                icon={Repeat}
-                label="Clientes recurrentes"
-                value={formatPct(data.customers.recurringCustomerPct)}
-                nota={data.customers.recurringCustomerPct !== null ? "de quienes ya pidieron al menos una vez" : undefined}
-              />
-              <StatCard
-                icon={Crown}
-                label="Cliente más frecuente"
-                value={data.customers.topCustomer ? data.customers.topCustomer.name || data.customers.topCustomer.phone : "Sin datos"}
-                nota={data.customers.topCustomer ? `${data.customers.topCustomer.orderCount} pedidos` : undefined}
-              />
-              <StatCard
-                icon={CalendarClock}
-                label="Días desde su último pedido"
-                value={formatDays(data.customers.avgDaysSinceLastOrder)}
-                nota={data.customers.avgDaysSinceLastOrder !== null ? "promedio de la base" : undefined}
-              />
-            </div>
-            <div className="flex flex-wrap gap-2 border-t border-dashed border-border pt-3">
-              {data.customers.tierDistribution.metric === "sin_datos" ? (
-                <p className="m-0 text-xs text-muted-foreground">
-                  Todavía no hay pedidos vinculados a clientes ni frecuencia registrada — los tiers aparecen en cuanto haya actividad real.
-                </p>
-              ) : (
-                (["BLACK", "PLATINUM", "GOLD", "BLUE"] as const).map((tier) => {
-                  const meta = CUSTOMER_TIER_META[tier];
-                  return (
-                    <StatusBadge key={tier} dot={false} tone={statusTone(CUSTOMER_TIER_TONES, tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(tier) ?? ""}`}>
-                      <span aria-hidden>{meta.glyph}</span>
-                      {meta.label}
-                      <span className="opacity-80">· {data.customers.tierDistribution[tier]}</span>
-                    </StatusBadge>
-                  );
-                })
-              )}
-            </div>
-          </section>
-        </>
-      )}
+      </ResumenLayout>
     </PageContainer>
   );
 }
