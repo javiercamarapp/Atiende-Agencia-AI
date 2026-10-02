@@ -30,7 +30,7 @@ describe("despachos.fiscal.vencimiento_escalado", () => {
       organizationId: ctx.organizationId,
       propertyId: ctx.propertyId,
       categoria: "fiscal",
-      cuerpo: "Nivel de escalamiento: nivel_4.",
+      cuerpo: "Nivel de escalamiento: 4.",
       enlace: "/despachos/{orgSlug}/vencimientos",
       dedupeKey: `despachos.fiscal.vencimiento_escalado:${deadline!.id}:nivel_4`,
       roles: ["contador"],

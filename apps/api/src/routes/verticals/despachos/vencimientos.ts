@@ -182,7 +182,8 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       clave: `${deadline.id}:${decision.level}`,
       entidadTipo: "fiscal_deadline",
       entidadId: deadline.id,
-      parametros: { nivel: decision.level },
+      // Numero legible ("Nivel de escalamiento: 2."), no el codigo interno "nivel_2".
+      parametros: { nivel: /^nivel_(\d+)$/.exec(decision.level)?.[1] ?? decision.level },
     });
     // Cierre del hallazgo "despachos no tiene disparo inline de correo" (ver
     // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
