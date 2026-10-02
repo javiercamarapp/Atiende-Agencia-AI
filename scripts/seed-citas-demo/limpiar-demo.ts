@@ -16,6 +16,46 @@ const USO = `Uso: node --experimental-strip-types scripts/seed-citas-demo/limpia
   --todas      las dos cuentas demo del seed
   (sin --confirmar: dry-run, solo cuenta; SEED_DATABASE_URL obligatoria)`;
 
+export interface ClienteSql {
+  query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
+}
+
+/**
+ * Nucleo de la limpieza (separado de la CLI para poder probarlo con un cliente falso): por cada slug, SOLO llama a
+ * `citas.demo_limpiar` si la organizacion existe Y esta marcada en `citas.demo_organization`; una organizacion sin marca se
+ * reporta y se salta (codigo 4), sin ejecutar ningun borrado. Devuelve el codigo de salida.
+ */
+export async function ejecutarLimpieza(client: ClienteSql, args: { readonly slugs: readonly string[]; readonly confirmar: boolean }, log: Pick<Console, "log" | "error"> = console): Promise<number> {
+  let codigo = 0;
+  for (const slug of args.slugs) {
+    const org = (await client.query(
+      `select o.id, (d.organization_id is not null) as demo from core.organization o left join citas.demo_organization d on d.organization_id = o.id where o.slug = $1;`,
+      [slug],
+    )) as { rows: { id: string; demo: boolean }[] };
+    if (!org.rows[0]) {
+      log.log(`- ${slug}: no existe; nada que borrar.`);
+      continue;
+    }
+    if (!org.rows[0].demo) {
+      log.error(`- ${slug}: NO esta marcada como demo de citas; la limpieza se niega a tocarla.`);
+      codigo = 4;
+      continue;
+    }
+    const c = await client.query(
+      `select (select count(*)::int from citas.appointments where organization_id = $1) as citas,
+              (select count(*)::int from citas.customers where organization_id = $1) as clientes,
+              (select count(*)::int from citas.appointment_waitlist where organization_id = $1) as espera;`,
+      [org.rows[0].id],
+    );
+    log.log(`- ${slug}: se borrarian`, c.rows[0], "y la organizacion completa");
+    if (!args.confirmar) continue;
+    const r = (await client.query(`select citas.demo_limpiar($1) as demo_limpiar;`, [org.rows[0].id])) as { rows: { demo_limpiar: unknown }[] };
+    log.log(`  limpieza aplicada:`, r.rows[0]?.demo_limpiar);
+  }
+  if (!args.confirmar) log.log("\nDRY-RUN: no se borro nada. Para borrar: repita con --confirmar (ver --help).");
+  return codigo;
+}
+
 async function main(): Promise<number> {
   const args = parseLimpiarArgs(process.argv.slice(2));
   if (args.help) {
@@ -29,38 +69,11 @@ async function main(): Promise<number> {
   const { default: pg } = await import("pg");
   const client = new pg.Client({ connectionString: process.env.SEED_DATABASE_URL });
   await client.connect();
-  let codigo = 0;
   try {
-    for (const slug of args.slugs) {
-      const org = await client.query<{ id: string; demo: boolean }>(
-        `select o.id, (d.organization_id is not null) as demo from core.organization o left join citas.demo_organization d on d.organization_id = o.id where o.slug = $1;`,
-        [slug],
-      );
-      if (!org.rows[0]) {
-        console.log(`- ${slug}: no existe; nada que borrar.`);
-        continue;
-      }
-      if (!org.rows[0].demo) {
-        console.error(`- ${slug}: NO esta marcada como demo de citas; la limpieza se niega a tocarla.`);
-        codigo = 4;
-        continue;
-      }
-      const c = await client.query<{ citas: number; clientes: number; espera: number }>(
-        `select (select count(*)::int from citas.appointments where organization_id = $1) as citas,
-                (select count(*)::int from citas.customers where organization_id = $1) as clientes,
-                (select count(*)::int from citas.appointment_waitlist where organization_id = $1) as espera;`,
-        [org.rows[0].id],
-      );
-      console.log(`- ${slug}: se borrarian`, c.rows[0], "y la organizacion completa");
-      if (!args.confirmar) continue;
-      const r = await client.query<{ demo_limpiar: unknown }>(`select citas.demo_limpiar($1) as demo_limpiar;`, [org.rows[0].id]);
-      console.log(`  limpieza aplicada:`, r.rows[0]?.demo_limpiar);
-    }
-    if (!args.confirmar) console.log("\nDRY-RUN: no se borro nada. Para borrar: repita con --confirmar (ver --help).");
+    return await ejecutarLimpieza(client as unknown as ClienteSql, args);
   } finally {
     await client.end();
   }
-  return codigo;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
