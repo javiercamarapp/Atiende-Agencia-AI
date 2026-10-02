@@ -26,6 +26,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentSource,
   AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
