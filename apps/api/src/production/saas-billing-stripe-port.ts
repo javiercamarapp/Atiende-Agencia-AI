@@ -19,7 +19,7 @@
 // `application/x-www-form-urlencoded` con notación de corchetes para objetos
 // anidados (`metadata[tenant_id]`, `subscription_data[metadata][vertical]`),
 // nunca JSON.
-import type { CustomerLookup, StripeClient } from "@atiende/billing";
+import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@atiende/billing";
 
 export interface SaasBillingStripeConfig {
   readonly secretKey: string;
@@ -29,11 +29,27 @@ function appendNested(body: URLSearchParams, key: string, value: string): void {
   body.append(key, value);
 }
 
-export class StripeSaasBillingCheckoutPort implements StripeClient {
+export class StripeSaasBillingCheckoutPort implements StripeClient, StripeBillingPortalClient {
   constructor(
     private readonly fetchImpl: typeof fetch,
     private readonly config: SaasBillingStripeConfig,
   ) {}
+
+  /** Billing Portal de Stripe (PL-16): sesion de un solo uso para que la organizacion administre su metodo de pago y sus facturas. */
+  async crearSesionPortal(opts: { customerId: string; returnUrl: string }): Promise<{ url: string }> {
+    const body = new URLSearchParams();
+    body.append("customer", opts.customerId);
+    body.append("return_url", opts.returnUrl);
+    const response = await this.fetchImpl("https://api.stripe.com/v1/billing_portal/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.config.secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const json = (await response.json().catch(() => ({}))) as { url?: string; error?: { message?: string } };
+    if (!response.ok) throw new Error(`Stripe respondió ${response.status} al crear la sesión del portal de facturación: ${json.error?.message ?? ""}`.trim());
+    if (!json.url) throw new Error("Stripe respondió 200 al crear la sesión del portal sin `url`.");
+    return { url: json.url };
+  }
 
   async crearSesionCheckout(opts: {
     customerId?: string;

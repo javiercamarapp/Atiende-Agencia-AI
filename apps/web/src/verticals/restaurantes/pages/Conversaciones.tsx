@@ -72,10 +72,10 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
   }, [apiBaseUrl, token, propertyId, estado, canal, reintento, filtroActual]);
 
   return (
-    <PageContainer padding="none" className="gap-5">
+    <PageContainer padding="none">
       <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Conversaciones</h1>
-        <p className="m-0 text-sm text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
+        <h1 className="sr-only">Conversaciones</h1>
+        <p className="m-0 text-ui text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
       </header>
 
       <Tabs defaultValue="bandeja">
@@ -88,7 +88,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
           {data && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">De guardia ahora</CardTitle>
+                <CardTitle>De guardia ahora</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
                 {data.cobertura.sinCobertura ? (
@@ -223,7 +223,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">
+        <CardTitle>
           {CANAL_LABEL[canal]} — {h ? ESTADO_LABEL[h.estado] : ESTADO_LABEL.agente}
         </CardTitle>
       </CardHeader>

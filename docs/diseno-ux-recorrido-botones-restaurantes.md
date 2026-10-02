@@ -40,7 +40,7 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 | Pantalla | Controles (handler -> efecto) | Prueba |
 |---|---|---|
 | **Panel** (`Dashboard.tsx`) | Tabs de periodo -> `setPeriod` -> `fetchDashboardData` (GET `kpis/sales`, `sales/trend`, `channels`, `customers`); "Actualizar" -> `loadKpis` (`disabled` solo mientras carga) | restaurantes-dashboard-page |
-| **Pedidos** | Tabs de estado; casilla de auto-impresion -> `activarAutoImpresion/desactivarAutoImpresion` (preferencia local + sondeo); selector de repartidor -> `assignRepartidor` (PATCH `orders/:id/assign-repartidor`); "Imprimir/Reimprimir ticket" y "Vista previa" -> ticket de cocina; "Marcar X" -> `updateOrderStatus` (PATCH `orders/:id/status`), cancelar pide `AlertDialog` con el nombre del cliente; casilla "Avisar al cliente" | restaurantes-pedidos-page, -recoger-page, -ticket-cocina |
+| **Pedidos** | Tabs de estado; casilla de auto-impresion -> `activarAutoImpresion/desactivarAutoImpresion` (preferencia local + sondeo); selector de repartidor -> `assignRepartidor` (PATCH `orders/:id/assign-repartidor`); "Imprimir/Reimprimir ticket" y "Vista previa" -> ticket de cocina; "Marcar X" -> `updateOrderStatus` (PATCH `orders/:id/status`), cancelar pide confirmacion con el nombre del cliente (inventario previo a UNI-C: AlertDialog; ver seccion UNI-C); casilla "Avisar al cliente" | restaurantes-pedidos-page, -recoger-page, -ticket-cocina |
 | **Historial** | filtros estado/desde/hasta -> `fetchOrders`; "Cargar mas" -> siguiente cursor | No |
 | **Productos** | "Crear categoria" -> `createCategory` (POST); "Crear producto" -> `createProduct` (POST); precio (al salir del campo) -> `setBranchAvailability` (PATCH `products/:id/branch-availability`); "Disponible/No disponible" -> `setBranchAvailability`; casilla Popular -> `updateProduct` (PATCH); casillas "no a domicilio" -> `setNoDomicilio` (PUT) | restaurantes-productos-no-domicilio-page |
 | **Promociones** | "Crear un codigo nuevo" -> `FormDialog` -> `createPromotion` (POST); "Editar vigencia" -> `FormDialog` -> `updatePromotion` (PATCH); "Activar/Desactivar" -> `setPromotionActive`; tipo, canal, dias, productos (casillas) y fechas alimentan el cuerpo | restaurantes-promociones-page, -automaticas-page |
@@ -53,7 +53,7 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 | **Auditoria** | filtro tipo/desde/hasta -> `fetchAuditoria`; "Cargar mas" | No |
 | **Agente de voz** | pestañas; "Vista previa" y "Abrir vista previa (demostracion)" (simulacion local, rotulada); habilitado, voz (`SelectorVoz`: escuchar muestra / elegir), prompt y primer mensaje; "Guardar cambios" -> `updateVozConfig` (PUT; `disabled` por condicion); "Ver transcripcion" / "Volver a la lista" | voz-agente-voz-page |
 | **Privacidad** | formulario -> `guardarConfiguracionPrivacidad` (PUT); filtros; acciones del panel ARCO -> `actualizarEstadoSolicitudArco` (PATCH); "Cargar mas" | restaurantes-privacidad-page |
-| **Repartidor** (`/repartidor`, fuera del shell) | "Mapa" y "Llamar" -> enlaces `https://www.google.com/maps/...` y `tel:`; "Marcar en camino/entregado" -> `updateAssignedOrderStatus` (PATCH); "Reportar incidencia" -> `AlertDialog` con nota -> misma funcion | No (solo el cliente, restaurantes-repartidor-client) |
+| **Repartidor** (`/repartidor`, fuera del shell) | "Mapa" y "Llamar" -> enlaces `https://www.google.com/maps/...` y `tel:`; "Marcar en camino/entregado" -> `updateAssignedOrderStatus` (PATCH); "Reportar incidencia" -> dialogo con nota (inventario previo a UNI-C: AlertDialog; ver seccion UNI-C) -> misma funcion | No (solo el cliente, restaurantes-repartidor-client) |
 
 ## Hallazgos del recorrido
 
@@ -66,3 +66,18 @@ Prueba = prueba de componente existente que ejerce la pantalla (`apps/web/tests`
 | H-5 | `Dashboard` renderizaba un `<main>` dentro del `<main>` del shell (HTML invalido) | `PageContainer` (div) |
 | H-6 | Las listas de productos de una promocion eran `<select multiple>` (poco usable en movil/teclado) | grupos de casillas con `role="group"`; conservan el orden del catalogo |
 | H-7 (NO corregido) | El item "Panel (KPIs)" del Sidebar de escritorio tambien se ve activo en subrutas (el `Sidebar` compartido no soporta `end`) | fuera de alcance (`packages/ui`); queda en knownGaps |
+
+## UNI-C (oleada C de unificacion): controles que cambiaron
+
+Capturas antes/despues (escritorio y movil, claro y oscuro) en `docs/diseno-ux-capturas-unic-restaurantes/` (`antes-*` / `despues-*`: Pedidos, Productos, Historial, Staff, Promociones y los dos dialogos de alta nuevos). Repartidor queda SIN capturas: las anteriores mostraban el error del mock-api (faltaba la fixture) y se retiraron; su evidencia es la prueba e2e `restaurantes-repartidor.spec.ts` (lista, Volver/Escape sin PATCH, incidencia con nota). Pendiente de recaptura cuando la Mac tenga memoria para levantar el build.
+
+| Pantalla | Antes | Ahora (mismo endpoint, mismo payload) |
+|---|---|---|
+| Todas las de panel | titulo visible duplicado (barra + `h1`) | `h1` solo para lectores de pantalla; el nombre lo pinta la barra del shell; avisos de rol con `Callout`; `CardTitle` de 14 px |
+| Pedidos | "Marcar Cancelado" -> `AlertDialog` local | `useConfirm` (peligro): "Volver"/Escape no llaman al API; confirmar -> PATCH `orders/:id/status`; transiciones con `Button loading` |
+| Repartidor | "Reportar incidencia" -> `AlertDialog` + textarea | `useConfirm().pedirTexto`: nota obligatoria (max. 2000), "Volver"/Escape no llaman al API; confirmar -> PATCH `repartidor/orders/:id/status` con `incidentNote`; botones sin `h-9` suelto |
+| Staff | formulario "Invitar" siempre abierto | CTA "Invitar a alguien" -> `FormDialog` con `FormField` (error por campo); token de la invitacion en un `Callout`; "Revocar" ahora pide confirmacion (`useConfirm`) |
+| Productos | dos formularios siempre abiertos + tabla a mano | CTA "Nueva categoria" / "Nuevo producto" -> `FormDialog`; catalogo en `DataTable` (orden por producto y categoria, 25 por pagina) |
+| Promociones | `toFixed(2)`, campos con `Label` suelto | `formatMoney` (`$1,500.00`); campos con `FormField`; "Desactivar" variante `danger` y `Button loading` |
+| Historial, Auditoria, Conversaciones de voz, Indicadores de voz | `<Table>` a mano | `DataTable` en `Card` (tarjetas en movil); "Cargar mas" con `Button loading` |
+| Agente de voz | glifo de texto en "Antes de salir en vivo" | iconos lucide |

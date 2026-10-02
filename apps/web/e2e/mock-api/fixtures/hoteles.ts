@@ -98,6 +98,30 @@ export const rutasHoteles: readonly Ruta[] = [
       return conStatus(204, undefined);
     },
   },
+  // UNI-RES-hoteles -- datos del Resumen (forma = apps/web/src/verticals/hoteles/lib/{pl,recepcion,agentes,reservas-agente,night-audit}-client.ts).
+  // Forma COMPLETA de `GET .../pl` (PlFullResponse): la sirven tanto el Resumen (kpis + total) como la pagina de P&L (departamentos, equilibrio).
+  { metodo: "GET", patron: `${H}/pl`, roles: ["owner"], manejador: () => ({
+    periodo: { desde: "2026-09-03", hasta: "2026-10-02" },
+    total: {
+      departamentos: [{ department: "rooms", revenue: 304500, costOfSales: 0, payroll: 60900, otherExpenses: 30450, totalExpenses: 91350, departmentalProfit: 213150, profitMarginPct: 70 }],
+      ingresosTotales: 304500, utilidadDepartamentalTotal: 213150, gastosNoDistribuidos: [{ department: "admin_general", amount: 91350 }], totalGastosNoDistribuidos: 91350,
+      gop: 121800, gopMarginPct: 40, cuotaAdministracion: 12180, ebitda: 109620, gastosNoOperativos: 18270, utilidadNeta: 91350,
+    },
+    kpis: { adr: 1450, revpar: 1015, occupancyPct: 70, occupiedRoomNights: 210, availableRoomNights: 300 },
+    puntoEquilibrio: { fixedCostsNetOfOtherDepartments: 91350, contributionMarginPerRoom: 1160, breakevenOccupiedRoomNights: 79, breakevenOccupancyPct: 26.3, actualOccupancyPct: 70, occupancyGapPct: 43.7 },
+    ownersReport: { porEncimaDePuntoDeEquilibrio: true, alertas: [] },
+    alcance: { pendiente: [] },
+  }) },
+  { metodo: "GET", patron: `${H}/recepcion`, roles: ["owner"], manejador: () => ({ fecha: "2026-10-02", tareasDisponibles: true, identidadDisponible: true, resumen: { llegadas: 4, llegadasPendientes: 3, salidas: 2, salidasPendientes: 1, enCasa: 17, habitacionesLibres: 6, habitacionesSucias: 2, habitacionesFueraDeServicio: 1 }, llegadas: [], salidas: [], enCasa: [], rack: [] }) },
+  { metodo: "GET", patron: `${H}/aprobaciones`, roles: ["owner"], manejador: () => ({ disponible: true, ahora: new Date().toISOString(), aprobaciones: [{ id: "apr-1", estado: "pendiente" }, { id: "apr-2", estado: "ejecutada" }] }) },
+  { metodo: "GET", patron: `${H}/reservas-agente/holds`, roles: ["owner"], manejador: () => ({ disponible: true, holds: [{ id: "hold-1", estado: "pendiente_pago", canal: "whatsapp" }, { id: "hold-2", estado: "pendiente_aprobacion", canal: "voz" }] }) },
+  { metodo: "GET", patron: `${H}/agentes`, roles: ["owner"], manejador: () => ({ disponible: true, mes: "2026-10", agentes: [
+    { clave: "recepcion_whatsapp", nombre: "Agente de reservas por WhatsApp y voz", descripcion: "", gobernado: true, activo: true, estado: "activo", motivoPausa: null, pausadoEn: null, presupuestoUsd: 80, gastoUsd: 12.4, porcentajeUso: 15.5, llamadas: 132, tokensEntrada: 0, tokensSalida: 0 },
+    { clave: "revenue", nombre: "Agente de revenue", descripcion: "", gobernado: true, activo: false, estado: "pausado", motivoPausa: null, pausadoEn: null, presupuestoUsd: null, gastoUsd: 0, porcentajeUso: null, llamadas: 0, tokensEntrada: 0, tokensSalida: 0 },
+    { clave: "reputacion", nombre: "Agente de reputación", descripcion: "", gobernado: true, activo: true, estado: "activo", motivoPausa: null, pausadoEn: null, presupuestoUsd: 30, gastoUsd: 3.1, porcentajeUso: 10.3, llamadas: 18, tokensEntrada: 0, tokensSalida: 0 },
+    { clave: "mantenimiento", nombre: "Agente de mantenimiento", descripcion: "", gobernado: true, activo: true, estado: "activo", motivoPausa: null, pausadoEn: null, presupuestoUsd: null, gastoUsd: 0.4, porcentajeUso: null, llamadas: 5, tokensEntrada: 0, tokensSalida: 0 },
+  ] }) },
+  { metodo: "GET", patron: `${H}/night-audit`, roles: ["owner"], manejador: () => [{ fecha: "2026-10-01", estado: "completado", completadoEn: "2026-10-02T07:30:00.000Z" }, { fecha: "2026-09-30", estado: "completado", completadoEn: "2026-10-01T07:30:00.000Z" }] },
   { metodo: "GET", patron: "/v1/hoteles/:org/admin/propiedades", manejador: () => ({ propiedades: [{ propertyId: PROP.id, nombre: PROP.nombre }] }) },
   // Rutas especificas antes que `:tid` (el router toma la primera que coincide).
   { metodo: "GET", patron: `${H}/tickets/resenas-pendientes`, manejador: () => ({ disponible: true, resenas: [] }) },

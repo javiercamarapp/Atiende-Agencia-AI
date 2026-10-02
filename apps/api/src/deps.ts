@@ -63,7 +63,7 @@ import type {
 } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
-import type { CustomerLookup, StripeClient } from "@atiende/billing";
+import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
@@ -560,6 +560,9 @@ export interface AppDeps {
    * mismo criterio que `whatsAppDispatcher`) para que ningún fixture existente
    * de las otras 6 verticales tenga que tocarse solo por agregar este campo. */
   readonly saasBillingStripeClient?: StripeClient | null;
+  /** Portal de cliente de Stripe (PL-16, `POST /billing/portal`). `undefined`/`null` cuando `STRIPE_SECRET_KEY` no esta configurada:
+   *  la ruta responde 503 honesto y `GET /billing/uso` lo reporta como no disponible. */
+  readonly saasBillingPortalClient?: StripeBillingPortalClient | null;
   /** Secreto de firma del webhook de Stripe (`whsec_...`, DISTINTO de
    * `env.stripe.secretKey` -- ver el comentario de `ApiEnv.stripe` en env.ts).
    * `undefined`/`null` cuando `STRIPE_WEBHOOK_SECRET` no está configurado --

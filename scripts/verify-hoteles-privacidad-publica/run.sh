@@ -48,12 +48,12 @@ run_pass() {
   echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ (orden: $1)"
   if [ "$1" = "prod" ]; then
     # Secuencia de la base real: 20240101000278 ya estaba aplicada y 277 llega despues y fuera de orden, antes de las
-    # migraciones posteriores a 286 (la correccion de core._arco_union vive en 287).
+    # migraciones posteriores a 293 (la correccion de core._arco_union vive en 294).
     FILES=()
     for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
       case "$(basename "$f")" in 20240101000277_*) continue ;; esac
       v="$(basename "$f" | cut -c1-14)"
-      if [ "$v" -gt 20240101000286 ] && [ -n "${DEFERRED:-}" ]; then FILES+=("$DEFERRED"); DEFERRED=""; fi
+      if [ "$v" -gt 20240101000293 ] && [ -n "${DEFERRED:-}" ]; then FILES+=("$DEFERRED"); DEFERRED=""; fi
       FILES+=("$f")
     done
     [ -n "${DEFERRED:-}" ] && FILES+=("$DEFERRED")

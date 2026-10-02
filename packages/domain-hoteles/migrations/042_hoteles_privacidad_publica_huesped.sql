@@ -398,9 +398,9 @@ grant execute on function hoteles.arco_access_snapshot(uuid, text) to authentica
 --    vista ARCO consolidada, pero NO en esta migracion: la ultima definicion de la funcion vive en 20240101000278
 --    (rentas 028, que agrega rentas a la union) y ya esta aplicada en la base real, donde 277 llega despues y fuera de
 --    orden; redefinirla aqui la dejaria pisada por 278 o, aplicada fuera de orden, quitaria la rama de rentas.
---    El cambio vive en la migracion posterior 20240101000287 (rentas 030). Entre 277 y 287 una solicitud
+--    El cambio vive en la migracion posterior 20240101000294 (rentas 031). Entre 277 y 294 una solicitud
 --    'pendiente_verificacion' saldria como 'resuelta' en core.org_list_arco_requests y core.platform_list_arco_requests,
---    por eso 287 debe aplicarse junto con 277.
+--    por eso 294 debe aplicarse junto con 277.
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------

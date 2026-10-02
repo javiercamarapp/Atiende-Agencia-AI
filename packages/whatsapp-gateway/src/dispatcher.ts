@@ -52,6 +52,8 @@ interface ValidWhatsAppOutboxPayload {
   /** SA-L-46: `true` = respuesta transaccional dentro de una conversacion en curso (el cliente la pidio): la lista de
    *  supresion de plataforma NO la bloquea. Cualquier otro valor (o ausente) = aviso proactivo. */
   readonly transaccional: boolean;
+  /** PL-16: aviso proactivo que el plan nunca debe omitir por tope de mensajes (p. ej. un aviso de seguridad). */
+  readonly critico: boolean;
 }
 
 /** R-27: valida la plantilla HSM opcional del payload. Una plantilla mal formada es un error de ENCOLADO (el
@@ -102,7 +104,7 @@ function parseWhatsAppOutboxPayload(payload: unknown): ValidWhatsAppOutboxPayloa
     throw new WhatsAppInvalidPayloadError('payload de messaging_outbox con "buttons" inválido (debe ser string[] o {id,title}[])');
   }
   const template = p.template === undefined || p.template === null ? undefined : parseTemplate(p.template);
-  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true };
+  return { to: p.to, phone_number_id: p.phone_number_id, body: p.body, buttons: p.buttons as readonly (string | OutboundButton)[] | undefined, template, transaccional: p.transaccional === true, critico: p.critico === true };
 }
 
 export interface WhatsAppOutboundDispatcherOptions {
@@ -117,7 +119,7 @@ export interface WhatsAppOutboundDispatcherOptions {
   readonly now?: () => Date;
 }
 
-export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open" | "suppressed" | "skipped_suppression_unavailable";
+export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open" | "suppressed" | "skipped_suppression_unavailable" | "omitido_cuota";
 
 /** Motivo con que un mensaje suprimido se marca no enviado (`error_class` del outbox). Sin reintento. */
 export const SUPPRESSED_ERROR_CLASS = "suprimido";
@@ -126,8 +128,35 @@ export const SUPPRESSED_ERROR_CLASS = "suprimido";
  *  puede verificarlo debe LANZAR; el dispatcher entonces no envia y deja el mensaje para la siguiente corrida. */
 export type SuppressionGuard = (phone: string) => Promise<boolean>;
 
+/** Contexto de un mensaje para el medidor mensual de mensajes por plan (PL-16). */
+export interface ContextoMedicion {
+  readonly label: string;
+  readonly itemId: string;
+  readonly organizationId: string;
+  /** true = aviso proactivo (no es respuesta a un cliente que escribio). */
+  readonly proactivo: boolean;
+  /** true = proactivo que el plan nunca omite. */
+  readonly critico: boolean;
+}
+
+/** Motivo con que un proactivo omitido por tope del plan se marca no enviado (`error_class` del outbox). Sin reintento. */
+export const CUOTA_ERROR_CLASS = "tope_mensajes_plan";
+
+/**
+ * Medidor mensual de mensajes por plan. `antesDeEnviar` decide si el envio sale (solo un plan con accion `pausar` y tope consumido
+ * omite proactivos no criticos; lo transaccional SIEMPRE sale); `despuesDeEnviar` registra el mensaje enviado. Es defensa de
+ * facturacion, NUNCA un riesgo de disponibilidad: si cualquiera de los dos lanza, el dispatcher registra el error (sin PII) y
+ * envia igual.
+ */
+export interface MedidorMensajes {
+  antesDeEnviar(ctx: ContextoMedicion): Promise<{ readonly permitir: boolean; readonly motivo?: string }>;
+  despuesDeEnviar(ctx: ContextoMedicion): Promise<void>;
+}
+
 export interface DispatchPendingOptions {
   readonly limit?: number;
+  /** Sin medidor (`undefined`) el comportamiento es el anterior a PL-16: nada se mide ni se omite. */
+  readonly medidor?: MedidorMensajes;
   /** Sin guard (`undefined`) el comportamiento es el anterior a SA-L-46. */
   readonly suppression?: SuppressionGuard;
 }
@@ -147,6 +176,8 @@ export interface DispatchSummary {
   readonly skipped: number;
   /** Mensajes proactivos no enviados por la lista de supresion de plataforma. Solo presente cuando es mayor que 0. */
   readonly suppressed?: number;
+  /** Proactivos omitidos por el tope de mensajes del plan (PL-16). Solo presente cuando es mayor que 0. */
+  readonly omitidosCuota?: number;
   readonly items: readonly DispatchItemResult[];
 }
 
@@ -179,9 +210,10 @@ export class WhatsAppOutboundDispatcher {
     let dead = 0;
     let skipped = 0;
     let suppressed = 0;
+    let omitidosCuota = 0;
 
     for (const item of claimed) {
-      const result = await this.dispatchOne(port, item, opts.suppression);
+      const result = await this.dispatchOne(port, item, opts.suppression, opts.medidor);
       items.push(result);
       switch (result.outcome) {
         case "sent":
@@ -200,13 +232,16 @@ export class WhatsAppOutboundDispatcher {
         case "suppressed":
           suppressed++;
           break;
+        case "omitido_cuota":
+          omitidosCuota++;
+          break;
       }
     }
 
-    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, ...(suppressed > 0 ? { suppressed } : {}), items };
+    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, ...(suppressed > 0 ? { suppressed } : {}), ...(omitidosCuota > 0 ? { omitidosCuota } : {}), items };
   }
 
-  private async dispatchOne(port: MessagingOutboxPort, item: MessagingOutboxItem, suppression: SuppressionGuard | undefined): Promise<DispatchItemResult> {
+  private async dispatchOne(port: MessagingOutboxPort, item: MessagingOutboxItem, suppression: SuppressionGuard | undefined, medidor: MedidorMensajes | undefined): Promise<DispatchItemResult> {
     let payload: ValidWhatsAppOutboxPayload;
     try {
       payload = parseWhatsAppOutboxPayload(item.payload);
@@ -234,6 +269,23 @@ export class WhatsAppOutboundDispatcher {
       }
     }
 
+    // PL-16: tope mensual de mensajes del plan. Solo mide si la vertical conoce la organizacion del mensaje.
+    const medicion: ContextoMedicion | null =
+      medidor && item.organizationId ? { label: port.label, itemId: item.id, organizationId: item.organizationId, proactivo: !payload.transaccional, critico: payload.critico } : null;
+    if (medidor && medicion) {
+      let decision: { readonly permitir: boolean; readonly motivo?: string } = { permitir: true };
+      try {
+        decision = await medidor.antesDeEnviar(medicion);
+      } catch (medErr) {
+        // Fail-open: un medidor roto nunca deja a un cliente sin respuesta. Diagnostico sin PII.
+        console.error("whatsapp-dispatcher: el medidor de cuota fallo (se envia igual)", (medErr as { code?: unknown })?.code ?? null, medErr instanceof Error ? medErr.name : typeof medErr);
+      }
+      if (!decision.permitir) {
+        await port.markDead(item.id, item.attempts + 1, (decision.motivo ?? CUOTA_ERROR_CLASS).slice(0, 120));
+        return { id: item.id, outcome: "omitido_cuota", error: decision.motivo ?? CUOTA_ERROR_CLASS };
+      }
+    }
+
     if (this.breaker) {
       try {
         await this.breaker.checkCircuit(payload.phone_number_id);
@@ -252,6 +304,13 @@ export class WhatsAppOutboundDispatcher {
       await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id);
+      if (medidor && medicion) {
+        try {
+          await medidor.despuesDeEnviar(medicion);
+        } catch (medErr) {
+          console.error("whatsapp-dispatcher: el medidor de cuota no pudo registrar el mensaje enviado", (medErr as { code?: unknown })?.code ?? null, medErr instanceof Error ? medErr.name : typeof medErr);
+        }
+      }
       return { id: item.id, outcome: "sent" };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

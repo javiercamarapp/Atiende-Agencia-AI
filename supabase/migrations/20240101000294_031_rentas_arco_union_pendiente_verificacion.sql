@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- Rentas 030 (H-30): core._arco_union clasifica 'pendiente_verificacion' (hoteles) como 'por_confirmar'.
+-- Rentas 031 (H-30): core._arco_union clasifica 'pendiente_verificacion' (hoteles) como 'por_confirmar'.
 --
 -- Por que una migracion nueva y no una edicion de 028/278: 20240101000278 ya esta aplicada en la base real y
 -- `supabase db push` decide por version, no por contenido; una edicion de 278 nunca llegaria a produccion.
@@ -8,7 +8,7 @@
 -- 'resuelta', por lo que una solicitud publica sin verificar, incluido el spam, aparecia como resuelta en
 -- core.org_list_arco_requests y core.platform_list_arco_requests).
 --
--- Orden: el prefijo 20240101000287 es posterior a 278 (rentas.arco_solicitud) y a 277 (estado
+-- Orden: el prefijo 20240101000294 es posterior a 278 (rentas.arco_solicitud) y a 277 (estado
 -- 'pendiente_verificacion'), asi que sirve tanto en una base nueva migrada en orden como en la real, donde 278 ya
 -- esta aplicada y 277 llega despues y fuera de orden.
 --
