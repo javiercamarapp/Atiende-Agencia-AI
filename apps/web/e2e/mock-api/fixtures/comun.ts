@@ -78,6 +78,8 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
 }
 
 export const rutasComunes: readonly Ruta[] = [
+  // El banner de plan (BannerPlan) pide /billing/uso en todas las verticales; la API simulada responde el estado honesto "no disponible".
+  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "Plan y uso no disponible en la API simulada de e2e." }) },
   { metodo: "GET", patron: "/notifications/unread-count", manejador: (p) => ({ unreadCount: noLeidas(lista(p.estado, p.persona)) }) },
   { metodo: "GET", patron: "/notifications", manejador: (p) => {
       const todas = lista(p.estado, p.persona);
