@@ -160,7 +160,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "trompo"
+      ],
+      "alias_provisional_P24": [
+        "trompo"
+      ]
     },
     {
       "nombre": "Taco de Rajas (individual)",
@@ -202,7 +208,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Tacos de Chorizo (orden de 3)",
@@ -244,7 +256,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Tacos de Pechuga de Pollo (orden de 3)",
@@ -349,7 +371,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Tacos de Bistec Encebollado (orden de 3)",
@@ -370,7 +395,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Gringa de Pastor",
@@ -412,7 +447,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Gringa de Pechuga de Pollo",
@@ -517,7 +562,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Mestiza de Pastor",
@@ -559,7 +607,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Mestiza de Bistec",
@@ -580,7 +631,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Mestiza de Pechuga",
@@ -706,7 +767,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Alambre de Pechuga",
@@ -832,7 +903,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Suizo de Chuleta",
@@ -937,7 +1018,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Suizo de Chorizo",
@@ -1021,7 +1105,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Alambre Suizo de Pechuga",
@@ -1126,7 +1220,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Tacos Suizos de Chile Poblano y Arrachera",
@@ -1244,7 +1348,17 @@
       },
       "fuente_precio": {
         "T1": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Flauta de Chuleta de Cerdo",
@@ -1329,7 +1443,10 @@
       },
       "fuente_precio": {
         "T1": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Chetaco de Pastor",
@@ -1371,7 +1488,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Chetaco de Bistec de Res",
@@ -1392,7 +1515,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Chetaco de Chuleta de Cerdo",
@@ -1476,7 +1609,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Chetaco de Arrachera",
@@ -1560,7 +1696,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Papa Chuleta",
@@ -1686,7 +1832,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Francés Suizo de Bistec de Res",
@@ -1707,7 +1859,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Francés Suizo de Chuleta de Cerdo",
@@ -1791,7 +1953,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Francés Suizo de Arrachera",
@@ -2148,7 +2313,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Quesadilla de Chorizo",
@@ -2232,7 +2403,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Queso Fundido Tocino",
@@ -2337,7 +2514,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Nachos de Champiñón (1/2 orden)",
@@ -2358,7 +2541,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Nachos de Bistec",
@@ -2379,7 +2568,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Nachos de Bistec (1/2 orden)",
@@ -2400,7 +2599,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Nachos de Pechuga",
@@ -2587,7 +2796,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich de Pastor",
@@ -2606,7 +2818,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich de Bistec",
@@ -2625,7 +2840,18 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté",
+        "pizza"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Quesobich de Pollo",
@@ -2644,7 +2870,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich de Chuleta de Cerdo",
@@ -2663,7 +2892,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich de Costilla de Res",
@@ -2682,7 +2914,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich de Arrachera",
@@ -2701,7 +2936,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Quesobich Vegetariana",
@@ -2720,7 +2958,10 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "pizza"
+      ]
     },
     {
       "nombre": "Crujientes de Pechuga de Pollo",
@@ -2783,7 +3024,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Platillo de Pechuga de Pollo",
@@ -2888,7 +3139,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Fajitas de Bistec",
@@ -2909,7 +3163,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Fajitas de Pechuga",
@@ -3035,7 +3299,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Bistec de Res Encebollado — 1 kg",
@@ -3056,7 +3330,17 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ],
+      "alias_provisional_P24": [
+        "bitek",
+        "bistek",
+        "bisté"
+      ]
     },
     {
       "nombre": "Chuleta de Cerdo — 1 kg",
@@ -3119,7 +3403,10 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "pocchuc"
+      ]
     },
     {
       "nombre": "Arrachera — 1 kg",
@@ -3762,7 +4049,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Superior",
@@ -3783,7 +4074,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Tecate Light",
@@ -3804,7 +4099,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Heineken 0.0",
@@ -3823,7 +4122,11 @@
       "fuente_precio": {
         "T1": "impreso",
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Heineken",
@@ -3844,7 +4147,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Heineken Silver",
@@ -3861,7 +4168,11 @@
       },
       "fuente_precio": {
         "T5": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Indio",
@@ -3882,7 +4193,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "XX Lager",
@@ -3903,7 +4218,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "XX Ámbar",
@@ -3924,7 +4243,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Amstel Ultra",
@@ -3945,7 +4268,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Bohemia Clara",
@@ -3966,7 +4293,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Bohemia Oscura",
@@ -3987,7 +4318,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ceiba Dorada Premium",
@@ -4008,7 +4343,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ceiba Light Lager",
@@ -4029,7 +4368,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ceiba Mestiza",
@@ -4050,7 +4393,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ceiba Stout",
@@ -4071,7 +4418,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Patito Oscura",
@@ -4092,7 +4443,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Patito Lager",
@@ -4113,7 +4468,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ojo Rojo",
@@ -4134,7 +4493,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Vaso de Chelada",
@@ -4155,7 +4518,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Vaso de Michelada",
@@ -4176,7 +4543,11 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "chela",
+        "cheve"
+      ]
     },
     {
       "nombre": "Ron Appleton Especial",
@@ -4743,7 +5114,13 @@
         "T1": "impreso",
         "T5": "impreso",
         "T3": "impreso"
-      }
+      },
+      "alias": [
+        "champi"
+      ],
+      "alias_provisional_P24": [
+        "champi"
+      ]
     },
     {
       "nombre": "Extra Chile Poblano",
