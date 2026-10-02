@@ -610,3 +610,25 @@ ya usan confirmación y recordatorio de check-in). Solo reservas con un correo v
 `messaging_outbox.payload`, que hoy no se purga tras el envío (es una tabla sin acceso para
 `authenticated`, solo la función de sistema y `service_role`); cambiar el código de la
 cerradura entre estancias sigue siendo la mitigación real.
+
+## Rentas — privacidad (Rn-29 cifrado del acceso, Rn-30 retención, Rn-07 ARCO): orden de despliegue
+
+Migración única `packages/domain-rentas/migrations/028_rentas_privacidad_cifrado_arco_retencion.sql` (espejo
+`supabase/migrations/20240101000278_028_rentas_privacidad_cifrado_arco_retencion.sql`). Es aditiva, **requiere** la migración
+`packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql` (espejo `...000238_...`) ya aplicada, y **redefine dos funciones de
+core** (`core._arco_union()` y `core.system_run_retention_purge(...)`) agregando solo las ramas de rentas. Antes de mergear nada: el código
+sale a Vercel y es seguro contra la base sin migrar (rutas con `disponible: false` / 503 explícito, nunca 500).
+
+1. Mergear el PR.
+2. Crear la llave en Vercel (Production y Preview de la API): `openssl rand -base64 32` → `RENTAS_ACCESS_KEY` (opcional
+   `RENTAS_ACCESS_KEY_VERSION`, por defecto 1). Guárdala además en un gestor de secretos con respaldo: perderla vuelve ilegibles las
+   instrucciones ya cifradas. Sin llave, leer o guardar instrucciones de acceso responde 503 "no disponible: falta RENTAS_ACCESS_KEY".
+3. Aplicar la migración 028 a la base real. Hasta aquí, nada cambia para el staff.
+4. Cifrar lo que ya existe en texto plano (idempotente; repetir hasta `cifradas: 0`):
+   `curl -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" "https://<api>/internal/rentas/acceso-cifrar?limite=50"`.
+   La columna en claro solo se anula después de cifrar y verificar el ida y vuelta. No está en `vercel.json`.
+5. Retención (Rn-30): las clases `rentas_huesped_pii` y `rentas_acceso_instrucciones` (90 días por defecto, rango 30 a 730) se purgan con
+   el endpoint interno de PL-13. Primero **simulación** (sin `ejecutar=1`) para una organización y revisar `core.purge_run_log`; el cron
+   de purga no se agenda (decisión de costo). Ver `docs/PRIVACIDAD-PLATAFORMA.md`.
+6. ARCO (Rn-07): el admin de la gestora registra y atiende solicitudes en `/rentas/<org>/privacidad`; la vista de toda la organización
+   está en `/rentas/<org>/privacidad-organizacion`.

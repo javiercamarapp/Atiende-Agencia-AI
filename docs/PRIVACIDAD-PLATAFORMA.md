@@ -26,17 +26,17 @@ Migración: `packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql` (e
 ## Solicitudes ARCO
 
 La plataforma solo **lee** las tablas de los verticales (`citas.data_rights_requests`,
-`restaurantes.data_rights_requests`, `hoteles.arco_request`) y las normaliza:
+`restaurantes.data_rights_requests`, `hoteles.arco_request`, `rentas.arco_solicitud`) y las normaliza:
 
-| Estado normalizado | Citas / Restaurantes | Hoteles |
-| --- | --- | --- |
-| `por_confirmar` | `pendiente_confirmacion` | — |
-| `abierta` (recibida) | `recibida` | `recibida` |
-| `en_proceso` | `en_proceso` | `en_revision`, `procedente` |
-| `bloqueada` | `bloqueada` | — |
-| `resuelta` | `resuelta` | `ejecutada` |
-| `rechazada` | `rechazada` | `improcedente` |
-| `cerrada` | `cancelada_titular`, `expirada` | — |
+| Estado normalizado | Citas / Restaurantes | Hoteles | Rentas |
+| --- | --- | --- | --- |
+| `por_confirmar` | `pendiente_confirmacion` | — | — |
+| `abierta` (recibida) | `recibida` | `recibida` | `recibida` |
+| `en_proceso` | `en_proceso` | `en_revision`, `procedente` | `en_proceso` |
+| `bloqueada` | `bloqueada` | — | `bloqueada` |
+| `resuelta` | `resuelta` | `ejecutada` | `resuelta` |
+| `rechazada` | `rechazada` | `improcedente` | `rechazada` |
+| `cerrada` | `cancelada_titular`, `expirada` | — | — |
 
 - **Plazo de referencia:** 20 días para responder y 15 más para ejecutar (días naturales). El plazo que se muestra
   depende del estado: solicitud sin atender → fecha de respuesta; en proceso o bloqueada → fecha de ejecución (o de
@@ -45,8 +45,10 @@ La plataforma solo **lee** las tablas de los verticales (`citas.data_rights_requ
 - Las fechas de hoteles son columnas `date`; se leen como el inicio (UTC) del día límite, la referencia más temprana.
 - **Minimización:** la vista no devuelve teléfono, correo, nombre ni detalle del titular. Para atender una solicitud
   (verificar identidad, responder, cambiar de estado) se usa el panel Privacidad del vertical.
-- Despachos, licitaciones y rentas todavía no tienen tabla ARCO propia; cuando la tengan, se agrega un `union all` en
-  `core._arco_union()`.
+- Despachos y licitaciones todavía no tienen tabla ARCO propia; cuando la tengan, se agrega un `union all` en
+  `core._arco_union()`. Rentas la tiene desde la migración rentas 028 (`rentas.arco_solicitud`): el admin de la gestora registra la
+  solicitud (correo, teléfono o en persona), la base calcula los plazos (20 + 15 días de calendario desde la recepción) y la atiende
+  en `/rentas/<org>/privacidad`.
 
 ## Retención y purga
 
@@ -57,6 +59,14 @@ Valores por defecto (catálogo `core.retention_class`):
 | `restaurantes_whatsapp_conversaciones` | 180 días | 30 a 1095 | plataforma |
 | `restaurantes_voz_transcripciones` | 30 días | 0 a 365 (0 = no conservar) | plataforma |
 | `hoteles_identidad_documento` | 30 días | 0 a 365 | el vertical (`hoteles.sweep_identity_retention`) |
+| `rentas_huesped_pii` | 90 días | 30 a 730 | plataforma (`rentas.system_purge_retencion`) |
+| `rentas_acceso_instrucciones` | 90 días | 30 a 730 | plataforma (`rentas.system_purge_retencion`) |
+
+Rentas (migración rentas 028): `rentas_huesped_pii` **anonimiza** (nombre y contacto en nulo) a los huéspedes cuya última estancia terminó
+antes del corte y que no coinciden por contacto o nombre con una solicitud ARCO abierta; la reserva y sus montos se conservan.
+`rentas_acceso_instrucciones` **elimina** el sobre cifrado de acceso de las unidades sin reserva (no cancelada) que termine en o después
+del corte y cuyas instrucciones no se tocaron desde antes del corte; cada borrado deja un evento `purga_retencion` sin contenido en
+`rentas.acceso_instruccion_bitacora`. Ambas corren en simulación salvo `ejecutar=1` y se registran en `core.purge_run_log`.
 
 Precedencia de los días efectivos: **política de la organización > configuración del vertical
 (`restaurantes.privacy_config`) > defecto**. Una clase que corre el vertical solo documenta su defecto: la plataforma
@@ -142,6 +152,8 @@ Nunca un 500 ni una transacción abortada. Los tests usan `AbortAwareFakeSession
 
 - Sin cron: la purga no corre sola (decisión de costo).
 - Hoteles: solo se documenta su retención y se lee su ARCO; su purga sigue siendo `sweep_identity_retention`.
-- Despachos, licitaciones y rentas no tienen ARCO propio todavía.
+- Despachos y licitaciones no tienen ARCO propio todavía.
+- Rentas: la mensajería con huéspedes (`rentas.mensajeria_*`) y las notas de reserva no entran todavía en la retención de PII; no hay canal
+  público de alta de solicitudes ARCO (las registra el staff).
 - Los cambios de política de retención guardan quién y cuándo (`updated_by/updated_at`), no un historial.
 - La acción sobre una solicitud (responder, cambiar estado) sigue en el panel de cada vertical.
