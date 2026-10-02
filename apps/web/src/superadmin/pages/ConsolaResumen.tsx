@@ -50,7 +50,6 @@ import {
   BadgeDollarSign,
   Building2,
   Bot,
-  Coins,
   Cpu,
   LogIn,
   MessageCircle,
