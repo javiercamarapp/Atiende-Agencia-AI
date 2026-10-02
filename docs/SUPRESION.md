@@ -39,12 +39,21 @@ solo existia por vertical (`licitaciones.whatsapp_opt_out*`, migracion 030); est
 
 ## Criterio transaccional (NO se suprime)
 
-Se exenta lo que el cliente pidio en la conversacion en curso: confirmacion de pedido o de cita, estado de SU
-pedido, respuesta del agente a su mensaje, acceso a SU reserva. Los productores de esas respuestas marcan
-`payload.transaccional = true` en el outbox; el despachador salta el guard solo si es exactamente `true`.
-Todo lo demas (recordatorios, alertas, avisos, resumenes, campañas) es proactivo y se suprime. Un productor nuevo
-de respuesta a una peticion del cliente debe poner la marca; si la olvida el efecto es seguro (se trata como
-proactivo).
+Se exenta unicamente lo que es respuesta o confirmacion de algo que el cliente hizo o pidio:
+
+- confirmacion, cambio o cancelacion de SU cita (correo: `appointment.created|confirmed|modified|rescheduled|cancelled`;
+  WhatsApp de citas: mismo conjunto);
+- confirmacion de SU reserva (hoteles: `reservation.created`, recibo de folio cerrado `folio.closed` y CFDI emitido
+  `cfdi.issued`; rentas: `reserva.creada`);
+- confirmacion de SU pedido (restaurantes, correo y WhatsApp) y el aviso de estado de SU pedido por WhatsApp
+  (`order.status.*`; es proactivo para Meta, pero es la actualizacion de un pedido que el cliente hizo);
+- la respuesta del agente a un mensaje del cliente dentro de la conversacion en curso, y la unica confirmacion de BAJA.
+
+Los productores de esas respuestas marcan `payload.transaccional = true` en el outbox; el despachador salta el guard
+solo si es exactamente `true`. Todo lo demas se suprime: recordatorios (`appointment.reminder_24h`,
+`reserva.recordatorio_checkin`, recordatorios de WhatsApp), avisos de cita completada o no asistio, liberacion de
+acceso a la reserva por cron (rentas), invitaciones de staff, alertas, resumenes y campañas. Un productor nuevo de
+respuesta a una peticion del cliente debe poner la marca; si la olvida el efecto es seguro (se trata como proactivo).
 
 ## Alimentacion
 

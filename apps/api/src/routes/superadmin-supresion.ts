@@ -15,7 +15,7 @@ import { requestActor } from "../http-security.ts";
 import { agregarConteos, agregarNoContactar, listarSupresiones } from "../supresion/index.ts";
 import type { AppDeps } from "../deps.ts";
 
-export const SUPRESION_NO_DISPONIBLE = "La lista de supresión de plataforma todavía no está disponible en este despliegue (falta aplicar la migración 0042_plataforma_supresion_contacto).";
+export const SUPRESION_NO_DISPONIBLE = "La lista de supresión de plataforma todavía no está disponible en este despliegue (falta aplicar la migración 0042_supresion_contacto_plataforma).";
 const MUTACION_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 
 interface NoContactarBody {

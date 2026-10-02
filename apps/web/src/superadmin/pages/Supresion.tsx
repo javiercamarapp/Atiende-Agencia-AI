@@ -110,7 +110,7 @@ export function SuperAdminSupresionPage({ apiBaseUrl, token }: { readonly apiBas
     <PageContainer>
       <PageHeader
         titulo="Supresión de contactos"
-        descripcion="Contactos que no deben recibir avisos proactivos (recordatorios, alertas, correos) de ninguna vertical. Solo se guardan huellas (hash), nunca el teléfono ni el correo; aquí ves conteos, no valores."
+        descripcion="Contactos que no deben recibir recordatorios ni avisos proactivos de ninguna vertical. Siguen recibiendo solo las confirmaciones de lo que ellos mismos piden (su cita, reserva o pedido). Solo se guardan huellas (hash), nunca el teléfono ni el correo; aquí ves conteos, no valores."
         acciones={
           datos.disponible ? (
             <Button className="rounded-full gap-1.5" onClick={abrirDialogo}>
@@ -123,7 +123,7 @@ export function SuperAdminSupresionPage({ apiBaseUrl, token }: { readonly apiBas
 
       {!datos.disponible && (
         <Callout tone="warning" titulo="Todavía no disponible en esta base">
-          {datos.mensaje ?? "Falta aplicar la migración 0042_plataforma_supresion_contacto."} Mientras tanto los avisos siguen enviándose como antes.
+          {datos.mensaje ?? "Falta aplicar la migración 0042_supresion_contacto_plataforma."} Mientras tanto los avisos siguen enviándose como antes.
         </Callout>
       )}
       {aviso && (
