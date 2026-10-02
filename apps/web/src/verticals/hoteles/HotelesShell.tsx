@@ -25,6 +25,7 @@ import {
   Gauge,
   LayoutDashboard,
   LifeBuoy,
+  MessageCircle,
   Receipt,
   ShieldAlert,
   Star,
@@ -147,6 +148,8 @@ const RECEPCION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontd
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
 // arriba) — solo oculta el link "Housekeeping" del nav para quien el servidor rechazaría de
 // todas formas (403 en housekeeping.ts); frontdesk/maintenance/etc. lo ven según este set.
+// H-29 -- Mensajeria (canal WhatsApp + voz): mismo MENSAJERIA_CONFIG_ROLES (owner/gm) que domain-hoteles/src/roles.ts; cosmetico, el servidor manda (403).
+const MENSAJERIA_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
 const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
@@ -218,7 +221,10 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     },
     {
       title: "Configuración",
-      items: [...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : [])],
+      items: [
+        ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
+        ...(MENSAJERIA_NAV_ROLES.has(role) ? [{ to: `${base}/mensajeria`, label: "Mensajería", icon: MessageCircle }] : []),
+      ],
     },
   ].filter((sec) => sec.items.length > 0);
 

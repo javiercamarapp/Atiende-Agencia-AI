@@ -180,7 +180,7 @@ export class PostgresHousekeepingRepository implements HousekeepingRepository {
     );
   }
 
-  async generateDay(propertyId: string, workDate: string, createdBy: string): Promise<number> {
+  async generateDay(propertyId: string, workDate: string, createdBy: string, skipStayRoomIds: readonly string[] = []): Promise<number> {
     return this.write("generateDay", async () => {
       const { rows } = await this.db.query<{ id: string }>(
         `insert into hoteles.housekeeping_task (property_id, room_id, task_type, priority, work_date, created_by)
@@ -189,9 +189,10 @@ export class PostgresHousekeepingRepository implements HousekeepingRepository {
          where r.property_id = $1 and r.status in ('sucia', 'ocupada')
            and not exists (select 1 from hoteles.room_out_of_service o where o.room_id = r.id and o.status = 'activo')
            and not exists (select 1 from hoteles.housekeeping_task t where t.room_id = r.id and t.work_date = $2::date and t.status <> 'cancelada')
+           and not (r.status = 'ocupada' and r.id = any($4::uuid[]))
          on conflict do nothing
          returning id;`,
-        [propertyId, workDate, createdBy],
+        [propertyId, workDate, createdBy, [...skipStayRoomIds]],
       );
       return rows.length;
     });

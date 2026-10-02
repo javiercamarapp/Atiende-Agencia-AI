@@ -96,6 +96,9 @@ export {
   REPUTACION_ACTION_RESOLVE_ROLES,
   STAFF_INVITE_ROLES,
   HOUSEKEEPING_TASK_ROLES,
+  HOUSEKEEPING_CONFIG_ROLES,
+  HOUSEKEEPING_AUTO_ASSIGN_ROLES,
+  MENSAJERIA_CONFIG_ROLES,
   HOUSEKEEPING_BOARD_VIEW_ROLES,
   ROOM_OUT_OF_SERVICE_ROLES,
   GUEST_TICKET_ACCESS_ROLES,
@@ -534,6 +537,7 @@ export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMP
 export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
 export * from "./identity/index.ts";
 export * from "./housekeeping/index.ts";
+export * from "./whatsapp/mensajeria-config.ts";
 export * from "./tickets/index.ts";
 export * from "./agentes/index.ts";
 export * from "./grupos/index.ts";

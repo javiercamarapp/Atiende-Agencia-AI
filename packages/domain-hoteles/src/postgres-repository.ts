@@ -1346,7 +1346,9 @@ export class PostgresHotelesRepository implements HotelesRepository {
       `insert into hoteles.voice_agent_config (property_id, organization_id, tool_webhook_secret, enabled)
        values ($1, $2, $3, $4)
        on conflict (property_id) do update
-         set tool_webhook_secret = excluded.tool_webhook_secret, enabled = excluded.enabled, updated_at = now();`,
+         set tool_webhook_secret = $3, enabled = $4, updated_at = now();`,
+      // Parametros (no `excluded.*`): con el GRANT de columna de 039 el secreto no es legible por el cliente y
+      // `excluded.tool_webhook_secret` exigiria SELECT sobre esa columna (verify-hoteles-hk-canal, escenario 25).
       [propertyId, organizationId, toolWebhookSecret, enabled],
     );
   }

@@ -4,7 +4,7 @@
 // rol de la sesion (cosmetico: el servidor es la unica barrera real, 403). Contra una base
 // sin la migracion 033 el tablero degrada a solo-estado de habitacion y avisa (sin 500).
 import { useCallback, useEffect, useState } from "react";
-import { BedDouble, ClipboardCheck, Sparkles } from "lucide-react";
+import { BedDouble, Camera, ClipboardCheck, Shuffle, Sparkles } from "lucide-react";
 import {
   Button,
   Card,
@@ -39,7 +39,9 @@ import {
   rehabilitar,
 } from "../lib/limpieza-client.ts";
 import type { Camarista, ReporteDiario, Tablero, TableroHabitacion, TareaAccion } from "../lib/limpieza-client.ts";
+import { HK_AUTO_ASSIGN_ROLES, asignacionAutomatica } from "../lib/housekeeping-residual-client.ts";
 import { HABITACION_ESTADO_TONES } from "../lib/status-tones.ts";
+import { BlancosPanel, ConfiguracionHkPanel, FotosDialog, OptOutPanel } from "./HousekeepingResidual.tsx";
 import { TurnosPanel } from "./TurnosPanel.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
@@ -60,10 +62,12 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
   const [aviso, setAviso] = useState<string | null>(null);
   const { confirmar, pedirTexto, dialogo } = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tablero" | "reporte" | "turnos">("tablero");
+  const [tab, setTab] = useState<"tablero" | "reporte" | "turnos" | "blancos" | "optout" | "config">("tablero");
+  const [fotosDe, setFotosDe] = useState<{ taskId: string; habitacion: string } | null>(null);
 
   const puedeOperar = HK_TASK_ROLES.has(role);
   const puedeInhabilitar = HK_OUT_OF_SERVICE_ROLES.has(role);
+  const puedeAsignarAuto = HK_AUTO_ASSIGN_ROLES.has(role);
 
   const load = useCallback(async () => {
     setError(null);
@@ -157,6 +161,26 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
             Fecha
             <Input type="date" value={tablero?.fecha ?? fecha ?? ""} onChange={(e) => setFecha(e.target.value || undefined)} className="h-11" />
           </label>
+          {puedeAsignarAuto && tablero?.tareasDisponibles && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy === "asignar-auto"}
+              onClick={() =>
+                void run("asignar-auto", async () => {
+                  const r = await asignacionAutomatica(fetch, apiBaseUrl, token, propertyId, tablero.fecha);
+                  setAviso(
+                    r.sinCamaristas
+                      ? "No hay camaristas con acceso a esta propiedad para asignar."
+                      : `${r.asignadas} tarea(s) asignada(s)${r.sinAsignar > 0 ? `; ${r.sinAsignar} sin cupo en ninguna jornada` : ""}.`,
+                  );
+                })
+              }
+            >
+              <Shuffle className="w-4 h-4" strokeWidth={1.75} />
+              {busy === "asignar-auto" ? "Asignando…" : "Asignar automáticamente"}
+            </Button>
+          )}
           {puedeOperar && tablero?.tareasDisponibles && (
             <Button
               type="button"
@@ -183,11 +207,14 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
       )}
 
       {tablero && (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "tablero" | "reporte" | "turnos")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList>
             <TabsTrigger value="tablero">Tablero</TabsTrigger>
             <TabsTrigger value="reporte">Reporte diario</TabsTrigger>
             <TabsTrigger value="turnos">Turnos</TabsTrigger>
+            <TabsTrigger value="blancos">Blancos</TabsTrigger>
+            <TabsTrigger value="optout">Sin limpieza</TabsTrigger>
+            <TabsTrigger value="config">Configuración</TabsTrigger>
           </TabsList>
 
           <TabsContent value="tablero" className="flex flex-col gap-4 mt-4">
@@ -233,6 +260,12 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                             {ACCION_LABELS[a]}
                           </Button>
                         ))}
+                      {h.tarea && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setFotosDe({ taskId: h.tarea!.id, habitacion: h.codigo })}>
+                          <Camera className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          Fotos
+                        </Button>
+                      )}
                       {puedeOperar && tablero.tareasDisponibles && (h.estado === "disponible" || h.estado === "ocupada") && (
                         <Button type="button" size="sm" variant="outline" disabled={busy === h.roomId} onClick={() => void run(h.roomId, () => marcarSucia(fetch, apiBaseUrl, token, propertyId, h.roomId))}>
                           Marcar sucia
@@ -258,6 +291,18 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="blancos" className="mt-4">
+            <BlancosPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} fecha={tablero.fecha} />
+          </TabsContent>
+
+          <TabsContent value="optout" className="mt-4">
+            <OptOutPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} fecha={tablero.fecha} habitaciones={tablero.habitaciones} />
+          </TabsContent>
+
+          <TabsContent value="config" className="mt-4">
+            <ConfiguracionHkPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} />
           </TabsContent>
 
           <TabsContent value="turnos" className="mt-4">
@@ -295,6 +340,9 @@ export function HousekeepingPage({ apiBaseUrl, token, propertyId, role }: Hotele
             )}
           </TabsContent>
         </Tabs>
+      )}
+      {fotosDe && (
+        <FotosDialog apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} taskId={fotosDe.taskId} habitacion={fotosDe.habitacion} open onOpenChange={(o) => !o && setFotosDe(null)} />
       )}
       {dialogo}
     </PageContainer>

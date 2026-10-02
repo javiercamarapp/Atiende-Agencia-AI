@@ -84,12 +84,13 @@ export class InMemoryHousekeepingRepository implements HousekeepingRepository {
     };
   }
 
-  async generateDay(propertyId: string, workDate: string, createdBy: string): Promise<number> {
+  async generateDay(propertyId: string, workDate: string, createdBy: string, skipStayRoomIds: readonly string[] = []): Promise<number> {
     this.requireMigrated("generateDay");
     let created = 0;
     for (const r of this.rooms.values()) {
       if (r.propertyId !== propertyId || (r.status !== "sucia" && r.status !== "ocupada")) continue;
       if (this.activeOos(r.id) || this.activeTaskFor(r.id, workDate)) continue;
+      if (r.status === "ocupada" && skipStayRoomIds.includes(r.id)) continue;
       await this.createTask({ propertyId, roomId: r.id, taskType: r.status === "ocupada" ? "estancia" : "salida", priority: "normal", workDate, assignedTo: null, notes: null, createdBy });
       created += 1;
     }

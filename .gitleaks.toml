@@ -39,3 +39,13 @@ targetRules = ["generic-api-key"]
 paths = [
   '''(^|/)scripts/verify-restaurantes-demo-volumen/assertions\.sql$''',
 ]
+
+# assertions.sql del verify de housekeeping residual y canal (H-26/H-29): los escenarios del secreto de voz usan cadenas de relleno
+# evidentes ('secreto-rotado-0123456789', 'secreto-nuevo-0123456789') para probar que el cliente no puede leerlo ni sellar otra
+# organizacion. NO son credenciales: la heuristica generica las confunde con una llave de API. Excepcion estrecha: una regla, un archivo.
+[[allowlists]]
+description = "Cadenas de relleno del secreto de voz en el assertions.sql del verify de housekeeping/canal"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)scripts/verify-hoteles-hk-canal/assertions\.sql$''',
+]

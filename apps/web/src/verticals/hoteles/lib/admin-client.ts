@@ -61,7 +61,7 @@ export async function sendJson<T>(
   fetchImpl: typeof fetch,
   url: string,
   token: string,
-  method: "POST" | "PATCH" | "PUT",
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
   payload: unknown = {},
   idempotencyKey?: string,
   authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
@@ -75,6 +75,13 @@ export async function sendJson<T>(
     throw new HotelesAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
+}
+
+/** Descarga un binario protegido (p. ej. una foto de inspeccion) con el mismo refresco de sesion que `fetchJson`. */
+export async function fetchBlob(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<Blob> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) throw new HotelesAdminError(await readErrorMessage(res, `No se pudo cargar el archivo (${res.status}).`));
+  return res.blob();
 }
 
 /** Igual que `sendJson` pero NO lanza por un 4xx/5xx de negocio: devuelve `{ ok, status, body }` para que la pantalla muestre el
