@@ -13,13 +13,13 @@ import {
   buildPmSeedPlan,
   COMPORTAMIENTO_MAX,
   type PmSeedData,
-  extraerComportamiento,
   PmSeedError,
   renderPmSeedDoBlock,
   renderPmSeedPlpgsql,
   renderSchemaPreflightSql,
   slugify,
   validarArchivosAgente,
+  validarComportamientoVoz,
 } from "../src/seed/pm-demo.ts";
 import { assertPuedeAplicar, describirObjetivo, parseSeedArgs, SeedTargetError } from "../src/seed/target-safety.ts";
 import { construirAssertions } from "../../../scripts/verify-restaurantes-seed-pm/generar-assertions.ts";
@@ -118,26 +118,36 @@ describe("buildPmSeedPlan -- rechaza datos que rompen el modelo", () => {
   });
 });
 
-describe("archivos del agente (prompt, tools, evals)", () => {
-  it("son coherentes: 6 herramientas, 68 casos y el prompt las menciona todas", () => {
+describe("archivos del agente (tools, evals) y comportamiento de voz generado", () => {
+  it("son coherentes: 6 herramientas y 68 casos", () => {
     const r = validarArchivosAgente(agent);
     expect(r.herramientas).toEqual(["buscar_ultimo_pedido", "asignar_sucursal", "consultar_menu", "cotizar", "crear_comanda", "escalar"]);
     expect(r.casos).toBe(68);
   });
 
-  it("rechaza herramientas duplicadas, casos duplicados y un prompt que no menciona una herramienta", () => {
+  it("rechaza herramientas duplicadas, casos duplicados y una lista de herramientas vacia", () => {
     const tools = (agent.tools as unknown[]).slice();
     expect(() => validarArchivosAgente({ ...agent, tools: [...tools, tools[0]] })).toThrow(/duplicada/);
     const evals = clone(agent.evals) as { casos: Array<{ id: string }> };
     evals.casos[1]!.id = evals.casos[0]!.id;
     expect(() => validarArchivosAgente({ ...agent, evals })).toThrow(/duplicado/);
-    expect(() => validarArchivosAgente({ ...agent, systemPrompt: agent.systemPrompt.replaceAll("escalar", "derivar") })).toThrow(/no menciona/);
     expect(() => validarArchivosAgente({ ...agent, tools: [] })).toThrow(/lista no vacia/);
   });
 
-  it("extraerComportamiento exige las secciones y respeta el tope", () => {
-    expect(() => extraerComportamiento(agent.systemPrompt, ["# NO EXISTE"])).toThrow(/no tiene la seccion/);
-    expect(() => extraerComportamiento("# A\n" + "x".repeat(COMPORTAMIENTO_MAX), ["# A"])).toThrow(/maximo/);
+  it("el comportamiento de voz se genera del perfil de WhatsApp y respeta el tope de la migracion 025", () => {
+    const plan = buildPmSeedPlan(data, agent);
+    expect(plan.voice.comportamiento.length).toBeLessThanOrEqual(COMPORTAMIENTO_MAX);
+    expect(plan.voice.comportamiento).toContain("# FLUJO DE TOMA DE PEDIDO");
+    expect(plan.voice.comportamiento).toContain("# ESCALACIÓN A HUMANO");
+  });
+
+  it("validarComportamientoVoz rechaza prometer el combo del martes, exige decir que lo confirma la sucursal y respeta el tope", () => {
+    const ok = "El combo del martes la confirma la sucursal al recoger.";
+    expect(() => validarComportamientoVoz(ok)).not.toThrow();
+    expect(() => validarComportamientoVoz(`${ok} Martes: nachos con 2 aguas de cortesía.`)).toThrow(/promete el combo del martes/);
+    expect(() => validarComportamientoVoz(`${ok} El cliente elige dos aguas.`)).toThrow(/promete el combo del martes/);
+    expect(() => validarComportamientoVoz("Hoy no hay promociones.")).toThrow(/lo confirma la sucursal al recoger/);
+    expect(() => validarComportamientoVoz(`${ok}${"x".repeat(COMPORTAMIENTO_MAX)}`)).toThrow(/maximo/);
   });
 });
 

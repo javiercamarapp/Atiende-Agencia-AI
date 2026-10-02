@@ -1126,8 +1126,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
-    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from restaurantes.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
-    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown; organization_id: string }>(`select id, attempts, payload, organization_id from restaurantes.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload, organizationId: r.organization_id }));
   }
 
   async markMessagingOutboxSent(id: string): Promise<void> {

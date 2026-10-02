@@ -21,3 +21,4 @@ export * from './cfdi/rep-parser.ts';
 
 export * from './rails/transfer-rail.ts';
 export * from './rails/stripe-rail.ts';
+export * from './billing-portal.ts';

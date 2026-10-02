@@ -39,6 +39,16 @@ describe("los graders detectan el error", () => {
     expect(await falla({ ...l, transcripcion: [...l.transcripcion, { rol: "agente", texto: "¿Qué quieres ordenar?" }] }, "G_TONO_USTED")).toBeDefined();
   });
 
+  it("G_SIN_TARJETA no se dispara por un UUID con tiras de digitos en los argumentos de una herramienta, pero sigue detectando una tarjeta real", async () => {
+    const l = await correrGuion(guion("V07"));
+    const tool = l.tools[0]!;
+    // 4 grupos de digitos separados por guiones dentro de un UUID: 12+ digitos con la forma de un numero de tarjeta.
+    const uuidConDigitos = "11111111-2222-3333-4444-555555555555";
+    expect(await falla({ ...l, tools: [{ ...tool, args: { ...(tool.args ?? {}), product_id: uuidConDigitos } }] }, "G_SIN_TARJETA")).toBeUndefined();
+    expect(await falla({ ...l, tools: [{ ...tool, args: { ...(tool.args ?? {}), notes: "tarjeta 4111 1111 1111 1111" } }] }, "G_SIN_TARJETA")).toBeDefined();
+    expect(await falla({ ...l, tools: [{ ...tool, args: { ...(tool.args ?? {}), product_id: uuidConDigitos, notes: "4111111111111111" } }] }, "G_SIN_TARJETA")).toBeDefined();
+  });
+
   it("G_SIN_PII_LOG no se dispara por un UUID que contiene '412' por azar, pero sigue detectando el dato real", async () => {
     const l = await correrGuion(guion("V07"));
     const uuidConDigitos = "a1412f3c-9b41-4412-8412-412412412412";

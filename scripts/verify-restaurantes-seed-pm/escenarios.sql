@@ -179,6 +179,18 @@ select (
 )::int as asigna_activa_mas_cercana_y_no_la_inactiva_deberia_ser_1;
 rollback;
 
+\echo '=== B7. La voz sembrada sale del perfil de WhatsApp: trae FLUJO y ESCALACION, cabe en el tope de 8000 (check de la migracion 025), no promete el combo del martes y no nombra herramientas inexistentes ==='
+begin;
+select public.seed_pm_demo();
+select (
+  (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm'
+     and vc.comportamiento like '%# FLUJO DE TOMA DE PEDIDO%' and vc.comportamiento like '%# ESCALACIÓN A HUMANO%'
+     and vc.comportamiento like '%la confirma la sucursal al recoger%' and char_length(vc.comportamiento) <= 8000) = 2
+  and (select count(*) from restaurantes.branch_voice_config vc join core.organization o on o.id = vc.organization_id where o.slug = 'los-taquitos-de-pm'
+     and (vc.comportamiento ~* '2 aguas de cortes|elige dos aguas|asignar_sucursal|crear_comanda|consultar_menu|\{\{')) = 0
+)::int as voz_del_perfil_deberia_ser_1;
+rollback;
+
 \echo '=== C1. IDEMPOTENCIA: ejecutar el seed dos veces deja exactamente los mismos conteos ==='
 begin;
 select public.seed_pm_demo();

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
 import { AGENT_TOOL_DEFINITIONS } from "../../src/agent-tools/registry.ts";
 import { InMemoryRestaurantesRepository } from "../../src/in-memory-repository.ts";
-import { FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, createLlmWhatsAppTurnHandler, resolveAgentConfig } from "../../src/whatsapp/llm-turn-handler.ts";
-import { buildPmSystemPrompt } from "../../src/whatsapp/perfil-pm.ts";
+import { FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, createLlmWhatsAppTurnHandler, resolveAgentConfig, saludoSegunHora } from "../../src/whatsapp/llm-turn-handler.ts";
+import { PM_PROMOS_POR_OMISION, buildPmSystemPrompt, saludoPorHora } from "../../src/whatsapp/perfil-pm.ts";
 import type { BranchSummary, CustomerLookupResult } from "../../src/types.ts";
 
 const NEW_CUSTOMER: CustomerLookupResult = { isNew: true };
@@ -48,7 +48,8 @@ describe("prompt de PM", () => {
   it("saluda con el nombre de la sucursal y sigue el orden del cuestionario", () => {
     const p = promptPm();
     expect(p).toContain("Buenas tardes, gracias por comunicarse a Los Taquitos de PM, sucursal Francisco de Montejo.");
-    const orden = ["¿Para recoger o a domicilio?", "2. Nombre.", "3. Teléfono", "4. Platillos.", "5. Cambios.", "6. Pago:", "7. Sucursal.", "8. Hora."];
+    // Orden del cerebro (PM-C3): la sucursal queda definida ANTES de los platillos y la cotizacion va despues de la hora.
+    const orden = ["¿Para recoger o a domicilio?", "2. Nombre.", "3. Teléfono", "4. Sucursal y dirección", "5. Platillos.", "6. Cambios.", "7. Pago:", "8. Hora.", "9. Cotizar:"];
     const posiciones = orden.map((t) => p.indexOf(t));
     expect(posiciones.every((x) => x >= 0)).toBe(true);
     expect([...posiciones].sort((a, b) => a - b)).toEqual(posiciones);
@@ -73,7 +74,7 @@ describe("prompt de PM", () => {
 
   it("tiempos: usa el texto configurado, nunca el 'si llueve' del agente generico", () => {
     expect(promptPm({ deliveryTimeText: "de 30 a 40 minutos" })).toContain("de 30 a 40 minutos");
-    expect(promptPm()).not.toMatch(/llueve/i);
+    expect(promptPm()).not.toMatch(/si llueve/i);
   });
 
   it("habla de usted: sin formas de tuteo en las instrucciones al modelo ni en los ejemplos", () => {
@@ -181,5 +182,132 @@ describe("turno con perfil PM", () => {
   it("sin fila, el modelo recibe el prompt generico de siempre", async () => {
     const sistema = await turno(false);
     expect(sistema).toContain("Eres el asistente de WhatsApp de este restaurante");
+  });
+});
+
+
+describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
+  it.each([
+    ["11:59", "buenos días"],
+    ["12:00", "buenas tardes"],
+    ["18:59", "buenas tardes"],
+    ["19:00", "buenas noches"],
+    ["00:30", "buenas noches"],
+    ["04:59", "buenas noches"],
+    ["05:00", "buenos días"],
+    ["lunes 18:30", "buenas tardes"],
+  ])("%s -> %s", (hora, esperado) => {
+    expect(saludoPorHora(hora)).toBe(esperado);
+  });
+
+  it("acepta la hora entera y lanza ante un valor que no es hora (nunca saluda mal en silencio)", () => {
+    expect(saludoPorHora(9)).toBe("buenos días");
+    expect(() => saludoPorHora(24)).toThrow(RangeError);
+    expect(() => saludoPorHora("mediodia")).toThrow(RangeError);
+    expect(() => saludoPorHora("25:00")).toThrow(RangeError);
+  });
+
+  it("el saludo de WhatsApp (saludoSegunHora) usa la misma regla con la zona del negocio", () => {
+    // 2026-10-02 17:30 UTC = 11:30 en Merida (UTC-6): buenos dias; 18:00 UTC = 12:00: tardes; 01:00 UTC del dia 3 = 19:00: noches.
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-02T17:30:00Z"))).toBe("Buenos días");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-02T18:00:00Z"))).toBe("Buenas tardes");
+    expect(saludoSegunHora("America/Merida", new Date("2026-10-03T01:00:00Z"))).toBe("Buenas noches");
+  });
+
+  it("el prompt saluda con la franja que recibe, aunque llegue en minusculas", () => {
+    expect(promptPm({ saludo: saludoPorHora("20:10") })).toContain("Buenas noches, gracias por comunicarse a Los Taquitos de PM, sucursal Francisco de Montejo.");
+  });
+});
+
+describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigentes", () => {
+  const p = promptPm();
+
+  it("tortilla mixta (mitad y mitad) y las tres opciones", () => {
+    expect(p).toContain("mixta");
+    expect(p).toMatch(/maíz, harina o mixta \(mitad y mitad\)/);
+  });
+
+  it("no promete el combo del martes: dice que la confirma la sucursal y cotiza los nachos a precio de lista", () => {
+    expect(p).not.toMatch(/2 aguas de cortes[ií]a/i);
+    expect(p).not.toMatch(/nachos de pastor con 2 aguas/i);
+    expect(p).toContain("la confirma la sucursal al recoger");
+    expect(p).toMatch(/cotice los nachos a precio de lista/);
+    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías");
+    expect(PM_PROMOS_POR_OMISION).not.toMatch(/martes|nachos/i);
+  });
+
+  it("ya no afirma 'Precios iguales' ni prohibe dar horarios por sucursal: el horario y el precio los da la herramienta", () => {
+    expect(p).not.toContain("Precios iguales");
+    expect(p).not.toContain("No dé horarios más finos");
+    expect(p).not.toContain("todos los días de 12:00 del día a 1:00 de la madrugada");
+    expect(p).toMatch(/el horario y el precio de cada una los da la herramienta/);
+  });
+
+  it("lista las 7 sucursales del mapa (T4 solo informativa, T5 de temporada) con su telefono publico", () => {
+    for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(p).toContain(nombre);
+    for (const tel of ["999 944 0342", "999 953 7122", "999 987 5410", "999 941 9612", "969 688 4195", "999 518 2637", "999 518 2857"]) expect(p).toContain(tel);
+    expect(p).toMatch(/Galerías \(999 941 9612\): solo informativa/);
+    expect(p).toMatch(/Playa, Chicxulub \(969 688 4195\): de temporada/);
+  });
+
+  it("H2 conserva la prohibicion de alcohol para recoger y H8 las alergias (sin cambios hasta P17)", () => {
+    expect(p).toContain("adquirirlo directamente en la sucursal al recoger");
+    expect(p).toMatch(/H8\. No decida usted:.*alergias\. Todo eso se escala/);
+    expect(p).toContain("alergia_salud");
+  });
+
+  it("horario prudente por sucursal (T2: 6 pm entre semana), ultimo pedido y sucursal cerrada", () => {
+    expect(p).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am; sábado y domingo de 12 pm a 12 am");
+    expect(p).toContain("Prolongación Montejo: lunes a jueves de 6 pm a 1 am; viernes a domingo de 12 pm a 1 am");
+    expect(p).toContain("Pensiones: todos los días de 6 pm a 12 am");
+    expect(p).toContain("García Lavín (Victory Platz) y Victory Altabrisa: todos los días de 12 pm a 1 am");
+    expect(p).toMatch(/Playa \(Chicxulub\): solo en Semana Santa y julio-agosto, de 6 pm a 1 am/);
+    expect(p).toMatch(/solo si la entrega \(de 40 a 50 minutos\) cae antes del cierre/);
+    expect(p).toMatch(/Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado/);
+    expect(p).toMatch(/manda sobre cualquier franja más amplia/);
+  });
+
+  it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
+    expect(p).toMatch(/40 o más piezas, o total de \$1,500 o más/);
+    expect(p).toMatch(/no lo rechace; tome todos los datos y escale \(pedido_grande\) para que la sucursal lo confirme/);
+  });
+
+  it("hora de recogida con el parametro estructurado hora_recogida, no en notes", () => {
+    expect(p).toContain("hora_recogida");
+    expect(p).not.toContain("Recoge a las 7:30 pm");
+    expect(p).toMatch(/no en notes/);
+    expect(p).toMatch(/la hora de recoger va en hora_recogida/);
+  });
+
+  it("nunca inventar folio, lluvia, repartidor, precio viejo, presentaciones y alias", () => {
+    expect(p).toMatch(/Nunca invente un folio/);
+    expect(p).toMatch(/Si el cliente dice que llueve, avísele que con lluvia puede tardar de 1 hora a 1 hora 20 minutos/);
+    expect(p).toMatch(/no la mencione por su cuenta/);
+    expect(p).toMatch(/El cliente no elige repartidor/);
+    expect(p).toContain("El precio vigente es de $X");
+    expect(p).toMatch(/"una orden de pastor", pregunte cuántos tacos/);
+    expect(p).toMatch(/"un agua" sin más es ambiguo/);
+    expect(p).toMatch(/Media orden solo de nachos y frijoles charros/);
+  });
+
+  it("FAQ con los contactos publicos de eventos, factura y empleo (sin escalar)", () => {
+    expect(p).toContain("eventos@lostaquitosdepm.com");
+    expect(p).toContain("facturas@lostaquitosdepm.com");
+    expect(p).toContain("recursos.humanos@lostaquitosdepm.com");
+    expect(p).toMatch(/Dé el contacto sin escalar/);
+  });
+
+  it("fase 1: un pedido de otra sucursal no se toma, se da el telefono de la que le toca", () => {
+    expect(p).toMatch(/H17\. Pedido de otra sucursal.*NO tome el pedido para esa sucursal/);
+  });
+
+  it("el aviso de privacidad lo pone el sistema una sola vez: el prompt no lo repite ni inventa un enlace", () => {
+    expect(p).toMatch(/lo antepone el sistema una sola vez/);
+    expect(p).not.toMatch(/https?:\/\//);
+  });
+
+  it("el flujo es coherente: ninguna referencia a un paso que ya no existe", () => {
+    expect(p).toContain("(paso 4)");
+    expect(p).not.toContain("(paso 7)");
   });
 });

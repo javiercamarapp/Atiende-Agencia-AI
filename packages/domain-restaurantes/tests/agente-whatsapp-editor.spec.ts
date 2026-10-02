@@ -19,15 +19,15 @@ describe("prompt PM: sin personalizar es el de siempre", () => {
   const prompt = previewPromptAgente(PM);
 
   it("conserva literal H3, H11, la lista de motivos, el saludo y los datos del negocio", () => {
-    expect(prompt).toContain("H3. Promociones solo para recoger: lunes 2x1 en tacos al pastor; martes nachos de pastor con 2 aguas de cortesía. Nunca las prometa a domicilio.");
+    expect(prompt).toContain("H3. Promociones solo para recoger: lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías. Nunca las prometa a domicilio.");
     expect(prompt).toContain("H11. No cobre como extra lo incluido: las 9 salsas (roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero) van sin costo.");
     expect(prompt).toContain(
-      "Use escalar_a_humano (con customer_name si lo tiene) con estos motivos: queja, modificacion_platillo, transferencia, tiempos_entrega, pedido_grande, cancelacion_modificacion (pedido ya confirmado), reposicion_descuento, alergia_salud, zona_no_reconocida, zona_ambigua (el cliente insiste en otra sucursal para domicilio), producto_agotado, no_entiende, falla_sistema, otro (facturación, empleo, eventos, prensa, cualquier cosa fuera de lo normal), cliente_lo_pide (pide hablar con una persona).",
+      "Use escalar_a_humano (con customer_name si lo tiene) con estos motivos: queja, modificacion_platillo, transferencia, tiempos_entrega, pedido_grande, cancelacion_modificacion (pedido ya confirmado), reposicion_descuento, alergia_salud, zona_no_reconocida, zona_ambigua (el cliente insiste en otra sucursal para domicilio), producto_agotado, no_entiende, falla_sistema, otro (otro día, fuera de horario, lo inusual; facturación, empleo y eventos solo si insiste), cliente_lo_pide (pide hablar con una persona).",
     );
     expect(prompt).toContain(
       "- Salsas incluidas sin costo (anótelas en notes si el cliente pide una en particular): roja, verde, mexicana, guacamolera, limones, crema de ajo, cebolla con cilantro, piña y chile habanero. Todas van incluidas por omisión sin preguntar; si el cliente pide quitar alguna mándela en omit_default_complements. Si pide expresamente habanero o crema de ajo puede enviarlas en requested_complements (ya están incluidas, no cambia el total).",
     );
-    expect(prompt).toContain("- Promociones (solo recoger): lunes 2x1 en tacos al pastor; martes nachos de pastor con 2 aguas de cortesía.");
+    expect(prompt).toContain("- Promociones (solo recoger): lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías.");
     expect(prompt).toContain('"Buenas tardes, gracias por comunicarse a Los Taquitos de PM."');
     expect(prompt).not.toContain("El negocio desactivó la escalación");
   });

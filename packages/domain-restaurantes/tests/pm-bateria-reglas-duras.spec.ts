@@ -16,6 +16,7 @@ import { createOrder, quoteOrder, searchProducts } from "../src/orders.ts";
 import { findNearestBranch } from "../src/nearest-branch.ts";
 import { lookupCustomer } from "../src/customers.ts";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
+import { buildSystemPrompt, PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { seedConfirmedOrderFlow } from "./support/order-flow-seed.ts";
 import type { CreateOrderInput, RequestedOrderItemInput } from "../src/types.ts";
 
@@ -562,5 +563,24 @@ describe("PM concurrencia e idempotencia (X08, X09, X19)", () => {
     const f = pmFixture();
     await createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 2, tortilla: "maiz" }], { idempotencyKey: "k-9" }));
     await expect(createOrder(f.repo, pedido(f, [{ productId: f.p.pastor, requestedQuantity: 5, tortilla: "maiz" }], { idempotencyKey: "k-9" }))).rejects.toBeInstanceOf(OrderConflictError);
+  });
+});
+
+// PM-C3: el prompt NO afloja las reglas vigentes mientras Javier no conteste P17 (alcohol), P19 (pedido grande) ni P12 (salsa doble).
+describe("PM-C3 -- el prompt conserva las reglas duras vigentes", () => {
+  const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, [{ propertyId: "p1", slug: "t1", name: "Prolongación Montejo", address: null }], { isNew: true }, new Date("2026-10-06T20:00:00Z"));
+
+  it("T-PC04 [P17] H2 sigue prohibiendo el alcohol para recoger (se adquiere en la sucursal) y H8 sigue escalando las alergias", () => {
+    expect(prompt).toContain("adquirirlo directamente en la sucursal al recoger");
+    expect(prompt).toMatch(/H8\..*alergias/);
+  });
+
+  it("T-PC05 [P19] el umbral de 40 piezas o $1,500 sigue presente, pero el agente no rechaza el pedido: lo pasa a la sucursal", () => {
+    expect(prompt).toMatch(/40 o más piezas, o total de \$1,500 o más/);
+    expect(prompt).toMatch(/no lo rechace/);
+  });
+
+  it("T-PC06 [P12] la doble porcion de salsa sigue siendo un extra cobrado en doble_salsas, nunca un producto", () => {
+    expect(prompt).toMatch(/DOBLE porción de una salsa, es un extra cobrado: mándelo en doble_salsas/);
   });
 });

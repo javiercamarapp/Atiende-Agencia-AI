@@ -1,6 +1,6 @@
 // Decision de INICIO de llamada: se evalua antes de abrir la sesion con el proveedor (que es lo que cuesta). Si no pasa, la
 // llamada no consume Gemini: se dice el pregrabado y se deja callback (R-12).
-import type { MensajeId } from "./mensajes.ts";
+import { mensajeSaludoRespaldo, type MensajeId } from "./mensajes.ts";
 
 export interface EntradaInicioLlamada {
   /** `voice_config.habilitado` de la sucursal. */
@@ -9,6 +9,8 @@ export interface EntradaInicioLlamada {
   readonly gastoMesMicroUsd: number | null;
   /** Tope mensual en micro-USD. `null` = sin tope configurado. */
   readonly topeMensualMicroUsd: number | null;
+  /** Hora local de Merida (0-23 o "HH:MM") para elegir el saludo pregrabado; sin ella se usa el saludo sin hora. */
+  readonly horaLocal?: number | string;
 }
 
 export type DecisionInicio =
@@ -21,7 +23,7 @@ export type DecisionInicio =
  * controlador lo registra como evento para que se vea.
  */
 export function evaluarInicioLlamada(e: EntradaInicioLlamada): DecisionInicio {
-  if (!e.habilitado) return { ok: false, razon: "deshabilitada", mensaje: "saludo_respaldo" };
+  if (!e.habilitado) return { ok: false, razon: "deshabilitada", mensaje: e.horaLocal === undefined ? "saludo_respaldo" : mensajeSaludoRespaldo(e.horaLocal) };
   if (e.topeMensualMicroUsd !== null && e.gastoMesMicroUsd !== null && e.gastoMesMicroUsd >= e.topeMensualMicroUsd) {
     return { ok: false, razon: "tope_mensual", mensaje: "tope_mensual" };
   }
