@@ -108,7 +108,14 @@ export function superadminConsolaRoutes(deps: AppDeps, opciones: { readonly poli
       }
     }
     const cfo = deps.cfoRepo;
-    const r = await deps.engine.withAppSession({ userId: callerId }, (db) => cfo(db).getDashboardRows(callerId, null));
+    // Sesion propia: si la fuente lanza (statement timeout 57014, firma vieja 42804, etc.) la transaccion se revierte aqui
+    // y no contamina a las demas fuentes; solo el MRR queda null con su razon.
+    let r: Awaited<ReturnType<ReturnType<typeof cfo>["getDashboardRows"]>>;
+    try {
+      r = await deps.engine.withAppSession({ userId: callerId }, (db) => cfo(db).getDashboardRows(callerId, null));
+    } catch {
+      return nulo("error");
+    }
     if (r.availability === "not_migrated") return nulo("mrr_sin_repositorio");
     const ing = calcularIngresos(construirFilasCfo(r.rows, { umbralMargenPct: 0, mxnPorUsd: null }));
     return ok({ totalMxn: ing.mrrMxn, organizacionesConPrecio: ing.clientesConIngreso, organizacionesSinPrecio: ing.clientesSinPrecio });

@@ -295,6 +295,22 @@ describe("MRR del Resumen", () => {
     expect(b.mrr).toMatchObject({ valor: null, codigo: "mrr_sin_repositorio" });
   });
 
+  it("la fuente del MRR lanza un error que no es de migracion (p. ej. 57014): solo el MRR sale null con 'error' y el resto sigue; 200", async () => {
+    const cfo = new InMemoryCfoRepository();
+    cfo.getDashboardRows = async () => {
+      throw Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    };
+    const t = await setup({ cfo });
+    sembrarTodo(t.consola!);
+    const sa = await t.superadmin();
+    const res = await get(t.app, "/superadmin/consola/resumen", sa.token);
+    expect(res.status).toBe(200);
+    const b = await cuerpo(res);
+    expect(b.mrr).toMatchObject({ valor: null, codigo: "error" });
+    expect(b.organizaciones.valor.total).toBe(4);
+    expect(b.disponible).toBe(true);
+  });
+
   it("la politica (sin step-up, recurso de bitacora) vive en una sola constante", () => {
     expect(POLITICA_MRR_RESUMEN).toEqual({ requiereStepUp: false, recursoBitacora: "resumen_mrr" });
   });
