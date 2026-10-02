@@ -127,6 +127,7 @@ import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
@@ -870,6 +871,8 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 // L-01: verificación en dos pasos + cierre de otras sesiones.
+// CHAT-12 -- Copiloto ("Pregunta a tus datos") de licitaciones: pagina generica de @atiende/ui conectada al chat-datos real.
+const LicitacionesCopilotoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesCopilotoPage {...ctx} />);
 const LicitacionesPanelRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesPanelPage {...ctx} />);
 const LicitacionesFuentesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <FuentesFrescuraPage {...ctx} />);
 const LicitacionesSeguimientoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SeguimientoPage {...ctx} />);
@@ -1113,6 +1116,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
         <Route path="/licitaciones/:orgSlug/dias-inhabiles" element={<LicitacionesDiasInhabilesRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
+        <Route path="/licitaciones/:orgSlug/copiloto" element={<LicitacionesCopilotoRoute />} />
         <Route path="/licitaciones/:orgSlug/fuentes" element={<LicitacionesFuentesRoute />} />
         <Route path="/licitaciones/:orgSlug/seguimiento" element={<LicitacionesSeguimientoRoute />} />
         <Route path="/licitaciones/:orgSlug/aprobaciones" element={<LicitacionesAprobacionesRoute />} />
