@@ -85,14 +85,14 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 18 destinos, incluidos Cartera de clientes, Cola de cobranza, Portal del cliente, Staff y Configuración', async () => {
+  it('el botón "Más" abre los 20 destinos, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(18);
-    expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
+    expect(hrefs).toHaveLength(20);
+    expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
   });
 
   it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
