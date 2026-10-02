@@ -3,6 +3,8 @@
 // go/no-go, aprobaciones del expediente y declaracion de presentacion). Solo lectura: no crea tablas
 // ni escribe nada. Funcion PURA (sin I/O): la ruta lee cada fuente y esta funcion mezcla, filtra y pagina.
 //
+// Aprobaciones: solo las VIGENTES (el repositorio no expone las invalidadas; no se agregan tablas ni metodos nuevos).
+//
 // Privacidad: el evento NUNCA lleva el id ni el correo de otra persona; solo `esTuyo` (si el actor es
 // quien consulta) y, si se conoce, su rol. El texto de las anotaciones de la sala es contenido que la
 // organizacion ya ve en la sala de guerra.
@@ -85,9 +87,6 @@ export function buildBitacoraEventos(fuentes: BitacoraFuentes, viewerUserId: str
     if (ap.scope !== "expediente") continue;
     const etapa = ap.stage ? `Aprobación ${STAGE_TEXT[ap.stage]} del expediente` : "Aprobación del expediente";
     out.push({ id: `aprobacion:${ap.id}`, fuente: "aprobacion", accion: ap.stage ? `aprobada_${ap.stage}` : "aprobada", descripcion: `${etapa}.`, at: ap.approvedAt, actor: { esTuyo: quien(ap.approvedBy), rol: ap.approvedByRole } });
-    if (ap.status === "invalidada" && ap.invalidatedAt) {
-      out.push({ id: `aprobacion:${ap.id}:invalidada`, fuente: "aprobacion", accion: "invalidada", descripcion: `${etapa} invalidada: los insumos del expediente cambiaron.`, at: ap.invalidatedAt, actor: { esTuyo: null, rol: null } });
-    }
   }
   if (fuentes.presentacion) {
     out.push({ id: `presentacion:${fuentes.presentacion.id}`, fuente: "presentacion", accion: "declarada", descripcion: `Se declaró la presentación del expediente (fecha declarada ${fuentes.presentacion.submittedAt}).`, at: fuentes.presentacion.createdAt, actor: { esTuyo: null, rol: null } });
