@@ -98,7 +98,9 @@ export function superadminConsolaRoutes(deps: AppDeps, opciones: { readonly poli
         throw err;
       }
     }
-    // Bitacora ANTES de leer, en una transaccion propia ya confirmada: sin huella no hay lectura del MRR.
+    // Bitacora ANTES de leer, en una transaccion propia ya confirmada: si registrarla LANZA, el MRR no se lee (sin_bitacora).
+    // Convencion de la casa (zona-cfo.ts): sin 0034 aplicada logAccess devuelve not_migrated sin lanzar y no hay bitacora que escribir;
+    // lo mismo si cfoZoneRepo no esta en deps. En ese caso el MRR se sirve sin fila resumen_mrr.
     if (deps.cfoZoneRepo) {
       const zona = deps.cfoZoneRepo;
       try {
@@ -153,7 +155,8 @@ export function superadminConsolaRoutes(deps: AppDeps, opciones: { readonly poli
     };
 
     const mrr = await leerMrr(c, callerId);
-    const disponible = Object.values(f).some((x) => x.ok) || mrr.valor !== null;
+    // `disponible` habla de la migracion 0042 (las fuentes de la consola); el MRR trae su propia razon por campo.
+    const disponible = Object.values(f).some((x) => x.ok);
 
     return c.json({
       disponible,

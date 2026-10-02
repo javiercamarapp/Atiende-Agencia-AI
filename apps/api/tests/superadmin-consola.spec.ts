@@ -207,6 +207,16 @@ describe("GET /superadmin/consola/resumen", () => {
     }
   });
 
+  it("0030 aplicada pero 0042 no: disponible false con mensaje de 0042 aunque el MRR traiga valor", async () => {
+    const t = await setup({ consola: null });
+    const sa = await t.superadmin();
+    const b = await cuerpo(await get(t.app, "/superadmin/consola/resumen", sa.token));
+    expect(b.disponible).toBe(false);
+    expect(b.mensaje).toMatch(/0042_superadmin_consola_resumen/);
+    expect(b.organizaciones.valor).toBeNull();
+    expect(b.mrr.valor).toMatchObject({ totalMxn: 2488 });
+  });
+
   it("conversaciones resueltas: sin conversaciones hoy no hay porcentaje (null), nunca 0%", async () => {
     const t = await setup();
     sembrarTodo(t.consola!);
