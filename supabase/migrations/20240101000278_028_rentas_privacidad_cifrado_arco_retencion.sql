@@ -588,7 +588,7 @@ language sql stable security definer set search_path = core, citas, restaurantes
       from restaurantes.data_rights_requests r
     union all
     select a.organization_id, 'hoteles', a.id, a.right_type, a.channel, a.status,
-           case a.status when 'recibida' then 'abierta' when 'en_revision' then 'en_proceso'
+           case a.status when 'pendiente_verificacion' then 'por_confirmar' when 'recibida' then 'abierta' when 'en_revision' then 'en_proceso'
              when 'procedente' then 'en_proceso' when 'improcedente' then 'rechazada' else 'resuelta' end,
            a.created_at, a.response_due_on::timestamp at time zone 'UTC',
            a.execution_due_on::timestamp at time zone 'UTC', a.executed_at
