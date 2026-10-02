@@ -349,7 +349,7 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const lectura = await deps.engine.withAppSession({ userId: callerId }, (db) => leerUsoOrganizacion(db, callerId, organizationId));
     if (!lectura.disponible) {
-      // Base sin la migracion 0045: vacio honesto, nunca un 500.
+      // Base sin la migracion 0046: vacio honesto, nunca un 500.
       return c.json({ disponible: false, motivo: "El medidor de mensajes todavia no esta disponible en este despliegue (falta aplicar la migracion 0046_planes_topes_prueba_portal)." });
     }
     if (lectura.uso === null) throw Errors.forbidden("No perteneces a esta organización.");
@@ -377,7 +377,7 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // El slug vuelve de la misma lectura caller-bound (miembro/superadmin), para volver a la pantalla Plan y uso.
     const lectura = await deps.engine.withAppSession({ userId: callerId }, (db) => leerUsoOrganizacion(db, callerId, organizationId));
     if (lectura.disponible && lectura.uso === null) throw Errors.forbidden("No perteneces a esta organización.");
-    // Base sin la migracion 0045: el portal sigue funcionando (no depende del medidor) y vuelve al login de la vertical.
+    // Base sin la migracion 0046: el portal sigue funcionando (no depende del medidor) y vuelve al login de la vertical.
     const volverA = lectura.disponible && lectura.uso ? `${estado.vertical}/${lectura.uso.slug}/plan` : `${estado.vertical}/login`;
     try {
       const { url } = await crearSesionPortalFacturacion(deps.saasBillingPortalClient!, {

@@ -19,7 +19,7 @@ export type AccionTopeMensajes = "avisar" | "cobrar" | "pausar";
 export type CruceUmbral = "ninguno" | "aviso80" | "excedido";
 
 export interface DecisionEnvio {
-  /** false = la base no tiene la migracion 0045: se permite el envio y no se mide nada. */
+  /** false = la base no tiene la migracion 0046: se permite el envio y no se mide nada. */
   readonly disponible: boolean;
   readonly permitir: boolean;
   readonly motivo: string | null;
