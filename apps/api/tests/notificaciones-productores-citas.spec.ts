@@ -56,7 +56,8 @@ describe("citas.recordatorio.fallido", () => {
     const res = await cron(buildApp(deps), ctx.deps.env.internalSecret);
     spy.mockRestore();
     expect(res.status).toBe(200);
-    const mias = emisiones.filter((e) => e.organizationId === ctx.organizationId);
+    // Los avisos de ciclo de C-16 (por_confirmar, etc.) comparten el cron: aqui solo interesa este evento.
+    const mias = emisiones.filter((e) => e.organizationId === ctx.organizationId && e.evento === "citas.recordatorio.fallido");
     expect(mias).toHaveLength(1);
     expect(mias[0]).toMatchObject({ evento: "citas.recordatorio.fallido", categoria: "salud", severidad: "atencion", cuerpo: "Sin enviar: 1.", enlace: "/citas/{orgSlug}/mensajes-whatsapp", roles: null });
     expect(mias[0]!.dedupeKey).toBe(`citas.recordatorio.fallido:${ctx.organizationId}:${new Date().toISOString().slice(0, 10)}`);
@@ -68,7 +69,7 @@ describe("citas.recordatorio.fallido", () => {
     const { deps, emisiones } = conEmisiones(ctx.deps);
     await seedCita(ctx, "9990000013");
     expect((await cron(buildApp(deps), ctx.deps.env.internalSecret)).status).toBe(200);
-    expect(emisiones).toHaveLength(0);
+    expect(emisiones.filter((e) => e.evento === "citas.recordatorio.fallido")).toHaveLength(0);
   });
 
   it("una emision que falla (base sin migrar) deja el 200 del barrido y su detalle intactos", async () => {

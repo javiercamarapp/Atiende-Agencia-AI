@@ -9,7 +9,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryCarteraRepository, InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryCarteraRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -43,6 +43,12 @@ export interface DespachosTestContext {
   readonly despachosRepo: InMemoryDespachosRepository;
   /** D-21 -- doble en memoria de la cartera (misma instancia que resuelve `deps.carteraRepo(...)`). */
   readonly carteraRepo: InMemoryCarteraRepository;
+  /** D-24 -- doble en memoria del libro contable (misma instancia que resuelve `deps.libroRepo(...)`). */
+  readonly libroRepo: InMemoryLibroRepository;
+  /** D-25 -- doble en memoria de pagos provisionales (misma instancia que resuelve `deps.pagosProvisionalesRepo(...)`). */
+  readonly pagosRepo: InMemoryPagosProvisionalesRepository;
+  /** Bitacora de las acciones de escritura de despachos. */
+  readonly auditSink: InMemoryAuditSink;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly staff: {
@@ -69,6 +75,9 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const engine = new InMemoryTenancyEngine();
   const despachosRepo = new InMemoryDespachosRepository();
   const carteraRepo = new InMemoryCarteraRepository();
+  const libroRepo = new InMemoryLibroRepository();
+  const pagosRepo = new InMemoryPagosProvisionalesRepository();
+  const auditSink = new InMemoryAuditSink();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -110,7 +119,9 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     despachosRepo: (_db) => despachosRepo,
     carteraRepo: (_db) => carteraRepo,
-    despachosAuditSink: new InMemoryAuditSink(),
+    libroRepo: (_db) => libroRepo,
+    pagosProvisionalesRepo: (_db) => pagosRepo,
+    despachosAuditSink: auditSink,
     hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
     citasRepo: (_db) => new InMemoryCitasRepository(),
@@ -167,6 +178,9 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     deps,
     despachosRepo,
     carteraRepo,
+    libroRepo,
+    pagosRepo,
+    auditSink,
     organizationId,
     propertyId,
     staff: {

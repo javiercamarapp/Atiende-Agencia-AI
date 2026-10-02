@@ -37,6 +37,7 @@ import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
+import { avisarPagosProvisionalesPorVencer } from "./pagos-provisionales-aviso.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -179,6 +180,8 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
           )
           .catch(() => undefined);
       }
+      // D-25: aviso in-app de pagos provisionales ISR/IVA por vencer (una por organizacion por dia). Best-effort: nunca altera la respuesta.
+      const avisoPagosProvisionales = await avisarPagosProvisionalesPorVencer(deps, hoy).catch(() => ({ estado: "error" as const, organizaciones: 0, emitidas: 0 }));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => {
@@ -195,6 +198,7 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
         ok: failures.length === 0,
         organizations_checked: sweep.length,
         ...totals,
+        pagos_provisionales_aviso: { estado: avisoPagosProvisionales.estado, organizaciones: avisoPagosProvisionales.organizaciones, emitidas: avisoPagosProvisionales.emitidas },
         corridas: sweep.map((r) => ({
           organization_id: r.organizationId,
           error: r.error ?? null,

@@ -16,6 +16,7 @@ import type { CitasRepository, EventoRecordatorioFallido } from "@atiende/domain
 import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { emitirAvisosDeCitas } from "./avisos-ciclo.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -80,6 +81,10 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.recordatorio.fallido", organizationId, clave: `${organizationId}:${hoy}`, parametros: { cantidad } }))
           .catch(() => undefined);
       }
+
+      // C-16 -- avisos in-app del ciclo (por confirmar, recordatorios agotados, escalaciones sin seguimiento): una transaccion por organizacion,
+      // best-effort (ver avisos-ciclo.ts); no altera la respuesta ni el latido.
+      await emitirAvisosDeCitas(deps, organizations.map((o) => o.id));
 
       const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, notification_events: notificationEvents, failures });
       if (failures.length > 0) {

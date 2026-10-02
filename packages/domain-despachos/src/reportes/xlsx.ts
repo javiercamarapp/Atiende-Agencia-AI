@@ -10,7 +10,7 @@
 //    NO se interpreta como fórmula (defensa contra inyección de fórmulas en Excel).
 //  - Montos como número con formato `$#,##0.00` (se pueden sumar en Excel, no son texto).
 //  - Una sección "sin datos" se escribe con su motivo, nunca vacía ni con ceros.
-import type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte } from "./types.ts";
+import type { CeldaReporte, ColumnaReporte, ReporteTabular, SeccionReporte } from "./types.ts";
 
 // ---- CRC-32 (IEEE 802.3), tabla precalculada ----
 const TABLA_CRC: Uint32Array = (() => {
@@ -181,7 +181,7 @@ function hojaSeccion(seccion: SeccionReporte): string {
   return hojaXml(filas, anchos.length > 0 ? anchos : [40]);
 }
 
-function hojaResumen(reporte: ReporteCliente): string {
+function hojaResumen(reporte: ReporteTabular): string {
   const filas: string[] = [];
   let n = 1;
   const par = (k: string, v: string) => {
@@ -243,7 +243,7 @@ export function nombreHojaSeguro(titulo: string, usados: Set<string>): string {
 export const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /** Genera el .xlsx del reporte (bytes). */
-export function reporteAXlsx(reporte: ReporteCliente): Uint8Array {
+export function reporteAXlsx(reporte: ReporteTabular): Uint8Array {
   const usados = new Set<string>();
   const hojas: { nombre: string; xml: string }[] = [{ nombre: nombreHojaSeguro("Resumen", usados), xml: hojaResumen(reporte) }];
   for (const s of reporte.secciones) hojas.push({ nombre: nombreHojaSeguro(s.titulo, usados), xml: hojaSeccion(s) });

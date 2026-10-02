@@ -27,6 +27,8 @@ import { despachosEfosRoutes } from "./efos.ts";
 import { despachosChatDatosRoutes } from "./chat-datos.ts";
 import { despachosPortalClienteRoutes } from "./portal-cliente.ts";
 import { despachosCarteraRoutes } from "./cartera.ts";
+import { despachosLibroRoutes } from "./libro.ts";
+import { despachosPagosProvisionalesRoutes } from "./pagos-provisionales.ts";
 import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -76,6 +78,10 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosPortalClienteRoutes(deps));
   // D-21 -- cartera de clientes: alta y ficha fiscal de contribuyente por property (migracion 018), ver cartera.ts.
   app.route("/", despachosCarteraRoutes(deps));
+  // D-24 -- libro contable persistido (catalogo, polizas con folio, reversas, balanza derivada, contabilidad electronica) (migracion 020), ver libro.ts.
+  app.route("/", despachosLibroRoutes(deps));
+  // D-25 -- pagos provisionales ISR/IVA por flujo de efectivo, pagos de REP persistidos y papel de trabajo (migracion 020), ver pagos-provisionales.ts.
+  app.route("/", despachosPagosProvisionalesRoutes(deps));
   // D-11 -- cola de cobranza: gestiones por factura/cliente, reporte PDF de cartera y outbox de WhatsApp (opt-in/opt-out, sin envio).
   app.route("/", despachosColaCobranzaRoutes(deps));
   return app;

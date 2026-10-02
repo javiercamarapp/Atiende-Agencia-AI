@@ -260,6 +260,18 @@ export type {
   ProviderCalDavAccountRecord,
 } from "./repository.ts";
 
+// C-16 -- centro de avisos (seguimiento de escalaciones de crisis, resumen para notificaciones).
+export { ESCALACION_SEGUIMIENTO_DESTINOS } from "./repository.ts";
+export type {
+  AvisosResumenSistema,
+  EscalacionSeguimientoDestino,
+  EscalacionSeguimientoEstado,
+  EscalacionesPage,
+  EscalacionVista,
+  RecordatorioEntregaFila,
+  SetEscalacionSeguimientoResult,
+} from "./repository.ts";
+
 // ---- Fase 6 §3 — notificaciones por correo (plantillas + dispatcher fail-closed) ----
 export { escapeHtml, renderCorreo } from "./emails/layout.ts";
 export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";

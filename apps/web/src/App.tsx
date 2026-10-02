@@ -116,6 +116,7 @@ import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
 import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { AuditoriaPage as CitasAuditoriaPage } from "./verticals/citas/pages/Auditoria.tsx";
+import { AvisosPage as CitasAvisosPage } from "./verticals/citas/pages/Avisos.tsx";
 import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
 import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
@@ -163,6 +164,8 @@ import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCata
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
 import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
+import { LibroContablePage } from "./verticals/despachos/pages/LibroContable.tsx";
+import { PagosProvisionalesPage } from "./verticals/despachos/pages/PagosProvisionales.tsx";
 import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
 import { ConfiguracionPage as DespachosConfiguracionPage } from "./verticals/despachos/pages/Configuracion.tsx";
 import { PortalClientePage as DespachosPortalClientePage } from "./verticals/despachos/pages/PortalCliente.tsx";
@@ -800,6 +803,8 @@ const CitasConfiguracionRoute = shellRoute(CitasShell, "/citas/login", (ctx) => 
 // aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
 const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasStaffPage {...ctx} />);
 const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAuditoriaPage {...ctx} />);
+// C-16 -- centro de avisos (por confirmar, recordatorios agotados, escalaciones de crisis con seguimiento).
+const CitasAvisosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAvisosPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 const CitasWhatsappMensajesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasWhatsappMensajesPage {...ctx} />);
 const CitasAgenteWhatsappRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAgenteWhatsappPage {...ctx} />);
@@ -917,6 +922,8 @@ const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/l
 const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
 const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
+const DespachosLibroContableRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <LibroContablePage {...ctx} />);
+const DespachosPagosProvisionalesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PagosProvisionalesPage {...ctx} />);
 const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
 const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 const DespachosPortalClienteRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosPortalClientePage {...ctx} />);
@@ -1054,6 +1061,7 @@ export function App() {
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
         <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/citas/:orgSlug/auditoria" element={<CitasAuditoriaRoute />} />
+        <Route path="/citas/:orgSlug/avisos" element={<CitasAvisosRoute />} />
         <Route path="/citas/:orgSlug/notificaciones" element={<CitasNotificacionesRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
@@ -1107,6 +1115,8 @@ export function App() {
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
+        <Route path="/despachos/:orgSlug/libro-contable" element={<DespachosLibroContableRoute />} />
+        <Route path="/despachos/:orgSlug/pagos-provisionales" element={<DespachosPagosProvisionalesRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />

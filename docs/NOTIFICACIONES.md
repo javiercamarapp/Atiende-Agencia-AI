@@ -83,6 +83,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` (depende de accion manual: el barrido solo lo dispara el boton del panel, no hay cron (hueco heredado de #303)) |
 | `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` (depende de accion manual: sale al escalar a mano un vencimiento desde el panel, no hay cron) |
 | `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago guardado (clave = property + folio fiscal del REP) | 14 d | pendiente: el analisis de REP (POST .../cfdi/rep/analizar) no guarda nada y lo pueden llamar roles de solo lectura: emitir ahi llenaria la campana con XML arbitrario; se conecta cuando el REP se persista |
+| `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
 
 ### licitaciones
 
@@ -99,6 +100,10 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `citas.cita.nueva` | operacion | info | owner/admin, staff | CalendarPlus | `/citas/{orgSlug}/agenda` | una por cita | 7 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
 | `citas.cita.cancelada` | operacion | atencion | owner/admin, staff | CalendarX | `/citas/{orgSlug}/agenda` | una por cita cancelada | 7 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
 | `citas.recordatorio.fallido` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/mensajes-whatsapp` | una por dia | 5 d | conectado: `apps/api/src/routes/verticals/citas/reminders.ts` |
+| `citas.escalacion.crisis` | agentes | critica | owner/admin | LifeBuoy | `/citas/{orgSlug}/avisos` | una por escalacion (clave = id de la escalacion) | 14 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
+| `citas.escalacion.sin_seguimiento` | agentes | critica | owner/admin | Siren | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
+| `citas.cita.por_confirmar` | operacion | atencion | owner/admin, staff | CalendarClock | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
+| `citas.recordatorio.agotado` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/avisos` | una por cada recordatorio nuevo agotado (clave = instante del ultimo) | 5 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
 
 ### superadmin
 
@@ -136,7 +141,7 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
   productores marcados `conectado`.
-- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 37 eventos, 33 con productor conectado y 4 pendientes. Los que se agregaron
+- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 41 eventos, 37 con productor conectado y 4 pendientes (tras traer main, que sumó `despachos.pago_provisional.por_vencer` y los 4 avisos de citas de C-16). Los que se agregaron
   (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.

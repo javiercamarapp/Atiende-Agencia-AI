@@ -55,6 +55,7 @@ import type {
 } from "./types.ts";
 import type {
   AppointmentSyncRow,
+  AvisosResumenSistema,
   CalendarProviderSyncStatus,
   CalendarSyncIssuesSummary,
   CancelResult,
@@ -72,6 +73,10 @@ import type {
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
+  EscalacionesPage,
+  EscalacionSeguimientoDestino,
+  EscalacionSeguimientoEstado,
+  EscalacionVista,
   MessagingOutboxRow,
   NewAppointmentFromPanelInput,
   NewAppointmentInput,
@@ -80,8 +85,10 @@ import type {
   ProviderCalDavAccountRecord,
   ReassignResult,
   RescheduleResult,
+  RecordatorioEntregaFila,
   ReminderCandidateRow,
   RetryCalendarSyncResult,
+  SetEscalacionSeguimientoResult,
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
@@ -402,6 +409,17 @@ function advertirAgenteNoDisponible(metodo: string, err: unknown): void {
       "(SQLSTATE 42883/42P01/42703 o sin acceso) -- el agente habla como siempre y la pantalla lo dice.",
     err instanceof Error ? err.message : err,
   );
+}
+
+/**
+ * El horario ya no esta disponible: AT423 es el rechazo normal del `EXCLUDE` (la RPC lo lanza al perder la carrera) y 40P01 (deadlock_detected)
+ * es el MISMO caso cuando dos reservas del mismo proveedor/horario se disparan al mismo tiempo. Cada transaccion inserta su fila y luego espera la
+ * de la otra para comprobar el `EXCLUDE`; Postgres detecta el ciclo y aborta a una de las dos con 40P01 en vez de 23P01. La prueba real de
+ * concurrencia (scripts/verify-citas-concurrencia, C-17) lo reprodujo al reagendar y crear a la vez: sin este mapeo, la que perdia la carrera
+ * respondia un 500 en vez del 409 "horario no disponible". Nunca hay doble cita en ningun caso: la fila de la perdedora no se confirma.
+ */
+export function esConflictoDeHorario(code: unknown): boolean {
+  return code === "AT423" || code === "40P01";
 }
 
 function sqlState(err: unknown): string | undefined {
@@ -851,7 +869,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "created", appointment: cita };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT409") return { outcome: "conflict_idempotency_reused" };
       throw err;
     }
@@ -1028,7 +1046,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "created", appointment };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
@@ -1064,7 +1082,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "rescheduled", appointment: mapAppointment(rows[0]!.reschedule_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
       throw err;
@@ -1089,7 +1107,7 @@ export class PostgresCitasRepository implements CitasRepository {
       return { outcome: "reassigned", appointment: mapAppointment(rows[0]!.reassign_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
-      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (esConflictoDeHorario(code)) return { outcome: "conflict_slot_taken" };
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
       throw err;
@@ -1898,7 +1916,126 @@ export class PostgresCitasRepository implements CitasRepository {
       [input.organizationId, input.customerPhone, input.channel, input.keywordMatched, input.messageExcerpt],
     );
     const row = rows[0]!;
+    // Notificacion in-app (productor compartido, `citas.escalacion.crisis`): una escalacion de crisis es lo mas urgente que puede pasar en
+    // el canal. Una por escalacion (clave = id), a owner/admin, sin PII (texto fijo del catalogo: ni telefono ni mensaje del cliente).
+    // El SAVEPOINT de emitirNotificacion hace que, contra la base sin migrar (0039), la transaccion del webhook no quede abortada.
+    await emitirNotificacion(this.db, { evento: "citas.escalacion.crisis", organizationId: row.organization_id, clave: row.id, entidadTipo: "emergency_escalation", entidadId: row.id });
     return { id: row.id, organizationId: row.organization_id, customerPhone: row.customer_phone, channel: row.channel, keywordMatched: row.keyword_matched, messageExcerpt: row.message_excerpt, createdAt: row.created_at };
+  }
+
+  // ---- C-16 -- centro de avisos (migracion 029). Todo con SAVEPOINT: la base sin migrar responde "no disponible", nunca aborta la transaccion. ----
+  async listEscalaciones(organizationId: string, limit: number): Promise<EscalacionesPage> {
+    const tope = Math.min(200, Math.max(1, Math.trunc(limit)));
+    type FilaEsc = { id: string; channel: "whatsapp" | "voice"; keyword_matched: string; customer_phone: string; created_at: string; follow_up_status?: EscalacionSeguimientoEstado; follow_up_at?: string | null; follow_up_note?: string | null };
+    const mapear = (r: FilaEsc, conSeguimiento: boolean): EscalacionVista => ({
+      id: r.id,
+      channel: r.channel,
+      keywordMatched: r.keyword_matched,
+      customerPhone: r.customer_phone,
+      createdAt: r.created_at,
+      seguimiento: conSeguimiento ? (r.follow_up_status ?? "pending") : null,
+      seguimientoAt: conSeguimiento ? (r.follow_up_at ?? null) : null,
+      seguimientoNota: conSeguimiento ? (r.follow_up_note ?? null) : null,
+    });
+    return runWithSavepointFallback<EscalacionesPage>({
+      session: this.db,
+      savepointName: "sp_citas_escalaciones_list",
+      primary: async () => {
+        const { rows } = await this.db.query<FilaEsc>(
+          `select id, channel, keyword_matched, customer_phone, created_at::text as created_at, follow_up_status, follow_up_at::text as follow_up_at, follow_up_note
+             from citas.emergency_escalations where organization_id = $1
+            order by case follow_up_status when 'pending' then 0 when 'in_progress' then 1 else 2 end, created_at desc, id desc limit $2;`,
+          [organizationId, tope],
+        );
+        return { disponible: true, seguimientoDisponible: true, items: rows.map((r) => mapear(r, true)) };
+      },
+      isRecoverable: isMigrationPendingError,
+      // Sin las columnas de seguimiento (42703): la lista sigue saliendo, sin estado. Segundo SAVEPOINT por si la tabla tampoco existe.
+      fallback: () =>
+        runWithSavepointFallback<EscalacionesPage>({
+          session: this.db,
+          savepointName: "sp_citas_escalaciones_list_base",
+          primary: async () => {
+            const { rows } = await this.db.query<FilaEsc>(
+              `select id, channel, keyword_matched, customer_phone, created_at::text as created_at
+                 from citas.emergency_escalations where organization_id = $1 order by created_at desc, id desc limit $2;`,
+              [organizationId, tope],
+            );
+            return { disponible: true, seguimientoDisponible: false, items: rows.map((r) => mapear(r, false)) };
+          },
+          isRecoverable: isMigrationPendingError,
+          fallback: () => Promise.resolve({ disponible: false, seguimientoDisponible: false, items: [] }),
+        }),
+    });
+  }
+
+  async setEscalacionSeguimiento(organizationId: string, escalationId: string, estado: EscalacionSeguimientoDestino, nota: string | null): Promise<SetEscalacionSeguimientoResult> {
+    return runWithSavepointFallback<SetEscalacionSeguimientoResult>({
+      session: this.db,
+      savepointName: "sp_citas_escalacion_seguimiento",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_status: EscalacionSeguimientoEstado; out_at: string }>(
+          `select out_id, out_status, out_at::text as out_at from citas.set_escalation_follow_up($1, $2, $3, $4);`,
+          [organizationId, escalationId, estado, nota],
+        );
+        const row = rows[0];
+        if (!row) return { outcome: "not_found" };
+        return { outcome: "updated", id: row.out_id, estado: row.out_status, en: row.out_at };
+      },
+      // La base sin migrar Y los errores de negocio de la propia funcion (P0002 no existe, 22023 estado, 42501 sin rol) se resuelven DENTRO del SAVEPOINT.
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.set_escalation_follow_up") || ["P0002", "22023", "42501"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        switch (sqlState(err)) {
+          case "P0002":
+            return Promise.resolve({ outcome: "not_found" });
+          case "22023":
+            return Promise.resolve({ outcome: "invalid_input" });
+          case "42501":
+            return Promise.resolve({ outcome: "forbidden" });
+          default:
+            return Promise.resolve({ outcome: "unavailable" });
+        }
+      },
+    });
+  }
+
+  async systemAvisosResumen(organizationId: string): Promise<AvisosResumenSistema | null> {
+    return runWithSavepointFallback<AvisosResumenSistema | null>({
+      session: this.db,
+      savepointName: "sp_citas_avisos_resumen",
+      primary: async () => {
+        const { rows } = await this.db.query<{ por_confirmar: string; recordatorios_agotados: string; ultimo_agotado_epoch: string | null; escalaciones_sin_seguimiento: string }>(
+          `select por_confirmar::text, recordatorios_agotados::text, ultimo_agotado_epoch::text, escalaciones_sin_seguimiento::text from citas.system_avisos_resumen($1);`,
+          [organizationId],
+        );
+        const r = rows[0];
+        if (!r) return null;
+        return {
+          porConfirmar: Number(r.por_confirmar),
+          recordatoriosAgotados: Number(r.recordatorios_agotados),
+          ultimoAgotadoEpoch: r.ultimo_agotado_epoch === null ? null : Number(r.ultimo_agotado_epoch),
+          escalacionesSinSeguimiento: Number(r.escalaciones_sin_seguimiento),
+        };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_avisos_resumen"),
+      fallback: () => Promise.resolve(null),
+    });
+  }
+
+  async recordatoriosPorEstado(organizationId: string, fromIso: string, toIso: string): Promise<readonly RecordatorioEntregaFila[] | null> {
+    return runWithSavepointFallback<readonly RecordatorioEntregaFila[] | null>({
+      session: this.db,
+      savepointName: "sp_citas_recordatorios_por_estado",
+      primary: async () => {
+        const { rows } = await this.db.query<{ channel: string; status: string; total: string }>(
+          `select channel, status, total::text from citas.data_chat_reminder_delivery($1::uuid, null::uuid[], $2::timestamptz, $3::timestamptz);`,
+          [organizationId, fromIso, toIso],
+        );
+        return rows.map((r) => ({ channel: r.channel, status: r.status, total: Number(r.total) }));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.data_chat_reminder_delivery"),
+      fallback: () => Promise.resolve(null),
+    });
   }
 
   async findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null> {

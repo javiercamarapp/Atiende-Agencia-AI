@@ -11,10 +11,11 @@
 //    ISR del período quedan "sin datos".
 //  - Nómina: CFDI tipo "N" ingeridos en el período (`invoice`). La nómina procesada
 //    (ISR retenido/IMSS por empleado) no se persiste => ese desglose queda "sin datos".
-//  - Balanza: el modelo NO persiste asientos/pólizas, así que la balanza de comprobación
+//  - Balanza: con el libro contable (D-24, migración 020) sale de las pólizas registradas; sin libro
 //    queda "sin datos"; se agrega el resumen por categoría contable de los CFDI del período
 //    (dato real) como insumo, rotulado como tal, nunca como balanza.
 import { construirDiotDesdeInvoices } from "../declaraciones/diot-desde-invoices.ts";
+import type { LineaBalanzaLibro } from "../libro/types.ts";
 import type { FiscalDeadlineRecord, InvoiceRecord } from "../types.ts";
 import { ETIQUETA_TIPO_REPORTE } from "./types.ts";
 import type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoReporteCliente } from "./types.ts";
@@ -224,18 +225,39 @@ const ETIQUETA_CATEGORIA: Readonly<Record<string, string>> = {
   sin_clasificar: "Sin clasificar",
 };
 
-export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeriodo: readonly InvoiceRecord[]): ReporteCliente {
-  const seccionBalanza = seccionSinDatos(
-    "Balanza de comprobación",
-    [
-      { clave: "cuenta", titulo: "Cuenta (código agrupador SAT)", tipo: "texto" },
-      { clave: "saldoInicial", titulo: "Saldo inicial", tipo: "moneda" },
-      { clave: "debe", titulo: "Debe", tipo: "moneda" },
-      { clave: "haber", titulo: "Haber", tipo: "moneda" },
-      { clave: "saldoFinal", titulo: "Saldo final", tipo: "moneda" },
-    ],
-    "El modelo no persiste asientos ni pólizas contables, por lo que la balanza de comprobación no puede calcularse sin inventar saldos. La generación del XML de balanza (Anexo 24) sigue disponible en Contabilidad electrónica a partir de los asientos que se le proporcionen.",
-  );
+/**
+ * Balanza de comprobación. Con `balanzaLibro` (D-24, libro contable persistido, migración 020) con movimientos, la sección de balanza se llena con
+ * las cuentas del libro del cliente (centavos -> pesos solo para mostrar); sin libro (base sin migrar o sin pólizas en el periodo) queda "sin datos"
+ * con su motivo, como antes. El resumen de CFDI por categoría se conserva como insumo.
+ */
+export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeriodo: readonly InvoiceRecord[], balanzaLibro?: readonly LineaBalanzaLibro[]): ReporteCliente {
+  const pesos = (centavos: number): number => centavos / 100;
+  const seccionBalanza: SeccionReporte =
+    balanzaLibro && balanzaLibro.length > 0
+      ? {
+          titulo: "Balanza de comprobación",
+          columnas: [
+            { clave: "cuenta", titulo: "Cuenta del catálogo del cliente", tipo: "texto" },
+            { clave: "saldoInicial", titulo: "Saldo inicial", tipo: "moneda" },
+            { clave: "debe", titulo: "Debe", tipo: "moneda" },
+            { clave: "haber", titulo: "Haber", tipo: "moneda" },
+            { clave: "saldoFinal", titulo: "Saldo final", tipo: "moneda" },
+          ],
+          filas: balanzaLibro.map((l) => ({ cuenta: `${l.cuenta} ${l.descripcion}`, saldoInicial: pesos(l.saldoInicialCentavos), debe: pesos(l.debeCentavos), haber: pesos(l.haberCentavos), saldoFinal: pesos(l.saldoFinalCentavos) })),
+          totales: { cuenta: "Total", saldoInicial: null, debe: pesos(balanzaLibro.reduce((s, l) => s + l.debeCentavos, 0)), haber: pesos(balanzaLibro.reduce((s, l) => s + l.haberCentavos, 0)), saldoFinal: null },
+          sinDatosMotivo: null,
+        }
+      : seccionSinDatos(
+          "Balanza de comprobación",
+          [
+            { clave: "cuenta", titulo: "Cuenta (código agrupador SAT)", tipo: "texto" },
+            { clave: "saldoInicial", titulo: "Saldo inicial", tipo: "moneda" },
+            { clave: "debe", titulo: "Debe", tipo: "moneda" },
+            { clave: "haber", titulo: "Haber", tipo: "moneda" },
+            { clave: "saldoFinal", titulo: "Saldo final", tipo: "moneda" },
+          ],
+          "El libro contable del cliente no tiene pólizas en este período (o la migración 020 aún no está aplicada), por lo que la balanza de comprobación no puede calcularse sin inventar saldos. Registra pólizas en Libro contable; la generación del XML (Anexo 24) está en Contabilidad electrónica.",
+        );
 
   const porCategoria = new Map<string, { cfdi: number; subtotal: number; iva: number; total: number }>();
   for (const inv of invoicesDelPeriodo) {
@@ -281,7 +303,7 @@ export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeri
 export function construirReporteCliente(
   tipo: TipoReporteCliente,
   entrada: EntradaReporte,
-  fuentes: { readonly invoicesDelPeriodo: readonly InvoiceRecord[]; readonly vencimientosDelPeriodo: readonly FiscalDeadlineRecord[] },
+  fuentes: { readonly invoicesDelPeriodo: readonly InvoiceRecord[]; readonly vencimientosDelPeriodo: readonly FiscalDeadlineRecord[]; readonly balanzaLibro?: readonly LineaBalanzaLibro[] },
 ): ReporteCliente {
   switch (tipo) {
     case "diot":
@@ -291,7 +313,7 @@ export function construirReporteCliente(
     case "nomina":
       return construirReporteNomina(entrada, fuentes.invoicesDelPeriodo);
     case "balanza":
-      return construirReporteBalanza(entrada, fuentes.invoicesDelPeriodo);
+      return construirReporteBalanza(entrada, fuentes.invoicesDelPeriodo, fuentes.balanzaLibro);
   }
 }
 

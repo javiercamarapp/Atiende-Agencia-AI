@@ -146,6 +146,10 @@ export {
   VER_REPORTES_ROLES,
   VER_CARTERA_ROLES,
   GESTIONAR_CARTERA_ROLES,
+  VER_LIBRO_ROLES,
+  GESTIONAR_LIBRO_ROLES,
+  VER_PAGOS_PROVISIONALES_ROLES,
+  GESTIONAR_PAGOS_PROVISIONALES_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -548,7 +552,7 @@ export type {
 export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
-export type { CeldaReporte, ColumnaReporte, ReporteCliente, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
+export type { CeldaReporte, ColumnaReporte, ReporteCliente, ReporteTabular, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
 export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
 export type { EntradaReporte } from "./reportes/builders.ts";
 export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
@@ -608,3 +612,9 @@ export type {
   TipoFactorImpuesto,
 } from "./cfdi/modelo-cfdi.ts";
 export { EstadoSatNoDisponibleError, EstadoSatInvalidoError, InvoiceNoEncontradoError } from "./errors.ts";
+
+// D-24: libro contable persistido (catálogo por cliente, pólizas con folio, balanza derivada, póliza de un CFDI).
+export * from "./libro/index.ts";
+
+// D-25: pagos provisionales de ISR/IVA (papel de trabajo por flujo de efectivo, pagos de REP persistidos).
+export * from "./pagos-provisionales/index.ts";

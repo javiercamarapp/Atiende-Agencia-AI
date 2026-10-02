@@ -41,6 +41,9 @@ export interface ReporteCliente {
   readonly sinDatos: boolean;
 }
 
+/** Cualquier reporte tabular con la forma de `ReporteCliente` (p. ej. cartera D-11, pagos provisionales D-25): `tipo` libre. */
+export type ReporteTabular = Omit<ReporteCliente, "tipo"> & { readonly tipo: string };
+
 export const ETIQUETA_TIPO_REPORTE: Readonly<Record<TipoReporteCliente, string>> = {
   balanza: "Balanza de comprobación",
   diot: "DIOT (Declaración Informativa de Operaciones con Terceros)",

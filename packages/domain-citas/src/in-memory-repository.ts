@@ -67,6 +67,10 @@ import type {
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
+  EscalacionesPage,
+  EscalacionSeguimientoDestino,
+  EscalacionSeguimientoEstado,
+  EscalacionVista,
   MessagingOutboxRow,
   NewAppointmentFromPanelInput,
   NewAppointmentInput,
@@ -75,7 +79,10 @@ import type {
   ProviderCalDavAccountRecord,
   ReassignResult,
   RescheduleResult,
+  RecordatorioEntregaFila,
   ReminderCandidateRow,
+  SetEscalacionSeguimientoResult,
+  AvisosResumenSistema,
   RetryCalendarSyncResult,
   TenantConfigPatch,
   TenantConfigRecord,
@@ -182,6 +189,8 @@ interface InMemoryOutboxRow {
   /** Fase 6 §3 — dispatcher de email (migrations/009): columna separada de
    *  `lastErrorClass` (WhatsApp), mismo criterio que el SQL real. */
   lastError: string | null;
+  /** Para `systemAvisosResumen` (ventana de agotados): momento en que se encolo. */
+  createdAtMs: number;
 }
 
 export class InMemoryCitasRepository implements CitasRepository {
@@ -1152,7 +1161,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       return;
     }
     const id = randomUUID();
-    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null, lastError: null });
+    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null, lastError: null, createdAtMs: Date.now() });
   }
 
   async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
@@ -1520,6 +1529,60 @@ export class InMemoryCitasRepository implements CitasRepository {
     };
     this.emergencyEscalations.push(record);
     return record;
+  }
+
+  // ---- C-16 -- centro de avisos (espejo en memoria de la migracion 029) ----
+  private readonly escalacionSeguimiento = new Map<string, { estado: EscalacionSeguimientoEstado; en: string; nota: string | null }>();
+  /** Solo para tests: simula la base SIN la migracion 029/027 (seguimiento y conteos "no disponible aun"), igual que `dataRightsMigrationPending`. */
+  avisosMigrationPending = false;
+
+  async listEscalaciones(organizationId: string, limit: number): Promise<EscalacionesPage> {
+    const orden: Record<EscalacionSeguimientoEstado, number> = { pending: 0, in_progress: 1, resolved: 2 };
+    const items = this.emergencyEscalations
+      .filter((e) => e.organizationId === organizationId)
+      .map((e): EscalacionVista => {
+        const seg = this.escalacionSeguimiento.get(e.id);
+        const conEstado = !this.avisosMigrationPending;
+        return { id: e.id, channel: e.channel, keywordMatched: e.keywordMatched, customerPhone: e.customerPhone, createdAt: e.createdAt, seguimiento: conEstado ? (seg?.estado ?? "pending") : null, seguimientoAt: conEstado ? (seg?.en ?? null) : null, seguimientoNota: conEstado ? (seg?.nota ?? null) : null };
+      })
+      .sort((a, b) => orden[a.seguimiento ?? "pending"] - orden[b.seguimiento ?? "pending"] || Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .slice(0, Math.max(1, limit));
+    return { disponible: true, seguimientoDisponible: !this.avisosMigrationPending, items };
+  }
+
+  async setEscalacionSeguimiento(organizationId: string, escalationId: string, estado: EscalacionSeguimientoDestino, nota: string | null): Promise<SetEscalacionSeguimientoResult> {
+    if (this.avisosMigrationPending) return { outcome: "unavailable" };
+    const esc = this.emergencyEscalations.find((e) => e.id === escalationId && e.organizationId === organizationId);
+    if (!esc) return { outcome: "not_found" };
+    const en = new Date().toISOString();
+    const limpia = nota === null ? null : nota.trim().slice(0, 500) || null;
+    this.escalacionSeguimiento.set(escalationId, { estado, en, nota: limpia });
+    return { outcome: "updated", id: escalationId, estado, en };
+  }
+
+  async systemAvisosResumen(organizationId: string): Promise<AvisosResumenSistema | null> {
+    if (this.avisosMigrationPending) return null;
+    const ahora = Date.now();
+    const porConfirmar = [...this.appointments.values()].filter((a) => a.organizationId === organizationId && a.status === "pending" && Date.parse(a.startsAt) > ahora && Date.parse(a.startsAt) <= ahora + 48 * 3_600_000).length;
+    const agotados = [...this.outbox.values()].filter((o) => o.organizationId === organizationId && o.eventType === "appointment.reminder_24h" && o.status === "dead" && o.createdAtMs > ahora - 48 * 3_600_000);
+    const sinSeguimiento = this.emergencyEscalations.filter((e) => e.organizationId === organizationId && !this.escalacionSeguimiento.has(e.id) && Date.parse(e.createdAt) < ahora - 3_600_000).length;
+    return {
+      porConfirmar,
+      recordatoriosAgotados: agotados.length,
+      ultimoAgotadoEpoch: agotados.length === 0 ? null : Math.floor(Math.max(...agotados.map((o) => o.createdAtMs)) / 1000),
+      escalacionesSinSeguimiento: sinSeguimiento,
+    };
+  }
+
+  async recordatoriosPorEstado(organizationId: string, _fromIso: string, _toIso: string): Promise<readonly RecordatorioEntregaFila[] | null> {
+    if (this.avisosMigrationPending) return null;
+    const cuenta = new Map<string, number>();
+    for (const o of this.outbox.values()) {
+      if (o.organizationId !== organizationId || o.eventType !== "appointment.reminder_24h") continue;
+      const k = `${o.channel}|${o.status}`;
+      cuenta.set(k, (cuenta.get(k) ?? 0) + 1);
+    }
+    return [...cuenta.entries()].map(([k, total]) => ({ channel: k.split("|")[0]!, status: k.split("|")[1]!, total }));
   }
 
   /** Solo para tests: lee las escalaciones registradas (equivalente a un SELECT
