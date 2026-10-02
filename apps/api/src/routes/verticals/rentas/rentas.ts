@@ -37,6 +37,7 @@ import { rentasAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { rentasFinanzasReglasComisionRoutes } from "./finanzas-reglas-comision.ts";
 import { rentasAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { rentasAdminStaffRoutes } from "./admin-staff.ts";
+import { rentasMensajesAutomaticosRoutes } from "./mensajes-automaticos.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -132,5 +133,7 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // tarea de limpieza vinculada), mismo patrón que rentasIcalSyncCronRoutes arriba:
   // sin requirePropertyMembership, guardado por x-atiende-internal-secret.
   app.route("/", rentasCheckoutSweepCronRoutes(deps));
+  // Rn-24 / Rn-25 -- automatizaciones de mensajes por evento (config de staff + cron que deja borradores en Aprobaciones).
+  app.route("/", rentasMensajesAutomaticosRoutes(deps));
   return app;
 }

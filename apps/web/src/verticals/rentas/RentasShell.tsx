@@ -31,6 +31,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Lock,
+  MessageSquareText,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
@@ -96,6 +97,7 @@ function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacida
       items: [
         { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
+        { to: ruta("plantillas"), label: "Plantillas", icon: MessageSquareText },
         { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
       ],
     },
