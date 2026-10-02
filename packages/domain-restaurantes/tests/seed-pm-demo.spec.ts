@@ -360,7 +360,7 @@ describe("evals del agente vs. el motor real de pedidos (menu sembrado + 2x1 del
       expect(discrepancias.find((d) => d.startsWith(`${id}:`))).toMatch(/total esperado/);
     }
     expect(discrepancias.map((d) => d.split(":")[0]).sort()).toEqual([...SEMANTICA_PIEZAS_AMBIGUA_EN_EVALS, ...TOTAL_ESPERADO_CON_PRECIOS_DE_T1_EN_EVALS_DE_T3].sort());
-    // Todos los demas casos (incluidos los 2x1 del lunes: L02, L30, C06) cuadran al centavo con el motor real.
+    // Todos los demas casos (incluidos los 2x1 del lunes: L02 y C06; L30 es de T3 y esta en la lista de arriba) cuadran al centavo con el motor real.
     expect(casos.length - discrepancias.length).toBeGreaterThanOrEqual(20);
   });
 });
