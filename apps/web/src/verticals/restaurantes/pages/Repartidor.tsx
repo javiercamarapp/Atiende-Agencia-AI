@@ -80,7 +80,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
   const [orders, setOrders] = useState<readonly RepartidorOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
-  // La nota de incidencia se pide con `pedirTexto` (antes: el `window.prompt` del navegador); el diálogo lo monta `dialogo`.
+  // La nota de incidencia se pide con `pedirTexto` (`useConfirm`, con `AlertDialog`); el diálogo lo monta `dialogo`.
   const { pedirTexto, dialogo } = useConfirm();
 
   async function load() {
