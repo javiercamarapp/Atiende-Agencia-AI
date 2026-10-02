@@ -24,6 +24,8 @@ import { rateLimit } from "@atiende/core-ratelimit";
 import {
   aplicarConLedger,
   crearCheckoutPerSeat,
+  crearSesionPortalFacturacion,
+  PortalFacturacionInvalido,
   verificarFirmaWebhookStripe,
   verificarTenantDelWebhook,
   type CustomerLookup,
@@ -31,8 +33,9 @@ import {
   type LedgerStore,
   type TenantLookup,
 } from "@atiende/billing";
-import { OrganizationBillingAccessDeniedError, OrganizationNotFoundError, type OrganizationBillingRow, type RecordBillingWebhookEventInput } from "@atiende/db";
+import { leerUsoOrganizacion, OrganizationBillingAccessDeniedError, OrganizationNotFoundError, type OrganizationBillingRow, type RecordBillingWebhookEventInput } from "@atiende/db";
 import { Errors } from "../errors.ts";
+import { ApiError } from "@atiende/core-auth";
 import { readJsonCapped, readTextCapped, requestActor } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
 
@@ -288,6 +291,33 @@ export async function crearCheckoutDeOrganizacion(deps: AppDeps, callerId: strin
   });
 }
 
+/** Por que el portal de Stripe no se puede abrir para esta organizacion (estado honesto, nunca una URL inventada). */
+export type MotivoPortalNoDisponible = "sin_llave_stripe" | "sin_cliente_stripe" | "solo_administradores";
+
+/** Resuelve el estado del portal de la organizacion para `callerId`: la autoridad real (owner/admin o superadmin) la decide
+ *  `getOrganizationBillingForCheckout` en la base, no esta capa. */
+async function estadoPortal(deps: AppDeps, callerId: string, organizationId: string): Promise<{ disponible: true; customerId: string; vertical: string } | { disponible: false; motivo: MotivoPortalNoDisponible }> {
+  if (!deps.saasBillingPortalClient) return { disponible: false, motivo: "sin_llave_stripe" };
+  let billing: OrganizationBillingRow;
+  try {
+    billing = await deps.coreRepo.getOrganizationBillingForCheckout(callerId, organizationId);
+  } catch (err) {
+    if (err instanceof OrganizationBillingAccessDeniedError) return { disponible: false, motivo: "solo_administradores" };
+    if (err instanceof OrganizationNotFoundError) throw Errors.notFound(err.message);
+    throw err;
+  }
+  if (!billing.stripeCustomerId) return { disponible: false, motivo: "sin_cliente_stripe" };
+  return { disponible: true, customerId: billing.stripeCustomerId, vertical: billing.vertical };
+}
+
+const MENSAJE_PORTAL: Readonly<Record<MotivoPortalNoDisponible, string>> = {
+  sin_llave_stripe: "El portal de facturación no está disponible en este entorno: falta STRIPE_SECRET_KEY. Esto es esperado sin credenciales reales de Stripe.",
+  sin_cliente_stripe: "Esta organización todavía no tiene una suscripción en Stripe, así que no hay portal de facturación que abrir.",
+  solo_administradores: "Solo el propietario o un administrador de la organización puede abrir el portal de facturación.",
+};
+
+const MAX_PORTAL_BODY_BYTES = 1024;
+
 export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -302,6 +332,64 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const { url } = await crearCheckoutDeOrganizacion(deps, c.get("userId"), organizationId, priceId, seats);
 
     return c.json({ url });
+  });
+
+  app.use("/billing/uso", authMiddleware(deps.env));
+  app.use("/billing/portal", authMiddleware(deps.env));
+
+  // Consumo del mes, topes del plan, fin de prueba y estado del portal de la organizacion de la sesion (o `?organizationId=`).
+  // La autoridad real (miembro de la organizacion o superadmin) la decide `core.message_usage_for_org`: otra organizacion -> 403.
+  // Es la misma lectura que consume SA-10 para el consumo contra topes (esta tarea no construye esa pantalla).
+  app.get("/billing/uso", async (c) => {
+    const callerId = c.get("userId");
+    const queryOrg = c.req.query("organizationId");
+    if (queryOrg !== undefined && !UUID_RE.test(queryOrg)) throw Errors.validation("organizationId: se esperaba un UUID.");
+    const organizationId = queryOrg ?? c.get("organizationId");
+    if (!organizationId || !UUID_RE.test(organizationId)) throw Errors.validation("organizationId: indica la organizacion (query) o inicia sesion dentro de una.");
+
+    const lectura = await deps.engine.withAppSession({ userId: callerId }, (db) => leerUsoOrganizacion(db, callerId, organizationId));
+    if (!lectura.disponible) {
+      // Base sin la migracion 0046: vacio honesto, nunca un 500.
+      return c.json({ disponible: false, motivo: "El medidor de mensajes todavia no esta disponible en este despliegue (falta aplicar la migracion 0046_planes_topes_prueba_portal)." });
+    }
+    if (lectura.uso === null) throw Errors.forbidden("No perteneces a esta organización.");
+
+    const portal = await estadoPortal(deps, callerId, organizationId);
+    return c.json({
+      disponible: true,
+      ...lectura.uso,
+      portal: portal.disponible ? { disponible: true, motivo: null, explicacion: null } : { disponible: false, motivo: portal.motivo, explicacion: MENSAJE_PORTAL[portal.motivo] },
+    });
+  });
+
+  // Crea la sesion del Billing Portal de Stripe con el customer de la organizacion. Sin llave o sin customer: 503 honesto.
+  app.post("/billing/portal", async (c) => {
+    const callerId = c.get("userId");
+    const raw = await readJsonCapped<{ organizationId?: unknown }>(c.req.raw, MAX_PORTAL_BODY_BYTES).catch(() => ({}) as { organizationId?: unknown });
+    const organizationId = typeof raw.organizationId === "string" ? raw.organizationId : c.get("organizationId");
+    if (!organizationId || !UUID_RE.test(organizationId)) throw Errors.validation("organizationId: se esperaba un UUID.");
+
+    const estado = await estadoPortal(deps, callerId, organizationId);
+    if (!estado.disponible) {
+      if (estado.motivo === "solo_administradores") throw Errors.forbidden(MENSAJE_PORTAL[estado.motivo]);
+      throw Errors.serviceUnavailable(MENSAJE_PORTAL[estado.motivo]);
+    }
+    // El slug vuelve de la misma lectura caller-bound (miembro/superadmin), para volver a la pantalla Plan y uso.
+    const lectura = await deps.engine.withAppSession({ userId: callerId }, (db) => leerUsoOrganizacion(db, callerId, organizationId));
+    if (lectura.disponible && lectura.uso === null) throw Errors.forbidden("No perteneces a esta organización.");
+    // Base sin la migracion 0046: el portal sigue funcionando (no depende del medidor) y vuelve al login de la vertical.
+    const volverA = lectura.disponible && lectura.uso ? `${estado.vertical}/${lectura.uso.slug}/plan` : `${estado.vertical}/login`;
+    try {
+      const { url } = await crearSesionPortalFacturacion(deps.saasBillingPortalClient!, {
+        customerId: estado.customerId,
+        returnUrl: `${deps.env.appBaseUrl}/${volverA}`,
+      });
+      return c.json({ url });
+    } catch (err) {
+      if (err instanceof PortalFacturacionInvalido) throw Errors.validation(err.message);
+      console.error("POST /billing/portal: Stripe no pudo crear la sesion:", err instanceof Error ? err.message : String(err));
+      throw new ApiError(502, "bad_gateway", "Stripe no pudo abrir el portal de facturación. Revisa que el portal esté configurado en el dashboard de Stripe.");
+    }
   });
 
   app.post("/billing/webhook", async (c) => {

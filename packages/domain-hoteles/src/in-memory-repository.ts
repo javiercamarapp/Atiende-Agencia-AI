@@ -1220,7 +1220,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       row.status = "processing";
       row.claimedAt = now;
     }
-    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload }));
+    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload, organizationId: row.organizationId }));
   }
 
   async markMessagingOutboxSent(id: string): Promise<void> {

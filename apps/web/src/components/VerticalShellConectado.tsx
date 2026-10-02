@@ -7,6 +7,7 @@ import { NotificationBell, VerticalShell } from "@atiende/ui";
 import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { BotonChatDatos, useChatDatosDisponible } from "./BotonChatDatos.tsx";
+import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
 
@@ -23,7 +24,12 @@ export type VerticalShellConectadoProps = Omit<VerticalShellProps, "notification
   readonly ocultarChat?: boolean;
 };
 
-export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, ...shell }: VerticalShellConectadoProps) {
+/** `/<vertical>/<orgSlug>/notificaciones` -> `/<vertical>/<orgSlug>/plan` (la pantalla Plan y uso vive junto a las notificaciones). */
+export function planHrefDe(notificacionesHref: string): string {
+  return notificacionesHref.replace(/\/notificaciones\/?$/, "/plan");
+}
+
+export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
   const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregunta a tus datos" del pie del Sidebar (gemela de la de Likida): abre el MISMO panel real que el
@@ -46,7 +52,11 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
         mobileNotificationBell={campana("w-10 h-10")}
         chatButton={ocultarChat ? null : <BotonChatDatos chat={chat} {...(copilotoHref ? { href: copilotoHref } : {})} />}
         mobileChatButton={ocultarChat ? null : <BotonChatDatos className="h-10 w-full justify-center" chat={chat} {...(copilotoHref ? { href: copilotoHref } : {})} />}
-      />
+      >
+        {/* PL-16: aviso de fin de prueba / tope de mensajes del plan, comun a las 6 verticales. */}
+        <BannerPlan apiBaseUrl={apiBaseUrl} token={token} planHref={planHrefDe(notificacionesHref)} />
+        {children}
+      </VerticalShell>
       {chatAbierto && chat && <PanelChateaConTusDatos onClose={() => setChatAbierto(false)} chat={chat} />}
     </>
   );
