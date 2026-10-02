@@ -12,6 +12,7 @@ interface ResumenBody {
   pending_to_confirm: number;
   no_shows_last_30_days: number;
   new_customers_last_30_days: number;
+  created_by_source_last_30_days: Record<string, number>;
 }
 
 describe("GET /v1/citas/properties/:propertyId/resumen", () => {
@@ -54,6 +55,8 @@ describe("GET /v1/citas/properties/:propertyId/resumen", () => {
     expect(body.no_shows_last_30_days).toBe(0);
     expect(typeof body.pending_to_confirm).toBe("number");
     expect(typeof body.new_customers_last_30_days).toBe("number");
+    // La cita sembrada es del canal web y se creó hoy: el resto de canales viene en 0 (todos presentes).
+    expect(body.created_by_source_last_30_days).toEqual({ voice: 0, whatsapp: 0, web: 1, manual: 0 });
   });
 
   it("rechaza sin JWT (401)", async () => {

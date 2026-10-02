@@ -9,7 +9,7 @@
 // La semana es lunes-domingo local.
 import { dayOfWeekInTimeZone, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 import type { CitasRepository } from "./repository.ts";
-import type { AppointmentStatus } from "./types.ts";
+import type { AppointmentSource, AppointmentStatus } from "./types.ts";
 
 /** Ventana (días) de "no-shows" y "clientes nuevos". */
 export const RESUMEN_VENTANA_DIAS = 30;
@@ -29,6 +29,8 @@ export interface CitasResumen {
   readonly noShowsLast30Days: number;
   /** Clientes dados de alta en los últimos 30 días. */
   readonly newCustomersLast30Days: number;
+  /** Citas no canceladas creadas en los últimos 30 días, por canal de origen (voz, WhatsApp, web, manual). */
+  readonly createdBySourceLast30Days: Readonly<Record<AppointmentSource, number>>;
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -57,12 +59,13 @@ export async function computeCitasResumen(repo: CitasRepository, organizationId:
   const windowStart = new Date(now.getTime() - RESUMEN_VENTANA_DIAS * dayMs);
   const pendingHorizon = new Date(now.getTime() + RESUMEN_HORIZONTE_PENDIENTES_DIAS * dayMs);
 
-  const [today, week, upcoming, past, newCustomers] = await Promise.all([
+  const [today, week, upcoming, past, newCustomers, createdBySource] = await Promise.all([
     repo.countAppointmentsByStatus(organizationId, todayStart.toISOString(), tomorrowStart.toISOString()),
     repo.countAppointmentsByStatus(organizationId, weekStart.toISOString(), nextWeekStart.toISOString()),
     repo.countAppointmentsByStatus(organizationId, now.toISOString(), pendingHorizon.toISOString()),
     repo.countAppointmentsByStatus(organizationId, windowStart.toISOString(), now.toISOString()),
     repo.countCustomersCreatedSince(organizationId, windowStart.toISOString()),
+    repo.countAppointmentsCreatedBySource(organizationId, windowStart.toISOString()),
   ]);
 
   return {
@@ -73,5 +76,6 @@ export async function computeCitasResumen(repo: CitasRepository, organizationId:
     pendingToConfirm: upcoming.pending,
     noShowsLast30Days: past.no_show,
     newCustomersLast30Days: newCustomers,
+    createdBySourceLast30Days: createdBySource,
   };
 }
