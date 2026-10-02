@@ -96,6 +96,7 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         onEvento,
         signal,
         onUso: logUsoDataChat(c, "despachos"),
+        auditRole: DESPACHOS_DATA_CHAT_ROLE,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "despachos", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );

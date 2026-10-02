@@ -99,6 +99,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
         onEvento,
         signal,
         onUso: logUsoDataChat(c, cfg.vertical),
+        auditRole: cfg.role,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );

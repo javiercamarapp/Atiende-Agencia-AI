@@ -86,6 +86,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         onEvento,
         signal,
         onUso: logUsoDataChat(c, "licitaciones"),
+        auditRole: LICITACIONES_DATA_CHAT_ROLE,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "licitaciones", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );
