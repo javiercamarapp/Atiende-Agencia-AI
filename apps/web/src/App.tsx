@@ -28,6 +28,7 @@ import { TerminosPage } from "./pages/Terminos.tsx";
 import { NotFoundPage } from "./pages/NotFound.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
+import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
@@ -314,6 +315,16 @@ function SuperAdminRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminResumenPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-L-01: el listado de organizaciones (antes en la raíz /superadmin) vive en su propia ruta; la raíz es el Resumen. */
+function SuperAdminOrganizacionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminDashboardPage {...ctx} />}
     </SuperAdminShell>
   );
@@ -369,15 +380,6 @@ function SuperAdminSaludRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminSaludPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminResumenRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminResumenPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -971,7 +973,11 @@ export function App() {
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
         <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
-        <Route path="/superadmin/resumen" element={<SuperAdminResumenRoute />} />
+        <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
+        {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
+        {Object.entries(REDIRECCIONES_SUPERADMIN).map(([desde, hacia]) => (
+          <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
+        ))}
         <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />

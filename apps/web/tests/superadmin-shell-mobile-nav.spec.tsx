@@ -8,6 +8,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
+import { PIE_SUPERADMIN, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -56,13 +57,13 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(desktop.closest(".hidden")?.className).toContain("md:block");
     expect([...root.querySelectorAll('nav[aria-label="Navegación móvil"] a')].map((a) => a.getAttribute("href"))).toEqual([
       "/superadmin",
-      "/superadmin/resumen",
+      "/superadmin/organizaciones",
       "/superadmin/salud",
       "/superadmin/acciones",
     ]);
   });
 
-  it("el item raíz «Organizaciones» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
+  it("el item raíz «Resumen» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
     rendered = await renderShell(() => {}, "/superadmin/planes");
     const activos = [...rendered.container.querySelectorAll('aside a[aria-current="page"]')].map((a) => a.getAttribute("href"));
     expect(activos).toEqual(["/superadmin/planes"]);
@@ -78,12 +79,14 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(root.querySelector('a[href="#contenido-principal"]')).not.toBeNull();
   });
 
-  it('"Más" abre los 22 destinos de la consola (incluye privacidad, gestión de organizaciones, interruptores, seguridad MFA, zona CFO segura, dashboard CFO, costos y margen, planes y contratos por cliente)', async () => {
+  it('"Más" abre TODOS los destinos del mapa de rutas (SA-L-01) más las 2 píldoras del pie: sin entradas fantasma', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(22);
+    expect(hrefs).toHaveLength(TODAS_LAS_RUTAS.length + PIE_SUPERADMIN.length);
+    expect(new Set(hrefs)).toEqual(new Set([...TODAS_LAS_RUTAS.map((r) => r.to), ...PIE_SUPERADMIN.map((p) => p.to)]));
+    expect(hrefs).toContain("/superadmin/organizaciones");
     expect(hrefs).toContain("/superadmin/privacidad");
     expect(hrefs).toContain("/superadmin/gestion-organizaciones");
     expect(hrefs).toContain("/superadmin/interruptores");
