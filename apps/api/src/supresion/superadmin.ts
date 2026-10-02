@@ -1,6 +1,6 @@
 // Lado SUPERADMIN de la lista de supresion de plataforma (SA-L-46): conteos agregados (sin valores ni hashes)
 // y "no contactar" manual. Las funciones SQL exigen auth.uid() = p_caller_id y delegan en
-// core.platform_superadmin (migracion 0042). Base sin migrar (42P01/42883/42703): `no_migrada`, nunca un 500.
+// core.platform_superadmin (migracion 0043). Base sin migrar (42P01/42883/42703): `no_migrada`, nunca un 500.
 import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { avisarSupresionNoMigrada, esSupresionNoMigrada } from "./acceso.ts";

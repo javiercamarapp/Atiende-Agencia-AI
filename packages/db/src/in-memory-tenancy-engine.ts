@@ -76,7 +76,7 @@ export class InMemoryTenancyEngine implements TenancyEngine {
             .map((m) => ({ organization_id: m.organizationId, platform_role: m.platformRole, vertical_role: m.verticalRole }));
           return { rows: rows as unknown as R[] };
         }
-        // SA-L-46: core.esta_suprimido / core.registrar_supresion (migracion 0042), modelo minimo en memoria.
+        // SA-L-46: core.esta_suprimido / core.registrar_supresion (migracion 0043), modelo minimo en memoria.
         if (sql.includes("core.esta_suprimido")) {
           const [tipo, hash] = params as [string, string];
           return { rows: [{ suprimido: this.suprimidos.has(`${tipo}:${hash}`) }] as unknown as R[] };

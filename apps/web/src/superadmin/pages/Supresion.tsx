@@ -123,7 +123,7 @@ export function SuperAdminSupresionPage({ apiBaseUrl, token }: { readonly apiBas
 
       {!datos.disponible && (
         <Callout tone="warning" titulo="Todavía no disponible en esta base">
-          {datos.mensaje ?? "Falta aplicar la migración 0042_supresion_contacto_plataforma."} Mientras tanto los avisos siguen enviándose como antes.
+          {datos.mensaje ?? "Falta aplicar la migración 0043_supresion_contacto_plataforma."} Mientras tanto los avisos siguen enviándose como antes.
         </Callout>
       )}
       {aviso && (

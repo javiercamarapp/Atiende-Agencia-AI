@@ -5,7 +5,7 @@ solo existia por vertical (`licitaciones.whatsapp_opt_out*`, migracion 030); est
 
 ## Que es y como se guarda
 
-- Tabla `core.supresion_contacto` (migracion `0042_supresion_contacto_plataforma.sql`, espejo
+- Tabla `core.supresion_contacto` (migracion `0043_supresion_contacto_plataforma.sql`, espejo
   `supabase/migrations/20240101000271_...`): `tipo` (telefono | correo), `valor_hash`, `motivo` (baja | queja |
   rebote | solicitud_arco | no_contactar), `origen`, `organization_id` (informativo), `creado_en`.
 - **Nunca el valor en claro.** `valor_hash` = SHA-256 en hex de `atiende:supresion:v1:<tipo>:<valor normalizado>`

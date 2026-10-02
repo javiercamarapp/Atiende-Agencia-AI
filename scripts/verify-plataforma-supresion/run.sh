@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de la
-# migración 0042 (lista de supresión de plataforma). En CI la corre automáticamente
+# migración 0043 (lista de supresión de plataforma). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-plataforma-supresion/run.sh
 set -euo pipefail

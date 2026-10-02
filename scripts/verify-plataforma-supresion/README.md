@@ -1,6 +1,6 @@
 # verify-plataforma-supresion
 
-Verificación contra Postgres real de `packages/db/migrations/0042_supresion_contacto_plataforma.sql`
+Verificación contra Postgres real de `packages/db/migrations/0043_supresion_contacto_plataforma.sql`
 (SA-L-46, lista de supresión de plataforma `core.supresion_contacto`). Ver `docs/SUPRESION.md`.
 
 - `run.sh` -- manual, con `initdb`/`pg_ctl`/`psql` locales.

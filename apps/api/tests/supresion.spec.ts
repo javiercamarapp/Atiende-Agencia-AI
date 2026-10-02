@@ -311,7 +311,7 @@ describe("BAJA / STOP entrante", () => {
     expect(confirmar).not.toHaveBeenCalled();
   });
 
-  it("base sin la migracion 0042: NO se maneja (sigue el camino anterior del webhook), con log 'supresion_no_migrada' y sesion sana", async () => {
+  it("base sin la migracion 0043: NO se maneja (sigue el camino anterior del webhook), con log 'supresion_no_migrada' y sesion sana", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const session = new AbortAwareFakeSession([
       { match: /core\.registrar_supresion/, respond: () => pgError("42883", "function core.registrar_supresion does not exist") },

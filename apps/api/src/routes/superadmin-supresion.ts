@@ -6,7 +6,7 @@
 // Autenticacion, gateo de superadmin y step-up montados una vez en routes/superadmin.ts sobre `/superadmin/*`;
 // la autoridad real sigue en SQL (core.platform_superadmin). El valor llega en claro SOLO en el cuerpo del POST,
 // se hashea aqui y no se guarda ni se registra. Base sin migrar: `disponible: false` (GET, 200) / 503 (POST).
-// Ver docs/SUPRESION.md y la migracion 0042.
+// Ver docs/SUPRESION.md y la migracion 0043.
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
@@ -15,7 +15,7 @@ import { requestActor } from "../http-security.ts";
 import { agregarConteos, agregarNoContactar, listarSupresiones } from "../supresion/index.ts";
 import type { AppDeps } from "../deps.ts";
 
-export const SUPRESION_NO_DISPONIBLE = "La lista de supresión de plataforma todavía no está disponible en este despliegue (falta aplicar la migración 0042_supresion_contacto_plataforma).";
+export const SUPRESION_NO_DISPONIBLE = "La lista de supresión de plataforma todavía no está disponible en este despliegue (falta aplicar la migración 0043_supresion_contacto_plataforma).";
 const MUTACION_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 
 interface NoContactarBody {

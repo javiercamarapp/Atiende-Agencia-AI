@@ -1,4 +1,4 @@
--- SA-L-46 (migracion 0042) -- verificacion contra Postgres REAL de la lista de supresion de plataforma.
+-- SA-L-46 (migracion 0043) -- verificacion contra Postgres REAL de la lista de supresion de plataforma.
 -- Cada escenario corre en su propio `begin; ... rollback;`. Alias `should_fail` = debe terminar en ERROR;
 -- alias `..._deberia_ser_N` = el ultimo valor (entero) esperado (ver scripts/verify-real-postgres-ci/run-gate.mjs).
 -- Sesion de SISTEMA = rol authenticated con request.jwt.claim.sub vacio; usuario real = claim con su id.

@@ -17,7 +17,7 @@ export type MotivoSupresion = "baja" | "queja" | "rebote" | "solicitud_arco" | "
 
 const SQLSTATE_NO_MIGRADO = new Set(["42P01", "42883", "42703"]);
 
-/** `true` si el error es "tabla/funcion/columna inexistente" (migracion 0042 pendiente). */
+/** `true` si el error es "tabla/funcion/columna inexistente" (migracion 0043 pendiente). */
 export function esSupresionNoMigrada(err: unknown): boolean {
   const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
   return typeof code === "string" && SQLSTATE_NO_MIGRADO.has(code);
@@ -54,7 +54,7 @@ export function crearGuardSupresion(db: TenantDbSession): GuardSupresion {
 
 export type ResultadoRegistro = "registrada" | "ya_existia" | "no_migrada" | "valor_invalido";
 
-/** Registra una supresion (idempotente). `no_migrada` = la base aun no tiene la migracion 0042. */
+/** Registra una supresion (idempotente). `no_migrada` = la base aun no tiene la migracion 0043. */
 export async function registrarSupresion(
   db: TenantDbSession,
   input: { readonly tipo: TipoContacto; readonly valor: string; readonly motivo: MotivoSupresion; readonly origen: string; readonly organizationId?: string | null },
