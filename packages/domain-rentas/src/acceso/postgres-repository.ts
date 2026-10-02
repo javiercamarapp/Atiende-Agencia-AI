@@ -379,8 +379,20 @@ export class PostgresRentasAccesoRepository implements RentasAccesoRepository {
         fallidas += 1;
         continue;
       }
-      const { rows } = await this.db.query<{ aplicado: boolean }>(`select rentas.acceso_instruccion_aplicar_cifrado($1::uuid, $2, $3, $4, $5::int) as aplicado;`, [p.unidad_id, sobres[0], sobres[1], sobres[2], cipher.keyVersion]);
-      if (rows[0]?.aplicado === true) cifradas += 1;
+      // Una fila que la base rechaza (error de Postgres con SQLSTATE: CHECK, etc.) no aborta la tanda: SAVEPOINT por fila,
+      // la fila cuenta como fallida y queda en claro para revision; el resto sigue.
+      const aplicado = await runWithSavepointFallback<boolean | null>({
+        session: this.db,
+        savepointName: "sp_acceso_cifrar_fila",
+        primary: async () => {
+          const { rows } = await this.db.query<{ aplicado: boolean }>(`select rentas.acceso_instruccion_aplicar_cifrado($1::uuid, $2, $3, $4, $5::int) as aplicado;`, [p.unidad_id, sobres[0], sobres[1], sobres[2], cipher.keyVersion]);
+          return rows[0]?.aplicado === true;
+        },
+        isRecoverable: (err) => typeof (err as { code?: unknown } | null)?.code === "string" && /^[0-9A-Z]{5}$/.test((err as { code: string }).code),
+        fallback: async () => null,
+      });
+      if (aplicado === null) fallidas += 1;
+      else if (aplicado) cifradas += 1;
     }
     return { disponible: true, cifradas, fallidas };
   }

@@ -167,6 +167,29 @@ describe("PostgresRentasAccesoRepository: la base solo recibe sobres", () => {
     expect(JSON.stringify(aplicar.params)).not.toContain(CODIGO);
   });
 
+  it("barrido: una fila que la base rechaza (23514) cuenta como fallida bajo SAVEPOINT y las demas se cifran (tanda no abortada)", async () => {
+    const U2 = "55555555-5555-4555-8555-555555555555";
+    let n = 0;
+    const db = new AbortAwareFakeSession([
+      { match: /acceso_instruccion_pendientes_cifrar/, respond: () => [
+        { unidad_id: U, property_id: P, direccion_exacta: "Calle 1", codigo_acceso: "12", instrucciones: "ok" },
+        { unidad_id: U2, property_id: P, direccion_exacta: "Calle 2", codigo_acceso: "7", instrucciones: null },
+      ] },
+      { match: /acceso_instruccion_aplicar_cifrado/, respond: () => (++n === 1 ? Object.assign(new Error("check violation"), { code: "23514" }) : [{ aplicado: true }]) },
+    ]);
+    const r = await new PostgresRentasAccesoRepository(db, createAccesoCipher(KEY)).cifrarPendientes(10);
+    expect(r).toEqual({ disponible: true, cifradas: 1, fallidas: 1 });
+    expect(db.calls.filter((c) => /rollback to savepoint sp_acceso_cifrar_fila/i.test(c))).toHaveLength(1);
+  });
+
+  it("barrido: filas heredadas con codigo de 1 y 2 caracteres hacen ida y vuelta y se cifran (fallidas: 0)", async () => {
+    const { db } = sesionGrabadora([
+      { match: /acceso_instruccion_pendientes_cifrar/, rows: [{ unidad_id: U, property_id: P, direccion_exacta: "x", codigo_acceso: "12", instrucciones: "ok" }, { unidad_id: U, property_id: P, direccion_exacta: "y", codigo_acceso: "7", instrucciones: null }] },
+      { match: /acceso_instruccion_aplicar_cifrado/, rows: [{ aplicado: true }] },
+    ]);
+    expect(await new PostgresRentasAccesoRepository(db, createAccesoCipher(KEY)).cifrarPendientes(10)).toEqual({ disponible: true, cifradas: 2, fallidas: 0 });
+  });
+
   it("barrido contra una base sin migrar: disponible:false y la sesion sigue utilizable", async () => {
     const db = new AbortAwareFakeSession([
       { match: /acceso_instruccion_pendientes_cifrar/, respond: () => Object.assign(new Error("function rentas.acceso_instruccion_pendientes_cifrar(integer) does not exist"), { code: "42883" }) },
