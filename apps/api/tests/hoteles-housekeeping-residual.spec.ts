@@ -103,6 +103,9 @@ describe("fotos de inspeccion", () => {
     expect((await s.call("POST", `/tareas/${taskId}/fotos`, s.ctx.staff.housekeeping.token, { imagen: SVG_B64 })).status).toBe(400);
     expect((await s.call("POST", `/tareas/${taskId}/fotos`, s.ctx.staff.housekeeping.token, { imagen: "###" })).status).toBe(400);
     expect((await s.call("POST", `/tareas/${taskId}/fotos`, s.ctx.staff.fnb.token, { imagen: PNG_B64 })).status).toBe(403);
+    for (const cuerpo of [null, [], "texto"]) {
+      expect((await s.call("POST", `/tareas/${taskId}/fotos`, s.ctx.staff.housekeeping.token, cuerpo)).status).toBe(400);
+    }
     expect((await s.call("POST", `/tareas/${randomUUID()}/fotos`, s.ctx.staff.housekeeping.token, { imagen: PNG_B64 })).status).toBe(404);
   });
 
@@ -158,6 +161,13 @@ describe("conteo de blancos", () => {
 });
 
 describe("opt-out de limpieza", () => {
+  it("un cuerpo JSON que no es objeto (null, arreglo, texto) responde 400, nunca 500", async () => {
+    const s = await setup();
+    for (const cuerpo of [null, [], "texto"]) {
+      expect((await s.call("POST", "/opt-out", s.ctx.staff.frontdesk.token, cuerpo)).status).toBe(400);
+    }
+  });
+
   it("registra, cancela la estancia pendiente, impide crearla de nuevo, generar el dia la omite y se puede revertir", async () => {
     const s = await setup();
     const estancia = await newTask(s, s.roomA, "estancia");

@@ -190,7 +190,8 @@ export function registerHousekeepingResidualRoutes(app: Hono<CoreAuthHonoEnv>, d
 
   app.post("/hoteles/:propertyId/housekeeping/tareas/:taskId/fotos", async (c) => {
     assertVerticalRole(c, HOUSEKEEPING_TASK_ROLES);
-    const raw = await readJsonCapped<Record<string, unknown>>(c.req.raw, PHOTO_BODY_MAX_BYTES);
+    const raw = await readJsonCapped<Record<string, unknown> | null>(c.req.raw, PHOTO_BODY_MAX_BYTES);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo invalido: se esperaba un objeto.");
     const task = await taskOr404(c);
     if (!actorMayOperateTask(c.get("verticalRole") ?? "", c.get("userId"), task.assignedTo)) {
       throw Errors.forbidden("Solo puedes subir fotos de tareas asignadas a ti o sin asignar.");
@@ -268,7 +269,8 @@ export function registerHousekeepingResidualRoutes(app: Hono<CoreAuthHonoEnv>, d
 
   app.post("/hoteles/:propertyId/housekeeping/opt-out", async (c) => {
     assertVerticalRole(c, HOUSEKEEPING_TASK_ROLES);
-    const raw = (await smallBody(c)) as Record<string, unknown>;
+    const raw = await smallBody(c);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Errors.validation("Cuerpo invalido: se esperaba un objeto.");
     const roomId = h.requireUuid(raw.roomId, "roomId");
     const origen = raw.origen === undefined ? "recepcion" : raw.origen;
     if (!(STAFF_OPT_OUT_SOURCES as readonly unknown[]).includes(origen)) throw Errors.validation(`origen: se esperaba ${STAFF_OPT_OUT_SOURCES.join("|")}.`);
