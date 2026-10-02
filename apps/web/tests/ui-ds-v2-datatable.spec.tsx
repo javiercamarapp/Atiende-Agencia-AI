@@ -271,3 +271,13 @@ describe("DataTable — vista de tarjetas (movil)", () => {
     }
   });
 });
+
+describe("DataTable — atributosFila (ganchos data-* estables)", () => {
+  it("pone los data-* de cada fila en la tabla y en la vista de tarjetas", () => {
+    const c = montar({ atributosFila: (r) => ({ "data-reserva": r.id }) });
+    expect([...c.querySelectorAll("tbody tr")].map((tr) => tr.getAttribute("data-reserva"))).toEqual(["r1", "r2", "r3", "r4"]);
+    rendered!.unmount();
+    const t = montar({ vista: "tarjetas", atributosFila: (r) => ({ "data-reserva": r.id }) });
+    expect([...t.querySelectorAll("ul > li[data-reserva]")].map((li) => li.getAttribute("data-reserva"))).toEqual(["r1", "r2", "r3", "r4"]);
+  });
+});

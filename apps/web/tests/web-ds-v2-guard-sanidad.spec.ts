@@ -32,6 +32,9 @@ const CASOS: ReadonlyArray<{ regla: string; viola: string; limpio: string; ruta?
   { regla: "tokens heredados", viola: '<div className="shadow-glow" />', limpio: '<div className="shadow-card" />' },
   { regla: "variantes de Button", viola: '<Button variant="hero">a</Button>', limpio: '<Button variant="default">a</Button>' },
   { regla: "variantes de Button", viola: "<Button variant={'gold'}>a</Button>", limpio: '<Button variant="outline">a</Button>' },
+  { regla: "Table a mano en restaurantes", viola: "<Table><TableBody /></Table>", limpio: "<DataTable />", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "AlertDialog local en restaurantes", viola: "<AlertDialog open>x</AlertDialog>", limpio: "const { confirmar, dialogo } = useConfirm();", ruta: "verticals/restaurantes/pages/Y.tsx" },
+  { regla: "Guardando a mano en restaurantes", viola: '<Button>{saving ? "Guardando…" : "Guardar"}</Button>', limpio: "<Button loading={saving}>Guardar</Button>", ruta: "verticals/restaurantes/pages/Y.tsx" },
 ];
 
 const porRegla = (prefijo: string) => {
@@ -54,6 +57,12 @@ describe("guard DS v2 — sanidad por regla (cada regla falla ante su violacion)
       expect(infractores([fuente(c.limpio, c.ruta)], regla)).toEqual([]);
     });
   }
+
+  it("las reglas de trinquete de restaurantes no aplican a otras zonas", () => {
+    for (const prefijo of ["Table a mano en restaurantes", "AlertDialog local en restaurantes", "Guardando a mano en restaurantes"]) {
+      expect(infractores([fuente("<Table /> <AlertDialog /> {'Guardando…'}", "verticals/hoteles/pages/Y.tsx")], porRegla(prefijo))).toEqual([]);
+    }
+  });
 
   it("las reglas soloPaginas ignoran archivos fuera de pages/", () => {
     const regla = porRegla("formatMoney local");
