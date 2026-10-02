@@ -108,6 +108,5 @@ export const rutasComunes: readonly Ruta[] = [
       return { ok: true, unreadCount: noLeidas(todas) };
     } },
   { metodo: "GET", patron: "/despachos/:id/chat-datos/estado", manejador: ESTADO_CHAT },
-  { metodo: "GET", patron: "/licitaciones/:id/chat-datos/estado", manejador: ESTADO_CHAT },
   { metodo: "GET", patron: "/citas/:id/chat-datos/estado", manejador: ESTADO_CHAT },
 ];
