@@ -72,6 +72,7 @@ export {
   STAFF_INVITE_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
   ACCESO_HUESPED_ROLES,
+  PRIVACIDAD_ROLES,
   FINANZAS_ESCRITURA_ROLES,
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
@@ -395,3 +396,6 @@ export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from ".
 
 // ---- Rn-26: Resumen operativo (agregados sin PII) ----
 export * from "./resumen/index.ts";
+
+// ---- Rn-07: solicitudes ARCO propias de rentas (migracion 028) ----
+export * from "./privacidad/index.ts";
