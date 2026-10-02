@@ -14,6 +14,13 @@ const ORDENES = [
   { id: "ord-0999", propertyId: PROP.id, branch: PROP.nombre, customerId: "cli-1", customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 143, status: "completado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], source: "voice", notes: null, paymentMethod: "efectivo", createdAt: "2026-09-29T20:10:00.000Z", assignedRepartidorId: null, estimatedDeliveryAt: null, incidentNote: null, canal: "domicilio", propina: null, horaRecogida: null },
 ];
 
+// Entregas asignadas al repartidor (GET/PATCH repartidor/orders). Forma = RepartidorOrder de lib/repartidor-client.ts.
+const ENTREGAS = [
+  { id: "ent-2001", propertyId: PROP.id, branch: PROP.nombre, customerName: "Marisol Pech", customerPhone: "+529995550101", customerAddress: "Calle 60 #412, Centro", total: 286, status: "preparando", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 2 }, { id: "p-2", name: "Horchata", price: 48, quantity: 2 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null, incidentNote: null, createdAt: "2026-09-30T18:20:00.000Z" },
+  { id: "ent-2002", propertyId: PROP.id, branch: PROP.nombre, customerName: "Jorge Canul", customerPhone: "+529995550102", customerAddress: "Calle 45 #210, Garcia Gineres", total: 190, status: "en_camino", items: [{ id: "p-3", name: "Cochinita pibil (torta)", price: 95, quantity: 2 }], notes: "Sin cebolla", paymentMethod: "tarjeta", estimatedDeliveryAt: null, incidentNote: null, createdAt: "2026-09-30T18:05:00.000Z" },
+  { id: "ent-1998", propertyId: PROP.id, branch: PROP.nombre, customerName: "Lucia Xool", customerPhone: "+529995550103", customerAddress: "Calle 21 #88, Itzimna", total: 143, status: "entregado", items: [{ id: "p-1", name: "Tacos al pastor (orden)", price: 95, quantity: 1 }, { id: "p-2", name: "Horchata", price: 48, quantity: 1 }], notes: null, paymentMethod: "efectivo", estimatedDeliveryAt: null, incidentNote: null, createdAt: "2026-09-29T20:10:00.000Z" },
+];
+
 const MIEMBROS = [
   { id: "usr-owner", email: "owner.restaurantes@example.test", fullName: "Owner restaurantes", verticalRole: "owner", propertyIds: null },
   { id: "usr-1", email: "lucia.xool@example.test", fullName: "Lucia Xool", verticalRole: "staff", propertyIds: null },
@@ -156,6 +163,18 @@ export const rutasRestaurantes: readonly Ruta[] = [
       if (!m) return fallo(404, "Ese miembro no existe");
       m.verticalRole = String(((p.cuerpo ?? {}) as { verticalRole?: string }).verticalRole ?? m.verticalRole);
       return m;
+    } },
+  { metodo: "GET", patron: "/v1/restaurantes/:id/repartidor/orders", manejador: (p) => ({ orders: p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS)) }) },
+  { metodo: "PATCH", patron: "/v1/restaurantes/:id/repartidor/orders/:orderId/status", manejador: (p) => {
+      const entregas = p.estado.obtener("rest.entregas", () => structuredClone(ENTREGAS));
+      const e = entregas.find((x) => x.id === p.params.orderId);
+      if (!e) return fallo(404, "Ese pedido no existe");
+      const cuerpo = (p.cuerpo ?? {}) as { status?: string; incidentNote?: string };
+      if (!cuerpo.status) return fallo(400, "Estado requerido");
+      if (cuerpo.status === "problema" && !cuerpo.incidentNote?.trim()) return fallo(400, "La nota de incidencia es obligatoria");
+      e.status = cuerpo.status;
+      if (cuerpo.incidentNote) e.incidentNote = cuerpo.incidentNote;
+      return { order: e };
     } },
 ];
 
