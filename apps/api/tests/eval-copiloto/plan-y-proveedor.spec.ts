@@ -19,7 +19,8 @@ import {
 import { ALLOWED_PROVIDER_HOSTS } from "../../src/production/llm-models.js";
 import { VERTICALES_EVAL, mundoRepeticion } from "../../../../scripts/eval-copiloto/mundos.ts";
 import { leerCongelado } from "../../../../scripts/eval-copiloto/congelado.ts";
-import { cargarCasos, construirPlan, ejecutarPlan, finalistasDe, guionOro, leerLlave, parsearArgs, proyeccion, TOPE_HUMO_USD, TOPE_TOTAL_USD } from "../../../../scripts/eval-copiloto/ejecutar.ts";
+import { cargarCasos, construirPlan, ejecutarPlan, finalistasDe, guionOro, leerLlave, parsearArgs, proyeccion, TOPE_HUMO_USD,
+  TOPE_PILOTO_USD, TOPE_TOTAL_USD } from "../../../../scripts/eval-copiloto/ejecutar.ts";
 
 const { casos, congelados } = cargarCasos();
 const tmp = mkdtempSync(path.join(tmpdir(), "eval-copiloto-"));
@@ -67,14 +68,15 @@ describe("plan de corrida (fases)", () => {
           { modelo: "openai/gpt-6-luna", evaluados: 180 },
           { modelo: "deepseek/deepseek-v4.1-flash", evaluados: 180 },
           { modelo: "qwen/qwen3.7-flash", evaluados: 0 },
-          { modelo: "meta/muse-spark-1.3-contributor", evaluados: 180 },
+          { modelo: "meta/muse-spark-1.3-contributor", evaluados: 180 }, // no elegible: nunca finalista aunque traiga casos
+          { modelo: "meta-llama/llama-4-maverick", evaluados: 180 },
           { modelo: "openai/gpt-5-nano", evaluados: 180 },
         ],
       },
     };
     const f = path.join(tmp, "piloto.json");
     writeFileSync(f, JSON.stringify(reporte));
-    expect(finalistasDe(f, 3).map((m) => m.id)).toEqual(["openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash", "meta/muse-spark-1.3-contributor"]);
+    expect(finalistasDe(f, 3).map((m) => m.id)).toEqual(["openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash"]);
     const p = plan("--fase=barrido", `--finalistas-de=${f}`, "--top=2");
     expect(p.k).toBe(3);
     expect(p.casos).toHaveLength(360);
@@ -83,6 +85,9 @@ describe("plan de corrida (fases)", () => {
 
   it("el tope de gasto nunca pasa del tope total del plan (45 USD) y cfo falla honesto sin casos CFO", () => {
     expect(() => plan("--fase=piloto", "--max-usd=60")).toThrow(/entre/);
+    expect(plan("--fase=piloto").maxUsd).toBe(TOPE_PILOTO_USD);
+    expect(plan("--fase=piloto", "--max-usd=12").maxUsd).toBe(12);
+    expect(() => plan("--fase=piloto", "--max-usd=12.5")).toThrow(/piloto no puede pasar de 12/);
     expect(() => plan("--fase=cfo")).toThrow(/no hay casos CFO/);
     expect(() => plan("--fase=piloto", "--modelos=un/modelo-inventado")).toThrow(/candidatos/);
     expect(() => plan("--fase=piloto", "--modelos=qwen/qwen3.7-flash")).toThrow(/no elegible.*Alibaba/);

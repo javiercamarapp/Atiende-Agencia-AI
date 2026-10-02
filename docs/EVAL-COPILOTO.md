@@ -126,14 +126,17 @@ gpt-oss-120b, Qwen 3.7 Flash, Qwen3-235B, Mistral Small 3.2, Llama 4 Maverick), 
 nunca finalistas), Sonnet 5.5 (solo subconjunto CFO y analista del bake-off, **jamás juez**), Gemini 3.8 Flash (solo bake-off) y
 los 13 baratos restantes de `work/eval-candidatos-baratos.md`. Todos se llaman con `data_collection: deny`, `zdr: true`,
 `require_parameters: true`, sin fallbacks propios de OpenRouter y una lista `only` de hosts de EE.UU. verificada contra la API
-pública de OpenRouter (2-oct-2026) **dentro de la allowlist del gateway** (`HOSTS_PERMITIDOS_GATEWAY`, idéntica a
-`ALLOWED_PROVIDER_HOSTS` de `apps/api/src/production/llm-models.ts`; una prueba lo exige). La única excepción es Muse Spark 1.3: su
-único host (Meta) no ofrece ZDR, así que se llama con `deny` y sin `zdr`, igual que el gateway (`VERIFIED_MODEL_HOSTS`).
+pública de OpenRouter (1-oct-2026) **dentro de la allowlist del gateway** (`HOSTS_PERMITIDOS_GATEWAY`, idéntica a
+`ALLOWED_PROVIDER_HOSTS` de `apps/api/src/production/llm-models.ts`; una prueba lo exige). La única excepción de ruta es Muse Spark 1.3: su
+único host (Meta) no ofrece ZDR, así que se llama con `deny` y sin `zdr`, igual que el gateway (`VERIFIED_MODEL_HOSTS`); su variante
+`-contributor` del eval hoy no tiene ruta y está marcada no elegible.
 
 **Modelos no elegibles.** Un candidato sin proveedor de EE.UU. permitido con ZDR hoy lleva `noElegible` con su motivo: no se corre,
 `--modelos=` lo rechaza con un error claro y el reporte (JSON `noElegibles` y sección "Modelos no elegibles" del Markdown) lo lista;
 nunca se omite en silencio. Hoy son: Qwen 3.7 Flash (solo Alibaba, sin ZDR: 404), Grok 4.3 (su único host, xAI, no está en la
-allowlist del gateway), GLM-4.7 Flash, Qwen 3.5 Flash y Seed 2.0 mini (sin host permitido con ZDR). Re-verificar con
+allowlist del gateway), GLM-4.7 Flash, Qwen 3.5 Flash y Seed 2.0 mini (sin host permitido con ZDR), y desde el piloto del 1-oct-2026
+Muse Spark 1.3 (contributor) y Llama 4 Maverick (OpenRouter respondió 404 por la política de datos en los 3 intentos; la política
+no se relajó). Un finalista del barrido nunca puede ser un no elegible aunque su reporte traiga casos. Re-verificar con
 `node scripts/check-llm-us-hosts.mjs <modelo>`; al aparecer un proveedor basta quitar `noElegible` y fijar su `only`. Un modelo
 elegible cuya ruta deje de responder (404 "No endpoints found") sigue descartándose tras 3 fallas seguidas. Un 401/402/403 aborta
 toda la corrida.
@@ -152,8 +155,8 @@ real salió ~3 veces más barato):
 | Corrida | Casos | K | Modelos | Proyección |
 |---|---|---|---|---|
 | Humo | 12 | 1 | Luna | 0.015 USD (real: 0.003 a 0.005) |
-| Piloto | 180 | 1 | 25 candidatos | 10.1 USD (de ellos Haiku 2.25 y Grok 2.21 de calibración) |
-| Barrido | 360 | 3 | Luna + DeepSeek V4.1 Flash + DeepSeek V4 Pro + Muse Spark | 5.4 USD |
+| Piloto | 180 | 1 | candidatos elegibles de la fase piloto | tope duro 12 USD (`--max-usd` mayor se rechaza); el piloto real del 1-oct-2026 costó 2.07 USD |
+| Barrido | 360 | 3 | Luna + DeepSeek V4.1 Flash + DeepSeek V4 Pro (Muse Spark 1.3 contributor ya no es elegible; la variante sin sufijo sigue en la escalera de produccion) | ~4.3 USD (proyección) |
 | Bake-off | 40 tareas | 1 | 4 brazos | 4.0 USD |
 
 Total con holgura < 45 USD (saldo de OpenRouter ~59.68 USD). Esta PR **no** corrió el piloto ni el barrido.

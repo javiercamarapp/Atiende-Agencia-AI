@@ -49,6 +49,10 @@ export interface ResultadoFeedLote {
   readonly resultado: ResultadoImportarCiclo["resultado"] | "error_interno";
   readonly eventosAplicados: number;
   readonly conflictosDetectados: number;
+  /** Reservas creadas por el ciclo (0 si el feed fallo). Con `organizationId`/`propertyId` alimenta los avisos in-app del cron. */
+  readonly reservasNuevas: number;
+  readonly organizationId: string;
+  readonly propertyId: string;
   readonly error?: string;
 }
 
@@ -71,12 +75,12 @@ async function procesarFeed(deps: DepsLoteSync, feed: FeedExternoRecord): Promis
       const zonaHorariaPropiedad = await syncRepo.findZonaHorariaPropiedad(feed.propertyId);
       return ejecutarCicloImportacion({ db, syncRepo, port: deps.port, feed, zonaHorariaPropiedad });
     });
-    return { fila: { feedId: feed.id, unidadId: feed.unidadId, canal: feed.canalCodigo, resultado: ciclo.resultado, eventosAplicados: ciclo.eventosAplicados, conflictosDetectados: ciclo.conflictosDetectados }, ciclo };
+    return { fila: { feedId: feed.id, unidadId: feed.unidadId, canal: feed.canalCodigo, resultado: ciclo.resultado, eventosAplicados: ciclo.eventosAplicados, conflictosDetectados: ciclo.conflictosDetectados, reservasNuevas: ciclo.reservasNuevas, organizationId: feed.organizationId, propertyId: feed.propertyId }, ciclo };
   } catch (err) {
     // Un fallo real de base de datos procesando UN feed nunca detiene el resto del lote:
     // cada feed tiene su propia transacción, así que esto es un ROLLBACK real de solo él.
     return {
-      fila: { feedId: feed.id, unidadId: feed.unidadId, canal: feed.canalCodigo, resultado: "error_interno", eventosAplicados: 0, conflictosDetectados: 0, error: err instanceof Error ? err.message.slice(0, 500) : "error desconocido" },
+      fila: { feedId: feed.id, unidadId: feed.unidadId, canal: feed.canalCodigo, resultado: "error_interno", eventosAplicados: 0, conflictosDetectados: 0, reservasNuevas: 0, organizationId: feed.organizationId, propertyId: feed.propertyId, error: err instanceof Error ? err.message.slice(0, 500) : "error desconocido" },
       ciclo: null,
     };
   }

@@ -20,6 +20,7 @@ import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-c
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
+import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 import { LICITACIONES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -78,6 +79,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
+        onUso: logUsoDataChat(c, "licitaciones"),
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "licitaciones", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
     );

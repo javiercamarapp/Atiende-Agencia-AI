@@ -5,7 +5,7 @@
 // `runWithSavepointFallback`: las lecturas degradan a vacio honesto (`disponible: false`), las escrituras a
 // `AgentesUnavailableError` (503). El SQL es el MISMO que ejercita scripts/verify-hoteles-agentes-aprobaciones.
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { DEFAULT_GUARDRAILS, defaultPolicy } from "./guardrails.ts";
 import type { AgentesRepository, UsageDelta } from "./repository.ts";
 import {
@@ -341,12 +341,32 @@ export class PostgresAgentesRepository implements AgentesRepository {
   }
 
   async proposeAction(i: ProposeActionInput, _actor: Actor): Promise<ApprovalRecord> {
-    return this.write("proposeAction", async () => {
+    const aprobacion = await this.write("proposeAction", async () => {
       const { rows } = await this.db.query<ApprovalRow>(
         `select ${APPROVAL_COLS} from hoteles.propose_agent_action($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11::timestamptz);`,
         [i.propertyId, i.agentKey, i.actionType, i.summary, JSON.stringify(i.payload), i.amountCents, i.percent, i.recipients, i.contentText, i.idempotencyKey, (i.now ?? new Date()).toISOString()],
       );
       return mapApproval(rows[0]!);
+    });
+    // Notificacion in-app (productor compartido, `hoteles.aprobacion.pendiente`): una solicitud que quedo esperando una decision humana es
+    // "una aprobacion pendiente". Una por solicitud (clave = id: la propuesta idempotente que devuelve la misma fila no vuelve a avisar), sin PII
+    // (ni resumen ni contenido viajan en el aviso). Las bloqueadas por guardrail o ejecutadas automaticamente no piden decision y no avisan.
+    // Best-effort con SAVEPOINT: nunca rompe la propuesta ya registrada ni aborta la transaccion del request contra la base sin migrar.
+    if (aprobacion.status === "pendiente") await this.avisarAprobacionPendiente(aprobacion);
+    return aprobacion;
+  }
+
+  private async avisarAprobacionPendiente(aprobacion: ApprovalRecord): Promise<void> {
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ organization_id: string }>(`select organization_id from core.property where id = $1::uuid;`, [aprobacion.propertyId]);
+        const organizationId = rows[0]?.organization_id;
+        if (!organizationId) return;
+        await emitirNotificacion(this.db, { evento: "hoteles.aprobacion.pendiente", organizationId, propertyId: aprobacion.propertyId, clave: aprobacion.id, entidadTipo: "agent_approval_request", entidadId: aprobacion.id });
+      },
+      isRecoverable: () => true,
+      fallback: async () => undefined,
     });
   }
 

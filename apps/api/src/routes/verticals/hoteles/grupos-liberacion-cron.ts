@@ -9,6 +9,7 @@
 // acepta GET/POST con el secreto interno.
 import { Hono } from "hono";
 import { GruposUnavailableError, PostgresGruposRepository, type GruposRepository } from "@atiende/domain-hoteles";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -38,7 +39,15 @@ export async function runGruposLiberacion(deps: AppDeps, now: Date = new Date())
   for (const p of properties) {
     const base = { organizationId: p.organizationId, propertyId: p.propertyId };
     try {
-      const released = await deps.engine.withAppSession({ userId: null }, (db) => repoOf(db).releaseDueBlocks(p.propertyId, now));
+      const released = await deps.engine.withAppSession({ userId: null }, async (db) => {
+        const liberados = await repoOf(db).releaseDueBlocks(p.propertyId, now);
+        // Aviso in-app (campana) a gerencia/reservaciones: se liberaron bloqueos de grupo por llegar su fecha de corte. Uno por property
+        // por dia (clave de dedupe), en un SAVEPOINT (emitirNotificacion): contra la base sin migrar no revierte la liberacion.
+        if (liberados.length > 0) {
+          await emitirNotificacion(db, { evento: "hoteles.grupo.liberado", organizationId: p.organizationId, propertyId: p.propertyId, clave: `${p.propertyId}:${now.toISOString().slice(0, 10)}`, parametros: { cantidad: liberados.length } });
+        }
+        return liberados;
+      });
       results.push({
         ...base, omitida: null, bloqueosLiberados: released.length, cuartosNocheLiberados: released.reduce((n, r) => n + r.releasedRoomNights, 0), error: null,
       });

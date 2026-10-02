@@ -25,6 +25,7 @@ import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
+import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
 const PHONE_NUMBER_ID_RE = /^\d{5,32}$/;
 const PROPINA_POLITICAS: readonly PropinaPolitica[] = ["nunca", "siempre", "solo_tarjeta"];
@@ -233,7 +234,7 @@ export function restaurantesAdminModeloPmRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     let guardada: BranchPolicy;
     try {
-      guardada = await repo.upsertBranchPolicy(organizationId, branch.propertyId, nueva);
+      guardada = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchPolicy(organizationId, branch.propertyId, nueva));
     } catch (err) {
       return asUnavailable(err);
     }

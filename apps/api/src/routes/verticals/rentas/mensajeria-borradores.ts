@@ -29,6 +29,7 @@ import {
   validarMensajeSaliente,
 } from "@atiende/domain-rentas";
 import type { ActorAgente, BorradorEstado, BorradorRecord, ContextoBorrador, RentasVerticalRole, ResultadoBorrador } from "@atiende/domain-rentas";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -157,6 +158,10 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
     }
 
     const borrador = await mensajeriaRepo.insertBorrador({ conversacionId, mensajeEntranteId, canal: conversacion.canal, texto: generado.texto, generadoPor });
+    // Aviso in-app (campana): un borrador SIEMPRE nace 'pendiente_aprobacion' y nada sale al huesped sin decision humana, asi que cada
+    // uno es "una aprobacion pendiente". Uno por borrador (clave = id), sin PII (ni el texto del huesped ni el del borrador viajan).
+    // Dentro de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no aborta la transaccion del request.
+    await emitirNotificacion(db, { evento: "rentas.aprobacion.pendiente", organizationId, propertyId, clave: borrador.id, entidadTipo: "borrador_mensaje", entidadId: borrador.id });
 
     logEvent(c, "info", "rentas_borrador_generado", {
       borradorId: borrador.id,

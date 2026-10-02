@@ -35,6 +35,7 @@ import {
 import type { CarteraRepository, CategoriaContable, DatosCfdiDespachos, DespachosRepository, DireccionCfdi, EfosConsulta, EfosSituacion, FacturaLigable, ImpuestoCfdiInput, ImpuestoCfdiRecord, InvoiceRecord } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { CfdiXmlParseError, parseCfdiXml, parseComplementoPagoXml } from "@atiende/billing";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -379,6 +380,17 @@ export async function ingestarXmlCfdiDespachos(
   return ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar", { cartera, impuestos });
 }
 
+/**
+ * Aviso in-app (campana) a contadores y auditores: el CFDI recien ingerido tiene un emisor que figura HOY como presunto o definitivo en
+ * la lista 69-B del SAT (los desvirtuados y con sentencia favorable no alertan). Uno por hallazgo (clave = id del CFDI), sin PII (ni el
+ * RFC ni el nombre del emisor viajan en el aviso). Dentro de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no aborta la
+ * transaccion que acaba de ingerir el CFDI.
+ */
+async function avisarEmisorEfos(db: TenantDbSession, organizationId: string, propertyId: string, invoice: InvoiceRecord, efos: EfosIngesta): Promise<void> {
+  if (efos.situacion !== "presunto" && efos.situacion !== "definitivo") return;
+  await emitirNotificacion(db, { evento: "despachos.efos.alerta", organizationId, propertyId, clave: invoice.id, entidadTipo: "invoice", entidadId: invoice.id });
+}
+
 export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const carteraDe = (db: TenantDbSession): CarteraRepository => (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db));
@@ -395,6 +407,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const { categoria, ...datos } = parseIngestaBody(raw);
 
     const { invoice, efos } = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria, { cartera: carteraDe(c.get("db")) });
+    await avisarEmisorEfos(c.get("db"), organizationId, propertyId, invoice, efos);
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
@@ -415,6 +428,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const xml = await readTextCapped(c.req.raw, MAX_CFDI_XML_BYTES);
 
     const { invoice, efos } = await ingestarXmlCfdiDespachos(repo, organizationId, propertyId, xml, carteraDe(c.get("db")));
+    await avisarEmisorEfos(c.get("db"), organizationId, propertyId, invoice, efos);
     return c.json({ ...serializeInvoice(invoice), efos }, 201);
   });
 
@@ -457,12 +471,17 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         metodoPago: inv.metodoPago ?? null,
       });
     }
+    let analisis;
     try {
-      return c.json(analizarComplementoPago(rep, raw.rfcContribuyente, facturas));
+      analisis = analizarComplementoPago(rep, raw.rfcContribuyente, facturas);
     } catch (err) {
       if (err instanceof RepRfcAjenoError) throw Errors.validation(err.message);
       throw err;
     }
+    // Este analisis es SIN estado (no guarda nada) y lo pueden llamar roles de solo lectura/auditor con un XML cualquiera: por eso NO
+    // emite `despachos.rep.incoherente` (llenaria la campana de owner/admin con XML arbitrario). El evento queda catalogado como
+    // pendiente hasta que el REP se persista; ahi se emite, una vez por REP guardado.
+    return c.json(analisis);
   });
 
   // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero

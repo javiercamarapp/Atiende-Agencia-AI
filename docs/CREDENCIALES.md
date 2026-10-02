@@ -164,6 +164,30 @@ extracción de licitaciones cae a solo reglas deterministas.
 | `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
 
+**Modelos baratos del Copiloto (CHAT-05).** No hay variables nuevas: el modelo barato del chat (`*:data_chat`) y el escalado de la
+cascada de cifras (`*:data_chat_retry`) se eligen con `LLM_MODELS_JSON` (validado: solo proveedores de EE.UU. con ZDR,
+`data_collection: deny`, `require_parameters`; una ruta inválida se ignora con el error `llm_models_json_invalid` y ese rol conserva
+su escalera actual). **Sin `LLM_MODELS_JSON` el comportamiento no cambia**: Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite ->
+Muse Spark 1.3 y, para el reintento, DeepSeek V4 Pro. Candidatos del piloto del 1-oct-2026 (aún sin modelo que pase las puertas; no
+se cambió el default): chat DeepSeek V4.1 Flash y GPT-6 Luna, respaldo Qwen3-235B-A22B y Mistral Small 3.2, reintento DeepSeek V4 Pro.
+No elegibles hoy (sin ruta EE.UU./ZDR, el validador los rechaza): Qwen 3.7 Flash, Muse Spark 1.3 (contributor) y Llama 4 Maverick.
+Ejemplo para el piloto (se aplica pegándolo en Vercel y redeploy de configuración; revertir = borrar la variable):
+
+```json
+{"roles":{
+  "*:data_chat":{"models":[
+    {"model":"deepseek/deepseek-v4.1-flash","reasoningEffort":"low","temperature":"omit","minMaxTokens":1500},
+    {"model":"openai/gpt-6-luna","reasoningEffort":"low","temperature":"omit","minMaxTokens":1500},
+    {"model":"mistralai/mistral-small-3.2-24b-instruct","temperature":"omit"}],
+   "routing":{"allowFallbacks":true}},
+  "*:data_chat_retry":{"models":[
+    {"model":"deepseek/deepseek-v4-pro","reasoningEffort":"medium","temperature":"omit","minMaxTokens":3000}]}}}
+```
+
+Con Mistral Small 3.2 solo DeepInfra sirve con herramientas (Parasail no las lista): `require_parameters` excluye a Parasail del chat.
+Antes de cambiar el primario, corre el eval propio (`docs/EVAL-COPILOTO.md`); la reserva de presupuesto usa la tabla de precios por modelo
+(`packages/agent-core/src/gateway/prices.ts`) y el tope de salida real del escalón.
+
 El proveedor directo de Anthropic (`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`) se
 **retiró**: ignoraba las herramientas (`tools`) y no soportaba mensajes `role:tool`.
 Los modelos Anthropic (Claude Sonnet 5.5 del copiloto de superadmin) pasan ahora por

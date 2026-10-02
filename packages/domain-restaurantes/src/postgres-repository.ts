@@ -10,7 +10,7 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
@@ -882,7 +882,15 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
           idempotencyKey,
         ]),
       );
-      return mapOrder(rows[0]!.create_order_idempotent);
+      const creado = mapOrder(rows[0]!.create_order_idempotent);
+      // Notificacion in-app (productor compartido, `restaurantes.pedido.nuevo`): un pedido que entra por el agente de WhatsApp/voz o
+      // el checkout publico es "algo nuevo que atender". Uno por pedido (clave = id: un reintento idempotente que devuelve el mismo
+      // pedido no vuelve a avisar), sin PII (titulo del catalogo), y los pedidos capturados por el propio staff (`admin`) no avisan.
+      // Dentro de un SAVEPOINT (emitirNotificacion): contra la base sin migrar no aborta la transaccion del request.
+      if (creado.source !== "admin") {
+        await emitirNotificacion(this.db, { evento: "restaurantes.pedido.nuevo", organizationId: creado.organizationId, propertyId: creado.propertyId, clave: creado.id, entidadTipo: "order", entidadId: creado.id });
+      }
+      return creado;
     } catch (err) {
       if (err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code === "PT409") {
         throw new OrderConflictError("Este intento de pedido ya fue procesado con datos diferentes. Revisa el pedido existente antes de crear otro.");
@@ -899,6 +907,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [input.organizationId, input.propertyId ?? null, input.customerName, input.customerPhone, input.reason ?? null, input.message ?? null, input.source],
     );
     const row = rows[0]!;
+    // Notificacion in-app (`restaurantes.callback.pendiente`): un contacto que el agente (voz o WhatsApp) dejo para devolver la
+    // llamada. Uno por solicitud (clave = id), sin PII (ni nombre ni telefono viajan en el aviso). SAVEPOINT en emitirNotificacion.
+    await emitirNotificacion(this.db, { evento: "restaurantes.callback.pendiente", organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: row.id, entidadTipo: "callback_request", entidadId: row.id });
     return { ...input, id: row.id, resolved: row.resolved, createdAt: row.created_at };
   }
 

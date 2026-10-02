@@ -114,10 +114,30 @@ export const VERIFIED_MODEL_HOSTS: Readonly<Record<string, VerifiedModelHosts>> 
     zdr: true,
     note: "DeepSeek V4 Pro: DeepInfra, Parasail y Azure (azure/us) con endpoint ZDR.",
   },
+  "openai/gpt-oss-120b": {
+    hosts: ["deepinfra", "baseten", "coreweave", "amazon-bedrock", "google-vertex"],
+    zdr: true,
+    note: "gpt-oss-120b: DeepInfra, Baseten, CoreWeave, Amazon Bedrock y Google Vertex con endpoint ZDR (1-oct-2026). OpenAI y Azure NO lo sirven, por eso no vale el default por autor.",
+  },
   "qwen/qwen3-235b-a22b-2507": {
     hosts: ["google-vertex", "parasail", "deepinfra"],
     zdr: true,
     note: "Qwen3-235B-A22B-2507: Google Vertex (us-south1), Parasail y DeepInfra con endpoint ZDR.",
+  },
+  "mistralai/mistral-small-3.2-24b-instruct": {
+    hosts: ["deepinfra", "parasail"],
+    zdr: true,
+    note: "Mistral Small 3.2 24B: DeepInfra y Parasail con endpoint ZDR (1-oct-2026). Con herramientas solo DeepInfra: Parasail no lista `tools`, y `require_parameters` lo excluye del chat.",
+  },
+  "meta-llama/llama-4-maverick": {
+    hosts: [],
+    zdr: false,
+    note: "Llama 4 Maverick: en el piloto del 1-oct-2026 OpenRouter respondio 404 (\"Every candidate endpoint was removed during routing\") con la politica de EE.UU. y ZDR; sin ruta verificada. Rechazado hasta que aparezca un proveedor de EE.UU. con ZDR.",
+  },
+  "meta/muse-spark-1.3-contributor": {
+    hosts: [],
+    zdr: false,
+    note: "Muse Spark 1.3 (contributor): en el piloto del 1-oct-2026 OpenRouter respondio 404 (\"No endpoints found matching your data policy (Paid model training)\"); sin ruta verificada. Rechazado (la variante sin sufijo, `meta/muse-spark-1.3`, es otra fila).",
   },
   "qwen/qwen3.7-flash": {
     hosts: [],

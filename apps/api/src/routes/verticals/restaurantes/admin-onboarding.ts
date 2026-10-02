@@ -1,5 +1,5 @@
 // R-33 -- GET /v1/restaurantes/:propertyId/admin/onboarding: checklist de onboarding de la organizacion, calculado con datos
-// reales (sucursales, menu, horarios, coordenadas, cobertura, numeros de WhatsApp, agente, pedidos). Solo lectura. owner/admin
+// reales (sucursales, menu, horarios, coordenadas, cobertura, numeros de WhatsApp, agente, pedidos). Solo lectura (el aviso de "listo" lo emite la escritura que cierra el checklist: ver onboarding-aviso.ts). owner/admin
 // (`STAFF_INVITE_ROLES`, como la configuracion); un staff acotado a una sucursal no ve el estado de toda la organizacion.
 //
 // Base sin migrar: el repositorio degrada con SAVEPOINT cada lectura a "sin configurar", asi que ningun punto se da por hecho
@@ -24,7 +24,8 @@ export function restaurantesAdminOnboardingRoutes(deps: AppDeps): Hono<CoreAuthH
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     if (scope !== null) throw Errors.forbidden("El checklist de onboarding es de toda la organización: requiere acceso a todas las sucursales.");
     c.header("Cache-Control", "no-store");
-    return c.json(await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId));
+    const checklist = await cargarOnboarding(deps.restaurantesRepo(c.get("db")), organizationId);
+    return c.json(checklist);
   });
 
   return app;
