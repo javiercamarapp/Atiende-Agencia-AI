@@ -266,13 +266,13 @@ select count(*) as optout_deberia_ser_1 from hoteles.cleaning_opt_out where room
 select public.verify_expect_error($q$insert into hoteles.cleaning_opt_out (property_id, room_id, opt_out_date) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000ab103', '2026-03-10')$q$, '23505');
 rollback;
 
-\echo '=== 17. revertir exige reverted_at (23514); con ella se puede volver a registrar el mismo dia ==='
+\echo '=== 17. revertir sella reverted_at/reverted_by en el servidor (040); despues se puede volver a registrar el mismo dia ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a03', true);
 insert into hoteles.cleaning_opt_out (property_id, room_id, opt_out_date) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000ab103', '2026-03-10');
-select public.verify_expect_error($q$update hoteles.cleaning_opt_out set status = 'revertido' where room_id = '00000000-0000-0000-0000-0000000ab103'$q$, '23514');
-update hoteles.cleaning_opt_out set status = 'revertido', reverted_by = '00000000-0000-0000-0000-0000000a0a03', reverted_at = now() where room_id = '00000000-0000-0000-0000-0000000ab103' and status = 'activo';
+update hoteles.cleaning_opt_out set status = 'revertido' where room_id = '00000000-0000-0000-0000-0000000ab103' and status = 'activo';
+select count(*) as revertido_sellado_deberia_ser_1 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103' and status = 'revertido' and reverted_at is not null and reverted_by = '00000000-0000-0000-0000-0000000a0a03';
 insert into hoteles.cleaning_opt_out (property_id, room_id, opt_out_date) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000ab103', '2026-03-10');
 select count(*) as historial_deberia_ser_2 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103';
 rollback;
@@ -421,4 +421,94 @@ end $$;
 rollback to savepoint sp_verify_linen_missing;
 release savepoint sp_verify_linen_missing;
 select count(*) as sesion_sigue_viva_deberia_ser_2 from hoteles.room where property_id = '00000000-0000-0000-0000-0000000a1a01';
+rollback;
+
+-- =============================================================================
+-- (h) Endurecimiento 040: autoria fijada por el servidor, opt-out revertido terminal, voz
+-- =============================================================================
+
+\echo '=== 29. autoria de config: el cliente manda OTRO updated_by (y updated_at falso) y se ignora: queda auth.uid() ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
+insert into hoteles.housekeeping_config (property_id, updated_by) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000a0a02');
+select count(*) as insert_updated_by_deberia_ser_1 from hoteles.housekeeping_config where property_id = '00000000-0000-0000-0000-0000000a1a01' and updated_by = '00000000-0000-0000-0000-0000000a0a01';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a02', true);
+update hoteles.housekeeping_config set shift_minutes = 300, updated_by = '00000000-0000-0000-0000-0000000a0a01', updated_at = '2001-01-01' where property_id = '00000000-0000-0000-0000-0000000a1a01';
+select count(*) as update_updated_by_deberia_ser_1 from hoteles.housekeeping_config where property_id = '00000000-0000-0000-0000-0000000a1a01' and updated_by = '00000000-0000-0000-0000-0000000a0a02' and updated_at > now() - interval '1 minute';
+rollback;
+
+\echo '=== 30. autoria de canal WhatsApp: updated_by ajeno ignorado en alta y en edicion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
+insert into hoteles.whatsapp_channel_config (property_id, phone_number_id, updated_by) values ('00000000-0000-0000-0000-0000000a1a01', '15550001234', '00000000-0000-0000-0000-0000000a0a02');
+select count(*) as alta_deberia_ser_1 from hoteles.whatsapp_channel_config where property_id = '00000000-0000-0000-0000-0000000a1a01' and updated_by = '00000000-0000-0000-0000-0000000a0a01';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a02', true);
+update hoteles.whatsapp_channel_config set enabled = false, updated_by = '00000000-0000-0000-0000-0000000a0a01', updated_at = '2001-01-01' where property_id = '00000000-0000-0000-0000-0000000a1a01';
+select count(*) as edicion_deberia_ser_1 from hoteles.whatsapp_channel_config where property_id = '00000000-0000-0000-0000-0000000a1a01' and updated_by = '00000000-0000-0000-0000-0000000a0a02' and updated_at > now() - interval '1 minute';
+rollback;
+
+\echo '=== 31. autoria de foto y de conteo: taken_by / counted_by ajenos ignorados; el conteo re-sella al corregir ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a05', true);
+insert into hoteles.housekeeping_task_photo (property_id, task_id, content_type, byte_size, image_data, taken_by) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000cc101', 'image/jpeg', 4, '\xffd8ffe0'::bytea, '00000000-0000-0000-0000-0000000a0a01');
+select count(*) as foto_taken_by_deberia_ser_1 from hoteles.housekeeping_task_photo where task_id = '00000000-0000-0000-0000-0000000cc101' and taken_by = '00000000-0000-0000-0000-0000000a0a05';
+insert into hoteles.linen_count (property_id, count_date, item, qty_clean, counted_by) values ('00000000-0000-0000-0000-0000000a1a01', '2026-03-10', 'sabanas', 10, '00000000-0000-0000-0000-0000000a0a01');
+select count(*) as conteo_alta_deberia_ser_1 from hoteles.linen_count where item = 'sabanas' and counted_by = '00000000-0000-0000-0000-0000000a0a05';
+update hoteles.linen_count set qty_clean = 11, counted_by = '00000000-0000-0000-0000-0000000a0a01', updated_at = '2001-01-01' where item = 'sabanas';
+select count(*) as conteo_edicion_deberia_ser_1 from hoteles.linen_count where item = 'sabanas' and counted_by = '00000000-0000-0000-0000-0000000a0a05' and updated_at > now() - interval '1 minute';
+rollback;
+
+\echo '=== 32. autoria de opt-out: created_by ajeno ignorado al registrar ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a03', true);
+insert into hoteles.cleaning_opt_out (property_id, room_id, opt_out_date, created_by) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000ab103', '2026-03-10', '00000000-0000-0000-0000-0000000a0a01');
+select count(*) as created_by_deberia_ser_1 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103' and created_by = '00000000-0000-0000-0000-0000000a0a03';
+rollback;
+
+\echo '=== 33. opt-out revertido es TERMINAL: no vuelve a activo (23514), no se re-sella, y el cliente no fija reverted_by/reverted_at falsos al revertir ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a03', true);
+insert into hoteles.cleaning_opt_out (property_id, room_id, opt_out_date) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-0000000ab103', '2026-03-10');
+update hoteles.cleaning_opt_out set status = 'revertido', reverted_by = '00000000-0000-0000-0000-0000000a0a01', reverted_at = '2001-01-01' where room_id = '00000000-0000-0000-0000-0000000ab103';
+select count(*) as sello_servidor_deberia_ser_1 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103' and status = 'revertido' and reverted_by = '00000000-0000-0000-0000-0000000a0a03' and reverted_at > now() - interval '1 minute';
+select public.verify_expect_error($q$update hoteles.cleaning_opt_out set status = 'activo', reverted_at = null where room_id = '00000000-0000-0000-0000-0000000ab103'$q$, '23514');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a02', true);
+select public.verify_expect_error($q$update hoteles.cleaning_opt_out set status = 'activo', reverted_by = null, reverted_at = null where room_id = '00000000-0000-0000-0000-0000000ab103'$q$, '23514');
+update hoteles.cleaning_opt_out set reverted_by = '00000000-0000-0000-0000-0000000a0a02', reverted_at = now() + interval '1 day' where room_id = '00000000-0000-0000-0000-0000000ab103';
+select count(*) as sello_intacto_deberia_ser_1 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103' and status = 'revertido' and reverted_by = '00000000-0000-0000-0000-0000000a0a03' and reverted_at < now() + interval '1 minute';
+rollback;
+
+\echo '=== 34. la regla terminal tambien rige para la sesion de sistema (sin auth.uid()); reactivar exige un opt-out NUEVO ==='
+begin;
+insert into hoteles.cleaning_opt_out (property_id, organization_id, room_id, opt_out_date, status, reverted_at) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-0000000ab103', '2026-03-10', 'revertido', now());
+select public.verify_expect_error($q$update hoteles.cleaning_opt_out set status = 'activo', reverted_at = null where room_id = '00000000-0000-0000-0000-0000000ab103'$q$, '23514');
+insert into hoteles.cleaning_opt_out (property_id, organization_id, room_id, opt_out_date) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-0000000ab103', '2026-03-10');
+select count(*) as historial_deberia_ser_2 from hoteles.cleaning_opt_out where room_id = '00000000-0000-0000-0000-0000000ab103';
+rollback;
+
+\echo '=== 35. sesion de sistema (auth.uid() nulo): la autoria recibida se respeta ==='
+begin;
+insert into hoteles.linen_count (property_id, organization_id, count_date, item, counted_by) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000a001', '2026-03-10', 'fundas', '00000000-0000-0000-0000-0000000a0a02');
+select count(*) as sistema_respeta_deberia_ser_1 from hoteles.linen_count where item = 'fundas' and counted_by = '00000000-0000-0000-0000-0000000a0a02';
+rollback;
+
+\echo '=== 36. voz: ninguna policy `for all`, sobre voice_agent_config; solo owner/gm via can_configure_property ==='
+select count(*) as policies_for_all_deberia_ser_0 from pg_policies where schemaname = 'hoteles' and tablename = 'voice_agent_config' and cmd = 'ALL';
+select count(*) as policies_sin_can_configure_deberia_ser_0 from pg_policies where schemaname = 'hoteles' and tablename = 'voice_agent_config' and coalesce(qual, '') || coalesce(with_check, '') not like '%can_configure_property%';
+
+\echo '=== 37. voz: organization_id ajeno en el INSERT del owner se sobreescribe (trigger); al rotar por upsert tampoco cambia la org ==='
+begin;
+delete from hoteles.voice_agent_config where property_id = '00000000-0000-0000-0000-0000000a1a01';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
+insert into hoteles.voice_agent_config (property_id, organization_id, tool_webhook_secret, enabled) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000b001', 'secreto-nuevo-0123456789', true)
+  on conflict (property_id) do update set tool_webhook_secret = 'secreto-nuevo-0123456789', enabled = true, updated_at = now();
+select count(*) as org_propia_deberia_ser_1 from hoteles.voice_agent_config where property_id = '00000000-0000-0000-0000-0000000a1a01' and organization_id = '00000000-0000-0000-0000-00000000a001';
+select count(*) as org_ajena_deberia_ser_0 from hoteles.voice_agent_config where organization_id = '00000000-0000-0000-0000-00000000b001';
+select public.verify_expect_error($q$update hoteles.voice_agent_config set organization_id = '00000000-0000-0000-0000-00000000b001' where property_id = '00000000-0000-0000-0000-0000000a1a01'$q$, '42501');
 rollback;

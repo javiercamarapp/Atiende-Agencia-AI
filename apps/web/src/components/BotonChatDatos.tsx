@@ -1,9 +1,12 @@
 // Boton "Chatea con tus datos" del header. Sin `chat` (hoteles, citas, rentas, despachos,
 // licitaciones: su catalogo aun no esta enchufado) dice la verdad de frente: etiqueta "Pronto" y aviso
-// honesto (ver PanelChateaConTusDatos.tsx), nunca una conversacion simulada. Con `chat` (restaurantes,
-// vertical piloto) consulta al servidor si el asistente esta activo: solo entonces quita "Pronto" y abre
-// la conversacion real; si el servidor no lo confirma, sigue siendo el aviso honesto.
+// honesto (ver PanelChateaConTusDatos.tsx), nunca una conversacion simulada. Con `chat` consulta al
+// servidor si el asistente esta activo: solo entonces quita "Pronto". Con `href` (restaurantes, vertical
+// piloto del Copiloto, CHAT-08) el boton disponible es un ENLACE a la pagina del Copiloto; sin `href`
+// abre el dialogo de conversacion (verticales que aun lo usan). Si el servidor no confirma la
+// disponibilidad, sigue siendo el aviso honesto con "Pronto".
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@atiende/ui";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
@@ -33,9 +36,20 @@ export function useChatDatosDisponible(chat: ChatDatosConexion | undefined): boo
   return disponible;
 }
 
-export function BotonChatDatos({ className, nombreNegocio, chat }: { className?: string; nombreNegocio?: string; chat?: ChatDatosConexion }) {
+export function BotonChatDatos({ className, nombreNegocio, chat, href }: { className?: string; nombreNegocio?: string; chat?: ChatDatosConexion; href?: string }) {
   const [abierto, setAbierto] = useState(false);
   const disponible = useChatDatosDisponible(chat);
+
+  if (href && disponible) {
+    return (
+      <Button asChild variant="outline" size="sm" className={`h-8 rounded-full text-sm shrink-0 ${className ?? ""}`}>
+        <Link to={href}>
+          <MessageCircle className="w-3.5 h-3.5" />
+          Chatea con tus datos
+        </Link>
+      </Button>
+    );
+  }
 
   return (
     <>

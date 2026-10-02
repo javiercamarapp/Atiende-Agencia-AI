@@ -103,6 +103,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
       "Resumen",
+      "Copiloto",
       "Pedidos",
       "Conversaciones",
       "Turnos",
@@ -128,10 +129,10 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(categoriasSidebar(root)).toEqual(["Operación", "Catálogo", "Clientes", "Agente", "Configuración"]);
     // Abre la primera categoria; "Resumen" (raiz) esta siempre, sin boton ni titulo.
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Pedidos", "Conversaciones", "Turnos", "Historial"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Pedidos", "Conversaciones", "Turnos", "Historial"]);
     abrirCategoria(root, "Catálogo");
     expect(categoriasAbiertas(root)).toEqual(["Catálogo"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Productos", "Promociones"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Productos", "Promociones"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Manager Demo", rol: "Propietario" });
   });
 
@@ -151,6 +152,32 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     });
     expect(categoriasSidebar(rendered.container)).toEqual(["Operación", "Catálogo", "Clientes"]);
     expect(tarjetaUsuario(rendered.container).rol).toBe("Equipo");
+    // CHAT-08: el staff (MANAGER_ROLES del servidor) SÍ tiene Copiloto, justo debajo de Resumen.
+    expect(linksSidebar(rendered.container).slice(0, 2)).toEqual(["Resumen", "Copiloto"]);
+  });
+
+  // CHAT-08: el Copiloto es una PÁGINA. Con el asistente activo, el botón del header y la píldora "Pregunta a tus datos" del pie son
+  // enlaces a /restaurantes/:org/copiloto (ya no abren el diálogo); la entrada del Sidebar apunta a la misma ruta.
+  it("con el asistente activo, el botón del header y la píldora del pie enlazan a la página del Copiloto", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
+    rendered = await renderShell();
+    const root = rendered.container;
+    const hrefs = (texto: string) => [...root.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
+    expect(hrefs("Chatea con tus datos")).toContain("/restaurantes/demo/copiloto");
+    expect(hrefs("Pregunta a tus datos")).toContain("/restaurantes/demo/copiloto");
+    expect(hrefs("Copiloto")).toContain("/restaurantes/demo/copiloto");
+    // Y ya no abre el diálogo del chat viejo.
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "x" }), { status: 403 })));
+    rendered = await renderShell();
+    const root = rendered.container;
+    const boton = [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos"));
+    expect(boton?.textContent).toContain("Pronto");
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregunta a tus datos"))).toBe(false);
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Chatea con tus datos"))).toBe(false);
   });
 
   it("expone skip link y <main> enfocable, y el Sidebar recuerda sus preferencias bajo la clave de la vertical restaurantes", async () => {

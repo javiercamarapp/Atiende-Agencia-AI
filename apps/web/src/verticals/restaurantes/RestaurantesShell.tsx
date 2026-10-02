@@ -23,6 +23,7 @@ import {
   Mic,
   Settings,
   ShieldCheck,
+  Sparkles,
   Store,
   Tag,
   UserCog,
@@ -89,16 +90,25 @@ export interface RestaurantesShellProps {
  * rechazaría de todas formas (403 en admin-staff.ts) — nunca la única barrera. */
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
+/** Roles con acceso al Copiloto = `MANAGER_ROLES` de domain-restaurantes/src/roles.ts (duplicado aquí a propósito, igual que
+ * STAFF_NAV_ROLES): solo oculta la entrada del Sidebar, la pildora y el botón a quien el servidor rechazaría con 403
+ * (admin-data-chat.ts); nunca es la única barrera. Un repartidor ya es redirigido a `/repartidor` antes de pintar el nav. */
+const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"]);
+
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] {
+function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
       title: "Resumen",
       siempreAbierto: true,
-      items: [{ to: base, label: "Resumen", icon: LayoutDashboard, end: true }],
+      // CHAT-08: el Copiloto ("Pregunta a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
+      items: [
+        { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
+        ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+      ],
     },
     {
       title: "Operación",
@@ -227,7 +237,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       notificacionesHref={`/restaurantes/${orgSlug}/notificaciones`}
       chat={chatConexion}
       vertical="restaurantes"
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role))}
+      copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
+      ocultarChat={!COPILOTO_ROLES.has(role)}
+      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}

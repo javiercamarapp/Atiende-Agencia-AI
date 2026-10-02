@@ -92,7 +92,11 @@ describe("tokens invalidos, vencidos o de otra organizacion/sucursal se rechazan
   it("token alterado o vencido => 401", async () => {
     const s = await setup();
     const { body } = await s.mint("call-1", "9991111111");
-    const alterado = body.call_token!.slice(0, -2) + (body.call_token!.endsWith("AA") ? "BB" : "AA");
+    // Alterar el primer carácter de la firma (última parte): usa sus 6 bits, así que SIEMPRE cambia el token.
+    const partes = body.call_token!.split(".");
+    const firma = partes.pop()!;
+    const alterado = [...partes, `${firma[0] === "A" ? "B" : "A"}${firma.slice(1)}`].join(".");
+    expect(alterado).not.toBe(body.call_token);
     expect((await s.app.request(`/v1/restaurantes/${ORG}/customers/lookup`, jsonRequestInit({}, tokenHeader(alterado)))).status).toBe(401);
     const vencido = signVoiceCallToken(voiceCallTokenKey(s.deps.env.internalSecret), { org: s.organizationId, prop: s.propertyId, call: "c", ph: "9991111111", iat: 1, exp: 2 });
     expect((await s.app.request(`/v1/restaurantes/${ORG}/customers/lookup`, jsonRequestInit({}, tokenHeader(vencido)))).status).toBe(401);

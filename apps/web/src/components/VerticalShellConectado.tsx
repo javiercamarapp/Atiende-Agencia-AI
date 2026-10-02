@@ -17,17 +17,22 @@ export type VerticalShellConectadoProps = Omit<VerticalShellProps, "notification
   readonly notificacionesHref: string;
   /** Conexion real al chat de la vertical (solo restaurantes por ahora); sin ella el boton dice "Pronto". */
   readonly chat?: ChatDatosConexion;
+  /** Ruta de la pagina del Copiloto (CHAT-08): la pildora del pie y el boton del header pasan a ser enlaces a ella. */
+  readonly copilotoHref?: string;
+  /** Rol sin acceso al Copiloto: no se ofrece ni el boton del header ni la pildora (el servidor igual responde 403). */
+  readonly ocultarChat?: boolean;
 };
 
-export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat, ...shell }: VerticalShellConectadoProps) {
+export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
+  const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregunta a tus datos" del pie del Sidebar (gemela de la de Likida): abre el MISMO panel real que el
   // boton de la barra y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
   const chatDisponible = useChatDatosDisponible(chat);
   const [chatAbierto, setChatAbierto] = useState(false);
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
-    ...(chat && chatDisponible ? [{ label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
+    ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregunta a tus datos", to: copilotoHref } : { label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
   ];
   const campana = (className?: string) => (
     <NotificationBell className={className} href={notificacionesHref} hayNoLeidas={notif.hayNoLeidas} />
@@ -39,8 +44,8 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
         sidebarPie={pie}
         notificationBell={campana()}
         mobileNotificationBell={campana("w-10 h-10")}
-        chatButton={<BotonChatDatos chat={chat} />}
-        mobileChatButton={<BotonChatDatos className="h-10 w-full justify-center" chat={chat} />}
+        chatButton={ocultarChat ? null : <BotonChatDatos chat={chat} {...(copilotoHref ? { href: copilotoHref } : {})} />}
+        mobileChatButton={ocultarChat ? null : <BotonChatDatos className="h-10 w-full justify-center" chat={chat} {...(copilotoHref ? { href: copilotoHref } : {})} />}
       />
       {chatAbierto && chat && <PanelChateaConTusDatos onClose={() => setChatAbierto(false)} chat={chat} />}
     </>
