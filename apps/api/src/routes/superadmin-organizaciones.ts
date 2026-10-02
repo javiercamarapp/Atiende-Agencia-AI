@@ -17,6 +17,7 @@
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
+import { emitirNotificacion } from "@atiende/db";
 import type { OrgActionTipo, OrgAdminActionRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
@@ -92,7 +93,16 @@ export function superadminOrganizacionesRoutes(deps: AppDeps): Hono<CoreAuthHono
     if (motivo.trim().length < 20) throw Errors.validation("motivo obligatorio (mínimo 20 caracteres).");
 
     try {
-      const result = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).request(callerId, tipo, organizationId, payload, motivo));
+      const result = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+        const solicitud = await repo(db).request(callerId, tipo, organizationId, payload, motivo);
+        // Aviso in-app (campana de superadmin): una solicitud con DOBLE CONTROL espera la aprobacion de un segundo superadmin. Una por
+        // solicitud (clave = id), sin PII (ni el motivo ni el nombre de la organizacion viajan). Dentro de un SAVEPOINT
+        // (emitirNotificacion): contra la base sin migrar no aborta la transaccion de la solicitud ya registrada.
+        if (solicitud.action?.requiereDobleControl) {
+          await emitirNotificacion(db, { evento: "superadmin.organizacion.accion_pendiente", organizationId: null, clave: solicitud.action.id, entidadTipo: "org_admin_action", entidadId: solicitud.action.id });
+        }
+        return solicitud;
+      });
       if (result.availability === "not_migrated" || !result.action) throw Errors.serviceUnavailable(NO_DISPONIBLE);
       return c.json({ accion: serialize(result.action, callerId) }, 201);
     } catch (err) {

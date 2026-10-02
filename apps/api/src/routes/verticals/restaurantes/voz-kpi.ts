@@ -24,6 +24,7 @@ import {
   validarUmbrales,
 } from "@atiende/domain-restaurantes";
 import type { VozAlerta, VozKpiDia, VozKpiRepository, VozUmbrales } from "@atiende/domain-restaurantes";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -181,6 +182,18 @@ export function restaurantesVozKpiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, propertyId } = await resolverSucursal(c);
     const lectura = await kpiRepo(c).evaluarAlertas(organizationId, propertyId);
+    // Avisos in-app (campana) a owner/admin SOLO por las alertas que esta evaluacion disparo por PRIMERA VEZ ese dia (`nueva`): costo del
+    // dia sobre el umbral configurado y tasa de error sobre el umbral. Una por sucursal por dia y tipo (clave de dedupe), sin cifras
+    // ni datos de llamadas en el texto. SAVEPOINT en emitirNotificacion: contra la base sin migrar no aborta la evaluacion.
+    for (const a of lectura.valor) {
+      if (!a.nueva) continue;
+      await emitirNotificacion(c.get("db"), {
+        evento: a.tipo === "costo_dia" ? "restaurantes.costo.umbral_voz" : "restaurantes.voz.tasa_error_alta",
+        organizationId,
+        propertyId,
+        clave: `${propertyId}:${a.fecha}`,
+      });
+    }
     return c.json({ disponible: lectura.disponible, alertas: lectura.valor.map(serializarAlerta) });
   });
 

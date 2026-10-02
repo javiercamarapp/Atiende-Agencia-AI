@@ -164,3 +164,66 @@ describe("barrerEscalamientosVencimientos", () => {
     expect(a.evaluados).toBe(1);
   });
 });
+
+/** Sesión que registra cada `core.emit_notification` (parametros posicionales) y responde 1 destinatario. */
+function sesionQueRegistraEmisiones() {
+  const emisiones: Array<{ organizationId: unknown; propertyId: unknown; evento: unknown; severidad: unknown; cuerpo: unknown; enlace: unknown; dedupeKey: unknown; roles: unknown }> = [];
+  const session = {
+    exec: async () => undefined,
+    query: async (sql: string, params: unknown[] = []) => {
+      if (/core\.emit_notification/.test(sql)) {
+        emisiones.push({ organizationId: params[0], propertyId: params[1], evento: params[2], severidad: params[4], cuerpo: params[6], enlace: params[7], dedupeKey: params[10], roles: params[11] });
+        return { rows: [{ emit_notification: 1 }] };
+      }
+      return { rows: [] };
+    },
+  } as unknown as TenantDbSession;
+  return { session, emisiones };
+}
+
+describe("barrerEscalamientosVencimientos emite avisos in-app (campana)", () => {
+  it("vence manana/hoy -> vencimiento_proximo; ya vencido -> vencimiento_vencido; una por property por dia, a contadores, sin PII", async () => {
+    const repo = new InMemoryDespachosRepository();
+    await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "IVA", periodo: "2026-05", fechaLimite: "2026-06-11", prioridad: "alta" });
+    await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "DIOT", periodo: "2026-05", fechaLimite: "2026-06-10", prioridad: "alta" });
+    await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "ISR", periodo: "2026-05", fechaLimite: "2026-06-01", prioridad: "critica" });
+    const { session, emisiones } = sesionQueRegistraEmisiones();
+
+    await barrerEscalamientosVencimientos(repo, session, PROP, "2026-06-10");
+
+    expect(emisiones).toHaveLength(2);
+    expect(emisiones[0]).toMatchObject({
+      organizationId: ORG,
+      propertyId: PROP,
+      evento: "despachos.fiscal.vencimiento_proximo",
+      severidad: "atencion",
+      cuerpo: "Por vencer hoy o mañana: 2.",
+      enlace: "/despachos/{orgSlug}/vencimientos",
+      dedupeKey: `despachos.fiscal.vencimiento_proximo:${PROP}:2026-06-10`,
+      roles: ["contador"],
+    });
+    expect(emisiones[1]).toMatchObject({ evento: "despachos.fiscal.vencimiento_vencido", severidad: "critica", cuerpo: "Vencidas sin presentar: 1.", dedupeKey: `despachos.fiscal.vencimiento_vencido:${PROP}:2026-06-10` });
+  });
+
+  it("sin escalamientos nuevos (idempotente) no emite nada", async () => {
+    const repo = new InMemoryDespachosRepository();
+    await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "ISR", periodo: "2026-05", fechaLimite: "2026-06-01", prioridad: "critica" });
+    await barrerEscalamientosVencimientos(repo, sesionQueRegistraEmisiones().session, PROP, "2026-06-10");
+    const { session, emisiones } = sesionQueRegistraEmisiones();
+    await barrerEscalamientosVencimientos(repo, session, PROP, "2026-06-10");
+    expect(emisiones).toHaveLength(0);
+  });
+
+  it("base sin migrar (42883 en core.emit_notification): el barrido NO falla y la sesion queda utilizable (SAVEPOINT, sin 25P02)", async () => {
+    const repo = new InMemoryDespachosRepository();
+    await repo.createDeadline({ organizationId: ORG, propertyId: PROP, tipo: "ISR", periodo: "2026-05", fechaLimite: "2026-06-01", prioridad: "critica" });
+    const session = new AbortAwareFakeSession([
+      { match: /core\.emit_notification/i, respond: () => pgError("42883", "function core.emit_notification(uuid) does not exist") },
+      { match: /select 1/, respond: () => [] },
+    ]);
+    const r = await barrerEscalamientosVencimientos(repo, session, PROP, "2026-06-10");
+    expect(r.escalados).toHaveLength(1);
+    expect(session.calls.some((c) => /rollback to savepoint/i.test(c))).toBe(true);
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+});

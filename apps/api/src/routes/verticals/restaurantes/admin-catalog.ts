@@ -24,6 +24,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -293,7 +294,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const price = raw.price !== undefined ? requirePrice(raw.price) : (existing?.price ?? product.price);
     const isAvailable = raw.isAvailable !== undefined ? Boolean(raw.isAvailable) : (existing?.isAvailable ?? true);
 
-    const state = await repo.upsertBranchProductState(propertyId, productId, price, isAvailable);
+    const state = await conAvisoOnboardingListo(deps, c, organizationId, () => repo.upsertBranchProductState(propertyId, productId, price, isAvailable));
     logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });
 
     // FASE 3 (producto) — precio/disponibilidad EN ESTA sucursal es justo la

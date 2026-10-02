@@ -64,6 +64,8 @@ export interface ResultadoImportarCiclo {
   eventosAplicados: number;
   ecosDescartados: number;
   conflictosDetectados: number;
+  /** Reservas CREADAS por este ciclo (eventos nuevos del canal; no cuenta modificaciones ni cancelaciones). */
+  reservasNuevas: number;
   alertaCuarentena: AlertaCuarentena | null;
   revisionesUidReciclado: RevisionUidReciclado[];
   /** Eventos individuales del feed descartados por ser semánticamente inválidos
@@ -207,6 +209,7 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
         externalId: evento.uid,
       });
       if (creado.conflicto) resumen.conflictosDetectados++;
+      resumen.reservasNuevas++;
       await ctx.syncRepo.upsertEventoImportado(ctx.feed.unidadId, ctx.feed.canalId, { uid: entrante.uid, sequence: entrante.sequence, dtstamp: entrante.dtstamp, hashContenido: entrante.hash, ocupacionId: creado.ocupacionId, ultimaAccion: "aplicar", sobrescribirVersion: true });
     }
   }
@@ -312,6 +315,7 @@ export async function ejecutarCicloImportacion(ctx: ContextoSincronizacion): Pro
     eventosAplicados: 0,
     ecosDescartados: 0,
     conflictosDetectados: 0,
+    reservasNuevas: 0,
     alertaCuarentena: alerta,
     revisionesUidReciclado: [],
     eventosDescartadosPorError: [],

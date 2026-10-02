@@ -14,11 +14,47 @@
 //
 // Wiring real del scheduler: `vercel.json::crons` invoca este mismo path por GET.
 import { Hono } from "hono";
+import { emitirNotificacion } from "@atiende/db";
 import { ejecutarLoteSync } from "@atiende/domain-rentas";
+import type { ResultadoFeedLote } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+const FALLOS_DE_SYNC: readonly ResultadoFeedLote["resultado"][] = ["fallo_red", "fallo_parseo", "error_interno"];
+
+/**
+ * Avisos in-app (campana) del lote de sync, UNO por property y por evento (clave = property + dia): feeds con error, reservas nuevas
+ * importadas y conflictos de calendario detectados. Cada aviso corre en su PROPIA sesion de sistema y es best-effort: el lote ya
+ * termino y sus transacciones ya confirmaron, asi que un fallo al emitir (base sin migrar, tope de volumen) nunca cambia la respuesta
+ * del cron ni su latido. Los parametros son solo conteos (sin nombres de huespedes ni URLs de feeds).
+ */
+export async function emitirAvisosDeSync(deps: AppDeps, feeds: readonly ResultadoFeedLote[], ahora: Date = new Date()): Promise<void> {
+  const dia = ahora.toISOString().slice(0, 10);
+  const porProperty = new Map<string, { organizationId: string; propertyId: string; fallidos: number; nuevas: number; conflictos: number }>();
+  for (const f of feeds) {
+    const acum = porProperty.get(f.propertyId) ?? { organizationId: f.organizationId, propertyId: f.propertyId, fallidos: 0, nuevas: 0, conflictos: 0 };
+    if (FALLOS_DE_SYNC.includes(f.resultado)) acum.fallidos += 1;
+    acum.nuevas += f.reservasNuevas;
+    acum.conflictos += f.conflictosDetectados;
+    porProperty.set(f.propertyId, acum);
+  }
+  const avisos = [...porProperty.values()].flatMap((p) => [
+    ...(p.fallidos > 0 ? [{ evento: "rentas.ical.sync_fallido", p, cantidad: p.fallidos }] : []),
+    ...(p.nuevas > 0 ? [{ evento: "rentas.reserva.nueva_ical", p, cantidad: p.nuevas }] : []),
+    ...(p.conflictos > 0 ? [{ evento: "rentas.conflicto.detectado", p, cantidad: p.conflictos }] : []),
+  ]);
+  for (const a of avisos) {
+    try {
+      await deps.engine.withAppSession({ userId: null }, (db) =>
+        emitirNotificacion(db, { evento: a.evento, organizationId: a.p.organizationId, propertyId: a.p.propertyId, clave: `${a.p.propertyId}:${dia}`, parametros: { cantidad: a.cantidad } }),
+      );
+    } catch {
+      // best-effort: el lote y su latido no dependen del aviso
+    }
+  }
+}
 
 export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -34,6 +70,8 @@ export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
         crearSyncRepo: (db) => deps.rentasCalendarSyncRepo(db),
         port: deps.rentasIcalFeedPort,
       });
+
+      await emitirAvisosDeSync(deps, lote.feeds);
 
       const resultados = lote.feeds.map((f) => ({
         feedId: f.feedId,

@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
 import type { CitasRepository, EventoRecordatorioFallido } from "@atiende/domain-citas";
+import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { emitirAvisosDeCitas } from "./avisos-ciclo.ts";
@@ -67,6 +68,18 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
         } catch (err) {
           failures.push({ organization_id: org.id, error: err instanceof Error ? err.message : String(err) });
         }
+      }
+
+      // Aviso in-app (campana): una por organizacion por dia con el CONTEO de recordatorios de 24 h que no salieron (error interno o sin
+      // canal), a gerencia/duenos (sin rol de vertical extra). Una transaccion por organizacion; una emision fallida (o la base sin
+      // 0039) nunca cambia el barrido, la respuesta ni el latido. El conteo no lleva datos del cliente ni de la cita.
+      const hoy = new Date().toISOString().slice(0, 10);
+      const sinEnviarPorOrg = new Map<string, number>();
+      for (const e of notificationEvents) sinEnviarPorOrg.set(e.organizationId, (sinEnviarPorOrg.get(e.organizationId) ?? 0) + 1);
+      for (const [organizationId, cantidad] of sinEnviarPorOrg) {
+        await deps.engine
+          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.recordatorio.fallido", organizationId, clave: `${organizationId}:${hoy}`, parametros: { cantidad } }))
+          .catch(() => undefined);
       }
 
       // C-16 -- avisos in-app del ciclo (por confirmar, recordatorios agotados, escalaciones sin seguimiento): una transaccion por organizacion,

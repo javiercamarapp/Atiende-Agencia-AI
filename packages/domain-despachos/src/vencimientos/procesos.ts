@@ -1,7 +1,7 @@
 // Procesos de vencimientos que escriben en la base y deben sobrevivir a la base SIN migrar (D-26). Viven en el
 // dominio (no en la ruta) para probarlos con `AbortAwareFakeSession`: la transacción de un request es UNA sola y un
 // error de Postgres la deja abortada (25P02), así que todo fallback usa SAVEPOINT / ROLLBACK TO SAVEPOINT.
-import { runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { DespachosRepository } from "../repository.ts";
 import type { DeadlineEscalationRecord, FiscalDeadlineRecord } from "../types.ts";
@@ -121,6 +121,20 @@ export async function barrerEscalamientosVencimientos(
     } catch {
       fallidos.push({ id: deadline.id, tipo: deadline.tipo, periodo: deadline.periodo });
     }
+  }
+
+  // Aviso in-app (campana) a los contadores/owner/admin: UNA por property por dia y por clase, con la cantidad
+  // de vencimientos recien escalados (nivel_2/nivel_3 = vencen hoy o manana; nivel_4 = ya vencieron). Dentro de un
+  // SAVEPOINT (emitirNotificacion): contra la base sin migrar no revierte los escalamientos ya registrados.
+  // Mismo `organizationId` que el del vencimiento (nunca el del request): el barrido es de UNA property.
+  const organizationId = pendientes[0]?.organizationId;
+  const porVencer = escalados.filter((e) => e.nivel === "nivel_2" || e.nivel === "nivel_3").length;
+  const vencidos = escalados.filter((e) => e.nivel === "nivel_4").length;
+  if (organizationId && porVencer > 0) {
+    await emitirNotificacion(session, { evento: "despachos.fiscal.vencimiento_proximo", organizationId, propertyId, clave: `${propertyId}:${hoy}`, parametros: { cantidad: porVencer } });
+  }
+  if (organizationId && vencidos > 0) {
+    await emitirNotificacion(session, { evento: "despachos.fiscal.vencimiento_vencido", organizationId, propertyId, clave: `${propertyId}:${hoy}`, parametros: { cantidad: vencidos } });
   }
   return { evaluados: pendientes.length, escalados, yaEscalados, aunNoToca, fallidos };
 }
