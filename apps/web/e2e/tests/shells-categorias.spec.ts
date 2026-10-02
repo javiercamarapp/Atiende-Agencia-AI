@@ -9,6 +9,7 @@ import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
 import { hoteles } from "../mock-api/fixtures/hoteles.ts";
+import { licitaciones } from "../mock-api/fixtures/licitaciones.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 interface Esperado {
