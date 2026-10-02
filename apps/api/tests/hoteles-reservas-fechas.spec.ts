@@ -42,7 +42,6 @@ async function setup(opts: { migrated?: boolean } = {}) {
   const booked = async (d: string) => (await fechas.cargarDisponibilidad(ctx.propertyId, ctx.roomTypeId, d, d)).noches[0]?.bookedRooms;
   return { ctx, app, fechas, lista, emisiones, reserva, previsualizar, patch, booked, base };
 }
-type S = Awaited<ReturnType<typeof setup>>;
 const json = async <T>(res: Response) => (await res.json()) as T;
 
 describe("POST /reservas/:id/fechas/previsualizar", () => {
