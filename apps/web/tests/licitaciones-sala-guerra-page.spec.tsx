@@ -134,7 +134,8 @@ describe("SalaGuerraPage -- tablero", () => {
     expect(text).toContain("Gate final");
     expect(text).toContain("No listo");
     expect(text).toContain("Todavía no hay un paquete de envío ensamblado.");
-    expect(text).toContain("Cierra en 19 d");
+    // La cuenta descuenta el tiempo transcurrido desde que llego la respuesta: 19 d exactos o 18 d 23 h 59 min.
+    expect(text).toMatch(/Cierra en (19 d 0 h \d+|18 d 23 h \d+) min/);
   });
 
   it("L-22: muestra los dias habiles que quedan y avisa si la fecha limite cae en dia inhabil", async () => {
