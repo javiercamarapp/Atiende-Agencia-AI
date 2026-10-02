@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { prepareCreateOrder } from "../src/orders.ts";
 import { buildPmSeedPlan, PmSeedError, renderPmSeedPlpgsql, type PmSeedData } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
+import { cargarMenu } from "../src/evals/agente-pm/mundo.ts";
 import { loadSeedInputs } from "../../../scripts/seed-pm-demo/seed-pm-demo.ts";
 import { dataConP5Aprobado } from "./support/pm-seed-p5.ts";
 
@@ -225,5 +226,22 @@ describe("pendientes del dueño y SQL del catalogo por sucursal", () => {
     const plan = buildPmSeedPlan(data, agent);
     expect(plan.branches.find((b) => b.id === "T5")).toMatchObject({ lat: 21.296, lng: -89.602 });
     expect(plan.zones.some((z) => /Playa|Chicxulub/.test(z.name))).toBe(false);
+  });
+});
+
+describe("menu-pm.json del arnes de evaluacion (regenerado desde el seed)", () => {
+  it("tiene exactamente los productos del seed, con su precio de referencia y marca de alcohol; regional = lo que T2 y T3 no venden", () => {
+    const menu = cargarMenu();
+    const plan = buildPmSeedPlan(data, agent);
+    expect(menu.map((p) => p.nombre)).toEqual(plan.products.map((p) => p.name));
+    const categoriaPorSlug = new Map(data.productos.map((p) => [p.nombre, p.categoria]));
+    for (const p of menu) {
+      const delSeed = plan.products.find((x) => x.name === p.nombre)!;
+      expect(p.precio_mxn, p.nombre).toBe(delSeed.price);
+      expect(p.es_alcohol, p.nombre).toBe(delSeed.noDomicilio);
+      const regional = ["Comida Regional", "Flautas de PM"].includes(categoriaPorSlug.get(p.nombre)!) || ["Ensalada de PM", "Jericallas", "Café"].includes(p.nombre);
+      expect(p.regional, p.nombre).toBe(regional);
+    }
+    expect(menu.some((p) => / — (250|500|750) g$/.test(p.nombre))).toBe(false);
   });
 });
