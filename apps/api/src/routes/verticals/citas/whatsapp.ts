@@ -17,6 +17,7 @@ import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerCitasWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { BAJA_CONFIRMADA_TEXTO, procesarMensajeBaja } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -108,6 +109,19 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
 
       let hadRetryableFailure = false;
       for (const message of incomingMessages) {
+        // SA-L-46: BAJA / STOP (mensaje de texto completo) -> lista de supresion de plataforma + UNA confirmacion.
+        // No pasa al agente. Base sin la migracion 0042: sigue el camino anterior (handleInboundWhatsAppMessage).
+        if (!message.interactive) {
+          const baja = await procesarMensajeBaja(db, {
+            telefono: `+${message.from}`,
+            texto: message.body,
+            origen: "whatsapp.citas",
+            organizationId,
+            confirmar: () =>
+              citasRepo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.baja_confirmada", `baja-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberId, body: BAJA_CONFIRMADA_TEXTO, transaccional: true }),
+          });
+          if (baja.manejada) continue;
+        }
         const outcome = await handleInboundWhatsAppMessage(citasRepo, deps.citasTurnHandler, deps.citasConversationGuard, {
           organizationId,
           messageId: message.id,

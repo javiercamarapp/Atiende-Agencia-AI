@@ -81,7 +81,7 @@ async function procesarSiguiente(ctx: ContextoLiberacion, excluir: readonly stri
     codigoAcceso: cand.codigoAcceso,
     instrucciones: cand.instrucciones,
   });
-  await ctx.rentas.enqueueMessagingOutbox(cand.propertyId, cand.organizationId, "email", EVENTO_OUTBOX_ACCESO, `acceso:${cand.ocupacionId}`, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto });
+  await ctx.rentas.enqueueMessagingOutbox(cand.propertyId, cand.organizationId, "email", EVENTO_OUTBOX_ACCESO, `acceso:${cand.ocupacionId}`, { to: contacto, subject: correo.asunto, html: correo.html, text: correo.texto }); // SA-L-46: lo libera el cron N horas antes del check-in (proactivo): la lista de supresion SI lo bloquea.
   await ctx.acceso.marcarLiberada(cand.ocupacionId);
   return { tipo: "liberada", id: cand.ocupacionId };
 }

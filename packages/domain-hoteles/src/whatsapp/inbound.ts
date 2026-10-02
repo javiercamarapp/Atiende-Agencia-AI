@@ -82,6 +82,7 @@ export async function handleInboundWhatsAppMessage(
         to: phone,
         phone_number_id: phoneNumberId,
         body: turn.reply,
+        transaccional: true, // SA-L-46: respuesta/confirmacion que el cliente pidio; la lista de supresion no la bloquea.
       });
 
       await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);

@@ -44,6 +44,7 @@ import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
 import { SuperAdminPrivacidadPage } from "./superadmin/pages/Privacidad.tsx";
+import { SuperAdminSupresionPage } from "./superadmin/pages/Supresion.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
@@ -426,6 +427,15 @@ function SuperAdminPrivacidadRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminSupresionRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminSupresionPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1005,6 +1015,7 @@ export function App() {
         <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
         <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
         <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
+        <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />

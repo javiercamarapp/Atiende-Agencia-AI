@@ -267,3 +267,98 @@ describe("WhatsAppOutboundDispatcher", () => {
     expect(port.rows.get(id)?.status).toBe("dead");
   });
 });
+
+describe("WhatsAppOutboundDispatcher: lista de supresion de plataforma (SA-L-46)", () => {
+  let port: InMemoryOutboxPort;
+
+  beforeEach(() => {
+    port = new InMemoryOutboxPort();
+  });
+
+  it("un aviso proactivo a un telefono suprimido NO sale: se marca dead con motivo 'suprimido', sin reintento", async () => {
+    const id = port.enqueue(validPayload());
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const summary = await dispatcher.dispatchPending(port, { suppression: async () => true });
+
+    expect(client.sent).toHaveLength(0);
+    expect(summary.suppressed).toBe(1);
+    expect(summary.dead).toBe(0);
+    expect(summary.items[0]?.outcome).toBe("suppressed");
+    expect(port.rows.get(id)).toMatchObject({ status: "dead", lastErrorClass: "suprimido" });
+
+    // Sin reintento: una segunda corrida ya no lo ve.
+    const second = await dispatcher.dispatchPending(port, { suppression: async () => true });
+    expect(second.claimed).toBe(0);
+    expect(client.sent).toHaveLength(0);
+  });
+
+  it("la respuesta transaccional (payload.transaccional === true) NO se bloquea aunque el telefono este suprimido", async () => {
+    const id = port.enqueue({ ...validPayload(), transaccional: true });
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+    let consultas = 0;
+
+    const summary = await dispatcher.dispatchPending(port, {
+      suppression: async () => {
+        consultas++;
+        return true;
+      },
+    });
+
+    expect(consultas).toBe(0);
+    expect(summary.sent).toBe(1);
+    expect(port.rows.get(id)?.status).toBe("sent");
+  });
+
+  it("un telefono NO suprimido se envia normal y el guard recibe el destino", async () => {
+    port.enqueue(validPayload());
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+    const vistos: string[] = [];
+
+    const summary = await dispatcher.dispatchPending(port, {
+      suppression: async (telefono) => {
+        vistos.push(telefono);
+        return false;
+      },
+    });
+
+    expect(vistos).toEqual(["+529991112233"]);
+    expect(summary.sent).toBe(1);
+    expect(summary.suppressed).toBeUndefined();
+  });
+
+  it("FAIL-CLOSED: si el guard lanza, NO se envia, no se quema un intento y el mensaje se reintenta en la siguiente corrida", async () => {
+    const id = port.enqueue(validPayload());
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const fallida = await dispatcher.dispatchPending(port, {
+      suppression: async () => {
+        throw new Error("lectura fallida");
+      },
+    });
+    expect(client.sent).toHaveLength(0);
+    expect(fallida.skipped).toBe(1);
+    expect(fallida.items[0]?.outcome).toBe("skipped_suppression_unavailable");
+    expect(port.rows.get(id)).toMatchObject({ status: "processing", attempts: 0 });
+
+    // Con el lease vencido y la lectura recuperada, el mismo mensaje sale.
+    port.rows.get(id)!.claimedAt = 0;
+    const recuperada = await dispatcher.dispatchPending(port, { suppression: async () => false });
+    expect(recuperada.sent).toBe(1);
+    expect(client.sent).toHaveLength(1);
+  });
+
+  it("sin guard el comportamiento es el anterior (compatibilidad con los llamadores existentes)", async () => {
+    port.enqueue(validPayload());
+    const client = new FakeWhatsAppGraphClient();
+    const dispatcher = new WhatsAppOutboundDispatcher({ graphClient: client });
+
+    const summary = await dispatcher.dispatchPending(port);
+    expect(summary).toMatchObject({ claimed: 1, sent: 1, dead: 0, skipped: 0 });
+    expect(summary).not.toHaveProperty("suppressed");
+  });
+});

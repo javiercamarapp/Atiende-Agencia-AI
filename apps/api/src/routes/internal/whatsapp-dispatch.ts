@@ -107,6 +107,7 @@ import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
+import { crearGuardTelefono } from "../../supresion/index.ts";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
@@ -157,7 +158,7 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
             : vertical === "licitaciones"
               ? createLicitacionesMessagingOutboxPort(licitacionesRepoFactory!(db), licitacionesPhoneNumberId!)
               : createRestaurantesMessagingOutboxPort(deps.restaurantesRepo(db));
-      return dispatcher.dispatchPending(port, { limit });
+      return dispatcher.dispatchPending(port, { limit, suppression: crearGuardTelefono(db) });
     });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -195,7 +196,7 @@ async function triggerInline(deps: AppDeps, vertical: WhatsAppMessagingVertical,
   if (!dispatcher) return; // Sin token configurado: nada que intentar inline, el cron ya responde 503 si se invoca directo.
   try {
     await db.exec(`SAVEPOINT ${SAVEPOINT_NAME}`);
-    const summary = await dispatcher.dispatchPending(port, { limit });
+    const summary = await dispatcher.dispatchPending(port, { limit, suppression: crearGuardTelefono(db) });
     await db.exec(`RELEASE SAVEPOINT ${SAVEPOINT_NAME}`);
     if (summary.dead > 0) {
       console.error(`whatsapp-dispatch inline: ${summary.dead} mensaje(s) de ${vertical} quedaron 'dead' en el drenado inline.`);
