@@ -96,10 +96,14 @@ insert into rentas.acceso_politica (property_id, organization_id, activo, horas_
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', true, 24, '15:00', true, true),
   ('00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000000a2', true, 24, '15:00', true, true)
 on conflict do nothing;
+-- Estas filas simulan datos HEREDADOS en texto plano (previos a la migracion 028, que desde entonces solo acepta sobres
+-- cifrados): se siembran con el trigger de "solo cifrado" apagado. Las pruebas Rn-29 viven en verify-rentas-privacidad.
+alter table rentas.acceso_instruccion disable trigger acceso_instruccion_solo_cifrado_trg;
 insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_exacta, codigo_acceso, instrucciones) values
   ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'Calle 60 #123, Centro, Merida', '4821', 'Caja de seguridad junto a la puerta'),
   ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000b2', 'Av. Tulum 9, Cancun', '9999', null)
 on conflict do nothing;
+alter table rentas.acceso_instruccion enable trigger acceso_instruccion_solo_cifrado_trg;
 
 \echo ''
 \echo '=== A. Rn-03: lectura del reporte (misma consulta que PostgresRentasReportesRepository) ==='
@@ -247,19 +251,19 @@ set local role anon;
 select count(*) as should_fail from rentas.acceso_bitacora;
 rollback;
 
-\echo '--- 17. el admin A edita direccion y codigo de su unidad ---'
+\echo '--- 17. el admin A edita las instrucciones de su unidad (anular el texto heredado esta permitido) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
-update rentas.acceso_instruccion set codigo_acceso = '7777', updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000011' where unidad_id = '00000000-0000-0000-0000-0000000000c1';
-select count(*) as editadas_deberia_ser_1 from rentas.acceso_instruccion where codigo_acceso = '7777';
+update rentas.acceso_instruccion set instrucciones = null, updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000011' where unidad_id = '00000000-0000-0000-0000-0000000000c1';
+select count(*) as editadas_deberia_ser_1 from rentas.acceso_instruccion where instrucciones is null and unidad_id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
 \echo '--- 18. el admin B NO puede editar las instrucciones de la Org A (0 filas afectadas) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000013', true);
-with u as (update rentas.acceso_instruccion set codigo_acceso = '0000', updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000013' where unidad_id = '00000000-0000-0000-0000-0000000000c1' returning 1)
+with u as (update rentas.acceso_instruccion set instrucciones = null, updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000013' where unidad_id = '00000000-0000-0000-0000-0000000000c1' returning 1)
 select count(*) as ajenas_editadas_deberia_ser_0 from u;
 rollback;
 
@@ -275,23 +279,23 @@ begin;
 delete from rentas.acceso_instruccion where unidad_id = '00000000-0000-0000-0000-0000000000c2';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
-insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_exacta, updated_by)
-values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'x', '00000000-0000-0000-0000-000000000011') returning 1 as should_fail;
+insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_cifrada, key_version, updated_by)
+values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA', 1, '00000000-0000-0000-0000-000000000011') returning 1 as should_fail;
 rollback;
 
 \echo '--- 21. limpieza no puede escribir instrucciones -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000014', true);
-insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_exacta, updated_by)
-values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'x', '00000000-0000-0000-0000-000000000014') returning 1 as should_fail;
+insert into rentas.acceso_instruccion (unidad_id, organization_id, property_id, direccion_cifrada, key_version, updated_by)
+values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA', 1, '00000000-0000-0000-0000-000000000014') returning 1 as should_fail;
 rollback;
 
-\echo '--- 22. la direccion exacta no puede quedar vacia (CHECK) -- RECHAZADO ---'
+\echo '--- 22. un sobre con formato invalido (CHECK de la migracion 028) -- RECHAZADO ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
-update rentas.acceso_instruccion set direccion_exacta = '   ', updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000011' where unidad_id = '00000000-0000-0000-0000-0000000000c1' returning 1 as should_fail;
+update rentas.acceso_instruccion set direccion_cifrada = 'no-es-un-sobre', key_version = 1, updated_at = now(), updated_by = '00000000-0000-0000-0000-000000000011' where unidad_id = '00000000-0000-0000-0000-0000000000c1' returning 1 as should_fail;
 rollback;
 
 \echo '--- 23. el staff A (cualquier rol) lee la politica de su property; el de B no la ve ---'

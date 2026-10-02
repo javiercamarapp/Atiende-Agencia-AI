@@ -20,6 +20,7 @@ import { rentasIcalMonitorRoutes } from "./ical-monitor.ts";
 import { rentasReportesRoutes } from "./reportes.ts";
 import { rentasResumenRoutes } from "./resumen.ts";
 import { rentasAccesoHuespedRoutes } from "./acceso-huesped.ts";
+import { rentasPrivacidadRoutes } from "./privacidad.ts";
 import { rentasMensajeriaConversacionesRoutes } from "./mensajeria-conversaciones.ts";
 import { rentasMensajeriaBorradoresRoutes } from "./mensajeria-borradores.ts";
 import { rentasMensajeriaPlantillasRoutes } from "./mensajeria-plantillas.ts";
@@ -91,6 +92,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasResumenRoutes(deps));
   // Rn-04 -- liberación de instrucciones de acceso al huésped (config de staff + cron interno).
   app.route("/", rentasAccesoHuespedRoutes(deps));
+  // Rn-07 -- solicitudes ARCO propias de rentas (registro y seguimiento por el admin de la gestora).
+  app.route("/", rentasPrivacidadRoutes(deps));
   // Cron interno (Fase 5) -- mismo patrón que citas/google-calendar-sync.ts: sin
   // requirePropertyMembership, guardado por x-atiende-internal-secret.
   app.route("/", rentasIcalSyncCronRoutes(deps));

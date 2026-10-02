@@ -3,7 +3,7 @@
 // /internal/rentas/acceso-huesped (guard de secreto, entrega por outbox, sin PII en logs,
 // degradación contra la base sin la migración 025).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InMemoryRentasAccesoRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasAccesoRepository, createAccesoCipher } from "@atiende/domain-rentas";
 import type { LiberacionPendiente } from "@atiende/domain-rentas";
 import { buildApp } from "../src/app.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -21,9 +21,11 @@ const POLITICA = { activo: true, horas_antes_checkin: 24, hora_checkin: "15:00",
 
 afterEach(() => vi.restoreAllMocks());
 
-async function preparar() {
+const LLAVE = Buffer.alloc(32, 5);
+
+async function preparar(opciones: { conLlave?: boolean } = {}) {
   const ctx = await buildRentasTestContext(buildApp);
-  const acceso = new InMemoryRentasAccesoRepository();
+  const acceso = new InMemoryRentasAccesoRepository(opciones.conLlave === false ? null : createAccesoCipher(LLAVE));
   acceso.unidadesPorProperty.set(ctx.propertyId, new Set([ctx.unidadId]));
   acceso.reservasConocidas.add(OCUPACION);
   const app = buildApp({ ...ctx.deps, rentasAccesoRepo: () => acceso });
@@ -112,6 +114,59 @@ describe("instrucciones de acceso (el secreto)", () => {
     expect((await app.request(`${base}/unidades/no-es-uuid/acceso-instrucciones`, authedJson(t, undefined, {}, "GET"))).status).toBe(400);
     const ajena = "44444444-4444-4444-8444-444444444444";
     expect((await app.request(`${base}/unidades/${ajena}/acceso-instrucciones`, enviar("PUT", t, { direccion_exacta: "x" }))).status).toBe(404);
+  });
+});
+
+describe("Rn-29 -- cifrado en reposo y llave RENTAS_ACCESS_KEY", () => {
+  it("lo que queda en la base son solo sobres: ni la direccion ni el codigo aparecen en claro", async () => {
+    const { ctx, app, acceso, base } = await preparar();
+    const url = `${base}/unidades/${ctx.unidadId}/acceso-instrucciones`;
+    await app.request(url, enviar("PUT", ctx.staff.adminGestora.token, { direccion_exacta: "Calle 60 #123", codigo_acceso: SECRETO, instrucciones: null }));
+    const guardado = JSON.stringify([...acceso.instrucciones.values()]);
+    expect(guardado).not.toContain(SECRETO);
+    expect(guardado).not.toContain("Calle 60");
+    expect(acceso.bitacoraInstrucciones.map((b) => b.evento)).toEqual(["escritura_admin"]);
+    await app.request(url, authedJson(ctx.staff.adminGestora.token, undefined, {}, "GET"));
+    expect(acceso.bitacoraInstrucciones.map((b) => b.evento)).toEqual(["escritura_admin", "lectura_admin"]);
+  });
+
+  it("sin llave: leer y guardar responden 503 'falta RENTAS_ACCESS_KEY' (nunca 500 ni texto plano)", async () => {
+    const { ctx, app, acceso, base } = await preparar({ conLlave: false });
+    const url = `${base}/unidades/${ctx.unidadId}/acceso-instrucciones`;
+    const t = ctx.staff.adminGestora.token;
+    const get = await app.request(url, authedJson(t, undefined, {}, "GET"));
+    expect(get.status).toBe(503);
+    expect(await get.text()).toContain("RENTAS_ACCESS_KEY");
+    const put = await app.request(url, enviar("PUT", t, { direccion_exacta: "Calle 60 #123", codigo_acceso: SECRETO }));
+    expect(put.status).toBe(503);
+    expect(await put.text()).not.toContain(SECRETO);
+    expect(acceso.instrucciones.size).toBe(0);
+  });
+
+  it("el cron no entrega nada si el sobre no se puede abrir: error de cron, sin outbox y sin contenido en la respuesta", async () => {
+    const { ctx, app, acceso, pendiente } = await preparar();
+    acceso.pendientes.push(pendiente({ direccionExacta: null, codigoAcceso: null, errorAcceso: "llave_no_configurada" }));
+    const res = await app.request("/internal/rentas/acceso-huesped", CRON);
+    const texto = await res.text();
+    expect(JSON.parse(texto)).toMatchObject({ ok: false, liberadas: 0, errores: 1 });
+    expect(texto).not.toContain(SECRETO);
+    expect(acceso.bitacora.map((b) => b.evento)).toEqual(["error_envio"]);
+    expect(ctx.rentasRepo.getMessagingOutbox().filter((o) => o.eventType === "reserva.acceso_huesped")).toHaveLength(0);
+    expect(acceso.liberadas.size).toBe(0);
+  });
+
+  it("POST /internal/rentas/acceso-cifrar: exige el secreto y POST, cifra lo heredado y es idempotente; sin llave 503", async () => {
+    const { ctx, app, acceso } = await preparar();
+    acceso.instruccionesHeredadas.set(ctx.unidadId, { unidadId: ctx.unidadId, propertyId: ctx.propertyId, direccionExacta: "Vieja 1", codigoAcceso: SECRETO, instrucciones: null });
+    expect((await app.request("/internal/rentas/acceso-cifrar", { method: "POST" })).status).toBe(401);
+    expect((await app.request("/internal/rentas/acceso-cifrar", { method: "GET", headers: CRON.headers })).status).toBeGreaterThanOrEqual(400);
+    expect((await app.request("/internal/rentas/acceso-cifrar?limite=0", CRON)).status).toBe(400);
+    const r = await app.request("/internal/rentas/acceso-cifrar", CRON);
+    expect(await r.json()).toEqual({ ok: true, disponible: true, cifradas: 1, fallidas: 0 });
+    expect(JSON.stringify([...acceso.instrucciones.values()])).not.toContain(SECRETO);
+    expect(await (await app.request("/internal/rentas/acceso-cifrar", CRON)).json()).toMatchObject({ cifradas: 0 });
+    const sin = await preparar({ conLlave: false });
+    expect((await sin.app.request("/internal/rentas/acceso-cifrar", CRON)).status).toBe(503);
   });
 });
 

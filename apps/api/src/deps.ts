@@ -49,6 +49,7 @@ import type {
   CanalMensajeriaCodigo,
   RentasCalendarSyncRepository,
   RentasAccesoRepository,
+  RentasPrivacidadRepository,
   RentasCatalogoRepository,
   RentasReportesRepository,
   RentasResumenRepository,
@@ -349,6 +350,8 @@ export interface AppDeps {
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
   readonly rentasAccesoRepo?: (db: TenantDbSession) => RentasAccesoRepository;
+  /** Rn-07 -- solicitudes ARCO propias de rentas (migración 028). OPCIONAL por la misma razón que `rentasAccesoRepo`: la ruta cae a `PostgresRentasPrivacidadRepository` sobre la sesión del request y los tests inyectan el doble en memoria. */
+  readonly rentasPrivacidadRepo?: (db: TenantDbSession) => RentasPrivacidadRepository;
   /** Rn-18 / Rn-19 -- reglas de comisión de canal y catálogo (propiedades, unidades, propietarios; migración 027).
    * OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasCatalogoRepository` y los
    * tests inyectan el doble en memoria. */
