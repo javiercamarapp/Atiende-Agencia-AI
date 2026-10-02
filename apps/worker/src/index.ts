@@ -37,3 +37,6 @@ export type { CobranzaReminderSweepResult, CobranzaReminderPropertyResult, RunCo
 // despachos: ingesta mensual de la lista 69-B del SAT (D-04), con adaptador de fuente.
 export { runEfos69bIngestion, FixtureEfos69bSource } from "./jobs/despachos/efos-69b-ingestion.ts";
 export type { Efos69bSource, Efos69bIngestionResult } from "./jobs/despachos/efos-69b-ingestion.ts";
+// D-28: adaptador HTTP de la fuente 69-B (descarga del CSV publico con tope de tamano y streaming).
+export { HttpEfos69bSource, Efos69bDescargaError, EFOS_69B_URL_DEFECTO } from "./jobs/despachos/efos-69b-http-source.ts";
+export type { HttpEfos69bSourceOpciones } from "./jobs/despachos/efos-69b-http-source.ts";
