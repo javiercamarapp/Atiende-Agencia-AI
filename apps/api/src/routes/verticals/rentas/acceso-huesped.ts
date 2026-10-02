@@ -21,17 +21,28 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ACCESO_HUESPED_ROLES, POLITICA_ACCESO_POR_DEFECTO, PostgresRentasAccesoRepository, ejecutarLiberacionAcceso, validarInstruccion, validarPolitica } from "@atiende/domain-rentas";
+import { ACCESO_HUESPED_ROLES, AccesoDescifradoError, AccesoNoDisponibleError, POLITICA_ACCESO_POR_DEFECTO, PostgresRentasAccesoRepository, ejecutarLiberacionAcceso, validarInstruccion, validarPolitica } from "@atiende/domain-rentas";
 import type { PoliticaAcceso, RentasAccesoRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
+import { cifradorAccesoDeEntorno } from "./acceso-cipher.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIMITE_BITACORA_MAX = 200;
 const LIMITE_BITACORA_DEFECTO = 50;
+
+/** Rn-29: sin llave valida el secreto no se lee ni se guarda: 503 "no disponible: falta RENTAS_ACCESS_KEY" (nunca texto plano ni 500). */
+async function conLlave<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof AccesoNoDisponibleError || err instanceof AccesoDescifradoError) throw Errors.serviceUnavailable(err.message);
+    throw err;
+  }
+}
 
 function requireUuid(value: string | undefined, campo: string): string {
   if (!value || !UUID_RE.test(value)) throw Errors.validation(`${campo}: se esperaba un UUID.`);
@@ -56,7 +67,11 @@ const politicaAJson = (p: Pick<PoliticaAcceso, "activo" | "horasAntesCheckin" | 
 
 export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const accesoRepo = (db: Parameters<AppDeps["rentasRepo"]>[0]): RentasAccesoRepository => (deps.rentasAccesoRepo ? deps.rentasAccesoRepo(db) : new PostgresRentasAccesoRepository(db));
+  const accesoRepo = (db: Parameters<AppDeps["rentasRepo"]>[0]): RentasAccesoRepository => {
+    if (deps.rentasAccesoRepo) return deps.rentasAccesoRepo(db);
+    const { cipher, error } = cifradorAccesoDeEntorno(deps.env);
+    return new PostgresRentasAccesoRepository(db, cipher, error);
+  };
 
   const rutas = [
     "/rentas/:propertyId/acceso-huesped/politica",
@@ -122,7 +137,7 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   app.get("/rentas/:propertyId/unidades/:unidadId/acceso-instrucciones", async (c) => {
     assertVerticalRole(c, ACCESO_HUESPED_ROLES);
     const unidadId = requireUuid(c.req.param("unidadId"), "unidadId");
-    const r = await accesoRepo(c.get("db")).obtenerInstruccion(c.req.param("propertyId"), unidadId);
+    const r = await conLlave(() => accesoRepo(c.get("db")).obtenerInstruccion(c.req.param("propertyId"), unidadId));
     c.header("Cache-Control", "no-store");
     if (!r.disponible) return c.json({ disponible: false, instrucciones: null }, 200);
     return c.json(
@@ -136,7 +151,7 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const unidadId = requireUuid(c.req.param("unidadId"), "unidadId");
     const v = validarInstruccion(await leerJson(c));
     if (!v.ok) throw Errors.validation(v.error);
-    const r = await accesoRepo(c.get("db")).guardarInstruccion(c.get("organizationId") as string, c.req.param("propertyId"), unidadId, v.valor, c.get("userId"));
+    const r = await conLlave(() => accesoRepo(c.get("db")).guardarInstruccion(c.get("organizationId") as string, c.req.param("propertyId"), unidadId, v.valor, c.get("userId")));
     if (!r.disponible) throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
     if (r.valor === null) throw Errors.notFound("Unidad no encontrada en esta property.");
     c.header("Cache-Control", "no-store");
@@ -152,6 +167,22 @@ export function rentasAccesoHuespedRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (r === "no_disponible") throw Errors.conflict("La liberación de acceso al huésped aún no está disponible en este ambiente (migración pendiente).");
     if (r === "no_encontrada") throw Errors.notFound("Reserva no encontrada en esta property.");
     return c.json({ reserva_id: ocupacionId, pago_confirmado: r === "confirmado" }, 200);
+  });
+
+  // ---- Barrido de cifrado de las instrucciones heredadas en texto plano (Rn-29) ----
+  // Sistema (guard de secreto interno/cron), SOLO POR POST y NO agendado en vercel.json: se corre a mano tras aplicar la
+  // migracion 028 y configurar RENTAS_ACCESS_KEY. Idempotente: cifra, verifica el ida y vuelta y SOLO entonces anula el texto plano.
+  // Una transaccion por tanda (`limite` filas, 1..200, por defecto 50); repetir hasta `ok: true` y `cifradas: 0` (`fallidas > 0` = filas que siguen en claro). Sin llave: 503.
+  app.post("/internal/rentas/acceso-cifrar", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+    const crudo = c.req.query("limite");
+    let limite = 50;
+    if (crudo !== undefined) {
+      limite = Number(crudo);
+      if (!Number.isInteger(limite) || limite < 1 || limite > 200) throw Errors.validation("limite: se esperaba un entero entre 1 y 200.");
+    }
+    const r = await conLlave(() => deps.engine.withAppSession({ userId: null }, (db) => accesoRepo(db).cifrarPendientes(limite)));
+    return c.json({ ok: r.fallidas === 0, disponible: r.disponible, cifradas: r.cifradas, fallidas: r.fallidas }, 200);
   });
 
   // ---- Cron ----

@@ -11,7 +11,7 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError, PromotionError } from "./errors.ts";
 import { estaAbiertoAhora } from "./horarios.ts";
 import { canonicalizeMexicanPhone } from "./phone.ts";
-import { extraerPackSize, requiresAdultConfirmation } from "./product-search.ts";
+import { extraerPackSize, requiresAdultConfirmation, requiresTortillaChoice } from "./product-search.ts";
 import { applyPromotionToOrder, normalizePromotionCode } from "./promotions.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, PersistedOrderItem, PropinaPolitica, StorefrontCatalogRow } from "./types.ts";
@@ -86,7 +86,7 @@ export interface StorefrontMenuItem {
   readonly packSize: number | null;
   /** Alcohol: exige confirmar mayoria de edad. */
   readonly requiresAdultConfirmation: boolean;
-  /** Tacos: exige elegir tortilla. */
+  /** Tacos y platillos "de maiz o harina" del menu: exige elegir tortilla. */
   readonly requiresTortilla: boolean;
   /** No se vende a domicilio (solo recoger). */
   readonly noDomicilio: boolean;
@@ -120,7 +120,7 @@ export function groupStorefrontMenu(rows: readonly StorefrontCatalogRow[]): Stor
       available: row.isAvailable,
       packSize: extraerPackSize(row.name, row.description),
       requiresAdultConfirmation: requiresAdultConfirmation(row.name, row.categoryName),
-      requiresTortilla: /\btacos?\b/i.test(row.name),
+      requiresTortilla: requiresTortillaChoice(row.name, row.description),
       noDomicilio: row.noDomicilio,
     });
   }
@@ -176,7 +176,7 @@ export async function previewPromotion(
   if (!promotion) return invalida(`El código "${codigo}" no existe.`);
   try {
     const zona = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(args.propertyId)).zonaHoraria);
-    const applied = applyPromotionToOrder({ promotion, orderTotal: args.total, items: args.items, canal: args.canal, now: args.now ?? new Date(), zonaHoraria: zona });
+    const applied = applyPromotionToOrder({ promotion, orderTotal: args.total, items: args.items, canal: args.canal, now: args.now ?? new Date(), zonaHoraria: zona, propertyId: args.propertyId });
     return { valida: true, codigo, descuento: applied.discount, totalConDescuento: applied.total, mensaje: null };
   } catch (err) {
     if (err instanceof PromotionError) return invalida(err.message);

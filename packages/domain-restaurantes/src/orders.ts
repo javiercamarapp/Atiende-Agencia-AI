@@ -14,7 +14,7 @@ import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion } from "./promotions.ts";
-import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
+import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
@@ -35,6 +35,7 @@ function toProductoEncontrado(product: { id: string; name: string; description: 
     price: product.price,
     packSize: extraerPackSize(product.name, product.description),
     requiresAdultConfirmation: requiresAdultConfirmation(product.name, product.categoryName),
+    requiresTortilla: requiresTortillaChoice(product.name, product.description),
     ...(product.noDomicilio === true ? { noDomicilio: true } : {}),
   };
 }
@@ -341,6 +342,7 @@ export async function prepareCreateOrder(
       now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+      propertyId: branch.propertyId,
     });
     total = applied.total;
     discount = applied.discount;
@@ -358,6 +360,7 @@ export async function prepareCreateOrder(
       now: instanteDelPedido,
       zonaHoraria,
       ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+      propertyId: branch.propertyId,
     });
     if (auto.applied) {
       total = auto.applied.total;
@@ -569,6 +572,7 @@ export async function quoteOrder(
     now: new Date(),
     zonaHoraria,
     ...(reglas.diaNegocio !== null ? { diaNegocio: reglas.diaNegocio } : {}),
+    propertyId: branch.propertyId,
   });
   const descuento = auto.applied?.discount ?? 0;
   const nombreDeProducto = (id: string) => resolved.products.find((p) => p.id === id)?.name ?? null;

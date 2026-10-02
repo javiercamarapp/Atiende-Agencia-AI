@@ -16,6 +16,17 @@ const GREEN_CHECKLIST_BODY = {
   presentAnnexRefs: [],
 };
 
+type Ctx = Awaited<ReturnType<typeof buildLicitacionesTestContext>>;
+
+/** L-26: doble aprobacion con dos personas distintas (analyst da la tecnico-legal, owner la economica). Sin 2FA en estos tests el step-up no aplica (base sin migrar de 2FA). */
+async function approveBothStages(ctx: Ctx, app: ReturnType<typeof buildApp>) {
+  const base = `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`;
+  const first = await app.request(base, authedJson(ctx.staff.analyst.token, { stage: "tecnica_legal" }));
+  expect(first.status).toBe(201);
+  const second = await app.request(base, authedJson(ctx.staff.owner.token, { stage: "economica" }));
+  expect(second.status).toBe(201);
+}
+
 async function runFullReadyFlow(ctx: Awaited<ReturnType<typeof buildLicitacionesTestContext>>, app: ReturnType<typeof buildApp>) {
   ctx.repo.seedApprovedRates(ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
 
@@ -35,8 +46,7 @@ async function runFullReadyFlow(ctx: Awaited<ReturnType<typeof buildLicitaciones
   const checklistBody = (await checklistRes.json()) as { overallStatus: string };
   expect(checklistBody.overallStatus).toBe("verde");
 
-  const approvalRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.analyst.token, {}));
-  expect(approvalRes.status).toBe(201);
+  await approveBothStages(ctx, app);
 
   const assembleRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-1" }));
   expect(assembleRes.status).toBe(200);
@@ -67,8 +77,27 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     expect(bytes[1]).toBe(0x4b);
   });
 
-  it("sin aprobación de expediente -> assemble queda 'draft' con motivo explícito, nunca 'ready' por defecto", async () => {
+  it("sin la doble aprobación -> assemble responde 409 con el motivo y NO guarda ningún paquete (L-26)", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.repo.seedApprovedRates(ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
+
+    await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/economic/generate`, authedJson(ctx.staff.writer.token, { lineItems: [{ concept: "consultoria_hora", quantity: 10 }] }, { "idempotency-key": "econ-1" }));
+    await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/checklist/run`, authedJson(ctx.staff.writer.token, GREEN_CHECKLIST_BODY, { "idempotency-key": "checklist-1" }));
+
+    const assembleRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-1" }));
+    expect(assembleRes.status).toBe(409);
+    const body = (await assembleRes.json()) as { code: string; message: string };
+    expect(body.code).toBe("conflict");
+    expect(body.message).toContain("técnico-legal (1/2)");
+    expect(body.message).toContain("económica (2/2)");
+    const latest = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/latest`, authedJson(ctx.staff.viewer.token));
+    expect(latest.status).toBe(404);
+  });
+
+  it("base sin migrar (modo legacy, L-26): sin aprobación el assemble sigue quedando 'draft' con motivo explícito, como siempre", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    ctx.repo.setExpedienteStageMode("legacy");
     const app = buildApp(ctx.deps);
     ctx.repo.seedApprovedRates(ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
 
@@ -79,6 +108,12 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     const body = (await assembleRes.json()) as { status: string; draftReasons: string[] };
     expect(body.status).toBe("draft");
     expect(body.draftReasons).toContain("sin_aprobacion_vigente_de_alcance_expediente");
+
+    // La aprobacion unica de siempre (cuerpo vacio) sigue funcionando y deja el paquete 'ready'.
+    const approve = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.analyst.token, {}));
+    expect(approve.status).toBe(201);
+    const again = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-2" }));
+    expect(((await again.json()) as { status: string }).status).toBe("ready");
   });
 
   it("AE-14: un paquete 'ready' guardado se re-deriva a 'draft' si cambia una tarifa REALMENTE usada después de aprobar -- latest y download nunca mienten", async () => {
@@ -115,8 +150,7 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     expect(downloadBody.draftReasons.length).toBeGreaterThan(0);
 
     // Re-aprobar con el hash ACTUAL y volver a ensamblar restaura 'ready'.
-    const reApprove = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, {}));
-    expect(reApprove.status).toBe(201);
+    await approveBothStages(ctx, app);
     const reAssemble = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-2" }));
     expect((await reAssemble.json())).toMatchObject({ status: "ready" });
 
@@ -148,11 +182,11 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
 
     // El MISMO analyst intenta aprobar el expediente completo: rechazado --
     // consta como autor de una sección cubierta por el alcance "expediente".
-    const selfApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.analyst.token, {}));
+    const selfApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.analyst.token, { stage: "tecnica_legal" }));
     expect(selfApproveRes.status).toBe(403);
 
-    // El owner, que no redactó nada, sí puede aprobar el mismo expediente.
-    const ownerApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, {}));
+    // El owner, que no redactó nada, sí puede dar la primera etapa del mismo expediente.
+    const ownerApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, { stage: "tecnica_legal" }));
     expect(ownerApproveRes.status).toBe(201);
   });
 
@@ -171,12 +205,10 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     expect(body).toMatchObject({ scope: "seccion", scopeRef: "seccion:economic:carta", status: "vigente" });
 
     // Una aprobación de sección NUNCA basta por sí sola para que el
-    // expediente completo cuente como aprobado (PackageAssembler sigue
-    // exigiendo scope==="expediente" exacto, ver diseño §2.1).
+    // expediente completo cuente como aprobado: ni siquiera cuenta como
+    // etapa del 2/2 (L-26) -- el assemble sigue rechazándose con 409.
     const assembleRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-seccion" }));
-    const assembleBody = (await assembleRes.json()) as { status: string; draftReasons: string[] };
-    expect(assembleBody.status).toBe("draft");
-    expect(assembleBody.draftReasons).toContain("sin_aprobacion_vigente_de_alcance_expediente");
+    expect(assembleRes.status).toBe(409);
   });
 
   it("un viewer no puede ensamblar el paquete (solo lectura)", async () => {

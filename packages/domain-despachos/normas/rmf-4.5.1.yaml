@@ -1,0 +1,15 @@
+id: rmf-4.5.1
+tipo: norma
+ordenamiento: "RMF"
+articulo_o_regla: "4.5.1"
+resumen: "DIOT: presentación a más tardar el último día del mes siguiente; reporta operaciones efectivamente pagadas por tercero."
+fuente_url: "https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/normatividad_rmf_rgce2026.html"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "El propio código marca POR VALIDAR el plazo. Falta confirmar el número de regla vigente."
+usado_en_codigo:
+  - "src/declaraciones/diot-layout.ts:3"
+  - "src/vencimientos/calendario-fiscal.ts:17"
+  - "src/vencimientos/calendario-fiscal.ts:262"

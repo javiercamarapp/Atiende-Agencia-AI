@@ -12,14 +12,15 @@
 // (ver cabecera de cierre.ts, AE-14): este cliente nunca decide ni declara
 // ese estado, solo transporta lo que el servidor ya calculó.
 //
-// Deliberadamente FUERA de esta pieza (alcance de rondas futuras, ver README
-// de este vertical): `GET`/`POST .../submission[/declare]` (declarar que YA
-// se presentó ante el portal), y el alta del contrato mismo con sus
-// documentos/autopsia del fallo/radar de renovaciones -- todo
-// post-adjudicación. Cobranza del contrato e inconformidades ya tienen
-// cliente propio (Fase 15, `lib/contract-billing-client.ts` y
+// L-26 (REQ-044): la aprobacion del expediente es DOBLE -- tecnico-legal (1/2)
+// y economica (2/2), por dos personas distintas, cada una con step-up TOTP
+// (`fetchExpedienteApprovals`/`approveExpedienteStage`). L-28: declarar que YA
+// se presento ante el portal (`fetchSubmission`/`declareSubmission`). El alta del
+// contrato mismo con sus documentos/autopsia del fallo/radar de renovaciones es
+// post-adjudicacion; cobranza del contrato e inconformidades ya tienen cliente
+// propio (Fase 15, `lib/contract-billing-client.ts` y
 // `lib/inconformidad-client.ts`).
-import { postJson, defaultAuthCtx, LicitacionesAdminError } from "./admin-client.ts";
+import { postJson, fetchJson, defaultAuthCtx, LicitacionesAdminError } from "./admin-client.ts";
 import { withAuthRefresh, apiBaseUrlFromRequestUrl } from "../../../lib/authed-fetch.ts";
 
 export type ApprovalScope = "seccion" | "documento" | "expediente";
@@ -46,6 +47,60 @@ export interface ApprovalResult {
  */
 export async function approveExpediente(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<ApprovalResult> {
   return postJson<ApprovalResult>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/expediente/approval`, token, {});
+}
+
+/** Etapas de la doble aprobacion (L-26) -- espejo de `EXPEDIENTE_APPROVAL_STAGES` (domain-licitaciones). */
+export type ExpedienteStage = "tecnica_legal" | "economica";
+
+export const EXPEDIENTE_STAGE_LABELS: Readonly<Record<ExpedienteStage, string>> = {
+  tecnica_legal: "Técnico-legal (1/2)",
+  economica: "Económica (2/2)",
+};
+
+/** Una etapa en `GET .../expediente/approvals`: solo rol y "tu" de quien aprobo (nunca id ni correo de otra persona). */
+export interface ExpedienteStageView {
+  readonly stage: ExpedienteStage;
+  readonly approval: { readonly id: string; readonly approvedAt: string; readonly approvedByRole: string; readonly byYou: boolean } | null;
+}
+
+/**
+ * Estado de la aprobacion del expediente (`GET .../expediente/approvals`):
+ *  - "doble": la base tiene la migracion 033 -> dos etapas;
+ *  - "legacy": base sin migrar -> sigue la aprobacion unica (`singleApproval`);
+ *  - "sin_propuesta": todavia no hay expediente que aprobar.
+ */
+export interface ExpedienteApprovalsState {
+  readonly mode: "doble" | "legacy" | "sin_propuesta";
+  readonly stages: readonly ExpedienteStageView[];
+  readonly complete: boolean;
+  readonly missing: readonly ExpedienteStage[];
+  readonly singleApproval?: { readonly approvedAt: string; readonly approvedByRole: string; readonly byYou: boolean } | null;
+}
+
+export async function fetchExpedienteApprovals(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<ExpedienteApprovalsState> {
+  return fetchJson<ExpedienteApprovalsState>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/expediente/approvals`, token);
+}
+
+/**
+ * `POST .../expediente/approval` con la etapa y el token de step-up (cabecera `x-step-up-token`, alcance
+ * `expediente_approval`, ver `two-factor-client.ts::requestStepUpToken`). `stepUpToken: null` cuando la base aun no
+ * tiene 2FA (el servidor tampoco lo exige). El hash de insumos nunca viaja: el servidor aprueba el vigente.
+ */
+export async function approveExpedienteStage(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  tenderId: string,
+  input: { readonly stage: ExpedienteStage; readonly stepUpToken: string | null },
+): Promise<ApprovalResult & { readonly stage: ExpedienteStage }> {
+  return postJson<ApprovalResult & { stage: ExpedienteStage }>(
+    fetchImpl,
+    `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/expediente/approval`,
+    token,
+    { stage: input.stage },
+    input.stepUpToken ? { "x-step-up-token": input.stepUpToken } : {},
+  );
 }
 
 /**
@@ -161,4 +216,77 @@ export async function downloadPackage(fetchImpl: typeof fetch, apiBaseUrl: strin
   const match = DEFAULT_DOWNLOAD_FILENAME_PATTERN.exec(disposition);
   const filename = match?.[1] ?? `expediente-${tenderId}.zip`;
   return { blob, filename };
+}
+
+// ---------------------------------------------------------------------------
+// L-28 -- declaracion de la presentacion ante el portal. Atiende NUNCA envia la oferta (REQ-046/REQ-LIC-011):
+// solo registra que la persona usuaria ya la presento. Espejo de `GET/POST .../submission[/declare]` (cierre.ts).
+// ---------------------------------------------------------------------------
+
+export interface SubmissionRecord {
+  readonly id: string;
+  readonly status: "submitted";
+  readonly submittedAt: string;
+  readonly acknowledgementStorageRef: string | null;
+  readonly acknowledgementFileHash: string | null;
+  readonly notes: string | null;
+  readonly createdAt: string;
+}
+
+/** `GET .../submission`: `null` = todavia no se declaro ninguna presentacion (estado normal, no error). */
+export async function fetchSubmission(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<SubmissionRecord | null> {
+  return fetchJson<SubmissionRecord | null>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/submission`, token);
+}
+
+/** Tope del acuse en el cliente: el servidor admite hasta 30 MB de JSON y base64 pesa ~4/3, asi que 20 MB de archivo caben con margen. */
+export const MAX_ACKNOWLEDGEMENT_BYTES = 20 * 1024 * 1024;
+
+/**
+ * `POST .../submission/declare` (WRITE_ROLES, `idempotency-key` obligatoria: el mismo reintento nunca duplica la
+ * declaracion). `submittedAt` es ISO 8601 con offset (ver `localInputToIso`); el acuse es opcional, en base64.
+ * La misma clave con OTRO cuerpo es un 422 del servidor: la pantalla genera una clave nueva cuando el formulario cambia.
+ */
+export async function declareSubmission(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  tenderId: string,
+  input: { readonly submittedAt: string; readonly notes?: string | null; readonly acknowledgementContentBase64?: string | null },
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<SubmissionRecord> {
+  return postJson<SubmissionRecord>(
+    fetchImpl,
+    `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/submission/declare`,
+    token,
+    { submittedAt: input.submittedAt, notes: input.notes ?? null, acknowledgementContentBase64: input.acknowledgementContentBase64 ?? null },
+    { "idempotency-key": idempotencyKey },
+  );
+}
+
+/** `<input type="datetime-local">` no trae offset: se interpreta en la zona del navegador (nunca se asume UTC) y viaja en ISO con `Z`. */
+export function localInputToIso(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Valor para un `<input type="datetime-local">` (hora local del navegador) a partir de un instante. */
+export function instantToLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Contenido de un `File` en base64 (sin el prefijo `data:`), para el acuse. */
+export function readFileAsBase64(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new LicitacionesAdminError("No se pudo leer el archivo del acuse."));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
 }

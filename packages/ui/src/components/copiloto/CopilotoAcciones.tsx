@@ -59,6 +59,7 @@ export function CopilotoAcciones({
   const [copiado, setCopiado] = useState(false);
   const [fijado, setFijado] = useState<"no" | "ok" | "error">("no");
   const [fijando, setFijando] = useState(false);
+  const [pdf, setPdf] = useState<{ estado: "libre" | "generando" | "error"; mensaje?: string }>({ estado: "libre" });
   const temporizador = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(temporizador.current), []);
 
@@ -87,6 +88,18 @@ export function CopilotoAcciones({
     }
   };
 
+  const puedePdf = Boolean(transporte.descargarPdf && conversacionId && mensaje.seq !== undefined && mensaje.blocks?.length);
+  const descargarPdf = async () => {
+    if (!transporte.descargarPdf || !conversacionId || mensaje.seq === undefined || pdf.estado === "generando") return;
+    setPdf({ estado: "generando" });
+    try {
+      await transporte.descargarPdf(conversacionId, mensaje.seq);
+      setPdf({ estado: "libre" });
+    } catch (e) {
+      setPdf({ estado: "error", mensaje: e instanceof Error && e.message ? e.message : "No se pudo generar el PDF; intenta de nuevo." });
+    }
+  };
+
   const bloquesCsv = (mensaje.blocks ?? []).filter((b) => b.columns.length > 0 && b.rows.length > 0);
   const csv = (b: CopilotoBloque) => setErrorCsv(!descargarCsv(b, vertical));
 
@@ -110,6 +123,12 @@ export function CopilotoAcciones({
           Descargar PDF
         </a>
       ) : null}
+      {!urlPdf && puedePdf ? (
+        <button type="button" className={BOTON} onClick={() => void descargarPdf()} disabled={pdf.estado === "generando"} aria-label="Descargar PDF">
+          <FileDown className="w-3.5 h-3.5" aria-hidden />
+          {pdf.estado === "generando" ? "Generando PDF…" : "Descargar PDF"}
+        </button>
+      ) : null}
       {puedeFijar ? (
         <button type="button" className={BOTON} onClick={() => void fijar()} disabled={fijando || fijado === "ok"} aria-label="Fijar en el tablero">
           <Pin className="w-3.5 h-3.5" aria-hidden />
@@ -125,6 +144,11 @@ export function CopilotoAcciones({
       {errorCsv ? (
         <span role="alert" className="text-xs text-destructive">
           No se pudo crear el archivo CSV.
+        </span>
+      ) : null}
+      {pdf.estado === "error" ? (
+        <span role="alert" className="text-xs text-destructive">
+          {pdf.mensaje}
         </span>
       ) : null}
       {fijado === "error" ? (

@@ -8,6 +8,9 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
+import { citas } from "../mock-api/fixtures/citas.ts";
+import { hoteles } from "../mock-api/fixtures/hoteles.ts";
+import { licitaciones } from "../mock-api/fixtures/licitaciones.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 interface Esperado {
@@ -20,15 +23,16 @@ interface Esperado {
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
+  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
   // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
   // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
   restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
-  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: [] },
+  // CHAT-09: igual que restaurantes, la API simulada activa el asistente de hoteles (owner): pildora "Pregunta a tus datos" que repite "Copiloto".
+  hoteles: { categorias: ["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"], barra: ["Resumen", "Reservas", "Tickets", "Asistencia"], pie: ["Pregunta a tus datos"], repetidos: [`/hoteles/${hoteles.orgSlug}/copiloto`] },
   rentas: { categorias: ["Operación", "Canales", "Finanzas", "Configuración", "Control"], barra: ["Resumen", "Calendario", "Mis tareas", "Finanzas"], pie: [] },
   despachos: { categorias: ["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"], barra: ["Resumen", "Cierre", "CFDI", "Cobranza"], pie: [] },
-  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: [] },
-  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: [] },
+  licitaciones: { categorias: ["Oportunidades", "Inteligencia", "Organización"], barra: ["Resumen", "Concursos", "Radar", "Empresa"], pie: ["Pregunta a tus datos"], repetidos: [`/licitaciones/${licitaciones.orgSlug}/copiloto`] },
+  citas: { categorias: ["Negocio", "Comunicación", "Administrar"], barra: ["Resumen", "Agenda", "Servicios", "Clientes"], pie: ["Pregunta a tus datos"], repetidos: [`/citas/${citas.orgSlug}/copiloto`] },
 };
 
 for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, Esperado][]) {

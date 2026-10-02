@@ -1,4 +1,5 @@
 import type {
+  AgentRunRepository,
   AuthzAuditRepository,
   CoreRepository,
   CoreStaffRepository,
@@ -9,6 +10,7 @@ import type {
   CfoRepository,
   PylRepository,
   CfoZoneRepository,
+  ConsolaRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
@@ -23,7 +25,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -38,7 +40,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -48,6 +50,8 @@ import type {
   CanalMensajeriaCodigo,
   RentasCalendarSyncRepository,
   RentasAccesoRepository,
+  RentasMensajesAutomaticosRepository,
+  RentasPrivacidadRepository,
   RentasCatalogoRepository,
   RentasReportesRepository,
   RentasResumenRepository,
@@ -196,6 +200,12 @@ export interface AppDeps {
   /** H-28 -- recepcion (llegadas, salidas, en casa, cambio de habitacion; migracion 038). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresRecepcionRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesRecepcionRepo?: (db: TenantDbSession) => RecepcionRepository;
+  /** H-28 -- cambio de fechas con recotizacion (migracion 041). OPCIONAL: en produccion no se define y las rutas usan
+   *  `PostgresCambioFechasRepository` (SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesFechasRepo?: (db: TenantDbSession) => CambioFechasRepository;
+  /** H-12 -- lista de espera (migracion 041). OPCIONAL: en produccion no se define y las rutas usan `PostgresListaEsperaRepository`
+   *  (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesListaEsperaRepo?: (db: TenantDbSession) => ListaEsperaRepository;
   /** H-27 -- ficha de huesped (notas, preferencias, historial; migracion 038). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresHuespedesRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesHuespedesRepo?: (db: TenantDbSession) => HuespedesRepository;
@@ -310,6 +320,8 @@ export interface AppDeps {
   readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-24 -- libro contable persistido (migracion 020). OPCIONAL a proposito (mismo criterio que `carteraRepo`): las rutas caen a `PostgresLibroRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly libroRepo?: (db: TenantDbSession) => LibroRepository;
+  /** D-35 + D-02 -- conciliacion bancaria persistida (sesiones, matches, sugerencias del nivel 4; migracion 021). OPCIONAL a proposito (mismo criterio que `libroRepo`): las rutas caen a `PostgresConciliacionPersistidaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
@@ -353,6 +365,10 @@ export interface AppDeps {
    * misma razón que `rentasReportesRepo`: las rutas caen a `PostgresRentasAccesoRepository` y
    * los tests inyectan el doble en memoria. */
   readonly rentasAccesoRepo?: (db: TenantDbSession) => RentasAccesoRepository;
+  /** Rn-24 / Rn-25 -- programación de mensajes automáticos por evento y su cron (migración 029). OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasMensajesAutomaticosRepository` y los tests inyectan el doble en memoria. */
+  readonly rentasMensajesAutomaticosRepo?: (db: TenantDbSession) => RentasMensajesAutomaticosRepository;
+  /** Rn-07 -- solicitudes ARCO propias de rentas (migración 028). OPCIONAL por la misma razón que `rentasAccesoRepo`: la ruta cae a `PostgresRentasPrivacidadRepository` sobre la sesión del request y los tests inyectan el doble en memoria. */
+  readonly rentasPrivacidadRepo?: (db: TenantDbSession) => RentasPrivacidadRepository;
   /** Rn-18 / Rn-19 -- reglas de comisión de canal y catálogo (propiedades, unidades, propietarios; migración 027).
    * OPCIONAL por la misma razón que `rentasAccesoRepo`: las rutas caen a `PostgresRentasCatalogoRepository` y los
    * tests inyectan el doble en memoria. */
@@ -586,6 +602,20 @@ export interface AppDeps {
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
    *  aplicar -> sin rol restringido y sin bitacora (el comportamiento anterior, nunca un 500). */
   readonly cfoZoneRepo?: (db: TenantDbSession) => CfoZoneRepository;
+  /** Resumen y actividad de agentes de la consola de superadmin (SA-L-05/SA-L-06; ver
+   *  packages/db/migrations/0042_superadmin_consola_resumen.sql y routes/superadmin-consola.ts). Fabrica por sesion
+   *  del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL: ausente o migracion sin aplicar -> los campos
+   *  salen `null` con su razon y `disponible: false` (200), nunca un 500. */
+  readonly consolaRepo?: (db: TenantDbSession) => ConsolaRepository;
+  /** Bitacora de corridas de agentes y panel de agentes (SA-L-07/SA-L-08; ver
+   *  packages/db/migrations/0044_superadmin_corridas_y_panel_agentes.sql, routes/superadmin-agentes.ts y
+   *  agentes/corridas.ts). Fabrica por sesion: la escritura y la purga son SOLO-SISTEMA (una transaccion PROPIA por
+   *  llamada, `withAppSession({ userId: null })`); las lecturas, con la sesion del caller. OPCIONAL: ausente o migracion
+   *  sin aplicar -> `disponible: false` (200) y la escritura se omite en silencio; withHeartbeat sigue como siempre. */
+  readonly agentRunRepo?: (db: TenantDbSession) => AgentRunRepository;
+  /** Modelo principal (id de OpenRouter) de un rol del gateway segun la ruta vigente (defaults + LLM_MODELS_JSON).
+   *  `null` = el rol no tiene ruta. OPCIONAL: ausente -> el panel resuelve contra los defaults del repo. */
+  readonly modeloPrincipalDeRol?: (role: string) => string | null;
   /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
    *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
    *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,

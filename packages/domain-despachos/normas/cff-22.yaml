@@ -1,0 +1,15 @@
+id: cff-22
+tipo: norma
+ordenamiento: "CFF"
+articulo_o_regla: "22"
+resumen: "Devoluciones: plazo de resolución de 40 días hábiles (20 con dictamen o garantía) que usa el motor de devolución de IVA."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CFF.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar plazos y supuestos (dictamen, garantía) con el texto vigente."
+usado_en_codigo:
+  - "src/devolucion-iva/calculo.ts:449"
+  - "src/devolucion-iva/calculo.ts:455"
+  - "src/devolucion-iva/calculo.ts:456"

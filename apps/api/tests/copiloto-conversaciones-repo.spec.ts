@@ -11,6 +11,7 @@ import type { DataChatDeps } from "../src/data-chat/deps.ts";
 import {
   PostgresConversacionesRepository,
   isPersistableAnswer,
+  parseToolCallsGuardados,
   parseTitulo,
   redactQuestionForStorage,
   sanitizeBlocksForStorage,
@@ -286,3 +287,64 @@ describe("rutas HTTP contra la base sin migrar", () => {
 });
 
 vi.setConfig({ testTimeout: 20_000 });
+
+describe("CHAT-14: cargarFuenteReporte (fuente de un reporte PDF) contra la base sin migrar y con filas reales", () => {
+  it("42P01 (0041 pendiente) -> null (404 honesto, nunca 500) y la sesion sigue utilizable", async () => {
+    const session = new AbortAwareFakeSession([{ match: /data_chat_(conversation|message)/i, respond: () => NO_TABLE }, SIGUIENTE]);
+    expect(await new PostgresConversacionesRepository(session).cargarFuenteReporte(SCOPE, ID, 2)).toBeNull();
+    await expectSessionUsable(session);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+  });
+
+  it("conversacion ajena o mensaje que no es del asistente -> null", async () => {
+    const ajena = new AbortAwareFakeSession([{ match: /from core\.data_chat_conversation/i, respond: () => [] }]);
+    expect(await new PostgresConversacionesRepository(ajena).cargarFuenteReporte(SCOPE, ID, 2)).toBeNull();
+    const sinMensaje = new AbortAwareFakeSession([
+      { match: /from core\.data_chat_conversation/i, respond: () => [{ id: ID }] },
+      { match: /from core\.data_chat_message/i, respond: () => [] },
+    ]);
+    expect(await new PostgresConversacionesRepository(sinMensaje).cargarFuenteReporte(SCOPE, ID, 1)).toBeNull();
+  });
+
+  it("filtra por autor, organizacion y vertical, y solo lee mensajes del asistente", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from core\.data_chat_conversation/i, respond: () => [{ id: ID }] },
+      { match: /from core\.data_chat_message/i, respond: () => [{ tool_calls: [{ tool: "ocupacion_adr_revpar", args: { periodo: "hoy" } }] }] },
+    ]);
+    const vistas: { sql: string; params: unknown[] | undefined }[] = [];
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, params?: unknown[]) => {
+      vistas.push({ sql: sql.replace(/\s+/g, " "), params });
+      return original(sql, params);
+    }) as typeof session.query;
+    const out = await new PostgresConversacionesRepository(session).cargarFuenteReporte(SCOPE, ID, 2);
+    expect(out).toEqual({ seq: 2, toolCalls: [{ tool: "ocupacion_adr_revpar", args: { periodo: "hoy" } }] });
+    expect(vistas[0]!.sql).toMatch(/c\.user_id = \$2::uuid and c\.organization_id = \$3::uuid and c\.vertical = \$4::text/);
+    expect(vistas[0]!.params).toEqual([ID, SCOPE.userId, SCOPE.organizationId, SCOPE.vertical]);
+    expect(vistas[1]!.sql).toMatch(/m\.role = 'assistant'/);
+    expect(vistas[1]!.params).toEqual([ID, 2]);
+  });
+
+  it("un error que no es de migracion pendiente se repropaga (la sesion queda recuperada)", async () => {
+    const session = new AbortAwareFakeSession([{ match: /data_chat_conversation/i, respond: () => pgError("57014", "statement timeout") }, SIGUIENTE]);
+    await expect(new PostgresConversacionesRepository(session).cargarFuenteReporte(SCOPE, ID, 2)).rejects.toThrow(/statement timeout/);
+    await expectSessionUsable(session);
+  });
+
+  it("parseToolCallsGuardados descarta elementos con forma inesperada y valores no tipados", () => {
+    expect(
+      parseToolCallsGuardados([
+        { tool: "a", args: { periodo: "hoy", n: 3, malo: { x: 1 }, nulo: null } },
+        "texto",
+        null,
+        { tool: 5, args: {} },
+        { tool: "", args: {} },
+        { tool: "b" },
+      ]),
+    ).toEqual([
+      { tool: "a", args: { periodo: "hoy", n: 3 } },
+      { tool: "b", args: {} },
+    ]);
+    expect(parseToolCallsGuardados("no es lista")).toEqual([]);
+  });
+});

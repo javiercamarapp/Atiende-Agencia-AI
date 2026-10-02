@@ -34,6 +34,21 @@ import { ApprovalRejectedError } from "./errors.ts";
 export type ApprovalScope = "seccion" | "documento" | "expediente";
 
 /**
+ * L-26 (REQ-044) -- doble aprobacion del expediente antes de ensamblar el
+ * paquete: (1/2) tecnica-legal y (2/2) economica, por DOS personas distintas.
+ * Solo aplica al alcance "expediente" (scopeRef = "expediente"); las
+ * aprobaciones de seccion nunca llevan etapa. Una aprobacion de expediente SIN
+ * etapa es la aprobacion unica de Fase 1/2 (datos previos a la migracion 033):
+ * ya no satisface el gate "2/2" -- ver `evaluateExpedienteStages`.
+ */
+export const EXPEDIENTE_APPROVAL_STAGES = ["tecnica_legal", "economica"] as const;
+export type ExpedienteApprovalStage = (typeof EXPEDIENTE_APPROVAL_STAGES)[number];
+
+export function isExpedienteApprovalStage(value: unknown): value is ExpedienteApprovalStage {
+  return typeof value === "string" && (EXPEDIENTE_APPROVAL_STAGES as readonly string[]).includes(value);
+}
+
+/**
  * Roles que pueden aprobar -- EXACTAMENTE `DECISION_ROLES` de roles.ts
  * (owner/admin/analyst), nunca un conjunto propio inventado aquí. El origen
  * usa `["reviewer", "admin", "owner"]` porque su enum de roles no tiene
@@ -61,6 +76,8 @@ export interface Approval {
   readonly status: "vigente" | "invalidada";
   readonly invalidatedAt?: string;
   readonly invalidatedReason?: string;
+  /** L-26: etapa de la doble aprobacion (solo scope "expediente"); `undefined` = aprobacion unica previa a la migracion 033 o aprobacion de seccion. */
+  readonly stage?: ExpedienteApprovalStage;
 }
 
 export interface ChangeDetected {
@@ -184,7 +201,7 @@ export class ApprovalWorkflow {
    *     esto, quien redacta una sección podría aprobar igual todo el
    *     expediente con solo que otra persona hubiera pedido la revisión.
    */
-  approve(input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Approval {
+  approve(input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs; stage?: ExpedienteApprovalStage }): Approval {
     if (!APPROVER_ROLES.has(input.actorRole)) {
       throw new ApprovalRejectedError("rol_no_autorizado_para_aprobar", `Rol "${input.actorRole}" no puede aprobar "${input.scopeRef}".`);
     }
@@ -209,6 +226,8 @@ export class ApprovalWorkflow {
       );
     }
 
+    if (input.stage !== undefined) this.assertStageRules(input.stage, input.scope, input.scopeRef, input.actorId, verifiedInputsHash);
+
     const approval: Approval = {
       id: `approval-${++approvalCounter}`,
       scope: input.scope,
@@ -218,9 +237,39 @@ export class ApprovalWorkflow {
       approvedAt: isoNow(),
       inputsHash: verifiedInputsHash,
       status: "vigente",
+      ...(input.stage !== undefined ? { stage: input.stage } : {}),
     };
     this.approvals.push(approval);
     return approval;
+  }
+
+  /**
+   * L-26 (REQ-044), reglas de la doble aprobacion (ver `EXPEDIENTE_APPROVAL_STAGES`):
+   *  - la etapa solo existe para el alcance "expediente";
+   *  - la economica (2/2) exige que ya exista la tecnica-legal (1/2) VIGENTE para
+   *    el MISMO hash de insumos (si los insumos cambiaron, la 1/2 quedo
+   *    invalidada y hay que repetirla antes);
+   *  - la persona que dio una etapa no puede dar la otra, en ningun orden
+   *    (un solo actor jamas completa el 2/2 por si mismo).
+   */
+  private assertStageRules(stage: ExpedienteApprovalStage, scope: ApprovalScope, scopeRef: string, actorId: string, hash: InputsHash): void {
+    if (scope !== "expediente" || scopeRef !== "expediente") {
+      throw new ApprovalRejectedError("etapa_solo_para_expediente", `La etapa "${stage}" solo aplica al alcance "expediente".`);
+    }
+    const other: ExpedienteApprovalStage = stage === "tecnica_legal" ? "economica" : "tecnica_legal";
+    const vigentes = this.approvals.filter((a) => a.status === "vigente" && a.scope === "expediente" && a.scopeRef === "expediente");
+    if (stage === "economica" && !vigentes.some((a) => a.stage === "tecnica_legal" && a.inputsHash === hash)) {
+      throw new ApprovalRejectedError(
+        "tecnica_legal_requerida_para_economica",
+        "La aprobación económica (2/2) exige antes la aprobación técnico-legal (1/2) vigente para los insumos actuales del expediente.",
+      );
+    }
+    if (vigentes.some((a) => a.stage === other && a.approvedBy === actorId)) {
+      throw new ApprovalRejectedError(
+        "doble_aprobacion_mismo_actor",
+        "La aprobación técnico-legal y la económica deben darlas dos personas distintas: ya diste la otra aprobación de este expediente.",
+      );
+    }
   }
 
   listApprovals(): Approval[] {
@@ -303,6 +352,35 @@ export class ApprovalWorkflow {
  */
 export function evaluateExpedienteApproval(approvals: readonly Approval[], currentInputsHash: InputsHash): Approval | null {
   return approvals.find((a) => a.scope === "expediente" && a.scopeRef === "expediente" && a.status === "vigente" && a.inputsHash === currentInputsHash) ?? null;
+}
+
+export interface ExpedienteStageEvaluation {
+  readonly tecnicaLegal: Approval | null;
+  readonly economica: Approval | null;
+  /** Etapas que faltan (sin aprobacion vigente para el hash actual), en orden. */
+  readonly missing: readonly ExpedienteApprovalStage[];
+  /** `true` si ambas etapas estan vigentes para el hash actual y las dieron personas distintas. */
+  readonly complete: boolean;
+  /** `true` si las dos etapas vigentes las dio la misma persona (no deberia ocurrir: la regla de `approve` y el trigger de la migracion 033 lo impiden; aqui es defensa en profundidad). */
+  readonly sameApprover: boolean;
+}
+
+/**
+ * L-26: veredicto del gate "2/2" para el hash de insumos ACTUAL. Solo cuentan
+ * aprobaciones de alcance "expediente" con etapa, vigentes y con ese hash; una
+ * aprobacion unica previa (sin etapa) no cuenta. El ensamblado solo debe
+ * entregar aprobaciones a `PackageAssembler` cuando `complete` es `true`.
+ */
+export function evaluateExpedienteStages(approvals: readonly Approval[], currentInputsHash: InputsHash): ExpedienteStageEvaluation {
+  const pick = (stage: ExpedienteApprovalStage): Approval | null =>
+    approvals.find((a) => a.scope === "expediente" && a.scopeRef === "expediente" && a.status === "vigente" && a.stage === stage && a.inputsHash === currentInputsHash) ?? null;
+  const tecnicaLegal = pick("tecnica_legal");
+  const economica = pick("economica");
+  const missing: ExpedienteApprovalStage[] = [];
+  if (!tecnicaLegal) missing.push("tecnica_legal");
+  if (!economica) missing.push("economica");
+  const sameApprover = tecnicaLegal !== null && economica !== null && tecnicaLegal.approvedBy === economica.approvedBy;
+  return { tecnicaLegal, economica, missing, complete: tecnicaLegal !== null && economica !== null && !sameApprover, sameApprover };
 }
 
 /** Utilidad de solo pruebas: resetea contadores globales para IDs deterministas entre tests. */

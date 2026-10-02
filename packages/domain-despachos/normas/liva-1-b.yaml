@@ -1,0 +1,14 @@
+id: liva-1-b
+tipo: norma
+ordenamiento: "LIVA"
+articulo_o_regla: "1-B"
+resumen: "Se considera efectivamente cobrado el IVA al recibir el pago; el motor cuenta el IVA por flujo y por mes de FechaPago."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LIVA.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar con el texto vigente."
+usado_en_codigo:
+  - "src/pagos-provisionales/engine.ts:16"
+  - "src/cfdi/rep.ts:7"

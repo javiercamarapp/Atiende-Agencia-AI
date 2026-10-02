@@ -131,7 +131,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
     return {
       "access-control-allow-origin": origen ?? "*",
       "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-      "access-control-allow-headers": "authorization,content-type,idempotency-key,x-requested-with",
+      "access-control-allow-headers": "authorization,content-type,idempotency-key,x-requested-with,x-step-up-token",
       "access-control-max-age": "600",
       vary: "origin",
     };
@@ -250,7 +250,7 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
         return enviar(res, 403, { message: "Tu rol no permite esta accion" }, origen);
       }
       try {
-        const salida = await c.ruta.manejador({ metodo, ruta, query: url.searchParams, cuerpo, params, persona, estado: estadoDe(e) });
+        const salida = await c.ruta.manejador({ metodo, ruta, query: url.searchParams, cuerpo, params, persona, cabeceras: req.headers, estado: estadoDe(e) });
         if (esRespuestaMarcada(salida)) {
           registrar(salida.status, {});
           if (salida.crudo) return enviarCrudo(res, salida.status, salida.crudo.tipo, salida.crudo.texto, origen);

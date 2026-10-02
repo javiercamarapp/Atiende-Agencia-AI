@@ -1,0 +1,13 @@
+id: cff-59
+tipo: norma
+ordenamiento: "CFF"
+articulo_o_regla: "59 fracción III"
+resumen: "Presunción de ingreso gravado por depósitos no identificados; el motor de devolución de IVA nunca la aplica por sí solo y lo advierte en el papel de trabajo."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CFF.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar la fracción citada con el texto vigente."
+usado_en_codigo:
+  - "src/devolucion-iva/workpaper.ts:27"

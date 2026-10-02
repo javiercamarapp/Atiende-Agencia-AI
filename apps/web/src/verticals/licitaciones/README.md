@@ -231,10 +231,9 @@ futuras, ver el punto siguiente.
   reexportando `defaultAuthCtx` de `admin-client.ts`).
 
 **Fuera de esta pieza, a propósito** (post-adjudicación, alcance de rondas
-futuras): declarar que el expediente YA se presentó ante el portal
-(`GET`/`POST .../submission[/declare]`), y el alta del contrato mismo
-(documentos, autopsia del fallo, radar de renovaciones) — ver Fase 15 abajo
-para cobranza e inconformidades.
+futuras): el alta del contrato mismo (documentos, autopsia del fallo, radar de
+renovaciones) — ver Fase 15 abajo para cobranza e inconformidades. (Declarar que
+el expediente YA se presentó ante el portal ya tiene pantalla: ver L-26/L-28.)
 
 ## Fase 15 — post-adjudicación: cobranza del contrato + inconformidades (gap ALTA: "Post-adjudicación completa... = 22 rutas sin UI")
 
@@ -404,3 +403,12 @@ Con la migración 029 pendiente la pantalla lo dice y no ofrece guardar. Pendien
 responsables a otras personas (hoy solo "Asignarme"; no hay directorio de staff para no-admins).
 
 `/kyc-69b` (`pages/Kyc69b.tsx`, "KYC proveedores (69-B)" en el menú): consulta de un RFC o lote (hasta 50), semáforo por situación del SAT (definitivo = rojo, presunto = ámbar, desvirtuado / sentencia favorable / no aparece = verde con nota, sin lista = neutro) con la fecha de publicación, cartera de proveedores y competidores y alerta cuando un proveedor propio figura como presunto o definitivo. "No aparece" nunca se presenta como constancia oficial. Con la migración 031 pendiente la pantalla lo dice y no ofrece consultar. Pendiente: la alerta se ve al abrir la pantalla; no hay aviso por correo ni WhatsApp cuando una nueva edición de la lista incluye a un proveedor.
+
+## L-26 / L-28 — doble aprobación del expediente y declaración de la presentación
+
+`pages/Cierre.tsx` monta dos componentes nuevos (`components/`):
+
+- `AprobacionExpediente.tsx` (pestaña «Aprobación»): las dos etapas (técnico-legal 1/2 y económica 2/2) con quién (rol y «tú», nunca ids ni correos de otras personas) y cuándo. Cada aprobación pide el código TOTP en un diálogo (`pedirTexto`; Cancelar o Escape no escriben), obtiene el token de step-up (`expediente_approval`) y lo manda en `x-step-up-token`. Deshabilita —con el motivo a la vista— lo que el servidor rechazaría igual (rol sin decisión, 2/2 sin la 1/2, la misma persona en las dos etapas, 2FA sin activar con enlace a Seguridad); el servidor siempre decide. Con la base sin la migración 033 muestra un aviso honesto y la aprobación única de siempre.
+- `PresentacionPortal.tsx` (pestaña «Presentación»): estado de la declaración, formulario (fecha y hora, notas, acuse opcional de hasta 20 MB), diálogo de confirmación y clave de idempotencia estable por formulario (el reintento del mismo formulario reutiliza la clave; si cambia, se rota). **Atiende nunca envía la oferta al portal (REQ-046): solo registra que la persona usuaria ya la presentó.** La API es append-only: una vez declarada, la pantalla no ofrece corregirla.
+
+«Ensamblar paquete» se deshabilita mientras falte alguna etapa (el servidor responde 409 igualmente). Clientes: `cierre-client.ts` (`fetchExpedienteApprovals`, `approveExpedienteStage`, `fetchSubmission`, `declareSubmission`).

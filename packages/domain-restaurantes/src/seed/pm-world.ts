@@ -36,7 +36,7 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
   for (const p of plan.products) {
     const id = newId("producto", p.name);
     productIds.set(p.name, id);
-    repo.seedProduct({ id, organizationId, categoryId: categoryIds.get(p.categorySlug)!, name: p.name, description: p.description, searchKeywords: [], price: p.price, isPopular: p.isPopular, displayOrder: p.displayOrder });
+    repo.seedProduct({ id, organizationId, categoryId: categoryIds.get(p.categorySlug)!, name: p.name, description: p.description, searchKeywords: [...p.searchKeywords], price: p.price, isPopular: p.isPopular, displayOrder: p.displayOrder });
     if (p.noDomicilio) repo.seedNoDomicilio({ productIds: [id] });
   }
   const propertyBySlug = new Map<string, string>();
@@ -67,6 +67,10 @@ export async function buildInMemoryPmWorld(plan: PmSeedPlan, ids: { readonly org
       daysOfWeek: promo.daysOfWeek,
       channels: promo.channels as never,
       productIds: promo.productNames.map((n) => productIds.get(n)!).filter(Boolean),
+      // Mismo alcance por sucursal que el SQL del seed (migracion 038): ids del seed (T2, T3...) -> sucursales de este mundo.
+      ...(promo.branchIds
+        ? { propertyIds: plan.branches.filter((b) => promo.branchIds!.includes(b.id)).map((b) => propertyBySlug.get(b.slug)!) }
+        : {}),
     });
   }
   // Misma configuracion del agente que inserta el SQL del seed (perfil taqueria_pm con los datos del dueño; sin nombre inventado).

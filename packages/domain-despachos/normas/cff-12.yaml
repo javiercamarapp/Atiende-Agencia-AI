@@ -1,0 +1,16 @@
+id: cff-12
+tipo: norma
+ordenamiento: "CFF"
+articulo_o_regla: "12"
+resumen: "Cómputo de plazos: si el último día del plazo es inhábil, se prorroga al siguiente día hábil. Todos los plazos de vencimientos se ajustan con esta regla."
+fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/CFF.pdf"
+vigencia: "Vigente según el ordenamiento; fecha de vigencia no comprobada en esta ficha."
+estado_verificacion: por_verificar
+verificada_por: null
+fecha: null
+nota_verificacion: "Falta cotejar contra el texto vigente y contra la resolución anual de días inhábiles del SAT."
+usado_en_codigo:
+  - "src/vencimientos/calendario-fiscal.ts:10"
+  - "src/vencimientos/calendario-fiscal.ts:142"
+  - "src/vencimientos/engine.ts:24"
+  - "src/devolucion-iva/calculo.ts:472"

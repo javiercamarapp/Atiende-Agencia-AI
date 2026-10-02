@@ -107,8 +107,11 @@ export interface CopilotoTransporte {
   abrir?(id: string, senal: AbortSignal): Promise<ConversacionCompleta>;
   renombrar?(id: string, titulo: string): Promise<void>;
   borrar?(id: string): Promise<void>;
-  /** URL de GET del servidor que descarga el PDF del mensaje. Sin ella, no se ofrece "Descargar PDF". */
+  /** URL de GET del servidor que descarga el PDF del mensaje (solo sirve si NO exige un token en la cabecera). */
   urlPdf?(conversacionId: string, seq: number): string;
+  /** Pide al servidor el reporte PDF del mensaje (con la sesion del usuario) y lo descarga. Rechaza con un `Error` cuyo
+   *  `message` ya es legible para el usuario. Sin `urlPdf` ni `descargarPdf` no se ofrece "Descargar PDF". */
+  descargarPdf?(conversacionId: string, seq: number): Promise<void>;
   /** Fija el primer bloque del mensaje en el tablero. Sin ella, no se ofrece "Fijar". */
   fijar?(conversacionId: string, seq: number, bloque: number): Promise<void>;
 }

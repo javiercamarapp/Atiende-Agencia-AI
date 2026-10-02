@@ -38,6 +38,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { crearGuardCorreo } from "../../../supresion/index.ts";
 
 /** Límite del drenado INLINE -- deliberadamente chico, mismo criterio que
  *  INLINE_LIMIT de whatsapp-dispatch.ts: casi siempre hay 0-1 correo pendiente
@@ -64,7 +65,7 @@ export const INLINE_BATCH_SIZE = 5;
 export async function runCitasEmailDispatch(deps: AppDeps, batchSize?: number): Promise<EmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const citasRepo = deps.citasRepo(db);
-    return dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
+    return dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
   });
 }
 
@@ -139,7 +140,7 @@ export async function triggerCitasEmailDispatchInline(deps: AppDeps, db: TenantD
     session: db,
     savepointName: "sp_inline_email_dispatch",
     primary: async () => {
-      const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
+      const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize, suppression: crearGuardCorreo(db) });
       if (summary.dead > 0) {
         console.error(`citas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
       }

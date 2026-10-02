@@ -71,6 +71,8 @@ export const CLASE_DATO_ETIQUETA: Readonly<Record<string, string>> = {
   restaurantes_whatsapp_conversaciones: "Conversaciones de WhatsApp (restaurantes)",
   restaurantes_voz_transcripciones: "Transcripciones de voz (restaurantes)",
   hoteles_identidad_documento: "Documento de identidad del huésped (hoteles)",
+  rentas_huesped_pii: "Nombre y contacto del huésped (rentas)",
+  rentas_acceso_instrucciones: "Instrucciones de acceso a la unidad (rentas)",
 };
 
 export const ORIGEN_ETIQUETA: Readonly<Record<string, string>> = { organizacion: "Política de la organización", vertical: "Configuración del vertical", defecto: "Valor por defecto" };

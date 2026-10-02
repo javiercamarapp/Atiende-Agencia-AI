@@ -25,6 +25,8 @@ function pgError(code: string, message: string): Error & { code: string } {
 }
 
 const siguiente = { match: /select 1 as despues/i, respond: () => [{ ok: 1 }] };
+// La reserva pertenece a la property (seguimiento #302: cambiarHabitacion ya no ignora la property).
+const propia = { match: /select id from hoteles\.reservation where id = \$1::uuid and property_id = \$2::uuid/i, respond: () => [{ id: R }] };
 
 describe("lecturas con base sin migrar", () => {
   it("listarReservasDelDia cae a la consulta sin room_id (42703) y la sesion sigue utilizable", async () => {
@@ -63,7 +65,7 @@ describe("lecturas con base sin migrar", () => {
 
 describe("cambiarHabitacion (funcion change_reservation_room)", () => {
   it("base sin la migracion 038 (42883) -> RecepcionUnavailableError y la sesion sigue utilizable", async () => {
-    const session = new AbortAwareFakeSession([{ match: /change_reservation_room/i, respond: () => pgError("42883", "function hoteles.change_reservation_room(uuid, uuid, text) does not exist") }, siguiente]);
+    const session = new AbortAwareFakeSession([propia, { match: /change_reservation_room/i, respond: () => pgError("42883", "function hoteles.change_reservation_room(uuid, uuid, text) does not exist") }, siguiente]);
     await expect(new PostgresRecepcionRepository(session).cambiarHabitacion(P, R, ROOM, null)).rejects.toBeInstanceOf(RecepcionUnavailableError);
     // la MISMA transaccion sigue sirviendo consultas (sin ROLLBACK TO SAVEPOINT lanzaria 25P02)
     await expect(session.query("select 1 as despues")).resolves.toEqual({ rows: [{ ok: 1 }] });
@@ -80,7 +82,7 @@ describe("cambiarHabitacion (funcion change_reservation_room)", () => {
       ["55000", "reserva_no_modificable: la reserva esta en estado cancelada", RecepcionConflictError, "reserva_no_modificable"],
     ];
     for (const [code, message, clase, conflictCode] of casos) {
-      const session = new AbortAwareFakeSession([{ match: /change_reservation_room/i, respond: () => pgError(code, message) }, siguiente]);
+      const session = new AbortAwareFakeSession([propia, { match: /change_reservation_room/i, respond: () => pgError(code, message) }, siguiente]);
       const err = await new PostgresRecepcionRepository(session).cambiarHabitacion(P, R, ROOM, "motivo").catch((e: unknown) => e);
       expect(err, `${code} ${message}`).toBeInstanceOf(clase);
       if (conflictCode) expect((err as RecepcionConflictError).code).toBe(conflictCode);
@@ -89,13 +91,24 @@ describe("cambiarHabitacion (funcion change_reservation_room)", () => {
   });
 
   it("el mensaje al usuario no lleva el prefijo tecnico del codigo", async () => {
-    const session = new AbortAwareFakeSession([{ match: /change_reservation_room/i, respond: () => pgError("23P01", "habitacion_ocupada: la habitacion 102 tiene otra reserva en esas fechas") }]);
+    const session = new AbortAwareFakeSession([propia, { match: /change_reservation_room/i, respond: () => pgError("23P01", "habitacion_ocupada: la habitacion 102 tiene otra reserva en esas fechas") }]);
     const err = await new PostgresRecepcionRepository(session).cambiarHabitacion(P, R, ROOM, null).catch((e: unknown) => e);
     expect((err as Error).message).toBe("la habitacion 102 tiene otra reserva en esas fechas");
   });
 
+  it("una reserva de OTRA property es 'no encontrada' y NUNCA llega a la funcion SQL (no bloquea ni toca filas ajenas)", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /select id from hoteles\.reservation where id = \$1::uuid and property_id = \$2::uuid/i, respond: () => [] },
+      { match: /change_reservation_room/i, respond: () => [{ from_room_id: null, to_room_id: ROOM }] },
+      siguiente,
+    ]);
+    await expect(new PostgresRecepcionRepository(session).cambiarHabitacion(P, R, ROOM, null)).rejects.toBeInstanceOf(RecepcionNotFoundError);
+    expect(session.calls.some((c) => /change_reservation_room/i.test(c))).toBe(false);
+    await expect(session.query("select 1 as despues")).resolves.toEqual({ rows: [{ ok: 1 }] });
+  });
+
   it("exito: devuelve de-a", async () => {
-    const session = new AbortAwareFakeSession([{ match: /change_reservation_room/i, respond: () => [{ from_room_id: null, to_room_id: ROOM }] }]);
+    const session = new AbortAwareFakeSession([propia, { match: /change_reservation_room/i, respond: () => [{ from_room_id: null, to_room_id: ROOM }] }]);
     await expect(new PostgresRecepcionRepository(session).cambiarHabitacion(P, R, ROOM, null)).resolves.toEqual({ fromRoomId: null, toRoomId: ROOM });
   });
 });

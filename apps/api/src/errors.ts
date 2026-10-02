@@ -85,6 +85,11 @@ export const Errors = {
   // ---- despachos (cierre mensual, Fase 6 -- bloqueo de edición de movimientos ya cerrados) ----
   despachosPeriodoCerrado: (periodo: string) =>
     new ApiError(409, "periodo_cerrado", `El periodo ${periodo} ya está cerrado; no se pueden ingestar nuevos CFDI con fecha en ese periodo. Reabra el periodo primero.`),
+  // ---- despachos (conciliación persistida D-35 + sugerencias LLM D-02) ----
+  despachosConciliacionPeriodoCerrado: (periodo: string) =>
+    new ApiError(409, "periodo_cerrado", `El periodo ${periodo} ya está cerrado: no se pueden confirmar, aprobar ni deshacer conciliaciones en él. Reabre el periodo primero.`),
+  despachosParNoPropuesto: (message: string) => new ApiError(422, "par_no_propuesto", message),
+  despachosIaFallo: (message: string) => new ApiError(502, "ia_error", message),
   // ---- rentas (mensajería con huésped, Fase 7 -- borrador de IA + aprobación humana obligatoria) ----
   rentasMensajeAprobacionRequerida: (message: string) => new ApiError(409, "aprobacion_requerida", message),
   rentasMensajeExcedeLimite: (message: string) => new ApiError(422, "mensaje_excede_limite", message),

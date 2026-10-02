@@ -14,6 +14,7 @@ import {
   limpiarDom,
   microtareas,
   montar,
+  pendiente,
   porEtiqueta,
   porTexto,
   propsBase,
@@ -157,6 +158,62 @@ describe("acciones de la respuesta", () => {
     expect(a.getAttribute("href")).toBe("/api/chat/conv-9/mensajes/2/pdf");
     expect(a.hasAttribute("download")).toBe(true);
     expect(urlPdf).toHaveBeenCalledWith("conv-9", 2);
+  });
+
+  it("Descargar PDF con descargarPdf: llama al transporte con conversacion y seq, muestra 'Generando PDF…' y vuelve a quedar libre", async () => {
+    const espera = pendiente<void>();
+    const descargarPdf = vi.fn(() => espera.promesa);
+    const fake = transporteFalso({
+      descargarPdf,
+      enviar: vi.fn(async (p) => {
+        p.onEvento({ t: "fin", respuesta: RESPUESTA_OK, conversacionId: "conv-9" });
+        return RESPUESTA_OK;
+      }),
+    });
+    montado = montar(<ChatDatosShell {...propsBase(fake.t)} />);
+    const c = montado.container;
+    escribir(c.querySelector("textarea") as HTMLTextAreaElement, "q");
+    clic(porEtiqueta(c, "Enviar"));
+    await microtareas();
+    const boton = porEtiqueta<HTMLButtonElement>(c, "Descargar PDF");
+    expect(boton.tagName).toBe("BUTTON");
+    clic(boton);
+    await microtareas();
+    expect(descargarPdf).toHaveBeenCalledWith("conv-9", 2);
+    expect(boton.textContent).toContain("Generando PDF");
+    expect(boton.disabled).toBe(true);
+    espera.resolver();
+    await microtareas();
+    expect(boton.textContent).toContain("Descargar PDF");
+    expect(boton.disabled).toBe(false);
+    expect(c.querySelector("[role=alert]")).toBeNull();
+  });
+
+  it("si descargarPdf falla muestra el mensaje legible del error; sin conversacion guardada el boton no aparece", async () => {
+    const descargarPdf = vi.fn().mockRejectedValue(new Error("Pediste muchos reportes en poco tiempo."));
+    const fake = transporteFalso({
+      descargarPdf,
+      enviar: vi.fn(async (p) => {
+        p.onEvento({ t: "fin", respuesta: RESPUESTA_OK, conversacionId: "conv-9" });
+        return RESPUESTA_OK;
+      }),
+    });
+    montado = montar(<ChatDatosShell {...propsBase(fake.t)} />);
+    const c = montado.container;
+    escribir(c.querySelector("textarea") as HTMLTextAreaElement, "q");
+    clic(porEtiqueta(c, "Enviar"));
+    await microtareas();
+    clic(porEtiqueta(c, "Descargar PDF"));
+    await microtareas();
+    expect(c.querySelector("[role=alert]")?.textContent).toBe("Pediste muchos reportes en poco tiempo.");
+
+    const sinGuardar = transporteFalso({ descargarPdf: vi.fn() });
+    montado.unmount();
+    montado = montar(<ChatDatosShell {...propsBase(sinGuardar.t)} />);
+    escribir(montado.container.querySelector("textarea") as HTMLTextAreaElement, "q");
+    clic(porEtiqueta(montado.container, "Enviar"));
+    await microtareas();
+    expect(montado.container.querySelector("[aria-label='Descargar PDF']")).toBeNull();
   });
 
   it("sin urlPdf, sin conversacion guardada o sin fijar en el transporte, esas acciones no aparecen", async () => {

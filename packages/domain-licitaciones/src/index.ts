@@ -66,8 +66,8 @@ export type {
 export { sealInputs, computeInputsHash, requireValidHashedInputs, InvalidInputsHashError } from "./sealed-inputs.ts";
 export type { InputsHash, HashedInputs, ExpedienteInputs, ExpedienteInputCompanyDocument, ExpedienteInputRate, ExpedienteInputTemplate } from "./sealed-inputs.ts";
 
-export { evaluateExpedienteApproval, ApprovalWorkflow, APPROVER_ROLES, SUBMITTER_ROLES, resetApprovalCounters } from "./approval-workflow.ts";
-export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot } from "./approval-workflow.ts";
+export { evaluateExpedienteApproval, evaluateExpedienteStages, isExpedienteApprovalStage, EXPEDIENTE_APPROVAL_STAGES, ApprovalWorkflow, APPROVER_ROLES, SUBMITTER_ROLES, resetApprovalCounters } from "./approval-workflow.ts";
+export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot, ExpedienteApprovalStage, ExpedienteStageEvaluation } from "./approval-workflow.ts";
 
 export { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";
@@ -251,7 +251,7 @@ export type {
   RequirementFulfillmentMapping,
 } from "./technical-proposal.ts";
 
-export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, GoNoGoRejectedError, TenantConfigNotMigratedError } from "./errors.ts";
+export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, ExpedienteStageNotAvailableError, GoNoGoRejectedError, TenantConfigNotMigratedError } from "./errors.ts";
 
 export type {
   LicitacionesRepository,

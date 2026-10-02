@@ -48,6 +48,8 @@ export const TEST_ENV: ApiEnv = {
   whatsappAccessToken: null,
   hotelesIdentityKey: null,
   hotelesIdentityKeyVersion: 1,
+  rentasAccessKey: null,
+  rentasAccessKeyVersion: 1,
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
   googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },
