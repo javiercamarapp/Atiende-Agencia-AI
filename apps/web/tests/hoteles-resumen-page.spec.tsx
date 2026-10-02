@@ -176,7 +176,7 @@ describe("Resumen de hoteles (UNI-RES-hoteles) -- cada rol pide solo lo que el s
     await esperarCarga();
     expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
     const rotulos = Array.from(rendered.container.querySelectorAll("h2")).map((h) => h.textContent);
-    expect(rotulos).toEqual(["Orquestación de agentes", "Última corrida"]);
+    expect(rotulos).toEqual(["Orquestación de agentes", "Última corrida", "Fijados del Copiloto"]);
   });
 
   it("frontdesk: recepcion, tickets, aprobaciones, holds y agentes; sin P&L ni night audit (el servidor daria 403)", async () => {
