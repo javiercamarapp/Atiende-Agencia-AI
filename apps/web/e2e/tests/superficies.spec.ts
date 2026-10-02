@@ -13,13 +13,15 @@ interface Pantalla {
   readonly nombre: string;
   readonly objetivo: ObjetivoLogin;
   readonly ruta: string;
+  /** aria-label de la DataTable (la lista de tarjetas de movil); sin esto la pantalla usa <table> a mano. */
+  readonly lista?: string;
 }
 
 // Solo pantallas con tabla Y fixture en la API simulada (si no, la pagina muestra un estado de error sin tabla).
 const PANTALLAS: readonly Pantalla[] = [
   { nombre: "citas-clientes", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/clientes` },
-  { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos` },
-  { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial` },
+  { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos`, lista: "catálogo de productos de esta sucursal" },
+  { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial`, lista: "Historial de órdenes de esta sucursal" },
   { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
   { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin/organizaciones" },
 ];
@@ -33,7 +35,8 @@ test.describe("superficies de Likida @ds @oscuro", () => {
       // La pantalla debe pintar una tabla real (no un estado de error o de carga) antes de medir. Las que usan DataTable
       // (restaurantes desde UNI-C) la cambian por una lista de tarjetas por debajo de 768 px: ahi la prueba valida que
       // la lista este visible y que la pagina no tenga scroll horizontal.
-      await expect(page.locator("main table").or(page.locator("main ul[aria-label]")).first()).toBeVisible();
+      const lista = pantalla.lista ? page.locator(`main ul[aria-label="${pantalla.lista}"]`) : page.locator("main ul[aria-label]");
+      await expect(page.locator("main table").or(lista).first()).toBeVisible();
       await afirmarSinScrollHorizontal(page);
 
       const medidas = await page.evaluate(() => {
