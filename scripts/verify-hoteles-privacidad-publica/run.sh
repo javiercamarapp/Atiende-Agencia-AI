@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-hoteles-zona-horaria/run.sh. Ejercita la migración
-# 041_hoteles_privacidad_publica_huesped.sql (H-30: aviso publico, ARCO publico verificado, exportacion y mis datos;
+# 042_hoteles_privacidad_publica_huesped.sql (H-30: aviso publico, ARCO publico verificado, exportacion y mis datos;
 # 032 sigue aplicandose antes): RLS/GRANT por columna/security definer reales, positivo,
 # negativo, cross-tenant, anon y sesión de sistema. El mirror en memoria de
 # domain-hoteles nunca aplica RLS/GRANT/triggers.

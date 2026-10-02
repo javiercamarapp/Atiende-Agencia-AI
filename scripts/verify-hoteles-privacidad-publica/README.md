@@ -1,7 +1,7 @@
 # verify-hoteles-privacidad-publica
 
 Verificación contra Postgres REAL (mismo patrón que `scripts/verify-hoteles-privacidad-arco/`) de
-`packages/domain-hoteles/migrations/041_hoteles_privacidad_publica_huesped.sql` (H-30: aviso público,
+`packages/domain-hoteles/migrations/042_hoteles_privacidad_publica_huesped.sql` (H-30: aviso público,
 solicitud ARCO pública con verificación por código, exportación de datos del huésped y "mis datos").
 
 ```

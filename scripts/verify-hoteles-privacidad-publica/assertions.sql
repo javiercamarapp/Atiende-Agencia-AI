@@ -1,6 +1,6 @@
 -- H-30 (P1) -- PRIVACIDAD PUBLICA DEL HUESPED (aviso publico, ARCO publico verificado por codigo, exportacion del
 -- staff y "mis datos"). Verifica contra Postgres REAL que
--- packages/domain-hoteles/migrations/041_hoteles_privacidad_publica_huesped.sql cierra lo que dice cerrar: funciones
+-- packages/domain-hoteles/migrations/042_hoteles_privacidad_publica_huesped.sql cierra lo que dice cerrar: funciones
 -- solo-sistema (auth.uid() nulo), anon sin EXECUTE, cross-tenant, codigo de un solo uso con intentos y expiracion,
 -- exportacion sin documento de identidad y SIEMPRE con bitacora, enlace "mis datos" solo para acceso procedente.
 -- Corre via ./run.sh (local) o scripts/verify-real-postgres-ci/run-gate.mjs (CI, auto-descubierto).
@@ -439,6 +439,16 @@ select out_result as rz from hoteles.public_arco_verify(:'id_z', repeat('a', 64)
 select public.verify_assert(:'rz' = 'ok', 'verifica sin fecha');
 reset role;
 select public.verify_assert((select received_on = (now() at time zone 'America/Mexico_City')::date and response_due_on = received_on + 20 from hoteles.arco_request where id = :'id_z'), 'default de negocio');
+rollback;
+
+\echo '=== 22. una solicitud pendiente_verificacion se ve como por_confirmar (no resuelta) en la vista ARCO consolidada; y no se puede prorrogar ==='
+begin;
+set local role authenticated;
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_u \gset
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
+select public.verify_assert((select count(*) from core.org_list_arco_requests('00000000-0000-0000-0000-00000000a001', false, 200, 0) where out_request_id = :'id_u' and out_native_status = 'pendiente_verificacion' and out_status_bucket = 'por_confirmar' and out_is_open = false and out_is_overdue = false) = 1, 'pendiente_verificacion = por_confirmar, no abierta ni vencida');
+select public.verify_assert((select count(*) from core.org_list_arco_requests('00000000-0000-0000-0000-00000000a001', false, 200, 0) where out_request_id = :'id_u' and out_status_bucket = 'resuelta') = 0, 'no aparece como resuelta');
+select public.verify_expect_error(format($q$ select hoteles.extend_arco_request(%L, 'Motivo suficientemente largo') $q$, :'id_u'), 'P0001');
 rollback;
 
 \echo '=== listo: los escenarios *_deberia_ser_N deben dar N; los demas, sin ERROR; los should_fail/deberia_fallar, sin filas o con error. ==='
