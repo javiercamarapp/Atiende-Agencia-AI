@@ -249,4 +249,12 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /reservas-agente/politica": ["owner", "gm", "frontdesk", "reservations", "accountant"],
   "PUT /reservas-agente/politica": ["owner", "gm"],
   "POST /voz/config": ["owner", "gm"],
+  "GET /conversaciones": ["owner", "gm", "frontdesk", "reservations"],
+  "GET /conversaciones/:id": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/leer": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/tomar": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/devolver-al-agente": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/cerrar": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/notas": ["owner", "gm", "frontdesk", "reservations"],
+  "POST /conversaciones/:id/responder": ["owner", "gm", "frontdesk", "reservations"],
 };
