@@ -18,7 +18,7 @@ const GREEN_CHECKLIST_BODY = {
   presentAnnexRefs: [],
 };
 
-const RATE = (price: string) => [{ id: "r1", concept: "consultoria_hora", unitPrice: price, currency: "MXN", approvalStatus: "aprobado" as const, validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }];
+const RATE = (price: string) => [{ id: "r1", concept: "consultoria_hora", unitPrice: price, currency: "MXN" as const, approvalStatus: "aprobado" as const, validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }];
 
 async function setup() {
   const ctx = await buildLicitacionesTestContext(buildApp);
