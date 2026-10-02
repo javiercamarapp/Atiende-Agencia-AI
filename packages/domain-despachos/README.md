@@ -262,10 +262,14 @@ Sin llamadas al SAT ni a un PAC.
   manual / cfdi / reversa) y `libro_movimiento` (partidas, debe XOR haber). Una póliza **no se edita ni se borra**: se corrige con
   `libro_poliza_reversar`, que crea una póliza de diario con las partidas invertidas y marca la original.
 - **Escritura solo por funciones `security definer`** (`libro_catalogo_sembrar`, `libro_cuenta_guardar`, `libro_poliza_registrar`,
-  `libro_poliza_reversar`): rol admin/contador de la organización de ESA property, cuadre (debe = haber), cuentas del catálogo del
-  cliente, periodo cerrado (`periodo_cierre.status = 'closed'` -> 55000) y folio bajo `pg_advisory_xact_lock`.
+  `libro_poliza_reversar(property, póliza, fecha, concepto)`): rol admin/contador de la organización de ESA property, cuadre (debe = haber),
+  cuentas del catálogo del cliente, periodo cerrado (`periodo_cierre.status = 'closed'` -> 55000) y folio bajo `pg_advisory_xact_lock`. La
+  reversa verifica el permiso sobre la property ANTES de bloquear la póliza. El núcleo interno `libro_poliza_insertar` no es ejecutable por
+  public, anon ni authenticated (solo lo llaman registrar y reversar) y repite el guard de permisos. Tope de 2000 cuentas por cliente, también
+  en la siembra.
 - **Balanza derivada** `libro_balanza(property, ejercicio, mes)` (SECURITY INVOKER: respeta RLS). Saldo inicial: cuentas de balance
-  (1, 2, 3) acumulan todo lo anterior; cuentas de resultados solo desde enero (no hay póliza de cierre de ejercicio).
+  (1, 2, 3) acumulan todo lo anterior; cuentas de resultados solo desde enero (no hay póliza de cierre de ejercicio). **A validar con el
+  contador**: sin traspaso de resultados al capital, la balanza de un ejercicio posterior no refleja el resultado acumulado del anterior.
 - **Póliza de un CFDI** (`construirPolizaDesdeCfdi`): solo arma lo no ambiguo (emitido I, nota de crédito emitida E, recibido I con categoría
   `honorarios` o `gasto_operativo`); el resto (retenciones, IEPS, moneda extranjera, nómina, activo fijo, sentido indeterminado) devuelve el
   motivo para registrar la póliza a mano. La póliza es **devengada**; el cobro/pago (Bancos contra Clientes/Proveedores) es otra póliza.
@@ -278,9 +282,12 @@ Sin llamadas al SAT ni a un PAC.
   mes de la **fecha de pago**, por la base e IVA proporcionales (`pago_cfdi`, idempotente por REP + parcialidad + CFDI, sin sobrepagos).
 - **REP persistido**: `POST .../pagos-provisionales/rep` parsea el XML (D-23), toma el RFC **de la ficha del cliente** (nunca del cuerpo), liga cada
   documento a un CFDI PPD del mismo cliente y registra un pago a la vez (cada uno en su SAVEPOINT).
-- **ISR**: 601 (coeficiente de utilidad del contador x ingresos acumulados, 30%), 612 (utilidad acumulada con la tarifa del art. 96 escalada al
-  periodo) y 626 RESICO (tasa mensual 1.00-2.50% sobre ingresos cobrados). Otros regímenes: "no soportado" (honesto). Sin coeficiente: "faltan datos".
-- **IVA**: trasladado cobrado - acreditable pagado - retenido - saldo a favor anterior (el del papel presentado del mes previo o el capturado).
+- **ISR**: 601 (coeficiente de utilidad del contador x **ingresos nominales** acumulados, 30%: CFDI emitidos del periodo por su fecha, incluidos
+  PPD aún no cobrados, LISR 17 -- NO por flujo de efectivo), 612 (utilidad acumulada por flujo con la tarifa del art. 96 del ejercicio escalada al
+  periodo; solo ejercicios con tabla verificada, hoy 2025 y 2026, y solo persona física) y 626 RESICO PF (tasa mensual 1.00-2.50% sobre ingresos
+  cobrados; RFC de 13 caracteres). Persona moral (RFC de 12) en 612/626, otro ejercicio en 612 y otros regímenes: "no soportado" (honesto, sin
+  cifras). Sin coeficiente: "faltan datos".
+- **IVA** (por flujo de efectivo en todos los regímenes, LIVA 1-B): trasladado cobrado - acreditable pagado - retenido - saldo a favor anterior (el del papel presentado del mes previo o el capturado).
 - **Exclusiones con motivo e importe**: cancelados/no encontrados ante el SAT, moneda extranjera, sentido indeterminado, sin método de pago;
   como deducción/acreditamiento: CFDI inválidos (incluye 69-B definitivo), efectivo > $2,000.00 (LISR 27-III, LIVA 5-I), uso D01-D10/S01/CP01.
   Inversiones (I01-I08): su base NO se deduce de golpe; su IVA sí se acredita.
@@ -289,8 +296,23 @@ Sin llamadas al SAT ni a un PAC.
 - **Aviso in-app** `despachos.pago_provisional.por_vencer` (catálogo de notificaciones): función de solo-sistema + productor invocado por el cron
   diario de cobranza (no se agregó un cron).
 
-### Preguntas para el fiscalista (lo dudoso, sin inventar)
+### Preguntas para el fiscalista / contador (lo dudoso, sin inventar)
 
+0. **ISR 601 (personas morales)**: se calcula con ingresos nominales (CFDI emitidos del periodo por fecha, LISR 17, incluidos PPD no cobrados) y el
+   IVA por flujo (LIVA 1-B). ¿Se confirma? No se incluyen anticipos o cobros sin CFDI ni entregas/servicios aún sin CFDI (el art. 17 acumula lo que
+   ocurra primero: expedir CFDI, entregar el bien o servicio, o cobrar). Las retenciones de ISR se acreditan por flujo. Si no se valida, el 601 debe
+   tratarse como "no soportado" para ese cliente.
+0b. **626 y 612 solo para personas físicas**: se distinguen por la longitud del RFC (12 = moral). RESICO de personas morales no está modelado.
+0c. **612 y ejercicio**: la tarifa del art. 96 sale de la tabla mensual del ejercicio (2025 y 2026 verificadas); otro ejercicio responde "no soportado".
+0d. **Balanza sin traspaso de resultados**: no hay póliza de cierre/traspaso del resultado del ejercicio al capital (ver D-24).
+0e. **Terminología de pólizas**: las pólizas de CFDI son devengadas (cliente/proveedor contra ingreso/gasto) pero se rotulan `ingreso`/`egreso`
+   (que en contabilidad electrónica suelen significar cobro/pago) y las notas de crédito van como `diario`. ¿Se confirma el rotulado?
+0f. **Cuentas asumidas**: el catálogo base y el mapeo automático de CFDI a cuentas (clientes 1050000, ingresos 4080000, IVA 2600300/2600400,
+   devoluciones 4020000, etc.) son supuestos del catálogo agrupador, no una decisión del contador del despacho.
+0g. **Nómina deducida**: hoy el CFDI de nómina entra al 612 por su total/base neta del CFDI (subtotal - descuento), no por el bruto (percepciones)
+   ni con las retenciones separadas. ¿Neto o bruto?
+0h. **Saldo a favor de IVA**: se arrastra solo el saldo del papel PRESENTADO del mes previo (o el capturado a mano); no se compensa ni se acredita
+   automáticamente contra otros impuestos ni se pide devolución.
 1. 612: ¿se confirma que la tarifa del art. 96 del periodo acumulado equivale a la tarifa mensual x meses transcurridos (cuota fija y límites)?
 2. Efectivo > $2,000.00: ¿aplica igual a pagos PPD pagados en efectivo (la forma de pago está en el REP, no en el CFDI; hoy solo se excluye en PUE)?
 3. Nómina emitida por el cliente: ¿se deduce por la fecha del CFDI o por la fecha de pago de la nómina?

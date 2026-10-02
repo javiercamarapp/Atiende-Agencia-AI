@@ -107,6 +107,9 @@ export function construirPolizaDesdeCfdi(f: InvoiceRecord): ResultadoPolizaCfdi 
   if (base + iva !== f.totalCentavos) return noAplica("El total del CFDI no es igual a base más IVA (centavos): revisa el comprobante antes de contabilizarlo.");
   const concepto = `CFDI ${f.folioFiscal}`;
 
+  // PENDIENTE DE VALIDAR CON EL CONTADOR: estas pólizas son DEVENGADAS (Clientes/Proveedores contra ingreso/gasto), pero se rotulan
+  // `ingreso`/`egreso`, que en contabilidad electrónica suelen significar cobro/pago; las notas de crédito van como `diario`. Las cuentas
+  // (1050000 clientes, 4080000 ingresos, 4020000 devoluciones, 2600400/2600300 IVA y el mapeo de gastos) son supuestos del catálogo base.
   if (f.direccion === "emitido" && f.tipo === "I") {
     const movimientos: MovimientoPolizaInput[] = [
       { cuenta: CUENTA_CLIENTES, concepto, debeCentavos: f.totalCentavos, haberCentavos: 0 },

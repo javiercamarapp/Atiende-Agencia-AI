@@ -310,6 +310,8 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
     if (tipoPersonaPorRfc(e.rfc) === "moral") return sinCalcular("ISR", "no_soportado", "El régimen 612 es de personas físicas y el RFC del cliente es de persona moral (12 caracteres): revisa la ficha del cliente o valida con el fiscalista. El IVA sí se calcula.");
     const tabla = tablaIsrMensualDe(e.ejercicio);
     if (!tabla) return sinCalcular("ISR", "no_soportado", `No hay tabla mensual del art. 96 verificada para el ejercicio ${e.ejercicio} (disponibles: ${Object.keys(TABLAS_ISR_MENSUAL).join(", ")}): no se calcula un número engañoso. El IVA sí se calcula.`);
+    // PENDIENTE DE VALIDAR CON EL FISCALISTA: la nómina se deduce por la base del CFDI de nómina (subtotal - descuento, es decir, en neto
+    // según como venga el comprobante), no por el bruto de percepciones; y por la fecha del CFDI, no por la de pago de la nómina.
     const deducciones = suma(c.recibidos.map((x) => x.baseCentavos)) + suma(c.nominas.map((x) => x.baseCentavos));
     const utilidad = ingresos - deducciones;
     const base = Math.max(0, utilidad - perdidas);
@@ -350,6 +352,8 @@ function calcularIva(e: EntradaPapel, c: Clasificacion): ResultadoImpuesto {
   const trasladado = suma(delMes(c.emitidos).map((x) => x.ivaCentavos));
   const acreditable = suma(delMes(c.recibidos).map((x) => x.ivaCentavos));
   const retenido = suma(delMes(c.emitidos).map((x) => x.ivaRetenidoCentavos));
+  // PENDIENTE DE VALIDAR CON EL FISCALISTA: el saldo a favor de IVA del mes anterior (del papel presentado) se arrastra y acredita solo
+  // contra el IVA del mes; no se modela compensación contra otros impuestos ni solicitud de devolución.
   const saldoAnterior = e.saldoFavorIvaMesAnteriorCentavos ?? parametroCentavos(e.iva.saldoFavorAnteriorCentavos);
   const lineas: LineaPapel[] = [
     { clave: "trasladado", concepto: "IVA trasladado efectivamente cobrado", centavos: trasladado },

@@ -23,6 +23,8 @@ export function construirCatalogoBase(): readonly CuentaLibro[] {
     .map(([codigo, descripcion]) => ({ codigo, descripcion, naturaleza: naturalezaPorDefecto(codigo) }));
 }
 
+// PENDIENTE DE VALIDAR CON EL CONTADOR: el catálogo base, la naturaleza deducida del primer dígito y las cuentas de abajo son supuestos
+// (agrupador del SAT) y no la decisión de cada despacho; cada cliente puede cambiar su catálogo con `libro_cuenta_guardar`.
 /** Cuentas que usan las pólizas automáticas de CFDI (ver poliza-cfdi.ts). */
 export const CUENTA_CLIENTES = "1050000";
 export const CUENTA_INGRESOS_SERVICIOS = "4080000";
