@@ -206,3 +206,4 @@ export { ETIQUETA_MODO_ORB, OrbeAgente, volumenObjetivo, type OrbeAgenteProps } 
 export { TranscripcionEnVivo, type TranscripcionEnVivoProps } from "./components/voz/TranscripcionEnVivo.js";
 export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/voz/VistaPreviaLlamada.js";
 export * from "./components/resumen-piezas.js";
+export * from "./components/consola-kit.js";
