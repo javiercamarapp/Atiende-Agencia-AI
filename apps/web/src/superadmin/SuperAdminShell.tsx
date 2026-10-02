@@ -24,7 +24,7 @@ import { limpiarStepUp } from "./lib/stepup.ts";
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
   readonly onRequireLogin: () => void;
-  readonly children: (ctx: { readonly apiBaseUrl: string; readonly token: string }) => ReactNode;
+  readonly children: (ctx: { readonly apiBaseUrl: string; readonly token: string; readonly staffFullName?: string; readonly staffEmail?: string }) => ReactNode;
 }
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
@@ -93,7 +93,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       <div className="grid min-w-0 gap-4">
         <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
         <StepUpDialog />
-        {children({ apiBaseUrl, token: session.token })}
+        {children({ apiBaseUrl, token: session.token, staffFullName: session.fullName, staffEmail: session.email })}
       </div>
     </VerticalShell>
   );
