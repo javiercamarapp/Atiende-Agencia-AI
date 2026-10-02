@@ -123,8 +123,8 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
           )}
           {guardado && <span className="text-xs text-muted-foreground">Configuración guardada.</span>}
           <div>
-            <Button type="submit" size="sm" disabled={guardando}>
-              {guardando ? "Guardando…" : "Guardar configuración"}
+            <Button type="submit" size="sm" loading={guardando}>
+Guardar configuración
             </Button>
           </div>
         </form>

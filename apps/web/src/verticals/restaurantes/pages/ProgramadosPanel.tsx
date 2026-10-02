@@ -71,10 +71,10 @@ export function ProgramadosPanel({
               )}
               <p className="mt-2 text-sm text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <Button type="button" size="sm" variant="outline" className="h-9 text-xs" disabled={changingId === o.id} onClick={() => onAdelantar(o)}>
-                  {changingId === o.id ? "…" : "Enviar a cocina ahora"}
+                <Button type="button" size="sm" variant="outline" loading={changingId === o.id} onClick={() => onAdelantar(o)}>
+                  Enviar a cocina ahora
                 </Button>
-                <Button type="button" size="sm" variant="destructive" className="h-9 text-xs" disabled={changingId === o.id} onClick={() => onCancelar(o)}>
+                <Button type="button" size="sm" variant="danger" disabled={changingId === o.id} onClick={() => onCancelar(o)}>
                   Cancelar pedido
                 </Button>
               </div>

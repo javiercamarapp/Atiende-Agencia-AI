@@ -5,22 +5,13 @@
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Tabs` para el filtro por estado, `Card` por pedido,
-// `Badge` para el estado, `Button` para cada transición y `AlertDialog` para la
-// confirmación de "cancelado" (antes un `window.confirm` del navegador, ver el
-// comentario de `handleChangeStatus`; no `Dialog`/`ModalFormularioLateral` -- una
-// confirmación no es un formulario, mismo criterio que la referencia real). El
+// `Badge` para el estado, `Button` para cada transición y `useConfirm` para la
+// confirmación de "cancelado" (antes un `window.confirm` del navegador y luego un
+// `AlertDialog` local, ver el comentario de `handleChangeStatus`). El
 // gate de confirmación, las transiciones ofrecidas y todas las llamadas al
 // backend son EXACTAMENTE las mismas.
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Button,
   Card,
   CardContent,
@@ -41,6 +32,7 @@ import {
   imprimirTicketsCocina,
   pedidosPorImprimir,
   statusTone,
+  useConfirm,
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
@@ -93,10 +85,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
-  // Pedido esperando la confirmación de cancelación (ver `handleChangeStatus`) —
-  // `null` mientras no haya ninguna en curso, que es lo que mantiene cerrado el
-  // <AlertDialog> del final del archivo.
-  const [pedidoACancelar, setPedidoACancelar] = useState<OrderSummary | null>(null);
+  // Confirmación de cancelación (ver `handleChangeStatus`): el diálogo lo monta `dialogo` al final del JSX.
+  const { confirmar, dialogo } = useConfirm();
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
   // por pedido, p. ej. si el cliente ya está en mostrador).
   const [sinAvisoPorPedido, setSinAvisoPorPedido] = useState<ReadonlySet<string>>(new Set());
@@ -294,21 +284,19 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
   // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
   // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más. El gate es
-  // el MISMO de siempre; desde esta ronda lo pinta el <AlertDialog> del sistema de diseño en
-  // vez del `window.confirm` del navegador.
-  function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
+  // el MISMO de siempre; lo pinta `useConfirm` (Cancelar o Escape no llaman al API).
+  async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
     if (nextStatus === "cancelado") {
-      setPedidoACancelar(order);
-      return;
+      const confirmado = await confirmar({
+        titulo: "Cancelar pedido",
+        descripcion: `¿Cancelar el pedido de ${order.customerName}? Esta acción no se puede deshacer.`,
+        tono: "danger",
+        confirmar: "Cancelar el pedido",
+        cancelar: "Volver",
+      });
+      if (!confirmado) return;
     }
-    void aplicarCambioEstado(order, nextStatus);
-  }
-
-  async function confirmarCancelacion() {
-    const order = pedidoACancelar;
-    if (!order) return;
-    setPedidoACancelar(null);
-    await aplicarCambioEstado(order, "cancelado");
+    await aplicarCambioEstado(order, nextStatus);
   }
 
   // Fase 12 — dispara el dispatch real (PATCH .../assign-repartidor) en cuanto se
@@ -356,7 +344,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
               ? `Sin conexión: reintentando en ${Math.round(sondeo.proximoEnMs / 1000)} s`
               : `${etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs)} · cada ${SONDEO_BASE_MS / 1000} s`}
         </span>
-        <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => sondeo.refrescar()} disabled={sondeo.consultando}>
+        <Button type="button" size="xs" variant="ghost" onClick={() => sondeo.refrescar()} disabled={sondeo.consultando}>
           Actualizar ahora
         </Button>
         {nuevosAviso > 0 && (
@@ -408,8 +396,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
             disponible={programadosDisponible}
             ahoraMs={ahoraMs}
             changingId={changingId}
-            onAdelantar={(o) => handleChangeStatus(o, "pending")}
-            onCancelar={(o) => handleChangeStatus(o, "cancelado")}
+            onAdelantar={(o) => void handleChangeStatus(o, "pending")}
+            onCancelar={(o) => void handleChangeStatus(o, "cancelado")}
           />
         ) : (
           !error && <EstadoCargando etiqueta="Cargando pedidos programados…" />
@@ -493,7 +481,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
               )}
 
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <Button type="button" size="sm" variant="outline" className="h-9 text-xs" onClick={() => imprimirPedido(o)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => imprimirPedido(o)}>
                   <Printer className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} />
                   {prefs.impresos.includes(o.id) ? "Reimprimir ticket" : "Imprimir ticket"}
                 </Button>
@@ -501,7 +489,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="h-9 text-xs"
+                 
                   onClick={() => setVistaPrevia({ ticket: construirTicketCocina(o, { reimpresion: prefs.impresos.includes(o.id) ? (prefs.reimpresiones[o.id] ?? 0) + 1 : 0 }), orderId: o.id })}
                 >
                   Vista previa
@@ -530,12 +518,12 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                       key={next}
                       type="button"
                       size="sm"
-                      variant={next === "cancelado" ? "destructive" : "outline"}
-                      className="h-9 text-xs"
-                      onClick={() => handleChangeStatus(o, next)}
-                      disabled={changingId === o.id}
+                      variant={next === "cancelado" ? "danger" : "outline"}
+                     
+                      onClick={() => void handleChangeStatus(o, next)}
+                      loading={changingId === o.id}
                     >
-                      {changingId === o.id ? "…" : `Marcar ${ORDER_STATUS_LABELS[next]}`}
+                      Marcar {ORDER_STATUS_LABELS[next]}
                     </Button>
                   ))}
                 </div>
@@ -558,28 +546,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         }}
       />
 
-      <AlertDialog open={pedidoACancelar !== null} onOpenChange={(abierto) => !abierto && setPedidoACancelar(null)}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar pedido</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pedidoACancelar ? `¿Cancelar el pedido de ${pedidoACancelar.customerName}? Esta acción no se puede deshacer.` : null}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPedidoACancelar(null)}>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => {
-                e.preventDefault();
-                void confirmarCancelacion();
-              }}
-            >
-              Cancelar el pedido
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogo}
     </PageContainer>
   );
 }

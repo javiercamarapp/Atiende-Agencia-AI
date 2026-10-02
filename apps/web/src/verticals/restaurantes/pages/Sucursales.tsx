@@ -81,7 +81,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                   </div>
                 </div>
                 {editing !== b.propertyId && (
-                  <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => startEditing(b)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => startEditing(b)}>
                     <Pencil />
                     Editar
                   </Button>
@@ -111,10 +111,10 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Button type="button" size="sm" className="h-9 text-xs" onClick={() => void handleSave(b.propertyId)} disabled={saving}>
-                      {saving ? "Guardando…" : "Guardar"}
+                    <Button type="button" size="sm" onClick={() => void handleSave(b.propertyId)} loading={saving}>
+                      Guardar
                     </Button>
-                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => setEditing(null)} disabled={saving}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setEditing(null)} disabled={saving}>
                       Cancelar
                     </Button>
                   </div>
@@ -134,7 +134,6 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 text-xs"
                     aria-expanded={reglasAbiertas === b.propertyId}
                     onClick={() => setReglasAbiertas((actual) => (actual === b.propertyId ? null : b.propertyId))}
                   >

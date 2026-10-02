@@ -208,8 +208,8 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                   required
                 />
               </div>
-              <Button type="submit" disabled={savingWhatsapp}>
-                {savingWhatsapp ? "Guardando…" : "Guardar"}
+              <Button type="submit" loading={savingWhatsapp}>
+Guardar
               </Button>
               {whatsappSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
@@ -252,8 +252,8 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                   ))}
                 </NativeSelect>
               </div>
-              <Button type="submit" disabled={savingZonaHoraria}>
-                {savingZonaHoraria ? "Guardando…" : "Guardar"}
+              <Button type="submit" loading={savingZonaHoraria}>
+Guardar
               </Button>
               {zonaHorariaSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
             </form>
@@ -308,7 +308,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
                       {z.lat}, {z.lng}
                     </p>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Quitar zona ${z.name}`} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Quitar zona ${z.name}`} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
                     <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                   </Button>
                 </div>

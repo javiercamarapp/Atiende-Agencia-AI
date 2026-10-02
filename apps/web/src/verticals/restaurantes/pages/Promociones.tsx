@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, NativeSelect, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -36,7 +36,7 @@ const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie"
 function formatValue(type: PromotionType, value: number): string {
   if (type === "bogo") return "2x1";
   if (type === "cortesia") return "Combo de cortesía";
-  return type === "percentage" ? `${value}% de descuento` : `$${value.toFixed(2)} de descuento`;
+  return type === "percentage" ? `${value}% de descuento` : `$${formatMoney(value)} de descuento`;
 }
 
 // BUG REAL corregido aquí (revisión de PR #170): `dateInputToIso` construye el
@@ -263,7 +263,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatValue(p.type, p.value)}
-                      {p.minOrderTotal !== null ? ` · pedido mín. $${p.minOrderTotal.toFixed(2)}` : ""}
+                      {p.minOrderTotal !== null ? ` · pedido mín. $${formatMoney(p.minOrderTotal)}` : ""}
                       {p.maxUses !== null ? ` · usado ${p.timesUsed}/${p.maxUses}` : ` · usado ${p.timesUsed} veces`}
                       {p.daysOfWeek && p.daysOfWeek.length > 0 ? ` · ${p.daysOfWeek.map((d) => DAY_LABELS[d]).join("/")}` : ""}
                       {p.startTime && p.endTime ? ` · ${p.startTime}-${p.endTime}` : ""}
@@ -273,19 +273,18 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => startEdit(p)}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => startEdit(p)}>
                       <CalendarRange />
                       Editar vigencia
                     </Button>
                     <Button
                       type="button"
-                      variant={p.isActive ? "destructive" : "outline"}
+                      variant={p.isActive ? "danger" : "outline"}
                       size="sm"
-                      className="h-9 text-xs"
                       onClick={() => void handleToggleActive(p)}
-                      disabled={togglingId === p.id}
+                      loading={togglingId === p.id}
                     >
-                      {togglingId === p.id ? "Guardando…" : p.isActive ? "Desactivar" : "Activar"}
+                      {p.isActive ? "Desactivar" : "Activar"}
                     </Button>
                   </div>
                 </CardContent>
@@ -302,16 +301,13 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         subtitulo="El código nace activo. El horario (hora de inicio/fin) solo se ajusta por API por ahora; los días, el canal y las fechas de vigencia sí se eligen aquí."
         anchoClase="max-w-3xl"
         footer={
-          <Button type="submit" form="restaurantes-promocion-nueva" className="rounded-full px-6" disabled={creating}>
-            {creating ? "Creando…" : "Crear código"}
+          <Button type="submit" form="restaurantes-promocion-nueva" className="w-full md:w-auto" loading={creating}>
+            Crear código
           </Button>
         }
       >
         <form id="restaurantes-promocion-nueva" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-codigo" className="text-xs text-muted-foreground">
-              Código
-            </Label>
+          <FormField label="Código">
             <Input
               id="promocion-codigo"
               type="text"
@@ -320,11 +316,8 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               required
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-nombre" className="text-xs text-muted-foreground">
-              Nombre para el staff
-            </Label>
+          </FormField>
+          <FormField label="Nombre para el staff">
             <Input
               id="promocion-nombre"
               type="text"
@@ -333,11 +326,8 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-tipo" className="text-xs text-muted-foreground">
-              Tipo de descuento
-            </Label>
+          </FormField>
+          <FormField label="Tipo de descuento">
             <NativeSelect
               id="promocion-tipo"
               value={form.type}
@@ -348,12 +338,9 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               <option value="bogo">2x1</option>
               <option value="cortesia">Combo de cortesía</option>
             </NativeSelect>
-          </div>
+          </FormField>
           {form.type !== "bogo" && form.type !== "cortesia" && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="promocion-valor" className="text-xs text-muted-foreground">
-                Valor
-              </Label>
+            <FormField label="Valor">
               <Input
                 id="promocion-valor"
                 type="number"
@@ -364,18 +351,15 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                 onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
                 required
               />
-            </div>
+            </FormField>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-canal" className="text-xs text-muted-foreground">
-              Canal
-            </Label>
+          <FormField label="Canal">
             <NativeSelect id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
               <option value="">Todos los canales</option>
               <option value="recoger">Solo recoger</option>
               <option value="domicilio">Solo domicilio</option>
             </NativeSelect>
-          </div>
+          </FormField>
           <Checkbox
             id="promocion-auto"
             checked={form.autoApply}
@@ -433,18 +417,12 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="promocion-cortesia-cantidad" className="text-xs text-muted-foreground">
-                  Piezas de cortesía por producto
-                </Label>
+              <FormField label="Piezas de cortesía por producto">
                 <Input id="promocion-cortesia-cantidad" type="number" min="1" max="10" step="1" value={form.courtesyQuantity} onChange={(e) => setForm((f) => ({ ...f, courtesyQuantity: e.target.value }))} />
-              </div>
+              </FormField>
             </>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-minimo" className="text-xs text-muted-foreground">
-              Pedido mínimo ($, opc.)
-            </Label>
+          <FormField label="Pedido mínimo ($, opc.)">
             <Input
               id="promocion-minimo"
               type="number"
@@ -454,11 +432,8 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               value={form.minOrderTotal}
               onChange={(e) => setForm((f) => ({ ...f, minOrderTotal: e.target.value }))}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-tope" className="text-xs text-muted-foreground">
-              Tope de usos (opc.)
-            </Label>
+          </FormField>
+          <FormField label="Tope de usos (opc.)">
             <Input
               id="promocion-tope"
               type="number"
@@ -468,19 +443,13 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
               value={form.maxUses}
               onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-desde" className="text-xs text-muted-foreground">
-              Vigente desde
-            </Label>
+          </FormField>
+          <FormField label="Vigente desde">
             <Input id="promocion-desde" type="date" value={form.startsAt} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-hasta" className="text-xs text-muted-foreground">
-              Vigente hasta
-            </Label>
+          </FormField>
+          <FormField label="Vigente hasta">
             <Input id="promocion-hasta" type="date" value={form.endsAt} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))} />
-          </div>
+          </FormField>
         </form>
       </FormDialog>
 
@@ -497,18 +466,12 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         }}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-edit-desde" className="text-xs text-muted-foreground">
-              Vigente desde
-            </Label>
+          <FormField label="Vigente desde">
             <Input id="promocion-edit-desde" type="date" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="promocion-edit-hasta" className="text-xs text-muted-foreground">
-              Vigente hasta
-            </Label>
+          </FormField>
+          <FormField label="Vigente hasta">
             <Input id="promocion-edit-hasta" type="date" value={editEndsAt} onChange={(e) => setEditEndsAt(e.target.value)} />
-          </div>
+          </FormField>
         </div>
       </FormDialog>
     </PageContainer>

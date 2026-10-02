@@ -296,8 +296,8 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio, entor
 
         {PESTANAS_EDITABLES.has(pestana) && config.estado !== "cargando" ? (
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || guardando || borrador.vozId === null}>
-              {guardando ? "Guardando…" : "Guardar cambios"}
+            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || borrador.vozId === null} loading={guardando}>
+              Guardar cambios
             </Button>
             {sucio ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar.</span> : null}
             {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-xs text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}

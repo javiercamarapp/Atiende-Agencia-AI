@@ -204,15 +204,15 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
                 <Label htmlFor={`abre-${branchId}-${index}`} className="text-xs text-muted-foreground">
                   Abre
                 </Label>
-                <Input id={`abre-${branchId}-${index}`} type="time" value={turno.abre} onChange={(e) => updateTurno(index, { abre: e.target.value })} className="h-9 w-[120px]" />
+                <Input id={`abre-${branchId}-${index}`} type="time" value={turno.abre} onChange={(e) => updateTurno(index, { abre: e.target.value })} className="w-[120px]" />
               </div>
               <div className="flex flex-col gap-1">
                 <Label htmlFor={`cierra-${branchId}-${index}`} className="text-xs text-muted-foreground">
                   Cierra
                 </Label>
-                <Input id={`cierra-${branchId}-${index}`} type="time" value={turno.cierra} onChange={(e) => updateTurno(index, { cierra: e.target.value })} className="h-9 w-[120px]" />
+                <Input id={`cierra-${branchId}-${index}`} type="time" value={turno.cierra} onChange={(e) => updateTurno(index, { cierra: e.target.value })} className="w-[120px]" />
               </div>
-              <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => setTurnos((prev) => prev.filter((_, i) => i !== index))}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => prev.filter((_, i) => i !== index))}>
                 Quitar turno
               </Button>
             </div>
@@ -220,7 +220,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           </div>
         ))}
         <div>
-          <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => setTurnos((prev) => [...prev, { dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }])}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => [...prev, { dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }])}>
             Agregar turno
           </Button>
         </div>
@@ -231,13 +231,13 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <Label htmlFor={`min-dom-${branchId}`} className="text-xs text-muted-foreground">
             Pedido mínimo a domicilio ($)
           </Label>
-          <Input id={`min-dom-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minDomicilio} onChange={(e) => setMinDomicilio(e.target.value)} className="h-9 w-[140px]" />
+          <Input id={`min-dom-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minDomicilio} onChange={(e) => setMinDomicilio(e.target.value)} className="w-[140px]" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`min-rec-${branchId}`} className="text-xs text-muted-foreground">
             Pedido mínimo para recoger ($)
           </Label>
-          <Input id={`min-rec-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minRecoger} onChange={(e) => setMinRecoger(e.target.value)} className="h-9 w-[140px]" />
+          <Input id={`min-rec-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minRecoger} onChange={(e) => setMinRecoger(e.target.value)} className="w-[140px]" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`propina-${branchId}`} className="text-xs text-muted-foreground">
@@ -282,8 +282,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       </section>
 
       <div>
-        <Button type="button" size="sm" className="h-9 text-xs" onClick={() => void handleGuardarReglas()} disabled={saving}>
-          {saving ? "Guardando…" : "Guardar reglas"}
+        <Button type="button" size="sm" onClick={() => void handleGuardarReglas()} loading={saving}>
+          Guardar reglas
         </Button>
       </div>
 
@@ -306,13 +306,13 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             <Label htmlFor={`puente-desde-${branchId}`} className="text-xs text-muted-foreground">
               Desde
             </Label>
-            <Input id={`puente-desde-${branchId}`} type="date" value={puenteDesde} onChange={(e) => setPuenteDesde(e.target.value)} className="h-9 w-[150px]" />
+            <Input id={`puente-desde-${branchId}`} type="date" value={puenteDesde} onChange={(e) => setPuenteDesde(e.target.value)} className="w-[150px]" />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor={`puente-hasta-${branchId}`} className="text-xs text-muted-foreground">
               Hasta
             </Label>
-            <Input id={`puente-hasta-${branchId}`} type="date" value={puenteHasta} onChange={(e) => setPuenteHasta(e.target.value)} className="h-9 w-[150px]" />
+            <Input id={`puente-hasta-${branchId}`} type="date" value={puenteHasta} onChange={(e) => setPuenteHasta(e.target.value)} className="w-[150px]" />
           </div>
           {puenteTurnos.map((t, i) => (
             <div key={i} className="flex flex-col gap-1">
@@ -320,8 +320,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
                 Turno {i + 1} (abre / cierra)
               </Label>
               <div className="flex gap-1">
-                <Input id={`puente-turno-${i}-${branchId}`} type="time" value={t.abre} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, abre: e.target.value } : x)))} className="h-9 w-[110px]" />
-                <Input type="time" aria-label={`Cierre del turno ${i + 1}`} value={t.cierra} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, cierra: e.target.value } : x)))} className="h-9 w-[110px]" />
+                <Input id={`puente-turno-${i}-${branchId}`} type="time" value={t.abre} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, abre: e.target.value } : x)))} className="w-[110px]" />
+                <Input type="time" aria-label={`Cierre del turno ${i + 1}`} value={t.cierra} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, cierra: e.target.value } : x)))} className="w-[110px]" />
               </div>
             </div>
           ))}
@@ -329,9 +329,9 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             <Label htmlFor={`puente-motivo-${branchId}`} className="text-xs text-muted-foreground">
               Motivo (opc.)
             </Label>
-            <Input id={`puente-motivo-${branchId}`} value={puenteMotivo} onChange={(e) => setPuenteMotivo(e.target.value)} className="h-9 w-[180px]" />
+            <Input id={`puente-motivo-${branchId}`} value={puenteMotivo} onChange={(e) => setPuenteMotivo(e.target.value)} className="w-[180px]" />
           </div>
-          <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void handleCrearPuente()} disabled={saving}>
+          <Button type="button" variant="outline" size="sm" onClick={() => void handleCrearPuente()} disabled={saving}>
             Guardar puente
           </Button>
         </div>
@@ -342,9 +342,9 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
           <Label htmlFor={`wa-${branchId}`} className="text-xs text-muted-foreground">
             WhatsApp de esta sucursal (phone_number_id de Meta)
           </Label>
-          <Input id={`wa-${branchId}`} inputMode="numeric" placeholder="Sin número propio" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="h-9 w-[240px]" />
+          <Input id={`wa-${branchId}`} inputMode="numeric" placeholder="Sin número propio" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-[240px]" />
         </div>
-        <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => void handleGuardarWhatsapp()} disabled={saving}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void handleGuardarWhatsapp()} disabled={saving}>
           Guardar número
         </Button>
       </section>

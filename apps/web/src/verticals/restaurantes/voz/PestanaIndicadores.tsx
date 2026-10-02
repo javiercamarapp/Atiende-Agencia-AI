@@ -216,8 +216,8 @@ function FormularioUmbrales({ umbrales, apiBaseUrl, token, propertyId, fetchImpl
           </p>
         ) : null}
         <div className="flex items-center gap-3">
-          <Button type="button" onClick={() => void guardar()} disabled={guardando}>
-            {guardando ? "Guardando…" : "Guardar umbrales"}
+          <Button type="button" onClick={() => void guardar()} loading={guardando}>
+            Guardar umbrales
           </Button>
           {aviso ? (
             <span role="status" className="text-xs text-primary">
