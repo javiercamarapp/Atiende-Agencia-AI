@@ -221,7 +221,9 @@ export class WhatsAppOutboundDispatcher {
       let suprimido: boolean;
       try {
         suprimido = await suppression(payload.to);
-      } catch {
+      } catch (supErr) {
+        // Diagnostico sin PII: solo SQLSTATE y clase del error (nunca el destino).
+        console.error("whatsapp-dispatcher: lectura de la lista de supresion fallo (fail-closed)", (supErr as { code?: unknown })?.code ?? null, supErr instanceof Error ? supErr.name : typeof supErr);
         // FAIL-CLOSED: no se pudo verificar -> NO se contacta. No cuenta como intento (mismo criterio que el
         // breaker abierto): el mensaje queda reclamado y el lease vencido lo vuelve a ofrecer.
         return { id: item.id, outcome: "skipped_suppression_unavailable", error: "supresion_no_verificable" };

@@ -146,7 +146,9 @@ export async function dispatchPendingEmailJobs(repo: RentasRepository, config: R
         let suprimido: boolean;
         try {
           suprimido = await opts.suppression(destino);
-        } catch {
+        } catch (supErr) {
+          // Diagnostico sin PII: solo SQLSTATE y clase del error (nunca el destino).
+          console.error("email-dispatch: lectura de la lista de supresion fallo (fail-closed)", (supErr as { code?: unknown })?.code ?? null, supErr instanceof Error ? supErr.name : typeof supErr);
           throw new Error("supresion_no_verificable");
         }
         if (suprimido) {
