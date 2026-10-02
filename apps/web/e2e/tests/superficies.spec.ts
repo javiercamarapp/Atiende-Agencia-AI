@@ -30,8 +30,10 @@ test.describe("superficies de Likida @ds @oscuro", () => {
       await iniciarSesion(pantalla.objetivo, pantalla.objetivo === "superadmin" ? undefined : "owner");
       await page.goto(pantalla.ruta);
       await afirmarPantallaSana(page, pantalla.nombre);
-      // La pantalla debe pintar una tabla real (no un estado de error o de carga) antes de medir.
-      await expect(page.locator("main table").first()).toBeVisible();
+      // La pantalla debe pintar una tabla real (no un estado de error o de carga) antes de medir. Las que usan DataTable
+      // (restaurantes desde UNI-C) la cambian por una lista de tarjetas por debajo de 768 px: ahi la prueba valida que
+      // la lista este visible y que la pagina no tenga scroll horizontal.
+      await expect(page.locator("main table").or(page.locator("main ul[aria-label]")).first()).toBeVisible();
       await afirmarSinScrollHorizontal(page);
 
       const medidas = await page.evaluate(() => {
