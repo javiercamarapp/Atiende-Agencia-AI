@@ -9,13 +9,13 @@ import { buildHotelesDataChatCatalog } from "@atiende/domain-hoteles";
 import { buildLicitacionesDataChatCatalog } from "@atiende/domain-licitaciones";
 import { buildRentasDataChatCatalog } from "@atiende/domain-rentas";
 import { buildRestaurantesDataChatCatalog } from "@atiende/domain-restaurantes";
-import { COPILOTO_CITAS } from "../../web/src/lib/copiloto/config/citas.ts";
-import { COPILOTO_DESPACHOS } from "../../web/src/lib/copiloto/config/despachos.ts";
-import { COPILOTO_HOTELES } from "../../web/src/lib/copiloto/config/hoteles.ts";
-import { COPILOTO_LICITACIONES } from "../../web/src/lib/copiloto/config/licitaciones.ts";
-import { COPILOTO_RENTAS } from "../../web/src/lib/copiloto/config/rentas.ts";
-import { COPILOTO_RESTAURANTES } from "../../web/src/lib/copiloto/config/restaurantes.ts";
-import type { CopilotoConfigVertical } from "../../web/src/lib/copiloto/config/tipos.ts";
+import { COPILOTO_CITAS } from "../src/lib/copiloto/config/citas.ts";
+import { COPILOTO_DESPACHOS } from "../src/lib/copiloto/config/despachos.ts";
+import { COPILOTO_HOTELES } from "../src/lib/copiloto/config/hoteles.ts";
+import { COPILOTO_LICITACIONES } from "../src/lib/copiloto/config/licitaciones.ts";
+import { COPILOTO_RENTAS } from "../src/lib/copiloto/config/rentas.ts";
+import { COPILOTO_RESTAURANTES } from "../src/lib/copiloto/config/restaurantes.ts";
+import type { CopilotoConfigVertical } from "../src/lib/copiloto/config/tipos.ts";
 
 const stub = {} as never;
 const CASOS: readonly [string, CopilotoConfigVertical, DataChatCatalog][] = [
