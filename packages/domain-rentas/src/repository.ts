@@ -19,6 +19,7 @@ import type {
   CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
+  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
@@ -35,6 +36,10 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  UpdateDescuentoDuracionInput,
+  UpdateReglaCanalInput,
+  UpdateReglaMinStayInput,
+  UpdateTemporadaInput,
   OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
@@ -136,6 +141,23 @@ export interface RentasRepository {
   listReglasMinStay(unidadId: string): Promise<ReglaMinStayRecord[]>;
   insertReglaMinStay(input: NewReglaMinStayInput): Promise<{ id: string }>;
   upsertReglaCanalPricing(input: NewReglaCanalPricingInput): Promise<{ id: string }>;
+
+  // ---- Pricing: lectura de la configuracion y edicion/borrado por id (Rn-23) ----
+  /** Toda la configuracion de la unidad. `hoy` (YYYY-MM-DD, dia de negocio) decide cual
+   *  tarifa base es la vigente. Solo lee tablas de 002_pricing_schema.sql: no depende
+   *  de ninguna migracion posterior. */
+  loadConfiguracionPricing(unidadId: string, hoy: string): Promise<ConfiguracionPricingUnidad>;
+  /** Los `update*`/`delete*` devuelven `false` si no existe una fila con ese id en la unidad
+   *  (o si RLS la oculta). `delete*` de temporada/descuento/min-stay requiere la migracion
+   *  030: sin ella Postgres responde 42501 (la ruta lo traduce a 503 honesto). */
+  updateTemporada(input: UpdateTemporadaInput): Promise<boolean>;
+  deleteTemporada(unidadId: string, id: string): Promise<boolean>;
+  updateDescuentoDuracion(input: UpdateDescuentoDuracionInput): Promise<boolean>;
+  deleteDescuentoDuracion(unidadId: string, id: string): Promise<boolean>;
+  updateReglaMinStay(input: UpdateReglaMinStayInput): Promise<boolean>;
+  deleteReglaMinStay(unidadId: string, id: string): Promise<boolean>;
+  updateReglaCanalPricing(input: UpdateReglaCanalInput): Promise<boolean>;
+  deleteReglaCanalPricing(unidadId: string, id: string): Promise<boolean>;
 
   // ---- Owner statement (flujo 5, Fase 2) ----
   /** `null` si el owner no existe o no tiene ninguna unidad en esta property (defensa
@@ -257,6 +279,7 @@ export type {
   CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
+  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
@@ -273,6 +296,13 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  ReglaCanalRecord,
+  TarifaBaseRecord,
+  TemporadaConfigRecord,
+  UpdateDescuentoDuracionInput,
+  UpdateReglaCanalInput,
+  UpdateReglaMinStayInput,
+  UpdateTemporadaInput,
   OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
