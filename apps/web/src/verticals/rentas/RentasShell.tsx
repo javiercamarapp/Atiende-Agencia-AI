@@ -40,6 +40,7 @@ import { NativeSelect, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -65,14 +66,15 @@ const RENTAS_SESSION: VerticalSessionAdapter<PropiedadOption> = {
   resolveActivePropertyId,
 };
 
-/** Agrupación inspirada en el AdminSidebar de atiende-rentas-vacacionales standalone (ANÁLISIS/OPERACIÓN/NEGOCIO) --
- * mismas rutas y etiquetas exactas que antes, solo agrupadas. "Plataforma" se omite: notificaciones, perfil y cierre de
- * sesión ya viven en el bloque de cuenta del Sidebar. */
+/** UNI-6: categorías en el orden de Likida (Operación, Canales, Finanzas, Configuración, Control) con "Resumen" y "Calendario"
+ * como raíz sin título. Mismas rutas y etiquetas exactas que antes, solo reagrupadas (la agrupación original se inspiró en el
+ * AdminSidebar de atiende-rentas-vacacionales standalone). "Plataforma" se omite: notificaciones, perfil y cierre de sesión ya
+ * viven en el pie del Sidebar. Catálogo y Equipo se quedan en "Configuración": cada página gatea su contenido por rol. */
 function buildSections(orgSlug: string): SidebarSection[] {
   const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
   return [
     {
-      title: "Análisis",
+      title: "Resumen",
       siempreAbierto: true,
       items: [
         { to: ruta(""), label: "Resumen", icon: LayoutDashboard, end: true },
@@ -84,21 +86,35 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
-        { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
-        { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
         { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
       ],
     },
     {
-      title: "Negocio",
+      title: "Canales",
+      items: [
+        { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
+        { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
+      ],
+    },
+    {
+      title: "Finanzas",
       items: [
         { to: ruta("precios"), label: "Precios", icon: Tag },
         { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
         { to: ruta("reportes"), label: "Reportes", icon: BarChart3 },
-        // Rn-19: alta y edición de propiedades, unidades y propietarios; Rn-20: invitar, rol y baja del equipo. Cada
-        // página gatea su contenido por rol (el servidor es la autoridad real).
+      ],
+    },
+    {
+      title: "Configuración",
+      items: [
+        // Rn-19: alta y edición de propiedades, unidades y propietarios; Rn-20: invitar, rol y baja del equipo.
         { to: ruta("catalogo"), label: "Catálogo", icon: Building2 },
         { to: ruta("equipo"), label: "Equipo", icon: Users },
+      ],
+    },
+    {
+      title: "Control",
+      items: [
         // Bitácora de auditoría del staff; AuditoriaPage gatea su propio contenido por admin_gestora.
         { to: ruta("auditoria"), label: "Auditoría", icon: ClipboardCheck },
       ],
@@ -114,8 +130,8 @@ function buildMobileItems(orgSlug: string): BottomNavItem[] {
   return [
     { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
     { to: `${base}/calendario`, label: "Calendario", icon: CalendarDays },
-    { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: Inbox },
     { to: `${base}/mis-tareas`, label: "Mis tareas", icon: ClipboardList },
+    { to: `${base}/finanzas`, label: "Finanzas", icon: Wallet },
   ];
 }
 
@@ -188,7 +204,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       vertical="rentas"
       sections={buildSections(orgSlug)}
       mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: org?.rol }}
+      user={{ email: session.email, rol: org?.rol, nombre: session.fullName, rolEtiqueta: etiquetaRol(org?.rol) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, fecha: fechaCortaEsMx(), resumenTo: `/rentas/${orgSlug}` }}

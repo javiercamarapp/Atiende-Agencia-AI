@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AtiendeMark } from "../AtiendeLogo";
 import { Card, CardContent } from "../ui/card";
 import { CopilotoAcciones } from "./CopilotoAcciones";
+import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
 import type { CopilotoBloque, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
 
@@ -32,55 +33,81 @@ export function textoAviso(m: Pick<CopilotoMensaje, "status" | "reintentarEnSeg"
   }
 }
 
-function BloqueDatos({ bloque }: { bloque: CopilotoBloque }) {
+/** Filas de la tabla del bloque, con la columna de sparkline si el catalogo mando una serie por fila. */
+function TablaDatos({ bloque }: { bloque: CopilotoBloque }) {
   const filas = bloque.rows.slice(0, MAX_FILAS);
   const recortado = bloque.rows.length > MAX_FILAS || bloque.truncated;
   const [a, b] = bloque.columns;
-  const lista = bloque.columns.length === 2 && a && b;
+  const spark = bloque.sparkline;
+  const lista = bloque.columns.length === 2 && a && b && !spark;
+  return (
+    <>
+      {lista ? (
+        <ul className="space-y-2 text-sm" aria-label={bloque.title}>
+          {filas.map((r, i) => (
+            <li key={i} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
+              <span>{formatoCelda(a.kind, r[a.key] ?? null)}</span>
+              <span className="font-mono tabular-nums text-muted-foreground">{formatoCelda(b.kind, r[b.key] ?? null)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" aria-label={bloque.title}>
+            <thead>
+              <tr>
+                {bloque.columns.map((c) => (
+                  <th key={c.key} scope="col" className="text-left font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground pb-2 pr-3 font-normal">
+                    {c.label}
+                  </th>
+                ))}
+                {spark ? (
+                  <th scope="col" className="text-left font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground pb-2 pr-3 font-normal">
+                    {spark.label}
+                  </th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((r, i) => (
+                <tr key={i} className="border-b border-dashed border-border last:border-0">
+                  {bloque.columns.map((c, j) => (
+                    <td key={c.key} className={j === 0 ? "py-2 pr-3" : "py-2 pr-3 font-mono tabular-nums text-muted-foreground"}>
+                      {formatoCelda(c.kind, r[c.key] ?? null)}
+                    </td>
+                  ))}
+                  {spark ? (
+                    <td className="py-2 pr-3">
+                      <Sparkline valores={spark.series[i] ?? []} etiqueta={`${spark.label} de ${formatoCelda(a?.kind ?? "text", a ? (r[a.key] ?? null) : null)}`} />
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {recortado ? (
+        <p className="text-xs text-muted-foreground mt-2">
+          Se muestran las primeras {filas.length} filas{bloque.truncated ? "; hay más en el sistema" : ""}.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** Bloque del servidor: la grafica que eligio el catalogo si hay con que dibujarla; si no, la tabla. */
+function BloqueDatos({ bloque }: { bloque: CopilotoBloque }) {
+  if (planGrafica(bloque)) return <GraficaBloque bloque={bloque} tabla={<TablaDatos bloque={bloque} />} />;
+  return <TarjetaTabla bloque={bloque} />;
+}
+
+function TarjetaTabla({ bloque }: { bloque: CopilotoBloque }) {
   return (
     <Card>
       <CardContent className="pt-4">
         <p className="font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground mb-2">{bloque.title}</p>
-        {lista ? (
-          <ul className="space-y-2 text-sm" aria-label={bloque.title}>
-            {filas.map((r, i) => (
-              <li key={i} className="flex justify-between border-b border-dashed border-border last:border-0 pb-2">
-                <span>{formatoCelda(a.kind, r[a.key] ?? null)}</span>
-                <span className="font-mono tabular-nums text-muted-foreground">{formatoCelda(b.kind, r[b.key] ?? null)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label={bloque.title}>
-              <thead>
-                <tr>
-                  {bloque.columns.map((c) => (
-                    <th key={c.key} scope="col" className="text-left font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground pb-2 pr-3 font-normal">
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((r, i) => (
-                  <tr key={i} className="border-b border-dashed border-border last:border-0">
-                    {bloque.columns.map((c, j) => (
-                      <td key={c.key} className={j === 0 ? "py-2 pr-3" : "py-2 pr-3 font-mono tabular-nums text-muted-foreground"}>
-                        {formatoCelda(c.kind, r[c.key] ?? null)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {recortado ? (
-          <p className="text-xs text-muted-foreground mt-2">
-            Se muestran las primeras {filas.length} filas{bloque.truncated ? "; hay más en el sistema" : ""}.
-          </p>
-        ) : null}
+        <TablaDatos bloque={bloque} />
       </CardContent>
     </Card>
   );
@@ -96,6 +123,7 @@ export function CopilotoMensajeVista({
   ocupado,
   onRegenerar,
   onPreguntar,
+  vertical,
 }: {
   mensaje: CopilotoMensaje;
   esUltima: boolean;
@@ -106,6 +134,7 @@ export function CopilotoMensajeVista({
   ocupado: boolean;
   onRegenerar: () => void;
   onPreguntar: (pregunta: string) => void;
+  vertical?: string;
 }) {
   if (mensaje.role === "user") {
     return (
@@ -186,7 +215,7 @@ export function CopilotoMensajeVista({
       ) : null}
 
       {exito && mensaje.text.trim() ? (
-        <CopilotoAcciones mensaje={mensaje} conversacionId={conversacionId} transporte={transporte} esUltima={esUltima} ocupado={ocupado} onRegenerar={onRegenerar} />
+        <CopilotoAcciones mensaje={mensaje} conversacionId={conversacionId} transporte={transporte} esUltima={esUltima} ocupado={ocupado} onRegenerar={onRegenerar} vertical={vertical} />
       ) : null}
       {mensaje.status === "unavailable" && esUltima ? (
         <div className="ml-6">

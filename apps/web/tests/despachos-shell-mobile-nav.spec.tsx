@@ -3,7 +3,7 @@
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav móvil de
 // DespachosShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
 // así que en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>.
-// Despachos tiene 18 destinos: la barra trae los 4 de uso diario y "Más" abre
+// Despachos tiene 20 destinos: la barra trae los 4 de uso diario y "Más" abre
 // TODOS (PR-0 del informe de diseno-ux, F-01: antes había un comentario que
 // afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
 // Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -14,6 +14,7 @@ import { DespachosShell } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { BranchOption } from "../src/verticals/despachos/lib/admin-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -78,10 +79,10 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     const nav = root.querySelector('nav[aria-label="Navegación móvil"]');
     expect(nav).not.toBeNull();
     expect([...nav!.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/despachos/demo/dashboard",
       "/despachos/demo/cierre-mensual",
       "/despachos/demo/cfdi",
       "/despachos/demo/cobranza",
-      "/despachos/demo/vencimientos",
     ]);
   });
 
@@ -93,6 +94,23 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toHaveLength(20);
     expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
+  });
+
+  // UNI-6: marco de Likida -- Resumen y Cierre mensual raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
+  it("el Sidebar agrupa los 20 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+    rendered = await renderShell();
+    const root = rendered.container;
+    expect(categoriasSidebar(root)).toEqual(["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"]);
+    expect(categoriasAbiertas(root)).toEqual(["Facturación"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "CFDI", "Cobranza", "Cola de cobranza", "Vencimientos"]);
+    abrirCategoria(root, "Fiscal");
+    expect(categoriasAbiertas(root)).toEqual(["Fiscal"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Declaraciones", "Contabilidad electrónica", "Devolución de IVA", "Nómina", "Pagos provisionales"]);
+    abrirCategoria(root, "Contabilidad");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
+    abrirCategoria(root, "Clientes y equipo");
+    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Staff", "Configuración"]);
+    expect(tarjetaUsuario(root)).toEqual({ nombre: "Contador Demo", rol: "Administrador" });
   });
 
   it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
@@ -134,9 +152,9 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     expect(mains[0]!.id).toBe("contenido-principal");
     expect(mains[0]!.getAttribute("tabindex")).toBe("-1");
     expect(root.querySelector("aside")!.textContent).toContain("Contribuyente Uno");
-    const equipo = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Equipo"))!;
+    const equipo = [...root.querySelectorAll<HTMLButtonElement>("aside button[aria-expanded]")].find((b) => b.textContent?.includes("Clientes y equipo"))!;
     click(equipo);
-    expect(window.localStorage.getItem("atiende:despachos:sidebar:grupo")).toBe("Equipo");
+    expect(window.localStorage.getItem("atiende:despachos:sidebar:grupo")).toBe("Clientes y equipo");
   });
 
   it("con varios contribuyentes ofrece el selector real y lo persiste por organización", async () => {

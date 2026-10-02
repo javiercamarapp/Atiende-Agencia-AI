@@ -202,6 +202,32 @@ describe("VerticalShell — móvil", () => {
     expect(alta).toHaveBeenCalledTimes(1);
   });
 
+  it("un destino del pie que no esta en las secciones lleva su nombre en la barra; uno que ya es de una categoria conserva el de la categoria", () => {
+    const montar = (ruta: string) =>
+      renderComponent(
+        <MemoryRouter initialEntries={[ruta]}>
+          <VerticalShell
+            vertical="demo"
+            sections={SECCIONES}
+            mobileItems={MOBILE}
+            user={null}
+            onLogout={() => {}}
+            header={{ icon: <span />, title: "Consola de Demo", fecha: "x", resumenTo: "/v/demo" }}
+            notificationBell={<span />}
+            sidebarPie={[{ label: "Ver los otros paneles", to: "/v/demo/paneles", icon: UserRound }, { label: "Costos de IA", to: "/v/demo/staff" }]}
+          >
+            <p>c</p>
+          </VerticalShell>
+        </MemoryRouter>,
+      );
+    rendered = montar("/v/demo/paneles");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.textContent).toBe("Ver los otros paneles");
+    expect(rendered.container.querySelector('[data-testid="mobile-pagina-titulo"]')!.textContent).toBe("Ver los otros paneles");
+    rendered.unmount();
+    rendered = montar("/v/demo/staff");
+    expect(rendered.container.querySelector('[data-testid="barra-pagina-titulo"]')!.textContent).toBe("Staff");
+  });
+
   it("la barra inferior suma 'Más' con TODAS las secciones y el menú de cuenta cierra sesión", () => {
     const onLogout = vi.fn();
     rendered = renderShell({ onLogout });

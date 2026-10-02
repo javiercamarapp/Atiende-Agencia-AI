@@ -507,6 +507,14 @@
   to   { opacity: 1; transform: none; }
 }
 .copiloto-categorias-entra { animation: copiloto-categorias-entra 250ms ease-out both; }
+/* Graficas inline: entrada de 450 ms ease-out; con movimiento reducido no se anima. */
+@keyframes copiloto-grafica-entra {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .copiloto-grafica-entra { animation: copiloto-grafica-entra 450ms ease-out both; }
+}
 @media (prefers-reduced-motion: reduce) {
   .copiloto-panel-entra,
   .copiloto-panel-sale,
