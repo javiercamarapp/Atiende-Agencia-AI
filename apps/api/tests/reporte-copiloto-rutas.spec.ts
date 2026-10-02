@@ -10,7 +10,7 @@ import type { HotelesDataChatReader, HotelesDataChatWindow } from "@atiende/doma
 import { buildApp } from "../src/app.ts";
 import type { DataChatDeps } from "../src/data-chat/deps.ts";
 import type { ConversacionDetalleDto, ConversacionScope, ConversacionesRepository, FuenteReporte, ResultadoGuardado, TurnoAGuardar } from "../src/data-chat/conversaciones.ts";
-import { authedJson, buildHotelesTestContext } from "./hoteles-fixtures.ts";
+import { buildHotelesTestContext } from "./hoteles-fixtures.ts";
 import { textoDelPdf } from "./support/pdf-text.ts";
 
 class Reader implements HotelesDataChatReader {
@@ -122,7 +122,7 @@ async function harness(over: { analisis?: ScriptStep[]; redaccion?: ScriptStep[]
 }
 
 type H = Awaited<ReturnType<typeof harness>>;
-const post = (h: H, token: string, id = h.conversationId, seq: string | number = 2, property = h.propertyId) =>
+const post = (h: H, token: string, id: string = h.conversationId, seq: string | number = 2, property = h.propertyId) =>
   h.app.request(`/hoteles/${property}/chat-datos/conversaciones/${id}/reporte?seq=${seq}`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
 
 describe("POST .../conversaciones/:id/reporte", () => {

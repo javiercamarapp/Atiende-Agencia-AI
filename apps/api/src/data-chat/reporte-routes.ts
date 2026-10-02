@@ -27,7 +27,7 @@ import {
   type DataChatScope,
 } from "@atiende/agent-core/data-chat";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { runWithSavepointFallback } from "@atiende/db";
 import { ApiError } from "@atiende/core-auth";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
