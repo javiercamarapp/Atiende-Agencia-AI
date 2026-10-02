@@ -30,7 +30,6 @@ export type {
 
 export { calcularCotizacion, evaluarViolacionesMinStay } from "./pricing/cotizacion.ts";
 export type {
-  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoAplicado,
   DescuentoDuracion,
@@ -93,6 +92,7 @@ export type { RentasVerticalRole } from "./roles.ts";
 export type {
   BloqueoRecord,
   CanalRecord,
+  ConfiguracionPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
   IncidenciaMantenimientoRecord,
