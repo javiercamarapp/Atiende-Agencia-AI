@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { LlmGateway } from "@atiende/agent-core";
 import { hashPassword } from "@atiende/db";
 import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
-import { getTemplate } from "@atiende/domain-despachos";
+import { getTemplate, PostgresConciliacionPersistidaRepository } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -563,5 +563,65 @@ describe("base sin migrar (migración 021 pendiente): vacío honesto y 503, nunc
     expect((await get(admin(), `sesiones/${randomUUID()}`)).status).toBe(503);
     expect((await post(admin(), `matches/${randomUUID()}/deshacer`, { motivo: "motivo valido" })).status).toBe(503);
     expect((await post(admin(), `sugerencias/${randomUUID()}/aprobar`)).status).toBe(503);
+  });
+});
+
+/** Sesión falsa que modela la semántica REAL de SAVEPOINT en UN solo cliente pg (cola FIFO): RELEASE destruye también los savepoints creados después,
+ *  y RELEASE / ROLLBACK TO de uno inexistente lanza 3B001 y deja la transacción abortada (25P02 hasta un ROLLBACK TO válido). */
+class SavepointModelSession implements TenantDbSession {
+  readonly stack: string[] = [];
+  aborted = false;
+  readonly errores: string[] = [];
+  constructor(private readonly respuestas: readonly { match: RegExp; rows: unknown[] }[]) {}
+  private fallar(code: string, msg: string): never {
+    this.aborted = true;
+    this.errores.push(code);
+    throw Object.assign(new Error(msg), { code });
+  }
+  async exec(sql: string): Promise<void> {
+    await Promise.resolve();
+    const s = sql.trim().toLowerCase();
+    const sp = /^(?:savepoint|release savepoint|rollback to savepoint) (\S+)$/.exec(s);
+    if (!sp) return;
+    const nombre = sp[1]!;
+    if (s.startsWith("savepoint")) {
+      if (this.aborted) this.fallar("25P02", "current transaction is aborted");
+      this.stack.push(nombre);
+      return;
+    }
+    const i = this.stack.lastIndexOf(nombre);
+    if (i < 0) this.fallar("3B001", `savepoint "${nombre}" does not exist`);
+    if (s.startsWith("release")) {
+      if (this.aborted) this.fallar("25P02", "current transaction is aborted");
+      this.stack.length = i;
+    } else {
+      this.stack.length = i + 1;
+      this.aborted = false;
+    }
+  }
+  async query<T>(sql: string): Promise<{ rows: T[] }> {
+    await Promise.resolve();
+    if (this.aborted) this.fallar("25P02", "current transaction is aborted");
+    const r = this.respuestas.find((x) => x.match.test(sql));
+    if (!r) this.fallar("XX000", `sin respuesta para: ${sql.slice(0, 60)}`);
+    return { rows: r.rows as T[] };
+  }
+}
+
+describe("adaptador Postgres sobre UNA transaccion compartida (SAVEPOINT/RELEASE reales)", () => {
+  it("el detalle de la sesion lee en secuencia: sin 3B001, sin transaccion abortada y con la base ya migrada", async () => {
+    const sesionId = randomUUID();
+    const session = new SavepointModelSession([
+      { match: /from despachos\.conciliacion_sesion where property_id/i, rows: [{ id: sesionId, property_id: ctx.propertyId, periodo: "2026-01", cuenta: null, estado: "abierta", creada_por: null, creada_en: new Date().toISOString(), cerrada_en: null }] },
+      { match: /from despachos\.estado_cuenta_movimiento/i, rows: [] },
+      { match: /from despachos\.conciliacion_match/i, rows: [] },
+      { match: /from despachos\.conciliacion_sugerencia/i, rows: [] },
+      { match: /from despachos\.invoice_conciliacion/i, rows: [] },
+    ]);
+    const a = buildApp({ ...ctx.deps, conciliacionRepo: () => new PostgresConciliacionPersistidaRepository(session) });
+    const r = await a.request(`/despachos/${ctx.propertyId}/conciliacion/sesiones/${sesionId}`, authedJson(admin()));
+    expect(session.errores).toEqual([]);
+    expect(r.status).toBe(200);
+    expect(session.stack).toEqual([]);
   });
 });
