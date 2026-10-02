@@ -8,11 +8,11 @@ import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, E
 
 const RANGO: Readonly<Record<NivelEscalamiento, number>> = { nivel_1: 1, nivel_2: 2, nivel_3: 3, nivel_4: 4 };
 
-interface CfdiSembrado extends CfdiPendienteEstatusSat {
+type CfdiSembrado = { -readonly [K in keyof CfdiPendienteEstatusSat]: CfdiPendienteEstatusSat[K] } & {
   intentadoEn: number | null;
   verificadoEn: number | null;
   readonly creadoEn: number;
-}
+};
 interface VencimientoSembrado {
   readonly id: string;
   readonly propertyId: string;
