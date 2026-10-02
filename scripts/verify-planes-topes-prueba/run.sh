@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de la
-# migración 0045 (planes, topes y prueba). En CI la corre automáticamente
+# migración 0046 (planes, topes y prueba). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-planes-topes-prueba/run.sh
 set -euo pipefail

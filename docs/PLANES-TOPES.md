@@ -1,6 +1,6 @@
 # Planes: tope de mensajes, fin de prueba y portal de facturación (PL-16)
 
-Migración `packages/db/migrations/0045_planes_topes_prueba_portal.sql` (espejo `supabase/migrations/20240101000275_...`).
+Migración `packages/db/migrations/0046_planes_topes_prueba_portal.sql` (espejo `supabase/migrations/20240101000275_...`).
 Verificación contra Postgres real: `scripts/verify-planes-topes-prueba/` (45 escenarios, lo corre el gate de CI).
 
 ## Medidor mensual de mensajes
@@ -23,7 +23,7 @@ Verificación contra Postgres real: `scripts/verify-planes-topes-prueba/` (45 es
 | Plan con acción `pausar` y tope consumido | Se omiten solo los avisos **proactivos no críticos** (quedan `dead` con motivo `tope_mensajes_plan` y registrados como omitidos). |
 | Respuesta a un cliente que escribió (`transaccional`) | **Siempre sale**, con cualquier plan. |
 | Proactivo marcado `critico: true` en el payload | Siempre sale. |
-| Base sin la 0045 o medidor con error | Se envía igual y no se mide nada (nunca un cliente sin respuesta por facturación). |
+| Base sin la 0046 o medidor con error | Se envía igual y no se mide nada (nunca un cliente sin respuesta por facturación). |
 
 ## Fin de prueba (7 / 3 / 1 días)
 
@@ -55,6 +55,6 @@ disponible. La pantalla no está en el menú lateral de las verticales (se llega
 ## Orden de despliegue
 
 1. Desplegar el código (funciona contra la base vieja: medidor, avisos y lecturas degradan a "no disponible", sin 500).
-2. Aplicar la migración 0045 (`supabase/migrations/20240101000275_0045_...`). Es solo aditiva.
+2. Aplicar la migración 0046 (`supabase/migrations/20240101000275_0046_...`). Es solo aditiva.
 3. Fijar `core.organization.trial_ends_at` de las organizaciones en prueba y programar el cron `/internal/plataforma/prueba-avisos`.
 4. Con `STRIPE_SECRET_KEY` configurada y el portal configurado en Stripe, el botón de facturación queda operativo.

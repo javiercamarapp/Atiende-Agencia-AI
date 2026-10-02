@@ -1,7 +1,7 @@
 # verify-planes-topes-prueba
 
 Postgres **real** (el gate de CI `scripts/verify-real-postgres-ci/run-gate.mjs` lo descubre solo): migración
-`packages/db/migrations/0045_planes_topes_prueba_portal.sql` (espejo en `supabase/migrations/`).
+`packages/db/migrations/0046_planes_topes_prueba_portal.sql` (espejo en `supabase/migrations/`).
 
 Cubre el medidor mensual de mensajes (`core.message_usage_record`, `core.message_quota_check`), los avisos de fin de
 prueba (`core.trial_notice_claim/_recipients/_mark`) y las dos lecturas (`core.message_usage_for_org`,

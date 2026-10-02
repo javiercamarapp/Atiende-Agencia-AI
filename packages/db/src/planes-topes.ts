@@ -1,5 +1,5 @@
 // Medidor mensual de mensajes, tope por plan y avisos de fin de prueba (PL-16) -- puerto TypeScript contra las funciones
-// `security definer` de packages/db/migrations/0045_planes_topes_prueba_portal.sql.
+// `security definer` de packages/db/migrations/0046_planes_topes_prueba_portal.sql.
 //
 // SESIONES: decidirEnvio / registrarMensaje / reclamarAvisosPrueba / destinatariosAvisoPrueba / marcarAvisoPrueba son SOLO-SISTEMA
 // (el llamador las invoca en `withAppSession({ userId: null })`: dispatcher y cron). leerUsoOrganizacion y

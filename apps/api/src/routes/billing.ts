@@ -350,7 +350,7 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const lectura = await deps.engine.withAppSession({ userId: callerId }, (db) => leerUsoOrganizacion(db, callerId, organizationId));
     if (!lectura.disponible) {
       // Base sin la migracion 0045: vacio honesto, nunca un 500.
-      return c.json({ disponible: false, motivo: "El medidor de mensajes todavia no esta disponible en este despliegue (falta aplicar la migracion 0045_planes_topes_prueba_portal)." });
+      return c.json({ disponible: false, motivo: "El medidor de mensajes todavia no esta disponible en este despliegue (falta aplicar la migracion 0046_planes_topes_prueba_portal)." });
     }
     if (lectura.uso === null) throw Errors.forbidden("No perteneces a esta organización.");
 

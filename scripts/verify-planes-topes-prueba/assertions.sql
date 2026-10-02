@@ -1,4 +1,4 @@
--- PL-16 (migracion 0045) -- verificacion contra Postgres REAL del medidor mensual de mensajes, los avisos de fin de prueba
+-- PL-16 (migracion 0046) -- verificacion contra Postgres REAL del medidor mensual de mensajes, los avisos de fin de prueba
 -- y las lecturas de consumo. Cada escenario corre en su propio `begin; ... rollback;`.
 -- Alias que termina en el sufijo de error = debe fallar; alias con sufijo `_deberia_ser_N` = el valor esperado
 -- (ver scripts/verify-real-postgres-ci/run-gate.mjs). Datos ficticios; nada envia mensajes ni correos.
