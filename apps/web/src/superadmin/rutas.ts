@@ -14,6 +14,7 @@ import {
   Activity,
   AlertOctagon,
   ArrowLeftRight,
+  BellOff,
   Building2,
   Coins,
   DollarSign,
@@ -80,6 +81,7 @@ export const CONTROL: readonly RutaSuperadmin[] = [
   { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
   { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
   { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
+  { to: "/superadmin/supresion", label: "Supresión de contactos", icon: BellOff },
   { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
   { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
 ];
