@@ -1,0 +1,1502 @@
+{
+ "sucursal": "T5 Playa",
+ "vigencia": "2026",
+ "fuente": "MENU-T5-2026 2.pdf (8 páginas, re-exportado por Javier 1-oct)",
+ "categorias": [
+  {
+   "nombre": "Entradas",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Frijol con tostada",
+     "precio_mxn": 93,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Guacamole",
+     "precio_mxn": 142,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Carbolla",
+     "precio_mxn": 106,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Cebollas cambray",
+     "precio_mxn": 135,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chicharrón de queso",
+     "precio_mxn": 172,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Alitas de pollo",
+     "precio_mxn": 204,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ensalada de PM",
+     "precio_mxn": 206,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Papas a la francesa",
+     "precio_mxn": 113,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Frijoles charros",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Normal",
+     "precio_mxn": 123,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden normal",
+     "precio_mxn": 82,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Con queso",
+     "precio_mxn": 142,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden con queso",
+     "precio_mxn": 106,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Especiales",
+     "precio_mxn": 178,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden especiales",
+     "precio_mxn": 136,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Quesadillas",
+   "nota": "De maíz o harina",
+   "items": [
+    {
+     "nombre": "Natural",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Rajas",
+     "precio_mxn": 124,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñones",
+     "precio_mxn": 127,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chorizo",
+     "precio_mxn": 135,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Queso fundido",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Natural",
+     "precio_mxn": 160,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Rajas",
+     "precio_mxn": 175,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñones",
+     "precio_mxn": 175,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tocino",
+     "precio_mxn": 179,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chorizo",
+     "precio_mxn": 179,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Nachos",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 328,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de pastor",
+     "precio_mxn": 232,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñón",
+     "precio_mxn": 320,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de champiñón",
+     "precio_mxn": 232,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec",
+     "precio_mxn": 373,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de bistec",
+     "precio_mxn": 262,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 363,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de pechuga",
+     "precio_mxn": 249,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta",
+     "precio_mxn": 358,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de chuleta",
+     "precio_mxn": 249,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla",
+     "precio_mxn": 367,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de costilla",
+     "precio_mxn": 255,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 433,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "1/2 orden de arrachera",
+     "precio_mxn": 299,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Tacos individuales",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Al pastor",
+     "precio_mxn": 42,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Rajas",
+     "precio_mxn": 37,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñones",
+     "precio_mxn": 38,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Tacos (orden de 3)",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Chorizo",
+     "precio_mxn": 150,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec de res",
+     "precio_mxn": 194,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga de pollo",
+     "precio_mxn": 184,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta de cerdo",
+     "precio_mxn": 184,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla de res",
+     "precio_mxn": 189,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 254,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 189,
+     "orden_de": 3,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec encebollado",
+     "precio_mxn": 202,
+     "orden_de": 3,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Gringas (orden de 2)",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 194,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec",
+     "precio_mxn": 224,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga de pollo",
+     "precio_mxn": 212,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta",
+     "precio_mxn": 212,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla",
+     "precio_mxn": 217,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 299,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 217,
+     "orden_de": 2,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Mestizas (orden de 2)",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 168,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 175,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec",
+     "precio_mxn": 194,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 184,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta",
+     "precio_mxn": 184,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla",
+     "precio_mxn": 189,
+     "orden_de": 2,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 269,
+     "orden_de": 2,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Alambre (orden de 5)",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 276,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec",
+     "precio_mxn": 283,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 269,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta",
+     "precio_mxn": 269,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla",
+     "precio_mxn": 276,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 343,
+     "orden_de": 5,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Tacos suizos (orden de 5)",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Suizo de pastor",
+     "precio_mxn": 247,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de bistec",
+     "precio_mxn": 291,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de chuleta",
+     "precio_mxn": 284,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de pechuga",
+     "precio_mxn": 284,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de costilla",
+     "precio_mxn": 284,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de arrachera",
+     "precio_mxn": 373,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de poc-chuc",
+     "precio_mxn": 284,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de chorizo",
+     "precio_mxn": 209,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Suizo de chile poblano",
+     "precio_mxn": 204,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de pastor",
+     "precio_mxn": 306,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de bistec",
+     "precio_mxn": 314,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de pechuga",
+     "precio_mxn": 306,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de chuleta",
+     "precio_mxn": 306,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de costilla",
+     "precio_mxn": 306,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Alambre suizo de arrachera",
+     "precio_mxn": 371,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Tacos suizos de chile poblano y bistec",
+     "precio_mxn": 328,
+     "orden_de": 5,
+     "nota": null
+    },
+    {
+     "nombre": "Tacos suizos de chile poblano y arrachera",
+     "precio_mxn": 378,
+     "orden_de": 5,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Boyo-hamburguesas",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Boyo-hamburguesa sencilla",
+     "precio_mxn": 194,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Boyo-hamburguesa con queso",
+     "precio_mxn": 224,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Boyo-hamburguesa con queso y tocino",
+     "precio_mxn": 238,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Chetacos",
+   "nota": "Tortilla de harina extra grande con frijol, queso, champiñones y carne; ensalada de lechuga y tomate",
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 291,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñón",
+     "precio_mxn": 306,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec de res",
+     "precio_mxn": 314,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta de cerdo",
+     "precio_mxn": 306,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 306,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla de res",
+     "precio_mxn": 306,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 306,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 373,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Papas de PM",
+   "nota": "Papa rellena de la carne de su elección",
+   "items": [
+    {
+     "nombre": "Tradicional",
+     "precio_mxn": 204,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 262,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec",
+     "precio_mxn": 283,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 352,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Francés suizo",
+   "nota": "Francés tostadito con guacamole, frijol, queso gratinado y carne; hecho en su horno",
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 262,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Champiñón",
+     "precio_mxn": 262,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec de res",
+     "precio_mxn": 283,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta de cerdo",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla de res",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 276,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 352,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Pizza Quesobich (individual)",
+   "nota": "Orilla rellena de queso, salsa de tomate de la casa; pastor con piña; vegetariana: champiñones, cebolla y rajas de chile poblano",
+   "items": [
+    {
+     "nombre": "De queso",
+     "precio_mxn": 206,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De pastor",
+     "precio_mxn": 232,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De bistec",
+     "precio_mxn": 254,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De costilla de res",
+     "precio_mxn": 247,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De pollo",
+     "precio_mxn": 247,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De arrachera",
+     "precio_mxn": 291,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "De chuleta de cerdo",
+     "precio_mxn": 247,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Vegetariana",
+     "precio_mxn": 212,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Platillos PM",
+   "nota": "Incluyen tortillas, frijoles charros, carbolla, guacamole con tostadas y ensalada de tomate y lechuga; no aplica en los marcados con *. 100% al carbón",
+   "items": [
+    {
+     "nombre": "Crujientes de pechuga de pollo *",
+     "precio_mxn": 329,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de pastor",
+     "precio_mxn": 335,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de bistec",
+     "precio_mxn": 404,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de pechuga de pollo",
+     "precio_mxn": 378,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de chuleta de cerdo",
+     "precio_mxn": 378,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de costilla de res",
+     "precio_mxn": 388,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de arrachera",
+     "precio_mxn": 492,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Platillo de poc-chuc *",
+     "precio_mxn": 368,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Fajitas de bistec *",
+     "precio_mxn": 404,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Fajitas de pechuga *",
+     "precio_mxn": 393,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Fajitas de arrachera *",
+     "precio_mxn": 492,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Parrillada para 2 *",
+     "precio_mxn": 612,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Parrillada para 4 *",
+     "precio_mxn": 1045,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Postres",
+   "nota": "Jericallas (marcada nuevo): postre típico de Guadalajara a base de huevo, leche y vainilla; Café con leche +$11; Queso napolitano receta de la casa (marcado nuevo)",
+   "items": [
+    {
+     "nombre": "Crema española",
+     "precio_mxn": 83,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Crema de coco",
+     "precio_mxn": 83,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Jericallas",
+     "precio_mxn": 83,
+     "orden_de": null,
+     "nota": "nuevo"
+    },
+    {
+     "nombre": "Flan",
+     "precio_mxn": 83,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Café",
+     "precio_mxn": 46,
+     "orden_de": null,
+     "nota": "con leche +$11"
+    },
+    {
+     "nombre": "Queso napolitano",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": "receta de la casa; nuevo"
+    }
+   ]
+  },
+  {
+   "nombre": "Guarniciones extra",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Extra champiñón",
+     "precio_mxn": 35,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Extra chile poblano",
+     "precio_mxn": 35,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Extra chorizo",
+     "precio_mxn": 36,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Extra guacamole",
+     "precio_mxn": 49,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Extra rajas",
+     "precio_mxn": 35,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Extra tocino",
+     "precio_mxn": 36,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Orden tortilla harina",
+     "precio_mxn": 24,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Orden tortilla maíz",
+     "precio_mxn": 22,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Queso",
+     "precio_mxn": 52,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Refrescos 355 ml",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Coca-Cola (botella o lata)",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Coca-Cola Light (botella o lata)",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Coca-Cola sin azúcar (botella o lata)",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Toronja Cristal",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Fanta (botella)",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Sidral Mundet (botella)",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Agua mineral Cristal 300 ml",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Agua purificada 600 ml",
+     "precio_mxn": 53,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Topo Chico 355 ml",
+     "precio_mxn": 74,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Aguas frescas",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Jamaica",
+     "precio_mxn": 60,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Horchata",
+     "precio_mxn": 60,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Té",
+     "precio_mxn": 60,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Limonadas, naranjadas y suero",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Limonada",
+     "precio_mxn": 60,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Limonada con soda",
+     "precio_mxn": 73,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Limonada con Topo Chico",
+     "precio_mxn": 100,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Naranjada",
+     "precio_mxn": 60,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Naranjada con soda",
+     "precio_mxn": 73,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Naranjada con Topo Chico",
+     "precio_mxn": 100,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Suero con soda",
+     "precio_mxn": 79,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Suero con Topo Chico",
+     "precio_mxn": 95,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Cervezas",
+   "nota": "Heineken 0 y Heineken Silver marcadas \"nueva\" en T5-2026",
+   "items": [
+    {
+     "nombre": "Sol",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Superior",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tecate Light",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Heineken 0",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": "marcada nueva en T5-2026"
+    },
+    {
+     "nombre": "Heineken",
+     "precio_mxn": 90,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Heineken Silver",
+     "precio_mxn": 90,
+     "orden_de": null,
+     "nota": "marcada nueva en T5-2026"
+    },
+    {
+     "nombre": "Indio",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "XX Lager",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "XX Ámbar",
+     "precio_mxn": 80,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Amstel Ultra",
+     "precio_mxn": 90,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bohemia Clara",
+     "precio_mxn": 90,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bohemia Oscura",
+     "precio_mxn": 90,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ceiba Dorada Premium",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ceiba Light Lager",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ceiba Mestiza",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ceiba Stout",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Patito Oscura",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Patito Lager",
+     "precio_mxn": 120,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ojo Rojo",
+     "precio_mxn": 44,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Vaso de chelada",
+     "precio_mxn": 22,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Vaso de michelada",
+     "precio_mxn": 30,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Digestivos",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Vino tinto selección, copa",
+     "precio_mxn": 102,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Licores",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Ron Appleton Especial",
+     "precio_mxn": 117,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ron Bacardí Añejo",
+     "precio_mxn": 113,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ron Bacardí Blanco",
+     "precio_mxn": 106,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Ron Bacardí Solera",
+     "precio_mxn": 128,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tequila Don Julio Reposado",
+     "precio_mxn": 168,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tequila Herradura Reposado",
+     "precio_mxn": 139,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tequila Jimador",
+     "precio_mxn": 106,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Tequila Tradicional",
+     "precio_mxn": 113,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Vodka Absolut",
+     "precio_mxn": 123,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Vodka Smirnoff",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Whisky Buchanans",
+     "precio_mxn": 178,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Whisky Chivas Regal",
+     "precio_mxn": 156,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Whisky J.W. Etiqueta Negra",
+     "precio_mxn": 190,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Cocktails",
+   "nota": null,
+   "items": [
+    {
+     "nombre": "Caribe Cooler",
+     "precio_mxn": 110,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Conga",
+     "precio_mxn": 114,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Conga sin alcohol",
+     "precio_mxn": 105,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Daiquiri",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Daiquiri sin alcohol",
+     "precio_mxn": 96,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Limonada eléctrica",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Margarita",
+     "precio_mxn": 109,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Margarita sin alcohol",
+     "precio_mxn": 100,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Piñada",
+     "precio_mxn": 100,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Piña colada",
+     "precio_mxn": 112,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Sangría",
+     "precio_mxn": 112,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Sangría sin alcohol",
+     "precio_mxn": 100,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  },
+  {
+   "nombre": "Kilos a domicilio",
+   "nota": "Incluye salsa roja, verde, limones y tortillas; 1 kg",
+   "items": [
+    {
+     "nombre": "Pastor",
+     "precio_mxn": 900,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec de res",
+     "precio_mxn": 1100,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Bistec de res encebollado",
+     "precio_mxn": 1150,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Chuleta de cerdo",
+     "precio_mxn": 950,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Pechuga de pollo",
+     "precio_mxn": 950,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Poc-Chuc",
+     "precio_mxn": 950,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Arrachera",
+     "precio_mxn": 1400,
+     "orden_de": null,
+     "nota": null
+    },
+    {
+     "nombre": "Costilla de res",
+     "precio_mxn": 950,
+     "orden_de": null,
+     "nota": null
+    }
+   ]
+  }
+ ],
+ "verificacion": "Las 8 páginas del PDF bueno se leyeron y cada precio coincide con la versión previa (T5-2026.dañado.json); Comida regional, Flautas y Sprite NO aparecen impresos en este menú, por lo que su ausencia es real y no pérdida del PDF dañado. Sin página de promociones."
+}
