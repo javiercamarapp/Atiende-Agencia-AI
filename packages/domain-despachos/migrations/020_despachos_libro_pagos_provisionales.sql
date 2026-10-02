@@ -18,7 +18,7 @@
 --                                       servidor, parámetros usados, estado (borrador / presentado) y monto pagado.
 --
 -- Seguridad (cada punto lo ejerce scripts/verify-despachos-libro-pagos-provisionales/assertions.sql):
---   1. Las 6 tablas: RLS habilitado, REVOKE de todo a public/anon/authenticated y SOLO `select` a `authenticated` con la
+--   1. Las 5 tablas: RLS habilitado, REVOKE de todo a public/anon/authenticated y SOLO `select` a `authenticated` con la
 --      policy `core.has_property_access(auth.uid(), property_id)` -- justificación: el staff debe poder leer el libro, los
 --      pagos y los papeles de SUS clientes y nada más; ninguna tabla guarda secretos, así que el GRANT es de lectura por
 --      tabla completa. NO hay INSERT/UPDATE/DELETE directos para `authenticated`: toda escritura pasa por las funciones
