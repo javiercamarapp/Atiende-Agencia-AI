@@ -5,33 +5,26 @@
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Card`/`CardHeader`/`CardContent` para los dos
-// formularios de alta, `Input`/`Label`/`NativeSelect` para sus campos, `Checkbox` para las marcas, `Button` para enviar, `Badge` para las
+// formularios de alta (UNI-C: ahora `FormDialog`/`FormField` abiertos desde los CTA de cabecera), `Input`/`NativeSelect` para sus campos,
+// `Checkbox` para las marcas, `Button` para enviar, `Badge` para las
 // categorías existentes y para el estado "Disponible / No disponible", y `Table` para
 // el catálogo. TODO el CRUD/estado de abajo es el MISMO: solo cambia el JSX.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
   Checkbox,
-  EstadoCargando,
+  DataTable,
   EstadoError,
-  EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   formatMoney,
   StatusBadge,
 } from "@atiende/ui";
@@ -61,11 +54,19 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   const [newCatName, setNewCatName] = useState("");
   const [newCatSlug, setNewCatSlug] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
+  // Alta de categoría y de producto: FormDialog abierto desde el CTA de cabecera. El error del servidor se pinta DENTRO del diálogo
+  // (el global `error` quedaría tapado por el modal); los campos vacíos se marcan en su FormField.
+  const [dialogoCategoria, setDialogoCategoria] = useState(false);
+  const [errorCategoria, setErrorCategoria] = useState<string | null>(null);
+  const [erroresCategoria, setErroresCategoria] = useState<{ nombre?: string; slug?: string }>({});
 
   const [newProdName, setNewProdName] = useState("");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdCategoryId, setNewProdCategoryId] = useState("");
   const [creatingProduct, setCreatingProduct] = useState(false);
+  const [dialogoProducto, setDialogoProducto] = useState(false);
+  const [errorProducto, setErrorProducto] = useState<string | null>(null);
+  const [erroresProducto, setErroresProducto] = useState<{ nombre?: string; precio?: string }>({});
 
   async function load() {
     setError(null);
@@ -83,37 +84,66 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
     void load();
   }, [apiBaseUrl, token, propertyId]);
 
-  async function handleCreateCategory(e: FormEvent) {
-    e.preventDefault();
-    if (!newCatName.trim() || !newCatSlug.trim()) return;
+  function abrirCategoria() {
+    setNewCatName("");
+    setNewCatSlug("");
+    setErrorCategoria(null);
+    setErroresCategoria({});
+    setDialogoCategoria(true);
+  }
+
+  async function handleCreateCategory() {
+    const faltantes = {
+      nombre: newCatName.trim() ? undefined : "Escribe el nombre de la categoría.",
+      slug: newCatSlug.trim() ? undefined : "Escribe el slug de la categoría.",
+    };
+    setErroresCategoria(faltantes);
+    if (faltantes.nombre || faltantes.slug) return;
     setCreatingCategory(true);
+    setErrorCategoria(null);
     setError(null);
     try {
       await createCategory(fetch, apiBaseUrl, token, propertyId, { name: newCatName.trim(), slug: newCatSlug.trim() });
       setNewCatName("");
       setNewCatSlug("");
+      setDialogoCategoria(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la categoría.");
+      setErrorCategoria(err instanceof Error ? err.message : "No se pudo crear la categoría.");
     } finally {
       setCreatingCategory(false);
     }
   }
 
-  async function handleCreateProduct(e: FormEvent) {
-    e.preventDefault();
+  function abrirProducto() {
+    setNewProdName("");
+    setNewProdPrice("");
+    setNewProdCategoryId("");
+    setErrorProducto(null);
+    setErroresProducto({});
+    setDialogoProducto(true);
+  }
+
+  async function handleCreateProduct() {
     const price = Number(newProdPrice);
-    if (!newProdName.trim() || !Number.isFinite(price) || price < 0) return;
+    const faltantes = {
+      nombre: newProdName.trim() ? undefined : "Escribe el nombre del producto.",
+      precio: newProdPrice.trim() !== "" && Number.isFinite(price) && price >= 0 ? undefined : "Escribe un precio base válido (0 o más).",
+    };
+    setErroresProducto(faltantes);
+    if (faltantes.nombre || faltantes.precio) return;
     setCreatingProduct(true);
+    setErrorProducto(null);
     setError(null);
     try {
       await createProduct(fetch, apiBaseUrl, token, propertyId, { name: newProdName.trim(), price, categoryId: newProdCategoryId || null });
       setNewProdName("");
       setNewProdPrice("");
       setNewProdCategoryId("");
+      setDialogoProducto(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el producto.");
+      setErrorProducto(err instanceof Error ? err.message : "No se pudo crear el producto.");
     } finally {
       setCreatingProduct(false);
     }
@@ -176,213 +206,181 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Productos y categorías</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Productos y categorías</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <Card>
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm font-semibold">Nueva categoría</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <form onSubmit={handleCreateCategory} className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="restaurantes-categoria-nombre" className="text-xs text-muted-foreground">
-                Nombre
-              </Label>
-              <Input
-                id="restaurantes-categoria-nombre"
-                placeholder="Nombre (ej. Postres)"
-                value={newCatName}
-                onChange={(e) => setNewCatName(e.target.value)}
-                className="w-auto min-w-[200px]"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="restaurantes-categoria-slug" className="text-xs text-muted-foreground">
-                Slug
-              </Label>
-              <Input
-                id="restaurantes-categoria-slug"
-                placeholder="slug (ej. postres)"
-                value={newCatSlug}
-                onChange={(e) => setNewCatSlug(e.target.value)}
-                className="w-auto min-w-[180px]"
-              />
-            </div>
-            <Button type="submit" disabled={creatingCategory}>
-              <FolderPlus />
-              {creatingCategory ? "Creando…" : "Crear categoría"}
-            </Button>
-          </form>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {categories?.map((c) => (
-              <StatusBadge key={c.id} tone="neutral" dot={false}>
-                {c.name}
-              </StatusBadge>
-            ))}
-          </div>
-          {marks && categories && categories.length > 0 && (
-            <fieldset className="mt-3 flex flex-col gap-1.5 border-0 p-0">
-              <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
-              <div className="flex flex-wrap gap-3">
-                {categories.map((c) => (
-                  <Checkbox
-                    key={c.id}
-                    aria-label={`${c.name}: no se vende a domicilio`}
-                    label={c.name}
-                    wrapperClassName="text-xs"
-                    checked={marks.categoryIds.includes(c.id)}
-                    onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
-                    disabled={savingId === c.id}
-                  />
-                ))}
-              </div>
-            </fieldset>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" variant="outline" onClick={abrirCategoria}>
+          <FolderPlus />
+          Nueva categoría
+        </Button>
+        <Button type="button" onClick={abrirProducto}>
+          <Plus />
+          Nuevo producto
+        </Button>
+      </div>
 
-      <Card>
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm font-semibold">Nuevo producto</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <form onSubmit={handleCreateProduct} className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="restaurantes-producto-nombre" className="text-xs text-muted-foreground">
-                Nombre
-              </Label>
-              <Input
-                id="restaurantes-producto-nombre"
-                placeholder="Nombre"
-                value={newProdName}
-                onChange={(e) => setNewProdName(e.target.value)}
-                className="w-auto min-w-[200px]"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="restaurantes-producto-precio" className="text-xs text-muted-foreground">
-                Precio base
-              </Label>
-              <Input
-                id="restaurantes-producto-precio"
-                placeholder="Precio base"
-                type="number"
-                min={0}
-                step="0.01"
-                value={newProdPrice}
-                onChange={(e) => setNewProdPrice(e.target.value)}
-                className="w-[120px]"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="restaurantes-producto-categoria" className="text-xs text-muted-foreground">
-                Categoría
-              </Label>
-              <NativeSelect
-                id="restaurantes-producto-categoria"
-                value={newProdCategoryId}
-                onChange={(e) => setNewProdCategoryId(e.target.value)}
-                wrapperClassName="w-auto min-w-44"
-              >
-                <option value="">Sin categoría</option>
-                {categories?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-            <Button type="submit" disabled={creatingProduct}>
-              <Plus />
-              {creatingProduct ? "Creando…" : "Crear producto"}
-            </Button>
-          </form>
-          <CardDescription className="mt-2 text-xs">
-            Un producto recién creado NO aparece en el pedido/agente hasta activarlo abajo en esta sucursal.
-          </CardDescription>
-        </CardContent>
-      </Card>
-
-      {!products && !error && <EstadoCargando etiqueta="Cargando catálogo…" />}
-      {products && products.length === 0 && <EstadoVacio mensaje="Este negocio todavía no tiene productos en su catálogo." />}
-
-      {products && products.length > 0 && (
+      {categories && categories.length > 0 && (
         <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableCaption className="sr-only">Catálogo de productos de esta sucursal</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Producto</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Precio en esta sucursal</TableHead>
-                  <TableHead>Disponible aquí</TableHead>
-                  <TableHead>Popular</TableHead>
-                  {marks && <TableHead>No a domicilio</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium text-foreground">{p.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{p.categoryName ?? "—"}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          aria-label={`Precio de ${p.name} en esta sucursal`}
-                          defaultValue={p.branch?.price ?? p.price}
-                          onBlur={(e) => void handlePriceChange(p, e.target.value)}
-                          disabled={savingId === p.id}
-                          className="h-9 w-[100px]"
-                        />
-                        {p.branch === null && (
-                          <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={p.branch?.isAvailable ? "default" : "outline"}
-                        className="h-9 text-xs"
-                        onClick={() => void handleToggleAvailability(p)}
-                        disabled={savingId === p.id}
-                      >
-                        {p.branch?.isAvailable ? "Disponible" : "No disponible"}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`Marcar ${p.name} como popular`}
-                        checked={p.isPopular}
-                        onChange={() => void handleTogglePopular(p)}
-                        disabled={savingId === p.id}
-                      />
-                    </TableCell>
-                    {marks && (
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`${p.name}: no se vende a domicilio`}
-                          checked={marks.productIds.includes(p.id)}
-                          onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
-                          disabled={savingId === p.id}
-                        />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle>Categorías</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex flex-wrap gap-1.5">
+              {categories.map((c) => (
+                <StatusBadge key={c.id} tone="neutral" dot={false}>
+                  {c.name}
+                </StatusBadge>
+              ))}
+            </div>
+            {marks && (
+              <fieldset className="mt-3 flex flex-col gap-1.5 border-0 p-0">
+                <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
+                <div className="flex flex-wrap gap-3">
+                  {categories.map((c) => (
+                    <Checkbox
+                      key={c.id}
+                      aria-label={`${c.name}: no se vende a domicilio`}
+                      label={c.name}
+                      wrapperClassName="text-xs"
+                      checked={marks.categoryIds.includes(c.id)}
+                      onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
+                      disabled={savingId === c.id}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {(products || !error) && (
+        <Card>
+          <CardHeader className="p-3 pb-2">
+            <CardTitle>Catálogo</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <DataTable<Product>
+              etiqueta="catálogo de productos de esta sucursal"
+              filas={products ?? []}
+              obtenerId={(p) => p.id}
+              estado={!products ? "loading" : products.length === 0 ? "empty" : "ok"}
+              vacio={{ titulo: "Sin productos", mensaje: "Este negocio todavía no tiene productos en su catálogo." }}
+              paginacion={{ tamano: 25 }}
+              columnas={[
+                { id: "producto", encabezado: "Producto", principal: true, celda: (p) => <span className="font-medium text-foreground">{p.name}</span>, valorOrden: (p) => p.name },
+                { id: "categoria", encabezado: "Categoría", celda: (p) => <span className="text-muted-foreground">{p.categoryName ?? "—"}</span>, valorOrden: (p) => p.categoryName },
+                {
+                  id: "precio",
+                  encabezado: "Precio en esta sucursal",
+                  celda: (p) => (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        aria-label={`Precio de ${p.name} en esta sucursal`}
+                        defaultValue={p.branch?.price ?? p.price}
+                        onBlur={(e) => void handlePriceChange(p, e.target.value)}
+                        disabled={savingId === p.id}
+                        className="w-[100px]"
+                      />
+                      {p.branch === null && <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>}
+                    </div>
+                  ),
+                },
+                {
+                  id: "disponible",
+                  encabezado: "Disponible aquí",
+                  celda: (p) => (
+                    <Button type="button" size="sm" variant={p.branch?.isAvailable ? "default" : "outline"} onClick={() => void handleToggleAvailability(p)} disabled={savingId === p.id}>
+                      {p.branch?.isAvailable ? "Disponible" : "No disponible"}
+                    </Button>
+                  ),
+                },
+                {
+                  id: "popular",
+                  encabezado: "Popular",
+                  celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id} />,
+                },
+                ...(marks
+                  ? [
+                      {
+                        id: "no-domicilio",
+                        encabezado: "No a domicilio",
+                        celda: (p: Product) => (
+                          <Checkbox
+                            aria-label={`${p.name}: no se vende a domicilio`}
+                            checked={marks.productIds.includes(p.id)}
+                            onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
+                            disabled={savingId === p.id}
+                          />
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <FormDialog
+        open={dialogoCategoria}
+        onOpenChange={setDialogoCategoria}
+        titulo="Nueva categoría"
+        subtitulo="Agrupa productos del catálogo (ej. Postres)."
+        anchoClase="max-w-2xl"
+        onGuardar={() => void handleCreateCategory()}
+        guardando={creatingCategory}
+        textoBotonGuardar="Crear categoría"
+        bloquearCierre={creatingCategory}
+      >
+        <div className="grid gap-3">
+          {errorCategoria && <Callout tone="danger">{errorCategoria}</Callout>}
+          <FormField label="Nombre" required error={erroresCategoria.nombre}>
+            <Input placeholder="Nombre (ej. Postres)" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
+          </FormField>
+          <FormField label="Slug" required error={erroresCategoria.slug} hint="Identificador corto en minúsculas, sin espacios (ej. postres).">
+            <Input placeholder="slug (ej. postres)" value={newCatSlug} onChange={(e) => setNewCatSlug(e.target.value)} />
+          </FormField>
+        </div>
+      </FormDialog>
+
+      <FormDialog
+        open={dialogoProducto}
+        onOpenChange={setDialogoProducto}
+        titulo="Nuevo producto"
+        subtitulo="Un producto recién creado NO aparece en el pedido/agente hasta activarlo en la tabla, en esta sucursal."
+        anchoClase="max-w-2xl"
+        onGuardar={() => void handleCreateProduct()}
+        guardando={creatingProduct}
+        textoBotonGuardar="Crear producto"
+        bloquearCierre={creatingProduct}
+      >
+        <div className="grid gap-3">
+          {errorProducto && <Callout tone="danger">{errorProducto}</Callout>}
+          <FormField label="Nombre" required error={erroresProducto.nombre}>
+            <Input placeholder="Nombre" value={newProdName} onChange={(e) => setNewProdName(e.target.value)} />
+          </FormField>
+          <FormField label="Precio base" required error={erroresProducto.precio}>
+            <Input placeholder="Precio base" type="number" min={0} step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} />
+          </FormField>
+          <FormField label="Categoría">
+            <NativeSelect value={newProdCategoryId} onChange={(e) => setNewProdCategoryId(e.target.value)}>
+              <option value="">Sin categoría</option>
+              {categories?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        </div>
+      </FormDialog>
     </PageContainer>
   );
 }

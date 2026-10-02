@@ -9,11 +9,9 @@
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Card` por entrega, `StatusBadge` para el estado, `Button`
 // para Mapa/Llamar/avanzar/reportar — y el `window.prompt` del navegador que pedía la
-// nota de incidencia pasa a un `AlertDialog` real del sistema de diseño (no
-// `Dialog`/`ModalFormularioLateral` -- una confirmación no es un formulario, mismo
-// criterio que la referencia real; mismas tres ramas de siempre: cancelar = no-op,
-// nota vacía = el mismo mensaje de error, nota con texto = la misma llamada a
-// `updateAssignedOrderStatus(..., "problema", nota.trim())`).
+// nota de incidencia pasa a `useConfirm().pedirTexto` del sistema de diseño (UNI-C):
+// cancelar o Escape = no-op, el campo es obligatorio (la nota vacía ya no se puede enviar)
+// y una nota con texto = la misma llamada a `updateAssignedOrderStatus(..., "problema", nota.trim())`.
 //
 // Ronda 13 — hallazgo de auditoría (severidad ALTA, "único consumidor autenticado de
 // apps/web que no escucha SESSION_EXPIRED_EVENT"): al estar FUERA de
@@ -35,26 +33,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Button,
   Card,
   CardContent,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
-  Label,
   PageContainer,
   StatusBadge,
-  Textarea,
   formatMoney,
   statusTone,
+  useConfirm,
 } from "@atiende/ui";
 import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
@@ -86,14 +75,13 @@ const NEXT_STATUS_LABEL: Record<RepartidorOrderStatus, string> = {
   problema: "",
 };
 
-function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: string; token: string; propertyId: string }) {
+/** Vista de las entregas del repartidor (exportada para probarla sin sesión/router; la ruta usa `RepartidorPedidosPage`). */
+export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: string; token: string; propertyId: string }) {
   const [orders, setOrders] = useState<readonly RepartidorOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
-  // Pedido cuyo reporte de incidencia está abierto (antes: el `window.prompt` del
-  // navegador) y el texto que el repartidor lleva escrito.
-  const [incidenciaOrder, setIncidenciaOrder] = useState<RepartidorOrder | null>(null);
-  const [incidenciaNota, setIncidenciaNota] = useState("");
+  // La nota de incidencia se pide con `pedirTexto` (`useConfirm`, con `AlertDialog`); el diálogo lo monta `dialogo`.
+  const { pedirTexto, dialogo } = useConfirm();
 
   async function load() {
     setError(null);
@@ -123,25 +111,16 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
     }
   }
 
-  function abrirIncidencia(order: RepartidorOrder) {
-    setIncidenciaNota("");
-    setIncidenciaOrder(order);
-  }
-
-  function cerrarIncidencia() {
-    setIncidenciaOrder(null);
-    setIncidenciaNota("");
-  }
-
-  async function handleReportarIncidencia() {
-    const order = incidenciaOrder;
-    if (!order) return; // equivalente a haber cancelado el prompt de antes
-    const nota = incidenciaNota;
-    cerrarIncidencia();
-    if (!nota.trim()) {
-      setError("Escribe qué pasó antes de reportar la incidencia.");
-      return;
-    }
+  async function handleReportarIncidencia(order: RepartidorOrder) {
+    const nota = await pedirTexto({
+      titulo: "Reportar incidencia",
+      descripcion: "¿Qué pasó? (se guarda y administración lo ve de inmediato)",
+      tono: "danger",
+      confirmar: "Reportar incidencia",
+      cancelar: "Volver",
+      campo: { etiqueta: "Nota para administración", placeholder: "Ej. El cliente no abrió y no contesta el teléfono.", multilinea: true, maxLength: 2000 },
+    });
+    if (nota === null) return; // Volver, Escape o cerrar: no se llama al API
     setChangingId(order.id);
     setError(null);
     try {
@@ -201,7 +180,7 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
 
               <div className="mt-2.5 flex flex-wrap gap-2">
                 {o.customerAddress && (
-                  <Button asChild variant="outline" size="sm" className="h-9 text-xs">
+                  <Button asChild variant="outline">
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.customerAddress)}`}
                       target="_blank"
@@ -212,24 +191,22 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
                     </a>
                   </Button>
                 )}
-                <Button asChild variant="outline" size="sm" className="h-9 text-xs">
+                <Button asChild variant="outline">
                   <a href={`tel:${o.customerPhone}`}>
                     <Phone />
                     Llamar
                   </a>
                 </Button>
                 {nextLabel && (
-                  <Button type="button" size="sm" className="h-9 text-xs" onClick={() => void handleAvanzar(o)} disabled={changingId === o.id}>
-                    {changingId === o.id ? "…" : nextLabel}
+                  <Button type="button" onClick={() => void handleAvanzar(o)} loading={changingId === o.id}>
+                    {nextLabel}
                   </Button>
                 )}
                 {(o.status === "pending" || o.status === "preparando" || o.status === "en_camino") && (
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 border-destructive/40 text-xs text-destructive hover:border-destructive"
-                    onClick={() => abrirIncidencia(o)}
+                    variant="danger-outline"
+                    onClick={() => void handleReportarIncidencia(o)}
                     disabled={changingId === o.id}
                   >
                     <AlertTriangle />
@@ -242,38 +219,7 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
         );
       })}
 
-      <AlertDialog open={incidenciaOrder !== null} onOpenChange={(abierto) => !abierto && cerrarIncidencia()}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reportar incidencia</AlertDialogTitle>
-            <AlertDialogDescription>¿Qué pasó? (se guarda y administración lo ve de inmediato)</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="repartidor-incidencia-nota" className="text-xs text-muted-foreground">
-              Nota para administración
-            </Label>
-            <Textarea
-              id="repartidor-incidencia-nota"
-              value={incidenciaNota}
-              onChange={(e) => setIncidenciaNota(e.target.value)}
-              rows={4}
-              placeholder="Ej. El cliente no abrió y no contesta el teléfono."
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={cerrarIncidencia}>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => {
-                e.preventDefault();
-                void handleReportarIncidencia();
-              }}
-            >
-              Reportar incidencia
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogo}
       </PageContainer>
     </div>
   );

@@ -12,6 +12,7 @@ import { isBudgetExceededError, isMonthlyBudgetExceededError } from "../gateway/
 import { isKillSwitchEngagedError } from "../gateway/kill-switch.js";
 import type { LlmCompletionResult, LlmMessage, LlmToolCall, LlmToolDefinition } from "../gateway/types.js";
 import { toJsonSchema, parseArgs, type ParsedArgs } from "./params.js";
+import { buildCacheKey, cacheTtlMs, isStorableResult, type DataChatCache } from "./cache.js";
 import { allowedNumbers, unsupportedNumbers } from "./numbers-guard.js";
 import { containsLink, redactPii, sanitizeCell, sanitizeRowForModel } from "./sanitize.js";
 import {
@@ -69,6 +70,12 @@ export interface RunDataChatTurnOptions {
    *  parametros por defecto. Es lo que hacen los botones de `noAi.options`; mismo alcance, limites, tiempo, PII y
    *  bitacora que un turno normal. */
   readonly directTool?: string;
+  /** Argumentos de la consulta directa (p. ej. el periodo del chip). Se validan con el MISMO esquema que los del modelo
+   *  (claves desconocidas, enums fuera del catalogo o fechas falsas se rechazan). Sin ellos: solo el periodo por defecto. */
+  readonly directArgs?: Readonly<Record<string, unknown>>;
+  /** Cache de resultados de herramientas (ver `cache.ts`): la leen TANTO la ruta directa como las herramientas que pide el
+   *  modelo. Opcional: sin ella todo se ejecuta como siempre. */
+  readonly cache?: DataChatCache;
   readonly rateLimiter?: DataChatRateLimiter;
   readonly audit?: DataChatAuditSink;
   readonly limits?: Partial<DataChatLimits>;
@@ -90,6 +97,7 @@ interface ToolRun {
   readonly tool: DataChatTool;
   readonly result: DataChatToolResult;
   readonly truncated: boolean;
+  readonly fromCache: boolean;
 }
 
 const MAX_NARRATIVE_CHARS = 700;
@@ -335,7 +343,8 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   const reportUso = (route: DataChatRoute): void => {
     if (!opts.onUso) return;
     try {
-      opts.onUso({ route, llmCalls, escalated, costUsd: Math.round(costUsd * 1e9) / 1e9, ...(modelUsed ? { model: modelUsed } : {}) });
+      const cacheHits = runs.filter((r) => r.fromCache).length;
+      opts.onUso({ route, llmCalls, escalated, ...(cacheHits > 0 ? { cacheHits } : {}), costUsd: Math.round(costUsd * 1e9) / 1e9, ...(modelUsed ? { model: modelUsed } : {}) });
     } catch (err) {
       onError("on_uso", err);
     }
@@ -366,7 +375,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
       let res: Pick<LlmCompletionResult, "text" | "toolCalls">;
       try {
         res = direct
-          ? { text: "", ...(round === 0 ? { toolCalls: [{ id: "direct-1", name: direct.name, argumentsJson: JSON.stringify(directDefaultArgs(direct)) }] } : {}) }
+          ? { text: "", ...(round === 0 ? { toolCalls: [{ id: "direct-1", name: direct.name, argumentsJson: JSON.stringify(opts.directArgs ?? directDefaultArgs(direct)) }] } : {}) }
           : await raceAbort(
               callLlm(
                 opts.complete,
@@ -428,27 +437,52 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
 
         let result: DataChatToolResult;
         let errorCode: string | undefined;
+        let fromCache = false;
         emit({ t: "paso", fase: "inicio", herramienta: tool.name });
-        try {
-          result = await raceAbort(withTimeout((signal) => tool.run({ scope, now, signal, maxRows: limits.maxRows }, parsed.value), limits.toolTimeoutMs), opts.signal);
-        } catch (err) {
-          if (isDataChatAbortedError(err)) throw err;
-          onError(`tool:${tool.name}`, err);
-          errorCode = (err as { code?: string })?.code === "tool_timeout" ? "tool_timeout" : "tool_failed";
-          result = {
-            status: "error",
-            message: errorCode === "tool_timeout" ? "La consulta tardó demasiado y se canceló." : "No pude consultar esos datos en este momento.",
-            source: tool.label,
-            scopeLabel: "",
-            columns: [],
-            rows: [],
-          };
+        // Cache: solo herramientas que el servidor declaro sin datos personales; un fallo del almacen es un miss, nunca un error.
+        const cacheKey = opts.cache && opts.cache.isCacheable(tool, scope) ? buildCacheKey(scope, tool, parsed.value, now) : undefined;
+        let cached: DataChatToolResult | undefined;
+        if (opts.cache && cacheKey) {
+          try {
+            cached = await raceAbort(opts.cache.store.get(cacheKey), opts.signal);
+          } catch (err) {
+            if (isDataChatAbortedError(err)) throw err;
+            onError("cache_get", err);
+          }
+        }
+        if (cached) {
+          result = cached;
+          fromCache = true;
+        } else {
+          try {
+            result = await raceAbort(withTimeout((signal) => tool.run({ scope, now, signal, maxRows: limits.maxRows }, parsed.value), limits.toolTimeoutMs), opts.signal);
+          } catch (err) {
+            if (isDataChatAbortedError(err)) throw err;
+            onError(`tool:${tool.name}`, err);
+            errorCode = (err as { code?: string })?.code === "tool_timeout" ? "tool_timeout" : "tool_failed";
+            result = {
+              status: "error",
+              message: errorCode === "tool_timeout" ? "La consulta tardó demasiado y se canceló." : "No pude consultar esos datos en este momento.",
+              source: tool.label,
+              scopeLabel: "",
+              columns: [],
+              rows: [],
+            };
+          }
+          // Un resultado recortado (hay mas filas de las que se muestran) NO se guarda: la cache no esconde que faltan filas.
+          if (opts.cache && cacheKey && result.rows.length <= limits.maxRows && isStorableResult(result)) {
+            try {
+              await opts.cache.store.set(cacheKey, result, cacheTtlMs(parsed.value, now, scope.timezone), { organizationId: scope.organizationId });
+            } catch (err) {
+              onError("cache_set", err);
+            }
+          }
         }
         // Las herramientas piden maxRows + 1 filas: si llega la fila extra, hay más de las que se muestran.
         const truncated = result.rows.length > limits.maxRows;
         const clipped: DataChatToolResult = result.rows.length > limits.maxRows ? { ...result, rows: result.rows.slice(0, limits.maxRows) } : result;
         emit({ t: "paso", fase: "fin", herramienta: tool.name });
-        runs.push({ tool, result: clipped, truncated });
+        runs.push({ tool, result: clipped, truncated, fromCache });
         everyResult.push(clipped);
         await audit({
           tool: tool.name,
@@ -457,6 +491,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
           rowCount: clipped.rows.length,
           durationMs: Date.now() - toolStart,
           errorCode,
+          route: fromCache ? "cache" : direct ? "directa" : "llm",
         });
         messages.push({ role: "tool", toolCallId: call.id, content: serializeForModel(tool, clipped, Math.min(limits.maxRows, limits.maxModelRows)) });
       }
@@ -479,7 +514,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   // ---- armado de la respuesta ----
   const toolsUsed = [...new Set(runs.map((r) => r.tool.name))];
 
-  const baseRoute: DataChatRoute = direct ? "directa" : "barato";
+  const baseRoute: DataChatRoute = direct ? (runs.length > 0 && runs.every((r) => r.fromCache) ? "cache" : "directa") : "barato";
 
   if (runs.length === 0 && direct) {
     reportUso("directa");
@@ -576,7 +611,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     }
   }
 
-  reportUso(direct ? "directa" : narrativeOk ? (usedEscalated ? "escalado" : "barato") : "determinista");
+  reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated ? "escalado" : "barato") : "determinista");
   return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
 }
 

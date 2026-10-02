@@ -47,6 +47,16 @@ export interface ResultadoEmision {
 
 const PARAMETRO_CODIGO_RE = /^[A-Za-z0-9_.:-]{1,40}$/;
 const CLAVE_RE = /^[A-Za-z0-9_.:-]{1,120}$/;
+/** Id de entidad admitido en el enlace (uuid o codigo corto): nada que pueda alterar la ruta (sin `/`, `?`, `#` ni espacios). */
+const ENTIDAD_ENLACE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** El catalogo puede llevar `{entidadId}` en el enlace (p. ej. el detalle de un CFDI): se sustituye aqui, ANTES de la base, que solo
+ *  resuelve `{orgSlug}`. Devuelve null si la plantilla lo pide y no hay un id valido: se rechaza la emision en vez de enlazar mal. */
+function resolverEnlace(plantilla: string, entidadId: string | null | undefined): string | null {
+  if (!plantilla.includes("{entidadId}")) return plantilla;
+  if (!entidadId || !ENTIDAD_ENLACE_RE.test(entidadId)) return null;
+  return plantilla.replaceAll("{entidadId}", entidadId);
+}
 
 function renderizar(plantilla: string, parametros: Readonly<Record<string, ParametroNotificacion>>, declarados: readonly string[]): string {
   return plantilla.replace(/\{(\w+)\}/g, (_m, nombre: string) => {
@@ -79,6 +89,9 @@ export async function emitirNotificacion(session: TenantDbSession, input: Emitir
   }
   if (!CLAVE_RE.test(input.clave)) return { estado: "invalida", destinatarios: 0, detalle: "clave de dedupe invalida" };
 
+  const enlace = resolverEnlace(evento.enlace, input.entidadId);
+  if (enlace === null) return { estado: "invalida", destinatarios: 0, detalle: "el enlace del evento requiere un entidadId valido" };
+
   let titulo: string;
   let cuerpo: string | null;
   try {
@@ -104,7 +117,7 @@ export async function emitirNotificacion(session: TenantDbSession, input: Emitir
             input.severidad ?? evento.severidad,
             titulo,
             cuerpo,
-            evento.enlace,
+            enlace,
             input.entidadTipo ?? null,
             input.entidadId ?? null,
             `${evento.id}:${input.clave}`,

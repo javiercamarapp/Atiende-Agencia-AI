@@ -116,7 +116,7 @@ describe("RentasCopilotoPage", () => {
     expect(COPILOTO_RENTAS.categorias.map((c) => c.titulo)).toEqual(["Ocupación", "Ingresos", "Operación"]);
   });
 
-  it("elegir un chip hace POST NDJSON con SOLO pregunta + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
+  it("elegir un chip hace POST NDJSON de consulta DIRECTA (tool + args + label) + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
     click(porTexto(root, "¿Cuánto ingresé por canal este mes?")!);
@@ -124,7 +124,8 @@ describe("RentasCopilotoPage", () => {
     const post = llamadas.find((l) => l.method === "POST");
     expect(post?.url).toBe(`${API}/rentas/prop-1/chat-datos`);
     expect(post?.accept).toBe("application/x-ndjson");
-    expect(post?.body).toEqual({ question: "¿Cuánto ingresé por canal este mes?", conversationId: "new" });
+    // El chip tiene consulta directa: viaja la herramienta con sus argumentos (sin modelo) y el texto del chip como etiqueta.
+    expect(post?.body).toEqual({ tool: "ingresos_por_canal", args: { periodo: "este_mes" }, label: "¿Cuánto ingresé por canal este mes?", conversationId: "new" });
     expect(root.textContent).toContain("Este mes ingresaste $48,200 MXN por canal.");
     const fuente = [...root.querySelectorAll("a")].find((a) => a.textContent?.includes("Reservas con llegada"));
     expect(fuente?.getAttribute("href")).toBe("/rentas/demo/finanzas");

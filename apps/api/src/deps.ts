@@ -40,7 +40,8 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { Efos69bSource } from "@atiende/worker";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -62,7 +63,7 @@ import type {
 } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
-import type { CustomerLookup, StripeClient } from "@atiende/billing";
+import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
@@ -321,6 +322,12 @@ export interface AppDeps {
   readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
+  /** D-27 -- consulta publica del estatus de un CFDI ante el SAT (puerto). OPCIONAL a proposito: sin el, las rutas usan el adaptador SOAP real (`ConsultaCfdiSatSoap`); los tests inyectan un doble (jamas se llama al SAT en pruebas). */
+  readonly consultaCfdiSat?: ConsultaCfdiSatPort;
+  /** D-26/D-27/D-28 -- repositorio de SOLO SISTEMA de los crons de despachos (migracion 022). OPCIONAL a proposito: los crons caen a `PostgresCronSatRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
+  readonly cronSatRepo?: (db: TenantDbSession) => CronSatRepository;
+  /** D-28 -- fuente de la lista 69-B del SAT para el cron mensual. OPCIONAL a proposito: sin ella el cron usa `HttpEfos69bSource` (URL de `EFOS_69B_URL`); los tests inyectan una fuente fija. */
+  readonly efos69bSource?: Efos69bSource;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
@@ -550,6 +557,9 @@ export interface AppDeps {
    * mismo criterio que `whatsAppDispatcher`) para que ningún fixture existente
    * de las otras 6 verticales tenga que tocarse solo por agregar este campo. */
   readonly saasBillingStripeClient?: StripeClient | null;
+  /** Portal de cliente de Stripe (PL-16, `POST /billing/portal`). `undefined`/`null` cuando `STRIPE_SECRET_KEY` no esta configurada:
+   *  la ruta responde 503 honesto y `GET /billing/uso` lo reporta como no disponible. */
+  readonly saasBillingPortalClient?: StripeBillingPortalClient | null;
   /** Secreto de firma del webhook de Stripe (`whsec_...`, DISTINTO de
    * `env.stripe.secretKey` -- ver el comentario de `ApiEnv.stripe` en env.ts).
    * `undefined`/`null` cuando `STRIPE_WEBHOOK_SECRET` no está configurado --

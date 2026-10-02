@@ -33,6 +33,7 @@ import type {
   BloqueoRecord,
   CanalRecord,
   ConfiguracionComisionCanal,
+  ConfiguracionPricingUnidad,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
@@ -49,6 +50,11 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  TarifaBaseRecord,
+  UpdateDescuentoDuracionInput,
+  UpdateReglaCanalInput,
+  UpdateReglaMinStayInput,
+  UpdateTemporadaInput,
   OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
@@ -526,6 +532,107 @@ export class InMemoryRentasRepository implements RentasRepository {
       this.reglasCanalPricing.set(`${input.unidadId}:${codigo}`, { canalCodigo: codigo, markupBasisPoints: input.markupBasisPoints, activo: input.activo });
     }
     return { id };
+  }
+
+  // ---- RentasRepository: pricing, lectura de configuracion y edicion/borrado (Rn-23) ----
+
+  async loadConfiguracionPricing(unidadId: string, hoy: string): Promise<ConfiguracionPricingUnidad> {
+    const historial: TarifaBaseRecord[] = [...(this.tarifaBase.get(unidadId)?.values() ?? [])]
+      .map((b) => ({ id: b.id, precioNocheCentavos: b.precioNocheCentavos, moneda: b.moneda, vigenteDesde: b.vigenteDesde }))
+      .sort((a, b) => (a.vigenteDesde < b.vigenteDesde ? 1 : a.vigenteDesde > b.vigenteDesde ? -1 : 0));
+    const canalesPorId = new Map([...this.calendarStore.canales.entries()].map(([codigo, c]) => [c.id, codigo]));
+    return {
+      tarifaBaseVigente: historial.find((t) => t.vigenteDesde <= hoy) ?? null,
+      historialTarifaBase: historial,
+      temporadas: [...(this.temporadas.get(unidadId) ?? [])].sort((a, b) => (a.rango.inicio < b.rango.inicio ? -1 : 1)).map((t) => ({ id: t.id, nombre: t.nombre, rango: t.rango, precioNocheCentavos: t.precioNocheCentavos, moneda: t.moneda })),
+      descuentosDuracion: (await this.listDescuentosDuracion(unidadId)).sort((a, b) => a.nochesMinimas - b.nochesMinimas),
+      reglasMinStay: await this.listReglasMinStay(unidadId),
+      reglasCanal: [...this.reglasCanalWrite.entries()]
+        .filter(([key]) => key.startsWith(`${unidadId}:`))
+        .map(([, r]) => ({ id: r.id, canalCodigo: canalesPorId.get(r.canalId) ?? r.canalId, markupBasisPoints: r.markupBasisPoints, activo: r.activo })),
+    };
+  }
+
+  async updateTemporada(input: UpdateTemporadaInput): Promise<boolean> {
+    const fila = (this.temporadas.get(input.unidadId) ?? []).find((t) => t.id === input.id);
+    if (!fila) return false;
+    fila.nombre = input.nombre;
+    fila.rango = input.rango;
+    fila.precioNocheCentavos = input.precioNocheCentavos;
+    fila.moneda = input.moneda;
+    return true;
+  }
+
+  async deleteTemporada(unidadId: string, id: string): Promise<boolean> {
+    const lista = this.temporadas.get(unidadId) ?? [];
+    const idx = lista.findIndex((t) => t.id === id);
+    if (idx < 0) return false;
+    lista.splice(idx, 1);
+    return true;
+  }
+
+  async updateDescuentoDuracion(input: UpdateDescuentoDuracionInput): Promise<boolean> {
+    const mapa = this.descuentosDuracion.get(input.unidadId);
+    const actual = [...(mapa?.entries() ?? [])].find(([, d]) => d.id === input.id);
+    if (!mapa || !actual) return false;
+    if (input.nochesMinimas !== actual[0] && mapa.has(input.nochesMinimas)) {
+      throw Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+    }
+    mapa.delete(actual[0]);
+    mapa.set(input.nochesMinimas, { id: input.id, nochesMinimas: input.nochesMinimas, porcentajeDescuentoBasisPoints: input.porcentajeDescuentoBasisPoints, fuente: input.fuente });
+    return true;
+  }
+
+  async deleteDescuentoDuracion(unidadId: string, id: string): Promise<boolean> {
+    const mapa = this.descuentosDuracion.get(unidadId);
+    const actual = [...(mapa?.entries() ?? [])].find(([, d]) => d.id === id);
+    if (!mapa || !actual) return false;
+    mapa.delete(actual[0]);
+    return true;
+  }
+
+  async updateReglaMinStay(input: UpdateReglaMinStayInput): Promise<boolean> {
+    const fila = (this.reglasMinStay.get(input.unidadId) ?? []).find((r) => r.id === input.id);
+    if (!fila) return false;
+    fila.rango = input.rango;
+    fila.diaSemanaCheckIn = input.diaSemanaCheckIn;
+    fila.nochesMinimas = input.nochesMinimas;
+    return true;
+  }
+
+  async deleteReglaMinStay(unidadId: string, id: string): Promise<boolean> {
+    const lista = this.reglasMinStay.get(unidadId) ?? [];
+    const idx = lista.findIndex((r) => r.id === id);
+    if (idx < 0) return false;
+    lista.splice(idx, 1);
+    return true;
+  }
+
+  async updateReglaCanalPricing(input: UpdateReglaCanalInput): Promise<boolean> {
+    const entrada = [...this.reglasCanalWrite.entries()].find(([key, r]) => key.startsWith(`${input.unidadId}:`) && r.id === input.id);
+    if (!entrada) return false;
+    const [key, fila] = entrada;
+    fila.markupBasisPoints = input.markupBasisPoints;
+    fila.activo = input.activo;
+    this.sincronizarReglaCanalLectura(key, fila);
+    return true;
+  }
+
+  async deleteReglaCanalPricing(unidadId: string, id: string): Promise<boolean> {
+    const entrada = [...this.reglasCanalWrite.entries()].find(([key, r]) => key.startsWith(`${unidadId}:`) && r.id === id);
+    if (!entrada) return false;
+    const [key, fila] = entrada;
+    this.reglasCanalWrite.delete(key);
+    const codigo = [...this.calendarStore.canales.entries()].find(([, c]) => c.id === fila.canalId)?.[0];
+    if (codigo) this.reglasCanalPricing.delete(`${unidadId}:${codigo}`);
+    return true;
+  }
+
+  /** Refleja en el mapa de LECTURA (keyed por codigo) una regla de canal editada. */
+  private sincronizarReglaCanalLectura(writeKey: string, fila: StoredReglaCanalPricing): void {
+    const unidadId = writeKey.slice(0, writeKey.indexOf(":"));
+    const codigo = [...this.calendarStore.canales.entries()].find(([, c]) => c.id === fila.canalId)?.[0];
+    if (codigo) this.reglasCanalPricing.set(`${unidadId}:${codigo}`, { canalCodigo: codigo, markupBasisPoints: fila.markupBasisPoints, activo: fila.activo });
   }
 
   // ---- RentasRepository: owner statement (flujo 5, Fase 2) ----

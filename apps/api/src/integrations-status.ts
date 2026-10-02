@@ -334,6 +334,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "GOOGLE_STAFF_TOKEN_URL",
   "GOOGLE_STAFF_JWKS_URL",
   "GOOGLE_STAFF_ISSUER",
+  // D-28 -- URL del CSV publico 69-B del SAT; opcional, con valor oficial por defecto (NO VERIFICADO), ver apps/api/src/env.ts.
+  "EFOS_69B_URL",
   // apps/web (Vite) — tiene default de desarrollo razonable, nunca bloquea nada.
   "VITE_API_BASE_URL",
 ];

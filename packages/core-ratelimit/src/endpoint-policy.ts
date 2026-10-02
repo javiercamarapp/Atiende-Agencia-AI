@@ -139,6 +139,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       'KYC negativo 69-B de licitaciones (POST .../kyc-69b/consultar, sesion autenticada con rol de escritura). El limite por usuario es una segunda linea contra rafagas: la defensa real contra el scraping vive en la base (lote maximo de 50 RFC y tope de 1000 RFC por organizacion cada 24 h dentro de licitaciones.kyc_consultar_69b), asi que un blip de Redis no debe negar una consulta legitima de un usuario ya autenticado; el backend en memoria de esta instancia sigue acotando la rafaga.',
   },
+  'despachos:cfdi-estatus-sat': {
+    failMode: 'closed',
+    reason:
+      'Verificar en el SAT (POST .../cfdi/:invoiceId/verificar-estatus-sat, sesion autenticada con rol de escritura): cada llamada dispara una consulta al servicio PUBLICO del SAT, que tiene limites de frecuencia no documentados. Sin tope global, un blip de Redis dejaria abierta una rafaga hacia un tercero que puede bloquear la IP de salida de toda la plataforma (y con ella el cron semanal), asi que negar una verificacion aislada es preferible.',
+  },
   'conversation:inbound-webhook': {
     failMode: 'open',
     reason:

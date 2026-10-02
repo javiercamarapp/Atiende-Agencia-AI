@@ -28,10 +28,14 @@ cotizador queda disponible para cualquier staff con acceso a la property (igual 
 el servidor); la configuración de pricing se muestra solo si `session.organizations`
 resuelve el rol de esa organización a `admin_gestora` (`PRICING_ESCRITURA_ROLES` real
 de `packages/domain-rentas/src/roles.ts`) — el servidor sigue re-validando con
-`assertVerticalRole`, este gate es solo UX. Límite real documentado en ambos
-archivos: `pricing-config.ts` nunca expuso un GET que liste la configuración ya
-guardada, así que la página muestra "configurado en esta sesión" en vez de un
-historial persistente. El panel de finanzas visual sigue fuera de alcance (ver Fase
+`assertVerticalRole`, este gate es solo UX. Rn-23 (supera el límite de la Fase 14):
+`pricing-config.ts` ahora expone `GET .../configuracion-precios` y PATCH/DELETE por id
+de temporada, descuento, min-stay y regla de canal; la página muestra lo persistido en
+tablas, lo edita con `FormDialog` y lo borra con `useConfirm` de dos pasos. Se parte en
+`pages/precios/{Cotizador,ConfiguracionPricing,formularios}.tsx`. El borrado de
+temporada/descuento/min-stay requiere la migración 030 de rentas: contra la base sin
+migrar el servidor responde 503 "no disponible aún" y la página lo muestra tal cual. El
+panel de finanzas visual sigue fuera de alcance (ver Fase
 16 más abajo).
 
 Fase 15: `pages/Aprobaciones.tsx` + `lib/mensajeria-client.ts` — cierra el hallazgo de

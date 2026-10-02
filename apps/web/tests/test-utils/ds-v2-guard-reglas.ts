@@ -59,6 +59,10 @@ export const REGLAS: ReadonlyArray<ReglaGuard> = [
   { nombre: "relleno interno p-6 de pagina (usar PageContainer)", patron: /className="[^"]*\bp-6\b/ },
   { nombre: "tokens heredados retirados en DS v2 (gold/terracotta/sand/olive/cream, shadow-glow, gradient-hero)", patron: /\b(bg|text|border|ring|from|to|via|fill|stroke)-(gold|terracotta|sand|olive|cream)(-[a-z0-9]+)?(\/[0-9]+)?\b|\bshadow-glow\b|\bbg-gradient-hero\b/ },
   { nombre: 'variantes de Button retiradas (variant="hero|gold|terracotta")', patron: /variant=["{]\s*["']?(hero|gold|terracotta)\b/ },
+  // Trinquete UNI-C (restaurantes): lo ya migrado no puede volver. Alcance acotado a la zona para no tocar el baseline de las demas.
+  { nombre: "Table a mano en restaurantes (usar DataTable)", patron: /<Table[\s>]/, alcance: /^verticals\/restaurantes\// },
+  { nombre: "AlertDialog local en restaurantes (usar useConfirm o useConfirm().pedirTexto)", patron: /\bAlertDialog\b/, alcance: /^verticals\/restaurantes\// },
+  { nombre: "Guardando a mano en restaurantes (usar Button loading)", patron: /Guardando(…|\.\.\.)/, alcance: /^verticals\/restaurantes\// },
 ];
 
 const esPagina = (f: Fuente): boolean => /(^|\/)pages\//.test(f.ruta);

@@ -60,6 +60,7 @@ import { resumenDiarioRoutes } from "./routes/internal/resumen-diario.ts";
 import { superadminMantenimientoRoutes } from "./routes/internal/superadmin-mantenimiento.ts";
 import { superadminAlertasCfoRoutes } from "./routes/internal/superadmin-alertas-cfo.ts";
 import { plataformaRetencionRoutes } from "./routes/internal/plataforma-retencion.ts";
+import { pruebaAvisosRoutes } from "./routes/internal/prueba-avisos.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -158,6 +159,8 @@ export function buildApp(deps: AppDeps): Hono {
   // Foto mensual de ingreso + alertas proactivas del CFO -- mismo criterio.
   app.route("/", superadminAlertasCfoRoutes(deps));
   app.route("/", plataformaRetencionRoutes(deps));
+  // Avisos de fin de prueba (PL-16) -- plataforma compartida; no esta en vercel.json (programarlo es una decision de despliegue).
+  app.route("/", pruebaAvisosRoutes(deps));
 
   return app;
 }

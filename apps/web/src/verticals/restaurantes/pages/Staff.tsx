@@ -12,24 +12,22 @@
 // SIEMPRE el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 //
 // Presentación (DS v2, PR-5): primitivos de `@atiende/ui` — `Card` para cada bloque y
-// cada fila, `Input`/`Label`/`NativeSelect` para el formulario de invitación y el rol
+// cada fila, `FormDialog`/`FormField`/`Input`/`NativeSelect` para el alta (abierta desde el CTA de cabecera) y el rol
 // de cada miembro, `Button` para invitar/revocar, `Badge` para el rol y `StatusBadge`
 // para el estado de cada invitación, `useConfirm` para la baja y `PageContainer` como
 // contenedor. Todos los gates de rol, fetches y payloads de abajo son los MISMOS.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
+  FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
   PageContainer,
   StatusBadge,
@@ -37,7 +35,7 @@ import {
   useConfirm,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
-import { Info, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import {
   createStaffInvite,
   fetchOrgMembers,
@@ -96,6 +94,11 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   const [email, setEmail] = useState("");
   const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("staff");
   const [creating, setCreating] = useState(false);
+  // El alta de staff vive en un FormDialog que abre el CTA de cabecera (UNI-C); su error se muestra DENTRO del diálogo
+  // (el global `error` quedaría tapado por el modal) y el correo vacío se marca en el campo.
+  const [dialogoInvitar, setDialogoInvitar] = useState(false);
+  const [errorInvitar, setErrorInvitar] = useState<string | null>(null);
+  const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [lastCreated, setLastCreated] = useState<CreatedStaffInvite | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
@@ -158,25 +161,46 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
     }
   }
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
+  function abrirInvitar() {
+    setEmail("");
+    setVerticalRole("staff");
+    setErrorInvitar(null);
+    setErrorCorreo(null);
+    setDialogoInvitar(true);
+  }
+
+  async function handleCreate() {
+    if (!email.trim()) {
+      setErrorCorreo("Escribe el correo de la persona a invitar.");
+      return;
+    }
+    setErrorCorreo(null);
     setCreating(true);
+    setErrorInvitar(null);
     setError(null);
     setLastCreated(null);
     try {
       const created = await createStaffInvite(fetch, apiBaseUrl, token, propertyId, { email: email.trim().toLowerCase(), verticalRole });
       setLastCreated(created);
       setEmail("");
+      setDialogoInvitar(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la invitación.");
+      setErrorInvitar(err instanceof Error ? err.message : "No se pudo crear la invitación.");
     } finally {
       setCreating(false);
     }
   }
 
-  async function handleRevoke(inviteId: string) {
+  async function handleRevoke(invite: StaffInvite) {
+    const ok = await confirmar({
+      titulo: `Revocar la invitación de ${invite.email}`,
+      descripcion: "La persona ya no podrá aceptarla con el token que recibió.",
+      tono: "danger",
+      confirmar: "Revocar",
+    });
+    if (!ok) return;
+    const inviteId = invite.id;
     setRevokingId(inviteId);
     setError(null);
     try {
@@ -191,81 +215,32 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Staff</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
-            <span>Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</span>
-          </CardContent>
-        </Card>
+        <Callout tone="info">Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</Callout>
       )}
 
       {canManage && (
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm font-semibold">Invitar a alguien nuevo</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="staff-invitar-correo" className="text-xs text-muted-foreground">
-                  Correo
-                </Label>
-                <Input
-                  id="staff-invitar-correo"
-                  type="email"
-                  placeholder="correo@ejemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-auto min-w-[220px]"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="staff-invitar-rol" className="text-xs text-muted-foreground">
-                  Rol
-                </Label>
-                <NativeSelect
-                  id="staff-invitar-rol"
-                  value={verticalRole}
-                  onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}
-                  wrapperClassName="w-auto min-w-40"
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-              <Button type="submit" disabled={creating}>
-                <UserPlus />
-                {creating ? "Invitando…" : "Invitar"}
-              </Button>
-            </form>
-            <CardDescription className="mt-2 text-xs">
-              No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
-            </CardDescription>
+        <div className="flex justify-end">
+          <Button type="button" onClick={abrirInvitar}>
+            <UserPlus />
+            Invitar a alguien
+          </Button>
+        </div>
+      )}
 
-            {lastCreated && (
-              <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <p className="m-0 mb-1.5 text-sm font-semibold text-foreground">
-                  Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
-                </p>
-                <p className="m-0 mb-1.5 text-xs text-muted-foreground">
-                  Compártele este token — solo se muestra una vez. Debe pegarlo en <code className="rounded bg-muted px-1 py-0.5 font-mono">/aceptar-invitacion</code> junto
-                  con su nombre y una contraseña.
-                </p>
-                <code className="block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {canManage && lastCreated && (
+        <Callout tone="success" titulo={`Invitación creada para ${lastCreated.email} (${ROLE_LABELS[lastCreated.verticalRole]})`}>
+          <p className="m-0 mb-1.5 text-xs text-muted-foreground">
+            Compártele este token — solo se muestra una vez. Debe pegarlo en <code className="rounded bg-muted px-1 py-0.5 font-mono">/aceptar-invitacion</code> junto con su nombre y una
+            contraseña.
+          </p>
+          <code className="block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
+        </Callout>
       )}
 
       {canManage && (
@@ -288,13 +263,12 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                     </div>
                     <Button
                       type="button"
-                      variant="destructive"
+                      variant="danger"
                       size="sm"
-                      className="h-9 text-xs"
-                      onClick={() => void handleRevoke(inv.id)}
-                      disabled={revokingId === inv.id}
+                      onClick={() => void handleRevoke(inv)}
+                      loading={revokingId === inv.id}
                     >
-                      {revokingId === inv.id ? "Revocando…" : "Revocar"}
+                      Revocar
                     </Button>
                   </CardContent>
                 </Card>
@@ -340,14 +314,14 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                         </NativeSelect>
                         <Button
                           type="button"
-                          variant="destructive"
+                          variant="danger"
                           size="sm"
-                          className="h-9 text-xs"
                           onClick={() => void handleRemove(m)}
-                          disabled={removingId === m.id || esUnoMismo}
+                          loading={removingId === m.id}
+                          disabled={esUnoMismo}
                           title={esUnoMismo ? "No puedes darte de baja a ti mismo." : undefined}
                         >
-                          {removingId === m.id ? "Dando de baja…" : "Dar de baja"}
+                          Dar de baja
                         </Button>
                       </div>
                     </CardContent>
@@ -376,6 +350,33 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
           </div>
         )}
       </section>
+      <FormDialog
+        open={dialogoInvitar}
+        onOpenChange={setDialogoInvitar}
+        titulo="Invitar a alguien nuevo"
+        subtitulo="Le llega un token para crear su cuenta con el rol que elijas."
+        anchoClase="max-w-2xl"
+        onGuardar={() => void handleCreate()}
+        guardando={creating}
+        textoBotonGuardar="Invitar"
+        bloquearCierre={creating}
+      >
+        <div className="grid gap-3">
+          {errorInvitar && <Callout tone="danger">{errorInvitar}</Callout>}
+          <FormField label="Correo" required error={errorCorreo}>
+            <Input type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </FormField>
+          <FormField label="Rol" hint="No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.">
+            <NativeSelect value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        </div>
+      </FormDialog>
       {dialogo}
     </PageContainer>
   );

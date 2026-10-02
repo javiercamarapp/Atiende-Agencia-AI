@@ -116,7 +116,7 @@ describe("RestaurantesCopilotoPage", () => {
     expect(COPILOTO_RESTAURANTES.categorias.map((c) => c.titulo)).toEqual(["Ventas", "Operación", "Clientes"]);
   });
 
-  it("elegir un chip hace POST NDJSON con SOLO pregunta + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
+  it("elegir un chip hace POST NDJSON de consulta DIRECTA (tool + args + label) + conversationId 'new' y pinta la respuesta con su fuente enlazada a la pantalla interna", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
     click(porTexto(root, "¿Cuánto vendí esta semana?")!);
@@ -124,7 +124,8 @@ describe("RestaurantesCopilotoPage", () => {
     const post = llamadas.find((l) => l.method === "POST");
     expect(post?.url).toBe(`${API}/v1/restaurantes/prop-1/admin/chat-datos`);
     expect(post?.accept).toBe("application/x-ndjson");
-    expect(post?.body).toEqual({ question: "¿Cuánto vendí esta semana?", conversationId: "new" });
+    // El chip tiene consulta directa: viaja la herramienta con sus argumentos (sin modelo) y el texto del chip como etiqueta.
+    expect(post?.body).toEqual({ tool: "ventas_por_dia", args: { periodo: "esta_semana" }, label: "¿Cuánto vendí esta semana?", conversationId: "new" });
     expect(root.textContent).toContain("Esta semana vendiste $12,480 MXN.");
     const fuente = [...root.querySelectorAll("a")].find((a) => a.textContent?.includes("Pedidos"));
     expect(fuente?.getAttribute("href")).toBe("/restaurantes/demo/historial");

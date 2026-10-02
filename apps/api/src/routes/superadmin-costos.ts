@@ -19,6 +19,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { calcularFilaCostoMargen, resumirCostoMargen, UMBRAL_MARGEN_PCT_DEFAULT } from "@atiende/billing";
 import type { EntradaCostoMargen, FilaCostoMargen, LimitePlan } from "@atiende/billing";
+import { listarUsoSuperadmin } from "@atiende/db";
 import type { FxRateRow, PlanRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
@@ -157,6 +158,25 @@ export function superadminCostosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         refId: e.refId,
       })),
     });
+  });
+
+  // Consumo de mensajes del mes por organizacion contra el tope de su plan (PL-16). Solo el DATO: la pantalla de consumo vs topes
+  // es SA-10. Base sin la migracion 0045: `disponible: false` y lista vacia.
+  app.get("/superadmin/costos/uso-mensajes", async (c) => {
+    const callerId = c.get("userId");
+    const limitRaw = c.req.query("limite");
+    let limite = 200;
+    if (limitRaw !== undefined && limitRaw !== "") {
+      limite = Number(limitRaw);
+      if (!Number.isInteger(limite) || limite < 1 || limite > 500) throw Errors.validation("limite debe ser un entero entre 1 y 500.");
+    }
+    try {
+      const r = await deps.engine.withAppSession({ userId: callerId }, (db) => listarUsoSuperadmin(db, callerId, limite));
+      return c.json(r.disponible ? { disponible: true, organizaciones: r.filas } : { disponible: false, organizaciones: [] });
+    } catch (err) {
+      if ((err as { code?: unknown })?.code === "42501") throw Errors.forbidden("Solo un superadmin de plataforma puede ver el consumo de todas las organizaciones.");
+      throw err;
+    }
   });
 
   app.get("/superadmin/costos/tipo-cambio", async (c) => {
