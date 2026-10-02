@@ -16,7 +16,7 @@
 // vencimientos-client.ts/declaraciones-client.ts: este paquete web no depende en
 // tiempo de build del paquete de dominio, solo lo referencia en comentarios) -- la
 // ruta HTTP serializa exactamente estas formas vía `c.json(resultado)`.
-import { postJson } from "./admin-client.ts";
+import { fetchJson, postJson } from "./admin-client.ts";
 
 export type NivelCoincidencia = "exacto" | "fuzzy" | "multi_linea" | "llm" | "manual";
 export type SeveridadAlerta = "info" | "warning" | "critical";
@@ -191,4 +191,140 @@ export interface VerificarSpeiInput {
  * spei-matching.ts en el dominio). */
 export async function verificarSpeiConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: VerificarSpeiInput): Promise<ResultadoVerificacionSpei> {
   return postJson<ResultadoVerificacionSpei>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/conciliacion/verificar-spei`, token, input);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// D-35 + D-02 -- conciliacion PERSISTIDA (sesiones, matches confirmados, deshacer) y nivel 4 (IA) con aprobacion humana. Espejo de los tipos que
+// serializa apps/api/.../despachos/conciliacion-persistida.ts (migracion 021). El servidor recalcula el motor al confirmar: este cliente solo manda ids.
+// ---------------------------------------------------------------------------------------------------------------------------------
+export type EstadoSesionConciliacion = "abierta" | "cerrada";
+export type EstadoMovimientoSesion = "conciliado" | "sugerido" | "sin_conciliar";
+export type OrigenMatchConciliacion = "motor" | "llm_aprobado" | "manual";
+
+export interface SesionConciliacionResumen {
+  readonly id: string;
+  readonly periodo: string;
+  readonly cuenta: string | null;
+  readonly estado: EstadoSesionConciliacion;
+  readonly creadaEn: string;
+  readonly cerradaEn: string | null;
+  readonly totalMovimientos: number;
+  readonly matchesVigentes: number;
+  readonly sugerenciasPendientes: number;
+}
+
+export interface MovimientoSesion {
+  readonly id: string;
+  readonly fecha: string;
+  readonly descripcion: string;
+  readonly referencia: string | null;
+  readonly cuenta: string | null;
+  readonly monto: number;
+  readonly estado: EstadoMovimientoSesion;
+  readonly matchId: string | null;
+}
+
+export interface CfdiSesion {
+  readonly id: string;
+  readonly folioFiscal: string;
+  readonly emisorNombre: string | null;
+  readonly total: number;
+  readonly fecha: string;
+  readonly conciliado: boolean;
+}
+
+export interface PropuestaMotorSesion {
+  readonly movimientoId: string;
+  readonly invoiceId: string;
+  /** 1 exacto, 2 fuzzy. */
+  readonly nivel: 1 | 2;
+  readonly confianza: number;
+  readonly detalle: string;
+}
+
+export interface MatchSesion {
+  readonly id: string;
+  readonly movimientoId: string;
+  readonly invoiceId: string;
+  readonly nivel: number | null;
+  readonly confianza: number | null;
+  readonly origen: OrigenMatchConciliacion;
+  readonly confirmadoEn: string;
+  readonly deshechoEn: string | null;
+  readonly motivoDeshacer: string | null;
+}
+
+export interface SugerenciaSesion {
+  readonly id: string;
+  readonly movimientoId: string;
+  readonly invoiceId: string;
+  readonly confianza: number;
+  readonly razon: string;
+  readonly estado: "pendiente" | "aprobada" | "rechazada";
+}
+
+export interface DetalleSesionConciliacion {
+  readonly sesion: { readonly id: string; readonly periodo: string; readonly cuenta: string | null; readonly estado: EstadoSesionConciliacion };
+  readonly movimientos: readonly MovimientoSesion[];
+  readonly cfdis: readonly CfdiSesion[];
+  readonly propuestas: readonly PropuestaMotorSesion[];
+  readonly multiLinea: readonly { readonly movimientoId: string; readonly invoiceIds: readonly string[]; readonly confianza: number; readonly detalle: string }[];
+  readonly matches: readonly MatchSesion[];
+  readonly sugerencias: readonly SugerenciaSesion[];
+}
+
+export interface SugerirConIaRespuesta {
+  readonly sugerencias: readonly SugerenciaSesion[];
+  readonly sinSugerencia: readonly { readonly movimientoId: string; readonly razon: string; readonly mejorScoreEvaluado: number | null }[];
+  readonly notificacion: string;
+}
+
+const base = (apiBaseUrl: string, propertyId: string) => `${apiBaseUrl}/despachos/${propertyId}/conciliacion`;
+
+export function listarSesionesConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<{ readonly disponible: boolean; readonly sesiones: readonly SesionConciliacionResumen[] }> {
+  return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones`, token);
+}
+
+export function crearSesionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string, cuenta?: string): Promise<{ readonly sesion: { readonly id: string }; readonly movimientos: number }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones`, token, cuenta ? { periodo, cuenta } : { periodo });
+}
+
+export function obtenerSesionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, sesionId: string): Promise<DetalleSesionConciliacion> {
+  return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}`, token);
+}
+
+/** Confirma pares: solo ids. El servidor vuelve a correr el motor y toma de ahi nivel, confianza y origen. */
+export function confirmarParesConciliacion(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  sesionId: string,
+  pares: readonly { readonly movimientoId: string; readonly invoiceId: string }[],
+): Promise<{ readonly matches: readonly MatchSesion[] }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}/confirmar`, token, { pares });
+}
+
+export function deshacerMatchConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, matchId: string, motivo: string): Promise<{ readonly yaDeshecho: boolean }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/matches/${matchId}/deshacer`, token, { motivo });
+}
+
+export function cerrarSesionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, sesionId: string): Promise<{ readonly yaCerrada: boolean }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}/cerrar`, token, {});
+}
+
+/** Nivel 4: el modelo SUGIERE (quedan pendientes). 503 "IA no configurada" llega como Error con el mensaje del servidor. */
+export function sugerirConIaConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, sesionId: string): Promise<SugerirConIaRespuesta> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}/sugerencias-llm`, token, {});
+}
+
+export function resolverSugerenciaConciliacion(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  sugerenciaId: string,
+  aprobar: boolean,
+): Promise<{ readonly estado: "aprobada" | "rechazada"; readonly matchId: string | null }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sugerencias/${sugerenciaId}/${aprobar ? "aprobar" : "rechazar"}`, token, {});
 }

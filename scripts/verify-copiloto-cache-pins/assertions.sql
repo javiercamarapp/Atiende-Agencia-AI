@@ -1,4 +1,4 @@
--- Copiloto: cache de resultados, ruta en la bitacora y fijados (migracion 0044) -- verificacion contra Postgres REAL.
+-- Copiloto: cache de resultados, ruta en la bitacora y fijados (migracion 0045) -- verificacion contra Postgres REAL.
 -- Cada escenario corre en su propio `begin; ... rollback;`. Alias `should_fail` = debe terminar en ERROR; alias
 -- `..._deberia_ser_N` = el valor esperado (ver scripts/verify-real-postgres-ci/run-gate.mjs). Datos ficticios.
 -- Sesion de sistema = sin `set local role` ni claim (auth.uid() es null); usuario real = `set local role authenticated` +

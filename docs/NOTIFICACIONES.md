@@ -90,6 +90,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` (depende de accion manual: sale al escalar a mano un vencimiento desde el panel, no hay cron) |
 | `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago guardado (clave = property + folio fiscal del REP) | 14 d | pendiente: el analisis de REP (POST .../cfdi/rep/analizar) no guarda nada y lo pueden llamar roles de solo lectura: emitir ahi llenaria la campana con XML arbitrario; se conecta cuando el REP se persista |
 | `despachos.pago_provisional.por_vencer` | fiscal | atencion | owner/admin, contador | CalendarClock | `/despachos/{orgSlug}/pagos-provisionales` | una por organizacion por dia | 7 d | conectado: `apps/api/src/routes/verticals/despachos/pagos-provisionales-aviso.ts` |
+| `despachos.conciliacion.sugerencias_pendientes` | aprobaciones | atencion | owner/admin, contador | Sparkles | `/despachos/{orgSlug}/conciliacion` | una por sesion de conciliacion (clave = id de la sesion) | 7 d | conectado: `apps/api/src/routes/verticals/despachos/conciliacion-persistida.ts` |
 
 ### licitaciones
 
@@ -119,6 +120,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | Evento | Categoría | Severidad | Destinatarios | Ícono | Enlace | Dedupe | Vigencia | Productor |
 |---|---|---|---|---|---|---|---|---|
 | `superadmin.cfo.alerta` | cobranza | critica | superadmins de plataforma | ChartNoAxesCombined | `/superadmin/cfo` | una por regla por mes | 31 d | conectado: `apps/api/src/routes/internal/superadmin-alertas-cfo.ts` |
+| `superadmin.agente.fallo` | agentes | critica | superadmins de plataforma | Bot | `/superadmin/agentes` | una por agente por dia | 7 d | conectado: `apps/api/src/agentes/corridas.ts` (una corrida en `fallo` de un agente marcado `vivo` en `core.agent_definition`; los crons ya avisan con `superadmin.cron.fallo`) |
 | `superadmin.cron.fallo` | salud | critica | superadmins de plataforma | ServerCrash | `/superadmin/resumen` | una por cron por dia | 7 d | conectado: `apps/api/src/salud/with-heartbeat.ts` |
 | `superadmin.costo.ia_umbral` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/gasto-api` | una por umbral (80, 100) por mes | 31 d | conectado: `apps/api/src/production/llm-usage-gateway-adapters.ts` emite el umbral 100 (tope mensual agotado, de organizacion o de plataforma); el aviso de 80 % queda pendiente: el guard no devuelve el uso acumulado y falta una funcion SQL de solo lectura que lo calcule |
 | `superadmin.llm.modelo_caido` | salud | critica | superadmins de plataforma | TriangleAlert | `/superadmin/salud` | una por modelo por dia | 7 d | conectado: `apps/api/src/production/llm-gateway.ts` (cuando el circuit breaker de un modelo pasa a abierto) |
@@ -150,7 +152,7 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
   productores marcados `conectado`.
-- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 42 eventos, 38 con productor conectado y 4 pendientes (tras traer main, que sumó `despachos.pago_provisional.por_vencer` y los 4 avisos de citas de C-16). Los que se agregaron
+- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 43 eventos, 39 con productor conectado y 4 pendientes (tras traer main, que sumó `despachos.pago_provisional.por_vencer` y los 4 avisos de citas de C-16; D-02 suma `despachos.conciliacion.sugerencias_pendientes`). Los que se agregaron
   (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.

@@ -1,4 +1,4 @@
-// CHAT-06 / MOD-05 / CHAT-15 -- piezas de apps/api contra la base SIN MIGRAR (0044 pendiente) y contra errores reales.
+// CHAT-06 / MOD-05 / CHAT-15 -- piezas de apps/api contra la base SIN MIGRAR (0045 pendiente) y contra errores reales.
 // Dentro de la transaccion unica del request, un 42P01/42883 sin SAVEPOINT dejaria la transaccion abortada (25P02) y el COMMIT
 // se volveria ROLLBACK: AbortAwareFakeSession reproduce ese estado (una sesion falsa plana NO sirve).
 import { describe, expect, it, vi } from "vitest";
@@ -31,7 +31,7 @@ async function expectSessionUsable(session: AbortAwareFakeSession): Promise<void
   await expect(session.query("select 1 as siguiente_query_del_request")).resolves.toEqual({ rows: [{ ok: true }] });
 }
 
-describe("fijados contra la base SIN MIGRAR (0044 pendiente): vacio honesto y sesion utilizable", () => {
+describe("fijados contra la base SIN MIGRAR (0045 pendiente): vacio honesto y sesion utilizable", () => {
   it("list/get/origin/remove: 42P01 -> vacio/null/false (sin 500) y la sesion sigue utilizable", async () => {
     const session = new AbortAwareFakeSession([{ match: /copiloto_pin|data_chat_message/i, respond: () => NO_TABLE }, SIGUIENTE]);
     const repo = new PostgresPinsRepository(session);
@@ -207,13 +207,13 @@ describe("cache en Upstash", () => {
 describe("bitacora con ruta contra la base SIN MIGRAR", () => {
   const entry = { organizationId: SCOPE.organizationId, userId: SCOPE.userId, vertical: "hoteles", tool: "ocupacion_adr_revpar", params: { periodo: "hoy" }, outcome: "ok" as const, rowCount: 1, durationMs: 5, route: "cache" as const };
 
-  it("con 0044: una sola llamada de 8 argumentos con la ruta", async () => {
+  it("con 0045: una sola llamada de 8 argumentos con la ruta", async () => {
     const session = new AbortAwareFakeSession([{ match: /record_data_chat_query/i, respond: () => [{}] }]);
     await new PostgresDataChatAuditSink(session).record(entry);
     expect(session.calls.filter((c) => c.includes("record_data_chat_query"))).toHaveLength(1);
   });
 
-  it("sin 0044 pero con 0029: cae a la de 7 argumentos (sin ruta) y la sesion sigue utilizable", async () => {
+  it("sin 0045 pero con 0029: cae a la de 7 argumentos (sin ruta) y la sesion sigue utilizable", async () => {
     let n = 0;
     const session = new AbortAwareFakeSession([
       { match: /\$8::text/i, respond: () => pgError("42883", "function core.record_data_chat_query(uuid, text, jsonb, text, integer, integer, text, text) does not exist") },

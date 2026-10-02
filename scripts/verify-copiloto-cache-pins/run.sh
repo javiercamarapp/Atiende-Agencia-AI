@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de la
-# migración 0044 (cache, ruta y fijados del Copiloto). En CI la corre automáticamente
+# migración 0045 (cache, ruta y fijados del Copiloto). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-copiloto-cache-pins/run.sh
 set -euo pipefail

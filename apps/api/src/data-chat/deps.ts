@@ -67,7 +67,7 @@ export class PostgresDataChatAuditSink implements DataChatAuditSink {
     const common = [entry.organizationId, entry.tool, JSON.stringify(entry.params), entry.outcome, entry.rowCount, entry.durationMs, entry.errorCode ?? null];
     await runWithSavepointFallback<void>({
       session: this.db,
-      // Con ruta (migracion 0044): sobrecarga de 8 argumentos. Si todavia no existe (42883) cae a la de 7 (sin ruta) y, si
+      // Con ruta (migracion 0045): sobrecarga de 8 argumentos. Si todavia no existe (42883) cae a la de 7 (sin ruta) y, si
       // tampoco existe la bitacora, al log estructurado. Cada nivel en su propio SAVEPOINT: la transaccion del request sigue viva.
       primary: async () => {
         await this.db.query(`select core.record_data_chat_query($1::uuid, $2::text, $3::jsonb, $4::text, $5::int, $6::int, $7::text, $8::text);`, [...common, entry.route ?? null]);

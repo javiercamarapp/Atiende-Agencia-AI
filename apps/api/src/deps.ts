@@ -1,4 +1,5 @@
 import type {
+  AgentRunRepository,
   AuthzAuditRepository,
   CoreRepository,
   CoreStaffRepository,
@@ -39,7 +40,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -314,6 +315,8 @@ export interface AppDeps {
   readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-24 -- libro contable persistido (migracion 020). OPCIONAL a proposito (mismo criterio que `carteraRepo`): las rutas caen a `PostgresLibroRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly libroRepo?: (db: TenantDbSession) => LibroRepository;
+  /** D-35 + D-02 -- conciliacion bancaria persistida (sesiones, matches, sugerencias del nivel 4; migracion 021). OPCIONAL a proposito (mismo criterio que `libroRepo`): las rutas caen a `PostgresConciliacionPersistidaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
@@ -599,6 +602,15 @@ export interface AppDeps {
    *  del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL: ausente o migracion sin aplicar -> los campos
    *  salen `null` con su razon y `disponible: false` (200), nunca un 500. */
   readonly consolaRepo?: (db: TenantDbSession) => ConsolaRepository;
+  /** Bitacora de corridas de agentes y panel de agentes (SA-L-07/SA-L-08; ver
+   *  packages/db/migrations/0044_superadmin_corridas_y_panel_agentes.sql, routes/superadmin-agentes.ts y
+   *  agentes/corridas.ts). Fabrica por sesion: la escritura y la purga son SOLO-SISTEMA (una transaccion PROPIA por
+   *  llamada, `withAppSession({ userId: null })`); las lecturas, con la sesion del caller. OPCIONAL: ausente o migracion
+   *  sin aplicar -> `disponible: false` (200) y la escritura se omite en silencio; withHeartbeat sigue como siempre. */
+  readonly agentRunRepo?: (db: TenantDbSession) => AgentRunRepository;
+  /** Modelo principal (id de OpenRouter) de un rol del gateway segun la ruta vigente (defaults + LLM_MODELS_JSON).
+   *  `null` = el rol no tiene ruta. OPCIONAL: ausente -> el panel resuelve contra los defaults del repo. */
+  readonly modeloPrincipalDeRol?: (role: string) => string | null;
   /** Contrato por cliente (SA-43): alta, enmienda inmutable, historial y insumos de la facturacion estimada
    *  (packages/db/migrations/0037_superadmin_contrato_cliente.sql, ver routes/superadmin-contratos.ts). Fabrica por
    *  sesion del caller. OPCIONAL: ausente o migracion sin aplicar -> lecturas `disponible: false`, escrituras 503,

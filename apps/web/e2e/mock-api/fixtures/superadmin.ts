@@ -121,6 +121,16 @@ function agentesConsola() {
   };
 }
 
+const AGENTES_PANEL = [
+  { id: "restaurantes:whatsapp_agent", nombre: "Agente de WhatsApp de restaurantes", vertical: "restaurantes", canal: "whatsapp", disparador: "Mensaje entrante de un comensal", estado: "vivo", modelo: "deepseek/deepseek-v4.1-flash", ultimaCorrida: { en: "2026-09-30T17:20:00.000Z", estado: "ok" }, exito30d: { corridas: 3, ok: 2, porcentaje: 66.7 }, costo30dUsd: 0.02, llamadas30d: 2, presupuestoDiaUsd: null, insumos: "fuera de alcance" },
+  { id: "hoteles:whatsapp_agent", nombre: "Agente de WhatsApp de hoteles", vertical: "hoteles", canal: "whatsapp", disparador: "Mensaje entrante de un huesped", estado: "vivo", modelo: "deepseek/deepseek-v4.1-flash", ultimaCorrida: null, exito30d: { corridas: 0, ok: 0, porcentaje: null }, costo30dUsd: 0, llamadas30d: 0, presupuestoDiaUsd: 5, insumos: "fuera de alcance" },
+];
+
+const CORRIDAS_AGENTES = [
+  { id: "run-1", agente: "restaurantes:whatsapp_agent", vertical: "restaurantes", organizationId: null, disparo: "whatsapp", estado: "ok", tareasHechas: null, tareasTotal: null, costoUsd: null, error: null, iniciadoEn: "2026-09-30T17:20:00.000Z", terminadoEn: "2026-09-30T17:20:02.000Z", duracionMs: 2000 },
+  { id: "run-2", agente: "/internal/rentas/ical-sync", vertical: "rentas", organizationId: null, disparo: "cron", estado: "fallo", tareasHechas: null, tareasTotal: null, costoUsd: null, error: "timeout del proveedor de calendario", iniciadoEn: "2026-09-30T17:45:00.000Z", terminadoEn: "2026-09-30T17:45:01.000Z", duracionMs: 900 },
+];
+
 export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/consola/resumen", manejador: () => resumenConsola() },
   { metodo: "GET", patron: "/superadmin/consola/agentes-actividad", manejador: () => agentesConsola() },
@@ -134,6 +144,21 @@ export const rutasSuperadmin: readonly Ruta[] = [
       lista.push(nuevo);
       return { prospecto: nuevo };
     } },
+  { metodo: "GET", patron: "/superadmin/agentes", manejador: (p) => {
+      const sw = p.estado.obtener("sa.interruptores", () => [] as Array<Record<string, unknown>>);
+      return {
+        disponible: true,
+        generadoEn: "2026-09-30T18:00:00.000Z",
+        hoy: HOY_CONSOLA,
+        interruptoresDisponible: true,
+        agentes: AGENTES_PANEL.map((a) => {
+          const fila = sw.find((x) => x.scope === "agente" && x.target === a.id);
+          return { ...a, interruptor: fila ? { bloqueado: fila.bloqueado === true, motivo: fila.motivo ?? null, actualizadoEnMs: fila.actualizadoEnMs ?? null } : { bloqueado: false, motivo: null, actualizadoEnMs: null } };
+        }),
+        notas: [],
+      };
+    } },
+  { metodo: "GET", patron: "/superadmin/agentes/corridas", manejador: () => ({ disponible: true, corridas: CORRIDAS_AGENTES }) },
   { metodo: "GET", patron: "/superadmin/interruptores", manejador: (p) => ({
       disponible: true,
       catalogo: { globales: ["llm", "crons"], agentes: ["restaurantes-whatsapp", "citas-whatsapp"], crons: ["recordatorios-citas", "sync-ical-rentas"] },

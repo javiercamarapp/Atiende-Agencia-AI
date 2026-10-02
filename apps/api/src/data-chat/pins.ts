@@ -10,10 +10,10 @@
 //   DELETE <base>/pins/:pinId          -> 204
 //   GET    <base>/pins/:pinId/resultado -> { id, titulo, status, text, blocks, sources } (re-ejecucion directa)
 //
-// Privacidad (RLS, migracion 0044): el autor ve los suyos; los compartidos los ve la organizacion SOLO si el autor es owner/admin
+// Privacidad (RLS, migracion 0045): el autor ve los suyos; los compartidos los ve la organizacion SOLO si el autor es owner/admin
 // (y solo owner/admin pueden compartir). Un rol sin acceso al Copiloto recibe 403 como en el resto del chat.
 //
-// COMPATIBILIDAD CON LA BASE SIN MIGRAR (0044 pendiente): cada acceso corre en SAVEPOINT sobre la MISMA sesion del request
+// COMPATIBILIDAD CON LA BASE SIN MIGRAR (0045 pendiente): cada acceso corre en SAVEPOINT sobre la MISMA sesion del request
 // (`runWithSavepointFallback`; nunca Promise.all). Si falta tabla o funcion (42P01/42883/42703) la lista responde
 // `{ disponible: false, pins: [] }`, el alta 503 honesto y borrar/editar 404 -- nunca un 500 ni una transaccion abortada (25P02).
 import type { Context, Hono } from "hono";

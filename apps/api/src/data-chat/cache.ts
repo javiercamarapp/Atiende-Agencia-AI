@@ -2,7 +2,7 @@
 // cachea y con que clave/TTL; aqui solo viven (1) la lista blanca de herramientas sin datos personales por vertical y (2) los
 // dos almacenes de produccion:
 //   - Upstash Redis (REST) si UPSTASH_REDIS_REST_URL/_TOKEN existen: compartido entre instancias, TTL nativo (EX).
-//   - core.data_chat_cache (migracion 0044) si no: SOLO funciones definer de sistema, llamadas desde una sesion de sistema
+//   - core.data_chat_cache (migracion 0045) si no: SOLO funciones definer de sistema, llamadas desde una sesion de sistema
 //     PROPIA (`engine.withAppSession({ userId: null })`), una transaccion por operacion. Eso importa por dos razones:
 //     la funcion exige auth.uid() nulo, y un fallo de la cache (tabla/funcion sin migrar: 42P01/42883/42703, o cualquier otro)
 //     nunca aborta la transaccion unica del request del usuario (25P02): es un "miss" y el turno sigue con datos reales.

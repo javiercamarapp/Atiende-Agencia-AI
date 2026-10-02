@@ -1,7 +1,7 @@
 # verify-copiloto-cache-pins
 
 Postgres **real** (el gate de CI `scripts/verify-real-postgres-ci/run-gate.mjs` lo descubre solo): migración
-`packages/db/migrations/0044_copiloto_cache_ruta_pins.sql` (espejo en `supabase/migrations/`).
+`packages/db/migrations/0045_copiloto_cache_ruta_pins.sql` (espejo en `supabase/migrations/`).
 
 Cubre CHAT-06 / MOD-05 / CHAT-15:
 
