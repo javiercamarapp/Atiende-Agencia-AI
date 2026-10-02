@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import type { AgentPanelRow, AgentRunRow, EstadoCorrida, PlatformSwitchRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
+import { isSwitchableTarget } from "../platform-switches.ts";
 import { resolveRoleRoute } from "../production/llm-models.ts";
 import { hoyMexico } from "./superadmin-consola.ts";
 import type { AppDeps } from "../deps.ts";
@@ -95,8 +96,9 @@ export function superadminAgentesRoutes(deps: AppDeps, opciones: { readonly ahor
           estado: a.estado,
           modelo: modeloDe(a.modeloRol),
           ultimaCorrida: a.ultimaCorridaEn === null ? null : { en: a.ultimaCorridaEn, estado: a.ultimaCorridaEstado },
-          // null = el interruptor no se pudo leer (migracion 0025 sin aplicar o error); NUNCA "no bloqueado" por omision.
-          interruptor: interruptores === null ? null : sw ? { bloqueado: sw.blocked, motivo: sw.reason, actualizadoEnMs: sw.updatedAtMs } : { bloqueado: false, motivo: null, actualizadoEnMs: null },
+          // null = no hay palanca real: el interruptor no se pudo leer (migracion 0025 sin aplicar o error) o el rol no esta
+          // en el catalogo de interruptores (PUT /superadmin/interruptores lo rechazaria). NUNCA "no bloqueado" por omision.
+          interruptor: interruptores === null || !isSwitchableTarget("agente", a.id) ? null : sw ? { bloqueado: sw.blocked, motivo: sw.reason, actualizadoEnMs: sw.updatedAtMs } : { bloqueado: false, motivo: null, actualizadoEnMs: null },
           exito30d: { corridas: a.corridas30d, ok: a.corridasOk30d, porcentaje: a.corridas30d > 0 ? Math.round((a.corridasOk30d / a.corridas30d) * 1000) / 10 : null },
           costo30dUsd: usd(a.costo30dMicroUsd),
           llamadas30d: a.llamadas30d,

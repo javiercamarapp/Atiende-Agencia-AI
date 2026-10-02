@@ -172,6 +172,15 @@ describe("GET /superadmin/agentes", () => {
     expect(b.agentes[0].interruptor.bloqueado).toBe(false);
   });
 
+  it("un agente del catalogo cuyo rol no esta en el catalogo de interruptores no muestra palanca (el PUT lo rechazaria)", async () => {
+    const t = await setup();
+    t.repo!.seedPanel({ ok: true, data: [fila("citas:recordatorios_agent"), fila("citas:whatsapp_agent")] });
+    const sa = await t.superadmin();
+    const b = await cuerpo(await get(t.app, "/superadmin/agentes", sa.token));
+    expect(b.agentes.find((a: { id: string }) => a.id === "citas:recordatorios_agent").interruptor).toBeNull();
+    expect(b.agentes.find((a: { id: string }) => a.id === "citas:whatsapp_agent").interruptor).toEqual({ bloqueado: false, motivo: null, actualizadoEnMs: null });
+  });
+
   it("sin repositorio de interruptores el interruptor es null (no 'libre' por omision) y el panel sigue", async () => {
     const t = await setup({ sinSwitches: true });
     t.repo!.seedPanel({ ok: true, data: [fila("restaurantes:whatsapp_agent")] });
