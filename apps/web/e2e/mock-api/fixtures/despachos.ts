@@ -1,5 +1,5 @@
 // Fixtures de despachos contables (Despacho Medina y Asociados). Forma = apps/web/src/verticals/despachos/lib/*-client.ts.
-import { fallo } from "../respuestas.ts";
+import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
@@ -48,7 +48,87 @@ function estadoDe(tareas: Tarea[]) {
   return { totalTasks: tareas.length, done, skipped: 0, pending: tareas.length - done, inProgress: 0, progressPercent: Math.round((done / tareas.length) * 100), blocked: [], overdue: [] };
 }
 
+// CHAT-11 -- Copiloto ("Pregunta a tus datos"): respuesta fija en el formato REAL del servidor (NDJSON paso/fin con conversacionId y
+// seq; conversaciones guardadas por escenario). En el servidor real lo usan admin, contador, auditor y readonly; en e2e la persona "admin" es el unico rol con acceso.
+// Solo existe en la API simulada de e2e.
+interface ConversacionMock {
+  id: string;
+  titulo: string;
+  actualizadaEn: string;
+  mensajes: { id: string; role: "user" | "assistant"; text: string; status?: string; blocks?: unknown[]; sources?: unknown[]; seq: number }[];
+}
+const MOCK_ROLES_COPILOTO = ["admin"] as const;
+const BLOQUE_CARTERA = {
+  kind: "table",
+  tool: "cartera_por_cliente",
+  title: "Cartera por cliente",
+  columns: [
+    { key: "cliente", label: "Cliente", kind: "text" },
+    { key: "pendiente", label: "Pendiente", kind: "mxn" },
+    { key: "vencido", label: "Vencido", kind: "mxn" },
+  ],
+  rows: [
+    { cliente: "Abarrotes del Sureste SA de CV", pendiente: 84000, vencido: 31000 },
+    { cliente: "Comercial Peninsular SA de CV", pendiente: 36000, vencido: 14000 },
+  ],
+  chart: { kind: "bar", x: "cliente", y: "pendiente" },
+  truncated: false,
+};
+const TEXTO_CARTERA = "Tus clientes te deben $120,000 MXN; $45,000 MXN ya están vencidos.";
+const FUENTE_CARTERA = { tool: "cartera_por_cliente", source: "Cuentas por cobrar de CFDI en seguimiento de cobranza, sin pagar", periodLabel: "a hoy", scopeLabel: "todos tus clientes" };
+const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("desp.copiloto.conversaciones", () => []);
+
 export const rutasDespachos: readonly Ruta[] = [
+  { metodo: "GET", patron: `${D}/chat-datos/estado`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }) },
+  {
+    metodo: "POST",
+    patron: `${D}/chat-datos`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const cuerpo = (p.cuerpo ?? {}) as { question?: string; conversationId?: string };
+      const pregunta = String(cuerpo.question ?? "");
+      const lista = conversacionesMock(p);
+      let conv = lista.find((c) => c.id === cuerpo.conversationId);
+      if (!conv) {
+        conv = { id: `00000000-0000-4000-8000-${String(lista.length + 1).padStart(12, "0")}`, titulo: pregunta.slice(0, 60), actualizadaEn: new Date().toISOString(), mensajes: [] };
+        lista.unshift(conv);
+      }
+      const seq = conv.mensajes.length + 2;
+      conv.mensajes.push({ id: `m-${seq - 1}`, role: "user", text: pregunta, seq: seq - 1 });
+      conv.mensajes.push({ id: `m-${seq}`, role: "assistant", text: TEXTO_CARTERA, status: "ok", blocks: [BLOQUE_CARTERA], sources: [FUENTE_CARTERA], seq });
+      conv.actualizadaEn = new Date().toISOString();
+      return ndjson([
+        { t: "paso", fase: "inicio", herramienta: "cartera_por_cliente" },
+        { t: "paso", fase: "fin", herramienta: "cartera_por_cliente" },
+        { t: "fin", conversacionId: conv.id, seq, respuesta: { status: "ok", text: TEXTO_CARTERA, blocks: [BLOQUE_CARTERA], sources: [FUENTE_CARTERA], toolsUsed: ["cartera_por_cliente"] } },
+      ]);
+    },
+  },
+  { metodo: "GET", patron: `${D}/chat-datos/conversaciones`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => ({ disponible: true, conversaciones: conversacionesMock(p).map((c) => ({ id: c.id, titulo: c.titulo, actualizadaEn: c.actualizadaEn, mensajes: c.mensajes.length })) }) },
+  { metodo: "GET", patron: `${D}/chat-datos/conversaciones/:cid`, roles: MOCK_ROLES_COPILOTO, manejador: (p) => conversacionesMock(p).find((c) => c.id === p.params["cid"]) ?? fallo(404, "Conversación no encontrada.") },
+  {
+    metodo: "PATCH",
+    patron: `${D}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const c = conversacionesMock(p).find((x) => x.id === p.params["cid"]);
+      if (!c) return fallo(404, "Conversación no encontrada.");
+      c.titulo = String(((p.cuerpo ?? {}) as { titulo?: string }).titulo ?? c.titulo);
+      return { id: c.id, titulo: c.titulo };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${D}/chat-datos/conversaciones/:cid`,
+    roles: MOCK_ROLES_COPILOTO,
+    manejador: (p) => {
+      const lista = conversacionesMock(p);
+      const i = lista.findIndex((x) => x.id === p.params["cid"]);
+      if (i < 0) return fallo(404, "Conversación no encontrada.");
+      lista.splice(i, 1);
+      return conStatus(204, undefined);
+    },
+  },
   { metodo: "GET", patron: "/v1/despachos/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
   { metodo: "GET", patron: `${D}/cierre-mensual/periodos`, manejador: (p) => ({ periodos: p.estado.obtener("desp.periodos", periodosSemilla) }) },
   { metodo: "GET", patron: `${D}/cierre-mensual/periodos/:pid`, manejador: (p) => {
