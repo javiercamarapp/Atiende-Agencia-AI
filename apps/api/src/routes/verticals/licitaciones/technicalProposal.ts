@@ -107,6 +107,7 @@ import type {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { avisarCambioDeBases } from "./avisos-campana.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // POST .../requirements/extract
@@ -377,7 +378,9 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
         // convocatoria de nuevo aquí para que el diff/cascada/notificación
         // (ver `recordTenderVersion`) también cubran este camino, no solo el
         // alta manual de `tenders.ts`.
-        await repo.recordTenderVersion(organizationId, tenderId, c.get("userId"));
+        const nuevaVersion = await repo.recordTenderVersion(organizationId, tenderId, c.get("userId"));
+        // L-30: aviso in-app solo si esta re-extraccion creo una version nueva sobre una convocatoria ya versionada.
+        await avisarCambioDeBases(c.get("db"), { organizationId, tenderId, version: nuevaVersion.created && nuevaVersion.version.version > 1 ? nuevaVersion.version.version : null });
 
         return {
           status: 200,

@@ -120,6 +120,11 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `licitaciones.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `licitaciones.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/licitaciones/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (depende del cron /internal/plataforma/prueba-avisos: sin programarlo no sale) |
 | `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
+| `licitaciones.renovacion.por_vencer` | operacion | atencion | owner/admin, analyst | CalendarClock | `/licitaciones/{orgSlug}/radar-renovaciones` | una por organizacion por dia (solo cuando el barrido creo alertas nuevas) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale del barrido /internal/licitaciones/alert-notifications (cron existente de vercel.json)) |
+| `licitaciones.cobranza.factura_vencida` | cobranza | atencion | owner/admin, analyst | Receipt | `/licitaciones/{orgSlug}/radar-renovaciones` | una por organizacion por semana (mientras sigan vencidas) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale del barrido /internal/licitaciones/alert-notifications (cron existente de vercel.json)) |
+| `licitaciones.convocatoria.bases_modificadas` | operacion | atencion | owner/admin, analyst, writer, reviewer | FileDiff | `/licitaciones/{orgSlug}/seguimiento` | una por convocatoria y version (clave = id de la convocatoria + numero de version) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (se emite en la escritura que crea la nueva version (alta manual, recalculo y re-extraccion de requisitos), nunca en una lectura) |
+| `licitaciones.documentos.por_vencer` | operacion | atencion | owner/admin, analyst, writer | FileClock | `/licitaciones/{orgSlug}/datos-empresa` | una por organizacion por semana (mientras haya documentos por vencer) | 14 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale del barrido /internal/licitaciones/alert-notifications; requiere la migracion 034 (sin ella no emite)) |
+| `licitaciones.kyc.proveedor_empeoro` | fiscal | critica | owner/admin, analyst, reviewer | ShieldAlert | `/licitaciones/{orgSlug}/kyc-69b` | una por organizacion y edicion de la lista (clave = organizacion + periodo) | 30 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale de POST /internal/licitaciones/kyc-69b/retamizar (ruta interna idempotente; sin cron en vercel.json, la invoca quien ingiere la lista); requiere la migracion 034) |
 
 ### citas
 
@@ -190,6 +195,13 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts`: se emite cuando `GET .../sala-guerra/gate` detecta que faltan
   menos de 24 horas para el cierre, aun no se declaro la presentacion y el paquete no esta listo. Dedupe por convocatoria;
   el enlace va a la lista de convocatorias (el catalogo solo admite `{orgSlug}`).
+- **L-30/L-32 (campana de licitaciones y re-tamizado KYC)**: suma 5 eventos conectados en
+  `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts`: renovacion por vencer, factura de cobranza vencida, documentos de
+  empresa por vencer (incluye la opinion 32-D cuando esta registrada), bases modificadas de una convocatoria ya versionada y
+  proveedor de la cartera KYC que empeoro en la lista 69-B. Los tres primeros salen del barrido existente
+  `/internal/licitaciones/alert-notifications`; el de bases, de la escritura que crea la version; el KYC, de
+  `POST /internal/licitaciones/kyc-69b/retamizar` (migracion 034). Sin PII: solo conteos. Sin productor y por que:
+  `licitaciones.fallo.publicado` (depende de un agregador comercial sin proveedor elegido). No se agrego ningun cron a `vercel.json`.
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.

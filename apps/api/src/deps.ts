@@ -39,7 +39,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
+import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
@@ -312,6 +312,8 @@ export interface AppDeps {
   readonly licitacionesWhatsAppRepo?: (db: TenantDbSession) => WhatsAppRepository;
   /** L-08: KYC negativo 69-B (fichas, consulta con bitacora por tenant). `production/deps.ts` lo cablea a `PostgresKyc69bRepository`; OPCIONAL a proposito: si falta, las lecturas responden `available: false` y las escrituras 503. */
   readonly licitacionesKycRepo?: (db: TenantDbSession) => Kyc69bRepository;
+  /** L-30/L-32: lecturas/escrituras de SISTEMA de la migracion 034 (re-tamizado de la cartera KYC y conteo de documentos por vencer). `production/deps.ts` lo cablea a `PostgresAvisosSistemaRepository`; OPCIONAL a proposito: si falta, ni el re-tamizado ni el aviso de documentos hacen nada (nunca un error). */
+  readonly licitacionesAvisosRepo?: (db: TenantDbSession) => AvisosSistemaRepository;
   /** L-22: dias inhabiles que declara cada organizacion o convocatoria (migracion 032). `production/deps.ts` lo cablea a `PostgresDiasInhabilesRepository`; OPCIONAL a proposito: si falta (o falta la migracion), los plazos se calculan con los dias OFICIALES de plataforma, la lectura responde `available: false` y las escrituras 503. */
   readonly licitacionesDiasInhabilesRepo?: (db: TenantDbSession) => DiasInhabilesRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;

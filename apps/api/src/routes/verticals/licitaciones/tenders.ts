@@ -21,6 +21,7 @@ import { WRITE_ROLES, assertExplicitOffset } from "@atiende/domain-licitaciones"
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { avisarCambioDeBases } from "./avisos-campana.ts";
 
 // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
 // "listados sin paginación en 4 verticales") -- GET base devolvía TODAS las
@@ -165,6 +166,9 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     // convocatoria (REQ-153) y además notifica (REQ-151/155) -- ya ocurrió
     // dentro de `upsertTenderManual` arriba, en la MISMA operación; esta ruta
     // ya no necesita disparar nada por su cuenta.
+
+    // L-30: aviso in-app solo si esta actualizacion creo una version nueva sobre una convocatoria ya versionada.
+    await avisarCambioDeBases(c.get("db"), { organizationId, tenderId: result.tender.id, version: result.versionCambiada });
 
     return c.json(result.tender, result.created ? 201 : 200);
   });

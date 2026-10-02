@@ -49,6 +49,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { crearGuardCorreo } from "../../../supresion/index.ts";
+import { AvisoKycNoEmitidoError, avisarAlertasDelBarrido, retamizarCarteraYAvisar } from "./avisos-campana.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -181,6 +182,9 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       await deps.engine.withAppSession({ userId: null }, (db) => triggerLicitacionesEmailDispatchInline(deps, db, deps.licitacionesRepo(db)));
       // L-05: envio inmediato (best-effort, sesion de sistema propia) de los avisos de WhatsApp recien encolados.
       if (whatsappEnabled) await dispatchWhatsAppVertical(deps, "licitaciones", INLINE_BATCH_SIZE);
+      // L-30: avisos in-app (campana) de renovacion por vencer, facturas vencidas y documentos de empresa por vencer.
+      // Despues del barrido y en transacciones propias por organizacion: un aviso fallido nunca cambia el barrido.
+      const avisos = await avisarAlertasDelBarrido(deps, sweep, new Date().toISOString().slice(0, 10));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -195,6 +199,7 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         ok: failures.length === 0,
         organizations_checked: sweep.length,
         ...totals,
+        avisos_campana: avisos,
         corridas: sweep.map((r) => ({
           organization_id: r.organizationId,
           error: r.error ?? null,
@@ -235,6 +240,21 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
       });
     })();
+  });
+
+  // L-32: re-tamizado de la cartera KYC 69-B contra la edicion MAS RECIENTE de la lista. Ruta interna e IDEMPOTENTE
+  // (repetirla con la misma edicion no evalua ni avisa de nuevo): la invoca quien ingiere una edicion nueva (la ingesta
+  // `/internal/despachos/efos-69b/ingestar` es compartida con despachos y no se toca) o un operador. NO es un cron de
+  // vercel.json: agendarla es una decision de costo aparte. La descarga automatica de la lista queda fuera (tarea l21).
+  app.on(["GET", "POST"], "/internal/licitaciones/kyc-69b/retamizar", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+    try {
+      const r = await retamizarCarteraYAvisar(deps);
+      return c.json({ ok: true, disponible: r.disponible, organizaciones: r.organizaciones, fichas_evaluadas: r.fichasEvaluadas, alertas_emitidas: r.alertasEmitidas });
+    } catch (err) {
+      if (err instanceof AvisoKycNoEmitidoError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
   });
 
   return app;
