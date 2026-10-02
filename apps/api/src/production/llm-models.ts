@@ -28,8 +28,9 @@ import type { OpenRouterModelParams, OpenRouterRouting } from "@atiende/agent-co
 export const SUPERADMIN_COPILOTO_ROLE = "superadmin:copiloto";
 
 // Roles nuevos (2-oct-2026). Cada uno tiene su propia ruta para que el eval decida modelo por modelo
-// sin tocar codigo (LLM_MODELS_JSON). Se registran en el gateway (llm-gateway.ts) pero NO estan en
-// ALL_PRODUCTION_ROLES: sus interruptores de plataforma llegan con el trabajo que los invoque.
+// sin tocar codigo (LLM_MODELS_JSON). Se registran en el gateway (llm-gateway.ts). Los cuatro `reportes:*` ya tienen
+// llamador (CHAT-14, data-chat/reporte-routes.ts) y por eso estan tambien en ALL_PRODUCTION_ROLES y en
+// SWITCHABLE_AGENT_ROLES (interruptor de plataforma); los demas llegan con el trabajo que los invoque.
 /** Reintento unico cuando la guardia de cifras rechaza la narrativa del primer modelo. Rol real por
  *  vertical: "<vertical>:data_chat_retry" (default por sufijo, "*:data_chat_retry"). */
 export const DATA_CHAT_RETRY_SUFFIX = "data_chat_retry";

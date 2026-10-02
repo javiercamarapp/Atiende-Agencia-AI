@@ -407,7 +407,7 @@ confirmar el conteo vigente en cualquier momento) dispara un GET real a cada
 sin esa variable configurada, el cron sigue disparándose pero la ruta responde 401
 (fail-closed, nunca despacha nada sin autenticarse).
 
-**ADVERTENCIA: estos 29 crons requieren Vercel Pro (Hobby: 2 crons diarios; el deploy falla con crons más frecuentes). Sin verificar desde este repo — revisar en el dashboard antes de
+**ADVERTENCIA: estos 30 crons requieren Vercel Pro (Hobby: 2 crons diarios; el deploy falla con crons más frecuentes). Sin verificar desde este repo — revisar en el dashboard antes de
 confiar en que estos 29 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
 (máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un

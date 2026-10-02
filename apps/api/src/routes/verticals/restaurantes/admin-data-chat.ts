@@ -16,6 +16,7 @@ import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
+import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -97,5 +98,22 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   mountConversacionesRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES });
   mountPinsRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES, turnContext });
+  // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat.
+  mountReporteRoutes(app, deps, {
+    base,
+    vertical: "restaurantes",
+    roles: MANAGER_ROLES,
+    resolve: async (c, db) => {
+      const dataChat = deps.dataChat;
+      if (!dataChat) return undefined;
+      const organizationId = c.get("organizationId");
+      const allowedPropertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+      const zona = await deps.restaurantesRepo(db).findBranchZonaHoraria(c.req.param("propertyId") ?? "");
+      return {
+        catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(db)),
+        scope: { organizationId, userId: c.get("userId"), vertical: "restaurantes", verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE },
+      };
+    },
+  });
   return app;
 }

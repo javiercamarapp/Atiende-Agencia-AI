@@ -396,6 +396,8 @@ export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from ".
 
 // ---- Rn-26: Resumen operativo (agregados sin PII) ----
 export * from "./resumen/index.ts";
+// Rn-24 / Rn-25 -- mensajes automaticos por evento (borradores desde plantillas aprobadas; migracion rentas 029).
+export * from "./mensajes-automaticos/index.ts";
 
 // ---- Rn-07: solicitudes ARCO propias de rentas (migracion 028) ----
 export * from "./privacidad/index.ts";

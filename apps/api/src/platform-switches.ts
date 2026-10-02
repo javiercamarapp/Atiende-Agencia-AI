@@ -25,6 +25,10 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "licitaciones:proposal_draft_agent",
   "despachos:conciliacion_llm_agent",
   "licitaciones:junta_question_agent",
+  "reportes:analisis_financiero",
+  "reportes:analisis_general",
+  "reportes:redaccion_financiero",
+  "reportes:redaccion_general",
 ];
 
 /** Crons detenibles (path exacto de vercel.json / withHeartbeat). */
@@ -49,6 +53,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/rentas/checkout-sweep",
   "/internal/rentas/email-dispatch",
   "/internal/rentas/ical-sync",
+  "/internal/rentas/mensajes-automaticos",
   "/internal/restaurantes/email-dispatch",
   "/internal/restaurantes/privacidad-retencion",
   "/internal/restaurantes/promover-programados",

@@ -17,6 +17,7 @@ import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core
 import { LICITACIONES_ROLES, buildLicitacionesDataChatCatalog } from "@atiende/domain-licitaciones";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
+import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -92,5 +93,23 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
   mountConversacionesRoutes(app, deps, { base, vertical: "licitaciones", roles: LICITACIONES_ROLES });
   mountPinsRoutes(app, deps, { base, vertical: "licitaciones", roles: LICITACIONES_ROLES, turnContext });
+  // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance que el chat (la organizacion).
+  mountReporteRoutes(app, deps, {
+    base,
+    vertical: "licitaciones",
+    roles: LICITACIONES_ROLES,
+    resolve: async (c, db) => {
+      const readerFor = deps.dataChat?.licitacionesReader;
+      if (!readerFor) return undefined;
+      const organizationId = c.get("organizationId");
+      const reader = readerFor(db);
+      // Zona horaria del negocio (tenant_config, migracion 027): null sin configuracion o en la base sin migrar.
+      const timezone = (await reader.organizationTimezone(organizationId)) ?? DEFAULT_DATA_CHAT_TIMEZONE;
+      return {
+        catalog: buildLicitacionesDataChatCatalog(reader),
+        scope: { organizationId, userId: c.get("userId"), vertical: "licitaciones", verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds: null, timezone },
+      };
+    },
+  });
   return app;
 }

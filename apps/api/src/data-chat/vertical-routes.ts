@@ -21,6 +21,7 @@ import { resolveMembershipPropertyScope } from "./property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "./conversaciones.ts";
 import { mountPinsRoutes, type PinsTurnContext } from "./pins.ts";
 import { NO_LLM_COMPLETION, directTurnOptions } from "./turno.ts";
+import { mountReporteRoutes } from "./reporte-routes.ts";
 
 export interface VerticalDataChatConfig {
   /** "hoteles" | "rentas" | "citas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
@@ -105,5 +106,19 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
 
   mountConversacionesRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles });
   mountPinsRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles, turnContext });
+  // CHAT-14: reporte PDF de un mensaje guardado, con el mismo alcance (membership, zona horaria, rol) que el chat.
+  mountReporteRoutes(app, deps, {
+    base,
+    vertical: cfg.vertical,
+    roles: cfg.roles,
+    resolve: async (c, db) => {
+      const catalog = cfg.catalog(deps, db);
+      if (!catalog) return undefined;
+      const organizationId = c.get("organizationId");
+      const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
+      const timezone = await cfg.timezone(deps, db, c.req.param("propertyId") ?? "", organizationId);
+      return { catalog, scope: { organizationId, userId: c.get("userId"), vertical: cfg.vertical, verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone } };
+    },
+  });
   return app;
 }

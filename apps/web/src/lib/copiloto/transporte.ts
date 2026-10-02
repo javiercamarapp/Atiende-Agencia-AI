@@ -8,6 +8,7 @@
 //   GET  <baseUrl>/conversaciones        -> { disponible, conversaciones }
 //   GET/PATCH/DELETE <baseUrl>/conversaciones/:id
 //   POST <baseUrl>/pins { conversationId, seq, bloque }   (fijar; el servidor deriva herramienta y argumentos del mensaje guardado)
+//   POST <baseUrl>/conversaciones/:id/reporte?seq=N -> application/pdf (reporte del mensaje; "Descargar PDF")
 //
 // Reglas: el cliente solo manda la pregunta y el `conversationId` ("new" la primera vez, el uuid despues); el alcance
 // (organizacion, sucursales, rol) lo decide SIEMPRE el servidor. Nada se inventa: cualquier fallo se traduce a un
@@ -37,6 +38,43 @@ export interface CopilotoTransporteConfig {
   readonly token: string;
   /** Envoltorio de refresh de sesion de la vertical (`withAuthRefresh`): reintenta UNA vez ante un 401. Por defecto, sin refresh. */
   readonly conAuth?: (hacer: (token: string) => Promise<Response>) => Promise<Response>;
+  /** Entrega el PDF al usuario (por defecto, descarga del navegador). Inyectable: las pruebas nunca tocan el DOM. */
+  readonly guardarArchivo?: (blob: Blob, nombre: string) => void;
+}
+
+/** Nombre del archivo que sugiere el servidor (`attachment; filename="..."`), solo si es un `.pdf` simple y seguro. */
+export function nombreArchivoPdf(res: Pick<Response, "headers">): string {
+  const m = /filename="([A-Za-z0-9._-]{1,80}\.pdf)"/.exec(res.headers.get("content-disposition") ?? "");
+  return m?.[1] ?? "reporte.pdf";
+}
+
+function descargarEnNavegador(blob: Blob, nombre: string): void {
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Mensaje legible de un fallo al pedir el reporte (el servidor manda `{ code, message }`; nunca se muestra un 500 crudo). */
+async function errorReporte(res: Response): Promise<Error> {
+  if (res.status === 403) return new Error(TEXTO_SIN_ACCESO);
+  if (res.status === 404) return new Error("No encontré esa conversación. Puede que ya se haya borrado.");
+  if (res.status === 429) return new Error("Pediste muchos reportes en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
+  if (res.status === 422) {
+    try {
+      const json: unknown = await res.json();
+      if (esObjeto(json) && typeof json["message"] === "string" && json["message"]) return new Error(json["message"].slice(0, 200));
+    } catch {
+      // cuerpo ilegible: mensaje generico
+    }
+    return new Error("Esta respuesta no tiene cifras para armar un reporte.");
+  }
+  if (res.status === 503) return new Error("Los reportes todavía no están disponibles para tu cuenta.");
+  return new Error("No pude generar el reporte en este momento. Inténtalo de nuevo en unos minutos.");
 }
 
 export type EstadoCopiloto =
@@ -300,6 +338,14 @@ export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): Copiloto
     async renombrar(id, titulo) {
       const res = await llamar((t) => cfg.fetchImpl(idUrl(id), { method: "PATCH", headers: cabecera(t, { "content-type": "application/json" }), body: JSON.stringify({ titulo }) }));
       if (!res.ok) throw errorHttp(res);
+    },
+
+    async descargarPdf(id, seq) {
+      const res = await llamar((t) => cfg.fetchImpl(`${idUrl(id)}/reporte?seq=${encodeURIComponent(String(seq))}`, { method: "POST", headers: cabecera(t) }));
+      if (!res.ok) throw await errorReporte(res);
+      if (!(res.headers.get("content-type") ?? "").includes("application/pdf")) throw new Error("La respuesta del servidor no es un PDF. Inténtalo de nuevo.");
+      const blob = await res.blob();
+      (cfg.guardarArchivo ?? descargarEnNavegador)(blob, nombreArchivoPdf(res));
     },
 
     async borrar(id) {
