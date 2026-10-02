@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { FakeLlmProvider, LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
-import { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, providerFailureReply, TOOLS } from "../src/whatsapp/llm-turn-handler.ts";
+import { buildSystemPrompt, createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, PM_CONFIG_POR_OMISION, providerFailureReply, TOOLS } from "../src/whatsapp/llm-turn-handler.ts";
 import { classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "../src/whatsapp/guards.ts";
 import { handleInboundWhatsAppMessage, redactSensitiveInfo } from "../src/whatsapp/inbound.ts";
 import { seedConfirmedOrderFlow } from "./support/order-flow-seed.ts";
@@ -337,4 +337,29 @@ describe("E.11 fallas del proveedor LLM", () => {
   it.todo("T-FP05b / P31 [P1] DECISION ABIERTA: el presupuesto por defecto del turno es 45 s y el dueno pide <=10 s; el tope solo se revisa entre llamadas (no hay timeout por llamada al proveedor)");
   it.todo("T-FP01 / T-FP02 [P0] SoftRestaurant caido o tardio: cubierto por softrestaurant-outbox-service.spec.ts (reintento con la misma clave, un solo folio, captura asistida)");
   it.todo("T-FP07..T-FP12 [P1] llamadas de voz (silencio, barge-in, tool lenta, variables dinamicas, vista previa, duracion): cubiertos por el simulador de voz (voz-simulador-prueba-ciega.spec.ts, voz-llamada-maquina.spec.ts) y, con modelo real, por npm run evals:voz:real");
+});
+
+// PM-C3: el prompt que de verdad recibe el modelo (por la ruta de produccion, `buildSystemPrompt` con el perfil PM) refleja el cerebro.
+describe("PM-C3 -- prompt del perfil taqueria_pm tal como lo recibe el modelo", () => {
+  const sucursales = ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"].map((name, i) => ({ propertyId: `p${i}`, slug: `s${i}`, name, address: null }));
+  const prompt = buildSystemPrompt(PM_CONFIG_POR_OMISION, sucursales, { isNew: true }, new Date("2026-10-06T20:00:00Z"));
+
+  it("T-PC01 tortilla mixta y no promete el combo del martes (dice que la confirma la sucursal)", () => {
+    expect(prompt).toContain("mixta");
+    expect(prompt).not.toMatch(/2 aguas de cortes[ií]a|nachos de pastor con 2 aguas/i);
+    expect(prompt).toContain("la confirma la sucursal al recoger");
+  });
+
+  it("T-PC02 ya no afirma precios iguales y trae las 7 sucursales, el horario prudente de T2 y la regla de ultimo pedido", () => {
+    expect(prompt).not.toContain("Precios iguales");
+    for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(prompt).toContain(nombre);
+    expect(prompt).toMatch(/Francisco de Montejo: lunes a viernes de 6 pm a 12 am/);
+    expect(prompt).toMatch(/solo si la entrega .* cae antes del cierre/);
+  });
+
+  it("T-PC03 el saludo del prompt sigue la hora (martes 15:00 en Merida = buenas tardes)", () => {
+    expect(prompt).toContain('"Buenas tardes, gracias por comunicarse a Los Taquitos de PM."');
+    const noche = buildSystemPrompt(PM_CONFIG_POR_OMISION, sucursales, { isNew: true }, new Date("2026-10-07T03:00:00Z"));
+    expect(noche).toContain('"Buenas noches, gracias por comunicarse a Los Taquitos de PM."');
+  });
 });
