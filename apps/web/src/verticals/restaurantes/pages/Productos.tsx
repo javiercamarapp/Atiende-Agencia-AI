@@ -176,14 +176,14 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Productos y categorías</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Productos y categorías</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm font-semibold">Nueva categoría</CardTitle>
+          <CardTitle>Nueva categoría</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <form onSubmit={handleCreateCategory} className="flex flex-wrap items-end gap-2">
@@ -246,7 +246,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm font-semibold">Nuevo producto</CardTitle>
+          <CardTitle>Nuevo producto</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <form onSubmit={handleCreateProduct} className="flex flex-wrap items-end gap-2">

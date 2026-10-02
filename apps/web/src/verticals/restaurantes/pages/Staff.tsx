@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   CardDescription,
@@ -37,7 +38,7 @@ import {
   useConfirm,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
-import { Info, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import {
   createStaffInvite,
   fetchOrgMembers,
@@ -191,24 +192,19 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Staff</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Staff</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
-            <span>Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</span>
-          </CardContent>
-        </Card>
+        <Callout tone="info">Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</Callout>
       )}
 
       {canManage && (
         <Card>
           <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm font-semibold">Invitar a alguien nuevo</CardTitle>
+            <CardTitle>Invitar a alguien nuevo</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">

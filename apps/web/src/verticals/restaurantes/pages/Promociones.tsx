@@ -229,9 +229,9 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
   const promocionEnEdicion = promotions?.find((p) => p.id === editingId) ?? null;
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Promociones</h1>
+    <PageContainer padding="none">
+      <header className="flex flex-wrap items-center justify-end gap-3">
+        <h1 className="sr-only">Promociones</h1>
         <Button type="button" onClick={() => setModalCrearAbierto(true)}>
           <Plus />
           Crear un código nuevo

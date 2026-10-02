@@ -186,7 +186,7 @@ function FormularioUmbrales({ umbrales, apiBaseUrl, token, propertyId, fetchImpl
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Alertas por umbral</CardTitle>
+        <CardTitle>Alertas por umbral</CardTitle>
         <CardDescription>Avisos internos en este panel y en la bitácora. No se envía WhatsApp ni correo. Deja un campo vacío para apagar esa alerta.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

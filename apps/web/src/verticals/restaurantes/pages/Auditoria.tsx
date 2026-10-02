@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -121,22 +121,22 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-5">
+    <PageContainer padding="none">
       <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Auditoría</h1>
-        <p className="m-0 text-sm text-muted-foreground">Qué hizo cada miembro del staff: precios, promociones, pedidos cancelados, repartidor y staff.</p>
+        <h1 className="sr-only">Auditoría</h1>
+        <p className="m-0 text-ui text-muted-foreground">Qué hizo cada miembro del staff: precios, promociones, pedidos cancelados, repartidor y staff.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-sm text-muted-foreground">
+        <Callout tone="info">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden leer la bitácora de auditoría — tu rol actual es{" "}
           <strong className="text-foreground">{role}</strong>.
-        </p>
+        </Callout>
       ) : (
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Filtros</CardTitle>
+              <CardTitle>Filtros</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>

@@ -331,9 +331,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   }
 
   return (
-    <PageContainer padding="none" className="gap-4">
+    <PageContainer padding="none">
+      {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Pedidos en operación</h1>
+        <h1 className="sr-only">Pedidos en operación</h1>
         <Tabs value={status} onValueChange={(v) => setStatus(v as PestanaPedidos)}>
           <TabsList className="flex-wrap">
             {(["todos", ...OPERATIVE_STATUSES, "programados"] as const).map((s) => (

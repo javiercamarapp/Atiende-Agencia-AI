@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
 import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
@@ -59,11 +59,11 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: Restaura
   }
 
   return (
-    <PageContainer padding="none" size="sm" className="gap-4">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Sucursales</h1>
-      <p className="m-0 text-xs text-muted-foreground">
+    <PageContainer padding="none">
+      <h1 className="sr-only">Sucursales</h1>
+      <Callout tone="info">
         Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
-      </p>
+      </Callout>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {!branches && !error && <EstadoCargando etiqueta="Cargando sucursales…" />}

@@ -82,8 +82,8 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }, [apiBaseUrl, token, propertyId, statusFilter, dateFrom, dateTo]);
 
   return (
-    <PageContainer padding="none" className="gap-4">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Historial de órdenes</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Historial de órdenes</h1>
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1.5">

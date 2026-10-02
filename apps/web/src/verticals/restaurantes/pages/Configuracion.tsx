@@ -18,8 +18,8 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge } from "@atiende/ui";
-import { Clock, Info, MapPin, MessageCircle, Trash2 } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer, useConfirm, StatusBadge } from "@atiende/ui";
+import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
 import { AgenteWhatsappSeccion } from "./AgenteWhatsappSeccion.tsx";
@@ -167,27 +167,22 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
 
   if (!canManage) {
     return (
-      <PageContainer padding="none" size="sm" className="gap-5">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
-        <Card className="bg-muted/40">
-          <CardContent className="flex items-start gap-2 p-3 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
-            <span>Editar la configuración de WhatsApp y las zonas conocidas está reservado a dueños y administradores. Tu rol actual es «{role}».</span>
-          </CardContent>
-        </Card>
+      <PageContainer padding="none">
+        <h1 className="sr-only">Configuración</h1>
+        <Callout tone="info">Editar la configuración de WhatsApp y las zonas conocidas está reservado a dueños y administradores. Tu rol actual es «{role}».</Callout>
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" size="sm" className="gap-5">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Configuración</h1>
+    <PageContainer padding="none">
+      <h1 className="sr-only">Configuración</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <CardTitle className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" strokeWidth={1.75} />
             WhatsApp
           </CardTitle>
@@ -225,7 +220,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <CardTitle className="flex items-center gap-2">
             <Clock className="h-4 w-4" strokeWidth={1.75} />
             Zona horaria
           </CardTitle>
@@ -268,7 +263,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <CardTitle className="flex items-center gap-2">
             <MapPin className="h-4 w-4" strokeWidth={1.75} />
             Zonas conocidas
           </CardTitle>

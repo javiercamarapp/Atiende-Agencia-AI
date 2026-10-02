@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, NativeSelect, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
 import type { ConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -81,7 +81,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Aviso de privacidad, retención y grabación</CardTitle>
+        <CardTitle>Aviso de privacidad, retención y grabación</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={guardar} className="flex flex-col gap-4">
@@ -196,26 +196,26 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
   }
 
   return (
-    <PageContainer padding="none" className="gap-5">
+    <PageContainer padding="none">
       <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Privacidad</h1>
-        <p className="m-0 text-sm text-muted-foreground">
+        <h1 className="sr-only">Privacidad</h1>
+        <p className="m-0 text-ui text-muted-foreground">
           Solicitudes de derechos ARCO (acceso, rectificación, cancelación y oposición) que tus clientes abren por WhatsApp o por llamada. El agente solo atiende al titular desde su propio número y nunca comparte datos por chat: tú los entregas tras verificar su identidad. En las solicitudes por llamada el identificador de llamada puede falsearse: verifica al titular por otra vía antes de responder.
         </p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
       </header>
 
       {!puedeLeer ? (
-        <p className="m-0 text-sm text-muted-foreground">
+        <Callout tone="info">
           Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden ver las solicitudes ARCO — tu rol actual es <strong className="text-foreground">{role}</strong>.
-        </p>
+        </Callout>
       ) : (
         <>
           <ConfiguracionPrivacidadForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Filtros</CardTitle>
+              <CardTitle>Filtros</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[200px]`}>
