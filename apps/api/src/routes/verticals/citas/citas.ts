@@ -21,6 +21,7 @@ import { citasWhatsappMensajesRoutes } from "./whatsapp-mensajes.ts";
 import { citasAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { citasOnboardingRoutes } from "./onboarding.ts";
 import { citasAvisosRoutes } from "./avisos.ts";
+import { citasPublicoRoutes } from "./publico.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -57,5 +58,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasOnboardingRoutes(deps));
   // C-16 -- centro de avisos: por confirmar, recordatorios agotados y escalaciones de crisis con seguimiento (migracion 029 para el seguimiento).
   app.route("/", citasAvisosRoutes(deps));
+  // C-19 -- API publica de solo lectura de la pagina de reservas (catalogo + disponibilidad), sin sesion.
+  app.route("/", citasPublicoRoutes(deps));
   return app;
 }
