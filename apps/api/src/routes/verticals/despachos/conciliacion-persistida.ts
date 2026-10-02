@@ -250,7 +250,9 @@ export function registrarConciliacionPersistida(app: Hono<CoreAuthHonoEnv>, deps
       const conPendiente = new Set(d.sugerencias.filter((g) => g.estado === "pendiente").map((g) => g.movimientoId));
       // El nivel 4 opera SOLO sobre lo que el motor determinístico no pudo conciliar y que no tiene ya una sugerencia pendiente.
       const sinPendiente = d.movimientosLibres.filter((m) => !conPendiente.has(m.id));
-      const calculo = calcularPropuestas(sinPendiente, d.registrosLibres);
+      // Tampoco se re-sugiere un CFDI que ya tiene una sugerencia pendiente: aprobar dos dejaría dos matches sobre una factura.
+      const cfdiConPendiente = new Set(d.sugerencias.filter((g) => g.estado === "pendiente").map((g) => g.invoiceId));
+      const calculo = calcularPropuestas(sinPendiente, d.registrosLibres.filter((r) => !cfdiConPendiente.has(r.id)));
       const actorRole = c.get("verticalRole") as DespachosRole;
       let resultado;
       try {
