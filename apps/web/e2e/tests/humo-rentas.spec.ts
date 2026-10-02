@@ -12,6 +12,19 @@ test.describe("rentas @humo", () => {
     vigilante.verificar();
   });
 
+  test("resumen operativo: pinta los KPI del servidor, enlaza a su pantalla y no hace ninguna escritura", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("rentas", "owner");
+    await page.goto(`/rentas/${rentas.orgSlug}`);
+    for (const etiqueta of ["Llegadas hoy", "Salidas hoy", "Ocupación del mes", "Conflictos abiertos", "Tareas pendientes", "Por aprobar", "Feeds iCal con problema"]) {
+      await expect(page.getByText(etiqueta, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByText("Orquestación de agentes", { exact: true })).toBeVisible();
+    expect((await mock.buscar({ metodo: "GET", ruta: "/resumen" })).length).toBeGreaterThan(0);
+    await page.getByRole("link", { name: "Ver calendario" }).click();
+    await expect(page).toHaveURL(new RegExp(`/rentas/${rentas.orgSlug}/calendario$`));
+    vigilante.verificar();
+  });
+
   test("cancelar reserva: 'No, mantenerla' y Escape no escriben; confirmar hace un POST /cancelar", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("rentas", "owner");
     await page.goto(`/rentas/${rentas.orgSlug}/calendario`);
