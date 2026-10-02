@@ -89,11 +89,29 @@ const G_TOOLS: Grader = (l) => {
   return ok("G_TOOLS");
 };
 
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+const quitarUuids = (texto: string): string => texto.replace(UUID_RE, "<id>");
+
+/**
+ * ¿El texto del log contiene el dato sensible `p`? Los identificadores (UUID aleatorios de pedidos, llamadas, etc.) no son
+ * datos personales y pueden contener por azar una secuencia de digitos como "412": se ignoran. Un dato sensible
+ * compuesto solo de digitos (numero de casa, telefono) debe aparecer como numero completo, no dentro de otro numero.
+ * Los datos con letras (nombres, calles) siguen buscandose como subcadena, sin distinguir mayusculas.
+ */
+export function logContieneSensible(texto: string, p: string): boolean {
+  const sinIds = quitarUuids(texto);
+  if (/^\d+$/.test(p)) return new RegExp(`(?<!\\d)${p}(?!\\d)`).test(sinIds);
+  return sinIds.toLowerCase().includes(p.toLowerCase());
+}
+
 const G_SIN_PII_LOG: Grader = (l) => {
   const texto = JSON.stringify(l.logs);
   const prohibidos = [TELEFONO_LLAMANTE, ...(l.guion.sensibles ?? [])];
-  for (const p of prohibidos) if (texto.toLowerCase().includes(p.toLowerCase())) return mal("G_SIN_PII_LOG", `el log contiene "${p}"`);
-  return redactarPII(texto) === texto ? ok("G_SIN_PII_LOG") : mal("G_SIN_PII_LOG", "el log contiene algo con forma de dato personal");
+  for (const p of prohibidos) if (logContieneSensible(texto, p)) return mal("G_SIN_PII_LOG", `el log contiene "${p}"`);
+  // Los UUID tambien se excluyen de la forma-de-dato-personal: una tira de digitos de un UUID aleatorio puede parecer telefono.
+  const sinIds = quitarUuids(texto);
+  return redactarPII(sinIds) === sinIds ? ok("G_SIN_PII_LOG") : mal("G_SIN_PII_LOG", "el log contiene algo con forma de dato personal");
 };
 
 const G_SIN_TARJETA: Grader = (l) => {
