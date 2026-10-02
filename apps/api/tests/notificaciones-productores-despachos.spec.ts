@@ -1,5 +1,5 @@
 // Productores de notificaciones in-app de despachos: escalamiento manual de un vencimiento, barrido de
-// vencimientos (por vencer / vencido) y REP con documentos sin ligar o saldo incoherente. Cada emision
+// vencimientos (por vencer / vencido) y el analisis de REP (que NO emite: es sin estado). Cada emision
 // llega con el evento, el enlace a la pantalla origen y los roles del catalogo; una emision que falla
 // (base sin 0039) no cambia la respuesta de negocio.
 import { readFileSync } from "node:fs";
@@ -69,7 +69,7 @@ describe("despachos.fiscal.vencimiento_vencido (barrido)", () => {
   });
 });
 
-describe("despachos.rep.incoherente", () => {
+describe("despachos.rep.incoherente (pendiente de conectar: el analisis de REP no emite)", () => {
   const UUID_FACTURA = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
   const EMISOR = "EKU9003173C9";
   const RECEPTOR = "XAXX010101000";
@@ -107,36 +107,17 @@ describe("despachos.rep.incoherente", () => {
       metodoPago: "PPD",
     } as never);
 
-  it("un REP con saldo insoluto incoherente emite el aviso (cantidad, sin PII) con clave por REP", async () => {
+  // El analisis es SIN estado y lo pueden llamar los roles de solo lectura/auditor (VER_CFDI_ROLES): no debe emitir NUNCA, ni con un REP
+  // incoherente ni sin ligar, o cualquiera llenaria la campana de owner/admin con XML arbitrario.
+  it("el analisis de un REP incoherente o sin ligar responde 200 y NO emite avisos, tampoco para un rol de solo lectura", async () => {
     const { ctx, deps, emisiones } = await contexto();
+    const app = buildApp(deps);
+    const analizar = (token: string, xml: string) => app.request(`/despachos/${ctx.propertyId}/cfdi/rep/analizar`, authedJson(token, { xml, rfcContribuyente: EMISOR }));
     await sembrarFactura(ctx);
-    const res = await buildApp(deps).request(`/despachos/${ctx.propertyId}/cfdi/rep/analizar`, authedJson(ctx.staff.contador.token, { xml: repXml("999.00"), rfcContribuyente: EMISOR }));
-    expect(res.status).toBe(200);
-    expect(emisiones).toHaveLength(1);
-    expect(emisiones[0]).toMatchObject({
-      evento: "despachos.rep.incoherente",
-      organizationId: ctx.organizationId,
-      cuerpo: "Documentos a revisar: 1.",
-      enlace: "/despachos/{orgSlug}/cfdi",
-      roles: ["contador", "auditor"],
-    });
-    expect(emisiones[0]!.dedupeKey).toBe(`despachos.rep.incoherente:${ctx.propertyId}:cccccccc-3333-4333-8333-cccccccccccc`);
-    expect(`${emisiones[0]!.titulo} ${emisiones[0]!.cuerpo}`).not.toMatch(/Kemper|EKU9003173C9|XAXX/);
-  });
-
-  it("un REP coherente y ligado no emite nada", async () => {
-    const { ctx, deps, emisiones } = await contexto();
-    await sembrarFactura(ctx);
-    const res = await buildApp(deps).request(`/despachos/${ctx.propertyId}/cfdi/rep/analizar`, authedJson(ctx.staff.contador.token, { xml: repXml("580.00"), rfcContribuyente: EMISOR }));
-    expect(res.status).toBe(200);
+    expect((await analizar(ctx.staff.contador.token, repXml("999.00"))).status).toBe(200); // saldo insoluto incoherente
+    expect((await analizar(ctx.staff.auditor.token, repXml("999.00"))).status).toBe(200);
+    expect((await analizar(ctx.staff.auditor.token, repXml("580.00").replaceAll(UUID_FACTURA.toUpperCase(), "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"))).status).toBe(200); // documento sin ligar
     expect(emisiones).toHaveLength(0);
-  });
-
-  it("un REP cuya factura no esta en el despacho (sin ligar) emite el aviso", async () => {
-    const { ctx, deps, emisiones } = await contexto();
-    const res = await buildApp(deps).request(`/despachos/${ctx.propertyId}/cfdi/rep/analizar`, authedJson(ctx.staff.contador.token, { xml: repXml("580.00"), rfcContribuyente: EMISOR }));
-    expect(res.status).toBe(200);
-    expect(emisiones.map((e) => e.evento)).toEqual(["despachos.rep.incoherente"]);
   });
 });
 

@@ -478,18 +478,9 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (err instanceof RepRfcAjenoError) throw Errors.validation(err.message);
       throw err;
     }
-    // Aviso in-app (campana): el REP analizado trae documentos sin ligar o con saldo insoluto incoherente. Uno por
-    // REP (folio fiscal saneado como clave de dedupe), dentro de un SAVEPOINT; sin PII (solo la cantidad).
-    const conProblema = analisis.documentos.filter((d) => !d.ligado || !d.saldoCoherente).length;
-    if (conProblema > 0) {
-      await emitirNotificacion(c.get("db"), {
-        evento: "despachos.rep.incoherente",
-        organizationId,
-        propertyId,
-        clave: `${propertyId}:${analisis.folioFiscalRep.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 60)}`,
-        parametros: { cantidad: conProblema },
-      });
-    }
+    // Este analisis es SIN estado (no guarda nada) y lo pueden llamar roles de solo lectura/auditor con un XML cualquiera: por eso NO
+    // emite `despachos.rep.incoherente` (llenaria la campana de owner/admin con XML arbitrario). El evento queda catalogado como
+    // pendiente hasta que el REP se persista; ahi se emite, una vez por REP guardado.
     return c.json(analisis);
   });
 

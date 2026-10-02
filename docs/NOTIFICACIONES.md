@@ -82,7 +82,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `despachos.efos.alerta` | fiscal | critica | owner/admin, contador, auditor | ShieldAlert | `/despachos/{orgSlug}/cfdi` | una por CFDI ingerido (clave = id del CFDI) | 30 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` |
 | `despachos.fiscal.vencimiento_vencido` | fiscal | critica | owner/admin, contador | CalendarX | `/despachos/{orgSlug}/vencimientos` | una por property por dia | 14 d | conectado: `packages/domain-despachos/src/vencimientos/procesos.ts` |
 | `despachos.fiscal.vencimiento_escalado` | fiscal | atencion | owner/admin, contador | ArrowUpFromLine | `/despachos/{orgSlug}/vencimientos` | una por vencimiento y nivel | 14 d | conectado: `apps/api/src/routes/verticals/despachos/vencimientos.ts` |
-| `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago analizado | 14 d | conectado: `apps/api/src/routes/verticals/despachos/cfdi.ts` |
+| `despachos.rep.incoherente` | fiscal | atencion | owner/admin, contador, auditor | FileWarning | `/despachos/{orgSlug}/cfdi` | una por complemento de pago guardado (clave = property + folio fiscal del REP) | 14 d | pendiente: el analisis de REP (POST .../cfdi/rep/analizar) no guarda nada y lo pueden llamar roles de solo lectura: emitir ahi llenaria la campana con XML arbitrario; se conecta cuando el REP se persista |
 
 ### licitaciones
 
@@ -136,8 +136,8 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
 
 - **Parte A (backend)**: productor compartido, dedupe, RLS, leído por usuario, contador barato, API, catálogo y los
   productores marcados `conectado`.
-- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 37 eventos y 34 con productor conectado. Los que se agregaron
-  (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`, `despachos.rep.incoherente`,
+- **NOTIF-C (eventos de ciclo de vida)**: el catálogo tiene 37 eventos, 33 con productor conectado y 4 pendientes. Los que se agregaron
+  (`despachos.fiscal.vencimiento_vencido`, `despachos.fiscal.vencimiento_escalado`,
   `restaurantes.onboarding.listo`, `restaurantes.voz.tasa_error_alta`, `hoteles.grupo.liberado`) y los que se conectaron salen
   del flujo real (post-commit o dentro de `emitirNotificacion`, que usa SAVEPOINT), con clave de dedupe y sin PII.
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
