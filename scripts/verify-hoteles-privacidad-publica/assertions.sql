@@ -130,9 +130,9 @@ rollback;
 begin;
 set local role anon;
 select public.verify_expect_error($q$ select * from hoteles.public_privacy_notices('hotel-a-pub') $q$, '42501');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
 select public.verify_expect_error($q$ select * from hoteles.public_arco_verify('00000000-0000-0000-0000-000000000001', repeat('a', 64), (now() at time zone 'utc')::date) $q$, '42501');
-select public.verify_expect_error($q$ select hoteles.arco_access_snapshot('00000000-0000-0000-0000-000000000001') $q$, '42501');
+select public.verify_expect_error($q$ select hoteles.arco_access_snapshot('00000000-0000-0000-0000-000000000001', 'hotel-a-pub') $q$, '42501');
 rollback;
 
 -- =============================================================================
@@ -142,7 +142,7 @@ rollback;
 \echo '=== 4. alta publica (sistema): pendiente_verificacion, canal publico, SIN plazo corriendo para el staff, correo con el codigo encolado, hash (no codigo) guardado, bitacora sin actor ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'Ana@Example.com', 'Quiero mis datos', repeat('a', 64), 900,
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'Ana@Example.com', 'Quiero mis datos', repeat('a', 64), 900,
   '{"to":"ana@example.com","subject":"Codigo","html":"<p>123456</p>","text":"123456"}'::jsonb, (now() at time zone 'utc')::date) as id_creado \gset
 reset role;
 select public.verify_assert((select status = 'pendiente_verificacion' and channel = 'publico' and requester_contact = 'ana@example.com' and created_by is null and response_due_on = received_on + 20
@@ -156,25 +156,25 @@ rollback;
 \echo '=== 5. validaciones del alta publica: derecho, nombre, correo, descripcion, hash, ttl y fecha invalidos = 22023; property inactiva / de otro vertical = 42501 ==='
 begin;
 set local role authenticated;
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'borrado', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'A', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'no-es-correo', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', '+529991234567', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', repeat('x', 1001), repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, 'codigo-en-claro', 900, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 90000, null, (now() at time zone 'utc')::date) $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, '2020-01-01') $q$, '22023');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a03', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
-select public.verify_expect_error($q$ select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000f1f01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'borrado', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'A', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'no-es-correo', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', '+529991234567', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', repeat('x', 1001), repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, 'codigo-en-claro', 900, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 90000, null, (now() at time zone 'utc')::date) $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, '2020-01-01') $q$, '22023');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a03', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
+select public.verify_expect_error($q$ select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000f1f01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) $q$, '42501');
 rollback;
 
 \echo '=== 6. tope por contacto: la 4a solicitud sin verificar del mismo correo en 24 h devuelve NULL (la API responde igual) y no inserta ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'TOPE@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date) is null as cuarta_nula \gset
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'TOPE@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date);
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'tope@example.com', null, repeat('b', 64), 900, null, (now() at time zone 'utc')::date) is null as cuarta_nula \gset
 reset role;
 select public.verify_assert(:'cuarta_nula'::boolean, 'la cuarta devuelve NULL');
 select count(*) as pendientes_deberia_ser_3 from hoteles.arco_request where lower(requester_contact) = 'tope@example.com';
@@ -188,7 +188,7 @@ values ('00000000-0000-0000-0000-0000000aa001', '00000000-0000-0000-0000-0000000
 insert into hoteles.arco_public_verification (request_id, organization_id, property_id, code_hash, expires_at)
 values ('00000000-0000-0000-0000-0000000aa001', '00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-0000000a1a01', repeat('c', 64), now() - interval '8 days');
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Nueva Persona', 'nueva@example.com', null, repeat('d', 64), 900, null, (now() at time zone 'utc')::date);
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Nueva Persona', 'nueva@example.com', null, repeat('d', 64), 900, null, (now() at time zone 'utc')::date);
 reset role;
 select count(*) as vieja_borrada_deberia_ser_0 from hoteles.arco_request where id = '00000000-0000-0000-0000-0000000aa001';
 rollback;
@@ -200,7 +200,7 @@ rollback;
 \echo '=== 8. codigo correcto: pasa a recibida, el plazo de 20 dias corre DESDE la verificacion, un solo uso (segundo intento = usado) y bitacora ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_v \gset
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_v \gset
 select out_result as r1, out_property_id as prop1, out_folio as folio1 from hoteles.public_arco_verify(:'id_v', repeat('a', 64), (now() at time zone 'utc')::date) \gset
 select public.verify_assert(:'r1' = 'ok' and :'prop1' = '00000000-0000-0000-0000-0000000a1a01' and :'folio1' like 'ARCO-%', 'verificacion correcta devuelve ok, property y folio');
 select out_result as r2 from hoteles.public_arco_verify(:'id_v', repeat('a', 64), (now() at time zone 'utc')::date) \gset
@@ -214,7 +214,7 @@ rollback;
 \echo '=== 9. codigo incorrecto: el contador sube y persiste; al 5o fallo queda agotado y ni el codigo correcto sirve ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_i \gset
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_i \gset
 select out_result from hoteles.public_arco_verify(:'id_i', repeat('f', 64), (now() at time zone 'utc')::date);
 select out_result from hoteles.public_arco_verify(:'id_i', repeat('f', 64), (now() at time zone 'utc')::date);
 select out_result from hoteles.public_arco_verify(:'id_i', repeat('f', 64), (now() at time zone 'utc')::date);
@@ -231,7 +231,7 @@ rollback;
 \echo '=== 10. codigo expirado: aunque sea el correcto no verifica; referencia inexistente = invalido; hash mal formado no cuenta ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_e \gset
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_e \gset
 reset role;
 update hoteles.arco_public_verification set expires_at = now() - interval '1 minute' where request_id = :'id_e';
 set local role authenticated;
@@ -246,7 +246,7 @@ rollback;
 \echo '=== 11. una solicitud sin verificar NO se puede avanzar por el staff (P0001); una verificada si (recibida -> procedente) ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_p \gset
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_p \gset
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
 select public.verify_expect_error(format($q$ select hoteles.advance_arco_request(%L, 'procedente', 'Nota de decision suficiente', (now() at time zone 'utc')::date) $q$, :'id_p'), 'P0001');
 select set_config('request.jwt.claim.sub', '', true);
@@ -352,14 +352,15 @@ select hoteles.open_arco_request('00000000-0000-0000-0000-0000000a1a01', 'acceso
 select hoteles.advance_arco_request(:'id_a', 'procedente', 'Identidad verificada en mostrador', (now() at time zone 'utc')::date);
 select hoteles.advance_arco_request(:'id_n', 'procedente', 'Identidad verificada en mostrador', (now() at time zone 'utc')::date);
 select out_folio from hoteles.arco_access_grant(:'id_a', '00000000-0000-0000-0000-00000000c001');
-select public.verify_expect_error(format($q$ select hoteles.arco_access_snapshot(%L) $q$, :'id_a'), '42501');
+select public.verify_expect_error(format($q$ select hoteles.arco_access_snapshot(%L, 'hotel-a-pub') $q$, :'id_a'), '42501');
 select set_config('request.jwt.claim.sub', '', true);
-select hoteles.arco_access_snapshot(:'id_a')::text as doc \gset
+select hoteles.arco_access_snapshot(:'id_a', 'hotel-a-pub')::text as doc \gset
 select public.verify_assert(:'doc'::jsonb #>> '{perfil,nombre}' = 'Huesped A1' and jsonb_array_length(:'doc'::jsonb -> 'estancias') = 1, 'perfil y estancias');
 select public.verify_assert(not (:'doc'::jsonb ? 'notas') and not (:'doc'::jsonb ? 'conversaciones') and not (:'doc'::jsonb ? 'solicitudesContacto'), 'sin notas internas ni conversaciones');
 select public.verify_assert(:'doc' not like '%payload%' and :'doc' not like '%v1.AAAA%' and :'doc' not like '%Zq9z%', 'sin documento de identidad');
-select public.verify_assert(hoteles.arco_access_snapshot(:'id_n') is null, 'acceso sin huesped ligado = nada');
-select public.verify_assert(hoteles.arco_access_snapshot('00000000-0000-0000-0000-00000000dead') is null, 'solicitud inexistente = nada');
+select public.verify_assert(hoteles.arco_access_snapshot(:'id_n', 'hotel-a-pub') is null, 'acceso sin huesped ligado = nada');
+select public.verify_assert(hoteles.arco_access_snapshot(:'id_a', 'hotel-b-pub') is null, 'el slug de OTRO hotel no abre la solicitud (cross-tenant)');
+select public.verify_assert(hoteles.arco_access_snapshot('00000000-0000-0000-0000-00000000dead', 'hotel-a-pub') is null, 'solicitud inexistente = nada');
 reset role;
 select count(*) as huella_deberia_ser_1 from hoteles.privacy_event_log where subject_id = :'id_a' and action = 'mis_datos_consultado' and actor_user_id is null;
 rollback;
@@ -370,15 +371,15 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a01', true);
 select hoteles.open_arco_request('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Huesped A1', 'huesped-a1@example.com', 'correo', 'Quiero conocer mis datos', (now() at time zone 'utc')::date, '00000000-0000-0000-0000-00000000c001', null) as id_a \gset
 select set_config('request.jwt.claim.sub', '', true);
-select public.verify_assert(hoteles.arco_access_snapshot(:'id_a') is null, 'recibida aun no es procedente: sin datos');
+select public.verify_assert(hoteles.arco_access_snapshot(:'id_a', 'hotel-a-pub') is null, 'recibida aun no es procedente: sin datos');
 reset role;
 update hoteles.arco_request set status = 'procedente', decided_on = current_date, execution_due_on = current_date + 15 where id = :'id_a';
 set local role authenticated;
-select public.verify_assert(hoteles.arco_access_snapshot(:'id_a') is not null, 'procedente responde');
+select public.verify_assert(hoteles.arco_access_snapshot(:'id_a', 'hotel-a-pub') is not null, 'procedente responde');
 reset role;
 update hoteles.arco_request set status = 'improcedente' where id = :'id_a';
 set local role authenticated;
-select public.verify_assert(hoteles.arco_access_snapshot(:'id_a') is null, 'improcedente: sin datos');
+select public.verify_assert(hoteles.arco_access_snapshot(:'id_a', 'hotel-a-pub') is null, 'improcedente: sin datos');
 rollback;
 
 -- =============================================================================
@@ -422,12 +423,22 @@ rollback;
 \echo '=== 20. aislamiento cross-tenant de lectura directa: owner B no ve las solicitudes ni la bitacora de A; las pendientes de verificacion solo las ve owner/gm de su propia property ==='
 begin;
 set local role authenticated;
-select hoteles.public_arco_submit('00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date);
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b0b01', true);
 select public.verify_assert((select count(*) from hoteles.arco_request where property_id = '00000000-0000-0000-0000-0000000a1a01') = 0, 'owner B no ve solicitudes de A');
 select public.verify_assert((select count(*) from hoteles.privacy_event_log where property_id = '00000000-0000-0000-0000-0000000a1a01') = 0, 'owner B no ve la bitacora de A');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000a0a03', true);
 select count(*) as frontdesk_ve_deberia_ser_0 from hoteles.arco_request where property_id = '00000000-0000-0000-0000-0000000a1a01';
+rollback;
+
+\echo '=== 21. verificar sin fecha (NULL): la recepcion usa la zona horaria de la property o, sin configuracion, el default de negocio (Mexico) ==='
+begin;
+set local role authenticated;
+select hoteles.public_arco_submit(gen_random_uuid(), '00000000-0000-0000-0000-0000000a1a01', 'acceso', 'Ana Prueba', 'ana@example.com', null, repeat('a', 64), 900, null, (now() at time zone 'utc')::date) as id_z \gset
+select out_result as rz from hoteles.public_arco_verify(:'id_z', repeat('a', 64), null) \gset
+select public.verify_assert(:'rz' = 'ok', 'verifica sin fecha');
+reset role;
+select public.verify_assert((select received_on = (now() at time zone 'America/Mexico_City')::date and response_due_on = received_on + 20 from hoteles.arco_request where id = :'id_z'), 'default de negocio');
 rollback;
 
 \echo '=== listo: los escenarios *_deberia_ser_N deben dar N; los demas, sin ERROR; los should_fail/deberia_fallar, sin filas o con error. ==='

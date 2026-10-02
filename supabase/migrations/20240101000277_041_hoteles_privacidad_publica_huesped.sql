@@ -104,16 +104,16 @@ grant execute on function hoteles.public_privacy_notices(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3) Alta publica de una solicitud ARCO (pendiente de verificacion) + correo con el codigo en la cola existente.
---    SOLO sistema. Devuelve el id (referencia opaca) o NULL si se alcanzo el tope por contacto: la API responde
+--    SOLO sistema. El id lo genera la API (el HMAC del codigo lo liga a el). Devuelve el id (referencia opaca) o NULL si se alcanzo el tope por contacto: la API responde
 --    igual en ambos casos (sin enumeracion). Limpieza oportunista: borra las no verificadas con mas de 7 dias.
 -- ---------------------------------------------------------------------------
 create or replace function hoteles.public_arco_submit(
-  p_property_id uuid, p_right_type text, p_name text, p_contact text, p_description text,
+  p_request_id uuid, p_property_id uuid, p_right_type text, p_name text, p_contact text, p_description text,
   p_code_hash text, p_ttl_seconds integer, p_email jsonb, p_today date)
 returns uuid language plpgsql security definer set search_path = core, hoteles, pg_temp as $$
 declare
   v_org uuid;
-  v_id uuid := gen_random_uuid();
+  v_id uuid := p_request_id;
   v_contact text := lower(btrim(coalesce(p_contact, '')));
   v_name text := btrim(coalesce(p_name, ''));
   v_desc text := nullif(btrim(coalesce(p_description, '')), '');
@@ -122,6 +122,9 @@ declare
 begin
   if auth.uid() is not null then
     raise exception 'public_arco_submit: solo alcanzable desde sesion de sistema' using errcode = '42501';
+  end if;
+  if v_id is null then
+    raise exception 'referencia_invalida' using errcode = '22023';
   end if;
   select p.organization_id into v_org from core.property p where p.id = p_property_id and p.status = 'active' and p.vertical = 'hoteles';
   if v_org is null then
@@ -171,13 +174,14 @@ begin
   return v_id;
 end;
 $$;
-revoke all on function hoteles.public_arco_submit(uuid, text, text, text, text, text, integer, jsonb, date) from public, anon;
-grant execute on function hoteles.public_arco_submit(uuid, text, text, text, text, text, integer, jsonb, date) to authenticated;
+revoke all on function hoteles.public_arco_submit(uuid, uuid, text, text, text, text, text, integer, jsonb, date) from public, anon;
+grant execute on function hoteles.public_arco_submit(uuid, uuid, text, text, text, text, text, integer, jsonb, date) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4) Verificacion del codigo. SOLO sistema. Un intento fallido suma al contador (se persiste: la funcion no lanza);
 --    al 5o intento queda agotado. Exito: la solicitud pasa a 'recibida' y el plazo de respuesta corre desde hoy
---    (recepcion = fecha de verificacion; 20 dias NATURALES, el computo conservador de 032). Un solo uso.
+--    (recepcion = fecha de verificacion en la zona horaria de la property; 20 dias NATURALES, el computo conservador de
+--    032). Un solo uso.
 --    out_result: ok | invalido | expirado | agotado | usado (la API responde lo mismo para todo lo que no sea ok).
 -- ---------------------------------------------------------------------------
 create or replace function hoteles.public_arco_verify(p_request_id uuid, p_code_hash text, p_today date)
@@ -187,11 +191,12 @@ declare
   v hoteles.arco_public_verification%rowtype;
   v_req hoteles.arco_request%rowtype;
   v_utc_today date := (now() at time zone 'utc')::date;
+  v_today date;
 begin
   if auth.uid() is not null then
     raise exception 'public_arco_verify: solo alcanzable desde sesion de sistema' using errcode = '42501';
   end if;
-  if p_today is null or abs(p_today - v_utc_today) > 1 then
+  if p_today is not null and abs(p_today - v_utc_today) > 1 then
     raise exception 'fecha_invalida' using errcode = '22023';
   end if;
   select * into v from hoteles.arco_public_verification where request_id = p_request_id for update;
@@ -217,9 +222,11 @@ begin
     return query select 'invalido'::text, null::uuid, null::uuid, null::text;
     return;
   end if;
+  -- Fecha de negocio: la que manda la API o, si es NULL, la de la zona horaria de la property (default Mexico).
+  v_today := coalesce(p_today, (now() at time zone coalesce((select c.timezone from hoteles.property_config c where c.property_id = v_req.property_id), 'America/Mexico_City'))::date);
   update hoteles.arco_public_verification set used_at = now() where request_id = p_request_id;
   update hoteles.arco_request
-     set status = 'recibida', received_on = p_today, response_due_on = p_today + 20, updated_at = now()
+     set status = 'recibida', received_on = v_today, response_due_on = v_today + 20, updated_at = now()
    where id = p_request_id;
   perform hoteles.privacy_log_event(v_req.organization_id, v_req.property_id, 'arco', p_request_id, 'solicitud_publica_verificada', v_req.folio || ' (' || v_req.right_type || ')');
   return query select 'ok'::text, v_req.organization_id, v_req.property_id, v_req.folio;
@@ -320,7 +327,7 @@ grant execute on function hoteles.export_guest_data(uuid, uuid, text) to authent
 --    Liga el huesped a la solicitud (un huesped de la misma property; no se puede reasignar) y deja huella.
 -- ---------------------------------------------------------------------------
 create or replace function hoteles.arco_access_grant(p_request_id uuid, p_guest_id uuid)
-returns table (out_organization_id uuid, out_property_id uuid, out_folio text, out_contact text)
+returns table (out_organization_id uuid, out_property_id uuid, out_folio text, out_contact text, out_org_slug text, out_org_name text)
 language plpgsql security definer set search_path = core, hoteles, pg_temp as $$
 declare
   v_req hoteles.arco_request%rowtype;
@@ -347,7 +354,7 @@ begin
     update hoteles.arco_request set guest_id = p_guest_id, updated_at = now() where id = p_request_id;
   end if;
   perform hoteles.privacy_log_event(v_req.organization_id, v_req.property_id, 'arco', p_request_id, 'enlace_mis_datos_emitido', v_req.folio);
-  return query select v_req.organization_id, v_req.property_id, v_req.folio, v_req.requester_contact;
+  return query select v_req.organization_id, v_req.property_id, v_req.folio, v_req.requester_contact, o.slug, o.name from core.organization o where o.id = v_req.organization_id;
 end;
 $$;
 revoke all on function hoteles.arco_access_grant(uuid, uuid) from public, anon;
@@ -355,11 +362,11 @@ grant execute on function hoteles.arco_access_grant(uuid, uuid) to authenticated
 
 -- ---------------------------------------------------------------------------
 -- 8) Consulta "mis datos" (titular, por enlace firmado que la API valida ANTES de llegar aqui). SOLO sistema.
---    Revalida en la base que la solicitud siga siendo de acceso, procedente/ejecutada y ligada a un huesped; si
---    no, devuelve NULL (la API responde igual que con un token invalido). Cada consulta deja huella.
+--    Revalida en la base que la solicitud pertenezca al hotel del slug, siga siendo de acceso, procedente/ejecutada y ligada a
+--    un huesped; si no, devuelve NULL (la API responde igual que con un token invalido). Cada consulta deja huella.
 --    Solo alcance 'titular': sin notas internas, sin conversaciones.
 -- ---------------------------------------------------------------------------
-create or replace function hoteles.arco_access_snapshot(p_request_id uuid)
+create or replace function hoteles.arco_access_snapshot(p_request_id uuid, p_org_slug text)
 returns jsonb language plpgsql security definer set search_path = core, hoteles, pg_temp as $$
 declare
   v_req hoteles.arco_request%rowtype;
@@ -368,7 +375,7 @@ begin
   if auth.uid() is not null then
     raise exception 'arco_access_snapshot: solo alcanzable desde sesion de sistema' using errcode = '42501';
   end if;
-  select * into v_req from hoteles.arco_request where id = p_request_id;
+  select r.* into v_req from hoteles.arco_request r join core.organization o on o.id = r.organization_id and o.slug = p_org_slug where r.id = p_request_id;
   if not found or v_req.right_type <> 'acceso' or v_req.status not in ('procedente', 'ejecutada') or v_req.guest_id is null then
     return null;
   end if;
@@ -380,5 +387,5 @@ begin
   return v_doc || jsonb_build_object('folio', v_req.folio, 'solicitudId', v_req.id);
 end;
 $$;
-revoke all on function hoteles.arco_access_snapshot(uuid) from public, anon;
-grant execute on function hoteles.arco_access_snapshot(uuid) to authenticated;
+revoke all on function hoteles.arco_access_snapshot(uuid, text) from public, anon;
+grant execute on function hoteles.arco_access_snapshot(uuid, text) to authenticated;
