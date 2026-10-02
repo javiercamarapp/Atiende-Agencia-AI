@@ -245,7 +245,7 @@ export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): Copiloto
       if (!fin) throw new CopilotoErrorTransporte("unavailable", "La respuesta llegó incompleta. Inténtalo de nuevo.");
 
       if (!fin.conversacionId && fin.respuesta.status === "ok") {
-        hilo = [...hilo, { role: "user", text: pregunta }, { role: "assistant", text: fin.respuesta.text }].slice(-MAX_HISTORIAL_LOCAL);
+        hilo = [...hilo, { role: "user" as const, text: pregunta }, { role: "assistant" as const, text: fin.respuesta.text }].slice(-MAX_HISTORIAL_LOCAL);
       }
       return fin.respuesta;
     },

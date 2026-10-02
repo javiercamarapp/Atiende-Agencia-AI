@@ -51,7 +51,6 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
     });
     return () => ctl.abort();
     // `consultarEstado` se recrea en cada render del shell; el estado depende solo de la sucursal y del reintento.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, intento]);
 
   const rutasFuente = useMemo(() => rutasFuenteDe(config.rutasFuente, orgSlug), [config.rutasFuente, orgSlug]);
