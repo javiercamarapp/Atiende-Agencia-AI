@@ -76,7 +76,10 @@ export function hotelesMensajeriaConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     assertVerticalRole(c, MENSAJERIA_CONFIG_ROLES);
     const propertyId = c.req.param("propertyId");
     const repo = repoFor(c);
-    const [whatsapp, voz] = await Promise.all([guarded(() => repo.getWhatsAppChannel(propertyId)), guarded(() => repo.getVoiceAgent(propertyId))]);
+    // En SECUENCIA: ambas lecturas abren SAVEPOINT sobre la misma sesion transaccional del request; en paralelo
+    // el RELEASE del primero destruye el segundo (3B001) y deja la transaccion abortada.
+    const whatsapp = await guarded(() => repo.getWhatsAppChannel(propertyId));
+    const voz = await guarded(() => repo.getVoiceAgent(propertyId));
     return c.json({ whatsapp: serializeWhatsApp(whatsapp), voz: serializeVoice(voz) });
   });
 

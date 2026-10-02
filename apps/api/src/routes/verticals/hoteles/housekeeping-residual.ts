@@ -129,7 +129,9 @@ export function registerHousekeepingResidualRoutes(app: Hono<CoreAuthHonoEnv>, d
     if (!cfg.config.autoAssignEnabled) throw Errors.conflict("La asignacion automatica esta apagada: enciendela en la configuracion de housekeeping.");
 
     const hk = h.hkRepo(c);
-    const [tasks, camaristas] = await Promise.all([h.guarded(() => hk.listTasks(propertyId, { workDate: fecha })), h.listCamaristas(c)]);
+    // En SECUENCIA: cada lectura abre su SAVEPOINT sobre la misma sesion del request (en paralelo: 3B001/25P02).
+    const tasks = await h.guarded(() => hk.listTasks(propertyId, { workDate: fecha }));
+    const camaristas = await h.listCamaristas(c);
     const pending = tasks.filter((t) => t.status === "pendiente" && t.assignedTo === null);
     const loads = camaristas.map((cam) => {
       const own = tasks.filter((t) => t.assignedTo === cam.id && t.status !== "cancelada");
@@ -180,7 +182,9 @@ export function registerHousekeepingResidualRoutes(app: Hono<CoreAuthHonoEnv>, d
   app.get("/hoteles/:propertyId/housekeeping/tareas/:taskId/fotos", async (c) => {
     assertVerticalRole(c, HOUSEKEEPING_BOARD_VIEW_ROLES);
     const task = await taskOr404(c);
-    const [list, cfg] = await Promise.all([h.guarded(() => residual(c).listPhotos(task.propertyId, task.id)), h.guarded(() => residual(c).getConfig(task.propertyId))]);
+    // En SECUENCIA: ambos metodos usan SAVEPOINT sobre la misma sesion del request.
+    const list = await h.guarded(() => residual(c).listPhotos(task.propertyId, task.id));
+    const cfg = await h.guarded(() => residual(c).getConfig(task.propertyId));
     return c.json({ tareaId: task.id, disponible: list.disponible, fotos: list.photos.map(serializePhoto), maximo: cfg.config.maxPhotosPerTask, vision: PHOTO_VISION_STATUS });
   });
 
