@@ -334,6 +334,53 @@ export interface EmergencyEscalationRecord {
   readonly createdAt: string;
 }
 
+// ---- C-16 -- centro de avisos de citas: seguimiento de escalaciones de crisis y resumen para notificaciones ----
+export type EscalacionSeguimientoEstado = "pending" | "in_progress" | "resolved";
+export const ESCALACION_SEGUIMIENTO_DESTINOS = ["in_progress", "resolved"] as const;
+export type EscalacionSeguimientoDestino = (typeof ESCALACION_SEGUIMIENTO_DESTINOS)[number];
+
+export interface EscalacionVista {
+  readonly id: string;
+  readonly channel: "whatsapp" | "voice";
+  readonly keywordMatched: string;
+  readonly customerPhone: string;
+  readonly createdAt: string;
+  /** null = la base todavia no tiene el seguimiento (migracion 029 pendiente): la escalacion se ve, pero sin estado. */
+  readonly seguimiento: EscalacionSeguimientoEstado | null;
+  readonly seguimientoAt: string | null;
+  readonly seguimientoNota: string | null;
+}
+
+export interface EscalacionesPage {
+  /** false = ni siquiera la tabla se pudo leer (no deberia pasar con 007 aplicada). */
+  readonly disponible: boolean;
+  /** false = la migracion 029 no esta aplicada: no se puede dar seguimiento todavia. */
+  readonly seguimientoDisponible: boolean;
+  readonly items: readonly EscalacionVista[];
+}
+
+export type SetEscalacionSeguimientoResult =
+  | { readonly outcome: "updated"; readonly id: string; readonly estado: EscalacionSeguimientoEstado; readonly en: string }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "forbidden" }
+  | { readonly outcome: "invalid_input" }
+  | { readonly outcome: "unavailable" };
+
+/** Conteos para el productor de notificaciones (sesion de sistema). Nunca lleva telefonos, ids ni cuerpos. */
+export interface AvisosResumenSistema {
+  readonly porConfirmar: number;
+  readonly recordatoriosAgotados: number;
+  /** Segundos epoch del ultimo recordatorio agotado: clave de dedupe para avisar solo cuando aparece uno nuevo. */
+  readonly ultimoAgotadoEpoch: number | null;
+  readonly escalacionesSinSeguimiento: number;
+}
+
+export interface RecordatorioEntregaFila {
+  readonly channel: string;
+  readonly status: string;
+  readonly total: number;
+}
+
 // ============================================================================
 // Fase 6 §2 — cuentas de sincronización de calendario alternativas a Google
 // (Cal.com/CalDAV, ver calendar-sync-port.ts/calcom-port.ts/caldav-port.ts).
@@ -772,6 +819,16 @@ export interface CitasRepository {
   // ---- Fase 6 §1 — guardia de crisis ----
   findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null>;
   insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord>;
+  /** C-16 -- escalaciones de crisis para el panel (owner/admin, lo valida la ruta), mas recientes primero. Compatibilidad con la base
+   * sin migrar: sin las columnas de seguimiento (029) la lista sigue saliendo con `seguimiento: null`; todo corre dentro de SAVEPOINT. */
+  listEscalaciones(organizationId: string, limit: number): Promise<EscalacionesPage>;
+  /** C-16 -- da seguimiento a una escalacion (`citas.set_escalation_follow_up`, 029; el actor sale de auth.uid()). */
+  setEscalacionSeguimiento(organizationId: string, escalationId: string, estado: EscalacionSeguimientoDestino, nota: string | null): Promise<SetEscalacionSeguimientoResult>;
+  /** C-16 -- conteos de sesion de SISTEMA para las notificaciones (`citas.system_avisos_resumen`, 029). null = base sin migrar. */
+  systemAvisosResumen(organizationId: string): Promise<AvisosResumenSistema | null>;
+  /** C-16 -- recordatorios de 24 h por canal y estado de entrega de las citas que empiezan en [from, to) (owner/admin: lo valida la funcion
+   * 027 de la base). null = base sin migrar o rol sin acceso. */
+  recordatoriosPorEstado(organizationId: string, fromIso: string, toIso: string): Promise<readonly RecordatorioEntregaFila[] | null>;
   /** Fase 8 — panel admin: edición real de `citas.tenant_config` (port de
    * ConfiguracionSection.tsx del origen, ver TenantConfigPatch). Upsert real (no
    * solo update): a diferencia de providers/services, una organización de citas

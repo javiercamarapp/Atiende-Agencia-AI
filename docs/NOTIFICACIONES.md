@@ -93,6 +93,10 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `citas.cita.nueva` | operacion | info | owner/admin, staff | CalendarPlus | `/citas/{orgSlug}/agenda` | una por cita | 7 d | pendiente: alta de citas por agenda publica/WhatsApp: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
 | `citas.cita.cancelada` | operacion | atencion | owner/admin, staff | CalendarX | `/citas/{orgSlug}/agenda` | una por cita cancelada | 7 d | pendiente: cancelacion de citas con lista de espera: no se conecta en este PR (parte A); queda como siguiente paso en el flujo origen |
 | `citas.recordatorio.fallido` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/mensajes-whatsapp` | una por dia | 5 d | pendiente: requiere el conteo de recordatorios agotados por reintentos (outbox de correo/WhatsApp) |
+| `citas.escalacion.crisis` | agentes | critica | owner/admin | LifeBuoy | `/citas/{orgSlug}/avisos` | una por escalacion (clave = id de la escalacion) | 14 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
+| `citas.escalacion.sin_seguimiento` | agentes | critica | owner/admin | Siren | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
+| `citas.cita.por_confirmar` | operacion | atencion | owner/admin, staff | CalendarClock | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
+| `citas.recordatorio.agotado` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/avisos` | una por cada recordatorio nuevo agotado (clave = instante del ultimo) | 5 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
 
 ### superadmin
 
