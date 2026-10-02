@@ -99,6 +99,7 @@ import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/Ica
 import { MonitorSyncPage as RentasMonitorSyncPage } from "./verticals/rentas/pages/MonitorSync.tsx";
 import { ReportesPage as RentasReportesPage } from "./verticals/rentas/pages/Reportes.tsx";
 import { AccesoHuespedPage as RentasAccesoHuespedPage } from "./verticals/rentas/pages/AccesoHuesped.tsx";
+import { PrivacidadPage as RentasPrivacidadPage } from "./verticals/rentas/pages/Privacidad.tsx";
 import { AuditoriaPage as RentasAuditoriaPage } from "./verticals/rentas/pages/Auditoria.tsx";
 import { CatalogoPage as RentasCatalogoPage } from "./verticals/rentas/pages/Catalogo.tsx";
 import { EquipoPage as RentasEquipoPage } from "./verticals/rentas/pages/Equipo.tsx";
@@ -709,6 +710,9 @@ const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <R
 const RentasMonitorSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMonitorSyncPage {...ctx} />);
 const RentasReportesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasReportesPage {...ctx} />);
 const RentasAccesoHuespedRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAccesoHuespedPage {...ctx} />);
+// Rn-07 -- privacidad: solicitudes ARCO de rentas (admin_gestora) y privacidad de la organizacion (PL-13: ARCO de todos los verticales, retencion, aviso versionado).
+const RentasPrivacidadRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasPrivacidadPage {...ctx} />);
+const RentasPrivacidadOrganizacionRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <PrivacidadOrganizacionPage apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 
 /** Bitácora de auditoría del staff (r5) — cierra el hueco detectado al diseñar el
  * panel de superadmin: rentas no tenía ninguna pantalla que mostrara qué hizo cada
@@ -1046,6 +1050,8 @@ export function App() {
         <Route path="/rentas/:orgSlug/monitor-sync" element={<RentasMonitorSyncRoute />} />
         <Route path="/rentas/:orgSlug/reportes" element={<RentasReportesRoute />} />
         <Route path="/rentas/:orgSlug/acceso-huesped" element={<RentasAccesoHuespedRoute />} />
+        <Route path="/rentas/:orgSlug/privacidad" element={<RentasPrivacidadRoute />} />
+        <Route path="/rentas/:orgSlug/privacidad-organizacion" element={<RentasPrivacidadOrganizacionRoute />} />
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />

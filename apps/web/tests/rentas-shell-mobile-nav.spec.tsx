@@ -101,20 +101,20 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect([...bottomNav.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(["Más"]);
   });
 
-  it('el botón "Más" abre los 13 destinos, incluidos Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
+  it('el botón "Más" abre los 15 destinos, incluidos Precios, Finanzas, Auditoría, Catálogo y Equipo', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(13);
+    expect(hrefs).toHaveLength(15);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo"]),
+      expect.arrayContaining(["/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
     );
   });
 
   // UNI-6: marco de Likida -- Resumen y Calendario raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 13 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 15 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Canales", "Finanzas", "Configuración", "Control"]);
@@ -128,7 +128,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     abrirCategoria(root, "Configuración");
     expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Catálogo", "Equipo"]);
     abrirCategoria(root, "Control");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Auditoría"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Calendario", "Auditoría", "Privacidad", "Privacidad de la organización"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Gestora Demo", rol: "Administrador gestora" });
   });
 

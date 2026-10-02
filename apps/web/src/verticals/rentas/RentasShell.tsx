@@ -30,7 +30,9 @@ import {
   Inbox,
   KeyRound,
   LayoutDashboard,
+  Lock,
   RefreshCcw,
+  ShieldCheck,
   Tag,
   Users,
   Wallet,
@@ -117,13 +119,16 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         // Bitácora de auditoría del staff; AuditoriaPage gatea su propio contenido por admin_gestora.
         { to: ruta("auditoria"), label: "Auditoría", icon: ClipboardCheck },
+        // Rn-07: solicitudes ARCO de rentas (admin_gestora) y privacidad de TODA la organización (ARCO de todos los verticales, retención, aviso versionado).
+        { to: ruta("privacidad"), label: "Privacidad", icon: Lock },
+        { to: ruta("privacidad-organizacion"), label: "Privacidad de la organización", icon: ShieldCheck },
       ],
     },
   ];
 }
 
 /** Barra inferior móvil: los 4 destinos de uso diario en piso (incluido `Mis tareas`, único panel funcional del rol
- * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (los 13
+ * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (los 15
  * destinos), de modo que Precios, Finanzas, iCal, Monitor, Acceso al huésped, Reportes y Auditoría siguen alcanzables. */
 function buildMobileItems(orgSlug: string): BottomNavItem[] {
   const base = `/rentas/${orgSlug}`;
