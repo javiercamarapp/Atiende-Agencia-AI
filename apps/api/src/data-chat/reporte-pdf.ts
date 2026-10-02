@@ -372,7 +372,8 @@ export async function renderReportePdf(input: ReportePdfInput): Promise<Uint8Arr
   const periodo = periodoDelReporte(contenido.tablas);
   const alcance = alcanceDelReporte(contenido.tablas);
   const cuando = fechaLegible(generadoEn, zonaHoraria);
-  const pieTexto = `Generado el ${cuando} · Periodo: ${periodo} · Alcance: ${alcance} · Cifras reales de tu sistema`;
+  const pie1 = `Generado el ${cuando} · Cifras reales de tu sistema`;
+  const pie2 = `Periodo: ${periodo} · Alcance: ${alcance}`;
 
   doc.setTitle(p.limpiar(contenido.titulo));
   doc.setSubject(p.limpiar(`Periodo: ${periodo} | Alcance: ${alcance} | Cifras reales`));
@@ -443,8 +444,15 @@ export async function renderReportePdf(input: ReportePdfInput): Promise<Uint8Arr
       rotate: degrees(45),
     });
     page.drawLine({ start: { x: MARGIN, y: MARGIN + 22 }, end: { x: PAGE_W - MARGIN, y: MARGIN + 22 }, thickness: 0.5, color: RULE });
-    const pie = p.ajustar(pieTexto, CONTENT_W - 60, regular, 6.5);
-    pie.slice(0, 2).forEach((l, n) => page.drawText(l, { x: MARGIN, y: MARGIN + 13 - n * 8, size: 6.5, font: regular, color: MUTED }));
+    // Dos lineas fijas: la fecha y "cifras reales" arriba; periodo y alcance abajo (recortado con "..." si no cabe).
+    [pie1, pie2].forEach((texto, n) => {
+      let l = p.limpiar(texto);
+      if (regular.widthOfTextAtSize(l, 6.5) > CONTENT_W - 60) {
+        while (l.length > 1 && regular.widthOfTextAtSize(`${l}...`, 6.5) > CONTENT_W - 60) l = l.slice(0, -1);
+        l = `${l}...`;
+      }
+      page.drawText(l, { x: MARGIN, y: MARGIN + 13 - n * 8, size: 6.5, font: regular, color: MUTED });
+    });
     const num = `Página ${i + 1} de ${total}`;
     page.drawText(num, { x: PAGE_W - MARGIN - regular.widthOfTextAtSize(num, 7), y: MARGIN + 13, size: 7, font: regular, color: MUTED });
   });
