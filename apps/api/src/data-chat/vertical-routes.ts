@@ -20,7 +20,7 @@ import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from 
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "./conversaciones.ts";
 import { mountPinsRoutes, type PinsTurnContext } from "./pins.ts";
-import { NO_LLM_COMPLETION, directTurnOptions } from "./turno.ts";
+import { NO_LLM_COMPLETION, auxiliaryTurnOptions, directTurnOptions } from "./turno.ts";
 import { mountReporteRoutes } from "./reporte-routes.ts";
 
 export interface VerticalDataChatConfig {
@@ -94,6 +94,8 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
         ...directTurnOptions(dataChat, tool, toolArgs),
         complete: completion ? completion(organizationId, cfg.role) : NO_LLM_COMPLETION,
         ...(completion ? { completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`) } : {}),
+        ...auxiliaryTurnOptions(dataChat, organizationId),
+        ...(persist.resumen ? { summary: persist.resumen } : {}),
         rateLimiter: dataChat.rateLimiter,
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
@@ -102,6 +104,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
         auditRole: cfg.role,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
+      persist.despuesDelCommit,
     );
   });
 

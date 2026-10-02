@@ -23,7 +23,7 @@ import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from 
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 import { mountPinsRoutes, type PinsTurnContext } from "../../../data-chat/pins.ts";
-import { NO_LLM_COMPLETION, directTurnOptions } from "../../../data-chat/turno.ts";
+import { NO_LLM_COMPLETION, auxiliaryTurnOptions, directTurnOptions } from "../../../data-chat/turno.ts";
 import { LICITACIONES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -81,6 +81,8 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         ...directTurnOptions(dataChat, tool, toolArgs),
         complete: completion ? completion(organizationId, LICITACIONES_DATA_CHAT_ROLE) : NO_LLM_COMPLETION,
         ...(completion ? { completeRetry: completion(organizationId, `licitaciones:${DATA_CHAT_RETRY_SUFFIX}`) } : {}),
+        ...auxiliaryTurnOptions(dataChat, organizationId),
+        ...(persist.resumen ? { summary: persist.resumen } : {}),
         rateLimiter: dataChat.rateLimiter,
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
@@ -89,6 +91,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
         auditRole: LICITACIONES_DATA_CHAT_ROLE,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "licitaciones", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
+      persist.despuesDelCommit,
     );
   });
 

@@ -34,6 +34,9 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
+import { COMPACTACION_HISTORIAL_ROLE, TITULOS_RESUMENES_ROLE } from "../production/llm-models.ts";
+import { compactarHistorial } from "./compactacion.ts";
+import { generarTitulo, tituloPredeterminado } from "./titulos.ts";
 
 export const MAX_CONVERSACIONES = 200;
 export const MAX_MENSAJES_POR_CONVERSACION = 100;
@@ -105,6 +108,9 @@ export interface ConversacionesRepository {
   /** Ultimos mensajes (texto) de una conversacion propia, en orden. `null` = no existe / ajena / base sin migrar. */
   loadHistory(scope: ConversacionScope, id: string, limit: number): Promise<DataChatHistoryTurn[] | null>;
   rename(scope: ConversacionScope, id: string, titulo: string): Promise<boolean>;
+  /** MOD-12: cambia el titulo SOLO si sigue siendo `tituloActual` (el determinista): un titulo que el usuario ya renombro no se toca. OPCIONAL:
+   *  sin el no se generan titulos con modelo. */
+  retitular?(scope: ConversacionScope, id: string, tituloActual: string, titulo: string): Promise<boolean>;
   remove(scope: ConversacionScope, id: string): Promise<boolean>;
   append(scope: ConversacionScope, turno: TurnoAGuardar): Promise<ResultadoGuardado>;
   /** CHAT-14: herramientas (con parametros tipados) que produjeron el mensaje `seq` del asistente de una conversacion
@@ -268,6 +274,23 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
     });
   }
 
+  async retitular(scope: ConversacionScope, id: string, tituloActual: string, titulo: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string }>(
+          `update core.data_chat_conversation set title = $1::text
+            where id = $2::uuid and user_id = $3::uuid and organization_id = $4::uuid and vertical = $5::text and title = $6::text
+        returning id;`,
+          [titulo, id, scope.userId, scope.organizationId, scope.vertical, tituloActual],
+        );
+        return rows.length > 0;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => false,
+    });
+  }
+
   async remove(scope: ConversacionScope, id: string): Promise<boolean> {
     return runWithSavepointFallback<boolean>({
       session: this.db,
@@ -399,6 +422,11 @@ export interface TurnPersistence {
   audit(sink: DataChatAuditSink): DataChatAuditSink;
   /** Guarda el turno (si el cliente lo pidio) y agrega `conversationId`/`seq` a la respuesta. */
   finish(db: TenantDbSession, question: string, tool: string | undefined, answer: DataChatAnswer): Promise<PersistedDataChatAnswer>;
+  /** MOD-12: resumen (sin cifras) de la parte vieja de una conversacion larga, para el prompt del motor. `undefined` si no hizo falta. */
+  readonly resumen?: string | undefined;
+  /** MOD-12: trabajo posterior al commit y a la respuesta (titulo de la conversacion nueva con el modelo). Nunca lanza ni bloquea la respuesta;
+   *  sin trabajo pendiente no hace nada. Lo invoca `respondDataChat` cuando la transaccion del turno ya se confirmo. */
+  despuesDelCommit(): Promise<void>;
 }
 
 export interface BeginTurnInput {
@@ -416,8 +444,10 @@ export function conversacionesRepo(deps: AppDeps, db: TenantDbSession): Conversa
 export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, input: BeginTurnInput): Promise<TurnPersistence> {
   const { conversationId, scope } = input;
   if (conversationId === undefined) {
-    return { history: input.history, audit: (sink) => sink, finish: async (_db, _q, _t, answer) => answer };
+    return { history: input.history, audit: (sink) => sink, finish: async (_db, _q, _t, answer) => answer, despuesDelCommit: async () => undefined };
   }
+  // MOD-12: titulos y compactacion solo con los roles auxiliares activos (`rolesAuxiliares`).
+  const completion = deps.dataChat?.rolesAuxiliares ? deps.dataChat.completion : undefined;
 
   let targetId: string | null = null;
   let history: DataChatHistoryTurn[] = [];
@@ -428,10 +458,42 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
     targetId = conversationId;
     history = loaded;
   }
+  // MOD-12 -- compactacion: en una conversacion larga la parte vieja se resume (rol `plataforma:compactacion_historial`); si algo falla, el historial tal cual.
+  let resumen: string | undefined;
+  if (history.length > 0 && completion) {
+    const compactado = await compactarHistorial(completion(scope.organizationId, COMPACTACION_HISTORIAL_ROLE), history, (err) => console.error(JSON.stringify({ level: "error", event: "data_chat_compactacion_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })));
+    history = compactado.history;
+    resumen = compactado.resumen;
+  }
 
+  let tituloPendiente: { conversationId: string; tituloActual: string; pregunta: string } | undefined;
+  let tituloGenerado: Promise<string | null> | undefined;
+  let tituloAplicado = false;
   const toolCalls: { tool: string; args: Record<string, string | number> }[] = [];
   return {
     history,
+    resumen,
+    despuesDelCommit: async () => {
+      const pendiente = tituloPendiente;
+      if (!pendiente || !completion || tituloAplicado) return;
+      try {
+        // El titulo se pide UNA vez aunque esto se invoque varias veces (modo JSON reintenta); el UPDATE si se reintenta hasta que la
+        // conversacion sea visible para la sesion nueva.
+        tituloGenerado ??= generarTitulo(completion(scope.organizationId, TITULOS_RESUMENES_ROLE), pendiente.pregunta, (err) =>
+          console.error(JSON.stringify({ level: "error", event: "data_chat_titulo_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
+        );
+        const titulo = await tituloGenerado;
+        if (!titulo || titulo === pendiente.tituloActual) {
+          tituloAplicado = true;
+          return;
+        }
+        // Sesion PROPIA del mismo usuario (RLS): la del turno ya se confirmo y se cerro.
+        const ok = await deps.engine.withAppSession({ userId: scope.userId }, async (db) => (await conversacionesRepo(deps, db).retitular?.(scope, pendiente.conversationId, pendiente.tituloActual, titulo)) === true);
+        if (ok) tituloAplicado = true;
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", event: "data_chat_titulo_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" }));
+      }
+    },
     audit: (sink) => ({
       record: async (entry: DataChatAuditEntry) => {
         if (entry.tool && (entry.outcome === "ok" || entry.outcome === "empty") && toolCalls.length < MAX_TOOL_CALLS) {
@@ -453,6 +515,12 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
         sources: answer.sources,
         toolCalls,
       });
+      // Conversacion NUEVA guardada: queda pendiente el titulo con modelo (despues del commit, ver `despuesDelCommit`). El determinista es el que
+      // armo la base con la pregunta que se guardo (ya redactada).
+      if (result.guardado && targetId === null && completion && conversacionesRepo(deps, turnDb).retitular) {
+        const guardada = redactQuestionForStorage(question, tool);
+        tituloPendiente = { conversationId: result.conversationId, tituloActual: tituloPredeterminado(guardada), pregunta: guardada };
+      }
       return result.guardado ? { ...answer, conversationId: result.conversationId, seq: result.seq, guardado: true } : { ...answer, guardado: false, motivoNoGuardado: result.motivo };
     },
   };

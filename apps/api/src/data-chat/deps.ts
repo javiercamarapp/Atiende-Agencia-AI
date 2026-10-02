@@ -40,6 +40,10 @@ export interface DataChatDeps {
   /** Repositorio de conversaciones guardadas (CHAT-04) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de
    *  Postgres (`PostgresConversacionesRepository`); existe para inyectar uno en memoria en pruebas. */
   readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
+  /** MOD-12: activa los roles auxiliares del Copiloto (enrutador de turno, compuerta de escalamiento, titulos de conversaciones y compactacion de
+   *  historial, todos `plataforma:*` y apagables desde el panel de interruptores). OPCIONAL: sin el (pruebas con un LLM guionado) el turno corre como
+   *  siempre y no se hace ninguna llamada extra. `buildProductionDataChat` lo enciende. */
+  readonly rolesAuxiliares?: boolean;
   /** Cache de resultados de herramientas (CHAT-06/MOD-05; ver cache.ts). OPCIONAL: sin ella todo corre como siempre. */
   readonly cache?: DataChatCache;
   /** Repositorio de fijados (CHAT-15) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de Postgres; existe para
@@ -120,6 +124,7 @@ export function buildProductionDataChat(gateway: LlmGateway | undefined, engine?
   const cache = buildDataChatCache(createDataChatCacheStore(engine));
   return {
     ...(cache ? { cache } : {}),
+    rolesAuxiliares: true,
     restaurantesReader: (db) => new PostgresRestaurantesDataChatReader(db),
     hotelesReader: (db) => new PostgresHotelesDataChatReader(db),
     rentasReader: (db) => new PostgresRentasDataChatReader(db),
