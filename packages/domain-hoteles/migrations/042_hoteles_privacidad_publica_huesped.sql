@@ -394,56 +394,14 @@ grant execute on function hoteles.arco_access_snapshot(uuid, text) to authentica
 
 
 -- ---------------------------------------------------------------------------
--- 9) core._arco_union(): el estado nuevo 'pendiente_verificacion' de hoteles se clasifica como 'por_confirmar'
---    (igual que 'pendiente_confirmacion' de citas y restaurantes). Sin esto caia en el ELSE 'resuelta' y una solicitud
---    publica sin verificar (incluida la de bots o spam) aparecia en las vistas ARCO consolidadas de organizacion y
---    plataforma como resuelta, falseando el reporte de cumplimiento. Mismo cuerpo, firma, search_path y REVOKE que
---    en 0036 (solo cambia esa rama del CASE); 'por_confirmar' no es abierta ni vencida, asi que no corre plazo.
+-- Nota (core._arco_union): el estado nuevo 'pendiente_verificacion' de hoteles se clasifica como 'por_confirmar' en la
+--    vista ARCO consolidada. Esa funcion se redefine por ultima vez en 20240101000278 (rentas 028, que agrega rentas a la
+--    union y llega DESPUES de esta migracion), asi que el cambio vive alli: redefinirla aqui la dejaria pisada por 278 y,
+--    aplicada fuera de orden, quitaria la rama de rentas. Entre 277 y 278 (se aplican juntas, en orden) no hay consumidor.
 -- ---------------------------------------------------------------------------
-create or replace function core._arco_union()
-returns table (
-  organization_id uuid, vertical text, request_id uuid, right_type text, channel text,
-  native_status text, status_bucket text, opened_at timestamptz,
-  response_due_at timestamptz, execution_due_at timestamptz, due_at timestamptz,
-  resolved_at timestamptz, is_open boolean, is_overdue boolean
-)
-language sql stable security definer set search_path = core, citas, restaurantes, hoteles, pg_temp as $$
-  with u as (
-    select r.organization_id, 'citas'::text as vertical, r.id as request_id, r.right_type, r.channel,
-           r.status as native_status,
-           case r.status when 'pendiente_confirmacion' then 'por_confirmar' when 'recibida' then 'abierta'
-             when 'en_proceso' then 'en_proceso' when 'bloqueada' then 'bloqueada' when 'resuelta' then 'resuelta'
-             when 'rechazada' then 'rechazada' else 'cerrada' end as status_bucket,
-           r.requested_at as opened_at, r.response_due_at, r.execution_due_at, r.resolved_at
-      from citas.data_rights_requests r
-    union all
-    select r.organization_id, 'restaurantes', r.id, r.right_type, r.channel, r.status,
-           case r.status when 'pendiente_confirmacion' then 'por_confirmar' when 'recibida' then 'abierta'
-             when 'en_proceso' then 'en_proceso' when 'bloqueada' then 'bloqueada' when 'resuelta' then 'resuelta'
-             when 'rechazada' then 'rechazada' else 'cerrada' end,
-           r.requested_at, r.response_due_at, r.execution_due_at, r.resolved_at
-      from restaurantes.data_rights_requests r
-    union all
-    select a.organization_id, 'hoteles', a.id, a.right_type, a.channel, a.status,
-           case a.status when 'pendiente_verificacion' then 'por_confirmar' when 'recibida' then 'abierta' when 'en_revision' then 'en_proceso'
-             when 'procedente' then 'en_proceso' when 'improcedente' then 'rechazada' else 'resuelta' end,
-           a.created_at, a.response_due_on::timestamp at time zone 'UTC',
-           a.execution_due_on::timestamp at time zone 'UTC', a.executed_at
-      from hoteles.arco_request a
-  )
-  select u.organization_id, u.vertical, u.request_id, u.right_type, u.channel, u.native_status, u.status_bucket,
-         u.opened_at, u.response_due_at, u.execution_due_at,
-         case when u.status_bucket = 'abierta' then u.response_due_at else coalesce(u.execution_due_at, u.response_due_at) end,
-         u.resolved_at,
-         u.status_bucket in ('abierta', 'en_proceso', 'bloqueada'),
-         u.status_bucket in ('abierta', 'en_proceso', 'bloqueada')
-           and case when u.status_bucket = 'abierta' then u.response_due_at else coalesce(u.execution_due_at, u.response_due_at) end < now()
-    from u;
-$$;
-revoke all on function core._arco_union() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 10) hoteles.extend_arco_request(): rechaza prorrogar una solicitud 'pendiente_verificacion'. Defensa en profundidad:
+-- 9) hoteles.extend_arco_request(): rechaza prorrogar una solicitud 'pendiente_verificacion'. Defensa en profundidad:
 --     el plazo real empieza al verificar (public_arco_verify lo recalcula), asi que prorrogar antes gastaba la unica
 --     prorroga sin efecto. Mismo cuerpo, permisos y GRANT que en 032; solo se agrega ese rechazo.
 -- ---------------------------------------------------------------------------
