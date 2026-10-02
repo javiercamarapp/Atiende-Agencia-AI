@@ -26,6 +26,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   MessageCircle,
+  MessagesSquare,
   Receipt,
   ShieldAlert,
   Sparkles,
@@ -147,6 +148,9 @@ const GRUPOS_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk
 // H-28 (recepción) y H-27 (ficha de huésped): mismos `RECEPCION_VIEW_ROLES` / `GUEST_CRM_ROLES` que domain-hoteles/src/roles.ts
 // (duplicado aquí a propósito, ver el comentario de `role` arriba) — solo oculta los links para quien el servidor rechazaría (403).
 const RECEPCION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
+// H-20 -- bandeja de conversaciones de WhatsApp: mismo CONVERSACIONES_ROLES (owner/gm/frontdesk/reservations) que domain-hoteles/src/conversaciones/tipos.ts;
+// cosmetico, el servidor manda (403).
+const CONVERSACIONES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations"]);
 
 // H-04 — housekeeping completo: mismo `HOUSEKEEPING_BOARD_VIEW_ROLES` exacto que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de `role`
@@ -195,6 +199,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       items: [
         ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/recepcion`, label: "Recepción", icon: ConciergeBell }] : []),
         { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
+        ...(CONVERSACIONES_NAV_ROLES.has(role) ? [{ to: `${base}/conversaciones`, label: "Conversaciones", icon: MessagesSquare }] : []),
         ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
         { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
         { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
