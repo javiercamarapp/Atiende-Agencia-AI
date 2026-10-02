@@ -24,11 +24,8 @@ solo existia por vertical (`licitaciones.whatsapp_opt_out*`, migracion 030); est
 
 | Salida | Punto unico | Guard |
 | --- | --- | --- |
-| WhatsApp proactivo, 4 verticales con outbox de mensajeria | `dispatchWhatsAppVertical` y `triggerInline` en `apps/api/src/routes/internal/whatsapp-dispatch.ts` | `WhatsAppOutboundDispatcher.dispatchPending(..., { suppression })` |
-| Correo, 5 verticales con outbox de correo propio (citas, despachos, hoteles, licitaciones, restaurantes, rentas) | `runXxxEmailDispatch` y `triggerXxxEmailDispatchInline` de cada vertical | `dispatchPendingEmailJobs(..., { suppression })` de cada paquete `domain-*` |
-
-(Las seis verticales tienen despacho de correo; el de WhatsApp existe en citas, hoteles, licitaciones y
-restaurantes.)
+| WhatsApp proactivo (citas, hoteles, licitaciones, restaurantes) | `dispatchWhatsAppVertical` y `triggerInline` en `apps/api/src/routes/internal/whatsapp-dispatch.ts` | `WhatsAppOutboundDispatcher.dispatchPending(..., { suppression })` |
+| Correo (citas, despachos, hoteles, licitaciones, restaurantes, rentas) | `runXxxEmailDispatch` y `triggerXxxEmailDispatchInline` de cada vertical | `dispatchPendingEmailJobs(..., { suppression })` de cada paquete `domain-*` |
 
 - Un mensaje suprimido se marca `dead` con `last_error = 'suprimido'`, sin reintento y sin llamar al proveedor.
 - **FAIL-CLOSED**: si la lectura de la lista falla (cualquier error que no sea "no migrada"), NO se envia. En
@@ -71,9 +68,11 @@ proactivo).
 - **Fuerza bruta**: el espacio de telefonos MX es chico; un SHA-256 con prefijo fijo se invierte por enumeracion si
   alguien obtiene la tabla. Hoy lo mitiga el control de acceso (sin GRANT, sin politicas). Mejora pendiente: HMAC
   con llave propia de plataforma (`v2`), que exige rehashear la lista.
-- **Productores fuera de los despachadores**: los envios que no pasan por `dispatchPending` /
-  `dispatchPendingEmailJobs` (p. ej. la invitacion de staff y el resumen diario por correo, si envian directo) no
-  consultan la lista. No se encontro otro productor de WhatsApp proactivo fuera del despachador.
+- **Productores fuera de los despachadores** (envian directo a Resend, sin pasar por la lista): el resumen diario
+  (`apps/api/src/resumen-diario/correo.ts`) y las alertas operativas (`apps/api/src/alertas/canales.ts`), ambos
+  dirigidos al personal de la propia organizacion, y los correos de autenticacion (`auth-magic-link.ts`,
+  `auth-account.ts`), que son transaccionales por definicion. No se encontro otro productor de WhatsApp proactivo
+  fuera de `WhatsAppOutboundDispatcher`.
 - **Licitaciones**: conserva su opt-out por vertical (`whatsapp_opt_out*`) y su webhook no escribe aun en la lista de
   plataforma; sus avisos si respetan la lista de plataforma.
 - **ARCO**: oposicion/cancelacion aceptadas aun no escriben `solicitud_arco` (no se encontro un punto unico seguro);
