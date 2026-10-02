@@ -146,7 +146,7 @@ describe("HotelesShell — nav móvil", () => {
   });
 
   it("un rol sin acceso (frontdesk, accountant) no ve la entrada Copiloto, ni el botón del chat ni la píldora, y no consulta /estado", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
     for (const rol of ["frontdesk", "reservations", "housekeeping", "maintenance", "fnb", "accountant"]) {
       rendered = await renderShell(undefined, rol);
@@ -157,7 +157,7 @@ describe("HotelesShell — nav móvil", () => {
       rendered.unmount();
       rendered = undefined;
     }
-    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes("/chat-datos"))).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([u]) => u.includes("/chat-datos"))).toHaveLength(0);
   });
 
   it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
