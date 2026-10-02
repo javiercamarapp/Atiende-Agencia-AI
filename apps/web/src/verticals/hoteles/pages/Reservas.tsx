@@ -58,12 +58,21 @@ import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
 import { dineroMx } from "../lib/dinero.ts";
 import { CotizadorPanel } from "./CotizadorPanel.tsx";
+import { CambiarFechasDialog } from "../components/CambiarFechasDialog.tsx";
+import type { ReservaParaFechas } from "../components/CambiarFechasDialog.tsx";
+import { ListaEsperaPanel } from "../components/ListaEsperaPanel.tsx";
+import { ESTADOS_CON_CAMBIO_DE_FECHAS, FECHAS_ROLES } from "../lib/fechas-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const FILTERS: ReadonlyArray<ReservationStatus | "todas"> = ["todas", "confirmada", "check_in", "en_estancia", "check_out", "cerrada", "cancelada"];
-export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
+export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: HotelesShellContext) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<ReservationStatus | "todas">("todas");
+  // H-12: la pestana "Lista de espera" convive con el listado de reservas.
+  const [vista, setVista] = useState<"reservas" | "lista">("reservas");
+  // H-28: reserva cuyo dialogo "Cambiar fechas" esta abierto (null = cerrado) y aviso del ultimo cambio.
+  const [fechasDe, setFechasDe] = useState<ReservaParaFechas | null>(null);
+  const [avisoFechas, setAvisoFechas] = useState<string | null>(null);
   const [reservations, setReservations] = useState<readonly ReservationSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -338,187 +347,211 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
         </div>
       </header>
 
-      {showCotizador && <CotizadorPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
+      <Tabs value={vista} onValueChange={(v) => setVista(v as "reservas" | "lista")}>
+        <TabsList>
+          <TabsTrigger value="reservas">Reservas</TabsTrigger>
+          <TabsTrigger value="lista">Lista de espera</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {showForm && (
-        <Card className="max-w-md">
-          <CardContent className="p-4">
-            <form onSubmit={handleCreate} className="flex flex-col gap-3">
-              <div>
-                <Label htmlFor="res-tipo-habitacion">Tipo de habitación</Label>
-                <NativeSelect id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required>
-                  <option value="" disabled>
-                    {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
-                  </option>
-                  {roomTypes?.map((rt) => (
-                    <option key={rt.id} value={rt.id}>
-                      {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
-                    </option>
-                  ))}
-                </NativeSelect>
-                {roomTypes !== null && roomTypes.length === 0 && (
-                  <span className="block mt-1 text-xs text-destructive">Esta property todavía no tiene tipos de habitación configurados.</span>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <Label htmlFor="res-checkin">Check-in</Label>
-                  <Input id="res-checkin" type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} required className="mt-1" />
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="res-checkout">Check-out</Label>
-                  <Input id="res-checkout" type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} required className="mt-1" />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="res-guest-query">Huésped (opcional — busca por nombre, correo o teléfono)</Label>
-                <Input
-                  id="res-guest-query"
-                  type="text"
-                  value={guestQuery}
-                  onChange={(e) => {
-                    setGuestQuery(e.target.value);
-                    setGuestId("");
-                  }}
-                  placeholder="Buscar huésped…"
-                  className="mt-1"
-                />
-                <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva" className="mt-1.5">
-                  <option value="">Sin huésped asignado</option>
-                  {guestOptions.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.nombreCompleto}
-                      {g.telefono ? ` · ${g.telefono}` : ""}
-                      {g.email ? ` · ${g.email}` : ""}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-              {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
-                  alta real de huésped sin salir de este formulario. */}
-              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowNewGuestForm((v) => !v)}>
-                {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
-              </Button>
-              {showNewGuestForm && (
-                <div className="flex flex-col gap-2 border border-dashed border-border rounded-lg p-3">
-                  <div>
-                    <Label htmlFor="res-guest-nombre" className="text-xs font-normal">Nombre completo</Label>
-                    <Input id="res-guest-nombre" value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} className="mt-1 h-9" />
-                  </div>
-                  <div>
-                    <Label htmlFor="res-guest-email" className="text-xs font-normal">Email (opcional)</Label>
-                    <Input id="res-guest-email" value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} className="mt-1 h-9" />
-                  </div>
-                  <div>
-                    <Label htmlFor="res-guest-telefono" className="text-xs font-normal">Teléfono (opcional)</Label>
-                    <Input id="res-guest-telefono" value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} className="mt-1 h-9" />
-                  </div>
-                  <Button type="button" size="sm" onClick={() => void handleCreateGuest()} disabled={creatingGuest}>
-                    {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
-                  </Button>
-                </div>
-              )}
-              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
-              <Button type="submit" disabled={creating}>
-                {creating ? "Creando…" : "Crear reserva"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      {avisoFechas && (
+        <p role="status" className="text-sm text-foreground">
+          {avisoFechas}
+        </p>
       )}
 
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as ReservationStatus | "todas")}>
-        <TabsList className="flex-wrap h-auto">
-          {FILTERS.map((f) => (
-            <TabsTrigger key={f} value={f}>
-              {f === "todas" ? "Todas" : RESERVATION_STATUS_LABELS[f]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      {vista === "lista" && <ListaEsperaPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} onReservaCreada={() => void load()} />}
 
-        <TabsContent value={filter} className="flex flex-col gap-4 mt-4">
-          {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-          {!visible && !error && <EstadoCargando etiqueta="Cargando reservas…" />}
-          {visible && visible.length === 0 && <EstadoVacio mensaje="No hay reservas en este filtro." />}
+      {vista === "reservas" && (
+        <>
+        {showCotizador && <CotizadorPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
 
-          <div className="flex flex-col gap-3">
-            {visible?.map((r) => {
-              const next = NEXT_GENERIC_STATUS[r.estado];
-              const cancelable = isCancellable(r.estado);
-              return (
-                <Card key={r.id}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between flex-wrap gap-2">
-                      <div>
-                        <p className="font-semibold text-foreground">
-                          {r.checkInDate} → {r.checkOutDate} · {dineroMx(r.montoTotal)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
-                        </p>
-                        {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
-                        <p className="mt-0.5 text-xs text-muted-foreground">{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
+        {showForm && (
+          <Card className="max-w-md">
+            <CardContent className="p-4">
+              <form onSubmit={handleCreate} className="flex flex-col gap-3">
+                <div>
+                  <Label htmlFor="res-tipo-habitacion">Tipo de habitación</Label>
+                  <NativeSelect id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required>
+                    <option value="" disabled>
+                      {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
+                    </option>
+                    {roomTypes?.map((rt) => (
+                      <option key={rt.id} value={rt.id}>
+                        {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  {roomTypes !== null && roomTypes.length === 0 && (
+                    <span className="block mt-1 text-xs text-destructive">Esta property todavía no tiene tipos de habitación configurados.</span>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <Label htmlFor="res-checkin">Check-in</Label>
+                    <Input id="res-checkin" type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} required className="mt-1" />
+                  </div>
+                  <div className="flex-1">
+                    <Label htmlFor="res-checkout">Check-out</Label>
+                    <Input id="res-checkout" type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} required className="mt-1" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="res-guest-query">Huésped (opcional — busca por nombre, correo o teléfono)</Label>
+                  <Input
+                    id="res-guest-query"
+                    type="text"
+                    value={guestQuery}
+                    onChange={(e) => {
+                      setGuestQuery(e.target.value);
+                      setGuestId("");
+                    }}
+                    placeholder="Buscar huésped…"
+                    className="mt-1"
+                  />
+                  <NativeSelect value={guestId} onChange={(e) => setGuestId(e.target.value)} aria-label="Huésped de la reserva" className="mt-1.5">
+                    <option value="">Sin huésped asignado</option>
+                    {guestOptions.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nombreCompleto}
+                        {g.telefono ? ` · ${g.telefono}` : ""}
+                        {g.email ? ` · ${g.email}` : ""}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
+                    alta real de huésped sin salir de este formulario. */}
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowNewGuestForm((v) => !v)}>
+                  {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
+                </Button>
+                {showNewGuestForm && (
+                  <div className="flex flex-col gap-2 border border-dashed border-border rounded-lg p-3">
+                    <div>
+                      <Label htmlFor="res-guest-nombre" className="text-xs font-normal">Nombre completo</Label>
+                      <Input id="res-guest-nombre" value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} className="mt-1 h-9" />
+                    </div>
+                    <div>
+                      <Label htmlFor="res-guest-email" className="text-xs font-normal">Email (opcional)</Label>
+                      <Input id="res-guest-email" value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} className="mt-1 h-9" />
+                    </div>
+                    <div>
+                      <Label htmlFor="res-guest-telefono" className="text-xs font-normal">Teléfono (opcional)</Label>
+                      <Input id="res-guest-telefono" value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} className="mt-1 h-9" />
+                    </div>
+                    <Button type="button" size="sm" onClick={() => void handleCreateGuest()} disabled={creatingGuest}>
+                      {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
+                    </Button>
+                  </div>
+                )}
+                {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
+                <Button type="submit" disabled={creating}>
+                  {creating ? "Creando…" : "Crear reserva"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as ReservationStatus | "todas")}>
+          <TabsList className="flex-wrap h-auto">
+            {FILTERS.map((f) => (
+              <TabsTrigger key={f} value={f}>
+                {f === "todas" ? "Todas" : RESERVATION_STATUS_LABELS[f]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <TabsContent value={filter} className="flex flex-col gap-4 mt-4">
+            {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+            {!visible && !error && <EstadoCargando etiqueta="Cargando reservas…" />}
+            {visible && visible.length === 0 && <EstadoVacio mensaje="No hay reservas en este filtro." />}
+
+            <div className="flex flex-col gap-3">
+              {visible?.map((r) => {
+                const next = NEXT_GENERIC_STATUS[r.estado];
+                const cancelable = isCancellable(r.estado);
+                return (
+                  <Card key={r.id}>
+                    <CardContent className="p-4">
+                      <div className="flex justify-between flex-wrap gap-2">
+                        <div>
+                          <p className="font-semibold text-foreground">
+                            {r.checkInDate} → {r.checkOutDate} · {dineroMx(r.montoTotal)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
+                          </p>
+                          {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
+                          <p className="mt-0.5 text-xs text-muted-foreground">{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
+                        </div>
+                        <StatusBadge tone={r.estado === "cancelada" ? "danger" : "neutral"} className="self-start">
+                          {RESERVATION_STATUS_LABELS[r.estado]}
+                        </StatusBadge>
                       </div>
-                      <StatusBadge tone={r.estado === "cancelada" ? "danger" : "neutral"} className="self-start">
-                        {RESERVATION_STATUS_LABELS[r.estado]}
-                      </StatusBadge>
-                    </div>
-                    {r.penalizacionCancelacion != null && (
-                      <p className="mt-1.5 text-xs text-destructive">Penalización de cancelación: {dineroMx(r.penalizacionCancelacion)}</p>
-                    )}
-                    <div className="flex gap-2 mt-2.5 flex-wrap">
-                      <Button type="button" variant="outline" size="sm" onClick={() => void handleVerFolio(r)} disabled={busyId === r.id}>
-                        Ver folio
-                      </Button>
-                      {next && (
-                        <Button type="button" size="sm" onClick={() => void handleTransition(r, next)} disabled={busyId === r.id}>
-                          {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
-                        </Button>
+                      {r.penalizacionCancelacion != null && (
+                        <p className="mt-1.5 text-xs text-destructive">Penalización de cancelación: {dineroMx(r.penalizacionCancelacion)}</p>
                       )}
-                      {r.estado !== "cancelada" && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleToggleAssign(r)} disabled={busyId === r.id}>
-                          {assigningId === r.id ? "Cerrar" : r.roomId ? "Cambiar habitación" : "Asignar habitación"}
+                      <div className="flex gap-2 mt-2.5 flex-wrap">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleVerFolio(r)} disabled={busyId === r.id}>
+                          Ver folio
                         </Button>
-                      )}
-                      {cancelable && (
-                        <Button type="button" variant="outline" size="sm" className="text-destructive border-destructive/40 hover:border-destructive" onClick={() => handleCancel(r)} disabled={busyId === r.id}>
-                          Cancelar
-                        </Button>
-                      )}
-                    </div>
-                    {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") --
-                        selector inline, sin salir de la lista de reservas. */}
-                    {assigningId === r.id && (
-                      <div className="flex gap-2 items-center mt-2.5 flex-wrap">
-                        <NativeSelect
-                          value={assigningRoomId ?? ""}
-                          onChange={(e) => setAssigningRoomId(e.target.value || null)}
-                          size="sm" wrapperClassName="w-auto"
-                        >
-                          <option value="" disabled>
-                            {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
-                          </option>
-                          {roomsByReservation[r.id]?.map((room) => (
-                            <option key={room.id} value={room.id}>
-                              {room.codigo} ({room.estado})
-                            </option>
-                          ))}
-                        </NativeSelect>
-                        {roomsByReservation[r.id]?.length === 0 && (
-                          <span className="text-xs text-destructive">Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>
+                        {next && (
+                          <Button type="button" size="sm" onClick={() => void handleTransition(r, next)} disabled={busyId === r.id}>
+                            {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
+                          </Button>
                         )}
-                        <Button type="button" size="sm" onClick={() => void handleConfirmAssign(r)} disabled={busyId === r.id || !assigningRoomId}>
-                          {busyId === r.id ? "…" : "Confirmar asignación"}
-                        </Button>
+                        {r.estado !== "cancelada" && (
+                          <Button type="button" variant="outline" size="sm" onClick={() => void handleToggleAssign(r)} disabled={busyId === r.id}>
+                            {assigningId === r.id ? "Cerrar" : r.roomId ? "Cambiar habitación" : "Asignar habitación"}
+                          </Button>
+                        )}
+                        {FECHAS_ROLES.has(role) && ESTADOS_CON_CAMBIO_DE_FECHAS.has(r.estado) && (
+                          <Button type="button" variant="outline" size="sm" onClick={() => setFechasDe({ id: r.id, entrada: r.checkInDate, salida: r.checkOutDate, estado: r.estado })} disabled={busyId === r.id}>
+                            Cambiar fechas
+                          </Button>
+                        )}
+                        {cancelable && (
+                          <Button type="button" variant="outline" size="sm" className="text-destructive border-destructive/40 hover:border-destructive" onClick={() => handleCancel(r)} disabled={busyId === r.id}>
+                            Cancelar
+                          </Button>
+                        )}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
+                      {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") --
+                          selector inline, sin salir de la lista de reservas. */}
+                      {assigningId === r.id && (
+                        <div className="flex gap-2 items-center mt-2.5 flex-wrap">
+                          <NativeSelect
+                            value={assigningRoomId ?? ""}
+                            onChange={(e) => setAssigningRoomId(e.target.value || null)}
+                            size="sm" wrapperClassName="w-auto"
+                          >
+                            <option value="" disabled>
+                              {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
+                            </option>
+                            {roomsByReservation[r.id]?.map((room) => (
+                              <option key={room.id} value={room.id}>
+                                {room.codigo} ({room.estado})
+                              </option>
+                            ))}
+                          </NativeSelect>
+                          {roomsByReservation[r.id]?.length === 0 && (
+                            <span className="text-xs text-destructive">Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>
+                          )}
+                          <Button type="button" size="sm" onClick={() => void handleConfirmAssign(r)} disabled={busyId === r.id || !assigningRoomId}>
+                            {busyId === r.id ? "…" : "Confirmar asignación"}
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabsContent>
+        </Tabs>
+        </>
+      )}
 
       <ConfirmDialog
         open={pendingCancel !== null}
@@ -535,6 +568,17 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
         confirmar="Sí, cancelar reserva"
         cancelar="Volver"
         onConfirm={handleConfirmCancel}
+      />
+      <CambiarFechasDialog
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        reserva={fechasDe}
+        onClose={() => setFechasDe(null)}
+        onDone={(aviso) => {
+          setAvisoFechas(aviso);
+          void load();
+        }}
       />
     </PageContainer>
   );
