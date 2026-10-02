@@ -6,7 +6,7 @@
 // sesion verificada; el cuerpo de la peticion solo aporta la pregunta y el historial (texto), jamas ids ni
 // filtros. Las consultas corren con la sesion RLS del usuario, nunca con una de sistema. La logica de negocio
 // vive en @atiende/agent-core/data-chat (motor) y en el catalogo del dominio (domain-hoteles / domain-rentas).
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { runDataChatTurn, type DataChatCatalog } from "@atiende/agent-core/data-chat";
@@ -19,6 +19,8 @@ import { buildDataChatEstado } from "./estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "./ndjson.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
 import { beginTurnPersistence, mountConversacionesRoutes } from "./conversaciones.ts";
+import { mountPinsRoutes, type PinsTurnContext } from "./pins.ts";
+import { NO_LLM_COMPLETION, directTurnOptions } from "./turno.ts";
 
 export interface VerticalDataChatConfig {
   /** "hoteles" | "rentas" | "citas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
@@ -49,45 +51,48 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
     return c.json(await buildDataChatEstado(deps, db, { organizationId: c.get("organizationId"), userId: c.get("userId") }, available));
   });
 
+  // Alcance y catalogo de un turno, SIEMPRE desde la membership verificada del request (los usa el POST del chat y los fijados).
+  const turnContext = async (c: Context<CoreAuthHonoEnv>): Promise<PinsTurnContext | undefined> => {
+    const db = c.get("db");
+    if (!cfg.catalog(deps, db)) return undefined;
+    const organizationId = c.get("organizationId");
+    // Alcance por membership: nunca se ensancha mas alla de las propiedades de este usuario (mismo criterio que
+    // restaurantes/admin-scope.ts). Si la membership completa no aparece, cae a la unica propiedad ya verificada.
+    const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
+    const timezone = await cfg.timezone(deps, db, c.req.param("propertyId") ?? "", organizationId);
+    return {
+      catalogFor: (d) => cfg.catalog(deps, d),
+      scope: { organizationId, userId: c.get("userId"), vertical: cfg.vertical, verticalRole: c.get("verticalRole") ?? "", allowedPropertyIds, timezone },
+    };
+  };
+
   app.post(base, async (c) => {
     assertVerticalRole(c, cfg.roles);
-    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
+    const { question, history, tool, toolArgs, label, conversationId } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
     const db = c.get("db");
     const completion = dataChat?.completion;
-    const catalog = cfg.catalog(deps, db);
-    if (!dataChat || !completion || !catalog) {
+    // La ruta directa (chip/boton, `tool`) no usa modelo: funciona aunque no haya proveedor de IA configurado.
+    const turn = dataChat && (completion || tool) ? await turnContext(c) : undefined;
+    if (!dataChat || !turn) {
       return respondDataChatStatic(c, DATA_CHAT_NOT_ACTIVATED);
     }
 
-    // Alcance por membership: nunca se ensancha mas alla de las propiedades de este usuario (mismo criterio que
-    // restaurantes/admin-scope.ts). Si la membership completa no aparece, cae a la unica propiedad ya verificada.
-    const allowedPropertyIds = await resolveMembershipPropertyScope(deps, c, organizationId);
-    const propertyId = c.req.param("propertyId") ?? "";
-    const timezone = await cfg.timezone(deps, db, propertyId, organizationId);
-
-    const verticalRole = c.get("verticalRole") ?? "";
     const userId = c.get("userId");
+    const propertyId = c.req.param("propertyId") ?? "";
     // Con `conversationId` el historial sale de la base y el turno se guarda (conversaciones.ts); sin el, todo igual.
     const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: cfg.vertical }, propertyId });
     return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
-      persist.finish(turnDb, question, tool, await runDataChatTurn({
-        catalog: cfg.catalog(deps, turnDb) ?? catalog,
-        scope: {
-          organizationId,
-          userId,
-          vertical: cfg.vertical,
-          verticalRole,
-          allowedPropertyIds,
-          timezone,
-        },
+      persist.finish(turnDb, label ?? question, tool, await runDataChatTurn({
+        catalog: turn.catalogFor(turnDb) ?? turn.catalogFor(db)!,
+        scope: turn.scope,
         question,
         history: persist.history,
-        ...(tool ? { directTool: tool } : {}),
-        complete: completion(organizationId, cfg.role),
-        completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`),
+        ...directTurnOptions(dataChat, tool, toolArgs),
+        complete: completion ? completion(organizationId, cfg.role) : NO_LLM_COMPLETION,
+        ...(completion ? { completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`) } : {}),
         rateLimiter: dataChat.rateLimiter,
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
@@ -99,5 +104,6 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
   });
 
   mountConversacionesRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles });
+  mountPinsRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles, turnContext });
   return app;
 }
