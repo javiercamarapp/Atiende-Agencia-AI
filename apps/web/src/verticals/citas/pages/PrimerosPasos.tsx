@@ -138,12 +138,48 @@ export function PrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, orgI
   );
 }
 
+/** C-19 -- enlace publico de reservas del negocio con boton Copiar (sin portapapeles disponible: se muestra para copiarlo a mano). */
+export function EnlaceReservas({ orgSlug }: { readonly orgSlug: string }) {
+  const url = `${typeof window === "undefined" ? "" : window.location.origin}/reservar/${orgSlug}`;
+  const [estado, setEstado] = useState<"idle" | "copiado" | "error">("idle");
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setEstado("copiado");
+    } catch {
+      setEstado("error");
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-2 p-4">
+        <p className="m-0 text-sm font-semibold text-foreground">Tu página de reservas</p>
+        <p className="m-0 text-sm text-muted-foreground">Compártela con tus clientes: ahí eligen servicio, profesional y horario sin crear cuenta.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a href={url} target="_blank" rel="noreferrer" className="min-w-0 break-all text-sm text-foreground underline underline-offset-2">
+            {url}
+          </a>
+          <Button type="button" variant="outline" size="sm" onClick={copiar}>
+            Copiar
+          </Button>
+        </div>
+        <p role="status" className="m-0 text-xs text-muted-foreground">
+          {estado === "copiado" ? "Enlace copiado." : estado === "error" ? "No pudimos copiarlo automáticamente: selecciónalo y cópialo a mano." : ""}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PanelListo({ checklist, orgSlug }: { readonly checklist: ChecklistOnboarding; readonly orgSlug: string }) {
   if (checklist.listoParaRecibirCitas) {
     return (
-      <Callout tone="success" titulo="Listo para recibir citas">
-        Tu negocio tiene lo mínimo: la reserva en línea está abierta para tus clientes.
-      </Callout>
+      <>
+        <Callout tone="success" titulo="Listo para recibir citas">
+          Tu negocio tiene lo mínimo: la reserva en línea está abierta para tus clientes.
+        </Callout>
+        <EnlaceReservas orgSlug={orgSlug} />
+      </>
     );
   }
   const faltantes = checklist.pasos.filter((p) => p.requeridoParaPublicar && p.estado !== "completo");
