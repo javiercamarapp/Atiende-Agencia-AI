@@ -44,9 +44,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderShell(): Promise<RenderedComponent> {
+async function renderShell(rol = "admin"): Promise<RenderedComponent> {
   installMatchMediaStub();
-  installMemoryLocalStorage().setItem("atiende.despachos.session", JSON.stringify(SESSION));
+  installMemoryLocalStorage().setItem("atiende.despachos.session", JSON.stringify({ ...SESSION, organizations: [{ ...SESSION.organizations[0], rol }] }));
   fetchBranchesMock.mockResolvedValue([{ propertyId: "prop-1", name: "Contribuyente Uno" }]);
   const result = renderComponent(
     <MemoryRouter>
@@ -86,13 +86,15 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 20 destinos, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
+  it('el botón "Más" abre los 20 destinos + el Copiloto, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(20);
+    expect(hrefs).toHaveLength(21);
+    // CHAT-11: el Copiloto tambien esta en la hoja "Más" (admin, contador, auditor y readonly).
+    expect(hrefs).toContain("/despachos/demo/copiloto");
     expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
   });
 
@@ -102,15 +104,56 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"]);
     expect(categoriasAbiertas(root)).toEqual(["Facturación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "CFDI", "Cobranza", "Cola de cobranza", "Vencimientos"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "CFDI", "Cobranza", "Cola de cobranza", "Vencimientos"]);
     abrirCategoria(root, "Fiscal");
     expect(categoriasAbiertas(root)).toEqual(["Fiscal"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Declaraciones", "Pagos provisionales", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Declaraciones", "Pagos provisionales", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
     abrirCategoria(root, "Contabilidad");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Conciliación bancaria", "Libro contable", "Bookkeeping", "Reportes de cliente", "Migración de catálogo"]);
     abrirCategoria(root, "Clientes y equipo");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Staff", "Configuración"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Cartera de clientes", "Portal del cliente", "Staff", "Configuración"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Contador Demo", rol: "Administrador" });
+  });
+
+  // CHAT-11: el Copiloto es una PAGINA para los roles que el servidor deja usar chat-datos (admin, contador, auditor, readonly). Con el
+  // asistente activo el boton del header y la pildora del pie son enlaces a /despachos/:org/copiloto y ya no abren el dialogo viejo.
+  it("admin/contador/auditor/readonly: con el asistente activo, el botón del header y la píldora del pie enlazan a la página del Copiloto", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
+    for (const rol of ["admin", "contador", "auditor", "readonly"]) {
+      rendered = await renderShell(rol);
+      const root = rendered.container;
+      const hrefs = (texto: string) => [...root.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
+      expect(hrefs("Chatea con tus datos")).toContain("/despachos/demo/copiloto");
+      expect(hrefs("Pregunta a tus datos")).toContain("/despachos/demo/copiloto");
+      expect(hrefs("Copiloto")).toContain("/despachos/demo/copiloto");
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      rendered.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("un rol sin acceso (owner, staff) no ve la entrada Copiloto, ni el botón del chat ni la píldora, y no consulta /estado", async () => {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ available: true, permitido: true, motivo: null, usoHoyPct: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    for (const rol of ["owner", "staff"]) {
+      rendered = await renderShell(rol);
+      const root = rendered.container;
+      expect(linksSidebar(root)).not.toContain("Copiloto");
+      const textos = [...root.querySelectorAll("a, button")].map((e) => e.textContent ?? "");
+      expect(textos.some((t) => t.includes("Chatea con tus datos") || t.includes("Pregunta a tus datos"))).toBe(false);
+      rendered.unmount();
+      rendered = undefined;
+    }
+    expect(fetchMock.mock.calls.filter(([u]) => u.includes("/chat-datos"))).toHaveLength(0);
+  });
+
+  it("si /estado no confirma el asistente, el botón sigue diciendo Pronto (aviso honesto) y no hay píldora ni enlace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "x" }), { status: 403 })));
+    rendered = await renderShell();
+    const root = rendered.container;
+    const boton = [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("Chatea con tus datos"));
+    expect(boton?.textContent).toContain("Pronto");
+    expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregunta a tus datos"))).toBe(false);
   });
 
   it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {

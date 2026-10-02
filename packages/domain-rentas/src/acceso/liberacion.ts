@@ -54,12 +54,19 @@ function etiquetaError(err: unknown): string {
   return "error";
 }
 
-type Resultado = { tipo: "fin" } | { tipo: "liberada"; id: string } | { tipo: "sin_contacto"; id: string } | { tipo: "sin_instrucciones"; id: string };
+type Resultado = { tipo: "fin" } | { tipo: "error_acceso"; id: string } | { tipo: "liberada"; id: string } | { tipo: "sin_contacto"; id: string } | { tipo: "sin_instrucciones"; id: string };
 
 async function procesarSiguiente(ctx: ContextoLiberacion, excluir: readonly string[], onCandidata: (id: string) => void): Promise<Resultado> {
   const cand: LiberacionPendiente | null = await ctx.acceso.siguienteLiberacion(excluir);
   if (!cand) return { tipo: "fin" };
   onCandidata(cand.ocupacionId);
+
+  // Rn-29: el sobre cifrado no se pudo abrir (sin llave, llave invalida o sobre alterado). No se entrega nada; queda un
+  // 'error_envio' sin contenido en la bitacora y la reserva sigue pendiente para la siguiente corrida.
+  if (cand.errorAcceso) {
+    await ctx.acceso.registrarEvento(cand.ocupacionId, "error_envio");
+    return { tipo: "error_acceso", id: cand.ocupacionId };
+  }
 
   if (!cand.tieneInstrucciones || !cand.direccionExacta) {
     await ctx.acceso.registrarEvento(cand.ocupacionId, "omitida_sin_instrucciones");
@@ -101,7 +108,8 @@ export async function ejecutarLiberacionAcceso(withTx: WithLiberacionTx, opcione
         break;
       }
       excluir.push(res.id);
-      if (res.tipo === "liberada") r.liberadas += 1;
+      if (res.tipo === "error_acceso") r.errores += 1;
+      else if (res.tipo === "liberada") r.liberadas += 1;
       else if (res.tipo === "sin_contacto") r.omitidasSinContacto += 1;
       else r.omitidasSinInstrucciones += 1;
     } catch (err) {

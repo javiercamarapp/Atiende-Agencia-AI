@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { BedDouble, ConciergeBell, LogIn, LogOut, RefreshCw, Repeat } from "lucide-react";
+import { BedDouble, CalendarClock, ConciergeBell, LogIn, LogOut, RefreshCw, Repeat } from "lucide-react";
 import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
 import { statusTone } from "@atiende/ui";
@@ -22,6 +22,9 @@ import {
 } from "../lib/recepcion-client.ts";
 import type { Movimiento, RackHabitacion, Recepcion } from "../lib/recepcion-client.ts";
 import { HABITACION_ESTADO_TONES } from "../lib/status-tones.ts";
+import { CambiarFechasDialog } from "../components/CambiarFechasDialog.tsx";
+import type { ReservaParaFechas } from "../components/CambiarFechasDialog.tsx";
+import { FECHAS_ROLES } from "../lib/fechas-client.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
@@ -50,6 +53,8 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
   // Habitacion elegida para cada llegada sin habitacion, y panel de cambio abierto (una reserva a la vez).
   const [eleccion, setEleccion] = useState<Readonly<Record<string, string>>>({});
   const [cambio, setCambio] = useState<{ reservaId: string; roomId: string; motivo: string } | null>(null);
+  // H-28: reserva cuyo dialogo "Cambiar fechas" esta abierto (null = cerrado).
+  const [fechasDe, setFechasDe] = useState<ReservaParaFechas | null>(null);
 
   const puedeVer = RECEPCION_VIEW_ROLES.has(role);
   const puedeOperar = RECEPCION_OPERATE_ROLES.has(role);
@@ -135,8 +140,20 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
     );
   }
 
+  /** "Cambiar fechas" (recotiza y confirma en un dialogo): lo ven los roles que administran reservas, incluido `reservations`. */
+  function botonFechas(m: Movimiento) {
+    if (!FECHAS_ROLES.has(role)) return null;
+    return (
+      <Button type="button" size="sm" variant="outline" disabled={busy === m.reservaId} onClick={() => setFechasDe({ id: m.reservaId, entrada: m.entrada, salida: m.salida, estado: m.estado, huesped: m.huesped?.nombre ?? null })}>
+        <CalendarClock className="size-3.5" strokeWidth={1.75} />
+        Cambiar fechas
+      </Button>
+    );
+  }
+
   function accionesLlegada(m: Movimiento) {
-    if (m.estado !== "confirmada" || !puedeOperar || !data) return null;
+    if (m.estado !== "confirmada" || !data) return null;
+    if (!puedeOperar) return botonFechas(m);
     const sinHab = m.habitacion === null;
     const candidatas = habitacionesCandidatas(data.rack, m.tipoHabitacion?.id ?? null);
     const elegida = eleccion[m.reservaId] ?? "";
@@ -171,12 +188,14 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
           <LogIn className="size-3.5" strokeWidth={1.75} />
           Check-in
         </Button>
+        {botonFechas(m)}
       </>
     );
   }
 
   function accionesEnCasa(m: Movimiento) {
-    if (!puedeOperar || !data) return null;
+    if (!data) return null;
+    if (!puedeOperar) return botonFechas(m);
     return (
       <>
         <Button
@@ -204,6 +223,7 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
           <LogOut className="size-3.5" strokeWidth={1.75} />
           Check-out
         </Button>
+        {botonFechas(m)}
       </>
     );
   }
@@ -381,6 +401,17 @@ export function RecepcionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: 
           </Tabs>
         </>
       )}
+      <CambiarFechasDialog
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        reserva={fechasDe}
+        onClose={() => setFechasDe(null)}
+        onDone={(msg) => {
+          setAviso(msg);
+          void load();
+        }}
+      />
     </PageContainer>
   );
 }

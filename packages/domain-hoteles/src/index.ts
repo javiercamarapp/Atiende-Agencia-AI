@@ -542,6 +542,8 @@ export * from "./tickets/index.ts";
 export * from "./agentes/index.ts";
 export * from "./grupos/index.ts";
 export * from "./recepcion/index.ts";
+export * from "./fechas/index.ts";
+export * from "./lista-espera/index.ts";
 export * from "./huespedes/index.ts";
 export * from "./privacy/index.ts";
 

@@ -191,6 +191,27 @@ describe("PrivacidadOrganizacionPage", () => {
   });
 });
 
+describe("PrivacidadOrganizacionPage con rentas (Rn-07 / Rn-30)", () => {
+  it("muestra la solicitud ARCO de rentas y las dos clases de retencion de rentas con su etiqueta, sin datos del titular", async () => {
+    const rentas = {
+      ...RESUMEN_ORG,
+      arco: { total: 1, solicitudes: [solicitud("cccccccc-3333-4333-8333-333333333333", "vencida", { vertical: "rentas", canal: "correo" })] },
+      retencion: [
+        { claseDato: "rentas_huesped_pii", vertical: "rentas", descripcion: "Nombre y contacto del huesped.", ejecuta: "plataforma", defectoDias: 90, minimoDias: 30, maximoDias: 730, diasEfectivos: 90, origen: "defecto" },
+        { claseDato: "rentas_acceso_instrucciones", vertical: "rentas", descripcion: "Sobres cifrados de acceso.", ejecuta: "plataforma", defectoDias: 90, minimoDias: 30, maximoDias: 730, diasEfectivos: 90, origen: "defecto" },
+      ],
+    };
+    stubOrg(rentas);
+    rendered = renderComponent(<PrivacidadOrganizacionPage apiBaseUrl="https://api.test" token="tok" />);
+    await esperar();
+    const texto = rendered.container.textContent ?? "";
+    expect(texto).toContain("Rentas");
+    expect(texto).toContain("Nombre y contacto del huésped (rentas)");
+    expect(texto).toContain("Instrucciones de acceso a la unidad (rentas)");
+    expect(texto).not.toContain("titular1@example.com");
+  });
+});
+
 describe("SuperAdminPrivacidadPage", () => {
   const RESUMEN_SA = {
     disponible: true,

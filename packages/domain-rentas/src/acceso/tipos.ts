@@ -43,6 +43,18 @@ export interface LiberacionPendiente {
   readonly direccionExacta: string | null;
   readonly codigoAcceso: string | null;
   readonly instrucciones: string | null;
+  /** Rn-29: la base guarda solo el sobre cifrado y no se pudo abrir (sin llave, llave invalida o sobre no autenticable). Los campos de arriba vienen vacios. */
+  readonly errorAcceso?: ErrorAccesoLiberacion;
+}
+
+export type ErrorAccesoLiberacion = "llave_no_configurada" | "llave_invalida" | "llave_version_no_disponible" | "no_descifrable";
+
+export interface ResumenBarridoCifrado {
+  /** `false`: la base aun no tiene la migracion 028 (el barrido no hizo nada). */
+  readonly disponible: boolean;
+  readonly cifradas: number;
+  /** Filas que no se cifraron porque el ida y vuelta no coincidio (no se anula nada en claro). */
+  readonly fallidas: number;
 }
 
 export interface EventoAccesoRecord {

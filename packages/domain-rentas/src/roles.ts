@@ -164,3 +164,6 @@ export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RentasVerticalRole, "owner" 
   contador: "viewer",
   limpieza: "member",
 };
+
+/** Rn-07 -- solicitudes ARCO: solo el admin de la gestora (la RLS de 028, `rentas.can_manage_privacidad`, lo vuelve a exigir). */
+export const PRIVACIDAD_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];

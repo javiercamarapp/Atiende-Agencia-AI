@@ -222,3 +222,32 @@ describe("RecepcionPage (hoteles)", () => {
     expect(rendered!.container.textContent).toContain("No hay llegadas para esta fecha.");
   });
 });
+
+describe("RecepcionPage (hoteles): Cambiar fechas (H-28)", () => {
+  it("las llegadas por llegar y los huespedes en casa ofrecen 'Cambiar fechas'; abre el dialogo con las fechas de la reserva", async () => {
+    stubFetch();
+    montar();
+    await esperar();
+    expect(botones()).toContain("Cambiar fechas");
+    await pulsar("Cambiar fechas");
+    expect((document.body.querySelector("#cf-entrada") as HTMLInputElement).value).toBe("2026-12-02");
+    expect((document.body.querySelector("#cf-salida") as HTMLInputElement).value).toBe("2026-12-05");
+    rendered!.unmount();
+    stubFetch();
+    montar();
+    await esperar();
+    pestana("En casa");
+    await esperar();
+    await pulsar("Cambiar fechas");
+    // con el huesped en casa la llegada no se edita
+    expect((document.body.querySelector("#cf-entrada") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("reservations (que no opera check-in/out) si puede cambiar fechas; housekeeping no ve la pantalla", async () => {
+    stubFetch();
+    montar({ ...CTX, role: "reservations" });
+    await esperar();
+    expect(botones()).toContain("Cambiar fechas");
+    expect(botones()).not.toContain("Check-in");
+  });
+});

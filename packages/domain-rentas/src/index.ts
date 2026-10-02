@@ -72,6 +72,7 @@ export {
   STAFF_INVITE_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
   ACCESO_HUESPED_ROLES,
+  PRIVACIDAD_ROLES,
   FINANZAS_ESCRITURA_ROLES,
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
@@ -341,12 +342,16 @@ export type { AccesoCorreoDatos } from "./emails/acceso-templates.ts";
 export { EVENTO_OUTBOX_ACCESO, MAX_LIBERACIONES_POR_CORRIDA, ejecutarLiberacionAcceso } from "./acceso/liberacion.ts";
 export type { ContextoLiberacion, ResumenLiberacionAcceso, WithLiberacionTx } from "./acceso/liberacion.ts";
 export { HORAS_ANTES_MAX, HORAS_ANTES_MIN, POLITICA_ACCESO_POR_DEFECTO } from "./acceso/tipos.ts";
-export type { EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ReservaAccesoRecord, ResultadoAcceso, ResultadoConfirmarPago } from "./acceso/tipos.ts";
+export type { ErrorAccesoLiberacion, EventoAccesoRecord, EventoBitacoraAcceso, EventoOmitidoAcceso, InstruccionAcceso, LiberacionPendiente, PoliticaAcceso, ReservaAccesoRecord, ResultadoAcceso, ResultadoConfirmarPago, ResumenBarridoCifrado } from "./acceso/tipos.ts";
 export { validarInstruccion, validarPolitica } from "./acceso/validacion.ts";
 export type { EntradaInstruccion, EntradaPolitica } from "./acceso/validacion.ts";
 export type { RentasAccesoRepository } from "./acceso/repository.ts";
 export { InMemoryRentasAccesoRepository } from "./acceso/in-memory-repository.ts";
 export { PostgresRentasAccesoRepository } from "./acceso/postgres-repository.ts";
+// Rn-29 -- cifrado en reposo de las instrucciones de acceso (AES-256-GCM en la app; llave RENTAS_ACCESS_KEY).
+export { accesoAad, createAccesoCipher, parseAccesoKey, resolverCipherAcceso } from "./acceso/cipher.ts";
+export type { AccesoCipher, CampoAcceso } from "./acceso/cipher.ts";
+export { AccesoDescifradoError, AccesoNoDisponibleError } from "./acceso/errores.ts";
 
 // ---- Rn-18 / Rn-19: reglas de comision de canal y catalogo (propiedades, unidades, propietarios) ----
 export { InMemoryRentasCatalogoRepository } from "./catalogo/in-memory-repository.ts";
@@ -391,3 +396,6 @@ export { tryEnqueueStaffInviteEmail, STAFF_INVITE_EMAIL_SAVEPOINT_NAME } from ".
 
 // ---- Rn-26: Resumen operativo (agregados sin PII) ----
 export * from "./resumen/index.ts";
+
+// ---- Rn-07: solicitudes ARCO propias de rentas (migracion 028) ----
+export * from "./privacidad/index.ts";

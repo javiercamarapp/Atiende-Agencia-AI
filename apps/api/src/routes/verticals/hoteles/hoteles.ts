@@ -8,6 +8,8 @@ import { hotelesFoliosRoutes } from "./folios.ts";
 import { hotelesPedidosFnbRoutes } from "./pedidosFnb.ts";
 import { hotelesQuotesRoutes } from "./quotes.ts";
 import { hotelesReservasRoutes } from "./reservas.ts";
+import { hotelesReservasFechasRoutes } from "./reservas-fechas.ts";
+import { hotelesListaEsperaRoutes } from "./lista-espera.ts";
 import { hotelesCfdiRoutes } from "./cfdi.ts";
 import { hotelesFraudeRoutes } from "./fraude.ts";
 import { hotelesNightAuditRoutes } from "./night-audit.ts";
@@ -46,6 +48,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesPedidosFnbRoutes(deps));
   app.route("/", hotelesQuotesRoutes(deps));
   app.route("/", hotelesReservasRoutes(deps));
+  // H-28 -- cambio de fechas con recotizacion (previsualizar + confirmar). Cuelga de /reservas/*: hereda el middleware de reservas.ts, por eso va DESPUES.
+  app.route("/", hotelesReservasFechasRoutes(deps));
+  // H-12 -- lista de espera (cola FIFO, oferta automatica al liberar noches y aceptar crea la reserva).
+  app.route("/", hotelesListaEsperaRoutes(deps));
   // Fase 5 — H5/REQ-BO-001/002 (CFDI de hospedaje) + H16-014/REQ-REC-014 (fraude interno).
   app.route("/", hotelesCfdiRoutes(deps));
   app.route("/", hotelesFraudeRoutes(deps));

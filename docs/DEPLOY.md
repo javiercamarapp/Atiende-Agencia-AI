@@ -244,6 +244,28 @@ secreto de la property (acción externa fuera de este PR). Con la 037 aplicada y
 las tablas nuevas. No hay variables de entorno nuevas ni cron nuevo: los holds vencen al consultar (y `hoteles.booking_hold_expire_due`, solo sesión
 de sistema, queda disponible para un barrido manual). Los links de pago solo se REGISTRAN: no hay cobro ni pasarela.
 
+**Hoteles H-27/H-28 (migración 038, recepción, ficha del huésped, cambio de habitación atómico) — orden de despliegue.**
+Mergear NO aplica `20240101000263_038_hoteles_recepcion_ficha_huesped.sql` a la base real. El código funciona contra la base
+vieja: el tablero de recepción, el check-in con la habitación ya asignada y el check-out usan solo tablas anteriores; asignar o cambiar
+de habitación cae al camino anterior (asignación simple con revisión de traslape en la aplicación) en el check-in y responde 503
+"no disponible aún" en `cambiar-habitacion`; la ficha del huésped y la bandera ARCO degradan a "no disponible". Orden: (1) despliega el código;
+(2) aplica la 038 (`supabase db push`; requiere 001, 005, 018, 032, 033 y 035 ya aplicadas); (3) verifica en Recepción un cambio de habitación.
+Con la 038 aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa los objetos nuevos. No hay variables de entorno
+ni cron nuevos. La función `hoteles.change_reservation_room` queda con la membresía revisada antes de bloquear la reserva solo tras la 041 (ver abajo).
+
+**Hoteles H-28 cambio de fechas y H-12 lista de espera (migración 041) — orden de despliegue.** Mergear NO aplica
+`20240101000273_041_hoteles_cambio_fechas_lista_espera.sql` a la base real. El código funciona contra la base vieja: la
+previsualización del cambio de fechas es solo lectura y funciona (el cálculo usa tarifas y tablas anteriores); confirmar un cambio de fechas
+responde 503 "no disponible aún", las lecturas de `/hoteles/:propertyId/lista-espera` responden `disponible:false` con lista vacía, las
+escrituras 503, y cancelar una reserva o acortar fechas SI intenta ofrecer lugares, pero la oferta falla dentro de un SAVEPOINT (se omite sin tumbar la transaccion) y la cancelacion sigue funcionando como
+hoy; `cambiar-habitacion` sigue funcionando (con la función de la 038). Orden: (1) despliega el código; (2) aplica la 041 (`supabase db push`;
+requiere 001, 003, 005, 025/026, 035 y 038 ya aplicadas); (3) prueba en Reservas un cambio de fechas y una entrada de lista de espera. Con la 041
+aplicada y el código viejo en producción no se rompe nada: ningún código viejo usa las tablas ni la función nuevas (la redefinición de
+`change_reservation_room` conserva firma, reglas y errores; solo revisa la membresía antes de bloquear la fila). No hay variables de
+entorno nuevas ni cron nuevo: las ofertas de la lista de espera vencen al consultar (la oferta vencida se marca `expirada` al listar o
+al intentar aceptarla). Las ofertas solo AVISAN al staff con una notificación in-app; el envío al huésped por WhatsApp no está conectado
+(depende de la integración con Meta, H-23).
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
@@ -610,3 +632,25 @@ ya usan confirmación y recordatorio de check-in). Solo reservas con un correo v
 `messaging_outbox.payload`, que hoy no se purga tras el envío (es una tabla sin acceso para
 `authenticated`, solo la función de sistema y `service_role`); cambiar el código de la
 cerradura entre estancias sigue siendo la mitigación real.
+
+## Rentas — privacidad (Rn-29 cifrado del acceso, Rn-30 retención, Rn-07 ARCO): orden de despliegue
+
+Migración única `packages/domain-rentas/migrations/028_rentas_privacidad_cifrado_arco_retencion.sql` (espejo
+`supabase/migrations/20240101000278_028_rentas_privacidad_cifrado_arco_retencion.sql`). Es aditiva, **requiere** la migración
+`packages/db/migrations/0036_plataforma_arco_retencion_aviso.sql` (espejo `...000238_...`) ya aplicada, y **redefine dos funciones de
+core** (`core._arco_union()` y `core.system_run_retention_purge(...)`) agregando solo las ramas de rentas. Antes de mergear nada: el código
+sale a Vercel y es seguro contra la base sin migrar (rutas con `disponible: false` / 503 explícito, nunca 500).
+
+1. Mergear el PR.
+2. Crear la llave en Vercel (Production y Preview de la API): `openssl rand -base64 32` → `RENTAS_ACCESS_KEY` (opcional
+   `RENTAS_ACCESS_KEY_VERSION`, por defecto 1). Guárdala además en un gestor de secretos con respaldo: perderla vuelve ilegibles las
+   instrucciones ya cifradas. Sin llave, leer o guardar instrucciones de acceso responde 503 "no disponible: falta RENTAS_ACCESS_KEY".
+3. Aplicar la migración 028 a la base real. Hasta aquí, nada cambia para el staff.
+4. Cifrar lo que ya existe en texto plano (idempotente; repetir hasta `ok: true` y `cifradas: 0`; `fallidas > 0` o `ok: false` indican filas que siguen en claro):
+   `curl -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" "https://<api>/internal/rentas/acceso-cifrar?limite=50"`.
+   La columna en claro solo se anula después de cifrar y verificar el ida y vuelta. No está en `vercel.json`.
+5. Retención (Rn-30): las clases `rentas_huesped_pii` y `rentas_acceso_instrucciones` (90 días por defecto, rango 30 a 730) se purgan con
+   el endpoint interno de PL-13. Primero **simulación** (sin `ejecutar=1`) para una organización y revisar `core.purge_run_log`; el cron
+   de purga no se agenda (decisión de costo). Ver `docs/PRIVACIDAD-PLATAFORMA.md`.
+6. ARCO (Rn-07): el admin de la gestora registra y atiende solicitudes en `/rentas/<org>/privacidad`; la vista de toda la organización
+   está en `/rentas/<org>/privacidad-organizacion`.
