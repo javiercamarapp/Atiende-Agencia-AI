@@ -87,7 +87,7 @@ interface ExpedienteApprovalBody {
   readonly stage?: unknown;
 }
 
-interface CierreContext {
+export interface CierreContext {
   readonly organizationId: string;
   readonly tenderId: string;
   readonly proposalId: string;
@@ -95,7 +95,7 @@ interface CierreContext {
 }
 
 /** Reconstruye el `AssembleInput` completo contra el estado VIVO del expediente — usado tanto por `assemble` como por la re-derivación de `latest`/`download` (AE-14), para que ambos caminos apliquen exactamente la misma lógica. */
-async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreContext): Promise<AssembleInput> {
+export async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreContext): Promise<AssembleInput> {
   const sections = await repo.loadProposalSectionsAsDocuments(ctx.organizationId, ctx.proposalId);
   const documents: PackageDocumentInput[] = sections.map((s) => {
     // Una sección (económica o técnica, Fase 2 pieza 3) cuyo contenido

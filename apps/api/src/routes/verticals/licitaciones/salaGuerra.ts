@@ -16,11 +16,15 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership, ApiError } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { emitirNotificacion, isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import {
   DECISION_ROLES,
   DraftAgentGenerationFailedError,
   DraftAgentNoProposalError,
   DraftAgentRoleNotAllowedError,
+  BITACORA_DEFAULT_LIMIT,
+  BITACORA_FUENTES,
+  BITACORA_MAX_LIMIT,
   GO_NO_GO_ROLES,
   GuardrailBlockedError,
   JuntaQuestionDraftAgent,
@@ -28,11 +32,19 @@ import {
   JuntaQuestionRejectedError,
   SalaGuerraNotAvailableError,
   SalaGuerraValidationError,
+  PackageAssembler,
   WRITE_ROLES,
   assertQuestionEditable,
   assertQuestionTransition,
+  buildBitacoraEventos,
   buildJuntaSummary,
   buildWarRoomBoard,
+  evaluarGateSalaGuerra,
+  evaluateExpedienteStages,
+  isBitacoraFuente,
+  paginarBitacora,
+  resolveGateTimeZone,
+  verifyZipAgainstStoredManifest,
   findSimilarQuestions,
   parseJuntaConfig,
   parseQuestionCapture,
@@ -46,11 +58,12 @@ import {
   suggestQuestionPriority,
   describirPlazo,
 } from "@atiende/domain-licitaciones";
-import type { JuntaQuestionRecord, LicitacionesRole, SalaGuerraRepository, WarRoomItemRecord } from "@atiende/domain-licitaciones";
+import type { GateApprovalsInput, GatePackageInput, GateZipCheck, JuntaQuestionRecord, LicitacionesRole, SalaGuerraRepository, TenderAuditLogEntry, WarRoomItemRecord } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveCalendarioFor } from "./calendario.ts";
+import { buildAssembleInput } from "./cierre.ts";
 
 type Ctx = Context<CoreAuthHonoEnv>;
 
@@ -103,6 +116,8 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     importRequirements: `${t}/sala-guerra/items/import-requirements`,
     item: `${t}/sala-guerra/items/:itemId{${UUID_PARAM}}`,
     entries: `${t}/sala-guerra/entries`,
+    gate: `${t}/sala-guerra/gate`,
+    bitacora: `${t}/bitacora`,
     junta: `${t}/junta`,
     juntaConfig: `${t}/junta/config`,
     questions: `${t}/junta/questions`,
@@ -258,6 +273,145 @@ export function licitacionesSalaGuerraRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     } catch (err) {
       throw mapSalaError(err);
     }
+  });
+
+  // ============================================================ L-25: gate final
+
+  /**
+   * Gate final "anti-desechamiento" (REQ-040): junta checklist VIVO, paquete (re-derivado contra el expediente
+   * vivo, AE-14), hash del ZIP guardado contra el manifiesto guardado, doble aprobacion (L-26) y holgura al cierre.
+   * Solo lectura para cualquier miembro; NO presenta nada ante ningun portal. Unico efecto lateral: el aviso in-app
+   * (deduplicado por convocatoria, en SAVEPOINT, nunca tumba la lectura) cuando faltan menos de 24 h y no esta listo.
+   */
+  app.get(paths.gate, async (c) => {
+    const organizationId = c.get("organizationId");
+    const tenderId = c.req.param("tenderId")!;
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const tender = await requireTender(c);
+    const nowIso = new Date().toISOString();
+    const zonaHoraria = resolveGateTimeZone((await repo.findTenantConfig(organizationId)).timezone);
+    const proposal = await repo.findProposal(organizationId, tenderId);
+
+    let checklist = null as Awaited<ReturnType<typeof buildAssembleInput>>["checklist"] | null;
+    let paquete: GatePackageInput | null = null;
+    let zip: GateZipCheck | null = null;
+    let aprobaciones: GateApprovalsInput = { mode: "sin_propuesta", complete: false, missing: [] };
+    let presentado = false;
+
+    if (proposal) {
+      const input = await buildAssembleInput(repo, { organizationId, tenderId, proposalId: proposal.id, correlationId: null });
+      checklist = input.checklist;
+      const snapshot = await repo.listExpedienteStageApprovals(organizationId, proposal.id);
+      if (snapshot.mode === "doble") {
+        const evaluation = evaluateExpedienteStages(snapshot.approvals, input.currentInputsHash.hash);
+        aprobaciones = { mode: "doble", complete: evaluation.complete, missing: evaluation.missing, sameApprover: evaluation.sameApprover };
+      } else {
+        // Base sin la migracion 033: la aprobacion unica de siempre (el gate lo declara en ambar).
+        aprobaciones = { mode: "legacy", complete: input.approvals.length > 0, missing: input.approvals.length > 0 ? [] : ["tecnica_legal", "economica"] };
+      }
+      presentado = (await repo.findSubmission(organizationId, proposal.id)) !== null;
+
+      const stored = await repo.findLatestManifest(organizationId, proposal.id);
+      if (stored) {
+        const fresh = new PackageAssembler().buildManifest(input);
+        paquete = { generatedAt: stored.generatedAt, storedStatus: stored.status, vigenteStatus: fresh.status, draftReasons: fresh.draftReasons };
+        if (stored.storageRef) {
+          // La lectura del blob corre en SAVEPOINT: un error de Postgres (p. ej. 22P02 por un storage_ref legacy que
+          // no es uuid, o 57014 por timeout) no debe dejar abortada la transaccion compartida del request, porque
+          // despues se sigue usando la sesion (aviso in-app) y el COMMIT. Cualquier fallo de lectura es "ilegible".
+          const storageRef = stored.storageRef;
+          const bytes = await runWithSavepointFallback<Uint8Array | null>({
+            session: c.get("db"),
+            primary: () => repo.readManifestZip(storageRef),
+            isRecoverable: () => true,
+            fallback: async () => null,
+          });
+          try {
+            zip = bytes ? await verifyZipAgainstStoredManifest(bytes, { status: stored.status, manifest: stored.manifest }) : { state: "ilegible" };
+          } catch {
+            zip = { state: "ilegible" };
+          }
+        }
+      }
+    }
+
+    const gate = evaluarGateSalaGuerra({ checklist, paquete, zip, aprobaciones, fechaCierre: tender.submissionDeadline, ahora: nowIso, zonaHoraria, presentado });
+
+    let alerta: "emitida" | "sin_nuevas" | "no_disponible" | "error" | "no_aplica" = "no_aplica";
+    if (gate.alerta24h) {
+      // Sin PII: el texto sale del catalogo; la clave de dedupe es solo el id de la convocatoria.
+      const emision = await emitirNotificacion(c.get("db"), { evento: "licitaciones.sala_guerra.paquete_no_listo", organizationId, clave: tenderId, entidadTipo: "convocatoria", entidadId: tenderId });
+      alerta = emision.estado === "emitida" || emision.estado === "sin_nuevas" || emision.estado === "no_disponible" ? emision.estado : "error";
+    }
+
+    return c.json({
+      now: nowIso,
+      tender: { id: tender.id, title: tender.title, submissionDeadline: tender.submissionDeadline },
+      proposalId: proposal?.id ?? null,
+      presentado,
+      gate,
+      alerta,
+    });
+  });
+
+  // ============================================================ L-29: bitacora
+
+  /**
+   * Bitacora visible de la convocatoria: une en orden temporal eventos que ya existen (auditoria de alta/edicion,
+   * anotaciones de la sala de guerra, go/no-go, aprobaciones vigentes y presentacion). Solo lectura, paginada,
+   * filtrable; las filas son de la organizacion del token (otra organizacion recibe 404, nunca filas ajenas).
+   * Sin ids ni correos de otras personas. Base sin migrar: cada fuente ausente aporta una lista vacia.
+   */
+  app.get(paths.bitacora, async (c) => {
+    const organizationId = c.get("organizationId");
+    const tenderId = c.req.param("tenderId")!;
+    const repo = deps.licitacionesRepo(c.get("db"));
+    await requireTender(c);
+
+    const q = c.req.query();
+    if (q.fuente !== undefined && !isBitacoraFuente(q.fuente)) throw Errors.validation(`fuente: se esperaba ${BITACORA_FUENTES.join(" | ")}.`);
+    const fecha = (name: "desde" | "hasta"): string | undefined => {
+      const raw = q[name];
+      if (raw === undefined || raw === "") return undefined;
+      if (Number.isNaN(Date.parse(raw))) throw Errors.validation(`${name}: fecha invalida (ISO 8601).`);
+      return new Date(raw).toISOString();
+    };
+    const entero = (name: "limit" | "offset", def: number, min: number, max: number): number => {
+      const raw = q[name];
+      if (raw === undefined || raw === "") return def;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < min || n > max) throw Errors.validation(`${name}: se esperaba un entero entre ${min} y ${max}.`);
+      return n;
+    };
+    const filtros = { ...(q.fuente ? { fuente: q.fuente as (typeof BITACORA_FUENTES)[number] } : {}), desde: fecha("desde"), hasta: fecha("hasta") };
+    const limit = entero("limit", BITACORA_DEFAULT_LIMIT, 1, BITACORA_MAX_LIMIT);
+    const offset = entero("offset", 0, 0, 100_000);
+
+    const sala = salaFor(c);
+    const entradasSala = await readOrUnavailable(() => sala.listEntries(organizationId, tenderId, 500), []);
+    const auditoria = await runWithSavepointFallback<TenderAuditLogEntry[]>({
+      session: c.get("db"),
+      primary: async () => {
+        // La auditoria ya es paginada en el repositorio (orden total, migracion 026): se recorre por paginas con tope.
+        const todas: TenderAuditLogEntry[] = [];
+        let next: number | null = 0;
+        for (let i = 0; next !== null && i < 20; i += 1) {
+          const page = await repo.listTenderAuditLogPage(organizationId, tenderId, { limit: 100, offset: next });
+          todas.push(...page.items);
+          next = page.nextOffset;
+        }
+        return todas;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => [],
+    });
+    const goNoGo = await repo.listGoNoGoDecisions(organizationId, tenderId);
+    const proposal = await repo.findProposal(organizationId, tenderId);
+    const aprobaciones = proposal ? (await repo.listExpedienteStageApprovals(organizationId, proposal.id)).approvals : [];
+    const presentacion = proposal ? await repo.findSubmission(organizationId, proposal.id) : null;
+
+    const eventos = buildBitacoraEventos({ auditoria, salaGuerra: entradasSala.value, goNoGo, aprobaciones, presentacion }, c.get("userId"));
+    return c.json({ available: entradasSala.available, ...paginarBitacora(eventos, filtros, { limit, offset }) });
   });
 
   // ============================================================ junta de aclaraciones
