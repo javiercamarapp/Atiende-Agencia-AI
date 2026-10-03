@@ -152,7 +152,7 @@ describe("SQL y parametros", () => {
     await repo.remove(SCOPE, ID);
     for (const q of seen) {
       expect(q.sql).toMatch(/user_id = \$\d::uuid/);
-      expect(q.sql).toMatch(/organization_id = \$\d::uuid/);
+      expect(q.sql).toMatch(/organization_id is not distinct from \$\d::uuid/);
       expect(q.sql).toMatch(/vertical = \$\d::text/);
       expect(q.params).toContain(SCOPE.userId);
       expect(q.params).toContain(SCOPE.organizationId);
@@ -319,7 +319,7 @@ describe("CHAT-14: cargarFuenteReporte (fuente de un reporte PDF) contra la base
     }) as typeof session.query;
     const out = await new PostgresConversacionesRepository(session).cargarFuenteReporte(SCOPE, ID, 2);
     expect(out).toEqual({ seq: 2, toolCalls: [{ tool: "ocupacion_adr_revpar", args: { periodo: "hoy" } }] });
-    expect(vistas[0]!.sql).toMatch(/c\.user_id = \$2::uuid and c\.organization_id = \$3::uuid and c\.vertical = \$4::text/);
+    expect(vistas[0]!.sql).toMatch(/c\.user_id = \$2::uuid and c\.organization_id is not distinct from \$3::uuid and c\.vertical = \$4::text/);
     expect(vistas[0]!.params).toEqual([ID, SCOPE.userId, SCOPE.organizationId, SCOPE.vertical]);
     expect(vistas[1]!.sql).toMatch(/m\.role = 'assistant'/);
     expect(vistas[1]!.params).toEqual([ID, 2]);

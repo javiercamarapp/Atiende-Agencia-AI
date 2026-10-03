@@ -1,7 +1,7 @@
 // Cableado del Copiloto de superadmin (CHAT-16) en `AppDeps.superadminCopiloto`. Opcional: sin el, las rutas responden "no activado" (nunca 500).
 //
 // GASTO PROPIO (decision documentada en la migracion 0048): el Copiloto de plataforma NO pasa por el gateway compartido de los tenants (su registro de
-// uso, `core.llm_usage_daily`, y sus topes por organizacion exigen una organizacion real y su CHECK de vertical admite solo las 6 de clientes). Usa un
+// uso, `core.llm_usage_daily`, y sus topes por organizacion exigen una organizacion real: `organization_id` es obligatorio). Usa un
 // gateway DEDICADO (`buildSuperadminCopilotoLlmGateway`, con su propio circuit breaker, su tope de corrida/dia en memoria y el interruptor de
 // plataforma) y su gasto REAL queda en la fila de resumen de cada turno de `core.data_chat_query_log` (vertical 'plataforma'). El tope mensual propio se
 // compara contra `core.get_copiloto_plataforma_gasto_mes` y, ademas, contra un acumulador en memoria de la instancia (cubre la base sin migrar y la ventana

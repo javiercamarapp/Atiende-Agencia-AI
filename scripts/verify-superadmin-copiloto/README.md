@@ -19,6 +19,6 @@ Cubre el Copiloto de superadmin (CHAT-16):
 - **Conversación de plataforma** (`core.append_data_chat_turn`, ya existente): scope/vertical plataforma sin organización, solo el autor la ve
   (ni otro superadmin ni un owner), no se continúa una ajena (`P0002`), sin propiedad (`22023`), solo superadmin (`42501`).
 - **Estructura**: `security definer` con `search_path` fijo, sin EXECUTE para `anon`/`PUBLIC`, RLS activa sin policy `true`, y la decisión
-  documentada de que `core.llm_usage_daily` conserva su CHECK de 6 verticales (el gasto del Copiloto de plataforma se mide en la bitácora).
+  documentada de que `core.llm_usage_daily` conserva `organization_id` obligatorio y no se le agrega ningún CHECK nuevo (el gasto del Copiloto de plataforma se mide en la bitácora).
 
 Manual: `scripts/verify-superadmin-copiloto/run.sh` (initdb/pg_ctl local).

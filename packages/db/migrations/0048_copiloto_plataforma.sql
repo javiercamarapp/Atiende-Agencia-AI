@@ -13,11 +13,11 @@
 --   5. core.agent_definition: el Copiloto de superadmin (`superadmin:copiloto`, ahora con interruptor de plataforma) entra al panel de agentes.
 --
 -- DECISION: como se mide el gasto del rol `superadmin:copiloto`.
---   core.llm_usage_daily (0010) exige `organization_id uuid not null references core.organization` y su CHECK de vertical admite solo
---   las 6 verticales de clientes; core.llm_org_budget / core.reserve_llm_monthly_budget topan por ORGANIZACION. El gasto del Copiloto de
---   superadmin es gasto de PLATAFORMA, no de un cliente: extender esas tablas obligaria a inventar una organizacion falsa (el mismo
---   criterio con el que `resumen-diario` ya lo rechazo) y a contaminar los reportes por organizacion (consola, CFO, P&L).
---   Por eso NO se toca llm_usage_daily ni su CHECK. El costo REAL de cada turno (lo que reporta el proveedor) queda en la fila de resumen
+--   core.llm_usage_daily (0010) exige `organization_id uuid not null references core.organization` (su CHECK de vertical ya admite 'superadmin' y
+--   'plataforma' desde 0040, pero la organizacion sigue siendo obligatoria) y core.llm_org_budget / core.reserve_llm_monthly_budget topan por
+--   ORGANIZACION. El gasto del Copiloto de superadmin es gasto de PLATAFORMA, no de un cliente: registrarlo ahi obligaria a inventar una organizacion
+--   falsa (el mismo criterio con el que `resumen-diario` ya lo rechazo) y a contaminar los reportes por organizacion (consola, CFO, P&L).
+--   Por eso NO se toca llm_usage_daily (ni su CHECK ni la obligatoriedad de la organizacion). El costo REAL de cada turno (lo que reporta el proveedor) queda en la fila de resumen
 --   del turno de core.data_chat_query_log (vertical = 'plataforma', costo_micro_usd, modelo, rol = 'superadmin:copiloto'), que es la fuente
 --   unica del gasto del Copiloto: el tope mensual propio se compara contra core.get_copiloto_plataforma_gasto_mes y el reporte contra
 --   core.get_copiloto_uso_for_superadmin. El tope de plataforma global (core.llm_platform_budget) sigue protegiendo el gasto total de los

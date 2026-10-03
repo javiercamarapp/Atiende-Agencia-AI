@@ -342,10 +342,10 @@ where n.nspname = 'core' and c.relname = 'data_chat_query_log' and c.relrowsecur
   and not exists (select 1 from pg_policies where schemaname = 'core' and tablename = 'data_chat_query_log' and (qual = 'true' or with_check = 'true'));
 rollback;
 
-\echo 'core.llm_usage_daily NO se toco: ningun CHECK suyo menciona plataforma (decision documentada: el gasto del Copiloto de plataforma se mide en la bitacora)'
+\echo 'core.llm_usage_daily NO se toco: organization_id sigue siendo obligatorio (decision documentada: el gasto del Copiloto de plataforma no entra ahi, se mide en la bitacora)'
 begin;
-select count(*)::int as llm_usage_sin_plataforma_deberia_ser_0 from pg_constraint
-where conrelid = 'core.llm_usage_daily'::regclass and pg_get_constraintdef(oid) like '%plataforma%';
+select count(*)::int as llm_usage_org_obligatoria_deberia_ser_1 from information_schema.columns
+where table_schema = 'core' and table_name = 'llm_usage_daily' and column_name = 'organization_id' and is_nullable = 'NO';
 rollback;
 
 \echo 'el Copiloto de superadmin queda en el catalogo del panel de agentes (una sola fila, estado vivo, vertical plataforma)'
