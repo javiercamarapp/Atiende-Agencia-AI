@@ -52,6 +52,7 @@ interface Estado {
 function stub(e: Estado = {}) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const metodo = init?.method ?? "GET";
+    if (url.endsWith("/whatsapp-plantillas")) return json({ disponible: e.disponible ?? true, estados: ["borrador", "enviada", "aprobada", "rechazada"], eventos: [] });
     if (url.endsWith("/opciones")) return json(OPCIONES);
     if (url.includes("/historial")) return json({ disponible: e.disponible ?? true, entradas: e.historial ?? [] });
     if (url.endsWith("/vista-previa")) {

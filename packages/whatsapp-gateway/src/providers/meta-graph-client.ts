@@ -73,7 +73,7 @@ function buildTemplateBody(to: string, template: OutboundTemplate): Record<strin
 }
 
 function buildRequestBody(message: OutboundWhatsAppMessagePayload, approvedTemplates: ReadonlySet<string>): Record<string, unknown> {
-  if (message.template && approvedTemplates.has(message.template.name)) {
+  if (message.template && (message.templateApproved === true || approvedTemplates.has(message.template.name))) {
     return buildTemplateBody(message.to, message.template);
   }
   if (message.buttons && message.buttons.length > 0) {

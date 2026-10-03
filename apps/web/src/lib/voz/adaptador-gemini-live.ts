@@ -6,7 +6,7 @@
 // voz, el saludo y el tono del agente configurado. El protocolo de mensajes sigue la documentacion publica de la Live API y se
 // prueba aqui contra un WebSocket falso; la primera prueba con credencial real lo confirma (docs/VOZ-PM.md).
 import type { LineaTranscripcion, OpcionesIniciarSesionVoz } from "@atiende/ui";
-import type { SesionPreviewVoz } from "../lib/voz-client.ts";
+import type { SesionPreviewVoz } from "./tipos.ts";
 import type { AdaptadorVoz, CallbacksAdaptador, FabricaAdaptador } from "./adaptador.ts";
 import { aPcm16Base64, dePcm16Base64, nivelRms, remuestrear, TASA_ENTRADA_HZ, TASA_SALIDA_HZ } from "./audio-pcm.ts";
 

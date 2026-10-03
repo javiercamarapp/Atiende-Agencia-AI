@@ -360,6 +360,12 @@ export type { AppointmentWhatsappEvent, AppointmentWhatsappResult } from "./what
 export { ALL_CITAS_DATA_CHAT_SQL, buildCitasDataChatCatalog, buildCitasDataChatTools, CitasDataChatUnavailableError, PostgresCitasDataChatReader } from "./data-chat/index.ts";
 export type { CitasDataChatReader, CitasDataChatWindow } from "./data-chat/index.ts";
 
+// PL-31 -- ventana de 24 h de Meta y plantillas HSM por organizacion para los avisos proactivos.
+export { VENTANA_SEGURA_MS, armarParametrosPlantilla, decidirEnvioProactivo, encolarCorreoListaEspera, variantesTelefonoEntrante } from "./whatsapp/proactivo.ts";
+export type { DecisionProactivo, PlantillaParaEncolar, PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
+export { EVENTOS_PLANTILLA_CITAS, PLANTILLA_ESTADOS, PLANTILLA_IDIOMA_RE, PLANTILLA_MAX_VARIABLES, PLANTILLA_NOMBRE_RE, eventoPlantillaCitas, validarPlantillaWhatsapp } from "./whatsapp/plantillas.ts";
+export type { EstadoPlantillaWhatsapp, EventoPlantillaCitas, PlantillaWhatsappInput, PlantillaWhatsappRecord, ResultadoValidacionPlantilla } from "./whatsapp/plantillas.ts";
+
 // ---- C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (migracion 031) ----
 export {
   ConversacionesConflictoError,

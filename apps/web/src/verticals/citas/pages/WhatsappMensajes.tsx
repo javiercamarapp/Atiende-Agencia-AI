@@ -18,6 +18,7 @@ import {
 } from "../lib/whatsapp-mensajes-client.ts";
 import type { FormMensajes, HistorialMensajesEntradaWire, MensajeKind, MensajesWire, OpcionesMensajesWire, VistaPreviaWire } from "../lib/whatsapp-mensajes-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
+import { PlantillasWhatsappSeccion } from "./PlantillasWhatsapp.tsx";
 
 const ROLES = new Set(["owner", "admin"]);
 const HORAS_INICIO = Array.from({ length: 24 }, (_, h) => h);
@@ -321,6 +322,7 @@ export function WhatsappMensajesPage({ apiBaseUrl, token, propertyId, role }: Ci
           </CardContent>
         </Card>
       )}
+      {puede && <PlantillasWhatsappSeccion apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />}
     </div>
   );
 }

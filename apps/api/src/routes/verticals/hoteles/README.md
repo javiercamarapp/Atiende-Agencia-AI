@@ -46,14 +46,16 @@ Toda la lógica de negocio vive en `@atiende/domain-hoteles` — ninguna ruta aq
 SQL directamente. `admin`/`backoffice` de superadmin quedan reservados para una fase
 posterior (ver diseño Fase 1 hoteles §6).
 
-## Fase 2 — agente de voz (ElevenLabs) + agente de WhatsApp con LLM real
+## Fase 2 — agente de voz (ahora sobre `@atiende/voice-core`, sin ElevenLabs) + agente de WhatsApp con LLM real
 
 Montadas directamente en `apps/api/src/app.ts` (no dentro de `hotelesRoutes`), mismo
 criterio que restaurantes: son superficies sin sesión de staff, distintas de los 3
 flujos de Fase 1.
 
-- `voice-tools.ts` — Server Tools HTTP del agente de voz de ElevenLabs, **sin**
-  `authMiddleware`/`originAllowed` (ElevenLabs no manda `Origin`/`Authorization`):
+- `voice-tools.ts` — rutas HTTP del agente de voz de hoteles que ejecuta el worker de `voice-core` (antes, Server Tools de ElevenLabs), las de tool **sin**
+  `authMiddleware`/`originAllowed` (el worker no manda `Origin`/`Authorization`) y las de staff con sesión (`ADMIN_ROLES`):
+  - `POST /v1/hoteles/:propertyId/voz/reservas/:herramienta` — las 6 herramientas de reservas (H-25), las mismas que WhatsApp.
+  - `GET /hoteles/:propertyId/voz/estado` y `POST /hoteles/:propertyId/voz/preview/sesion` — estado honesto de la escalera y sesión de vista previa.
   - `POST /v1/hoteles/:propertyId/voz/tickets-fnb` (`crear_ticket_huesped_fnb`).
   - `POST /v1/hoteles/:propertyId/voz/contacto-no-operativo`
     (`registrar_contacto_no_operativo`).
