@@ -168,13 +168,14 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
 
                   {conMagicLink && (
                     <form onSubmit={enviarMagicLink} className={`login-entra [--retraso:280ms] flex flex-col gap-3 ${conGoogle ? "" : "mt-8"}`} noValidate>
-                      <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
+                      <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined}>
                         {(campo) => (
                           <input
                             {...campo}
                             type="email"
                             placeholder={placeholderCorreo}
                             autoComplete="email"
+                        aria-required="true"
                             value={correo}
                             onChange={(e) => setCorreo(e.target.value)}
                             className="login-campo"

@@ -63,8 +63,8 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
       )}
 
       <form onSubmit={enviar} className="flex flex-col gap-3" noValidate>
-        <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
-          {(campo) => <input {...campo} type="email" placeholder="tu@negocio.com" autoComplete="email" value={correo} onChange={(e) => setCorreo(e.target.value)} className="login-campo" />}
+        <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined}>
+          {(campo) => <input {...campo} type="email" placeholder="tu@negocio.com" autoComplete="email" aria-required="true" value={correo} onChange={(e) => setCorreo(e.target.value)} className="login-campo" />}
         </FormField>
         <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
           {enviando ? "Enviando…" : "Enviarme el enlace"}
