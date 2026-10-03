@@ -148,6 +148,8 @@ export interface AppDeps {
   /** PM-C5: espera real (en ms) entre las dos fases del webhook de WhatsApp cuando el agente tiene `replyDebounceSeconds` > 0. OPCIONAL: sin
    * ella se usa `setTimeout`; los tests inyectan una espera controlada. Con la espera apagada (lo normal) nunca se llama. */
   readonly esperarRafaga?: (ms: number) => Promise<void>;
+  /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
+  readonly relojMs?: () => number;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con

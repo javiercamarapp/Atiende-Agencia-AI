@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -59,6 +59,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       return c.text("Invalid signature", 401);
     }
 
+    const inicioMs = (deps.relojMs ?? Date.now)();
     let payload: unknown;
     try {
       payload = JSON.parse(new TextDecoder().decode(rawBody));
@@ -122,7 +123,11 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.baja_confirmada", `baja-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberIdOfBatch, body: BAJA_CONFIRMADA_TEXTO, transaccional: true }),
           });
           if (baja.manejada) continue;
-          const esperaSegundos = (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0;
+          // La lectura de la config va en savepoint: un error de Postgres aqui no aborta la transaccion del lote ni lo tumba con 500; solo ese mensaje
+          // cae al camino sin espera (el de siempre).
+          const esperaSegundos = await repo
+            .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
+            .catch(() => 0);
           if (esperaSegundos > 0) {
             const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body });
             if (recepcion.estado === "responder") {
@@ -184,27 +189,43 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     // llego a cada telefono durante ella.
     if (diferidos.length > 0) {
       const esperar = deps.esperarRafaga ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-      await esperar(Math.max(...diferidos.map((d) => d.esperaSegundos)) * 1000);
-      const reintento = await deps.engine.withAppSession({ userId: null }, async (db) => {
-        const repo = deps.restaurantesRepo(db);
-        let hayReintento = false;
-        for (const d of diferidos) {
-          const outcome = await responderTrasEspera(repo, deps.turnHandler, {
-            organizationId: d.organizationId,
-            messageId: d.messageId,
-            phone: d.phone,
-            phoneNumberId: d.phoneNumberId,
-            propertyId: d.propertyId,
-            ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
-            handoffGate: deps.handoffGate?.(db),
+      // La espera se recorta para que la fase B (turnos del LLM) todavia quepa en la vida de la funcion; sin tiempo, se responde de inmediato.
+      const esperaMs = esperaEfectivaMs(Math.max(...diferidos.map((d) => d.esperaSegundos)), (deps.relojMs ?? Date.now)() - inicioMs);
+      if (esperaMs > 0) await esperar(esperaMs);
+      try {
+        const reintento = await deps.engine.withAppSession({ userId: null }, async (db) => {
+          const repo = deps.restaurantesRepo(db);
+          let hayReintento = false;
+          for (const d of diferidos) {
+            const outcome = await responderTrasEspera(repo, deps.turnHandler, {
+              organizationId: d.organizationId,
+              messageId: d.messageId,
+              phone: d.phone,
+              phoneNumberId: d.phoneNumberId,
+              propertyId: d.propertyId,
+              ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+              handoffGate: deps.handoffGate?.(db),
+            });
+            if (outcome.retryable) hayReintento = true;
+          }
+          await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
+          await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+          return hayReintento;
+        });
+        if (reintento) hadRetryableFailure = true;
+      } catch {
+        // La transaccion de la fase B no pudo confirmar (su `failed` se revirtio con ella): se suelta el turno que confirmo la fase A para que
+        // Meta reintente y los mensajes siguientes no se absorban sin respuesta.
+        hadRetryableFailure = true;
+        try {
+          await deps.engine.withAppSession({ userId: null }, async (db) => {
+            const repo = deps.restaurantesRepo(db);
+            for (const d of diferidos) await liberarTurnoTrasFalloDeFaseB(repo, { organizationId: d.organizationId, messageId: d.messageId, phone: d.phone });
           });
-          if (outcome.retryable) hayReintento = true;
+        } catch {
+          // Sin base no se puede liberar: manda el vencimiento del lease (45 s).
         }
-        await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
-        await triggerRestaurantesEmailDispatchInline(deps, db, repo);
-        return hayReintento;
-      });
-      if (reintento) hadRetryableFailure = true;
+      }
     }
 
     // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los

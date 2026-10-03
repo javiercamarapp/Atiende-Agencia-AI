@@ -182,15 +182,39 @@ export async function handleInboundWhatsAppMessage(
 //   Fase B (`responderTrasEspera`, transaccion nueva): relee el historial COMPLETO, contesta todo lo pendiente en UN solo turno y,
 //     antes de soltar el turno, revisa si llego algo mas (hasta `MAX_PASADAS_RAFAGA` turnos; despues de soltarlo lo revisa una vez
 //     mas y, si hay algo sin contestar, vuelve a tomar el turno o deja que lo tome el mensaje nuevo).
-// El camino sin espera (`handleInboundWhatsAppMessage`) NO cambia.
+// El camino sin espera (`handleInboundWhatsAppMessage`) conserva su logica; en el webhook solo se agrega la lectura de la config del agente (en savepoint) y el pedido reciente del cliente.
 // Una correccion ("mejor 3", "perdon, son 2") llega como un mensaje mas: el prompt indica tomar el ultimo dato. WhatsApp Cloud API no
 // avisa por webhook cuando un cliente EDITA un mensaje ya enviado.
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** Turnos de respuesta que una misma fase B puede dar (cada uno contesta lo que llego durante el anterior). */
 export const MAX_PASADAS_RAFAGA = 3;
-/** Vigencia del turno de responder: espera maxima (30 s) + varios turnos del agente. Tope del SQL: 300. */
-const LEASE_RAFAGA_SEGUNDOS = 150;
+/** Vigencia del turno de responder. La fase A ya la CONFIRMO: si la funcion muere (timeout de 30 s) el turno queda tomado hasta que venza, y mientras tanto los
+ * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
+ * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
+export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
+export const FUNCION_MAX_MS = 30_000;
+/** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
+export const RESERVA_FASE_B_MS = 15_000;
+
+/** Espera real de la rafaga: la configurada, recortada para que despues de esperar todavia quepa la fase B; 0 = no hay tiempo, se responde ya. */
+export function esperaEfectivaMs(esperaSegundos: number, transcurridoMs: number): number {
+  const disponible = FUNCION_MAX_MS - RESERVA_FASE_B_MS - Math.max(0, transcurridoMs);
+  return Math.max(0, Math.min(esperaSegundos * 1000, disponible));
+}
+
+/**
+ * La fase B fallo de forma detectable (la transaccion no pudo confirmar): su `failed` quedo revertido con ella y el mensaje seguia en
+ * 'processing' con el turno tomado. En una transaccion NUEVA se marca `failed` y se suelta el turno para que el reintento de Meta lo reclame
+ * y los mensajes que lleguen no se absorban sin respuesta. Si la funcion muere por timeout esto no corre: ahi manda el vencimiento del lease.
+ */
+export async function liberarTurnoTrasFalloDeFaseB(
+  repo: RestaurantesRepository,
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string },
+): Promise<void> {
+  await repo.finishWhatsAppMessage(args.organizationId, args.messageId, actorHash(args.phone), "failed", "FaseBFallo");
+}
 
 export type RecepcionConEspera =
   /** Ya reclamado o procesado (Meta entrega al menos una vez): nada que hacer. */
