@@ -1,7 +1,7 @@
 // Fixtures de licitaciones (Constructora Peninsular). Forma = apps/web/src/verticals/licitaciones/lib/*-client.ts.
 import { conStatus, crudo, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
-import { CODIGO_STEP_UP, estadoCiclo, rutasCiclo } from "./licitaciones-ciclo.ts";
+import { CODIGO_STEP_UP, ROLES_DECISION, estadoCiclo, rutasCiclo } from "./licitaciones-ciclo.ts";
 import type { Ruta } from "../tipos.ts";
 
 const PROP = propiedadDe("licitaciones");
@@ -146,7 +146,7 @@ const rutasCierre: readonly Ruta[] = [
   {
     metodo: "POST",
     patron: `${L}/tenders/:tid/expediente/approval`,
-    roles: ["owner", "admin"],
+    roles: ROLES_DECISION,
     manejador: (p) => {
       const stage = ((p.cuerpo ?? {}) as { stage?: string }).stage;
       if (stage !== "tecnica_legal" && stage !== "economica") return fallo(400, "stage requerido: tecnica_legal | economica.");
