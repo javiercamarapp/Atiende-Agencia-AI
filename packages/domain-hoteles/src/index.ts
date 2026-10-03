@@ -219,7 +219,7 @@ export {
   TOOLS as WHATSAPP_HOTELES_TOOLS,
   FALLBACK_CONFIG as WHATSAPP_HOTELES_FALLBACK_CONFIG,
   getAgentConfig as getWhatsAppHotelesAgentConfig,
-  localDateIn,
+  localDateIn as whatsappHotelesLocalDateIn,
   providerFailureReply as whatsappHotelesProviderFailureReply,
 } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppHotelesAgentConfig, WhatsAppHotelesLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";

@@ -30,7 +30,7 @@ import {
   ejecutarReservasVoz,
   instruccionVozHotel,
   isReservasToolName,
-  localDateIn,
+  whatsappHotelesLocalDateIn,
   registrarContactoNoOperativoVoz,
 } from "@atiende/domain-hoteles";
 import type { HotelesRepository } from "@atiende/domain-hoteles";
@@ -234,7 +234,7 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         propertyId,
         sessionId,
         voiceId,
-        comportamiento: instruccionVozHotel({ hotelName: propiedad?.name ?? "el hotel", hoy: localDateIn(timezone, new Date()), timezone }),
+        comportamiento: instruccionVozHotel({ hotelName: propiedad?.name ?? "el hotel", hoy: whatsappHotelesLocalDateIn(timezone, new Date()), timezone }),
         mensajeInicial: "",
         ttlSegundos,
       });
