@@ -37,6 +37,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
+  Sparkles,
   Tags,
   TrendingUp,
 } from "lucide-react";
@@ -59,10 +60,11 @@ export interface SeccionSuperadmin {
 export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
 
 /**
- * Agentes: el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09) y Model Ops (SA-L-10). El Copiloto y los
- * demas (Evals, Playground, QA) estan en `PENDIENTES`. Las palancas por agente viven en el Panel y tambien en Interruptores (Sistema).
+ * Agentes: el Copiloto de plataforma (CHAT-17, primera entrada como en Likida), el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09)
+ * y Model Ops (SA-L-10). Los demas (Evals, Playground, QA) estan en `PENDIENTES`. Las palancas por agente viven en el Panel y tambien en Interruptores (Sistema).
  */
 export const AGENTES: readonly RutaSuperadmin[] = [
+  { to: "/superadmin/copiloto", label: "Copiloto", icon: Sparkles },
   { to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot },
   { to: "/superadmin/agente-extractor", label: "Agente extractor", icon: FileSearch },
   { to: "/superadmin/agente-conciliacion", label: "Agente de conciliación", icon: Scale },
@@ -155,7 +157,6 @@ export interface PendienteSuperadmin {
  * maqueta. Cuando una pagina se construye, se mueve de aqui a su seccion de `SECCIONES`.
  */
 export const PENDIENTES: readonly PendienteSuperadmin[] = [
-  { seccion: "Agentes", label: "Copiloto", ruta: "/superadmin/copiloto", ticket: "SA-33/SA-34 (paridad2 §3)" },
   { seccion: "Agentes", label: "Evals", ruta: "/superadmin/evals", ticket: "paridad2 §4" },
   { seccion: "Agentes", label: "Playground", ruta: "/superadmin/playground", ticket: "paridad2 §4" },
   { seccion: "Agentes", label: "QA autónomo", ruta: "/superadmin/qa", ticket: "paridad2 §4" },
