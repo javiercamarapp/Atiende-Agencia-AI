@@ -185,4 +185,37 @@ describe("EquipoPage", () => {
     });
     expect(mutaciones()).toHaveLength(0);
   });
+
+  it("un solo h1, tablas con nombre accesible y la expiracion con el formateador unico", async () => {
+    vi.stubGlobal("fetch", red().fn);
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
+    expect(rendered.container.querySelector('table[aria-label="Invitaciones del equipo"]')).not.toBeNull();
+    expect(rendered.container.querySelector('table[aria-label="Equipo activo"]')).not.toBeNull();
+    expect(rendered.container.textContent).toContain("nov 2026");
+  });
+
+  it("sin invitaciones ni equipo muestra los estados vacios de la tabla", async () => {
+    const { fn } = red((url, init) => {
+      if ((init?.method ?? "GET") !== "GET") return undefined;
+      if (url.endsWith("/admin/staff/invitaciones")) return json({ invitations: [] });
+      if (url.endsWith("/admin/staff/miembros")) return json({ miembros: [] });
+      return undefined;
+    });
+    vi.stubGlobal("fetch", fn);
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.textContent).toContain("No hay ninguna invitación pendiente.");
+    expect(rendered.container.textContent).toContain("Todavía no hay nadie en el equipo.");
+  });
+
+  it("si la carga falla muestra el mensaje real y no hay tablas", async () => {
+    const { fn } = red((_url, init) => ((init?.method ?? "GET") === "GET" ? json({ message: "Servidor caído" }, false, 500) : undefined));
+    vi.stubGlobal("fetch", fn);
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("Servidor caído");
+    expect(rendered.container.querySelector("table")).toBeNull();
+  });
 });

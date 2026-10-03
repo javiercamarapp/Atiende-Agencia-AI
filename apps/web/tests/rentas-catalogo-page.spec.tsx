@@ -3,16 +3,22 @@
 // Rn-19 -- <CatalogoPage />: gate de rol, solo lectura para operador/contador, alta de unidad y de propietario con su
 // payload real, validacion local de la estancia minima, y el mensaje real del servidor dentro del formulario abierto.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { notify } from "@atiende/ui";
 import { CatalogoPage } from "../src/verticals/rentas/pages/Catalogo.tsx";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
+let exito: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  exito = vi.spyOn(notify, "success").mockImplementation((() => "") as never);
+});
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function esperar(): Promise<void> {
@@ -48,7 +54,10 @@ function red(puedeEditar: boolean, extra: (url: string, init?: RequestInit) => R
 
 const dialogo = () => document.body.querySelector('[role="dialog"]');
 const botonPagina = (r: RenderedComponent, texto: string) => [...r.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === texto) as HTMLButtonElement | undefined;
-const campo = (etiqueta: string) => [...dialogo()!.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith(etiqueta))!.querySelector("input, select") as HTMLInputElement | HTMLSelectElement;
+const campo = (etiqueta: string) => {
+  const label = [...dialogo()!.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith(etiqueta))!;
+  return (label.getAttribute("for") ? dialogo()!.querySelector(`#${label.getAttribute("for")}`) : label.querySelector("input, select")) as HTMLInputElement | HTMLSelectElement;
+};
 const guardar = () => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Guardar") as HTMLButtonElement;
 
 describe("CatalogoPage", () => {
@@ -94,7 +103,7 @@ describe("CatalogoPage", () => {
       await esperar();
     });
     expect(mutaciones()).toEqual([{ url: "http://api.local/v1/rentas/prop-1/admin/catalogo/unidades", method: "POST", body: { nombre: "Suite 2", propietarioId: "o1", duracionMinimaNoches: 3 } }]);
-    expect(rendered.container.textContent).toContain("Cambios guardados");
+    expect(exito).toHaveBeenCalledWith("Cambios guardados.");
   });
 
   it("estancia minima fuera de 1..365 se rechaza en el formulario SIN llamar al servidor", async () => {
@@ -159,5 +168,51 @@ describe("CatalogoPage", () => {
     });
     await esperar();
     expect(mutaciones()).toHaveLength(0);
+  });
+
+  it("un solo h1 y las tablas de unidades y propietarios llevan su nombre accesible", async () => {
+    vi.stubGlobal("fetch", red(true).fn);
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
+    expect(rendered.container.querySelector('table[aria-label="Unidades de la propiedad"]')).not.toBeNull();
+    expect(rendered.container.querySelector('table[aria-label="Propietarios"]')).not.toBeNull();
+  });
+
+  it("sin unidades ni propietarios muestra los estados vacios de la tabla", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ ...CATALOGO(true), unidades: [], propietarios: [] })));
+    rendered = montar("admin_gestora");
+    await esperar();
+    const t = rendered.container.textContent ?? "";
+    expect(t).toContain("Esta propiedad todavía no tiene unidades.");
+    expect(t).toContain("Todavía no hay propietarios registrados.");
+  });
+
+  it("mientras carga no hay tablas y si falla muestra el mensaje real con reintento", async () => {
+    let falla = true;
+    let soltar!: () => void;
+    const pausa = new Promise<void>((r) => (soltar = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await pausa;
+        return falla ? json({ message: "Servidor caído" }, false, 500) : json(CATALOGO(true));
+      }),
+    );
+    rendered = montar("admin_gestora");
+    await esperar();
+    expect(rendered.container.querySelector("table")).toBeNull();
+    expect(rendered.container.querySelector('[aria-busy="true"], [role="status"]')).not.toBeNull();
+    await act(async () => {
+      soltar();
+      await esperar();
+    });
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain("Servidor caído");
+    falla = false;
+    await act(async () => {
+      click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Reintentar"))!);
+      await esperar();
+    });
+    expect(rendered.container.textContent).toContain("Suite 1");
   });
 });
