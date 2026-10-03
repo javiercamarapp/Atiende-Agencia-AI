@@ -27,6 +27,7 @@
 import { CircuitBreaker } from './circuit-breaker.js';
 import { type BudgetLedgerStore, type GatewayBudgetLimits, createGatewayBudget, reserveBudget, settleBudget } from './budget.js';
 import { type OrgMonthlyBudgetStore, nextOrgMonthlyReservationId } from './org-monthly-budget.js';
+import type { RoleDailyTurnStore } from './role-turn-limit.js';
 import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRecorder } from './usage.js';
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
@@ -72,6 +73,10 @@ export interface LlmGatewayOptions {
    *  "reserva-antes-de-gastar" — un tope mensual agotado nunca llega a tocar
    *  el resto de la escalera de presupuesto ni al proveedor. */
   orgMonthlyBudgetStore?: OrgMonthlyBudgetStore;
+  /** Tope DIARIO de turnos por organización y rol (ver `role-turn-limit.ts`): se consulta UNA vez por `complete()`, antes de
+   *  reservar presupuesto o tocar la red; el turno que lo excede lanza `RoleDailyTurnLimitExceededError` y no consume cupo.
+   *  Opcional: `undefined` preserva el comportamiento previo. */
+  roleTurnStore?: RoleDailyTurnStore;
   /** Puerto de registro de uso (control de gasto de API de LLM del back office
    *  de plataforma, ver `usage.ts`) — puramente observacional, nunca decide si
    *  una llamada procede. `NoopUsageRecorder` por defecto: ningún gateway/test
@@ -114,6 +119,7 @@ export class LlmGateway {
   private readonly residencyPolicy: ResidencyPolicy;
   private readonly costEstimator: LlmCostEstimator;
   private readonly orgMonthlyBudgetStore: OrgMonthlyBudgetStore | undefined;
+  private readonly roleTurnStore: RoleDailyTurnStore | undefined;
   private readonly usageRecorder: UsageRecorder;
   private readonly killSwitch: GatewayKillSwitch | undefined;
   private readonly laddersByRole = new Map<string, LlmProvider[]>();
@@ -125,6 +131,7 @@ export class LlmGateway {
     this.residencyPolicy = opts.residencyPolicy ?? DEFAULT_RESIDENCY_POLICY;
     this.costEstimator = opts.costEstimator ?? defaultCostEstimator;
     this.orgMonthlyBudgetStore = opts.orgMonthlyBudgetStore;
+    this.roleTurnStore = opts.roleTurnStore;
     this.usageRecorder = opts.usageRecorder ?? NoopUsageRecorder;
     this.killSwitch = opts.killSwitch;
   }
@@ -159,6 +166,10 @@ export class LlmGateway {
     // tocar presupuesto o red.
     const allowed = applyResidencyGate(ladder, policy);
 
+    // Tope diario de turnos del rol: una vez por llamada (no por escalón de la escalera). Puede lanzar
+    // `RoleDailyTurnLimitExceededError`, que se propaga de inmediato.
+    if (this.roleTurnStore) await this.roleTurnStore.consume(opts.tenantId, opts.role);
+
     const budget = createGatewayBudget(opts.tenantId, opts.runId, opts.lane, this.budgetLimits);
     const attempts: { providerId: string; error: string }[] = [];
 
@@ -188,7 +199,7 @@ export class LlmGateway {
       // negocio del tenant/plataforma).
       const monthlyReservationId = this.orgMonthlyBudgetStore ? nextOrgMonthlyReservationId() : undefined;
       if (this.orgMonthlyBudgetStore && monthlyReservationId) {
-        await this.orgMonthlyBudgetStore.reserve(opts.tenantId, monthlyReservationId, estimateMicroUsd);
+        await this.orgMonthlyBudgetStore.reserve(opts.tenantId, monthlyReservationId, estimateMicroUsd, opts.role);
       }
 
       // Puede lanzar GatewayBudgetExceededError — a diferencia de un fallo

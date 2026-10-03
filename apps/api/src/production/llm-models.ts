@@ -30,7 +30,8 @@ export const SUPERADMIN_COPILOTO_ROLE = "superadmin:copiloto";
 // Roles nuevos (2-oct-2026). Cada uno tiene su propia ruta para que el eval decida modelo por modelo
 // sin tocar codigo (LLM_MODELS_JSON). Se registran en el gateway (llm-gateway.ts). Los cuatro `reportes:*` ya tienen
 // llamador (CHAT-14, data-chat/reporte-routes.ts) y por eso estan tambien en ALL_PRODUCTION_ROLES y en
-// SWITCHABLE_AGENT_ROLES (interruptor de plataforma); los demas llegan con el trabajo que los invoque.
+// SWITCHABLE_AGENT_ROLES (interruptor de plataforma). Los cuatro `plataforma:*` tienen llamador desde MOD-12 (enrutador y compuerta en
+// el motor del Copiloto, titulos y compactacion en data-chat/conversaciones.ts) y tambien estan en ambas listas.
 /** Reintento unico cuando la guardia de cifras rechaza la narrativa del primer modelo. Rol real por
  *  vertical: "<vertical>:data_chat_retry" (default por sufijo, "*:data_chat_retry"). */
 export const DATA_CHAT_RETRY_SUFFIX = "data_chat_retry";

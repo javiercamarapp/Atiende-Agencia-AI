@@ -68,10 +68,13 @@ export function isBudgetExceededError(err: unknown): err is GatewayBudgetExceede
  * configurable. `scope: 'platform'` — se agotó el tope global de plataforma
  * (protege el gasto TOTAL entre todas las organizaciones, independiente de
  * que cada una individualmente esté por debajo de su propio tope).
+ * `scope: 'copilot'` — la organización agotó el SUBTOPE del Copiloto
+ * ("Chatea con tus datos", 30 % de su tope mensual); el resto del tope
+ * sigue disponible para los demás roles.
  */
 export class MonthlyBudgetExceededError extends GatewayError {
   constructor(
-    readonly scope: 'organization' | 'platform',
+    readonly scope: 'organization' | 'platform' | 'copilot',
     readonly organizationId: string,
     readonly requestedMicroUsd: number,
     readonly limitMicroUsd: number,
@@ -79,7 +82,9 @@ export class MonthlyBudgetExceededError extends GatewayError {
     super(
       scope === 'organization'
         ? `tope mensual de la organización "${organizationId}" agotado: se requieren ${requestedMicroUsd} micro-USD y el tope configurado es ${limitMicroUsd} micro-USD`
-        : `tope mensual GLOBAL de la plataforma agotado (organización "${organizationId}" fue la que lo tocó): se requieren ${requestedMicroUsd} micro-USD y el tope de plataforma es ${limitMicroUsd} micro-USD`,
+        : scope === 'copilot'
+          ? `subtope mensual del Copiloto de la organización "${organizationId}" agotado: se requieren ${requestedMicroUsd} micro-USD y el subtope es ${limitMicroUsd} micro-USD`
+          : `tope mensual GLOBAL de la plataforma agotado (organización "${organizationId}" fue la que lo tocó): se requieren ${requestedMicroUsd} micro-USD y el tope de plataforma es ${limitMicroUsd} micro-USD`,
       false,
     );
   }
@@ -92,6 +97,33 @@ export function isMonthlyBudgetExceededError(err: unknown): err is MonthlyBudget
   for (let depth = 0; depth < 6 && cur && typeof cur === 'object'; depth++) {
     if (cur instanceof MonthlyBudgetExceededError) return true;
     if ((cur as { name?: unknown }).name === 'MonthlyBudgetExceededError') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Tope DIARIO de turnos LLM por organización y rol (`role-turn-limit.ts`). Se lanza ANTES de llamar al proveedor
+ * y de reservar presupuesto, y no es culpa del proveedor: no se prueba el resto de la escalera. El turno
+ * rechazado NO consume cupo.
+ */
+export class RoleDailyTurnLimitExceededError extends GatewayError {
+  constructor(
+    readonly role: string,
+    readonly organizationId: string,
+    readonly used: number,
+    readonly maxTurns: number,
+  ) {
+    super(`tope diario de turnos del rol "${role}" agotado para la organización "${organizationId}": ${used} de ${maxTurns} turnos`, false);
+  }
+}
+
+/** Mismo patrón que `isBudgetExceededError`: reconoce el tope diario por rol aunque viaje envuelto. */
+export function isRoleDailyTurnLimitError(err: unknown): err is RoleDailyTurnLimitExceededError {
+  let cur: unknown = err;
+  for (let depth = 0; depth < 6 && cur && typeof cur === 'object'; depth++) {
+    if (cur instanceof RoleDailyTurnLimitExceededError) return true;
+    if ((cur as { name?: unknown }).name === 'RoleDailyTurnLimitExceededError') return true;
     cur = (cur as { cause?: unknown }).cause;
   }
   return false;
