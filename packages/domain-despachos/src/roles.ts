@@ -247,3 +247,8 @@ export const GESTIONAR_LIBRO_ROLES: readonly DespachosRole[] = ["admin", "contad
 // D-25: pagos provisionales ISR/IVA (papel de trabajo, pagos de REP). Mismo criterio que el libro.
 export const VER_PAGOS_PROVISIONALES_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
 export const GESTIONAR_PAGOS_PROVISIONALES_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+// D-38: bitacora de lecturas, descargas y exportaciones del despacho. Solo el dueno (`admin`) y el `auditor` la consultan:
+// `contador` y `readonly` operan el dia a dia pero no revisan quien descargo que (separacion de funciones). Es una lectura
+// de nivel organizacion: ademas exige membresia sin acotar a ciertos clientes (`propertyIds === null`).
+export const VER_BITACORA_ROLES: readonly DespachosRole[] = ["admin", "auditor"];

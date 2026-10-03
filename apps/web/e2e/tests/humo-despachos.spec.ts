@@ -1,4 +1,4 @@
-import { afirmarCancelarNoEscribe } from "../helpers/dialogos.ts";
+import { afirmarCancelarNoEscribe, dialogo as dialogoPorNombre } from "../helpers/dialogos.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana, recorrerSecciones } from "../helpers/humo.ts";
 import { despachos } from "../mock-api/fixtures/despachos.ts";
@@ -41,6 +41,20 @@ test.describe("despachos @humo", () => {
 
     await campo.fill("2026-09");
     await confirmar.click();
+    // D-30: cerrar un periodo exige el segundo factor. Cancelar el dialogo no cierra nada; un codigo incorrecto tampoco.
+    const verificacion = dialogoPorNombre(page, /Verifica tu identidad/);
+    await expect(verificacion).toBeVisible();
+    await verificacion.getByRole("button", { name: "Cancelar" }).click();
+    await expect(verificacion).toBeHidden();
+    expect(await mock.buscar({ metodo: "POST", ruta: "/cerrar" })).toEqual([]);
+    await confirmar.click();
+    await expect(verificacion).toBeVisible();
+    await verificacion.getByLabel("Código de verificación").fill("000000");
+    await verificacion.getByRole("button", { name: "Verificar" }).click();
+    await expect(verificacion.getByRole("alert")).toContainText("El código es incorrecto o ya se usó.");
+    expect(await mock.buscar({ metodo: "POST", ruta: "/cerrar" })).toEqual([]);
+    await verificacion.getByLabel("Código de verificación").fill("123456");
+    await verificacion.getByRole("button", { name: "Verificar" }).click();
     await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: "/cerrar" })).length).toBe(1);
     const [peticion] = await mock.buscar({ metodo: "POST", ruta: "/cerrar" });
     expect(peticion?.cuerpo).toEqual({ confirmacion: "2026-09" });

@@ -2,7 +2,8 @@
 // apps/api/.../despachos/libro.ts (catalogo, polizas, reversa, balanza, CFDI del periodo, contabilidad electronica).
 // Todo en CENTAVOS ENTEROS: las funciones puras de aqui convierten el texto en pesos que escribe el contador a centavos exactos
 // (sin flotantes) y dan retroalimentacion inmediata; el servidor y la base validan de verdad.
-import { fetchJson, postJson, putJson } from "./admin-client.ts";
+import { despachosAuthContext, fetchJson, postJson, putJson } from "./admin-client.ts";
+import { conStepUp } from "./step-up.ts";
 
 export type TipoPoliza = "ingreso" | "egreso" | "diario";
 export const TIPOS_POLIZA: readonly TipoPoliza[] = ["ingreso", "egreso", "diario"];
@@ -214,5 +215,6 @@ export async function fetchCfdiLibro(f: typeof fetch, apiBaseUrl: string, token:
   return fetchJson(f, `${base(apiBaseUrl, propertyId)}/cfdi?periodo=${encodeURIComponent(periodo)}`, token);
 }
 export async function fetchPaquete(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodo: string): Promise<PaqueteContabilidad> {
-  return fetchJson(f, `${base(apiBaseUrl, propertyId)}/contabilidad-electronica?periodo=${encodeURIComponent(periodo)}`, token);
+  // D-30: misma exportacion fiscal que el paquete de contabilidad electronica -> segundo factor reciente (lib/step-up.ts).
+  return conStepUp({ fetchImpl: f, apiBaseUrl, token }, (h) => fetchJson<PaqueteContabilidad>(f, `${base(apiBaseUrl, propertyId)}/contabilidad-electronica?periodo=${encodeURIComponent(periodo)}`, token, despachosAuthContext(), h));
 }
