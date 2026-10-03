@@ -50,11 +50,12 @@ const MAX_TOOL_CALLS = 4;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const CONVERSACION_NUEVA = "new";
 
-/** Verticales que guardan conversaciones por organizacion (la de plataforma llega con el Copiloto de superadmin). */
-export type ConversacionVertical = "restaurantes" | "hoteles" | "rentas" | "despachos" | "licitaciones" | "citas";
+/** Alcances que guardan conversaciones: las seis verticales (por organizacion) y `plataforma` (Copiloto de superadmin, sin organizacion). */
+export type ConversacionVertical = "restaurantes" | "hoteles" | "rentas" | "despachos" | "licitaciones" | "citas" | "plataforma";
 
 export interface ConversacionScope {
-  readonly organizationId: string;
+  /** `null` solo con vertical `plataforma` (scope de plataforma de core.data_chat_conversation: sin organizacion). */
+  readonly organizationId: string | null;
   readonly userId: string;
   readonly vertical: ConversacionVertical;
 }
@@ -182,7 +183,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         const { rows } = await this.db.query<ConversacionRow>(
           `select c.id, c.title, c.updated_at, c.message_count
              from core.data_chat_conversation c
-            where c.user_id = $1::uuid and c.organization_id = $2::uuid and c.vertical = $3::text
+            where c.user_id = $1::uuid and c.organization_id is not distinct from $2::uuid and c.vertical = $3::text
             order by c.updated_at desc, c.id desc
             limit ${MAX_CONVERSACIONES};`,
           [scope.userId, scope.organizationId, scope.vertical],
@@ -201,7 +202,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         const conv = await this.db.query<ConversacionRow>(
           `select c.id, c.title, c.updated_at, c.message_count
              from core.data_chat_conversation c
-            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id = $3::uuid and c.vertical = $4::text;`,
+            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id is not distinct from $3::uuid and c.vertical = $4::text;`,
           [id, scope.userId, scope.organizationId, scope.vertical],
         );
         const head = conv.rows[0];
@@ -240,7 +241,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
       primary: async () => {
         const conv = await this.db.query<{ id: string }>(
           `select c.id from core.data_chat_conversation c
-            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id = $3::uuid and c.vertical = $4::text;`,
+            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id is not distinct from $3::uuid and c.vertical = $4::text;`,
           [id, scope.userId, scope.organizationId, scope.vertical],
         );
         if (!conv.rows[0]) return null;
@@ -263,7 +264,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
       primary: async () => {
         const { rows } = await this.db.query<{ id: string }>(
           `update core.data_chat_conversation set title = $1::text
-            where id = $2::uuid and user_id = $3::uuid and organization_id = $4::uuid and vertical = $5::text
+            where id = $2::uuid and user_id = $3::uuid and organization_id is not distinct from $4::uuid and vertical = $5::text
         returning id;`,
           [titulo, id, scope.userId, scope.organizationId, scope.vertical],
         );
@@ -280,7 +281,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
       primary: async () => {
         const { rows } = await this.db.query<{ id: string }>(
           `update core.data_chat_conversation set title = $1::text
-            where id = $2::uuid and user_id = $3::uuid and organization_id = $4::uuid and vertical = $5::text and title = $6::text
+            where id = $2::uuid and user_id = $3::uuid and organization_id is not distinct from $4::uuid and vertical = $5::text and title = $6::text
         returning id;`,
           [titulo, id, scope.userId, scope.organizationId, scope.vertical, tituloActual],
         );
@@ -297,7 +298,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
       primary: async () => {
         const { rows } = await this.db.query<{ id: string }>(
           `delete from core.data_chat_conversation
-            where id = $1::uuid and user_id = $2::uuid and organization_id = $3::uuid and vertical = $4::text
+            where id = $1::uuid and user_id = $2::uuid and organization_id is not distinct from $3::uuid and vertical = $4::text
         returning id;`,
           [id, scope.userId, scope.organizationId, scope.vertical],
         );
@@ -314,7 +315,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
       primary: async () => {
         const conv = await this.db.query<{ id: string }>(
           `select c.id from core.data_chat_conversation c
-            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id = $3::uuid and c.vertical = $4::text;`,
+            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id is not distinct from $3::uuid and c.vertical = $4::text;`,
           [id, scope.userId, scope.organizationId, scope.vertical],
         );
         if (!conv.rows[0]) return null;
@@ -438,6 +439,8 @@ export interface BeginTurnInput {
   readonly tool?: string | undefined;
   /** Aborto del request: corta la espera de la compactacion si el cliente se fue. */
   readonly signal?: AbortSignal | undefined;
+  /** Repositorio de conversaciones a usar en lugar del de `deps` (el Copiloto de superadmin inyecta el suyo; las verticales no lo pasan). */
+  readonly repo?: ((db: TenantDbSession) => ConversacionesRepository) | undefined;
 }
 
 export function conversacionesRepo(deps: AppDeps, db: TenantDbSession): ConversacionesRepository {
@@ -447,16 +450,18 @@ export function conversacionesRepo(deps: AppDeps, db: TenantDbSession): Conversa
 /** Sin `conversationId` es transparente (mismo historial del cuerpo, bitacora tal cual, respuesta sin cambios). */
 export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, input: BeginTurnInput): Promise<TurnPersistence> {
   const { conversationId, scope } = input;
+  const repoDe = (d: TenantDbSession): ConversacionesRepository => input.repo?.(d) ?? conversacionesRepo(deps, d);
   if (conversationId === undefined) {
     return { history: input.history, audit: (sink) => sink, finish: async (_db, _q, _t, answer) => answer, despuesDelCommit: async () => undefined };
   }
   // MOD-12: titulos y compactacion solo con los roles auxiliares activos (`rolesAuxiliares`).
-  const completion = deps.dataChat?.rolesAuxiliares ? deps.dataChat.completion : undefined;
+  const orgId = scope.organizationId;
+  const completion = orgId !== null && deps.dataChat?.rolesAuxiliares ? deps.dataChat.completion : undefined;
 
   let targetId: string | null = null;
   let history: DataChatHistoryTurn[] = [];
   if (conversationId !== CONVERSACION_NUEVA) {
-    const loaded = await conversacionesRepo(deps, db).loadHistory(scope, conversationId, HISTORIAL_DESDE_BD);
+    const loaded = await repoDe(db).loadHistory(scope, conversationId, HISTORIAL_DESDE_BD);
     // Ajena, de otra organizacion, borrada o base sin migrar: 404 ANTES de gastar un turno de modelo.
     if (loaded === null) throw Errors.notFound("Conversación no encontrada.");
     targetId = conversationId;
@@ -465,7 +470,7 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
   // MOD-12 -- compactacion: en una conversacion larga la parte vieja se resume (rol `plataforma:compactacion_historial`); si algo falla, el historial tal cual.
   let resumen: string | undefined;
   if (history.length > 0 && completion && input.tool === undefined) {
-    const compactado = await compactarHistorial(completion(scope.organizationId, COMPACTACION_HISTORIAL_ROLE), history, (err) => console.error(JSON.stringify({ level: "error", event: "data_chat_compactacion_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })), input.signal);
+    const compactado = await compactarHistorial(completion(orgId!, COMPACTACION_HISTORIAL_ROLE), history, (err) => console.error(JSON.stringify({ level: "error", event: "data_chat_compactacion_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })), input.signal);
     history = compactado.history;
     resumen = compactado.resumen;
   }
@@ -483,7 +488,7 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
       try {
         // El titulo se pide UNA vez aunque esto se invoque varias veces (modo JSON reintenta); el UPDATE si se reintenta hasta que la
         // conversacion sea visible para la sesion nueva.
-        tituloGenerado ??= generarTitulo(completion(scope.organizationId, TITULOS_RESUMENES_ROLE), pendiente.pregunta, (err) =>
+        tituloGenerado ??= generarTitulo(completion(orgId!, TITULOS_RESUMENES_ROLE), pendiente.pregunta, (err) =>
           console.error(JSON.stringify({ level: "error", event: "data_chat_titulo_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
         );
         const titulo = await tituloGenerado;
@@ -492,7 +497,7 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
           return;
         }
         // Sesion PROPIA del mismo usuario (RLS): la del turno ya se confirmo y se cerro.
-        const ok = await deps.engine.withAppSession({ userId: scope.userId }, async (db) => (await conversacionesRepo(deps, db).retitular?.(scope, pendiente.conversationId, pendiente.tituloActual, titulo)) === true);
+        const ok = await deps.engine.withAppSession({ userId: scope.userId }, async (db) => (await repoDe(db).retitular?.(scope, pendiente.conversationId, pendiente.tituloActual, titulo)) === true);
         if (ok) tituloAplicado = true;
       } catch (err) {
         console.error(JSON.stringify({ level: "error", event: "data_chat_titulo_error", message: err instanceof Error ? err.message.slice(0, 200) : "error" }));
@@ -509,7 +514,7 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
     finish: async (turnDb, question, tool, answer) => {
       // Una respuesta de transporte (tope, presupuesto...) no es parte de la conversacion: se devuelve tal cual.
       if (!isPersistableAnswer(answer)) return answer;
-      const result = await conversacionesRepo(deps, turnDb).append(scope, {
+      const result = await repoDe(turnDb).append(scope, {
         propertyId: input.propertyId,
         conversationId: targetId,
         userText: redactQuestionForStorage(question, tool),
@@ -521,7 +526,7 @@ export async function beginTurnPersistence(deps: AppDeps, db: TenantDbSession, i
       });
       // Conversacion NUEVA guardada: queda pendiente el titulo con modelo (despues del commit, ver `despuesDelCommit`). El determinista es el que
       // armo la base con la pregunta que se guardo (ya redactada).
-      if (result.guardado && targetId === null && completion && conversacionesRepo(deps, turnDb).retitular) {
+      if (result.guardado && targetId === null && completion && repoDe(turnDb).retitular) {
         const guardada = redactQuestionForStorage(question, tool);
         tituloPendiente = { conversationId: result.conversationId, tituloActual: tituloPredeterminado(guardada), pregunta: guardada };
       }
