@@ -29,6 +29,7 @@ export interface Reserva {
   tipo: TipoHab["clave"];
   guestId: string;
   apellido: string;
+  telefono: string;
   telefonoUlt4: string;
   checkIn: string;
   checkOut: string;
@@ -49,6 +50,8 @@ export interface Contexto {
   /** Fechas de negocio ya cerradas por el night audit (para los asserts). */
   readonly cerradas: Set<string>;
   readonly secretoInterno: string;
+  readonly secretoWhatsApp: string;
+  readonly phoneNumberId: string;
   dia: number;
   fecha: string;
 }
@@ -59,7 +62,7 @@ function elegir<T>(rng: () => number, xs: readonly T[]): T {
   return xs[Math.floor(rng() * xs.length)]!;
 }
 
-function ponerHora(ctx: Contexto, hhmm: string): void {
+export function ponerHora(ctx: Contexto, hhmm: string): void {
   const iso = instanteLocalIso(ctx.fecha, hhmm, ZONA);
   if (Date.parse(iso) > ctx.reloj.ahoraMs()) ctx.reloj.irA(iso);
   else ctx.reloj.avanzarMinutos(1);
@@ -108,6 +111,7 @@ export async function reservaDirecta(ctx: Contexto, llegadaOffset: number, noche
     tipo: tipo.clave,
     guestId: g.json.id,
     apellido,
+    telefono: tel,
     telefonoUlt4: tel.slice(-4),
     checkIn,
     checkOut,
@@ -224,37 +228,6 @@ export async function cancelaciones(ctx: Contexto): Promise<void> {
     if (res.status === 200 || res.status === 201) r.estado = "cancelada";
     ctx.reloj.avanzarMinutos(2);
   }
-}
-
-/** Dia completo (v1): cron de night audit del dia anterior, limpieza, ventas, salidas, llegadas, cargos. */
-export async function simularDia(ctx: Contexto): Promise<void> {
-  const { sim, reloj } = ctx;
-  sim.olvidarTokens();
-  ponerHora(ctx, "03:30");
-  const na = await cron(ctx, "/internal/hoteles/night-audit", "POST", "cron.night_audit");
-  if (process.env.SIM_DEBUG) console.log("night-audit:", na.status, JSON.stringify(na.json));
-  const corrida = na.json?.corridas?.[0];
-  if (corrida?.corrio && corrida.fecha) ctx.cerradas.add(corrida.fecha as string);
-  ponerHora(ctx, "07:00");
-  await limpiezaDelDia(ctx, "manana");
-  ponerHora(ctx, "09:30");
-  const nuevas = 9 + Math.floor(ctx.rng() * 6);
-  for (let i = 0; i < nuevas; i++) {
-    const offset = Math.floor(Math.pow(ctx.rng(), 1.6) * 10);
-    await reservaDirecta(ctx, offset, 1 + Math.floor(ctx.rng() * 4));
-    reloj.avanzarMinutos(7);
-  }
-  ponerHora(ctx, "11:00");
-  await salidas(ctx);
-  ponerHora(ctx, "13:00");
-  await limpiezaDelDia(ctx, "tarde");
-  ponerHora(ctx, "14:00");
-  await cancelaciones(ctx);
-  ponerHora(ctx, "15:00");
-  await llegadas(ctx);
-  ponerHora(ctx, "19:00");
-  await cargosDeEstancia(ctx);
-  ponerHora(ctx, "23:00");
 }
 
 export async function precarga(ctx: Contexto, reservasIniciales: number): Promise<void> {

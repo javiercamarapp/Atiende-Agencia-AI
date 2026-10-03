@@ -27,15 +27,14 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
   out.push(
     resultado(
       "cero-sobreventa-reservas",
-      "Las reservas activas que cubren cada noche nunca exceden el inventario y coinciden con booked_rooms",
+      "Las reservas activas mas las pre-reservas abiertas (holds) que cubren cada noche nunca exceden el inventario y coinciden con booked_rooms",
       await contraejemplos(
         db,
-        `select a.room_type_id, a.date, a.total_rooms, a.booked_rooms, count(r.id) as reservas
+        `select a.room_type_id, a.date::text, a.total_rooms, a.booked_rooms, coalesce(r.n, 0) as reservas, coalesce(h.n, 0) as holds
            from hoteles.availability a
-           left join hoteles.reservation r on r.room_type_id = a.room_type_id and r.status in ${ESTADOS_ACTIVOS} and a.date >= r.check_in_date and a.date < r.check_out_date
-          where a.property_id = $1
-          group by a.room_type_id, a.date, a.total_rooms, a.booked_rooms
-         having count(r.id) > a.total_rooms or count(r.id) <> a.booked_rooms`,
+           left join lateral (select count(*) as n from hoteles.reservation r where r.room_type_id = a.room_type_id and r.status in ${ESTADOS_ACTIVOS} and a.date >= r.check_in_date and a.date < r.check_out_date) r on true
+           left join lateral (select count(*) as n from hoteles.booking_hold h where h.room_type_id = a.room_type_id and h.status in ('pendiente_aprobacion','pendiente_pago','aprobado') and a.date >= h.check_in_date and a.date < h.check_out_date) h on true
+          where a.property_id = $1 and (coalesce(r.n, 0) + coalesce(h.n, 0) > a.total_rooms or coalesce(r.n, 0) + coalesce(h.n, 0) <> a.booked_rooms)`,
         [propertyId],
       ),
     ),
@@ -99,6 +98,13 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
                  or (f.close_reason = 'cuenta_por_cobrar' and f.ar_approved_by is null))`,
         [propertyId],
       ),
+    ),
+  );
+  out.push(
+    resultado(
+      "alergia-sin-promesa-de-seguridad",
+      "Ningun pedido de F&B con alergia declarada tiene una promesa de seguridad al huesped sin confirmacion previa de un cocinero",
+      await contraejemplos(db, `select id from hoteles.fnb_order where property_id = $1 and allergy_declared and safety_assurance_sent_at is not null and kitchen_confirmed_by is null`, [propertyId]),
     ),
   );
   out.push(

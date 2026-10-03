@@ -2,7 +2,7 @@
 // respuestas por status (assert "ningun 5xx") y conteo de filas por tabla (filas creadas por dia).
 import type { Hono } from "hono";
 import type { Client } from "pg";
-import type { ActorEvento, EventoLedger, ResumenHttp } from "./ledger.ts";
+import type { ActorEvento, EventoLedger, Hallazgo, ResumenHttp } from "./ledger.ts";
 import { PASSWORD, correoDe, type RolStaff } from "./mundo.ts";
 
 export interface RespuestaApi {
@@ -27,6 +27,7 @@ export interface OpcionesApi {
 
 export class Simulador {
   readonly eventos: EventoLedger[] = [];
+  readonly hallazgos: Hallazgo[] = [];
   readonly porStatus: Record<string, number> = {};
   inesperados: { tipo: string; metodo: string; ruta: string; status: number; cuerpo: string }[] = [];
   #total = 0;
@@ -95,6 +96,13 @@ export class Simulador {
     if (!ok) this.inesperados.push({ tipo: op.tipo ?? `${metodo} ${ruta}`, metodo, ruta, status: res.status, cuerpo: texto.slice(0, 300) });
     if (!op.silencioso) this.evento(op.tipo ?? `${metodo} ${ruta}`, op.actor ?? "staff", ok, res.status, op.detalle ?? {});
     return { status: res.status, json, texto };
+  }
+
+  /** Registra (una sola vez por id) un bug real o hueco que la simulacion expuso; si repite, solo agrega el dia. */
+  hallazgo(h: Omit<Hallazgo, "dias">, dia: number): void {
+    const i = this.hallazgos.findIndex((x) => x.id === h.id);
+    if (i === -1) this.hallazgos.push({ ...h, dias: [dia] });
+    else if (!this.hallazgos[i]!.dias.includes(dia)) this.hallazgos[i] = { ...this.hallazgos[i]!, dias: [...this.hallazgos[i]!.dias, dia] };
   }
 
   evento(tipo: string, actor: ActorEvento, ok: boolean, status: number | null, detalle: Record<string, string | number | boolean | null> = {}): void {

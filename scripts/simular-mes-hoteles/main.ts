@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import pg from "pg";
 import { RelojSimulado, instanteLocalIso, sumarDias } from "./reloj.ts";
 import { instalarGuardaRed } from "./guarda-red.ts";
+import { LlmGuionado } from "./llm-guionado.ts";
 
 const args = process.argv.slice(2).filter((a) => a !== "--");
 const opt = (nombre: string, def: string) => args.find((a) => a.startsWith(`--${nombre}=`))?.split("=")[1] ?? def;
@@ -21,10 +22,12 @@ process.env.VOICE_TOOL_SECRET = randomBytes(16).toString("hex");
 process.env.WHATSAPP_VERIFY_TOKEN = randomBytes(8).toString("hex");
 process.env.WHATSAPP_APP_SECRET = randomBytes(16).toString("hex");
 process.env.INTERNAL_SECRET = randomBytes(16).toString("hex");
+process.env.WHATSAPP_ACCESS_TOKEN = "sim-sin-valor-real"; // el despachador exige un token para correr; su cliente Graph es el doble local
 process.env.RENTAS_OWNER_JWT_SECRET = randomBytes(16).toString("hex");
 process.env.HOTELES_IDENTITY_KEY = randomBytes(32).toString("base64");
 process.env.ACCESS_TOKEN_TTL_SECONDS = String(60 * 60 * 24 * 3);
-for (const k of ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "STRIPE_SECRET_KEY", "WHATSAPP_ACCESS_TOKEN", "RESEND_API_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) delete process.env[k];
+process.env.OPENROUTER_API_KEY = "sk-or-simulacion-sin-valor-real"; // el proveedor real se construye, pero su fetch lo atiende el doble local
+for (const k of ["OPENAI_API_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) delete process.env[k];
 
 // El Postgres efimero no habla TLS (el pool de produccion lo exige para el pooler de Supabase): se quita SOLO aqui.
 const PoolOriginal = pg.Pool;
@@ -34,7 +37,8 @@ const PoolOriginal = pg.Pool;
   }
 };
 
-const guarda = instalarGuardaRed();
+const llm = new LlmGuionado();
+const guarda = instalarGuardaRed([{ host: "openrouter.ai", responder: (_url, cuerpo) => llm.responder(cuerpo) }]);
 const reloj = new RelojSimulado(instanteLocalIso(sumarDias(INICIO, -1), "08:00", "America/Cancun"));
 
 const { buildApp } = await import("../../apps/api/src/app.ts");
@@ -98,25 +102,34 @@ try {
   const asertsMod = await import("./asserts.ts");
   const costos = await import("./costos.ts");
   const ledgerMod = await import("./ledger.ts");
-  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, rng: esc.prng(20261001), reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, dia: 0, fecha: sumarDias(INICIO, -1) };
+  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, rng: esc.prng(20261001), reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
 
+  await (await import("./escenarios-agente.ts")).configurarAgente(ctx);
   await esc.precarga(ctx, 36);
   const preparacion = sim.cerrarDia();
   console.log(`preparacion: ${preparacion.eventos.length} eventos, ${preparacion.http.total} llamadas HTTP, 5xx=${preparacion.http.cincoXX}`);
 
   const dias: import("./ledger.ts").DiaLedger[] = [];
   let ultimaCerrada: string | null = null;
+  let waPrevio = 0;
+  let timbresPrevios = 0;
   for (let n = 1; n <= DIAS; n++) {
     ctx.dia = n;
     ctx.fecha = sumarDias(INICIO, n - 1);
     ctx.reloj.irA(instanteLocalIso(ctx.fecha, "00:30", mundoMod.ZONA));
     const antes = await sim.conteosTablas();
-    await esc.simularDia(ctx);
+    await (await import("./dia.ts")).simularDia(ctx);
     const despues = await sim.conteosTablas();
     const { eventos, http } = sim.cerrarDia();
     const filasCreadas = diferenciaConteos(antes, despues);
     const correos = (despues["hoteles.messaging_outbox"] ?? 0) - (antes["hoteles.messaging_outbox"] ?? 0);
-    const lineas = costos.lineasDeCosto({ llm: { llamadas: 0, tokensEntrada: 0, tokensSalida: 0 }, waSalientes: 0, timbres: 0, correos });
+    const { uso: usoLlm, herramientas } = llm.cerrarDia();
+    const waDia = graphFalso.sent.length - waPrevio;
+    waPrevio = graphFalso.sent.length;
+    const timbresDia = uso.timbres - timbresPrevios;
+    timbresPrevios = uso.timbres;
+    const lineas = costos.lineasDeCosto({ llm: usoLlm, waSalientes: waDia, timbres: timbresDia, correos });
+    if (usoLlm.llamadas > 0) eventos.push({ tipo: "llm.resumen_del_dia", actor: "agente", ok: true, status: null, detalle: { llamadas: usoLlm.llamadas, herramientas: JSON.stringify(herramientas) } });
     ultimaCerrada = [...ctx.cerradas].sort().at(-1) ?? null;
     const asserts = [
       { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
@@ -148,6 +161,7 @@ try {
     propiedad: { habitaciones: Object.values(tipos).reduce((s, t) => s + t.habitaciones.length, 0), tipos: mundoMod.TIPOS.length },
     tarifas,
     dias,
+    hallazgos: sim.hallazgos,
     resumen: {
       dias: dias.length,
       eventos: dias.reduce((s, d) => s + d.eventos.length, 0),
