@@ -458,7 +458,7 @@ describe("notificacion in-app del tope mensual propio (superadmin.copiloto.tope_
     expect(emitidas[0]!.params[2]).toBe("superadmin.copiloto.tope_mensual");
     expect(emitidas[0]!.params[5]).toBe("El Copiloto de superadmin usó 80 por ciento de su tope mensual");
     expect(String(emitidas[0]!.params[10])).toMatch(/^superadmin\.copiloto\.tope_mensual:80:\d{4}-\d{2}$/);
-    expect(emitidas[0]!.params[7]).toBe("/superadmin/gasto-api");
+    expect(emitidas[0]!.params[7]).toBe("/superadmin/consumo-ia");
     // Cruza el 100 %: segundo umbral, y el modelo ya no se llama.
     (ctx.deps.superadminCopiloto as { fuentes: unknown }).fuentes = (db: TenantDbSession, id: string) => ({ ...fuentesDeProduccion(ctx.deps, db, id), ...fuentesFalsas({ copilotoGastoMes: async () => ({ ok: true, data: 26_000_000 }) }) });
     const llamadas = ctx.scripted.requests.length;
