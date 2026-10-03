@@ -22,7 +22,8 @@ const PANTALLAS: readonly Pantalla[] = [
   { nombre: "citas-clientes", objetivo: "citas", ruta: `/citas/${citas.orgSlug}/clientes` },
   { nombre: "restaurantes-productos", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/productos`, lista: "catálogo de productos de esta sucursal" },
   { nombre: "restaurantes-historial", objetivo: "restaurantes", ruta: `/restaurantes/${restaurantes.orgSlug}/historial`, lista: "Historial de órdenes de esta sucursal" },
-  { nombre: "superadmin-prospectos", objetivo: "superadmin", ruta: "/superadmin/prospectos" },
+  { nombre: "superadmin-cerebro", objetivo: "superadmin", ruta: "/superadmin/cerebro" },
+  { nombre: "superadmin-cerebro-taxonomia", objetivo: "superadmin", ruta: "/superadmin/cerebro/taxonomia" },
   { nombre: "superadmin-organizaciones", objetivo: "superadmin", ruta: "/superadmin/organizaciones" },
 ];
 

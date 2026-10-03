@@ -221,6 +221,10 @@ export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/consola/agentes-actividad", manejador: () => agentesConsola() },
   { metodo: "GET", patron: "/superadmin/organizations", manejador: () => ({ organizations: organizaciones() }) },
   { metodo: "GET", patron: "/superadmin/prospectos", manejador: (p) => ({ prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)) }) },
+  // Cerebro de ventas (SA-L-37/38/41): la API simulada se comporta como una base SIN la migracion 0051 (disponible:false), la misma
+  // respuesta honesta que da el API real; la lista sigue saliendo de los prospectos de siempre.
+  { metodo: "GET", patron: "/superadmin/cerebro/prospectos", manejador: (p) => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)), taxonomias: [] }) },
+  { metodo: "GET", patron: "/superadmin/cerebro/taxonomia", manejador: () => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", verticales: [], versiones: [] }) },
   { metodo: "POST", patron: "/superadmin/prospectos", manejador: (p) => {
       const cuerpo = (p.cuerpo ?? {}) as Partial<Prospecto>;
       if (!cuerpo.empresa) return fallo(400, "La empresa es requerida");
