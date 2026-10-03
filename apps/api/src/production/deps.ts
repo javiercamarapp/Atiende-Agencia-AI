@@ -126,9 +126,11 @@ import { notProductionReady } from "./not-ready.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
+import { buildProductionSuperadminCopiloto } from "../superadmin-copiloto/deps.ts";
 import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
+  buildSuperadminCopilotoLlmGateway,
   loadLlmModelsConfig,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
@@ -293,6 +295,9 @@ export function buildProductionDeps(): AppDeps {
   // `./llm-gateway.ts::buildResumenDiarioLlmGateway`). Mismo criterio
   // fail-closed: `undefined` sin ningún proveedor configurado.
   const resumenDiarioLlmGateway = buildResumenDiarioLlmGateway(env, gatewayKillSwitch);
+
+  // Gateway DEDICADO del Copiloto de superadmin (CHAT-16): gasto de plataforma, nunca de una organizacion (ver `./llm-gateway.ts`).
+  const superadminCopilotoLlmGateway = buildSuperadminCopilotoLlmGateway(env, engine, gatewayKillSwitch);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -555,6 +560,7 @@ export function buildProductionDeps(): AppDeps {
     // de arriba, ver ./superadmin-acciones-repository.ts.
     accionesRepo: new ProductionSuperadminAccionesRepository(engine),
     resumenDiarioLlmGateway,
+    superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
