@@ -4,7 +4,7 @@ Verificacion contra Postgres real de `packages/domain-restaurantes/migrations/03
 (espejo: `supabase/migrations/20240101000300_039_agente_config_umbral_y_rafagas.sql`).
 
 Dos columnas opcionales de `restaurantes.whatsapp_agent_config`, editables por owner/admin: `large_order_text` (umbral de pedido
-grande, texto corto que llega al prompt) y `reply_debounce_seconds` (espera de rafagas, 0 a 30 s).
+grande, texto corto que llega al prompt) y `reply_debounce_seconds` (espera de rafagas, 0 a 10 s).
 
 - Positivos: filas previas con NULL (= valores por omision), el SELECT anterior de 033 sigue funcionando, el upsert exacto del
   repositorio guarda ambos valores, 0/30/NULL entran, el lector del webhook (sistema sin usuario) los ve.

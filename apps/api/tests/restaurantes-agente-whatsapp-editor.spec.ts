@@ -46,16 +46,16 @@ describe("PUT agente-whatsapp con los campos nuevos y version", () => {
     const h = (await (await app.request(`${url}/historial?alcance=organizacion`, authedGet(t))).json()) as Json;
     expect(h.entradas[0]).toMatchObject({ anterior: { largeOrderText: "más de $5,000 o más de 6 kg", replyDebounceSeconds: 6 }, nuevo: { largeOrderText: null, replyDebounceSeconds: null } });
     const opciones = (await (await app.request(`${url}/opciones`, authedGet(t))).json()) as Json;
-    expect(opciones.esperaRafagasMaxSegundos).toBe(30);
+    expect(opciones.esperaRafagasMaxSegundos).toBe(10);
     expect(opciones.limites.largeOrderText).toBe(200);
     expect(opciones.perfiles.find((p: Json) => p.perfil === "taqueria_pm").largeOrderText).toBe("más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo");
   });
 
-  it("PM-C5: rechaza (400, sin escribir) una espera fuera de 0 a 30, decimal o texto, un umbral multilinea o muy largo, y ambos campos en el perfil generico", async () => {
+  it("PM-C5: rechaza (400, sin escribir) una espera fuera de 0 a 10, decimal o texto, un umbral multilinea o muy largo, y ambos campos en el perfil generico", async () => {
     const { ctx, app, url } = await construir();
     const t = ctx.staff.owner.token;
     const malos = [
-      { ...PM, replyDebounceSeconds: 31 },
+      { ...PM, replyDebounceSeconds: 11 },
       { ...PM, replyDebounceSeconds: -1 },
       { ...PM, replyDebounceSeconds: 1.5 },
       { ...PM, replyDebounceSeconds: "6" },

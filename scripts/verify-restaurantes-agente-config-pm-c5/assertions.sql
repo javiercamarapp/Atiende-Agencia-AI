@@ -65,21 +65,21 @@ returning property_id, large_order_text, reply_debounce_seconds, version;
 select count(*)::int as umbral_y_espera_guardados_deberia_ser_1 from restaurantes.whatsapp_agent_config where organization_id = '00000000-0000-0000-0000-0000000f0001' and large_order_text = 'más de $5,000 o más de 6 kg' and reply_debounce_seconds = 6;
 rollback;
 
-\echo '=== P4. POSITIVO: espera 0 (apagada) y 30 (tope) entran; NULL tambien ==='
+\echo '=== P4. POSITIVO: espera 0 (apagada) y 10 (tope) entran; NULL tambien ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
 update restaurantes.whatsapp_agent_config set reply_debounce_seconds = 0 where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
-update restaurantes.whatsapp_agent_config set reply_debounce_seconds = 30 where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
+update restaurantes.whatsapp_agent_config set reply_debounce_seconds = 10 where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
 update restaurantes.whatsapp_agent_config set reply_debounce_seconds = null where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
 rollback;
 
-\echo '=== P5. RECHAZADO (debe fallar): CHECK -- una espera de 31 s no entra (la funcion del webhook dura 30 s) ==='
+\echo '=== P5. RECHAZADO (debe fallar): CHECK -- una espera de 11 s no entra (la funcion del webhook dura 30 s y despues de esperar aun corre el turno del agente) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f0011', true);
 -- as should_fail
-update restaurantes.whatsapp_agent_config set reply_debounce_seconds = 31 where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
+update restaurantes.whatsapp_agent_config set reply_debounce_seconds = 11 where organization_id = '00000000-0000-0000-0000-0000000f0001' returning reply_debounce_seconds;
 rollback;
 
 \echo '=== P6. RECHAZADO (debe fallar): CHECK -- una espera negativa no entra ==='

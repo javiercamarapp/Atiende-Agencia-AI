@@ -263,8 +263,8 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                 <FormField label="Umbral de pedido grande" hint={`A partir de aquí el agente toma los datos y avisa a la sucursal para que lo confirme; por debajo lo toma normal. ${contador(form.largeOrderText, lim?.largeOrderText) ?? ""}`}>
                   <Textarea rows={2} value={form.largeOrderText} maxLength={lim?.largeOrderText} placeholder={defaults?.largeOrderText ?? ""} onChange={(e) => cambiar("largeOrderText", e.target.value)} />
                 </FormField>
-                <FormField label="Espera de ráfagas (segundos)" hint={`Cuántos segundos espera el agente tras el último mensaje del cliente antes de responder, para contestar todo junto. Vacío o 0 = responde enseguida; máximo ${opciones.esperaRafagasMaxSegundos ?? 30}.`}>
-                  <Input type="number" inputMode="numeric" min={0} max={opciones.esperaRafagasMaxSegundos ?? 30} step={1} value={form.replyDebounceSeconds} placeholder="Apagada" onChange={(e) => cambiar("replyDebounceSeconds", e.target.value)} />
+                <FormField label="Espera de ráfagas (segundos)" hint={`Cuántos segundos espera el agente tras el último mensaje del cliente antes de responder, para contestar todo junto. Vacío o 0 = responde enseguida; máximo ${opciones.esperaRafagasMaxSegundos ?? 10}.`}>
+                  <Input type="number" inputMode="numeric" min={0} max={opciones.esperaRafagasMaxSegundos ?? 10} step={1} value={form.replyDebounceSeconds} placeholder="Apagada" onChange={(e) => cambiar("replyDebounceSeconds", e.target.value)} />
                 </FormField>
                 <fieldset className="flex flex-col gap-2 rounded-card border border-border p-3">
                   <legend className="px-1 text-sm font-medium">Motivos por los que el agente avisa a una persona</legend>

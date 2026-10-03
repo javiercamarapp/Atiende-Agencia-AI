@@ -123,11 +123,11 @@ describe("de la fila al prompt", () => {
     expect(prompt({ ...CONFIG, largeOrderText: null })).toContain("Pedido grande (más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo;");
   });
 
-  it("la espera de rafagas solo vale 1 a 30 s en el perfil PM; 0, null o una fila del perfil generico escrita a mano se ignoran", () => {
+  it("la espera de rafagas solo vale 1 a 10 s en el perfil PM; 0, null o una fila del perfil generico escrita a mano se ignoran", () => {
     expect(aplicarFilaAConfig({ ...CONFIG, replyDebounceSeconds: 6 }).replyDebounceSeconds).toBe(6);
     expect(aplicarFilaAConfig({ ...CONFIG, replyDebounceSeconds: 0 }).replyDebounceSeconds).toBeUndefined();
     expect(aplicarFilaAConfig({ ...CONFIG, replyDebounceSeconds: null }).replyDebounceSeconds).toBeUndefined();
-    expect(aplicarFilaAConfig({ ...CONFIG, replyDebounceSeconds: 99 }).replyDebounceSeconds).toBe(30);
+    expect(aplicarFilaAConfig({ ...CONFIG, replyDebounceSeconds: 99 }).replyDebounceSeconds).toBe(10);
     expect(aplicarFilaAConfig({ ...CONFIG, perfil: "generico", replyDebounceSeconds: 6, largeOrderText: "x" }).replyDebounceSeconds).toBeUndefined();
   });
 });

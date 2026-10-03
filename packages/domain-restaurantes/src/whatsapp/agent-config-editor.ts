@@ -8,13 +8,12 @@
 import type { BranchSummary, CustomerLookupResult, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput, TonoAgenteWhatsApp } from "../types.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "../types.ts";
 import type { MotivoEscalacionDesactivable } from "../types.ts";
-import { PM_CONFIG_POR_OMISION, FALLBACK_CONFIG, aplicarFilaAConfig, buildSystemPrompt } from "./llm-turn-handler.ts";
+import { ESPERA_RAFAGAS_MAX_SEGUNDOS, PM_CONFIG_POR_OMISION, FALLBACK_CONFIG, aplicarFilaAConfig, buildSystemPrompt } from "./llm-turn-handler.ts";
+export { ESPERA_RAFAGAS_MAX_SEGUNDOS };
 import { PM_PEDIDO_GRANDE_POR_OMISION, PM_PROMOS_POR_OMISION, PM_SALSAS_POR_OMISION } from "./perfil-pm.ts";
 
 /** Topes de longitud (los mismos CHECK de la migracion 029/033). */
 export const AGENTE_LIMITES = { agentName: 60, businessName: 120, deliveryTimeText: 200, greetingText: 80, salsasText: 300, promosText: 300, largeOrderText: 200 } as const;
-/** Tope de la espera de rafagas: la funcion del webhook dura 30 s (vercel.json) y tiene que alcanzar para responder. */
-export const ESPERA_RAFAGAS_MAX_SEGUNDOS = 30;
 
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;

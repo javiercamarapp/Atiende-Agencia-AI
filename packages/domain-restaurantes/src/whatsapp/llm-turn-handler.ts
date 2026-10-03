@@ -203,6 +203,9 @@ export async function resolveAgentConfig(repo: RestaurantesRepository, organizat
 
 /** Version pura de `resolveAgentConfig`: sirve tambien a la vista previa del editor (sin tocar la base). Los textos
  * editables pasan por `sanitizeInlineText` aunque la fila se haya escrito directo en la base. */
+/** Tope de la espera de rafagas. Muy por debajo del limite de la funcion del webhook (30 s en vercel.json): despues de esperar, la fase B todavia tiene que correr el turno del LLM (hasta 3). */
+export const ESPERA_RAFAGAS_MAX_SEGUNDOS = 10;
+
 export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organizationId = ""): WhatsAppLlmAgentConfig {
   if (!row) return getAgentConfig(organizationId);
   const base = row.perfil === "taqueria_pm" ? PM_CONFIG_POR_OMISION : FALLBACK_CONFIG;
@@ -214,7 +217,7 @@ export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organiz
   const salsas = texto(row.salsasText, 300);
   const promos = texto(row.promosText, 300);
   const umbral = texto(row.largeOrderText, 200);
-  const espera = row.replyDebounceSeconds !== undefined && row.replyDebounceSeconds !== null && Number.isInteger(row.replyDebounceSeconds) && row.replyDebounceSeconds > 0 ? Math.min(row.replyDebounceSeconds, 30) : undefined;
+  const espera = row.replyDebounceSeconds !== undefined && row.replyDebounceSeconds !== null && Number.isInteger(row.replyDebounceSeconds) && row.replyDebounceSeconds > 0 ? Math.min(row.replyDebounceSeconds, ESPERA_RAFAGAS_MAX_SEGUNDOS) : undefined;
   const apagados = (row.escalationReasonsOff ?? []).filter((m) => (MOTIVOS_ESCALACION_DESACTIVABLES as readonly string[]).includes(m));
   return {
     ...base,

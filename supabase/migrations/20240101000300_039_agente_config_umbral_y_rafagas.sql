@@ -12,14 +12,14 @@
 --  * `large_order_text`: texto libre CORTO (1 a 200 caracteres, CHECK) que el dueño escribe y que termina dentro del prompt del
 --    agente, igual que `salsas_text` o `promos_text` de 033. El codigo lo pasa por `sanitizeInlineText` antes de usarlo. No
 --    concede ninguna regla: el agente solo escala (nunca rechaza ni cobra distinto) y las reglas duras viven en el codigo.
---  * `reply_debounce_seconds`: entero de 0 a 30 (CHECK). Acota el tiempo que una peticion del webhook puede esperar (el limite de
---    la funcion es de 30 s): un valor fuera de rango no entra ni por SQL directo.
+--  * `reply_debounce_seconds`: entero de 0 a 10 (CHECK). Acota el tiempo que una peticion del webhook puede esperar: el limite de
+--    la funcion es de 30 s y, despues de esperar, todavia tiene que correr el turno del agente; un valor fuera de rango no entra ni por SQL directo.
 --  * GRANT: se amplian los GRANT por COLUMNA de INSERT y UPDATE de `authenticated` a SOLO estas dos columnas. Las policies de 029
 --    (solo owner/admin de la organizacion) siguen siendo las que protegen la escritura y el cross-tenant; `anon` no recibe nada
 --    (ni lectura ni escritura) y no se otorga DELETE. `service_role` conserva lo que ya tenia.
 alter table restaurantes.whatsapp_agent_config
   add column large_order_text text check (large_order_text is null or char_length(large_order_text) between 1 and 200),
-  add column reply_debounce_seconds smallint check (reply_debounce_seconds is null or reply_debounce_seconds between 0 and 30);
+  add column reply_debounce_seconds smallint check (reply_debounce_seconds is null or reply_debounce_seconds between 0 and 10);
 
 grant insert (large_order_text, reply_debounce_seconds) on restaurantes.whatsapp_agent_config to authenticated;
 grant update (large_order_text, reply_debounce_seconds) on restaurantes.whatsapp_agent_config to authenticated;
