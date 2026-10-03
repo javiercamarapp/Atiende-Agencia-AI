@@ -44,7 +44,12 @@ export function DemoWhatsAppPage({ apiBaseUrl, orgSlug }: { apiBaseUrl: string; 
     setEstado("cargando");
     cliente
       .estado()
-      .then(setEstado)
+      .then((e) => {
+        setEstado(e);
+        // El chat abre en la sucursal de la fase 1 (T7) si el servidor la ofrece; no pisa una eleccion ya hecha.
+        const predeterminada = e.sucursales.find((s) => s.slug === e.sucursal_predeterminada)?.slug;
+        if (predeterminada) setSucursal((actual) => actual || predeterminada);
+      })
       .catch((e: unknown) => setEstado({ error: e instanceof Error ? e.message : "No pudimos consultar la demo." }));
   }, [cliente]);
   useEffect(cargar, [cargar]);

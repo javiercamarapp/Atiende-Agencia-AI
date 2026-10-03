@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { emitirNotificacion } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { DEMO_SESSION_ID_RE, DEMO_WIDGET_LIMITS, DAY_SECONDS, DemoWidgetValidationError, buildStorefrontBranches, consumeRateLimit, resolveDemoWidgetEstado, runDemoWidgetTurn } from "@atiende/domain-restaurantes";
+import { DEMO_SESSION_ID_RE, DEMO_WIDGET_LIMITS, DAY_SECONDS, DemoWidgetValidationError, buildStorefrontBranches, consumeRateLimit, resolveDemoWidgetEstado, runDemoWidgetTurn, sucursalPredeterminadaDemo } from "@atiende/domain-restaurantes";
 import type { DemoWidgetEstado, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
@@ -64,6 +64,8 @@ export function restaurantesDemoWidgetRoutes(deps: AppDeps): Hono {
         ...estado,
         restaurante: esDemo ? { slug: org.slug, nombre: org.name } : null,
         sucursales,
+        // T7 (fase 1) abre preseleccionada si esta activa; null = "Numero general" (comportamiento de siempre).
+        sucursal_predeterminada: sucursalPredeterminadaDemo(sucursales),
         limites: { mensajes_por_sesion: DEMO_WIDGET_LIMITS.perSessionPerDay, caracteres_por_mensaje: DEMO_WIDGET_LIMITS.maxMessageChars },
       });
     });

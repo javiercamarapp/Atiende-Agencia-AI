@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildPmSeedPlan } from "../src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../src/seed/pm-world.ts";
 import {
+  DEMO_PERFIL_T7,
   DEMO_VOLUME_SCALES,
   DemoVolumeError,
   generarVolumenDemo,
@@ -246,5 +247,134 @@ describe("helpers", () => {
     await memo.createCustomer();
     expect(lecturas).toBe(2);
     expect(escrituras).toBe(2);
+  });
+});
+
+// DEMO-PM: perfil `t7` = el ritmo REAL medido en el WhatsApp de T7 Garcia Lavin (muestra anonimizada, 8 semanas). Las cifras de aqui
+// son las del analisis (139 pedidos, 70 clientes, 32 recurrentes = 101 pedidos = 73 %, ticket mediano ~$643, tiempos 50-90 / 10-45).
+describe("perfil t7 (ritmo real de la sucursal fase 1)", () => {
+  const horaLocal = (iso: string) => Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", hour: "2-digit", hourCycle: "h23" }).format(new Date(iso)));
+  const diaLocal = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "short" }).format(new Date(iso));
+  const mediana = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)]!;
+  const p90 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) * 0.9)]!;
+  const minutos = (o: DemoOrderRow) => (Date.parse(o.deliveredAt!) - Date.parse(o.createdAt)) / 60_000;
+  const t7 = (extra: Partial<DemoVolumeOptions> = {}) => generar({ dias: DEMO_PERFIL_T7.dias, perfil: "t7", pedidosPorDia: undefined, ...extra });
+
+  it("reparte EXACTAMENTE lo medido: solo T7, 139 pedidos, 70 clientes, 32 recurrentes con 101 pedidos (73 %), uno de ellos con 11", async () => {
+    const { orders, summary } = await t7();
+    expect(summary.orders).toBe(139);
+    expect(summary.customers).toBe(70);
+    expect(summary.omitidos).toBe(0);
+    expect(Object.keys(summary.porSucursal)).toEqual(["garcia-lavin"]);
+    expect(orders.every((o) => o.branchSlug === "garcia-lavin")).toBe(true);
+    const porCliente = new Map<string, number>();
+    for (const o of orders) porCliente.set(o.customerPhone, (porCliente.get(o.customerPhone) ?? 0) + 1);
+    const recurrentes = [...porCliente.values()].filter((n) => n >= 2);
+    expect(porCliente.size).toBe(70);
+    expect(recurrentes).toHaveLength(32);
+    expect(recurrentes.reduce((a, b) => a + b, 0)).toBe(101);
+    expect(Math.round((101 / 139) * 100)).toBe(73);
+    expect(Math.max(...porCliente.values())).toBe(11);
+  });
+
+  it("todo entra por WhatsApp, ~79 % a domicilio, pago casi mitad y mitad; los pedidos pasan por el motor real (totales = renglones - descuento, minimo $200 a domicilio)", async () => {
+    const { orders } = await t7();
+    expect(orders.every((o) => o.source === "whatsapp")).toBe(true);
+    const dom = orders.filter((o) => o.canal === "domicilio").length / orders.length;
+    expect(dom).toBeGreaterThan(0.7);
+    expect(dom).toBeLessThan(0.88);
+    const tarjeta = orders.filter((o) => o.paymentMethod === "tarjeta").length / orders.length;
+    expect(tarjeta).toBeGreaterThan(0.35);
+    expect(tarjeta).toBeLessThan(0.58);
+    for (const o of orders) {
+      expect(o.total, `pedido ${o.idempotencyKey.slice(0, 8)}`).toBeCloseTo(subtotal(o) - descuento(o), 2);
+      if (o.canal === "domicilio") expect(subtotal(o)).toBeGreaterThanOrEqual(200);
+      if (o.propina !== null) expect(o.paymentMethod).toBe("tarjeta");
+      expect(esTelefonoDemo(o.customerPhone)).toBe(true);
+    }
+  });
+
+  it("los tickets se parecen a los reales: mediana ~$640, p90 ~$1,500, un 10 % sobre $1,500 y fracciones de kilo, extras de salsa y bebidas en el menu de T7", async () => {
+    const { orders } = await t7();
+    const totales = orders.map((o) => o.total);
+    expect(mediana(totales)).toBeGreaterThan(520);
+    expect(mediana(totales)).toBeLessThan(780);
+    expect(p90(totales)).toBeGreaterThan(1200);
+    expect(p90(totales)).toBeLessThan(1800);
+    const grandes = totales.filter((t) => t > 1500).length;
+    expect(grandes).toBeGreaterThanOrEqual(7);
+    expect(grandes).toBeLessThanOrEqual(22);
+    expect(Math.max(...totales)).toBeLessThan(4500);
+    const nombres = new Set(orders.flatMap((o) => o.items.map((i) => i.name)));
+    expect([...nombres].some((n) => /^Bistec de Res — 250 g$/.test(n))).toBe(true);
+    expect([...nombres].some((n) => /^Pastor — 500 g$/.test(n))).toBe(true);
+    expect(nombres.has("Frijol con Tostada")).toBe(true);
+    expect(nombres.has("Extra Salsa")).toBe(true);
+  });
+
+  it("tiempos reales: a domicilio de 50 a 90 min (mediana ~65), para recoger de 10 a 50 min", async () => {
+    const { orders } = await t7();
+    const dom = orders.filter((o) => o.canal === "domicilio" && o.status === "completado").map(minutos);
+    const rec = orders.filter((o) => o.canal === "recoger" && o.status === "completado").map(minutos);
+    expect(Math.min(...dom)).toBeGreaterThanOrEqual(50);
+    expect(Math.max(...dom)).toBeLessThanOrEqual(90);
+    expect(mediana(dom)).toBeGreaterThanOrEqual(60);
+    expect(mediana(dom)).toBeLessThanOrEqual(70);
+    expect(Math.min(...rec)).toBeGreaterThanOrEqual(10);
+    expect(Math.max(...rec)).toBeLessThanOrEqual(50);
+  });
+
+  it("picos y dias de la sucursal: 12-16 h y 19-22 h concentran el volumen y el fin de semana pesa mas; ~6 % con problema", async () => {
+    const { orders } = await t7();
+    const enPico = orders.filter((o) => {
+      const h = horaLocal(o.createdAt);
+      return (h >= 12 && h < 16) || (h >= 19 && h < 22);
+    }).length;
+    expect(enPico / orders.length).toBeGreaterThan(0.55);
+    const finde = orders.filter((o) => ["Sat", "Sun"].includes(diaLocal(o.createdAt))).length;
+    expect(finde / orders.length).toBeGreaterThan(0.35);
+    const problemas = orders.filter((o) => o.status === "problema" || o.status === "no_recogido").length;
+    expect(problemas).toBeGreaterThanOrEqual(3);
+    expect(problemas).toBeLessThanOrEqual(16);
+    // Nunca fuera del horario de servicio (12:00 a 01:00).
+    for (const o of orders) expect([...Array(12).keys()].slice(1).includes(horaLocal(o.createdAt))).toBe(false);
+  });
+
+  it("las conversaciones prometen los tiempos reales de T7 (no los 40 a 50 min genericos) y hay quejas con handoff pendiente", async () => {
+    const { conversations, handoffs } = await t7();
+    const textos = conversations.flatMap((c) => c.messages.map((m) => m.content)).join("\n");
+    expect(textos).toContain("60 a 75 minutos");
+    expect(textos).not.toContain("40 a 50");
+    expect(handoffs.some((h) => h.estado === "pendiente")).toBe(true);
+  });
+
+  it("es determinista, sin PII real y escala por dias (28 dias = la mitad de pedidos)", async () => {
+    const a = await t7();
+    const b = await t7();
+    expect(a.orders.map((o) => o.idempotencyKey)).toEqual(b.orders.map((o) => o.idempotencyKey));
+    expect(a.orders.map((o) => o.createdAt)).toEqual(b.orders.map((o) => o.createdAt));
+    for (const o of a.orders) expect(o.notes).not.toMatch(/@|https?:/);
+    for (const c of a.customers) expect(c.phone).toMatch(/^0001[0-9]{6}$/);
+    const mitad = await t7({ dias: 28 });
+    expect(mitad.summary.orders).toBe(70);
+    // Su clave de idempotencia es propia del perfil: no choca con la del volumen generico.
+    expect(a.orders[0]!.idempotencyKey).not.toBe((await generar()).orders[0]!.idempotencyKey);
+  });
+
+  it("sin la sucursal T7 ACTIVA el perfil falla con un error claro (nunca escribe en otra sucursal)", async () => {
+    const sinT7 = { ...plan, branches: plan.branches.map((b) => (b.slug === "garcia-lavin" ? { ...b, status: "inactive" as const } : b)) };
+    const world = await buildInMemoryPmWorld(sinT7, { organizationId: ORG_ID });
+    const gen = generarVolumenDemo(world.repo, { organizationId: world.organizationId, dias: 56, perfil: "t7", ahora: AHORA });
+    await expect(gen.next()).rejects.toThrow(/garcia-lavin.*ACTIVA/);
+  });
+});
+
+describe("sucursal predeterminada del chat de la demo", () => {
+  it("es la misma que el perfil t7 y solo se ofrece si esta entre las activas", async () => {
+    const { DEMO_SUCURSAL_PREDETERMINADA, sucursalPredeterminadaDemo } = await import("../src/demo/types.ts");
+    expect(DEMO_SUCURSAL_PREDETERMINADA).toBe(DEMO_PERFIL_T7.sucursal);
+    expect(sucursalPredeterminadaDemo([{ slug: "prol-montejo" }, { slug: "garcia-lavin" }])).toBe("garcia-lavin");
+    expect(sucursalPredeterminadaDemo([{ slug: "prol-montejo" }])).toBeNull();
+    expect(sucursalPredeterminadaDemo([])).toBeNull();
   });
 });
