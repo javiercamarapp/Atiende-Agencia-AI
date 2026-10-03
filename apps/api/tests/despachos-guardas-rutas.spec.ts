@@ -11,7 +11,6 @@
 // main por no declarar sus rutas en la matriz de hoteles.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { Hono } from "hono";
 import { hashPassword } from "@atiende/db";
 import { DESPACHOS_ROLES, type DespachosRole } from "@atiende/domain-despachos";
 import { buildApp } from "../src/app.ts";
@@ -33,7 +32,7 @@ interface Ruta {
 }
 
 /** Rutas de staff registradas en `app` bajo `/despachos/:propertyId/*` y `/v1/despachos/*` (middlewares `ALL` fuera). */
-export function descubrirRutas(app: Hono<any>): Ruta[] {
+export function descubrirRutas(app: { readonly routes: ReadonlyArray<{ readonly method: string; readonly path: string }> }): Ruta[] {
   const unicas = new Map<string, Ruta>();
   for (const r of app.routes) {
     if (r.method === "ALL") continue;
