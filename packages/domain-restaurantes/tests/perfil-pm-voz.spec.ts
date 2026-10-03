@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
-import { PM_PROMOS_POR_OMISION, PM_SALSAS_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
+import { PM_PROMOS_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, comportamientoVozPm } from "../src/voz/perfil-voz-pm.ts";
 import { instruccionVozPm } from "../src/voz/simulador/prompt-voz.ts";
 import { MENSAJES_PREGRABADOS, mensajeSaludoRespaldo } from "../src/voz/llamada/mensajes.ts";
