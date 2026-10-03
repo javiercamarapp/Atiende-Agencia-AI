@@ -175,7 +175,8 @@ export { extractMetaInboundMessages, extractMetaTextMessages, extractMetaPhoneNu
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
-export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
+export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA } from "./whatsapp/inbound.ts";
+export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
