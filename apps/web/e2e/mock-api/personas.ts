@@ -4,6 +4,8 @@ import type { Persona, Rol, Vertical } from "./tipos.ts";
 
 export const VERTICALES: readonly Vertical[] = ["restaurantes", "hoteles", "rentas", "despachos", "licitaciones", "citas"];
 export const ROLES: readonly Rol[] = ["owner", "admin", "staff", "finanzas"];
+/** Roles finos de licitaciones (solo existen en esa vertical). */
+export const ROLES_LICITACIONES: readonly Rol[] = ["analyst", "writer", "reviewer", "viewer"];
 
 const ORGS: Readonly<Record<Vertical, { readonly slug: string; readonly nombre: string }>> = {
   restaurantes: { slug: "taqueria-el-faro", nombre: "Taqueria El Faro" },
@@ -71,6 +73,9 @@ export function resolverPersona(id: string): Persona | null {
     for (const r of ROLES) {
       if (id === `${v}-${r}`) return personaDe(v, r);
     }
+  }
+  for (const r of ROLES_LICITACIONES) {
+    if (id === `licitaciones-${r}`) return personaDe("licitaciones", r);
   }
   return null;
 }

@@ -3,8 +3,9 @@
 
 export type Vertical = "restaurantes" | "hoteles" | "rentas" | "despachos" | "licitaciones" | "citas";
 
-/** Roles de organizacion que usan las fixtures. `finanzas` aplica a despachos/hoteles/rentas. */
-export type Rol = "owner" | "admin" | "staff" | "finanzas";
+/** Roles de organizacion que usan las fixtures. `finanzas` aplica a despachos/hoteles/rentas; analyst/writer/reviewer/viewer son los
+ *  roles finos de licitaciones (LICITACIONES_ROLES de domain-licitaciones). */
+export type Rol = "owner" | "admin" | "staff" | "finanzas" | "analyst" | "writer" | "reviewer" | "viewer";
 
 export interface Persona {
   readonly id: string;
