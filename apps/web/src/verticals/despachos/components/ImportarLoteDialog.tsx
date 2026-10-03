@@ -182,9 +182,7 @@ export function ImportarLoteDialog({ open, onOpenChange, apiBaseUrl, token, prop
                 {progreso.archivosEnviados} de {progreso.archivosTotal} archivos
               </span>
             </div>
-            <div role="progressbar" aria-label="Avance de la importación" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-1.5 overflow-hidden rounded-full bg-canvas">
-              <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
-            </div>
+            <progress aria-label="Avance de la importación" role="progressbar" max={100} value={pct} className="h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-canvas [&::-webkit-progress-value]:bg-primary" />
           </div>
         )}
 
