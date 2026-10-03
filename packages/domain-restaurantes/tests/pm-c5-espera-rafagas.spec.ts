@@ -1,10 +1,11 @@
 // PM-C5 (recomendacion 17): espera de rafagas. Dos fases con espera entre ellas: lo que llega durante la espera se agrega al historial y
 // se contesta en UN solo turno; nada se pierde ni se contesta dos veces. Repositorio en memoria (mismo contrato de lease/append/dedupe).
 import { describe, expect, it } from "vitest";
-import { analizarHistorial, mensajesSinResponder, recibirMensajeConEspera, responderTrasEspera, handleInboundWhatsAppMessage, usuariosRespondidos, MAX_PASADAS_RAFAGA } from "../src/whatsapp/inbound.ts";
+import { analizarHistorial, mensajesSinResponder, recibirMensajeConEspera, responderTrasEspera, handleInboundWhatsAppMessage, usuariosRespondidos, MAX_PASADAS_RAFAGA, PASADA_ESTIMADA_MS } from "../src/whatsapp/inbound.ts";
 import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import type { ConversationMessage } from "../src/repository.ts";
 import type { HandoffAgentGate } from "../src/conversaciones/repository.ts";
+import { actorHash } from "../src/rate-limit.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const TELEFONO = "+5219991234567";
@@ -150,6 +151,36 @@ describe("responderTrasEspera (fase B)", () => {
     await responderTrasEspera(ctx.f.repo, ctx.handler, ctx.argsFase2("wamid.1"));
     expect(ctx.vistos).toHaveLength(MAX_PASADAS_RAFAGA);
     expect(ctx.salida()).toHaveLength(MAX_PASADAS_RAFAGA);
+  });
+
+  it("no empieza otra pasada si ya no cabe antes del fin de la funcion: la respuesta de la pasada 1 queda, lo pendiente se marca failed y Meta reintenta", async () => {
+    let ahora = 0;
+    const ctx = montar([
+      async () => {
+        // durante el turno 1 llega otro mensaje y el turno consume casi todo el tiempo que queda
+        await recibirMensajeConEspera(ctx.f.repo, ctx.argsFase1("wamid.2", "y una orden de frijol"));
+        ahora = 30_000 - PASADA_ESTIMADA_MS + 1;
+      },
+    ]);
+    await recibirMensajeConEspera(ctx.f.repo, ctx.argsFase1("wamid.1", "Quiero 1/4 de bistec"));
+    const r = await responderTrasEspera(ctx.f.repo, ctx.handler, ctx.argsFase2("wamid.1", { finFuncionMs: 30_000, reloj: () => ahora }));
+    expect(r).toEqual({ ok: false, retryable: true });
+    expect(ctx.vistos).toHaveLength(1); // no hubo pasada 2
+    expect(ctx.salida()).toEqual(["respuesta 1"]); // la respuesta de la pasada 1 sigue en el outbox
+    // el turno quedo libre: un mensaje nuevo lo toma y contesta lo pendiente
+    await expect(ctx.f.repo.claimWhatsAppConversation(ctx.f.organizationId, actorHash(TELEFONO), "wamid.3", 45)).resolves.toBe(true);
+  });
+
+  it("con tiempo de sobra la segunda pasada corre igual (el limite solo recorta cuando no cabe)", async () => {
+    const ctx = montar([
+      async () => {
+        await recibirMensajeConEspera(ctx.f.repo, ctx.argsFase1("wamid.2", "y una orden de frijol"));
+      },
+    ]);
+    await recibirMensajeConEspera(ctx.f.repo, ctx.argsFase1("wamid.1", "Quiero 1/4 de bistec"));
+    const r = await responderTrasEspera(ctx.f.repo, ctx.handler, ctx.argsFase2("wamid.1", { finFuncionMs: 30_000, reloj: () => 1_000 }));
+    expect(r).toMatchObject({ ok: true, reply: "respuesta 2" });
+    expect(ctx.salida()).toEqual(["respuesta 1", "respuesta 2"]);
   });
 
   it("si ya alguien contesto todo (nada pendiente), no vuelve a contestar", async () => {
