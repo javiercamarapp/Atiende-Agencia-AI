@@ -64,3 +64,12 @@ Se evaluo moverlo a `eslint.config.js` o a `scripts/verify-ds-v2-guard.mjs` y se
 
 - La bandera `?ds=v2` (`inicializarTemaV2`) se retiro en UNI-0 (spec de diseno Atiende = Likida): los tokens de Likida aplican directo en claro y oscuro.
 - No cubiertos por el guard (ver `docs/diseno-ux-inventario-restante.md` seccion 2): `<input type="radio">`, `<button>` de tarjeta, anchos `w-[Npx]`, CSS de `pages/login.css`.
+
+## Formato unico de numeros y fechas (PL-19, trinquete)
+
+`apps/web/tests/formato-unico-guard.spec.ts` cuenta las llamadas `toLocaleString|toLocaleDateString|toLocaleTimeString` de
+`apps/web/src`, `packages/ui/src` y `packages/domain-*/src` (sin comentarios ni los formateadores canonicos:
+`formatMoney.ts`, `formato-preset.ts`, `lib/formato-fecha.ts`). El numero **no puede subir** por encima de
+`apps/web/tests/formato-unico-baseline.json` y **puede bajar** (al bajar, el test pide bajar el baseline; nunca subirlo). Ninguna
+llamada puede fijar un locale distinto de `es-MX` (se tolera `en-CA`, modismo para `YYYY-MM-DD`). Las pantallas nuevas usan
+`formatMoney` / `resolverFormato` de `@atiende/ui` o `lib/formato-fecha.ts`. Sanidad: `formato-unico-guard-sanidad.spec.ts`.
