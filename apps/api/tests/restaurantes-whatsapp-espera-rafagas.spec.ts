@@ -2,8 +2,8 @@
 // recibe el mensaje en una transaccion que se confirma, espera sin transaccion abierta y responde todo junto; con la espera apagada
 // (lo normal) el camino es el de siempre. La espera se inyecta (`deps.esperarRafaga`) para controlarla sin dormir de verdad.
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { describe, expect, it, vi } from "vitest";
+import { actorHash, type WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, TEST_ENV } from "./fixtures.ts";
 
@@ -155,7 +155,7 @@ describe("webhook de WhatsApp de restaurantes con espera de rafagas", () => {
     expect(esperas).toEqual([7_000]);
   });
 
-  it("si la fase B no puede confirmar, el turno confirmado por la fase A se SUELTA: el mensaje queda 'failed' (Meta reintenta) y el siguiente mensaje del telefono se contesta en vez de absorberse sin respuesta", async () => {
+  it("si la fase B no puede confirmar, el turno que dejo tomado la fase A se SUELTA (liberarTurnoTrasFalloDeFaseB): el siguiente mensaje se contesta en vez de absorberse", async () => {
     const base = await buildTestDeps();
     base.restaurantesRepo.seedWhatsAppBranchChannel(base.organizationId, base.propertyId, "pn-t7");
     await base.restaurantesRepo.upsertWhatsAppAgentConfig(base.organizationId, null, { ...PM, replyDebounceSeconds: 5 });
@@ -166,31 +166,108 @@ describe("webhook de WhatsApp de restaurantes con espera de rafagas", () => {
         return { reply: "ok", orderId: null, propertyId: null };
       },
     };
-    // Simula el fallo detectable: la fase B (segunda sesion de cada peticion con espera) corre y su COMMIT falla, con lo que se revierte entera.
+    // Simula el ROLLBACK real de la fase B: el repo en memoria no revierte, asi que al fallar el commit se REPONE el estado que la fase A dejo confirmado
+    // (turno tomado por wamid.1). Sin liberarTurnoTrasFalloDeFaseB ese turno seguiria tomado y wamid.2 se absorberia sin respuesta.
     const motor = base.deps.engine;
     let sesiones = 0;
     const engine = Object.create(motor) as typeof motor;
     engine.withAppSession = (async (ctx: unknown, fn: unknown) => {
       sesiones += 1;
       const fallaElCommit = sesiones === 2;
-      const resultado = await (motor.withAppSession as (c: unknown, f: unknown) => Promise<unknown>).call(motor, ctx, async (db: unknown) => {
+      return await (motor.withAppSession as (c: unknown, f: unknown) => Promise<unknown>).call(motor, ctx, async (db: unknown) => {
         const out = await (fn as (d: unknown) => Promise<unknown>)(db);
-        if (fallaElCommit) throw new Error("COMMIT devolvio ROLLBACK");
+        if (fallaElCommit) {
+          await base.restaurantesRepo.claimWhatsAppConversation(base.organizationId, actorHash("+5219991234567"), "wamid.1", 45);
+          throw new Error("COMMIT devolvio ROLLBACK");
+        }
         return out;
       });
-      return resultado;
     }) as typeof motor.withAppSession;
     const app = buildApp({ ...base.deps, engine, turnHandler: handler, esperarRafaga: async () => undefined });
 
     const r1 = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.1", "Hola")));
     expect(r1.status).toBe(500); // Meta reintenta
-    // (el repo en memoria no revierte datos con la transaccion falsa: lo que se prueba es la liberacion del turno)
+    // el turno quedo libre: lo puede tomar otro mensaje (con el turno repuesto y sin liberar esto devolveria false)
+    await expect(base.restaurantesRepo.claimWhatsAppConversation(base.organizationId, actorHash("+5219991234567"), "wamid.probe", 45)).resolves.toBe(true);
+    await base.restaurantesRepo.finishWhatsAppMessage(base.organizationId, "wamid.probe", actorHash("+5219991234567"), "processed", null);
 
-    // El telefono vuelve a escribir: sin la liberacion, el turno de wamid.1 seguiria tomado y este mensaje se absorberia sin respuesta.
     sesiones = 10; // el resto de peticiones ya no simulan fallos
     const r2 = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.2", "Quiero un pedido")));
     expect(r2.status).toBe(200);
-    expect(vistos.at(-1)?.at(-1)).toBe("Quiero un pedido"); // el turno se tomo y se contesto (no se absorbio)
+    expect(vistos.at(-1)?.at(-1)).toBe("Quiero un pedido");
     expect(textoSalida(base.restaurantesRepo).at(-1)).toBe("ok");
+  });
+
+  it("dueno muerto por timeout (fase A confirmada, fase B nunca corre): pasados 45 s el siguiente mensaje toma el turno y contesta lo absorbido", async () => {
+    const base = await buildTestDeps();
+    base.restaurantesRepo.seedWhatsAppBranchChannel(base.organizationId, base.propertyId, "pn-t7");
+    await base.restaurantesRepo.upsertWhatsAppAgentConfig(base.organizationId, null, { ...PM, replyDebounceSeconds: 5 });
+    const vistos: string[][] = [];
+    const handler: WhatsAppTurnHandler = {
+      async handleInboundMessage({ messages }) {
+        vistos.push(messages.map((m) => m.content));
+        return { reply: "ok", orderId: null, propertyId: null };
+      },
+    };
+    let entroEnEspera!: () => void;
+    const enEspera = new Promise<void>((r) => (entroEnEspera = r));
+    // la funcion del primer mensaje "muere" esperando: la espera nunca termina
+    let llamadas = 0;
+    const app = buildApp({
+      ...base.deps,
+      turnHandler: handler,
+      esperarRafaga: () => {
+        llamadas += 1;
+        if (llamadas > 1) return Promise.resolve(); // solo la primera funcion "muere"
+        entroEnEspera();
+        return new Promise<void>(() => undefined);
+      },
+    });
+    void app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.1", "Hola")));
+    await enEspera;
+    expect(vistos).toHaveLength(0);
+
+    // antes de 45 s el turno sigue tomado: el mensaje se absorbe sin respuesta
+    const absorbido = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.2", "Quiero un pedido")));
+    expect(absorbido.status).toBe(200);
+    expect(vistos).toHaveLength(0);
+
+    const ahora = Date.now();
+    const spy = vi.spyOn(Date, "now").mockReturnValue(ahora + 46_000);
+    try {
+      const r = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.3", "y una coca")));
+      expect(r.status).toBe(200);
+    } finally {
+      spy.mockRestore();
+    }
+    // el turno vencido lo tomo wamid.3, que contesta TODO lo absorbido (los 3 mensajes estan en el historial) en una sola respuesta
+    expect(vistos).toEqual([["Hola", "Quiero un pedido", "y una coca"]]);
+    expect(textoSalida(base.restaurantesRepo)).toEqual(["ok"]);
+  });
+
+  it("un error leyendo la config de espera manda solo ese mensaje al camino sin espera (responde como siempre, sin 500)", async () => {
+    const base = await buildTestDeps();
+    base.restaurantesRepo.seedWhatsAppBranchChannel(base.organizationId, base.propertyId, "pn-t7");
+    await base.restaurantesRepo.upsertWhatsAppAgentConfig(base.organizationId, null, { ...PM, replyDebounceSeconds: 5 });
+    const vistos: string[][] = [];
+    const handler: WhatsAppTurnHandler = {
+      async handleInboundMessage({ messages }) {
+        vistos.push(messages.map((m) => m.content));
+        return { reply: "ok", orderId: null, propertyId: null };
+      },
+    };
+    const esperas: number[] = [];
+    const repo = base.restaurantesRepo as unknown as { findWhatsAppAgentConfig: (...a: unknown[]) => Promise<unknown> };
+    const original = repo.findWhatsAppAgentConfig.bind(repo);
+    repo.findWhatsAppAgentConfig = async () => {
+      throw new Error("42P01 relation does not exist");
+    };
+    const app = buildApp({ ...base.deps, turnHandler: handler, esperarRafaga: async (ms: number) => void esperas.push(ms) });
+    const r = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload("wamid.1", "Hola")));
+    repo.findWhatsAppAgentConfig = original;
+    expect(r.status).toBe(200);
+    expect(esperas).toEqual([]);
+    expect(vistos).toEqual([["Hola"]]);
+    expect(textoSalida(base.restaurantesRepo)).toEqual(["ok"]);
   });
 });
