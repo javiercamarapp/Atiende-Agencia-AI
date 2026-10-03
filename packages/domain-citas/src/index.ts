@@ -363,3 +363,5 @@ export type { CitasDataChatReader, CitasDataChatWindow } from "./data-chat/index
 // PL-31 -- ventana de 24 h de Meta y plantillas HSM por organizacion para los avisos proactivos.
 export { VENTANA_SEGURA_MS, armarParametrosPlantilla, decidirEnvioProactivo, encolarCorreoListaEspera, variantesTelefonoEntrante } from "./whatsapp/proactivo.ts";
 export type { DecisionProactivo, PlantillaParaEncolar, PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
+export { EVENTOS_PLANTILLA_CITAS, PLANTILLA_ESTADOS, PLANTILLA_IDIOMA_RE, PLANTILLA_MAX_VARIABLES, PLANTILLA_NOMBRE_RE, eventoPlantillaCitas, validarPlantillaWhatsapp } from "./whatsapp/plantillas.ts";
+export type { EstadoPlantillaWhatsapp, EventoPlantillaCitas, PlantillaWhatsappInput, PlantillaWhatsappRecord, ResultadoValidacionPlantilla } from "./whatsapp/plantillas.ts";

@@ -15,6 +15,7 @@ import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroRe
 import { fotoConfigMensajes } from "./whatsapp/message-config.ts";
 import { variantesTelefonoEntrante } from "./whatsapp/proactivo.ts";
 import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
+import type { PlantillaWhatsappInput, PlantillaWhatsappRecord } from "./whatsapp/plantillas.ts";
 import { actorHash } from "./rate-limit.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import { emitirNotificacion, isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
@@ -1205,6 +1206,66 @@ export class PostgresCitasRepository implements CitasRepository {
       fallback: (err) => {
         advertirMensajesNoDisponibles("getWhatsappMessageConfigForSend", err);
         return Promise.resolve(null);
+      },
+    });
+  }
+
+  async listWhatsappTemplates(organizationId: string): Promise<{ readonly disponible: boolean; readonly items: readonly PlantillaWhatsappRecord[] }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean; readonly items: readonly PlantillaWhatsappRecord[] }>({
+      session: this.db,
+      savepointName: "sp_citas_wa_templates_list",
+      primary: async () => {
+        const { rows } = await this.db.query<{ evento: string; nombre: string; idioma: string; variables: string[]; estado: PlantillaWhatsappRecord["estado"]; aprobada_en: Date | string | null; updated_at: Date | string }>(
+          `select evento, nombre, idioma, variables, estado, aprobada_en, updated_at from core.whatsapp_plantilla where organization_id = $1 and vertical = 'citas' order by evento;`,
+          [organizationId],
+        );
+        const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
+        return { disponible: true, items: rows.map((r) => ({ evento: r.evento, nombre: r.nombre, idioma: r.idioma, variables: r.variables, estado: r.estado, aprobadaEn: r.aprobada_en === null ? null : iso(r.aprobada_en), actualizadaEn: iso(r.updated_at) })) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: (err) => {
+        advertirPlantillasNoDisponibles("listWhatsappTemplates", err);
+        return Promise.resolve({ disponible: false, items: [] });
+      },
+    });
+  }
+
+  async saveWhatsappTemplate(organizationId: string, evento: string, valor: PlantillaWhatsappInput): Promise<"saved" | "forbidden" | "unavailable"> {
+    return runWithSavepointFallback<"saved" | "forbidden" | "unavailable">({
+      session: this.db,
+      savepointName: "sp_citas_wa_templates_save",
+      primary: async () => {
+        // creado_por = auth.uid(): la policy de INSERT lo exige y solo un owner/admin de la organizacion pasa el WITH CHECK (42501 si no).
+        await this.db.query(
+          `insert into core.whatsapp_plantilla (organization_id, vertical, evento, nombre, idioma, variables, estado, creado_por)
+           values ($1, 'citas', $2, $3, $4, $5::text[], $6, auth.uid())
+           on conflict (organization_id, vertical, evento) do update set nombre = excluded.nombre, idioma = excluded.idioma, variables = excluded.variables, estado = excluded.estado;`,
+          [organizationId, evento, valor.nombre, valor.idioma, valor.variables, valor.estado],
+        );
+        return "saved";
+      },
+      isRecoverable: (err) => isMigrationPendingError(err) || sqlState(err) === "42501",
+      fallback: (err) => {
+        if (sqlState(err) === "42501") return Promise.resolve("forbidden");
+        advertirPlantillasNoDisponibles("saveWhatsappTemplate", err);
+        return Promise.resolve("unavailable");
+      },
+    });
+  }
+
+  async deleteWhatsappTemplate(organizationId: string, evento: string): Promise<"deleted" | "not_found" | "forbidden" | "unavailable"> {
+    return runWithSavepointFallback<"deleted" | "not_found" | "forbidden" | "unavailable">({
+      session: this.db,
+      savepointName: "sp_citas_wa_templates_delete",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string }>(`delete from core.whatsapp_plantilla where organization_id = $1 and vertical = 'citas' and evento = $2 returning id;`, [organizationId, evento]);
+        return rows.length > 0 ? "deleted" : "not_found";
+      },
+      isRecoverable: (err) => isMigrationPendingError(err) || sqlState(err) === "42501",
+      fallback: (err) => {
+        if (sqlState(err) === "42501") return Promise.resolve("forbidden");
+        advertirPlantillasNoDisponibles("deleteWhatsappTemplate", err);
+        return Promise.resolve("unavailable");
       },
     });
   }
