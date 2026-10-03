@@ -1,6 +1,6 @@
 // Contrato `VoiceAgentProvider` del backend de voz compartido: el punto de intercambio entre
-// motores (Gemini 3.8 Live = principal; gpt-live-1 = respaldo, ver
-// expertos/arquitectura-voz-pm.md §4; ElevenLabs se retiro del stack de PM). Esta tarea cubre solo el lado "panel": emitir la sesion de
+// motores (Gemini 3.8 Live = principal; cascada OpenRouter = respaldo automatico, ver `config-plataforma.ts`; gpt-live-1 y
+// ElevenLabs salieron del stack). Esta tarea cubre solo el lado "panel": emitir la sesion de
 // preview, exponer el catalogo de voces y reportar salud. El servicio de llamadas (`startSession`
 // con audio SIP) es otra tarea y ampliara este contrato sin romper estos tres metodos.
 import type { VozCatalogoItem } from "./catalogo-voces.ts";

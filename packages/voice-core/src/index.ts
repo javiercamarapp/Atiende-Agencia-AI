@@ -1,4 +1,4 @@
-// @atiende/voice-core -- esqueleto de voz compartido por las verticales (LiveKit + Gemini Live, escalera Gemini -> gpt-live-1 -> humano/buzon).
+// @atiende/voice-core -- esqueleto de voz compartido por las verticales (LiveKit + Gemini Live, escalera Gemini -> cascada OpenRouter -> humano/buzon).
 // Ver README.md: como una vertical monta su agente (perfil + registro de tools + guiones + repositorio).
 export { CATALOGO_VOCES_GEMINI, VOZ_POR_DEFECTO, esVozDeGemini } from "./catalogo-voces.ts";
 export type { VozCatalogoItem } from "./catalogo-voces.ts";
@@ -31,3 +31,13 @@ export type { DepsControlador, EventoKpiLlamada, ResultadoLlamada, TurnoTranscri
 export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
 export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup } from "./llamada/gemini-live-sesion.ts";
 export type { CrearSocketLive, GeminiLiveSesionOpciones, ProveedorGeminiLlamada, SocketLive } from "./llamada/gemini-live-sesion.ts";
+export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoEstimadoMicroUsd, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
+export type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
+export { costoTotalMicroUsd, eventosCostoLlamada } from "./costo.ts";
+export type { EntradaEventosCosto, EventoCostoUso, TramoLlamada } from "./costo.ts";
+export { crearEscaleraLlamada } from "./escalera.ts";
+export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";
+export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav } from "./llamada/cascada-openrouter.ts";
+export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
+export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";
+export type { CredencialesVoz, DepsPlataformaVoz, EstadoEscaleraVoz, EstadoEscalonVoz } from "./plataforma.ts";

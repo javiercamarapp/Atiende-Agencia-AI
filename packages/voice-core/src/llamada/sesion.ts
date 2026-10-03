@@ -1,4 +1,4 @@
-// Puerto de UNA sesion de conversacion con un proveedor de voz-a-voz (Gemini Live, gpt-live-1, el falso del simulador).
+// Puerto de UNA sesion de conversacion con un proveedor de voz-a-voz (Gemini Live, la cascada OpenRouter, el falso del simulador).
 // El controlador (`controlador.ts`) conduce la llamada contra este puerto; el audio (SIP/LiveKit) y el protocolo del
 // proveedor quedan del otro lado. En modo texto (`enviarTexto`) se usa para el simulador y la prueba ciega manual.
 import type { ToolDefinicion } from "./ejecutor-tools.ts";

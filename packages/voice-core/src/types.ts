@@ -1,5 +1,7 @@
 // Tipos GENERICOS del backend de voz compartido por las verticales (restaurantes, hoteles y, despues, citas/licitaciones).
-// La escalera de proveedores es la misma para todas: Gemini 3.8 Live -> gpt-live-1 -> humano/buzon con callback (sin ElevenLabs).
+// La escalera de proveedores es la misma para todas (`config-plataforma.ts`): Gemini 3.8 Live -> cascada OpenRouter -> humano/buzon con callback
+// (sin ElevenLabs ni gpt-live). `VozProveedorId` es solo el valor de la COLUMNA `proveedor` de las tablas de voz ya migradas (su CHECK admite
+// `gemini-3.8-live`, `gpt-live-1` y `elevenlabs-agents`); `gpt-live-1` ya no lo atiende nadie, queda como valor historico permitido por esa restriccion.
 // Lo que depende de la vertical (el resultado de cierre de la llamada, la entidad que la llamada crea) se parametriza aqui o
 // se queda en la vertical.
 export type VozProveedorId = "gemini-3.8-live" | "gpt-live-1";
