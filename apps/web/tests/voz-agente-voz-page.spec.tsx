@@ -7,7 +7,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgenteVozPage } from "../src/verticals/restaurantes/pages/AgenteVoz.tsx";
-import type { EntornoVoz } from "../src/verticals/restaurantes/voz/adaptador-gemini-live.ts";
+import type { EntornoVoz } from "../src/lib/voz/adaptador-gemini-live.ts";
 import type { MuestraAudio } from "../src/verticals/restaurantes/voz/SelectorVoz.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { contarEjecuciones } from "../src/verticals/restaurantes/voz/herramientas-agente.ts";

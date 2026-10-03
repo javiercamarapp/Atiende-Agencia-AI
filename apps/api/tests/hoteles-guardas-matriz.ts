@@ -249,6 +249,9 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /reservas-agente/politica": ["owner", "gm", "frontdesk", "reservations", "accountant"],
   "PUT /reservas-agente/politica": ["owner", "gm"],
   "POST /voz/config": ["owner", "gm"],
+  // Voz sobre voice-core: estado honesto de la escalera y sesion de vista previa. owner/gm (ADMIN_ROLES); no llevan secretos.
+  "GET /voz/estado": ["owner", "gm"],
+  "POST /voz/preview/sesion": ["owner", "gm"],
   "GET /conversaciones": ["owner", "gm", "frontdesk", "reservations"],
   "GET /conversaciones/:id": ["owner", "gm", "frontdesk", "reservations"],
   "POST /conversaciones/:id/leer": ["owner", "gm", "frontdesk", "reservations"],

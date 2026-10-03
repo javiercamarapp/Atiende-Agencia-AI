@@ -24,6 +24,7 @@
     "@atiende/domain-despachos": "*",
     "@atiende/domain-rentas": "*",
     "@atiende/mcp-cfdi": "*",
+    "@atiende/voice-core": "*",
     "@atiende/whatsapp-gateway": "*",
     "@atiende/worker": "*",
     "hono": "4.13.9",

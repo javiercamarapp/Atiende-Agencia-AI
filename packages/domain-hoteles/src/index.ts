@@ -219,6 +219,7 @@ export {
   TOOLS as WHATSAPP_HOTELES_TOOLS,
   FALLBACK_CONFIG as WHATSAPP_HOTELES_FALLBACK_CONFIG,
   getAgentConfig as getWhatsAppHotelesAgentConfig,
+  localDateIn as whatsappHotelesLocalDateIn,
   providerFailureReply as whatsappHotelesProviderFailureReply,
 } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppHotelesAgentConfig, WhatsAppHotelesLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
@@ -552,3 +553,7 @@ export * from "./privacy/index.ts";
 export { buildHotelesDataChatCatalog, buildHotelesDataChatTools, PostgresHotelesDataChatReader, ALL_HOTELES_DATA_CHAT_SQL } from "./data-chat/index.ts";
 export type { HotelesDataChatReader, HotelesDataChatWindow } from "./data-chat/index.ts";
 export * from "./reservas-agente/index.ts";
+
+// Agente de VOZ de hoteles sobre @atiende/voice-core (perfil, registro de tools con maquina de reserva, transportes). El simulador y sus guiones salen por
+// `@atiende/domain-hoteles/voz/simulador` (solo pruebas y la prueba ciega manual).
+export * from "./voz/index.ts";
