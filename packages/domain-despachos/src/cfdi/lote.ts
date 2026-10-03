@@ -75,16 +75,65 @@ export function nombreArchivoParaMostrar(nombre: string): string {
   return recortado === "" ? "(sin nombre)" : recortado;
 }
 
+const ESPACIO = /\s/;
+
+/** Recorrido lineal (sin expresiones regulares sobre la entrada: no hay riesgo de backtracking polinomial con XML hostil). */
+function leerEtiquetaRaiz(xml: string): { readonly nombre: string; readonly atributos: Map<string, string> } | null {
+  let i = xml.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const n = xml.length;
+  for (;;) {
+    while (i < n && ESPACIO.test(xml[i]!)) i += 1;
+    if (xml.startsWith("<?", i)) {
+      const fin = xml.indexOf("?>", i + 2);
+      if (fin < 0) return null;
+      i = fin + 2;
+    } else if (xml.startsWith("<!--", i)) {
+      const fin = xml.indexOf("-->", i + 4);
+      if (fin < 0) return null;
+      i = fin + 3;
+    } else break;
+  }
+  if (xml[i] !== "<") return null;
+  i += 1;
+  let j = i;
+  while (j < n && !ESPACIO.test(xml[j]!) && xml[j] !== ">" && xml[j] !== "/") j += 1;
+  const nombreCompleto = xml.slice(i, j);
+  const dosPuntos = nombreCompleto.indexOf(":");
+  const nombre = dosPuntos < 0 ? nombreCompleto : nombreCompleto.slice(dosPuntos + 1);
+  const atributos = new Map<string, string>();
+  i = j;
+  while (i < n) {
+    while (i < n && (ESPACIO.test(xml[i]!) || xml[i] === "/")) i += 1;
+    if (i >= n || xml[i] === ">") break;
+    let k = i;
+    while (k < n && !ESPACIO.test(xml[k]!) && xml[k] !== "=" && xml[k] !== ">" && xml[k] !== "/") k += 1;
+    const clave = xml.slice(i, k);
+    i = k;
+    while (i < n && ESPACIO.test(xml[i]!)) i += 1;
+    if (xml[i] !== "=") {
+      if (clave === "") i += 1;
+      continue;
+    }
+    i += 1;
+    while (i < n && ESPACIO.test(xml[i]!)) i += 1;
+    const comilla = xml[i];
+    if (comilla !== '"' && comilla !== "'") continue;
+    const cierre = xml.indexOf(comilla, i + 1);
+    if (cierre < 0) return null;
+    if (clave !== "" && !atributos.has(clave)) atributos.set(clave, xml.slice(i + 1, cierre));
+    i = cierre + 1;
+  }
+  return { nombre, atributos };
+}
+
 /**
- * Lee `TipoDeComprobante` del elemento raíz `Comprobante` SIN parsear el XML completo (sirve para enrutar REP/nómina antes
- * de gastar el parser). Solo mira la etiqueta de apertura de la raíz: saltando declaración XML y comentarios. Devuelve null
- * si no se encuentra (el parser real dará el error con su mensaje). NO valida nada: la decisión fiscal sigue en el parser.
+ * Lee `TipoDeComprobante` del elemento raiz `Comprobante` SIN parsear el XML completo (sirve para enrutar REP/nomina antes de gastar el
+ * parser). Solo mira la etiqueta de apertura de la raiz, saltando la declaracion XML y los comentarios iniciales. Devuelve null si no
+ * se encuentra (el parser real dara el error con su mensaje). NO valida nada: la decision fiscal sigue en el parser.
  */
 export function tipoComprobanteDeXml(xml: string): string | null {
-  const sinPrologo = xml.replace(/^\uFEFF/, "").replace(/<\?xml[^>]*\?>/i, "").replace(/<!--[\s\S]*?-->/g, "");
-  const raiz = /<(?:[A-Za-z_][\w.-]*:)?Comprobante\b([^>]*)>/.exec(sinPrologo);
-  if (!raiz) return null;
-  const attr = /(?:^|\s)TipoDeComprobante\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(raiz[1]!);
-  const valor = (attr?.[1] ?? attr?.[2] ?? "").trim().toUpperCase();
+  const raiz = leerEtiquetaRaiz(xml);
+  if (!raiz || raiz.nombre !== "Comprobante") return null;
+  const valor = (raiz.atributos.get("TipoDeComprobante") ?? "").trim().toUpperCase();
   return valor === "" ? null : valor;
 }

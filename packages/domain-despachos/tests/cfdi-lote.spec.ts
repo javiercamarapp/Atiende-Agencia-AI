@@ -41,3 +41,22 @@ describe("tipoComprobanteDeXml", () => {
     expect(tipoComprobanteDeXml("hola")).toBeNull();
   });
 });
+
+describe("tipoComprobanteDeXml — casos limite y entrada hostil", () => {
+  it("BOM, espacios, atributos con apostrofes, auto-cierre y comentarios/declaraciones previas", () => {
+    expect(tipoComprobanteDeXml('﻿  \n<?xml version="1.0"?>\n<!-- a --><!-- b -->\n<cfdi:Comprobante Version = "4.0"\n TipoDeComprobante = \'p\' />')).toBe("P");
+  });
+  it("el nodo raiz debe ser Comprobante; DOCTYPE antes de la raiz o etiqueta sin cerrar -> null", () => {
+    expect(tipoComprobanteDeXml('<Otro TipoDeComprobante="I"/>')).toBeNull();
+    expect(tipoComprobanteDeXml('<!DOCTYPE x><cfdi:Comprobante TipoDeComprobante="I"/>')).toBeNull();
+    expect(tipoComprobanteDeXml('<cfdi:Comprobante TipoDeComprobante="I')).toBeNull();
+    expect(tipoComprobanteDeXml("")).toBeNull();
+  });
+  it("repeticiones masivas de '<!--' y '<?xml' se resuelven en tiempo lineal (sin backtracking)", () => {
+    const t0 = Date.now();
+    expect(tipoComprobanteDeXml("<!--".repeat(200_000))).toBeNull();
+    expect(tipoComprobanteDeXml("<?xml".repeat(200_000))).toBeNull();
+    expect(tipoComprobanteDeXml(`${"<!---->".repeat(100_000)}<Comprobante TipoDeComprobante="N"/>`)).toBe("N");
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+});
