@@ -1,16 +1,13 @@
 // Fixtures de licitaciones (Constructora Peninsular). Forma = apps/web/src/verticals/licitaciones/lib/*-client.ts.
-import { conStatus, fallo, ndjson } from "../respuestas.ts";
+import { conStatus, crudo, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
+import { CODIGO_STEP_UP, ROLES_DECISION, estadoCiclo, rutasCiclo } from "./licitaciones-ciclo.ts";
 import type { Ruta } from "../tipos.ts";
 
 const PROP = propiedadDe("licitaciones");
 const ORG = orgDe("licitaciones");
 const L = "/licitaciones/:id";
 
-const CONVOCATORIAS = [
-  { id: "tnd-1", organizationId: ORG.id, title: "Rehabilitacion de la avenida Reforma, tramo norte", submissionDeadline: "2026-10-20T17:00:00.000Z", updatedAt: "2026-09-29T15:00:00.000Z", source: "compranet", externalId: "LA-931037999-E12-2026", contractingBody: "Secretaria de Obras Publicas de Yucatan", cpvCodes: ["45233120"], budgetAmount: 18500000, currency: "MXN", state: "Yucatan", procedureTypeRaw: "Licitacion publica nacional", status: "in_review" },
-  { id: "tnd-2", organizationId: ORG.id, title: "Suministro de luminarias LED para alumbrado publico", submissionDeadline: "2026-10-27T17:00:00.000Z", updatedAt: "2026-09-30T15:00:00.000Z", source: "compranet", externalId: "LA-931037999-E15-2026", contractingBody: "Ayuntamiento de Merida", cpvCodes: ["34928500"], budgetAmount: 4200000, currency: "MXN", state: "Yucatan", procedureTypeRaw: "Invitacion a cuando menos tres personas", status: "discovered" },
-];
 
 interface AjustesWhatsapp {
   available: boolean;
@@ -119,7 +116,7 @@ interface AprobacionCierre {
   readonly actorId: string;
 }
 type AprobacionesCierre = Record<EtapaCierre, AprobacionCierre | null>;
-const CODIGO_TOTP_VALIDO = "123456";
+const CODIGO_TOTP_VALIDO = CODIGO_STEP_UP;
 const aprobacionesCierre = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<AprobacionesCierre>("lic.cierre.aprobaciones", () => ({ tecnica_legal: null, economica: null }));
 const presentacionMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<{ registro: Record<string, unknown> | null; paquete: { generatedAt: string } | null }>("lic.cierre.presentacion", () => ({ registro: null, paquete: null }));
 
@@ -137,19 +134,14 @@ const rutasCierre: readonly Ruta[] = [
     manejador: (p) => {
       const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
       // `despachos_sensitive` (D-30): mismas reglas del segundo factor para las acciones sensibles del despacho.
-      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive") return fallo(400, "scope desconocido.");
+      if (c.scope !== "expediente_approval" && c.scope !== "contract_sensitive" && c.scope !== "despachos_sensitive") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },
   },
-  { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
-  // L-33: tnd-1 trae requisitos extraidos por IA (`llm`) y por reglas; tnd-2 solo por reglas (el aviso de IA NO debe aparecer).
-  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: (p) => ({ items: requisitosMock(p.params["tid"] ?? "") }) },
-  { metodo: "GET", patron: `${L}/tenders/:tid/proposal`, manejador: (p) => ({ id: `prop-${p.params["tid"]}`, tenderId: p.params["tid"], title: "Propuesta", ivaRate: 0.16, economicTotals: null, generationReport: null, correlationId: null, createdAt: "2026-09-30T15:00:00.000Z" }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/junta`, manejador: (p) => juntaMock(p.params["tid"] ?? "") },
   // L-20: privacidad de la organizacion (PL-13), solo owner/admin. Solo existe en la API simulada de e2e.
   { metodo: "GET", patron: "/v1/privacidad/resumen", roles: ["owner", "admin"], manejador: () => resumenPrivacidadMock() },
-  { metodo: "GET", patron: `${L}/tenders/:tid/checklist`, manejador: () => ({ overallStatus: "verde", items: [{ id: "chk-1", dimension: "formato", result: "verde", notes: "Todos los archivos cumplen el formato del portal.", evidenceRef: null }] }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/package/latest`, manejador: (p) => {
       const paquete = presentacionMock(p).paquete;
       return paquete ? { id: "exp-1", status: "ready", draftReasons: [], missing: [], generatedAt: paquete.generatedAt, notice: "La presentación y firma las realiza el usuario; el sistema no envía ofertas." } : fallo(404, "No se ha generado ningún paquete todavía para este expediente.");
@@ -158,7 +150,7 @@ const rutasCierre: readonly Ruta[] = [
   {
     metodo: "POST",
     patron: `${L}/tenders/:tid/expediente/approval`,
-    roles: ["owner", "admin"],
+    roles: ROLES_DECISION,
     manejador: (p) => {
       const stage = ((p.cuerpo ?? {}) as { stage?: string }).stage;
       if (stage !== "tecnica_legal" && stage !== "economica") return fallo(400, "stage requerido: tecnica_legal | economica.");
@@ -173,6 +165,8 @@ const rutasCierre: readonly Ruta[] = [
       return conStatus(201, { id: nueva.id, scope: "expediente", scopeRef: "expediente", status: "vigente", inputsHash: "hash-mock", decidedAt: nueva.approvedAt, stage });
     },
   },
+  // Descarga del paquete: solo existe tras ensamblarlo (igual que el servidor, 404 si no hay paquete); el ZIP es un sustituto de texto.
+  { metodo: "GET", patron: `${L}/tenders/:tid/package/download`, manejador: (p) => (presentacionMock(p).paquete ? crudo("application/zip", "PK-simulado") : fallo(404, "No se ha generado ningún paquete todavía para este expediente.")) },
   {
     metodo: "POST",
     patron: `${L}/tenders/:tid/package/assemble`,
@@ -207,12 +201,12 @@ const AHORA_MOCK = "2026-10-01T18:00:00.000Z";
 const ETAPA_TEXTO: Record<EtapaCierre, string> = { tecnica_legal: "la aprobación técnico-legal (1/2)", economica: "la aprobación económica (2/2)" };
 
 function gateMock(p: { estado: { obtener<T>(k: string, s: () => T): T }; params: Readonly<Record<string, string>> }) {
-  const tender = CONVOCATORIAS.find((c) => c.id === p.params["tid"]);
+  const tender = estadoCiclo(p).convocatorias.find((c) => c.id === p.params["tid"]);
   if (!tender) return fallo(404, "Convocatoria no encontrada.");
   const a = aprobacionesCierre(p);
   const registro = presentacionMock(p);
   const faltan = (["tecnica_legal", "economica"] as const).filter((s) => a[s] === null);
-  const ms = Date.parse(tender.submissionDeadline) - Date.parse(AHORA_MOCK);
+  const ms = Date.parse(tender.submissionDeadline ?? AHORA_MOCK) - Date.parse(AHORA_MOCK);
   const dias = Math.floor(ms / 86_400_000);
   const horas = Math.floor((ms % 86_400_000) / 3_600_000);
   const minutos = Math.floor((ms % 3_600_000) / 60_000);
@@ -254,7 +248,7 @@ const rutasSalaGuerra: readonly Ruta[] = [
     metodo: "GET",
     patron: `${L}/tenders/:tid/sala-guerra`,
     manejador: (p) => {
-      const tender = CONVOCATORIAS.find((c) => c.id === p.params["tid"]);
+      const tender = estadoCiclo(p).convocatorias.find((c) => c.id === p.params["tid"]);
       if (!tender) return fallo(404, "Convocatoria no encontrada.");
       return {
         available: true,
@@ -274,9 +268,6 @@ const rutasSalaGuerra: readonly Ruta[] = [
     },
   },
   // La ficha de la convocatoria (donde vive la pestana Bitacora) carga estas tres lecturas junto con la convocatoria y el checklist.
-  { metodo: "GET", patron: `${L}/tenders/:tid/matching`, manejador: (p) => ({ tenderId: p.params["tid"], score: 72, criteria: [], eligibility: { status: "elegible", criteria: [] } }) },
-  { metodo: "GET", patron: `${L}/tenders/:tid/go-no-go`, manejador: () => ({ decisions: [] }) },
-  { metodo: "GET", patron: `${L}/tenders/:tid/resolution`, manejador: () => ({ resolutions: [] }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/sala-guerra/gate`, manejador: (p) => gateMock(p) },
   {
     metodo: "GET",
@@ -299,13 +290,6 @@ const rutasSalaGuerra: readonly Ruta[] = [
     },
   },
 ];
-
-function requisitosMock(tenderId: string): unknown[] {
-  const base = { documentId: "doc-1", requirementKind: "tecnico", obligatoriedad: "obligatorio", topicKey: null, requiredEvidence: [], page: 3, clause: "6.2", responsibleRole: "analyst", deadline: null, status: "pendiente" };
-  const porReglas = { ...base, id: "req-regla", text: "Presentar acta constitutiva vigente.", extractedBy: "rule", confidence: null };
-  if (tenderId !== "tnd-1") return [porReglas];
-  return [{ ...base, id: "req-llm", text: "Acreditar experiencia en obra vial de al menos 3 anos.", extractedBy: "llm", confidence: 0.82 }, porReglas];
-}
 
 function juntaMock(tenderId: string): unknown {
   const pregunta = (id: string, origin: "manual" | "agente") => ({ id, questionText: `Se aceptan contratos estatales como experiencia comprobable? (${id})`, baseReference: "6.2", topic: "tecnico", priority: "alta", origin, draftMissingData: [], status: "borrador", createdAt: "2026-09-30T10:00:00.000Z", approvedAt: null, sentAt: null, sentReference: null, answerText: null, answerActaReference: null, answeredAt: null, discardReason: null });
@@ -333,11 +317,11 @@ function resumenPrivacidadMock(): unknown {
 }
 
 export const rutasLicitaciones: readonly Ruta[] = [
+  ...rutasCiclo,
   ...rutasCopiloto,
   ...rutasCierre,
   ...rutasSalaGuerra,
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
-  { metodo: "GET", patron: `${L}/tenders`, manejador: () => ({ tenders: CONVOCATORIAS }) },
   // Lecturas del Resumen (Panel): mismas formas que lib/{sources,seguimiento,renewal-radar,company-data}-client.ts.
   { metodo: "GET", patron: `${L}/sources`, manejador: () => ({ connectors: [
       { id: "compranet", kind: "automated", label: "CompraNet", termsNote: "", cadence: { minIntervalMinutes: 60, note: "cada hora" }, liveVerification: { verified: true, note: "probada en vivo" } },
@@ -356,7 +340,6 @@ export const rutasLicitaciones: readonly Ruta[] = [
   { metodo: "GET", patron: `${L}/tender-change-notifications`, manejador: () => ({ notifications: [] }) },
   { metodo: "GET", patron: `${L}/renewals/alerts`, manejador: () => ({ alerts: [] }) },
   { metodo: "GET", patron: `${L}/company/documents`, manejador: () => ({ documents: [] }) },
-  { metodo: "GET", patron: `${L}/company/rates`, manejador: () => ({ rates: [] }) },
   { metodo: "GET", patron: `${L}/company/capabilities`, manejador: () => ({ capabilities: [] }) },
   { metodo: "GET", patron: `${L}/company/experience`, manejador: () => ({ experience: [] }) },
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/tenant-config", manejador: () => ({ tenant_config: { organization_id: ORG.id, timezone: "America/Tijuana" } }) },

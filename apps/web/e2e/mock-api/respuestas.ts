@@ -22,6 +22,11 @@ export function ndjson(eventos: readonly unknown[]): RespuestaMarcada {
   return { [MARCA_RESPUESTA]: true, status: 200, cuerpo: undefined, crudo: { tipo: "application/x-ndjson; charset=utf-8", texto: eventos.map((e) => `${JSON.stringify(e)}\n`).join("") } };
 }
 
+/** Cuerpo no JSON (p. ej. la descarga binaria del paquete en un ZIP de texto simulado). */
+export function crudo(tipo: string, texto: string): RespuestaMarcada {
+  return { [MARCA_RESPUESTA]: true, status: 200, cuerpo: undefined, crudo: { tipo, texto } };
+}
+
 /** Error JSON con la forma `{ message }` que lee el cliente HTTP de la SPA. */
 export function fallo(status: number, message: string): RespuestaMarcada {
   return conStatus(status, { message });
