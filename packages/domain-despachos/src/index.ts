@@ -471,6 +471,8 @@ export type {
   NewCollectionEventInput,
   NewSystemCollectionEventInput,
   DespachosPropertyConfigRecord,
+  DespachosAuditLogEntry,
+  DespachosAuditLogPage,
 } from "./types.ts";
 
 export type { DespachosRepository, InvoicePage, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
