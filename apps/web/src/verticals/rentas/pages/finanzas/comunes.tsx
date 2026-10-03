@@ -1,5 +1,8 @@
-// Piezas compartidas de las secciones de Finanzas (Rn-15): constantes de presentación y el renglón monetario.
-import { centavosAPesos } from "../../lib/finanzas-client.ts";
+// Piezas compartidas de las secciones de Finanzas (Rn-15): roles, etiquetas, el renglón monetario y el diálogo de
+// formulario (FormDialog + error de servidor) que usan los tres formularios de escritura.
+import type { ReactNode } from "react";
+import { EstadoError, FormDialog } from "@atiende/ui";
+import { dineroDeCentavos } from "../../lib/pricing-client.ts";
 
 export interface SectionProps {
   readonly apiBaseUrl: string;
@@ -10,9 +13,6 @@ export interface SectionProps {
 
 export const FINANZAS_LECTURA_ROLES = new Set(["admin_gestora", "contador"]);
 export const FINANZAS_ESCRITURA_ROLES = new Set(["admin_gestora"]);
-
-export const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
-export const NOTA_CLASES = "m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground";
 
 export const TIPO_LINEA_LABELS: Record<string, string> = {
   ingreso: "Ingreso",
@@ -28,15 +28,15 @@ export const ESTADO_CONCILIACION_LABELS: Record<string, string> = {
   discrepancia: "Discrepancia",
 };
 
-
+/** Renglón "etiqueta ... monto" de los resúmenes (movimiento y totales de statement). Dinero con el formateador único. */
 export function Linea({ label, valorCentavos, moneda, fuerte }: { label: string; valorCentavos: number; moneda: string; fuerte?: boolean }) {
   const signo = valorCentavos < 0 ? "-" : "";
   return (
-    <div className={fuerte ? "flex justify-between font-bold text-foreground" : "flex justify-between text-foreground"}>
+    <div className={fuerte ? "flex justify-between font-semibold text-foreground" : "flex justify-between text-foreground"}>
       <span>{label}</span>
       <span className="tabular-nums">
         {signo}
-        {centavosAPesos(Math.abs(valorCentavos))} {moneda}
+        {dineroDeCentavos(Math.abs(valorCentavos), moneda)}
       </span>
     </div>
   );
@@ -59,4 +59,54 @@ let filaSeq = 0;
 export function nuevaKey(): string {
   filaSeq += 1;
   return `fila-${filaSeq}`;
+}
+
+/** Monto escrito por una persona -> número; vacío o ilegible = NaN (nunca 0 silencioso). */
+export function aNumero(texto: string): number {
+  return texto.trim() === "" ? Number.NaN : Number(texto);
+}
+
+/**
+ * Diálogo de alta de las secciones de escritura: FormDialog con el error (local o del servidor) arriba del formulario.
+ * No cierra mientras se guarda (`bloquearCierre`); el padre decide cuándo desmontarlo.
+ */
+export function DialogoFinanzas({
+  titulo,
+  subtitulo,
+  textoGuardar,
+  guardando,
+  error,
+  onCerrar,
+  onEnviar,
+  children,
+}: {
+  titulo: string;
+  subtitulo?: string;
+  textoGuardar: string;
+  guardando: boolean;
+  error: string | null;
+  onCerrar: () => void;
+  onEnviar: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <FormDialog
+      open
+      onOpenChange={(abierto) => {
+        if (!abierto && !guardando) onCerrar();
+      }}
+      titulo={titulo}
+      subtitulo={subtitulo}
+      anchoClase="max-w-2xl"
+      onGuardar={onEnviar}
+      guardando={guardando}
+      textoBotonGuardar={textoGuardar}
+      bloquearCierre={guardando}
+    >
+      <div className="flex flex-col gap-3">
+        {error && <EstadoError compacto titulo="No se pudo guardar" mensaje={error} />}
+        {children}
+      </div>
+    </FormDialog>
+  );
 }

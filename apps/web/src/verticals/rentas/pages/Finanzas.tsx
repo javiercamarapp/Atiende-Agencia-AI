@@ -35,11 +35,11 @@
 // pages/OwnerPortalLogin.tsx/OwnerPortalActivar.tsx/OwnerPortalDashboard.tsx --
 // login propio contra el JWT del portal, nunca el de staff).
 //
-// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Input/
-// Label/Table/Badge/EstadoVacio + clases de token en lugar de los `style={{...}}`
-// hechos a mano. CERO cambios de lógica: mismos submits, mismas validaciones
-// locales, mismas ramas de render, mismos gates de rol, mismos payloads.
-import { PageContainer } from "@atiende/ui";
+// Rn-15/UNI-C-rentas: la página solo compone las secciones de pages/finanzas/ (cada una con su propio fetch); el contrato de
+// diseño de Likida (PageHeader con el único h1, Cards, FormDialog, DataTable, useConfirm de dos pasos antes de cada escritura
+// irreversible, notify, dinero y fechas con los formateadores únicos) vive en esas secciones. La barra superior con icono +
+// nombre de la página la pinta el shell (VerticalShell/BarraPagina).
+import { Callout, PageContainer, PageHeader } from "@atiende/ui";
 import { ReglasComisionSection } from "../components/ReglasComision.tsx";
 import type { RentasShellContext } from "../RentasShell.tsx";
 import { FINANZAS_ESCRITURA_ROLES, FINANZAS_LECTURA_ROLES } from "./finanzas/comunes.tsx";
@@ -54,31 +54,32 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground m-0">Finanzas</h1>
-        <p className="m-0 text-sm text-muted-foreground">
-          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso de lectura a Finanzas. Roles con acceso:{" "}
-          <strong className="text-foreground">admin_gestora</strong> y <strong className="text-foreground">contador</strong>.
-        </p>
+      <PageContainer>
+        <PageHeader titulo="Finanzas" />
+        <Callout tone="info" titulo="Sin acceso de lectura a Finanzas">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso. Roles con acceso: <strong className="text-foreground">admin_gestora</strong> y{" "}
+          <strong className="text-foreground">contador</strong>.
+        </Callout>
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer padding="none" size="md" className="gap-6 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Finanzas</h1>
-        <p className="m-0 text-sm text-muted-foreground">
-          Comisiones de canal, movimiento financiero por reserva, owner statements y payouts de canal.
-          {!puedeEscribir && (
-            <>
-              {" "}
-              Tu rol (<strong className="text-foreground">{org?.rol}</strong>) es de solo lectura — registrar/generar es exclusivo de{" "}
-              <strong className="text-foreground">admin_gestora</strong>.
-            </>
-          )}
-        </p>
-      </header>
+    <PageContainer>
+      <PageHeader
+        titulo="Finanzas"
+        descripcion={
+          <>
+            Comisiones de canal, movimiento financiero por reserva, owner statements y payouts de canal.
+            {!puedeEscribir && (
+              <>
+                {" "}
+                Tu rol (<strong className="text-foreground">{org?.rol}</strong>) es de solo lectura: registrar y generar es exclusivo de <strong className="text-foreground">admin_gestora</strong>.
+              </>
+            )}
+          </>
+        }
+      />
 
       <ReglasComisionSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
       <MovimientoSection apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} puedeEscribir={puedeEscribir} />
@@ -87,4 +88,3 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
     </PageContainer>
   );
 }
-

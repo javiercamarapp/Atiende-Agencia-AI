@@ -1,18 +1,11 @@
 // Sección 1 de Finanzas: movimiento financiero por reserva (lectura para admin_gestora y contador; registrar solo admin_gestora).
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Label,
-  NativeSelect,
-} from "@atiende/ui";
+import { Plus, Search } from "lucide-react";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoError, FormField, NativeSelect } from "@atiende/ui";
 import { fetchMovimiento, fetchOcupaciones, fetchUnidades } from "../../lib/finanzas-client.ts";
 import type { MovimientoDetalle, OcupacionCalendario, UnidadOption } from "../../lib/finanzas-client.ts";
-import { LABEL_CLASES, Linea } from "./comunes.tsx";
+import { formatFechaSolo } from "../../../../lib/formato-fecha.ts";
+import { Linea } from "./comunes.tsx";
 import type { SectionProps } from "./comunes.tsx";
 import { RegistrarMovimientoForm } from "./RegistrarMovimientoForm.tsx";
 
@@ -24,9 +17,12 @@ export function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir
   const [cargando, setCargando] = useState(false);
   const [movimiento, setMovimiento] = useState<MovimientoDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [registrando, setRegistrando] = useState(false);
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
+    setError(null);
     (async () => {
       try {
         const list = await fetchUnidades(fetch, apiBaseUrl, token, propertyId);
@@ -40,7 +36,7 @@ export function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId]);
+  }, [apiBaseUrl, token, propertyId, recarga]);
 
   useEffect(() => {
     if (!unidadId) return;
@@ -81,13 +77,17 @@ export function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir
 
   return (
     <Card>
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-base font-semibold">Movimiento financiero por reserva</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle>Movimiento financiero por reserva</CardTitle>
+        {puedeEscribir && (
+          <Button type="button" size="sm" disabled={!ocupacionId} onClick={() => setRegistrando(true)}>
+            <Plus /> Registrar movimiento
+          </Button>
+        )}
       </CardHeader>
-      <CardContent className="p-4 pt-0 flex flex-col gap-3">
-        <div className="flex gap-2.5 flex-wrap">
-          <Label className={`${LABEL_CLASES} flex-1 min-w-[180px]`}>
-            Unidad
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Unidad">
             <NativeSelect value={unidadId} onChange={(e) => setUnidadId(e.target.value)} disabled={!unidades}>
               {!unidades && <option>Cargando…</option>}
               {unidades?.map((u) => (
@@ -96,51 +96,46 @@ export function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir
                 </option>
               ))}
             </NativeSelect>
-          </Label>
-          <Label className={`${LABEL_CLASES} flex-1 min-w-[220px]`}>
-            Reserva
+          </FormField>
+          <FormField label="Reserva">
             <NativeSelect value={ocupacionId} onChange={(e) => setOcupacionId(e.target.value)} disabled={!ocupaciones || ocupaciones.length === 0}>
               {!ocupaciones && <option>Cargando…</option>}
               {ocupaciones && ocupaciones.length === 0 && <option>Sin reservas en esta unidad</option>}
               {ocupaciones?.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.rango.inicio} → {o.rango.fin} {o.huespedNombre ? `· ${o.huespedNombre}` : ""} ({o.estado})
+                  {formatFechaSolo(o.rango.inicio)} → {formatFechaSolo(o.rango.fin)} {o.huespedNombre ? `· ${o.huespedNombre}` : ""} ({o.estado})
                 </option>
               ))}
             </NativeSelect>
-          </Label>
+          </FormField>
         </div>
 
-        <Button type="button" variant="outline" size="sm" onClick={handleVerMovimiento} disabled={!ocupacionId || cargando} className="self-start">
-          <Search className="w-4 h-4" strokeWidth={1.75} />
-          {cargando ? "Consultando…" : "Ver movimiento registrado"}
+        <Button type="button" variant="outline" size="sm" onClick={handleVerMovimiento} disabled={!ocupacionId} loading={cargando} loadingText="Consultando…" className="self-start">
+          <Search /> Ver movimiento registrado
         </Button>
 
-        {error && (
-          <p role="alert" className="m-0 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <EstadoError compacto titulo="No se pudo completar" mensaje={error} onReintentar={unidades ? undefined : () => setRecarga((n) => n + 1)} />}
 
         {movimiento && <MovimientoResumen m={movimiento} />}
-
-        {puedeEscribir && ocupacionId && (
-          <RegistrarMovimientoForm
-            apiBaseUrl={apiBaseUrl}
-            token={token}
-            propertyId={propertyId}
-            ocupacionId={ocupacionId}
-            onRegistrado={(m) => setMovimiento(m)}
-          />
-        )}
       </CardContent>
+
+      {registrando && ocupacionId && (
+        <RegistrarMovimientoForm
+          apiBaseUrl={apiBaseUrl}
+          token={token}
+          propertyId={propertyId}
+          ocupacionId={ocupacionId}
+          onCerrar={() => setRegistrando(false)}
+          onRegistrado={(m) => setMovimiento(m)}
+        />
+      )}
     </Card>
   );
 }
 
 function MovimientoResumen({ m }: { m: MovimientoDetalle }) {
   return (
-    <div className="flex flex-col gap-1 text-sm border-t border-border pt-2.5">
+    <div className="flex flex-col gap-1 border-t border-border pt-2.5 text-sm">
       <Linea label="Ingreso bruto" valorCentavos={m.ingresoBrutoCentavos} moneda={m.moneda} />
       <Linea label={`Comisión de canal (${m.comisionCanalFuente})`} valorCentavos={-m.comisionCanalCentavos} moneda={m.moneda} />
       <Linea label="Monto recibido del canal" valorCentavos={m.montoRecibidoCentavos} moneda={m.moneda} />
