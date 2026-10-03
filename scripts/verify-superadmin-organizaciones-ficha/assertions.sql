@@ -8,8 +8,8 @@
 --   C) Aislamiento entre organizaciones: las operaciones, el menu y el WhatsApp de una organizacion no cuentan en otra.
 --   D) Metricas a 30 dias: la ventana excluye lo viejo (operaciones y costo), la 'primera operacion' mira toda la historia.
 --   E) Ficha 360: bloques con datos reales, sin nombre/correo de personas, organizacion inexistente -> cero filas.
---   F) Aviso 'organizacion lista': solo sistema, UNA sola vez (marcador persistente), no avisa a quien tiene un paso
---      no_se_pudo_medir/pendiente, no avisa a una organizacion antigua y un uid real no hace nada.
+--   F) Marcador del aviso 'organizacion lista': solo sistema, UNA sola vez (marcador persistente), no marca a quien tiene un paso
+--      no_se_pudo_medir/pendiente, no devuelve una organizacion antigua y un uid real no hace nada (la notificacion la emite el cron).
 --   G) GRANT y estructura: helpers internos sin EXECUTE para authenticated, marcador sin acceso directo, search_path fijo, sin anon.
 --
 -- Convenciones del gate (scripts/verify-real-postgres-ci/run-gate.mjs): cada escenario es un begin/rollback propio; el alias
@@ -310,57 +310,55 @@ from core.get_org_ficha_for_superadmin('00000000-0000-0000-0000-0000000f2100', '
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- F) Aviso 'organizacion lista'
+-- F) Marcador del aviso 'organizacion lista' (la notificacion la emite el cron con el productor compartido, en la misma transaccion)
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'F1. el sistema avisa de F1 (completa y reciente): 1 marcador, 1 notificacion al superadmin, y F5 (antigua) se marca SIN notificar -- OK'
+\echo 'F1. el sistema marca F1 (completa y reciente) y la devuelve para avisar; F5 (antigua) se marca SIN devolverse -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-create temp table _n on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
+create temp table _ids on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
 reset role;
-select ((select n from _n) = 1
+select ((select count(*) from _ids) = 1
+    and (select count(*) from _ids where organization_id = '00000000-0000-0000-0000-0000000f2000') = 1
     and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2000' and notificado) = 1
-    and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2004' and not notificado) = 1
-    and (select count(*) from core.notification where staff_user_id = '00000000-0000-0000-0000-0000000f2100' and tipo = 'superadmin.organizacion.onboarding_listo') = 1
-    and (select enlace from core.notification where staff_user_id = '00000000-0000-0000-0000-0000000f2100' and tipo = 'superadmin.organizacion.onboarding_listo') = '/superadmin/organizaciones/00000000-0000-0000-0000-0000000f2000')::int as deberia_ser_1;
+    and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2004' and not notificado) = 1)::int as deberia_ser_1;
 rollback;
 
-\echo 'F2. correr el aviso dos veces NO duplica el marcador ni la notificacion -- OK'
+\echo 'F2. correr el aviso dos veces NO devuelve la misma organizacion otra vez ni duplica el marcador -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-create temp table _n1 on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
-create temp table _n2 on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
+create temp table _ids1 on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
+create temp table _ids2 on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
 reset role;
-select ((select n from _n1) = 1 and (select n from _n2) = 0
-    and (select count(distinct dedupe_key) from core.notification where tipo = 'superadmin.organizacion.onboarding_listo') = 1
-    and (select count(*) from core.notification where tipo = 'superadmin.organizacion.onboarding_listo') = (select count(*) from core.platform_superadmin))::int as deberia_ser_1;
+select ((select count(*) from _ids1) = 1 and (select count(*) from _ids2) = 0
+    and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2000') = 1)::int as deberia_ser_1;
 rollback;
 
-\echo 'F3. las organizaciones con un paso pendiente o no_se_pudo_medir (F2 citas vacia, F3 despachos, F4 sin menu/WhatsApp) NO se marcan ni se avisan -- OK'
+\echo 'F3. las organizaciones con un paso pendiente o no_se_pudo_medir (F2 citas vacia, F3 despachos, F4 sin menu/WhatsApp) NO se marcan -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select core.avisar_organizaciones_listas_for_system();
+select count(*) from core.avisar_organizaciones_listas_for_system();
 reset role;
 select (count(*) = 0)::int as deberia_ser_1 from core.org_onboarding_aviso where organization_id in
   ('00000000-0000-0000-0000-0000000f2001', '00000000-0000-0000-0000-0000000f2002', '00000000-0000-0000-0000-0000000f2003');
 rollback;
 
-\echo 'F4. un uid real (aunque sea superadmin) no dispara el aviso: devuelve 0 y no escribe nada -- OK'
+\echo 'F4. un uid real (aunque sea superadmin) no dispara el marcador: cero filas y no escribe nada -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
-create temp table _n on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
+create temp table _ids on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
 reset role;
-select ((select n from _n) = 0 and (select count(*) from core.org_onboarding_aviso where organization_id in ('00000000-0000-0000-0000-0000000f2000', '00000000-0000-0000-0000-0000000f2004')) = 0)::int as deberia_ser_1;
+select ((select count(*) from _ids) = 0 and (select count(*) from core.org_onboarding_aviso where organization_id in ('00000000-0000-0000-0000-0000000f2000', '00000000-0000-0000-0000-0000000f2004')) = 0)::int as deberia_ser_1;
 rollback;
 
-\echo 'F5. el aviso se dispara cuando el ultimo paso se completa: F4 (restaurantes, ya con pedidos) completa su checklist y se avisa UNA vez -- OK'
+\echo 'F5. cuando el ultimo paso se completa se marca y se devuelve UNA vez: F4 (restaurantes, ya con pedidos) completa su checklist -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-create temp table _antes on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
+create temp table _antes on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
 reset role;
 select ((select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2003') = 0)::int as deberia_ser_1;
 insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id) values ('00000000-0000-0000-0000-0000000f2003', 'pn-of-4');
@@ -372,13 +370,20 @@ insert into core.customer_contract_version (id, contract_id, organization_id, ve
   ('00000000-0000-0000-0000-0000000f2503', '00000000-0000-0000-0000-0000000f2503', '00000000-0000-0000-0000-0000000f2003', 1, (now() at time zone 'America/Mexico_City')::date - 1, null, 590000, 400000, 1, 10000, 300, 0, 0, 0, 'Fixture: contrato de F4.', '00000000-0000-0000-0000-0000000f2100');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-create temp table _despues on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
-create temp table _otra on commit drop as select core.avisar_organizaciones_listas_for_system() as n;
+create temp table _despues on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
+create temp table _otra on commit drop as select organization_id from core.avisar_organizaciones_listas_for_system();
 reset role;
-select ((select n from _despues) = 1 and (select n from _otra) = 0
-    and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2003' and notificado) = 1
-    and (select count(*) from core.notification where staff_user_id = '00000000-0000-0000-0000-0000000f2100'
-         and enlace = '/superadmin/organizaciones/00000000-0000-0000-0000-0000000f2003' and categoria = 'onboarding' and severidad = 'info') = 1)::int as deberia_ser_1;
+select ((select count(*) from _despues where organization_id = '00000000-0000-0000-0000-0000000f2003') = 1 and (select count(*) from _otra) = 0
+    and (select count(*) from core.org_onboarding_aviso where organization_id = '00000000-0000-0000-0000-0000000f2003' and notificado) = 1)::int as deberia_ser_1;
+rollback;
+
+\echo 'F6. el marcador NO emite nada por si mismo: no escribe en core.notification (lo emite el cron con el productor compartido) -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) from core.avisar_organizaciones_listas_for_system();
+reset role;
+select (count(*) = 0)::int as deberia_ser_1 from core.notification where tipo = 'superadmin.organizacion.onboarding_listo';
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -405,7 +410,7 @@ rollback;
 \echo 'G4. anon no ejecuta el aviso de sistema -- RECHAZADO'
 begin;
 set local role anon;
-select core.avisar_organizaciones_listas_for_system() as should_fail;
+select * from core.avisar_organizaciones_listas_for_system() as should_fail;
 rollback;
 
 \echo 'G5. toda funcion definer nueva fija search_path y ninguna es ejecutable por public/anon -- OK'

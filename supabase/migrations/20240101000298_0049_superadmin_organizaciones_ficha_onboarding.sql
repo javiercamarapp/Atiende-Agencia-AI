@@ -14,7 +14,7 @@
 --   core.get_orgs_onboarding_resumen_for_superadmin  -- 'x/y' de TODAS las organizaciones (columna Onboarding de la tabla)
 --   core.get_orgs_metricas_for_superadmin            -- operaciones y costo de IA a 30 dias por organizacion
 --   core.get_org_ficha_for_superadmin                -- Ficha 360 (uso, costo, membresias, errores, facturacion, onboarding)
---   core.avisar_organizaciones_listas_for_system     -- solo-sistema: marca y avisa 'organizacion lista' UNA sola vez
+--   core.avisar_organizaciones_listas_for_system     -- solo-sistema: marca 'organizacion lista' UNA sola vez y devuelve cuales avisar
 --
 -- El margen NO se calcula aqui: el API reutiliza core.get_cost_margin_report_for_superadmin (0028) y packages/billing.
 --
@@ -30,7 +30,7 @@
 -- licitaciones y despachos no tienen WhatsApp ni catalogo propios: esos pasos no aplican y NO se listan. despachos no persiste
 -- operaciones (igual que en 0042): su 'primera_operacion' sale no_se_pudo_medir con razon 'sin_fuente'.
 --
--- Requiere: 0001, 0010, 0012 (core.is_platform_superadmin), 0021 (core.authz_audit_log), 0028, 0037, 0039 (core.emit_notification).
+-- Requiere: 0001, 0010, 0012 (core.is_platform_superadmin), 0021 (core.authz_audit_log), 0028, 0037; el aviso usa ademas 0039 (core.emit_notification) desde TypeScript.
 -- Dia de negocio: America/Mexico_City; `p_hoy` lo decide el API (estas funciones no leen current_date).
 --
 -- Justificacion de seguridad (cada tabla, funcion y GRANT trae su razon):
@@ -49,8 +49,9 @@
 --     La ficha no devuelve nombres, correos, telefonos, IP ni contenido: solo conteos, roles, rutas y fechas.
 --   * core.avisar_organizaciones_listas_for_system: security definer, search_path fijo, REVOKE ALL a public y anon, GRANT a
 --     authenticated (las sesiones de sistema corren con ese rol y `auth.uid()` nulo, igual que 0030); la autorizacion real esta
---     DENTRO: con un uid real (cualquier usuario) no hace nada y devuelve 0. El aviso va a core.platform_superadmin por
---     core.emit_notification (sin PII: ni el nombre ni el slug viajan en el texto; el enlace lleva solo el uuid de la organizacion).
+--     DENTRO: con un uid real (cualquier usuario) no hace nada y devuelve cero filas. No emite nada ella misma: solo devuelve ids; la
+--     notificacion (a core.platform_superadmin, sin PII: el texto es fijo y el enlace lleva solo el uuid) la emite el cron con el productor
+--     compartido core.emit_notification, en la misma transaccion.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 0) Marcador persistente del aviso 'organizacion lista'
@@ -466,23 +467,24 @@ revoke all on function core.get_org_ficha_for_superadmin(uuid, uuid, date) from 
 grant execute on function core.get_org_ficha_for_superadmin(uuid, uuid, date) to authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 7) Aviso 'organizacion lista' (solo-sistema, una sola vez, nunca desde un GET)
+-- 7) Marcador del aviso 'organizacion lista' (solo-sistema, una sola vez, nunca desde un GET)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Lo llama el cron /internal/superadmin/mantenimiento. Para cada organizacion NO suspendida y sin marcador cuyo checklist esta
--- COMPLETO (todos sus pasos 'hecho'; uno 'pendiente' o 'no_se_pudo_medir' lo impide) inserta el marcador y, solo si el insert
--- ocurrio (la PK lo garantiza), emite UNA notificacion de plataforma. Las organizaciones con mas de 30 dias de alta se marcan
--- sin notificar (ya no son noticia: evita inundar la campana el dia que se aplica la migracion). Devuelve cuantas se avisaron.
+-- COMPLETO (todos sus pasos 'hecho'; uno 'pendiente' o 'no_se_pudo_medir' lo impide) inserta el marcador (la PK garantiza una sola vez) y
+-- DEVUELVE el id de las que hay que avisar: el cron emite entonces UNA notificacion de plataforma por cada una con el productor compartido
+-- (emitirNotificacion, evento superadmin.organizacion.onboarding_listo) EN LA MISMA TRANSACCION: si la emision falla el cron revierte todo,
+-- marcador incluido, y se reintenta en la siguiente corrida (nunca queda una organizacion marcada sin aviso). Las organizaciones con mas de
+-- 30 dias de alta se marcan SIN devolverse (ya no son noticia: evita inundar la campana el dia que se aplica la migracion).
 create or replace function core.avisar_organizaciones_listas_for_system()
-returns integer
+returns table (organization_id uuid)
 language plpgsql security definer set search_path = core, pg_temp as $$
 declare
   v_org record;
   v_marcadas integer;
-  v_avisadas integer := 0;
   v_reciente boolean;
 begin
   if auth.uid() is not null then
-    return 0;
+    return;
   end if;
   for v_org in
     select o.id, o.created_at from core.organization o
@@ -493,19 +495,14 @@ begin
     if exists (select 1 from core.org_onboarding_pasos(v_org.id))
        and not exists (select 1 from core.org_onboarding_pasos(v_org.id) p where p.estado <> 'hecho') then
       v_reciente := v_org.created_at > now() - interval '30 days';
-      insert into core.org_onboarding_aviso (organization_id, notificado) values (v_org.id, v_reciente) on conflict (organization_id) do nothing;
+      insert into core.org_onboarding_aviso (organization_id, notificado) values (v_org.id, v_reciente) on conflict on constraint org_onboarding_aviso_pkey do nothing;
       get diagnostics v_marcadas = row_count;
       if v_marcadas = 1 and v_reciente then
-        perform core.emit_notification(
-          null, null, 'superadmin.organizacion.onboarding_listo', 'onboarding', 'info',
-          'Una organización terminó su onboarding', 'Todos los pasos de su checklist están hechos. Revisa su ficha.',
-          '/superadmin/organizaciones/' || v_org.id::text, 'organization', v_org.id,
-          'superadmin.organizacion.onboarding_listo:' || v_org.id::text, null, interval '30 days');
-        v_avisadas := v_avisadas + 1;
+        organization_id := v_org.id;
+        return next;
       end if;
     end if;
   end loop;
-  return v_avisadas;
 end;
 $$;
 revoke all on function core.avisar_organizaciones_listas_for_system() from public, anon;

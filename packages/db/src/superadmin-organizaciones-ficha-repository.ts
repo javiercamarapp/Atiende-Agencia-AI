@@ -82,8 +82,11 @@ export interface OrgFichaRepository {
   onboarding(callerId: string, organizationId: string): Promise<FuenteConsola<readonly OrgOnboardingPaso[]>>;
   /** CALLER. Ficha 360; `data = null` = la organizacion no existe. */
   ficha(callerId: string, organizationId: string, hoy: string): Promise<FuenteConsola<OrgFicha | null>>;
-  /** SISTEMA. Marca y avisa las organizaciones con el checklist completo, UNA sola vez. Devuelve cuantas se avisaron. */
-  avisarListasForSystem(): Promise<FuenteConsola<number>>;
+  /**
+   * SISTEMA. Marca (marcador persistente, una sola vez) las organizaciones con el checklist COMPLETO y devuelve los ids que hay que avisar.
+   * NO emite nada: el cron emite 'organizacion lista' con el productor compartido en la MISMA transaccion (si falla, revierte el marcador).
+   */
+  avisarListasForSystem(): Promise<FuenteConsola<readonly string[]>>;
 }
 
 let warned = false;
@@ -178,8 +181,8 @@ export class PostgresOrgFichaRepository implements OrgFichaRepository {
 
   avisarListasForSystem() {
     return guarded(this.db, "avisar_listas", async () => {
-      const { rows } = await this.db.query<{ n: string | number }>(`select core.avisar_organizaciones_listas_for_system() as n;`);
-      return num(rows[0]?.n);
+      const { rows } = await this.db.query<{ organization_id: string }>(`select organization_id from core.avisar_organizaciones_listas_for_system();`);
+      return rows.map((r) => r.organization_id);
     });
   }
 }
@@ -190,7 +193,7 @@ type SeedFuente = {
   onboarding: FuenteConsola<readonly OrgOnboardingPaso[]>;
   /** Por organizacion; una organizacion sin entrada = no existe (`data: null`). */
   fichas: ReadonlyMap<string, OrgFicha> | "no_migrado";
-  avisar: FuenteConsola<number>;
+  avisar: FuenteConsola<readonly string[]>;
 };
 
 const NO_MIGRADO = { ok: false, razon: "no_migrado" } as const;
