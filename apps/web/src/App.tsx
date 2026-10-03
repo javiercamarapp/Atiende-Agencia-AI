@@ -57,7 +57,7 @@ import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
-import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
@@ -140,7 +140,7 @@ import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { ConversacionesPage as CitasConversacionesPage } from "./verticals/citas/pages/Conversaciones.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
-import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { LicitacionesShell, puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
@@ -997,6 +997,19 @@ const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitacion
 const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SalaGuerraPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 // L-05: configuración de WhatsApp (opt-in, temas de aviso, decisión go/no-go por botón).
+// L-20: privacidad de la organización (PL-13) también desde la consola de licitaciones. La organización sale del token; un
+// rol que no sea owner/admin ve el estado denegado sin llamar a la API (el servidor también responde 403).
+const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) =>
+  licitacionesPuedeVerPrivacidad(ctx.role) ? (
+    <PrivacidadOrganizacionPage
+      apiBaseUrl={ctx.apiBaseUrl}
+      token={ctx.token}
+      notaVertical="Licitaciones todavía no registra solicitudes ARCO propias ni tiene clases de retención propias (firmantes, bitácora KYC, WhatsApp, documentos de empresa): lo que ves aquí viene de los demás verticales de tu organización."
+    />
+  ) : (
+    <EstadoError mensaje="Solo el owner o un admin de la organización puede administrar la privacidad." />
+  ),
+);
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
@@ -1261,6 +1274,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion" element={<LicitacionesPostAdjudicacionRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/autopsia" element={<LicitacionesAutopsiaRoute />} />
+        <Route path="/licitaciones/:orgSlug/privacidad" element={<LicitacionesPrivacidadRoute />} />
         <Route path="/licitaciones/:orgSlug/radar-renovaciones" element={<LicitacionesRadarRenovacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
