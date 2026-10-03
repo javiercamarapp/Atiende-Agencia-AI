@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -206,6 +206,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               propertyId: d.propertyId,
               ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
               handoffGate: deps.handoffGate?.(db),
+              finFuncionMs: inicioMs + FUNCION_MAX_MS,
+              reloj: deps.relojMs ?? Date.now,
             });
             if (outcome.retryable) hayReintento = true;
           }

@@ -198,6 +198,9 @@ export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
 export const RESERVA_FASE_B_MS = 15_000;
 
+/** Lo que se estima que tarda UNA pasada (turno del agente + escritura): no se empieza otra si no cabe antes del fin de la funcion. */
+export const PASADA_ESTIMADA_MS = 7_000;
+
 /** Espera real de la rafaga: la configurada, recortada para que despues de esperar todavia quepa la fase B; 0 = no hay tiempo, se responde ya. */
 export function esperaEfectivaMs(esperaSegundos: number, transcurridoMs: number): number {
   const disponible = FUNCION_MAX_MS - RESERVA_FASE_B_MS - Math.max(0, transcurridoMs);
@@ -305,9 +308,14 @@ export async function responderTrasEspera(
     readonly handoffGate?: HandoffAgentGate;
     readonly privacy?: PrivacidadRepository;
     readonly deliverReply?: boolean;
+    /** Instante (ms, mismo reloj que `reloj`) en que muere la funcion. Las pasadas 2 y 3 no empiezan si no caben antes; la pasada 1 siempre corre
+     * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
+    readonly finFuncionMs?: number;
+    readonly reloj?: () => number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const reloj = args.reloj ?? Date.now;
   const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
   const leerHistorial = () => repo.whatsappAppendTurn(organizationId, phone, [], null, null, null);
@@ -326,6 +334,12 @@ export async function responderTrasEspera(
         owner = `${messageId}:p${pasada + 1}`;
         if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
         continue;
+      }
+      if (pasada > 1 && args.finFuncionMs !== undefined && reloj() + PASADA_ESTIMADA_MS > args.finFuncionMs) {
+        // No cabe otra pasada: un timeout a medias revertiria tambien la respuesta ya dada en las anteriores (misma transaccion). Se cierra aqui, lo
+        // pendiente queda sin responder y se marca `failed` para que Meta reintente y el reintento lo conteste (esas respuestas ya estan en el historial).
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", "SinTiempoParaPasada");
+        return { ok: false, retryable: true };
       }
       const textoPendiente = pendientes.map((m) => m.content).join("\n");
       const turnoDePasada = await repo.runWithRowSavepoint(async (): Promise<{ readonly salida: InboundMessageOutcome; readonly silencio: boolean }> => {
