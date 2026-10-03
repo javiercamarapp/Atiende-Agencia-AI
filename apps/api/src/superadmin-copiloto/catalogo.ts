@@ -31,8 +31,12 @@ import { UMBRAL_MARGEN_PCT_DEFAULT, construirFilasCfo, tipoCambioDeFilas } from 
 import { infraDelMes, pylDelMes } from "../routes/superadmin-pyl.ts";
 import type { PlatformScope } from "./alcance.ts";
 import type { Fuente, FuentesPlataforma, RazonFuente } from "./fuentes.ts";
+import { crearHerramientaProponerAccion, type DependenciasAcciones } from "./acciones.ts";
 
 export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer"];
+
+/** CHAT-17: la unica herramienta que no lee: propone una accion para que una persona la confirme. Nunca la ve el rol `finanzas`. */
+export const HERRAMIENTAS_ACCION: readonly string[] = ["proponer_accion"];
 
 export const HERRAMIENTAS_OPERATIVAS: readonly string[] = [
   "organizaciones",
@@ -58,6 +62,8 @@ const MICRO = 1_000_000;
 export interface OpcionesCatalogoPlataforma {
   /** Tope mensual propio del Copiloto de plataforma (micro-USD), para `consumo_vs_tope`. */
   readonly topeCopilotoMicroUsd?: number | undefined;
+  /** CHAT-17: con esto el superadmin completo recibe ademas `proponer_accion` (solo PROPONE; ver acciones.ts). Sin ello, el catalogo es de solo lectura. */
+  readonly acciones?: DependenciasAcciones | undefined;
 }
 
 const RAZON_TEXTO: Readonly<Record<RazonFuente, string>> = {
@@ -916,7 +922,8 @@ export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: Platf
     prospectos(fuentes),
     usoCopiloto(fuentes),
   ];
-  const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras];
+  const acciones = scope.rol === "superadmin" && opciones.acciones ? [crearHerramientaProponerAccion(scope, opciones.acciones)] : [];
+  const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras, ...acciones];
   return {
     vertical: "plataforma",
     domain:
