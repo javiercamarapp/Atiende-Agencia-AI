@@ -148,7 +148,7 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const limite = tope();
       const medido = await fuentes.copilotoGastoMes();
       const gasto = Math.max(medido.ok ? medido.data : 0, c.ledger.mes());
-      await avisarUmbral(gasto, limite);
+      void avisarUmbral(gasto, limite); // sin await: abre una sesion de sistema y escribe; nunca retrasa la llamada al modelo (no lanza: atrapa todo)
       if (gasto >= limite) throw new MonthlyBudgetExceededError("copilot", "plataforma", gasto, limite);
       if (!inner) throw new Error("superadmin_copiloto_sin_proveedor");
       return inner(req);
