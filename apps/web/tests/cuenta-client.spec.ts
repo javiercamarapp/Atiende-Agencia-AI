@@ -3,21 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CUENTA_NO_DISPONIBLE,
   SESIONES_NO_DISPONIBLES,
-  cambiarContrasena,
-  cerrarSesion,
+  VERTICALES_CUENTA,
+  claveSesion,
+  clienteCuenta,
   confirmarRestablecerContrasena,
   confirmarVerificacionCorreo,
   describirDispositivo,
-  desvincularGoogle,
-  enviarVerificacionCorreo,
-  fetchCuentaEstado,
-  fetchSesiones,
-  iniciarVinculoGoogle,
+  esVerticalCuenta,
   solicitarRestablecerContrasena,
   validarNuevaContrasena,
-} from "../src/verticals/licitaciones/lib/cuenta-client.ts";
+} from "../src/shell/cuenta/cuenta-client.ts";
 
 const API = "http://api.local";
+const cuenta = clienteCuenta("licitaciones");
+const { fetchCuentaEstado, fetchSesiones, cerrarSesion, desvincularGoogle, cambiarContrasena, enviarVerificacionCorreo, iniciarVinculoGoogle } = cuenta;
 
 // Credenciales y tokens de prueba generados en cada corrida: ningun literal con forma de secreto en el repo.
 const u = (p: string) => `${p}-${randomUUID()}`;
@@ -75,7 +74,7 @@ describe("acciones", () => {
 
   it("restablecer: solicitar y confirmar son POST sin Authorization; el error del servidor se propaga", async () => {
     const f = vi.fn(async () => json({ ok: true })) as unknown as typeof fetch;
-    await solicitarRestablecerContrasena(f, API, "a@x.mx");
+    await solicitarRestablecerContrasena(f, API, "a@x.mx", "licitaciones");
     await confirmarRestablecerContrasena(f, API, ENLACE, PW_NUEVA);
     const calls = (f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls;
     expect(JSON.parse(calls[0]![1].body as string)).toEqual({ email: "a@x.mx", vertical: "licitaciones" });
@@ -96,7 +95,7 @@ describe("acciones", () => {
   it("vincular Google devuelve la URL del servidor", async () => {
     const f = vi.fn(async () => json({ url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" })) as unknown as typeof fetch;
     expect(await iniciarVinculoGoogle(f, API, TOKEN, "demo")).toContain("accounts.google.com");
-    expect(JSON.parse((f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0]![1].body as string)).toEqual({ orgSlug: "demo" });
+    expect(JSON.parse((f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0]![1].body as string)).toEqual({ orgSlug: "demo", vertical: "licitaciones" });
   });
 });
 
@@ -125,5 +124,40 @@ describe("describirDispositivo", () => {
   });
   it("null -> desconocido", () => {
     expect(describirDispositivo(null)).toBe("Dispositivo desconocido");
+  });
+});
+
+describe("compartido por las 6 verticales (PL-21)", () => {
+  it("la lista cerrada de verticales coincide con las 6 del servidor y esVerticalCuenta rechaza el resto", () => {
+    expect([...VERTICALES_CUENTA].sort()).toEqual(["citas", "despachos", "hoteles", "licitaciones", "rentas", "restaurantes"]);
+    for (const v of VERTICALES_CUENTA) expect(esVerticalCuenta(v)).toBe(true);
+    for (const malo of ["", "superadmin", "../x", "Citas"]) expect(esVerticalCuenta(malo)).toBe(false);
+  });
+
+  it.each(VERTICALES_CUENTA)("%s: la llave de sesion es la misma que usa el auth-client de la vertical", (v) => {
+    expect(claveSesion(v)).toBe(`atiende.${v}.session`);
+  });
+
+  it.each(VERTICALES_CUENTA)("%s: 'olvide mi contrasena', verificar correo y vincular Google mandan SU vertical al servidor", async (v) => {
+    const f = vi.fn(async (url: string) => json(url.endsWith("/vincular/iniciar") ? { url: "https://accounts.google.com/x" } : { ok: true, sent: true })) as unknown as typeof fetch;
+    await solicitarRestablecerContrasena(f, API, "a@x.mx", v);
+    const c = clienteCuenta(v);
+    await c.enviarVerificacionCorreo(f, API, TOKEN);
+    await c.iniciarVinculoGoogle(f, API, TOKEN, "demo");
+    const bodies = (f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls.map(([, init]) => JSON.parse(init.body as string));
+    expect(bodies[0]).toEqual({ email: "a@x.mx", vertical: v });
+    expect(bodies[1]).toEqual({ vertical: v });
+    expect(bodies[2]).toEqual({ orgSlug: "demo", vertical: v });
+  });
+
+  it("solicitar el restablecimiento: un error del servidor (p. ej. demasiados intentos) SI llega, nunca se traga", async () => {
+    const f = vi.fn(async () => json({ message: "Demasiados intentos. Intenta de nuevo en unos minutos." }, 429)) as unknown as typeof fetch;
+    await expect(solicitarRestablecerContrasena(f, API, "a@x.mx", "citas")).rejects.toThrow("Demasiados intentos");
+  });
+
+  it("cerrar las demas por corte (base sin migrar) llama a /auth/revoke-sessions y falla con el estado real", async () => {
+    const f = vi.fn(async () => json({}, 500)) as unknown as typeof fetch;
+    await expect(cuenta.cerrarOtrasSesionesPorCorte(f, API, TOKEN)).rejects.toThrow("(500)");
+    expect((f as unknown as { mock: { calls: Array<[string]> } }).mock.calls[0]![0]).toBe(`${API}/auth/revoke-sessions`);
   });
 });

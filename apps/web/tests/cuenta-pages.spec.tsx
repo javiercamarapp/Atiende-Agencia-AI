@@ -7,9 +7,12 @@ import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SeguridadPage } from "../src/verticals/licitaciones/pages/Seguridad.tsx";
-import { RestablecerContrasenaPage, VerificarCorreoPage } from "../src/verticals/licitaciones/pages/CuentaEnlaces.tsx";
+import { RestablecerContrasenaPage, VerificarCorreoPage } from "../src/shell/cuenta/CuentaEnlaces.tsx";
+import { SeguridadCuentaPagina } from "../src/shell/cuenta/SeguridadCuentaPagina.tsx";
+import { VERTICALES_CUENTA } from "../src/shell/cuenta/cuenta-client.ts";
 import type { LicitacionesShellContext } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
 import { changeValue, click, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 async function settle(): Promise<void> {
   await act(async () => {
@@ -290,7 +293,7 @@ describe("paginas publicas de los enlaces del correo", () => {
         return res({ ok: true });
       }),
     );
-    const r = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" />);
+    const r = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" vertical="licitaciones" />);
     await settle();
     expect(window.location.search).toBe(""); // token fuera de la URL
     changeValue(r.container.querySelector<HTMLInputElement>("#restablecer-nueva")!, PW_NUEVA);
@@ -309,7 +312,7 @@ describe("paginas publicas de los enlaces del correo", () => {
   it("restablecer: enlace vencido/usado muestra el mensaje del servidor; sin token no ofrece formulario", async () => {
     window.history.replaceState(null, "", `/licitaciones/restablecer-contrasena?token=${u("v")}`);
     vi.stubGlobal("fetch", vi.fn(async () => res({ message: "El enlace es inválido, ya se usó o expiró." }, 400)));
-    const r = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" />);
+    const r = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" vertical="licitaciones" />);
     await settle();
     changeValue(r.container.querySelector<HTMLInputElement>("#restablecer-nueva")!, PW_NUEVA);
     changeValue(r.container.querySelector<HTMLInputElement>("#restablecer-confirmar")!, PW_NUEVA);
@@ -318,7 +321,7 @@ describe("paginas publicas de los enlaces del correo", () => {
     expect(r.container.textContent).toContain("ya se usó o expiró");
     r.unmount();
     window.history.replaceState(null, "", "/licitaciones/restablecer-contrasena");
-    const sin = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" />);
+    const sin = montarPublica(<RestablecerContrasenaPage apiBaseUrl="https://api.test" vertical="licitaciones" />);
     expect(sin.container.querySelector("form")).toBeNull();
     expect(sin.container.textContent).toContain("Enlace incompleto");
   });
@@ -327,7 +330,7 @@ describe("paginas publicas de los enlaces del correo", () => {
     window.history.replaceState(null, "", `/licitaciones/verificar-correo?token=${ENLACE}`);
     const f = vi.fn(async () => res({ ok: true }));
     vi.stubGlobal("fetch", f);
-    const r = montarPublica(<VerificarCorreoPage apiBaseUrl="https://api.test" />);
+    const r = montarPublica(<VerificarCorreoPage apiBaseUrl="https://api.test" vertical="licitaciones" />);
     await settle();
     expect(f).toHaveBeenCalledTimes(1);
     expect(JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ token: ENLACE });
@@ -337,9 +340,134 @@ describe("paginas publicas de los enlaces del correo", () => {
   it("verificar correo: enlace invalido muestra el error del servidor", async () => {
     window.history.replaceState(null, "", `/licitaciones/verificar-correo?token=${u("m")}`);
     vi.stubGlobal("fetch", vi.fn(async () => res({ message: "El enlace es inválido, ya se usó o expiró." }, 400)));
-    const r = montarPublica(<VerificarCorreoPage apiBaseUrl="https://api.test" />);
+    const r = montarPublica(<VerificarCorreoPage apiBaseUrl="https://api.test" vertical="licitaciones" />);
     await settle();
     expect(r.container.textContent).toContain("ya se usó o expiró");
     expect(r.container.textContent).not.toContain("Tu correo quedó verificado.");
+  });
+});
+
+describe("Seguridad de la cuenta compartida: montada en las 6 verticales (PL-21)", () => {
+  async function mountVertical(vertical: (typeof VERTICALES_CUENTA)[number]) {
+    rendered = renderComponent(<SeguridadCuentaPagina apiBaseUrl="https://api.test" token={TOKEN} orgSlug="demo" vertical={vertical} />);
+    await settle();
+    return rendered;
+  }
+
+  it.each(VERTICALES_CUENTA)("%s: pinta correo, contraseña, Google y sesiones activas con un solo h1", async (v) => {
+    vi.stubGlobal("fetch", api({ "/auth/account/estado": () => res({ ...ESTADO, emailVerified: false }) }));
+    const r = await mountVertical(v);
+    expect(r.container.querySelectorAll("h1")).toHaveLength(1);
+    expect(r.container.querySelector("h1")!.textContent).toBe("Seguridad de la cuenta");
+    for (const titulo of ["Correo", "Contraseña", "Google", "Sesiones activas"]) expect(r.container.textContent).toContain(titulo);
+    // Solo licitaciones tiene verificacion en dos pasos: las demas no fingen una tarjeta que no existe.
+    expect(r.container.textContent).not.toContain("Verificación en dos pasos");
+    expect(r.container.textContent).toContain("ana@example.com");
+  });
+
+  it.each(VERTICALES_CUENTA)("%s: 'no recuerdo la actual' manda la vertical correcta y responde de forma uniforme", async (v) => {
+    const cuerpos: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      api({
+        "/auth/password-reset/solicitar": (init) => {
+          cuerpos.push(JSON.parse(init!.body as string));
+          return res({ ok: true });
+        },
+      }),
+    );
+    const r = await mountVertical(v);
+    click(boton(r, "No recuerdo la actual")!);
+    await settle();
+    expect(cuerpos).toEqual([{ email: "ana@example.com", vertical: v }]);
+    expect(r.container.textContent).toContain("Si ana@example.com tiene una cuenta");
+  });
+
+  it.each(["restaurantes", "hoteles", "rentas", "citas", "despachos"] as const)("%s: cerrar sesiones pide confirmacion y Cancelar NUNCA ejecuta", async (v) => {
+    const llamadas: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      api({
+        "/auth/sessions/cerrar": () => {
+          llamadas.push("una");
+          return res({ ok: true });
+        },
+        "/auth/sessions/cerrar-todas": () => {
+          llamadas.push("todas");
+          return res({ token: "t", refreshToken: "r" });
+        },
+      }),
+    );
+    const r = await mountVertical(v);
+    click(boton(r, "Cerrar sesión")!);
+    await settle();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await settle();
+    click(boton(r, "Cerrar todas las demás")!);
+    await settle();
+    click(botonDialogo("Cancelar"));
+    await settle();
+    expect(llamadas).toEqual([]);
+  });
+
+  it("cambiar la contraseña guarda la sesion NUEVA solo bajo la llave de ESA vertical", async () => {
+    installMemoryLocalStorage();
+    const vieja = { token: "t-viejo", refreshToken: "r-viejo", email: "ana@example.com", organizations: [] };
+    window.localStorage.setItem("atiende.citas.session", JSON.stringify(vieja));
+    window.localStorage.setItem("atiende.hoteles.session", JSON.stringify({ ...vieja, token: "t-hoteles" }));
+    vi.stubGlobal("fetch", api({ "/auth/change-password": () => res({ token: "t-nuevo", refreshToken: "r-nuevo" }) }));
+    const r = await mountVertical("citas");
+    changeValue(r.container.querySelector<HTMLInputElement>("#cuenta-pass-actual")!, PW_ACTUAL);
+    changeValue(r.container.querySelector<HTMLInputElement>("#cuenta-pass-nueva")!, PW_NUEVA);
+    changeValue(r.container.querySelector<HTMLInputElement>("#cuenta-pass-confirmar")!, PW_NUEVA);
+    await submitForm(r.container.querySelector<HTMLInputElement>("#cuenta-pass-actual")!.closest("form")!);
+    await settle();
+    expect(r.container.textContent).toContain("Contraseña actualizada");
+    expect(JSON.parse(window.localStorage.getItem("atiende.citas.session")!)).toMatchObject({ token: "t-nuevo", refreshToken: "r-nuevo", email: "ana@example.com" });
+    expect(JSON.parse(window.localStorage.getItem("atiende.hoteles.session")!).token).toBe("t-hoteles");
+  });
+
+  it("vincular Google manda la vertical y el error del servidor se ve", async () => {
+    const cuerpos: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      api({
+        "/auth/google/vincular/iniciar": (init) => {
+          cuerpos.push(JSON.parse(init!.body as string));
+          return res({ message: "No perteneces a esa organización." }, 403);
+        },
+      }),
+    );
+    const r = await mountVertical("rentas");
+    click(boton(r, "Vincular una cuenta de Google")!);
+    await settle();
+    expect(cuerpos).toEqual([{ orgSlug: "demo", vertical: "rentas" }]);
+    expect(r.container.textContent).toContain("No perteneces a esa organización.");
+  });
+
+  it("sin base migrada: ni 'enviar verificacion' ni Google ofrecen nada que no puedan cumplir", async () => {
+    vi.stubGlobal("fetch", api({ "/auth/account/estado": () => res({ message: "x" }, 503), "/auth/sessions/listar": () => res({ message: "x" }, 503) }));
+    const r = await mountVertical("despachos");
+    expect(r.container.textContent).not.toContain("Enviar correo de verificación");
+    expect(r.container.textContent).toContain("todavía no está disponible");
+    expect(boton(r, "Vincular una cuenta de Google")).toBeUndefined();
+  });
+});
+
+describe("enlaces del correo: las 6 verticales vuelven a SU login", () => {
+  it.each(VERTICALES_CUENTA)("%s: restablecer y verificar ofrecen 'Ir a iniciar sesión' hacia el login de su vertical", async (v) => {
+    window.history.replaceState(null, "", `/${v}/verificar-correo?token=${ENLACE}`);
+    vi.stubGlobal("fetch", vi.fn(async () => res({ ok: true })));
+    rendered = renderComponent(
+      <MemoryRouter>
+        <VerificarCorreoPage apiBaseUrl="https://api.test" vertical={v} />
+      </MemoryRouter>,
+    );
+    await settle();
+    const enlace = [...rendered.container.querySelectorAll("a")].find((a) => a.textContent === "Ir a iniciar sesión");
+    expect(enlace?.getAttribute("href")).toBe(`/${v}/login`);
+    expect(rendered.container.querySelectorAll("main")).toHaveLength(1);
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
   });
 });

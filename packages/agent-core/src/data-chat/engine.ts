@@ -139,6 +139,10 @@ function buildSystemPrompt(catalog: DataChatCatalog, scope: DataChatScope, scope
 }
 
 function outOfCatalogText(catalog: DataChatCatalog): string {
+  if (catalog.outOfCatalogMessage) {
+    const own = catalog.tools.map((t) => t.label).join(", ");
+    return `${catalog.outOfCatalogMessage} Puedo ayudarte con: ${own}.`;
+  }
   const list = catalog.tools.map((t) => t.label).join(", ");
   return `Esa pregunta no está cubierta por las consultas que tengo disponibles, así que no puedo darte una cifra confiable. Puedo ayudarte con: ${list}.`;
 }

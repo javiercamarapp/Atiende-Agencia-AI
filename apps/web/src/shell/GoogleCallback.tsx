@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { EstadoCargando, EstadoError } from "@atiende/ui";
+import { MarcoPublico } from "../components/MarcoPublico.tsx";
 import type { LoginSession } from "../lib/auth-client.ts";
 import { decideLandingPath, persistSession } from "../lib/auth-client.ts";
 import { decideHotelesLandingPath, persistHotelesSession } from "../verticals/hoteles/lib/auth-client.ts";
@@ -101,15 +102,15 @@ export function GoogleCallbackPage({ apiBaseUrl }: { readonly apiBaseUrl: string
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background px-6">
+      <MarcoPublico titulo="Inicio de sesión con Google">
         <EstadoError titulo="No se pudo iniciar sesión" mensaje={error} onReintentar={() => navigate(`/${vertical ?? ""}/login`, { replace: true })} />
-      </main>
+      </MarcoPublico>
     );
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-background px-6">
+    <MarcoPublico titulo="Inicio de sesión con Google">
       <EstadoCargando etiqueta="Completando el inicio de sesión con Google…" />
-    </main>
+    </MarcoPublico>
   );
 }

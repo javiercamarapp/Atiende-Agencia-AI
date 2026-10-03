@@ -60,10 +60,10 @@ function costoDe(r: CfoOrgRow): EntradaPylOrg["costo"] {
   return { llm: r.llmMicroUsd, voz: r.vozMicroUsd, whatsapp: r.whatsappMicroUsd, telefonia: r.telefoniaMicroUsd, otros: r.otrosMicroUsd };
 }
 
-type InfraEntrada = readonly { readonly concepto: string; readonly montoMxnCentavos: number }[] | null;
+export type InfraEntrada = readonly { readonly concepto: string; readonly montoMxnCentavos: number }[] | null;
 
-/** P&L de un mes: ingreso vivo (mes en curso) o de la foto guardada (mes cerrado). */
-function pylDelMes(mes: string, rows: readonly CfoOrgRow[], fotos: readonly BillingSnapshotRow[], infra: InfraEntrada, umbralMargenPct: number): { pyl: Pyl; fx: ReturnType<typeof tipoCambioDeFilas> } {
+/** P&L de un mes: ingreso vivo (mes en curso) o de la foto guardada (mes cerrado). Exportado: lo reusa el Copiloto CFO (superadmin-copiloto/catalogo.ts). */
+export function pylDelMes(mes: string, rows: readonly CfoOrgRow[], fotos: readonly BillingSnapshotRow[], infra: InfraEntrada, umbralMargenPct: number): { pyl: Pyl; fx: ReturnType<typeof tipoCambioDeFilas> } {
   const fx = tipoCambioDeFilas(rows);
   const enCurso = mes === mesActualUtc();
   let orgs: EntradaPylOrg[];
@@ -89,7 +89,7 @@ function pylDelMes(mes: string, rows: readonly CfoOrgRow[], fotos: readonly Bill
   return { pyl: armarPyl({ mes, orgs, mxnPorUsd: fx?.mxnPorUsd ?? null, infra }), fx };
 }
 
-function infraDelMes(costs: readonly InfraCostRow[], mes: string): InfraEntrada {
+export function infraDelMes(costs: readonly InfraCostRow[], mes: string): InfraEntrada {
   const delMes = costs.filter((c) => c.mes.slice(0, 7) === mes);
   return delMes.length === 0 ? null : delMes.map((c) => ({ concepto: c.concepto, montoMxnCentavos: c.montoMxnCentavos }));
 }

@@ -1,0 +1,731 @@
+// Copiloto de superadmin (CHAT-16), de punta a punta por HTTP (app.request) con LLM GUIONADO (`scriptedCompletion`: ningun test toca la red ni gasta) y
+// repositorios EN MEMORIA. Cubre cada regla de seguridad del turno: 403 a quien no es superadmin ni finanzas, finanzas solo ve herramientas financieras,
+// step-up para las financieras (con huella en core.cfo_access_log), 409 con impersonacion, interruptor apagado sin llamar al modelo, tope mensual propio,
+// 20 preguntas por minuto, guardia de cifras, fuera de catalogo, bitacora y conversacion persistida con scope plataforma. La autorizacion REAL en SQL
+// (RLS, caller-binding, CHECK) la prueba scripts/verify-superadmin-copiloto/ contra Postgres real; las herramientas, superadmin-copiloto-herramientas.spec.ts.
+import { randomUUID } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
+import { totpAt } from "@atiende/core-auth";
+import { scriptedCompletion, type DataChatAnswer, type DataChatAuditEntry, type DataChatHistoryTurn, type ScriptStep } from "@atiende/agent-core/data-chat";
+import { InMemoryCfoRepository, InMemoryCfoZoneRepository, InMemoryImpersonationRepository, InMemoryPylRepository, type InMemoryTenancyEngine } from "@atiende/db";
+import type { TenantDbSession } from "@atiende/core-tenancy";
+import { buildApp } from "../src/app.ts";
+import type { AppDeps } from "../src/deps.ts";
+import type { ConversacionDetalleDto, ConversacionResumenDto, ConversacionScope, ConversacionesRepository, MensajeGuardadoDto, ResultadoGuardado, TurnoAGuardar } from "../src/data-chat/conversaciones.ts";
+import { COPILOTO_NO_ACTIVADO } from "../src/routes/superadmin-copiloto.ts";
+import { crearLedgerMensual, type SuperadminCopilotoDeps } from "../src/superadmin-copiloto/deps.ts";
+import { fuentesDeProduccion, type FuentesPlataforma } from "../src/superadmin-copiloto/fuentes.ts";
+import { jsonRequestInit } from "./fixtures.ts";
+import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
+import { HERRAMIENTAS_FINANCIERAS, HERRAMIENTAS_OPERATIVAS } from "../src/superadmin-copiloto/catalogo.ts";
+import { FILA_CFO, FILA_CFO_HOTEL, fuentesFalsas } from "./superadmin-copiloto-fixtures.ts";
+
+interface Guardada {
+  id: string;
+  scope: ConversacionScope;
+  titulo: string;
+  mensajes: MensajeGuardadoDto[];
+  herramientas?: Set<string>;
+}
+
+/** Doble en memoria del repositorio de conversaciones: mismo alcance que la base (autor + organizacion + vertical). */
+class RepoEnMemoria implements ConversacionesRepository {
+  readonly appended: { scope: ConversacionScope; turno: TurnoAGuardar }[] = [];
+  readonly store: Guardada[] = [];
+  private mia(scope: ConversacionScope, id: string): Guardada | undefined {
+    return this.store.find((c) => c.id === id && c.scope.userId === scope.userId && c.scope.organizationId === scope.organizationId && c.scope.vertical === scope.vertical);
+  }
+  async list(scope: ConversacionScope): Promise<{ disponible: boolean; items: ConversacionResumenDto[] }> {
+    const items = this.store
+      .filter((c) => c.scope.userId === scope.userId && c.scope.organizationId === scope.organizationId && c.scope.vertical === scope.vertical)
+      .map((c) => ({ id: c.id, titulo: c.titulo, actualizadaEn: "2026-10-02T12:00:00.000Z", mensajes: c.mensajes.length }));
+    return { disponible: true, items };
+  }
+  async get(scope: ConversacionScope, id: string): Promise<ConversacionDetalleDto | null> {
+    const c = this.mia(scope, id);
+    return c ? { id: c.id, titulo: c.titulo, actualizadaEn: "2026-10-02T12:00:00.000Z", mensajes: c.mensajes } : null;
+  }
+  async herramientasUsadas(scope: ConversacionScope, id: string): Promise<string[] | null> {
+    const c = this.mia(scope, id);
+    return c ? [...(c.herramientas ?? [])] : null;
+  }
+  async loadHistory(scope: ConversacionScope, id: string, limit: number): Promise<DataChatHistoryTurn[] | null> {
+    const c = this.mia(scope, id);
+    return c ? c.mensajes.slice(-limit).map((m) => ({ role: m.role, text: m.text })) : null;
+  }
+  async rename(scope: ConversacionScope, id: string, titulo: string): Promise<boolean> {
+    const c = this.mia(scope, id);
+    if (!c) return false;
+    c.titulo = titulo;
+    return true;
+  }
+  async remove(scope: ConversacionScope, id: string): Promise<boolean> {
+    const c = this.mia(scope, id);
+    if (!c) return false;
+    this.store.splice(this.store.indexOf(c), 1);
+    return true;
+  }
+  async append(scope: ConversacionScope, turno: TurnoAGuardar): Promise<ResultadoGuardado> {
+    this.appended.push({ scope, turno });
+    let c = turno.conversationId ? this.mia(scope, turno.conversationId) : undefined;
+    if (turno.conversationId && !c) return { guardado: false, motivo: "conversacion_no_encontrada" };
+    if (!c) {
+      c = { id: randomUUID(), scope, titulo: turno.userText.slice(0, 60), mensajes: [] };
+      this.store.push(c);
+    }
+    c.herramientas = new Set([...(c.herramientas ?? []), ...turno.toolCalls.map((t) => t.tool)]);
+    const base = c.mensajes.length;
+    c.mensajes.push({ id: `${c.id}:${base + 1}`, role: "user", text: turno.userText, seq: base + 1 });
+    c.mensajes.push({ id: `${c.id}:${base + 2}`, role: "assistant", text: turno.assistantText, seq: base + 2, status: turno.status, blocks: [...turno.blocks], sources: [...turno.sources] });
+    return { guardado: true, conversationId: c.id, seq: base + 2 };
+  }
+}
+
+interface Opciones {
+  readonly steps?: ScriptStep[];
+  readonly sinProveedor?: boolean;
+  readonly sinZona?: boolean;
+  readonly fuentes?: Partial<FuentesPlataforma>;
+  /** `produccion` (por defecto) = fuentes de produccion sobre repos en memoria (la huella CFO va a core.cfo_access_log); `falsas` = datos de ejemplo. */
+  readonly modo?: "produccion" | "falsas";
+  readonly topeMensualMicroUsd?: number;
+  readonly costoUsdPorLlamada?: number;
+  readonly permitirTurnos?: () => boolean;
+}
+
+async function setup(o: Opciones = {}) {
+  const s = await seguridadSetup();
+  const zona = new InMemoryCfoZoneRepository();
+  const cfo = new InMemoryCfoRepository();
+  cfo.seedRows([FILA_CFO, FILA_CFO_HOTEL]);
+  const pyl = new InMemoryPylRepository();
+  const scripted = scriptedCompletion(o.steps ?? [{ text: "" }]);
+  const conv = new RepoEnMemoria();
+  const bitacora: DataChatAuditEntry[] = [];
+  const limiter: { key: string; limit: number; windowMs: number }[] = [];
+  const ledger = crearLedgerMensual();
+  const falsas = fuentesFalsas(o.fuentes);
+  const deps: AppDeps = {
+    ...s.deps,
+    cfoRepo: () => cfo,
+    pylRepo: () => pyl,
+    ...(o.sinZona ? {} : { cfoZoneRepo: () => zona }),
+    superadminCopiloto: {
+      completion: o.sinProveedor
+        ? undefined
+        : async (req) => {
+            const r = await scripted.complete(req);
+            return { ...r, costUsd: o.costoUsdPorLlamada ?? 0 };
+          },
+      rateLimiter: {
+        allow: async (key, limit, windowMs) => {
+          limiter.push({ key, limit, windowMs });
+          return o.permitirTurnos ? o.permitirTurnos() : true;
+        },
+      },
+      ledger,
+      ...(o.topeMensualMicroUsd !== undefined ? { topeMensualMicroUsd: o.topeMensualMicroUsd } : {}),
+      fuentes: (db, callerId) => (o.modo === "falsas" ? falsas : { ...fuentesDeProduccion(deps, db, callerId), ...(o.fuentes ?? {}) }),
+      conversaciones: () => conv,
+      audit: () => ({
+        record: async (e) => {
+          bitacora.push(e);
+        },
+      }),
+    } satisfies SuperadminCopilotoDeps,
+  };
+  const app = buildApp(deps);
+
+  const alta = async (opts: { finanzas?: boolean } = {}) => {
+    const sa = await s.superadmin();
+    cfo.seedSuperadmin(sa.id);
+    pyl.seedSuperadmin(sa.id);
+    zona.seedSuperadmin(sa.id, sa.email);
+    if (opts.finanzas) zona.seedRole(sa.id);
+    return sa;
+  };
+  const activarMfa = async (sa: { token: string }): Promise<string> => {
+    const enr = await app.request("/superadmin/mfa/enrolar", jsonRequestInit({}, bearer(sa.token)));
+    expect(enr.status).toBe(201);
+    const { secreto } = (await enr.json()) as { secreto: string };
+    const ver = await app.request("/superadmin/mfa/verificar", jsonRequestInit({ codigo: totpAt(secreto, Date.now()) }, bearer(sa.token)));
+    expect(ver.status).toBe(200);
+    return ((await ver.json()) as { stepUpToken: string }).stepUpToken;
+  };
+  const post = (token: string, body: unknown, extra: Record<string, string> = {}) => app.request("/superadmin/copiloto", jsonRequestInit(body, bearer(token, extra)));
+  const turno = async (token: string, body: unknown, extra: Record<string, string> = {}) => {
+    const res = await post(token, body, extra);
+    expect(res.status).toBe(200);
+    return (await res.json()) as DataChatAnswer & { conversacionId?: string; conversationId?: string; seq?: number; guardado?: boolean };
+  };
+  const estado = (token: string, extra: Record<string, string> = {}) => app.request("/superadmin/copiloto/estado", { headers: bearer(token, extra) });
+  return { s, app, deps, zona, cfo, scripted, conv, bitacora, limiter, ledger, falsas, alta, activarMfa, post, turno, estado };
+}
+
+const LLM_ORGANIZACIONES: ScriptStep[] = [{ toolCalls: [{ name: "organizaciones", argumentsJson: "{}" }] }, { text: "Hay 3 organizaciones y 1 activas." }];
+
+describe("acceso: solo superadmin y finanzas", () => {
+  it("403 a un staff comun y 401 sin token, en el chat, el estado y las conversaciones", async () => {
+    const ctx = await setup();
+    const staff = await ctx.s.staff();
+    for (const res of [await ctx.post(staff.token, { question: "hola" }), await ctx.estado(staff.token), await ctx.app.request("/superadmin/copiloto/conversaciones", { headers: bearer(staff.token) })]) {
+      expect(res.status).toBe(403);
+    }
+    expect((await ctx.app.request("/superadmin/copiloto/estado")).status).toBe(401);
+    expect((await ctx.app.request("/superadmin/copiloto", jsonRequestInit({ question: "hola" }))).status).toBe(401);
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+
+  it("el superadmin completo ve las 16 herramientas en el estado; las financieras vienen marcadas", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    const res = await ctx.estado(sa.token);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { permitido: boolean; motivo: string | null; rol: string; herramientas: { nombre: string; financiera: boolean }[]; interruptor: { apagado: boolean }; gastoMes: { topeMicroUsd: number }; financierasDisponibles: boolean };
+    expect(body).toMatchObject({ permitido: true, motivo: null, rol: "superadmin", financierasDisponibles: true, interruptor: { apagado: false } });
+    expect(body.herramientas).toHaveLength(16);
+    expect(body.herramientas.filter((h) => h.financiera).map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(body.gastoMes.topeMicroUsd).toBe(25_000_000);
+  });
+
+  it("sin proveedor de IA el estado dice 'no_activado' y el chat responde honesto sin consultar; la consulta directa (sin modelo) sigue funcionando", async () => {
+    const ctx = await setup({ sinProveedor: true, modo: "falsas" });
+    const sa = await ctx.alta();
+    const e = (await (await ctx.estado(sa.token)).json()) as { disponible: boolean; permitido: boolean; motivo: string };
+    expect(e).toMatchObject({ disponible: false, permitido: false, motivo: "no_activado" });
+    expect(await ctx.turno(sa.token, { question: "cuantas organizaciones hay" })).toEqual(COPILOTO_NO_ACTIVADO);
+    const directa = await ctx.turno(sa.token, { tool: "organizaciones" });
+    expect(directa.status).toBe("ok");
+    expect(directa.blocks[0]?.tool).toBe("organizaciones");
+  });
+
+  it("sin AppDeps.superadminCopiloto las rutas responden 'no activado' (nunca 500)", async () => {
+    const s = await seguridadSetup();
+    const app = buildApp({ ...s.deps, cfoZoneRepo: undefined });
+    const sa = await s.superadmin();
+    const res = await app.request("/superadmin/copiloto", jsonRequestInit({ question: "hola" }, bearer(sa.token)));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(COPILOTO_NO_ACTIVADO);
+  });
+
+  it("el cuerpo solo aporta pregunta, historial y conversacion: cualquier otro campo (organizacion, rol, SQL) es 400", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    for (const extra of [{ organizationId: randomUUID() }, { rol: "finanzas" }, { sql: "select 1" }, { stepUp: true }]) {
+      expect((await ctx.post(sa.token, { question: "hola", ...extra })).status).toBe(400);
+    }
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+});
+
+describe("impersonacion: 409", () => {
+  async function impersonando() {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const imp = ctx.s.base.deps.impersonationRepo({} as never) as InMemoryImpersonationRepository;
+    imp.seedPlatformSuperadmin(sa.id, sa.email);
+    const sesion = await imp.startSession(sa.id, ctx.s.base.organizationId, "Soporte del cliente: revisar el pedido 123 de ayer");
+    return { ctx, sa, imp, sesion: sesion.session };
+  }
+
+  it("con una sesion de impersonacion activa el chat y el estado responden 409 y NO se llama al modelo", async () => {
+    const { ctx, sa } = await impersonando();
+    const chat = await ctx.post(sa.token, { question: "cuantas organizaciones hay" });
+    expect(chat.status).toBe(409);
+    expect(JSON.stringify(await chat.json())).toMatch(/conflict/);
+    expect((await ctx.estado(sa.token)).status).toBe(409);
+    expect((await ctx.post(sa.token, { tool: "organizaciones" })).status).toBe(409);
+    expect(ctx.scripted.requests).toHaveLength(0);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("al terminar la impersonacion el Copiloto vuelve a funcionar", async () => {
+    const { ctx, sa, imp, sesion } = await impersonando();
+    expect((await ctx.post(sa.token, { tool: "organizaciones" })).status).toBe(409);
+    await imp.endSession(sa.id, sesion.id);
+    expect((await ctx.post(sa.token, { tool: "organizaciones" })).status).toBe(200);
+  });
+
+  it("las demas escrituras bajo impersonacion siguen bloqueadas (el chat es la unica excepcion): renombrar una conversacion es 403", async () => {
+    const { ctx, sa } = await impersonando();
+    const res = await ctx.app.request(`/superadmin/copiloto/conversaciones/${randomUUID()}`, { ...jsonRequestInit({ titulo: "x" }, bearer(sa.token)), method: "PATCH" });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("turno con LLM guionado", () => {
+  it("el modelo elige una herramienta del catalogo y la respuesta lleva tabla, fuente que cita la consulta y narrativa respaldada", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.status).toBe("ok");
+    expect(a.text).toBe("Hay 3 organizaciones y 1 activas.");
+    expect(a.toolsUsed).toEqual(["organizaciones"]);
+    expect(a.blocks[0]).toMatchObject({ tool: "organizaciones" });
+    expect(a.sources[0]?.source).toMatch(/^Consulta «organizaciones»/);
+    expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
+    // El modelo vio SOLO las herramientas del catalogo de plataforma (16) y el alcance en el prompt.
+    const primera = ctx.scripted.requests[0]!;
+    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(16);
+    expect(primera.system).toMatch(/Plataforma completa \(superadmin\)/);
+  });
+
+  it("guardia de cifras: una cifra que no esta en los resultados se RECHAZA y se muestra el texto determinista", async () => {
+    const ctx = await setup({ modo: "falsas", steps: [{ toolCalls: [{ name: "organizaciones", argumentsJson: "{}" }] }, { text: "Hay 777 organizaciones activas." }] });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones activas hay" });
+    expect(a.status).toBe("ok");
+    expect(a.text).not.toContain("777");
+    expect(a.text).toBe("3 organizaciones, 1 activas.");
+  });
+
+  it("pregunta fuera del catalogo: 'no tengo el dato', sin cifras y con la lista de lo que si puede responder", async () => {
+    const ctx = await setup({ modo: "falsas", steps: [{ text: "Tienes 99 clientes felices." }] });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "como va el clima hoy" });
+    expect(a.status).toBe("out_of_catalog");
+    expect(a.text).toMatch(/^No tengo el dato/);
+    expect(a.text).not.toContain("99");
+    expect(a.text).toContain("Organizaciones y personal");
+    expect(a.blocks).toEqual([]);
+  });
+
+  it("una herramienta que el modelo inventa o con argumentos fuera del esquema NO se ejecuta (catalogo cerrado, sin SQL libre)", async () => {
+    const ctx = await setup({
+      modo: "falsas",
+      steps: [{ toolCalls: [{ name: "ejecutar_sql", argumentsJson: JSON.stringify({ sql: "select * from core.organization" }) }] }, { toolCalls: [{ name: "organizaciones", argumentsJson: JSON.stringify({ vertical: "todas; drop table x" }) }] }, { text: "No pude consultar eso." }],
+    });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "dame todo" });
+    expect(a.toolsUsed).toEqual([]);
+    expect(a.blocks).toEqual([]);
+    expect(a.status).not.toBe("ok");
+    expect(ctx.bitacora.map((e) => e.outcome)).toEqual(expect.arrayContaining(["denied", "error"]));
+  });
+
+  it("20 preguntas por minuto por usuario: el limite se pide al limitador con esa clave y, agotado, el turno no consulta ni llama al modelo", async () => {
+    let permitido = true;
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, permitirTurnos: () => permitido });
+    const sa = await ctx.alta();
+    await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    const usuario = ctx.limiter.find((l) => l.key.startsWith("datachat:u:"));
+    expect(usuario).toEqual({ key: `datachat:u:plataforma:${sa.id}`, limit: 20, windowMs: 60_000 });
+    const llamadasAntes = ctx.scripted.requests.length;
+    permitido = false;
+    const a = await ctx.turno(sa.token, { question: "otra vez" });
+    expect(a.status).toBe("rate_limited");
+    expect(ctx.scripted.requests).toHaveLength(llamadasAntes);
+  });
+
+  it("modo NDJSON: pasos en vivo y un evento final; la respuesta es la misma", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const sa = await ctx.alta();
+    const res = await ctx.post(sa.token, { tool: "salud_colas" }, { accept: "application/x-ndjson" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/application\/x-ndjson/);
+    const lineas = (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as { t: string; fase?: string; herramienta?: string; respuesta?: DataChatAnswer });
+    expect(lineas[0]).toEqual({ t: "paso", fase: "inicio", herramienta: "salud_colas" });
+    expect(lineas[lineas.length - 1]?.t).toBe("fin");
+    expect(lineas[lineas.length - 1]?.respuesta?.blocks[0]?.tool).toBe("salud_colas");
+  });
+
+  it("si el cliente corta la conexion (abort) el turno se cancela antes de consultar o llamar al modelo", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const abort = new AbortController();
+    abort.abort();
+    const res = await ctx.app.request("/superadmin/copiloto", { ...jsonRequestInit({ question: "cuantas organizaciones tenemos" }, bearer(sa.token)), signal: abort.signal });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as DataChatAnswer).text).toBe("La consulta se canceló.");
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+});
+
+describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
+  const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" } };
+
+  it.each([...HERRAMIENTAS_OPERATIVAS, ...HERRAMIENTAS_FINANCIERAS])("%s: el modelo la pide, el motor la ejecuta con alcance de plataforma y la respuesta lleva su tabla y su fuente", async (nombre) => {
+    const ctx = await setup({ modo: "falsas", steps: [{ toolCalls: [{ name: nombre, argumentsJson: JSON.stringify(ARGS[nombre] ?? {}) }] }, { text: "Aquí está la consulta que pediste." }] });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: `consulta ${nombre}` });
+    expect(a.status).toBe("ok");
+    expect(a.toolsUsed).toEqual([nombre]);
+    expect(a.blocks).toHaveLength(1);
+    expect(a.blocks[0]).toMatchObject({ kind: "table", tool: nombre });
+    expect(a.blocks[0]!.rows.length).toBeGreaterThan(0);
+    expect(a.sources[0]?.source).toContain(`«${nombre}»`);
+    expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
+    const cfo = HERRAMIENTAS_FINANCIERAS.includes(nombre);
+    expect(ctx.falsas.accesosCfo.map((x) => x.recurso)).toEqual(cfo ? [`copiloto/${nombre}`] : []);
+  });
+});
+
+describe("interruptor 'agente superadmin:copiloto' y tope mensual propio", () => {
+  async function apagar(ctx: Awaited<ReturnType<typeof setup>>, sa: { id: string }) {
+    await ctx.s.switches.setSwitch(sa.id, "agente", "superadmin:copiloto", true, "Pausa del Copiloto por revision de costos del trimestre");
+    ctx.deps.platformSwitchGuard!.invalidate();
+  }
+
+  it("con el interruptor apagado el turno responde honesto SIN llamar al modelo y las consultas directas (sin IA) siguen disponibles", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    await apagar(ctx, sa);
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.status).toBe("unavailable");
+    expect(a.noAi?.reason).toBe("kill_switch");
+    expect(a.noAi?.options.map((o) => o.tool)).toContain("organizaciones");
+    expect(a.text).toMatch(/pausada/);
+    expect(ctx.scripted.requests).toHaveLength(0);
+    const directa = await ctx.turno(sa.token, { tool: "organizaciones" });
+    expect(directa.status).toBe("ok");
+    expect(ctx.scripted.requests).toHaveLength(0);
+    const e = (await (await ctx.estado(sa.token)).json()) as { permitido: boolean; motivo: string; interruptor: { apagado: boolean; clave: string } };
+    expect(e).toMatchObject({ permitido: false, motivo: "interruptor_apagado", interruptor: { apagado: true, clave: "agente:superadmin:copiloto" } });
+  });
+
+  it("el interruptor global de IA tambien lo detiene", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    await ctx.s.switches.setSwitch(sa.id, "global", "llm", true, "Pausa global por incidente del proveedor de modelos");
+    ctx.deps.platformSwitchGuard!.invalidate();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.noAi?.reason).toBe("kill_switch");
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+
+  it("tope mensual propio agotado (medido en la bitacora): modo sin IA, sin llamar al modelo; el estado lo anuncia", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, fuentes: { copilotoGastoMes: async () => ({ ok: true, data: 30_000_000 }) } });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.status).toBe("budget_exceeded");
+    expect(a.noAi?.reason).toBe("budget");
+    expect(ctx.scripted.requests).toHaveLength(0);
+    const e = (await (await ctx.estado(sa.token)).json()) as { permitido: boolean; motivo: string; gastoMes: { usadoMicroUsd: number; usoPct: number; medidoEnBitacora: boolean } };
+    expect(e).toMatchObject({ permitido: false, motivo: "tope_mensual", gastoMes: { usadoMicroUsd: 30_000_000, usoPct: 100, medidoEnBitacora: true } });
+  });
+
+  it("el gasto real de cada turno se acumula en la instancia: tras gastar el tope el siguiente turno ya no llama al modelo (base sin migrar incluida)", async () => {
+    const ctx = await setup({
+      modo: "falsas",
+      steps: LLM_ORGANIZACIONES,
+      topeMensualMicroUsd: 20_000,
+      costoUsdPorLlamada: 0.03,
+      fuentes: { copilotoGastoMes: async () => ({ ok: false, razon: "no_migrado" }) },
+    });
+    const sa = await ctx.alta();
+    const primero = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(primero.status).toBe("ok");
+    const llamadas = ctx.scripted.requests.length;
+    expect(llamadas).toBe(2);
+    expect(ctx.ledger.mes()).toBe(60_000);
+    const segundo = await ctx.turno(sa.token, { question: "y ahora cuantas" });
+    expect(segundo.status).toBe("budget_exceeded");
+    expect(ctx.scripted.requests).toHaveLength(llamadas);
+  });
+});
+
+describe("notificacion in-app del tope mensual propio (superadmin.copiloto.tope_mensual)", () => {
+  /** Registra las llamadas a core.emit_notification (el motor en memoria no la modela) y las da por emitidas. */
+  function grabarNotificaciones(engine: InMemoryTenancyEngine): { userId: string | null; params: unknown[] }[] {
+    const emitidas: { userId: string | null; params: unknown[] }[] = [];
+    const original = engine.withAppSession.bind(engine);
+    engine.withAppSession = (async (claims: { userId: string | null }, fn: (s: TenantDbSession) => Promise<unknown>) =>
+      original(claims, async (session) =>
+        fn({
+          ...session,
+          query: async (sql: string, params: unknown[] = []) => {
+            if (sql.includes("core.emit_notification")) {
+              emitidas.push({ userId: claims.userId, params });
+              return { rows: [{ emit_notification: 1 }] };
+            }
+            return session.query(sql, params);
+          },
+        } as TenantDbSession),
+      )) as typeof engine.withAppSession;
+    return emitidas;
+  }
+
+  it("al 80 % del tope avisa UNA vez (sesion de sistema, sin organizacion, solo el porcentaje) y el turno sigue; al 100 % avisa y responde sin IA", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, fuentes: { copilotoGastoMes: async () => ({ ok: true, data: 20_000_000 }) } });
+    const emitidas = grabarNotificaciones(ctx.s.base.deps.engine as InMemoryTenancyEngine);
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.status).toBe("ok");
+    await ctx.turno(sa.token, { question: "y de nuevo" });
+    expect(emitidas).toHaveLength(1);
+    expect(emitidas[0]!.userId).toBeNull();
+    expect(emitidas[0]!.params[0]).toBeNull();
+    expect(emitidas[0]!.params[2]).toBe("superadmin.copiloto.tope_mensual");
+    expect(emitidas[0]!.params[5]).toBe("El Copiloto de superadmin usó 80 por ciento de su tope mensual");
+    expect(String(emitidas[0]!.params[10])).toMatch(/^superadmin\.copiloto\.tope_mensual:80:\d{4}-\d{2}$/);
+    expect(emitidas[0]!.params[7]).toBe("/superadmin/gasto-api");
+    // Cruza el 100 %: segundo umbral, y el modelo ya no se llama.
+    (ctx.deps.superadminCopiloto as { fuentes: unknown }).fuentes = (db: TenantDbSession, id: string) => ({ ...fuentesDeProduccion(ctx.deps, db, id), ...fuentesFalsas({ copilotoGastoMes: async () => ({ ok: true, data: 26_000_000 }) }) });
+    const llamadas = ctx.scripted.requests.length;
+    const b = await ctx.turno(sa.token, { question: "otra mas" });
+    expect(b.status).toBe("budget_exceeded");
+    expect(ctx.scripted.requests).toHaveLength(llamadas);
+    expect(emitidas).toHaveLength(2);
+    expect(String(emitidas[1]!.params[10])).toMatch(/:100:/);
+    expect(JSON.stringify(emitidas)).not.toContain(sa.email);
+  });
+
+  it("por debajo del 80 % no avisa", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, fuentes: { copilotoGastoMes: async () => ({ ok: true, data: 5_000_000 }) } });
+    const emitidas = grabarNotificaciones(ctx.s.base.deps.engine as InMemoryTenancyEngine);
+    const sa = await ctx.alta();
+    await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(emitidas).toHaveLength(0);
+  });
+});
+
+describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_access_log", () => {
+  it("consulta directa a una herramienta CFO SIN step-up (con MFA activa): 403 stepup_required ANTES de abrir el flujo, huella 'denegado' y cero lecturas", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    await ctx.activarMfa(sa);
+    const res = await ctx.post(sa.token, { tool: "mrr" });
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).toMatch(/stepup_required/);
+    expect(ctx.zona.entries().map((e) => [e.accion, e.recurso])).toEqual([["denegado", "copiloto/mrr (sin step-up)"]]);
+    expect(ctx.bitacora).toHaveLength(0);
+  });
+
+  it("con step-up valido la herramienta CFO responde con cifras, cita la consulta y deja UNA fila de 'consulta' con herramienta y parametros", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    const stepUp = await ctx.activarMfa(sa);
+    const a = await ctx.turno(sa.token, { tool: "mrr", args: { mes: "2026-10" } }, { "x-stepup-token": stepUp });
+    expect(a.status).toBe("ok");
+    expect(a.blocks[0]?.tool).toBe("mrr");
+    expect(a.sources[0]?.source).toMatch(/^Consulta «mrr» \(mes=2026-10\)/);
+    const filas = ctx.zona.entries().filter((e) => e.accion === "consulta");
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({ actorUserId: sa.id, actorRol: "superadmin", recurso: "copiloto/mrr" });
+    expect(filas[0]!.filtros).toMatchObject({ herramienta: "mrr", mes: "2026-10", _ruta: "/superadmin/copiloto" });
+  });
+
+  it("una herramienta CFO que pide el MODELO sin step-up se niega: 'no tengo el dato', huella 'denegado', ninguna fila de 'consulta' y sin cifras", async () => {
+    const ctx = await setup({ steps: [{ toolCalls: [{ name: "pyl", argumentsJson: "{}" }] }, { text: "El P&L es de 1,500 pesos." }] });
+    const sa = await ctx.alta();
+    await ctx.activarMfa(sa);
+    const a = await ctx.turno(sa.token, { question: "dame el pyl del mes" });
+    expect(a.status).toBe("unavailable");
+    expect(a.text).toMatch(/^No tengo el dato: las consultas financieras exigen verificar tu código MFA/);
+    expect(a.blocks).toEqual([]);
+    expect(ctx.zona.entries().map((e) => e.accion)).toEqual(["denegado"]);
+  });
+
+  it("superadmin sin factor MFA activo (politica vigente, sin MFA obligatoria): las financieras funcionan y dejan huella", async () => {
+    const ctx = await setup({ steps: [{ toolCalls: [{ name: "mrr", argumentsJson: "{}" }] }, { text: "El MRR es de 1,598 pesos." }] });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cual es el mrr" });
+    expect(a.status).toBe("ok");
+    expect(a.blocks[0]?.tool).toBe("mrr");
+    expect(ctx.zona.entries().map((e) => [e.accion, e.recurso])).toEqual([["consulta", "copiloto/mrr"]]);
+  });
+
+  it("con SUPERADMIN_MFA_REQUIRED las financieras exigen step-up aunque no haya factor (403) y nada se lee", async () => {
+    const s = await seguridadSetup({ env: { superadminMfaRequired: true } });
+    const zona = new InMemoryCfoZoneRepository();
+    const cfo = new InMemoryCfoRepository();
+    cfo.seedRows([FILA_CFO]);
+    const deps: AppDeps = { ...s.deps, cfoRepo: () => cfo, cfoZoneRepo: () => zona, superadminCopiloto: { completion: undefined, rateLimiter: { allow: async () => true }, ledger: crearLedgerMensual() } };
+    const app = buildApp(deps);
+    const sa = await s.superadmin();
+    cfo.seedSuperadmin(sa.id);
+    zona.seedSuperadmin(sa.id, sa.email);
+    const res = await app.request("/superadmin/copiloto", jsonRequestInit({ tool: "mrr" }, bearer(sa.token)));
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).toMatch(/mfa_enrollment_required/);
+    expect(zona.entries().map((e) => e.accion)).toEqual(["denegado"]);
+  });
+
+  it("finanzas SIN MFA enrolada: 403 mfa_enrollment_required en el chat (no admite degradarse) y huella 'denegado'", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const fin = await ctx.alta({ finanzas: true });
+    const res = await ctx.post(fin.token, { question: "cual es el mrr" });
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).toMatch(/mfa_enrollment_required/);
+    expect(ctx.zona.entries().map((e) => [e.accion, e.recurso])).toEqual([["denegado", "POST copiloto (sin step-up)"]]);
+    expect(ctx.scripted.requests).toHaveLength(0);
+  });
+
+  it("finanzas CON step-up: el estado y el catalogo traen SOLO las 4 herramientas financieras y las consultas dejan huella con rol finanzas", async () => {
+    const ctx = await setup({ steps: [{ toolCalls: [{ name: "mrr", argumentsJson: "{}" }] }, { text: "El MRR es de 1,598 pesos." }] });
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const cab = { "x-stepup-token": stepUp };
+    const e = (await (await ctx.estado(fin.token, cab)).json()) as { rol: string; herramientas: { nombre: string; financiera: boolean }[]; financierasDisponibles: boolean };
+    expect(e.rol).toBe("finanzas");
+    expect(e.financierasDisponibles).toBe(true);
+    expect(e.herramientas.map((h) => h.nombre).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(e.herramientas.every((h) => h.financiera)).toBe(true);
+    const a = await ctx.turno(fin.token, { question: "cual es el mrr" }, cab);
+    expect(a.status).toBe("ok");
+    // El modelo solo vio las financieras.
+    expect(ctx.scripted.requests[0]!.tools?.map((t) => t.name).sort()).toEqual(["contratos_por_vencer", "margen_costos_unitarios", "mrr", "pyl"]);
+    expect(ctx.zona.entries().filter((x) => x.accion === "consulta").map((x) => [x.actorRol, x.recurso])).toEqual([["finanzas", "copiloto/mrr"]]);
+  });
+
+  it("finanzas NO ejecuta una herramienta operativa ni por consulta directa: 'no existe en tu catalogo' y ninguna lectura", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    for (const tool of ["organizaciones", "costos_ia", "prospectos", "errores", "eventos_seguridad", "uso_copiloto"]) {
+      const a = await ctx.turno(fin.token, { tool }, { "x-stepup-token": stepUp });
+      expect(a.status, tool).toBe("invalid_input");
+      expect(a.blocks, tool).toEqual([]);
+      expect(a.toolsUsed, tool).toEqual([]);
+    }
+    expect(ctx.bitacora.filter((e) => e.outcome === "ok")).toHaveLength(0);
+  });
+
+  it("finanzas no renombra ni borra conversaciones (solo lectura): 403 rol_finanzas_solo_lectura, y si puede leer las suyas", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const fin = await ctx.alta({ finanzas: true });
+    const lista = await ctx.app.request("/superadmin/copiloto/conversaciones", { headers: bearer(fin.token) });
+    expect(lista.status).toBe(200);
+    const patch = await ctx.app.request(`/superadmin/copiloto/conversaciones/${randomUUID()}`, { ...jsonRequestInit({ titulo: "x" }, bearer(fin.token)), method: "PATCH" });
+    expect(patch.status).toBe(403);
+    expect(JSON.stringify(await patch.json())).toMatch(/rol_finanzas_solo_lectura/);
+    const borrar = await ctx.app.request(`/superadmin/copiloto/conversaciones/${randomUUID()}`, { method: "DELETE", headers: bearer(fin.token) });
+    expect(borrar.status).toBe(403);
+  });
+
+  it("el rol finanzas sigue sin acceder a las demas rutas de /superadmin (la lista blanca de la zona CFO no se ensancho de mas)", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const fin = await ctx.alta({ finanzas: true });
+    for (const ruta of ["/superadmin/organizations", "/superadmin/prospectos", "/superadmin/copiloto/otra"]) {
+      const res = await ctx.app.request(ruta, { headers: bearer(fin.token) });
+      expect(res.status, ruta).toBe(403);
+    }
+  });
+});
+
+describe("bitacora y conversacion con alcance de plataforma", () => {
+  it("la bitacora registra quien, que herramienta y con que parametros tipados, y el resumen del turno con el costo real y el rol; nunca resultados ni texto", async () => {
+    const ctx = await setup({ modo: "falsas", steps: [{ toolCalls: [{ name: "costos_ia", argumentsJson: JSON.stringify({ periodo: "este_mes", agrupar: "vertical" }) }] }, { text: "Gasto de IA por vertical: 5 USD." }], costoUsdPorLlamada: 0.0125 });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuanto gastamos en IA por vertical este mes" });
+    expect(a.status).toBe("ok");
+    const herramienta = ctx.bitacora.find((e) => e.tool === "costos_ia")!;
+    expect(herramienta).toMatchObject({ userId: sa.id, vertical: "plataforma", outcome: "ok", route: "llm", params: { periodo: "este_mes", agrupar: "vertical" } });
+    const resumen = ctx.bitacora.find((e) => e.tool === null && e.costMicroUsd !== undefined)!;
+    expect(resumen).toMatchObject({ role: "superadmin:copiloto", route: "llm", costMicroUsd: 25_000 });
+    const todo = JSON.stringify(ctx.bitacora);
+    expect(todo).not.toMatch(/Taquería|Hotel Bahía|restaurantes:data_chat|cuanto gastamos/);
+  });
+
+  it("el turno se guarda en una conversacion de PLATAFORMA (sin organizacion, vertical plataforma), con la pregunta redactada, y se puede continuar", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const primero = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos, mi correo es yo@ejemplo.com", conversationId: "new" });
+    expect(primero.guardado).toBe(true);
+    expect(primero.conversationId).toBeDefined();
+    expect(primero.seq).toBe(2);
+    expect(ctx.conv.appended).toHaveLength(1);
+    expect(ctx.conv.appended[0]!.scope).toEqual({ organizationId: null, userId: sa.id, vertical: "plataforma" });
+    expect(ctx.conv.appended[0]!.turno).toMatchObject({ propertyId: null, conversationId: null, status: "ok" });
+    expect(ctx.conv.appended[0]!.turno.userText).not.toContain("yo@ejemplo.com");
+    expect(ctx.conv.appended[0]!.turno.toolCalls).toEqual([{ tool: "organizaciones", args: {} }]);
+    // Continuar: el historial sale de la base, no del cliente.
+    const segundo = await ctx.turno(sa.token, { question: "y cuantas activas", conversationId: primero.conversationId });
+    expect(segundo.conversationId).toBe(primero.conversationId);
+    expect(ctx.conv.store[0]!.mensajes).toHaveLength(4);
+    expect((await ctx.post(sa.token, { question: "x", conversationId: primero.conversationId, history: [{ role: "user", text: "hola" }] })).status).toBe(400);
+  });
+
+  it("conversaciones: solo el autor las ve; otro superadmin recibe 404 (nunca 403) al abrir, renombrar o borrar la ajena; el autor lista, abre, renombra y borra", async () => {
+    const ctx = await setup({ modo: "falsas" });
+    const a = await ctx.alta();
+    const b = await ctx.alta();
+    const t = await ctx.turno(a.token, { tool: "organizaciones", conversationId: "new" });
+    const id = t.conversationId!;
+    const lista = (await (await ctx.app.request("/superadmin/copiloto/conversaciones", { headers: bearer(a.token) })).json()) as { disponible: boolean; conversaciones: { id: string }[] };
+    expect(lista.conversaciones.map((c) => c.id)).toEqual([id]);
+    const listaB = (await (await ctx.app.request("/superadmin/copiloto/conversaciones", { headers: bearer(b.token) })).json()) as { conversaciones: unknown[] };
+    expect(listaB.conversaciones).toEqual([]);
+    expect((await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(b.token) })).status).toBe(404);
+    expect((await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { ...jsonRequestInit({ titulo: "robada" }, bearer(b.token)), method: "PATCH" })).status).toBe(404);
+    expect((await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { method: "DELETE", headers: bearer(b.token) })).status).toBe(404);
+    expect((await ctx.post(b.token, { tool: "organizaciones", conversationId: id })).status).toBe(404);
+    const abierta = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(a.token) });
+    expect(abierta.status).toBe(200);
+    expect(((await abierta.json()) as ConversacionDetalleDto).mensajes).toHaveLength(2);
+    const renombrada = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { ...jsonRequestInit({ titulo: "Mis organizaciones" }, bearer(a.token)), method: "PATCH" });
+    expect(renombrada.status).toBe(200);
+    expect(ctx.conv.store[0]!.titulo).toBe("Mis organizaciones");
+    expect((await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { method: "DELETE", headers: bearer(a.token) })).status).toBe(204);
+    expect((await ctx.app.request("/superadmin/copiloto/conversaciones/no-es-un-uuid", { headers: bearer(a.token) })).status).toBe(404);
+  });
+
+  it("releer una conversacion con herramientas financieras exige step-up y deja fila 'consulta' en cfo_access_log; sin step-up: 403 y huella 'denegado', sin cifras", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    const stepUp = await ctx.activarMfa(sa);
+    const cab = { "x-stepup-token": stepUp };
+    const t = await ctx.turno(sa.token, { tool: "mrr", args: { mes: "2026-10" }, conversationId: "new" }, cab);
+    const id = t.conversationId!;
+    const antes = ctx.zona.entries().filter((e) => e.recurso === "copiloto/conversaciones/:id").length;
+    expect(antes).toBe(0);
+    // Sin step-up: ni cifras ni lectura; queda una fila 'denegado'.
+    const sin = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(sa.token) });
+    expect(sin.status).toBe(403);
+    expect(JSON.stringify(await sin.json())).not.toMatch(/mensajes|blocks|text/);
+    expect(ctx.zona.entries().filter((e) => e.accion === "denegado" && /conversaciones/.test(e.recurso))).toHaveLength(1);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id")).toHaveLength(0);
+    // Con step-up: responde y deja UNA fila de 'consulta'.
+    const con = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(sa.token, cab) });
+    expect(con.status).toBe(200);
+    expect(((await con.json()) as ConversacionDetalleDto).mensajes).toHaveLength(2);
+    const filas = ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id");
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({ actorUserId: sa.id, actorRol: "superadmin" });
+    expect(filas[0]!.filtros).toMatchObject({ herramientas: ["mrr"] });
+  });
+
+  it("finanzas relee su conversacion financiera SOLO con step-up (y deja huella); una conversacion operativa no pide step-up ni deja fila", async () => {
+    const ctx = await setup();
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const cab = { "x-stepup-token": stepUp };
+    const t = await ctx.turno(fin.token, { tool: "mrr", args: { mes: "2026-10" }, conversationId: "new" }, cab);
+    const url = `/superadmin/copiloto/conversaciones/${t.conversationId}`;
+    expect((await ctx.app.request(url, { headers: bearer(fin.token) })).status).toBe(403);
+    expect((await ctx.app.request(url, { headers: bearer(fin.token, cab) })).status).toBe(200);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id")).toHaveLength(1);
+
+    const ctx2 = await setup({ modo: "falsas" });
+    const sa = await ctx2.alta();
+    await ctx2.activarMfa(sa);
+    const op = await ctx2.turno(sa.token, { tool: "organizaciones", conversationId: "new" });
+    const abierta = await ctx2.app.request(`/superadmin/copiloto/conversaciones/${op.conversationId}`, { headers: bearer(sa.token) });
+    expect(abierta.status).toBe(200);
+    expect(ctx2.zona.entries().filter((e) => e.recurso === "copiloto/conversaciones/:id")).toHaveLength(0);
+  });
+
+  it("un turno que no es parte de la conversacion (tope, rate limit, no activado) no se guarda", async () => {
+    const ctx = await setup({ modo: "falsas", permitirTurnos: () => false });
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "hola", conversationId: "new" });
+    expect(a.status).toBe("rate_limited");
+    expect(ctx.conv.appended).toHaveLength(0);
+  });
+});
+
+describe("compatibilidad: la bitacora y las fuentes no tumban el turno", () => {
+  it("si la bitacora de plataforma falla el turno se responde igual (el motor la envuelve)", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES });
+    const sa = await ctx.alta();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    (ctx.deps.superadminCopiloto as { audit?: unknown }).audit = () => ({
+      record: async () => {
+        throw new Error("bitacora caida");
+      },
+    });
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    spy.mockRestore();
+    expect(a.status).toBe("ok");
+  });
+});

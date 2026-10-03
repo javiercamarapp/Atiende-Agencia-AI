@@ -16,6 +16,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button, FormField, Input } from "@atiende/ui";
+import { MarcoPublico } from "../components/MarcoPublico.tsx";
 import { acceptInvite, decideLandingPathForInvite, LoginError, persistSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
@@ -60,10 +61,8 @@ export function AceptarInvitacionPage({ apiBaseUrl, onAccepted }: AceptarInvitac
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
-      <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-3" noValidate>
-        <h1 className="text-xl font-semibold">Aceptar invitación</h1>
-        <p className="text-sm text-muted-foreground">Pega el token que te compartió quien te invitó y fija tu contraseña para entrar.</p>
+    <MarcoPublico titulo="Aceptar invitación" descripcion="Pega el token que te compartió quien te invitó y fija tu contraseña para entrar.">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         <FormField label="Token de invitación" required>
           <Input type="text" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} className="font-mono" />
         </FormField>
@@ -85,6 +84,6 @@ export function AceptarInvitacionPage({ apiBaseUrl, onAccepted }: AceptarInvitac
           {submitting ? "Aceptando…" : "Aceptar y entrar"}
         </Button>
       </form>
-    </main>
+    </MarcoPublico>
   );
 }
