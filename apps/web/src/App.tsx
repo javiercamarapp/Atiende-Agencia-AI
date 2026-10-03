@@ -30,7 +30,8 @@ import { NotFoundPage } from "./pages/NotFound.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
-import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
+import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.tsx";
+import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
@@ -52,7 +53,6 @@ import { SuperAdminAgentesPage } from "./superadmin/pages/Agentes.tsx";
 import { SuperAdminAgenteConciliacionPage, SuperAdminAgenteExtractorPage, SuperAdminAgenteWhatsappPage } from "./superadmin/pages/AgenteFicha.tsx";
 import { SuperAdminModelOpsPage } from "./superadmin/pages/ModelOps.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
-import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
 import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
 import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
@@ -380,7 +380,17 @@ function SuperAdminOrganizacionesRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminDashboardPage {...ctx} />}
+      {(ctx) => <SuperAdminOrganizacionesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** SA-07: ficha 360 de una organizacion. */
+function SuperAdminOrganizacionFichaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminOrganizacionFichaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -534,15 +544,6 @@ function SuperAdminModelOpsRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminModelOpsPage {...ctx} />}
-    </SuperAdminShell>
-  );
-}
-
-function SuperAdminGestionOrganizacionesRoute() {
-  const navigate = useNavigate();
-  return (
-    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminGestionOrganizacionesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1152,6 +1153,7 @@ export function App() {
         <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
+        <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
         {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
         {Object.entries(REDIRECCIONES_SUPERADMIN).map(([desde, hacia]) => (
           <Route key={desde} path={desde} element={<Navigate to={hacia} replace />} />
@@ -1166,7 +1168,6 @@ export function App() {
         <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
         <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
         <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
-        <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
         <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
