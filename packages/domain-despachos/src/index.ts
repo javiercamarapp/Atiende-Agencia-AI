@@ -627,3 +627,6 @@ export * from "./cfdi/estatus-sat/index.ts";
 
 // D-26/D-27/D-28: repositorio de solo sistema de los crons (migracion 022).
 export * from "./cron-sat/index.ts";
+
+// D-13: carga masiva de CFDI (contrato del resultado por archivo, totales, enrutado por tipo de comprobante).
+export * from "./cfdi/lote.ts";
