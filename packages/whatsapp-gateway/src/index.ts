@@ -10,8 +10,10 @@ export {
   SUPPRESSED_ERROR_CLASS,
   WhatsAppOutboundDispatcher,
 } from "./dispatcher.ts";
-export type { ContextoMedicion, DispatchItemOutcome, DispatchItemResult, DispatchPendingOptions, DispatchSummary, MedidorMensajes, SuppressionGuard, WhatsAppOutboundDispatcherOptions } from "./dispatcher.ts";
+export type { CatalogoPlantillas, ContextoMedicion, DispatchItemOutcome, DispatchItemResult, DispatchPendingOptions, DispatchSummary, MedidorMensajes, SuppressionGuard, WhatsAppOutboundDispatcherOptions } from "./dispatcher.ts";
 export { DEFAULT_GRAPH_API_VERSION, MAX_BUTTON_ID_LENGTH, MAX_BUTTON_TITLE_LENGTH, MAX_INTERACTIVE_BUTTONS, MetaGraphWhatsAppClient } from "./providers/meta-graph-client.ts";
 export type { MetaGraphWhatsAppClientOptions } from "./providers/meta-graph-client.ts";
 export { FakeWhatsAppGraphClient } from "./providers/fake-graph-client.ts";
 export type { FakeWhatsAppGraphClientOptions } from "./providers/fake-graph-client.ts";
+export { detectarOptOut, normalizarTextoOptOut } from "./opt-out.ts";
+export type { IntencionOptOut, OpcionesDeteccionOptOut } from "./opt-out.ts";

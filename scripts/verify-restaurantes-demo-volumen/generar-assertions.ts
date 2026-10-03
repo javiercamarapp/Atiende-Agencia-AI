@@ -12,7 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildPmSeedPlan, renderPmSeedPlpgsql } from "../../packages/domain-restaurantes/src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../../packages/domain-restaurantes/src/seed/pm-world.ts";
-import { generarVolumenDemo, type DemoVolumeBatch } from "../../packages/domain-restaurantes/src/seed/demo-volume.ts";
+import { generarVolumenDemo, DEMO_PERFIL_T7, type DemoVolumeBatch } from "../../packages/domain-restaurantes/src/seed/demo-volume.ts";
+import { renderDemoVerificationSql } from "../../packages/domain-restaurantes/src/seed/demo-verification.ts";
 import { renderDemoVolumePlpgsql } from "../../packages/domain-restaurantes/src/seed/demo-volume-sql.ts";
 import { loadSeedInputs } from "../seed-pm-demo/inputs.ts";
 
@@ -62,6 +63,40 @@ export async function volumenDePrueba(): Promise<VolumenDePrueba> {
   };
 }
 
+export interface VolumenT7DePrueba {
+  readonly batch: DemoVolumeBatch;
+  readonly pedidos: number;
+  readonly clientes: number;
+  readonly recurrentes: number;
+  readonly pedidosDeRecurrentes: number;
+}
+
+/** Volumen del perfil t7 completo (139 pedidos en 56 dias) con "ahora" fijo: lo que `npm run demo:pm` carga. */
+export async function volumenT7DePrueba(): Promise<VolumenT7DePrueba> {
+  const { data, agent } = loadSeedInputs();
+  const plan = buildPmSeedPlan(data, agent, { demo: true });
+  const world = await buildInMemoryPmWorld(plan, { deterministic: true });
+  const lotes: DemoVolumeBatch[] = [];
+  const gen = generarVolumenDemo(world.repo, { organizationId: world.organizationId, dias: DEMO_PERFIL_T7.dias, perfil: "t7", ahora: new Date("2026-10-03T15:00:00Z") });
+  for (;;) {
+    const r = await gen.next();
+    if (r.done) break;
+    lotes.push(r.value);
+  }
+  const batch: DemoVolumeBatch = {
+    customers: lotes.flatMap((l) => l.customers),
+    orders: lotes.flatMap((l) => l.orders),
+    conversations: lotes.flatMap((l) => l.conversations),
+    handoffs: lotes.flatMap((l) => l.handoffs),
+    callbacks: lotes.flatMap((l) => l.callbacks),
+  };
+  // Mismo criterio que la consulta de verificacion: pedidos por cliente SIN contar los cancelados.
+  const porCliente = new Map<string, number>();
+  for (const o of batch.orders) if (o.status !== "cancelado") porCliente.set(o.customerPhone, (porCliente.get(o.customerPhone) ?? 0) + 1);
+  const rec = [...porCliente.values()].filter((n) => n >= 2);
+  return { batch, pedidos: batch.orders.length, clientes: new Set(batch.orders.filter((o) => o.status !== "cancelado").map((o) => o.customerPhone)).size, recurrentes: rec.length, pedidosDeRecurrentes: rec.reduce((a, b) => a + b, 0) };
+}
+
 const SUMA_RENGLONES = `(select coalesce(sum((i->>'price')::numeric * (i->>'quantity')::numeric), 0) from jsonb_array_elements(o.items) i)`;
 const DESCUENTO = `coalesce((regexp_match(o.notes, 'Promoción aplicada: [A-Z0-9_-]+ \\(-\\$([0-9.]+)\\)'))[1]::numeric, 0)`;
 const DEMO_ORG = `(select id from core.organization where slug = '${SLUG_DEMO}')`;
@@ -74,6 +109,8 @@ export async function construirAssertions(): Promise<string> {
   const { data, agent } = loadSeedInputs();
   const cuerpoSeedDemo = renderPmSeedPlpgsql(buildPmSeedPlan(data, agent, { demo: true }));
   const v = await volumenDePrueba();
+  const t7 = await volumenT7DePrueba();
+  const cuerpoVolumenT7 = renderDemoVolumePlpgsql(SLUG_DEMO, t7.batch);
   const cuerpoVolumen = renderDemoVolumePlpgsql(SLUG_DEMO, v.batch);
   // Lotes minimos (un pedido) para los casos de rechazo: no hace falta repetir todo el volumen en el archivo.
   const mini: DemoVolumeBatch = { customers: v.batch.customers.slice(0, 1), orders: v.batch.orders.slice(0, 1), conversations: [], handoffs: [], callbacks: [] };
@@ -82,6 +119,9 @@ export async function construirAssertions(): Promise<string> {
   const cuerpoTelefonoReal = renderDemoVolumePlpgsql(SLUG_DEMO, telefonoReal);
 
   const aplicar = "select public.seed_volumen();\n";
+  const aplicarT7 = "select public.seed_volumen_t7();\n";
+  // La consulta REAL de verificacion (npm run demo:pm -- --verificar), envuelta para poder compararla: el $1 es el slug demo.
+  const hechos = (slug: string) => `(select hechos from (${renderDemoVerificationSql().trim().replace(/;$/, "").replace("$1", `'${slug}'`)}) q)`;
   const escenarios = [
     escenario(`V1. El volumen inserta exactamente ${v.pedidos} pedidos del motor real en la organizacion demo`, `${aplicar}select count(*)::int as pedidos_deberia_ser_${v.pedidos} from restaurantes.orders where organization_id = ${DEMO_ORG};`),
     escenario(
@@ -164,6 +204,64 @@ export async function construirAssertions(): Promise<string> {
   and (select count(*) from restaurantes.callback_requests where organization_id = ${DEMO_ORG} and not resolved and status = 'nuevo') = ${v.pendientes}
 )::int as contactos_coherentes_deberia_ser_1;`,
     ),
+    escenario(
+      `V18. PERFIL T7 en SQL real: ${t7.pedidos} pedidos (el ritmo medido en T7), SOLO en T7 Garcia Lavin, ${t7.recurrentes} clientes recurrentes con ${t7.pedidosDeRecurrentes} pedidos (sin contar cancelados)`,
+      `${aplicarT7}select (
+  (select count(*) from restaurantes.orders where organization_id = ${DEMO_ORG}) = ${t7.pedidos}
+  and (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG}) = 1
+  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG} and bd.slug = '${DEMO_PERFIL_T7.sucursal}') = ${t7.pedidos}
+  and (select count(*) from restaurantes.orders where organization_id = ${DEMO_ORG} and source <> 'whatsapp') = 0
+)::int as perfil_t7_solo_t7_y_139_pedidos_deberia_ser_1;`,
+    ),
+    escenario(
+      "V18b. PERFIL T7 IDEMPOTENTE: aplicarlo dos veces deja los mismos pedidos y clientes (sin duplicar)",
+      `${aplicarT7}${aplicarT7}select (
+  (select count(*) from restaurantes.orders where organization_id = ${DEMO_ORG}) = ${t7.pedidos}
+  and (select count(*) from restaurantes.customers where organization_id = ${DEMO_ORG}) = ${t7.batch.customers.length}
+)::int as t7_sin_duplicados_deberia_ser_1;`,
+    ),
+    escenario(
+      "V18c. PERFIL T7: totales coherentes con el motor (renglones - descuento), minimo $200 a domicilio y renglones del menu de T7",
+      `${aplicarT7}select (
+  (select count(*) from restaurantes.orders o where o.organization_id = ${DEMO_ORG} and abs(o.total - (${SUMA_RENGLONES} - ${DESCUENTO})) > 0.005)
+  + (select count(*) from restaurantes.orders o where o.organization_id = ${DEMO_ORG} and o.canal = 'domicilio' and ${SUMA_RENGLONES} < 200)
+  + (select count(*) from restaurantes.orders o cross join lateral jsonb_array_elements(o.items) i
+      where o.organization_id = ${DEMO_ORG}
+        and not exists (select 1 from restaurantes.products p join restaurantes.branch_products bp on bp.product_id = p.id and bp.property_id = o.property_id where p.organization_id = o.organization_id and p.name = i->>'name' and bp.price = (i->>'price')::numeric))
+)::int as incoherencias_del_perfil_t7_deberia_ser_0;`,
+    ),
+    escenario(
+      "V19. VERIFICACION (solo lectura) sobre la demo cargada con el perfil T7: los HECHOS que lee coinciden con lo sembrado y la demo queda LISTA",
+      `${aplicarT7}select (
+  ${hechos(SLUG_DEMO)}->'org'->>'demo' = 'true'
+  and ${hechos(SLUG_DEMO)}->'agente'->>'perfil' = 'taqueria_pm'
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'pedidos')::int = ${t7.pedidos}
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'clientes')::int = ${t7.clientes}
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'sucursales')::int = 1
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'whatsapp')::int = ${t7.pedidos}
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'clientesRecurrentes')::int = ${t7.recurrentes}
+  and (${hechos(SLUG_DEMO)}->'volumen'->>'pedidosDeRecurrentes')::int = ${t7.pedidosDeRecurrentes}
+  and (${hechos(SLUG_DEMO)}->'volumen'->'porSlug'->>'${DEMO_PERFIL_T7.sucursal}')::int = ${t7.pedidos}
+  and ${hechos(SLUG_DEMO)}->'vozT7Habilitada' = 'false'::jsonb
+  and (${hechos(SLUG_DEMO)}->'sucursales') @> '[{"slug": "${DEMO_PERFIL_T7.sucursal}", "status": "active"}]'::jsonb
+)::int as hechos_de_verificacion_coinciden_deberia_ser_1;`,
+    ),
+    escenario(
+      "V19b. VERIFICACION sin volumen y sobre un slug inexistente: reporta 0 pedidos / org null (nunca inventa datos)",
+      `${aplicar}select restaurantes.demo_limpiar(${DEMO_ORG}, 'volumen');\nselect (
+  (${hechos(SLUG_DEMO)}->'volumen'->>'pedidos')::int = 0
+  and jsonb_typeof(${hechos("no-existe-esta-org")}->'org') = 'null'
+)::int as verificacion_honesta_deberia_ser_1;`,
+    ),
+    escenario(
+      "V19c. VERIFICACION cuenta SOLO el rango ficticio: una sesion del widget (0009) no cuenta como volumen y se reporta aparte",
+      `${aplicarT7}insert into restaurantes.orders (organization_id, property_id, customer_name, customer_phone, total, items, source)
+  select o.organization_id, o.property_id, 'Sesion widget', '0009123456', 100, '[]'::jsonb, 'whatsapp' from restaurantes.orders o where o.organization_id = ${DEMO_ORG} limit 1;
+select (
+  (${hechos(SLUG_DEMO)}->'volumen'->>'pedidos')::int = ${t7.pedidos}
+  and (${hechos(SLUG_DEMO)}->'sesionesWidget'->>'pedidos')::int = 1
+)::int as widget_aparte_del_volumen_deberia_ser_1;`,
+    ),
     escenario("V11. RECHAZADO (debe fallar): una organizacion que NO esta marcada como demo no recibe volumen", `select public.seed_volumen_no_demo() as should_fail;`, { demo: false }),
     escenario("V12. RECHAZADO (debe fallar): un telefono fuera del rango ficticio aborta el lote entero", `select public.seed_volumen_telefono_real() as should_fail;`),
     escenario(
@@ -215,6 +313,9 @@ ${cuerpoSeedDemo}
 $seed_fn$;
 create or replace function public.seed_volumen() returns void language plpgsql as $seed_fn$
 ${cuerpoVolumen}
+$seed_fn$;
+create or replace function public.seed_volumen_t7() returns void language plpgsql as $seed_fn$
+${cuerpoVolumenT7}
 $seed_fn$;
 create or replace function public.seed_volumen_no_demo() returns void language plpgsql as $seed_fn$
 ${cuerpoNoDemo}

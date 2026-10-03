@@ -3,7 +3,7 @@
 // telefonos ficticios (0001 = volumen, 0009 = sesiones del widget): nunca toca pedidos, clientes ni conversaciones reales.
 //
 // Por defecto es DRY-RUN: cuenta lo que se borraria y NO borra nada. Borrar exige `--apply` + SEED_DATABASE_URL y, si la base no es
-// local, `--confirm-host=<host exacto>`. Runbook: docs/DEMO-PM-CARGA.md.
+// local, `--confirm-host=<host exacto>`. Runbook: docs/demo-pm/runbook.md.
 //
 //   SEED_DATABASE_URL=postgresql://... node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts --modo=volumen            (dry-run)
 //   SEED_DATABASE_URL=postgresql://... node --experimental-strip-types scripts/seed-pm-demo/limpiar-demo.ts --modo=todo --apply --confirm-host=<host>

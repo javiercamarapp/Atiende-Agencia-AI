@@ -10,6 +10,8 @@ export interface EstadoDemo {
   readonly mensaje: string | null;
   readonly restaurante: { readonly slug: string; readonly nombre: string } | null;
   readonly sucursales: ReadonlyArray<{ readonly slug: string; readonly nombre: string }>;
+  /** Sucursal con la que abre el chat (fase 1 = T7) si esta activa; null/ausente = numero general (servidores anteriores no la mandan). */
+  readonly sucursal_predeterminada?: string | null;
   readonly limites: { readonly mensajes_por_sesion: number; readonly caracteres_por_mensaje: number };
 }
 

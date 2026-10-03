@@ -12,6 +12,15 @@ export function demoPhone(prefix: typeof DEMO_PHONE_PREFIX_VOLUME | typeof DEMO_
   return `+52${prefix}${String(sixDigits).padStart(6, "0")}`;
 }
 
+/** Sucursal con la que abre el chat de la demo: T7 Garcia Lavin, la FASE 1 del agente (decision de Javier del 2-oct-2026). Debe ser la misma que
+ * el perfil de volumen `t7` (`DEMO_PERFIL_T7.sucursal`; una prueba lo vigila). */
+export const DEMO_SUCURSAL_PREDETERMINADA = "garcia-lavin";
+
+/** Slug de la sucursal predeterminada SOLO si esta entre las sucursales activas que el widget ofrece; si no, null (numero general). */
+export function sucursalPredeterminadaDemo(sucursales: ReadonlyArray<{ readonly slug: string }>): string | null {
+  return sucursales.some((s) => s.slug === DEMO_SUCURSAL_PREDETERMINADA) ? DEMO_SUCURSAL_PREDETERMINADA : null;
+}
+
 export function esTelefonoDemo(phone: string): boolean {
   const digits = phone.replace(/\D/g, "").slice(-10);
   return digits.startsWith(DEMO_PHONE_PREFIX_VOLUME) || digits.startsWith(DEMO_PHONE_PREFIX_WIDGET);

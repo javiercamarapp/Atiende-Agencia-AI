@@ -86,6 +86,8 @@ export interface VolumeArgs {
   readonly dias: number | null;
   readonly pedidosPorDia: number | null;
   readonly semilla: number | null;
+  /** `t7` = ritmo real de la sucursal T7 (139 pedidos en 56 dias, solo T7). Sin perfil, el volumen generico por escala. */
+  readonly perfil: "t7" | null;
 }
 
 /** Slug de la cuenta demo por omision (el que carga `seed-pm-demo.ts --demo`). */
@@ -105,12 +107,16 @@ export function parseVolumeArgs(argv: readonly string[]): VolumeArgs {
   let dias: number | null = null;
   let pedidosPorDia: number | null = null;
   let semilla: number | null = null;
+  let perfil: "t7" | null = null;
   for (const arg of argv) {
     if (arg === "--apply") apply = true;
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg.startsWith("--confirm-host=")) confirmHost = arg.slice("--confirm-host=".length);
     else if (arg.startsWith("--org-slug=")) orgSlug = arg.slice("--org-slug=".length);
-    else if (arg.startsWith("--escala=")) {
+    else if (arg.startsWith("--perfil=")) {
+      if (arg.slice("--perfil=".length) !== "t7") throw new SeedTargetError("--perfil debe ser t7.");
+      perfil = "t7";
+    } else if (arg.startsWith("--escala=")) {
       const v = arg.slice("--escala=".length);
       if (v !== "ligero" && v !== "moderado" && v !== "completo") throw new SeedTargetError("--escala debe ser ligero, moderado o completo.");
       escala = v;
@@ -120,7 +126,8 @@ export function parseVolumeArgs(argv: readonly string[]): VolumeArgs {
     else throw new SeedTargetError(`Argumento desconocido: ${arg}`);
   }
   if (!/^[a-z0-9]([a-z0-9-]{0,98}[a-z0-9])?$/.test(orgSlug)) throw new SeedTargetError("--org-slug invalido.");
-  return { apply, confirmHost, help, orgSlug, escala, dias, pedidosPorDia, semilla };
+  if (perfil && pedidosPorDia !== null) throw new SeedTargetError("--perfil=t7 fija el total de pedidos (139 en 56 dias): no se combina con --pedidos-por-dia (use --dias para escalarlo).");
+  return { apply, confirmHost, help, orgSlug, escala, dias, pedidosPorDia, semilla, perfil };
 }
 
 export type CleanupMode = "volumen" | "sesiones_widget" | "todo";

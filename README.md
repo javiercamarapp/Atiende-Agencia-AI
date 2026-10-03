@@ -116,9 +116,10 @@ a la vez SQL y la sesión con que la API lo invoca se despliega código primero.
 
 ## Demo de restaurantes (Los Taquitos de PM)
 
-La demo completa de PM —chat estilo WhatsApp en `/demo/<slug>` conectado al agente real (sin Meta), pedidos reales que llegan al panel de
-cocina, 3 meses de datos de demostración y checklist de «Primeros pasos»— se presenta con el guion `docs/DEMO-PM.md` y se carga (y se
-borra) con el runbook `docs/DEMO-PM-CARGA.md`. El chat necesita una llave de proveedor LLM en el servidor; sin ella dice «Agente no
+La demo completa de PM en **T7 García Lavín** —chat estilo WhatsApp en `/demo/<slug>` conectado al agente real (sin Meta), pedidos reales que
+llegan al panel de cocina, 8 semanas de datos con el ritmo real de T7 y checklist de «Primeros pasos»— se arma con **un comando**
+(`npm run demo:pm`, dry-run por omisión; `npm run demo:verificar` comprueba lo cargado), se presenta con el guion `docs/demo-pm/guion.md` y se
+carga (y se borra) con el runbook `docs/demo-pm/runbook.md`. El chat necesita una llave de proveedor LLM en el servidor; sin ella dice «Agente no
 disponible: requiere OPENROUTER_API_KEY» (no hay respuestas simuladas).
 
 ## Desarrollo
