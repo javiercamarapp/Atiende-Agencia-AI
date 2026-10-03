@@ -33,7 +33,7 @@ test.describe("conversaciones de citas @humo", () => {
     const respuestas = await mock.buscar({ metodo: "POST", ruta: "/responder" });
     expect(respuestas).toHaveLength(1);
     expect(respuestas[0]!.cuerpo).toEqual({ texto: "Con gusto le ayudo a mover su cita" });
-    await expect(page.getByText("Con gusto le ayudo a mover su cita")).toBeVisible();
+    await expect(page.getByText("Con gusto le ayudo a mover su cita").first()).toBeVisible();
 
     await page.getByRole("button", { name: "Devolver al agente" }).click();
     await expect(page.getByText("Devuelta al agente: vuelve a responder.")).toBeVisible();
