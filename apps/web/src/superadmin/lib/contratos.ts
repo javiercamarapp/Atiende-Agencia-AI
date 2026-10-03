@@ -21,7 +21,7 @@ export function pesosACentavos(texto: string): number | undefined {
 export function centavosATexto(centavos: number): string {
   const enteros = Math.trunc(centavos / 100);
   const resto = Math.abs(centavos % 100);
-  return `${enteros.toLocaleString("en-US")}.${String(resto).padStart(2, "0")}`;
+  return `${enteros.toLocaleString("es-MX")}.${String(resto).padStart(2, "0")}`;
 }
 
 export const centavosAPesos = (centavos: number | null): string => (centavos === null ? "—" : `$${centavosATexto(centavos)}`);

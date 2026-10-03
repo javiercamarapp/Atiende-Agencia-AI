@@ -87,6 +87,14 @@ export class InMemoryTenancyEngine implements TenancyEngine {
           this.suprimidos.add(`${tipo}:${hash}`);
           return { rows: [{ nueva }] as unknown as R[] };
         }
+        // H-20: las funciones de la bandeja de conversaciones (migracion 043) no existen en este motor de alcance angosto: se comporta como una
+        // base SIN la 043 (SQLSTATE 42883, funcion inexistente), el camino que el codigo ya degrada. Asi el webhook de hoteles armado con este motor
+        // sigue respondiendo como antes; las pruebas de la bandeja inyectan `InMemoryConversacionesRepository`.
+        if (sql.includes("hoteles.conversacion")) {
+          const err = new Error(`function ${sql.match(/hoteles\.conversacion\w*/)?.[0] ?? "hoteles.conversacion_"}() does not exist`) as Error & { code: string };
+          err.code = "42883";
+          throw err;
+        }
         throw new Error(
           `InMemoryTenancyEngine: consulta SQL no soportada (alcance angosto a propósito, ver comentario de archivo): ${sql}`,
         );

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Archive, Download, UserRound } from "lucide-react";
+import { ArrowLeft, Archive, Download, MessagesSquare, UserRound } from "lucide-react";
 import { Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, NativeSelect, PageContainer, StatusBadge, Textarea } from "@atiende/ui";
 import { formatMoney } from "@atiende/ui";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
@@ -140,6 +140,12 @@ export function HuespedFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role 
           <Seccion titulo="Perfil">
             <p className="text-sm text-foreground">{ficha.huesped.email ?? "Sin correo"}</p>
             <p className="text-sm text-foreground">{ficha.huesped.telefono ?? "Sin teléfono"}</p>
+            {ficha.huesped.telefono && (
+              <Link to={`/hoteles/${orgSlug}/conversaciones?huesped=${guestId}`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 w-fit">
+                <MessagesSquare className="size-4" strokeWidth={1.75} />
+                Ver conversaciones de WhatsApp
+              </Link>
+            )}
             <div className="flex flex-wrap gap-2 pt-1">
               <StatusBadge tone={ficha.identidad === null ? "neutral" : ficha.identidad.registrada ? "success" : "warning"}>
                 {ficha.identidad === null ? "Identidad: no disponible aún" : ficha.identidad.registrada ? "Identidad registrada" : "Sin identidad registrada"}

@@ -11,7 +11,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
-import { MOVIL_SUPERADMIN, PENDIENTES, PIE_SUPERADMIN, REDIRECCIONES_SUPERADMIN, RESUMEN, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
+import { MOVIL_SUPERADMIN, PARTE_DIARIO, PENDIENTES, PIE_SUPERADMIN, REDIRECCIONES_SUPERADMIN, RESUMEN, RUTAS_SIN_MENU, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -92,6 +92,16 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
     // El listado de organizaciones ya no es la raiz: el Resumen lo es.
     expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain("/superadmin/organizaciones");
     expect(REDIRECCIONES_SUPERADMIN["/superadmin/resumen"]).toBe("/superadmin");
+  });
+
+  it("el parte diario vive en /superadmin/parte-diario con Route real y SIN item de menu, pie ni barra movil (UNI-RES-superadmin)", () => {
+    expect(PARTE_DIARIO).toBe("/superadmin/parte-diario");
+    expect(RUTAS_SIN_MENU).toContain(PARTE_DIARIO);
+    for (const ruta of RUTAS_SIN_MENU) expect(appSrc, ruta).toContain(`path="${ruta}"`);
+    const pintadas = new Set([...TODAS_LAS_RUTAS, ...MOVIL_SUPERADMIN, ...PIE_SUPERADMIN].map((r) => r.to));
+    expect(pintadas.has(PARTE_DIARIO)).toBe(false);
+    // La raiz es el Resumen de la consola; el parte diario ya no la ocupa.
+    expect(appSrc).toContain("<SuperAdminConsolaResumenPage {...ctx} />");
   });
 
   it("nada de las 22 entradas del menu anterior se pierde: cada ruta vieja sigue en el mapa, en el pie o redirige", () => {

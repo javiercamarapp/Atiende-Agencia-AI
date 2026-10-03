@@ -15,7 +15,7 @@
 // `c.req.raw.arrayBuffer()`, NUNCA `.text()`/`.json()` de Hono — por eso app.ts monta
 // este sub-Hono sin heredar ningún middleware global de body-parsing.
 import { Hono } from "hono";
-import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, resolvePropertyByPhoneNumberId, verifyMetaSignature } from "@atiende/domain-hoteles";
+import { PostgresConversacionesSistema, extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, resolvePropertyByPhoneNumberId, verifyMetaSignature } from "@atiende/domain-hoteles";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerHotelesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -96,6 +96,9 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
         return c.json({ ok: true });
       }
 
+      // H-20: estado de la conversacion (agente|humano|cerrada) y derivacion a una persona; contra la base sin la migracion 043 degrada a "agente".
+      const conversaciones = deps.hotelesConversacionesSistema ? deps.hotelesConversacionesSistema(db) : new PostgresConversacionesSistema(db);
+
       let hadRetryableFailure = false;
       for (const message of incomingMessages) {
         // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; no pasa al agente.
@@ -115,7 +118,7 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
           phone: `+${message.from}`,
           body: message.text.body,
           phoneNumberId,
-        });
+        }, conversaciones);
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `hoteles.messaging_outbox`
         // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`

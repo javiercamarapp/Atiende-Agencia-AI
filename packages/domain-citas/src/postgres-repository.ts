@@ -31,6 +31,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentSource,
   AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
@@ -748,6 +749,16 @@ export class PostgresCitasRepository implements CitasRepository {
     );
     const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
     for (const row of rows) if (row.status in result) result[row.status] = Number(row.count);
+    return result;
+  }
+
+  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>> {
+    const { rows } = await this.db.query<{ source: AppointmentSource; count: string }>(
+      `select source, count(*)::text as count from citas.appointments where organization_id = $1 and created_at >= $2 and status <> 'cancelled' group by source;`,
+      [organizationId, sinceIso],
+    );
+    const result: Record<AppointmentSource, number> = { voice: 0, whatsapp: 0, web: 0, manual: 0 };
+    for (const row of rows) if (row.source in result) result[row.source] = Number(row.count);
     return result;
   }
 

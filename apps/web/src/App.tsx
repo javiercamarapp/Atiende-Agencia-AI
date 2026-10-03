@@ -40,6 +40,7 @@ import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.ts
 import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
+import { SuperAdminConsolaResumenPage } from "./superadmin/pages/ConsolaResumen.tsx";
 import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
@@ -84,6 +85,7 @@ import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
 import { RecepcionPage } from "./verticals/hoteles/pages/Recepcion.tsx";
 import { HuespedesPage } from "./verticals/hoteles/pages/Huespedes.tsx";
 import { HuespedFichaPage } from "./verticals/hoteles/pages/HuespedFicha.tsx";
+import { ConversacionesPage as HotelesConversacionesPage } from "./verticals/hoteles/pages/Conversaciones.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -347,6 +349,16 @@ function GoogleCallbackRoute() {
 /** Back office de plataforma — igual patrón de shell+ruta que cada vertical,
  * pero sin `orgSlug` (el superadmin no está dentro de ninguna organización). */
 function SuperAdminRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminConsolaResumenPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** El parte diario (antes en la raíz): ruta propia sin item de menú; el Resumen lo enlaza con "Ver parte diario". */
+function SuperAdminParteDiarioRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
@@ -646,6 +658,7 @@ const HotelesGruposRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <
 const HotelesRecepcionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <RecepcionPage {...ctx} />);
 const HotelesHuespedesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedesPage {...ctx} />);
 const HotelesHuespedFichaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedFichaPage {...ctx} />);
+const HotelesConversacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesConversacionesPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -1062,6 +1075,7 @@ export function App() {
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
+        <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
@@ -1112,6 +1126,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/recepcion" element={<HotelesRecepcionRoute />} />
         <Route path="/hoteles/:orgSlug/huespedes" element={<HotelesHuespedesRoute />} />
         <Route path="/hoteles/:orgSlug/huespedes/:guestId" element={<HotelesHuespedFichaRoute />} />
+        <Route path="/hoteles/:orgSlug/conversaciones" element={<HotelesConversacionesRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

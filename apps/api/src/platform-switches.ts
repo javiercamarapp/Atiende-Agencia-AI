@@ -29,6 +29,11 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "reportes:analisis_general",
   "reportes:redaccion_financiero",
   "reportes:redaccion_general",
+  // MOD-12: roles auxiliares del Copiloto.
+  "plataforma:enrutador_turno",
+  "plataforma:compuerta_escalamiento",
+  "plataforma:titulos_resumenes",
+  "plataforma:compactacion_historial",
 ];
 
 /** Crons detenibles (path exacto de vercel.json / withHeartbeat). */
@@ -44,6 +49,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/hoteles/aprobaciones-expiracion",
   "/internal/hoteles/email-dispatch",
   "/internal/hoteles/grupos-liberacion",
+  "/internal/hoteles/identidad-purga",
   "/internal/hoteles/night-audit",
   "/internal/hoteles/revenue-recommendations",
   "/internal/hoteles/tickets-sla",
@@ -51,6 +57,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/licitaciones/deadline-reminders",
   "/internal/licitaciones/discover-tenders",
   "/internal/licitaciones/email-dispatch",
+  "/internal/plataforma/privacidad-retencion",
   "/internal/rentas/acceso-huesped",
   "/internal/rentas/checkin-recordatorio",
   "/internal/rentas/checkout-sweep",
@@ -61,6 +68,9 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/restaurantes/privacidad-retencion",
   "/internal/restaurantes/promover-programados",
   "/internal/restaurantes/softrestaurant-dispatch",
+  "/internal/superadmin/alertas-cfo",
+  "/internal/superadmin/mantenimiento",
+  "/internal/superadmin/resumen-diario",
   "/internal/whatsapp/dispatch",
 ];
 

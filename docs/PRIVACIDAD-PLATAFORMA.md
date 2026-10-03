@@ -88,19 +88,27 @@ La purga de restaurantes replica la regla de `restaurantes.system_purge_expired_
 WhatsApp; borra turnos de voz y anula el hash del teléfono) pero **por organización** y con los días de la plataforma.
 Ambas pueden coexistir: la de restaurantes sigue siendo global y usa su propia configuración (`restaurantes.privacy_config`);
 si una organización fija en la plataforma MÁS días que en esa configuración y la purga de restaurantes se programa, esta
-última purgará antes. Hoy ninguna de las dos está programada en `vercel.json`.
+última purgará antes. La de plataforma está programada en `vercel.json` (PL-35, ver abajo); la de restaurantes también (`/internal/restaurantes/privacidad-retencion`).
 
-### Endpoint interno (NO programado)
+### Endpoint interno (programado, PL-35)
 
-`GET|POST /internal/plataforma/privacidad-retencion` (secreto interno o `Authorization: Bearer` de cron):
+`GET|POST /internal/plataforma/privacidad-retencion` (secreto interno o `Authorization: Bearer` de cron). Agendado a diario
+(`50 8 * * *` UTC) en `vercel.json`, detenible desde superadmin (interruptor por path o global `crons`) y con latido en
+`/superadmin/salud/crons`:
 
-- **Sin `ejecutar=1` solo simula** (cuenta y registra; no borra).
-- `?ejecutar=1` purga de verdad y exige **POST** (un GET con esa bandera responde 400 y no borra nada).
+- **POST sin `ejecutar=1`, o GET sin `Authorization: Bearer`: solo simula** (cuenta y registra; no borra). El secreto en
+  `x-atiende-internal-secret` o en la query nunca basta para borrar por GET (la query ni siquiera autentica).
+- **GET con `Authorization: Bearer <secreto>`** (la forma en que Vercel Cron invoca; `CRON_SECRET` = `INTERNAL_SECRET`):
+  **purga de verdad** un lote acotado, hasta 4 páginas de 25 organizaciones (100) por corrida y 18 s de presupuesto.
+  `?ejecutar=0` lo fuerza a simular. Lo que no cupo vuelve en `siguienteDespuesDe`; la purga es idempotente (solo toca filas ya vencidas).
+  **Sin cursor persistente**: cada corrida arranca desde el principio; con más de 100 organizaciones con clases de plataforma
+  las restantes se continúan a mano con `?despuesDe=` (hueco declarado, ver PR).
+- `?ejecutar=1` purga de verdad por **POST** (un GET con esa bandera y sin Bearer responde 400 y no borra nada).
 - `?organizationId=<uuid>` una sola organización; `?despuesDe=<uuid>` continúa desde el cursor
   `siguienteDespuesDe`; `?limite=<n>` filas por unidad (1 a 5000, por defecto 500).
 - Una transacción de sistema **por (organización, clase)**: un error en una unidad no revierte las demás ni deja la
-  sesión abortada.
-- **No está en `vercel.json`**: programarlo es una decisión de costo y de despliegue. Para correrlo a mano:
+  sesión abortada; una unidad con error deja el latido en `error`/parcial y la respuesta 200 con el detalle.
+- Para correrlo a mano:
 
 ```bash
 curl -s -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
@@ -127,7 +135,7 @@ curl -s -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
 | `PUT\|DELETE /v1/privacidad/retencion/:claseDato` | owner/admin | rango por clase validado en SQL |
 | `POST /v1/privacidad/bloqueos`, `.../:id/liberar` | owner/admin | motivo de 10 a 300 caracteres |
 | `POST /v1/privacidad/avisos`, `.../:version/aceptar` | owner/admin | ver arriba |
-| `GET\|POST /internal/plataforma/privacidad-retencion` | sistema | no programado |
+| `GET\|POST /internal/plataforma/privacidad-retencion` | sistema | programado (diario) |
 
 Pantalla por organización: panel de restaurantes → **Privacidad de la organización**
 (`/restaurantes/:orgSlug/privacidad-organizacion`). El API es independiente del vertical; falta enlazarla en los

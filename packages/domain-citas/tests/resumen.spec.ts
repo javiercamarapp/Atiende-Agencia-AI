@@ -166,4 +166,39 @@ describe("PostgresCitasRepository -- conteos del Resumen (AbortAwareFakeSession)
     const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => err }]);
     await expect(new PostgresCitasRepository(session).countAppointmentsByStatus("org", "a", "b")).rejects.toMatchObject({ code: "57014" });
   });
+
+  it("countAppointmentsCreatedBySource rellena con 0 los canales ausentes, ignora canales desconocidos y excluye canceladas en el SQL", async () => {
+    const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => [{ source: "whatsapp", count: "4" }, { source: "voice", count: "2" }, { source: "fax", count: "9" }] }]);
+    const result = await new PostgresCitasRepository(session).countAppointmentsCreatedBySource("org", "2026-09-02T00:00:00Z");
+    expect(result).toEqual({ voice: 2, whatsapp: 4, web: 0, manual: 0 });
+    expect(session.calls[0]).toMatch(/created_at >= \$2 and status <> 'cancelled'/);
+  });
+
+  it("countAppointmentsCreatedBySource propaga un error real de Postgres", async () => {
+    const err = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => err }]);
+    await expect(new PostgresCitasRepository(session).countAppointmentsCreatedBySource("org", "a")).rejects.toMatchObject({ code: "57014" });
+  });
+});
+
+describe("computeCitasResumen -- citas creadas por canal (UNI-RES-citas)", () => {
+  const NOW = new Date("2026-09-30T05:00:00.000Z");
+
+  it("cuenta por canal las citas NO canceladas creadas en 30 días; excluye canceladas, fuera de ventana y otras organizaciones", async () => {
+    const fixture = buildCitasFixture();
+    const crea = (source: AppointmentRecord["source"], createdAt: string, status: AppointmentStatus = "confirmed", organizationId = fixture.organizationId) => {
+      const base = seed(fixture, "2026-10-02T15:00:00.000Z", status);
+      fixture.repo.seedAppointment({ ...base, source, createdAt, organizationId }); // mismo id: reemplaza la fila que sembró `seed`
+    };
+    crea("whatsapp", "2026-09-20T10:00:00.000Z");
+    crea("whatsapp", "2026-09-25T10:00:00.000Z", "pending");
+    crea("whatsapp", "2026-09-25T10:00:00.000Z", "cancelled"); // cancelada: no cuenta
+    crea("whatsapp", "2026-08-01T10:00:00.000Z"); // fuera de los 30 días
+    crea("voice", "2026-09-28T10:00:00.000Z");
+    crea("whatsapp", "2026-09-28T10:00:00.000Z", "confirmed", randomUUID()); // otra organización
+
+    const r = await computeCitasResumen(fixture.repo, fixture.organizationId, TZ, NOW);
+
+    expect(r.createdBySourceLast30Days).toEqual({ voice: 1, whatsapp: 2, web: 0, manual: 0 });
+  });
 });
