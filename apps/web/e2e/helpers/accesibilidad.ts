@@ -10,13 +10,13 @@ export async function afirmarEncabezadosEnOrden(page: Page, contexto: string): P
       .filter((e) => (e as HTMLElement).offsetParent !== null || getComputedStyle(e).position === "fixed")
       .map((e) => (e.tagName.startsWith("H") && e.tagName.length === 2 ? Number(e.tagName[1]) : Number(e.getAttribute("aria-level") ?? "2"))),
   );
-  expect(niveles.filter((n) => n === 1), `${contexto}: debe haber un unico <h1>`).toHaveLength(1);
+  expect.soft(niveles.filter((n) => n === 1), `${contexto}: debe haber un unico <h1>`).toHaveLength(1);
   const saltos: string[] = [];
   niveles.forEach((n, i) => {
     const previo = i === 0 ? 0 : niveles[i - 1]!;
     if (n > previo + 1) saltos.push(`h${previo} -> h${n}`);
   });
-  expect(saltos, `${contexto}: saltos de nivel de encabezado`).toEqual([]);
+  expect.soft(saltos, `${contexto}: saltos de nivel de encabezado`).toEqual([]);
 }
 
 /** Todo control visible (boton, enlace, campo, pestana) tiene nombre accesible no vacio. */
@@ -43,7 +43,7 @@ export async function afirmarNombresAccesibles(page: Page, contexto: string): Pr
       .filter((e) => nombre(e) === "")
       .map((e) => `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ""}[${e.getAttribute("type") ?? e.getAttribute("role") ?? ""}]`);
   });
-  expect(sinNombre, `${contexto}: controles sin nombre accesible`).toEqual([]);
+  expect.soft(sinNombre, `${contexto}: controles sin nombre accesible`).toEqual([]);
 }
 
 /**
@@ -51,8 +51,17 @@ export async function afirmarNombresAccesibles(page: Page, contexto: string): Pr
  * calculado. Umbral 4.5:1 (3:1 si el texto es grande: >=24px, o >=18.66px en negrita). Elementos deshabilitados quedan fuera (WCAG 1.4.3
  * los exime) y los fondos con imagen/degradado se omiten en vez de adivinarlos.
  */
-export async function afirmarContraste(page: Page, contexto: string): Promise<void> {
-  const fallos = await page.evaluate(() => {
+export interface HallazgoContraste {
+  readonly texto: string;
+  readonly ratio: number;
+  readonly minimo: number;
+  readonly etiqueta: string;
+}
+
+export async function medirContraste(page: Page): Promise<HallazgoContraste[]> {
+  // Los colores del DS animan (transition-colors): se mide con todas las transiciones/animaciones terminadas, no a medio camino.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  return page.evaluate(() => {
     type RGBA = [number, number, number, number];
     const analizar = (c: string): RGBA | null => {
       const m = /rgba?\(([^)]+)\)/.exec(c);
@@ -96,7 +105,7 @@ export async function afirmarContraste(page: Page, contexto: string): Promise<vo
       for (const c of capas.reverse()) base = mezclar(c, base);
       return base;
     };
-    const salida: string[] = [];
+    const salida: HallazgoContraste[] = [];
     const vistos = new Set<string>();
     const recorrer = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = recorrer.nextNode(); n; n = recorrer.nextNode()) {
@@ -118,12 +127,23 @@ export async function afirmarContraste(page: Page, contexto: string): Promise<vo
       const minimo = grande ? 3 : 4.5;
       if (ratio < minimo) {
         const clave = `${el.tagName}:${texto.slice(0, 40)}`;
-        if (!vistos.has(clave)) { vistos.add(clave); salida.push(`${ratio.toFixed(2)}:1 < ${minimo} en <${el.tagName.toLowerCase()}> "${texto.slice(0, 40)}"`); }
+        if (!vistos.has(clave)) {
+          vistos.add(clave);
+          salida.push({ texto: texto.slice(0, 40), ratio: Math.round(ratio * 100) / 100, minimo, etiqueta: `<${el.tagName.toLowerCase()}>` });
+        }
       }
     }
     return salida;
   });
-  expect(fallos, `${contexto}: texto con contraste insuficiente`).toEqual([]);
+}
+
+export function describirContraste(h: readonly HallazgoContraste[]): string[] {
+  return h.map((x) => `${x.ratio}:1 < ${x.minimo} en ${x.etiqueta} "${x.texto}"`);
+}
+
+export async function afirmarContraste(page: Page, contexto: string): Promise<void> {
+  const hallazgos = await medirContraste(page);
+  expect.soft(describirContraste(hallazgos), `${contexto}: texto con contraste insuficiente`).toEqual([]);
 }
 
 export async function afirmarAccesibilidad(page: Page, contexto: string): Promise<void> {
