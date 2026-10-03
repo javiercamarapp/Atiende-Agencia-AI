@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./voz/simulador": "./src/voz/simulador/index.ts"
   },
   "scripts": {
     "lint": "eslint .",
@@ -16,6 +17,7 @@
     "@atiende/core-pii": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
+    "@atiende/voice-core": "*",
     "@atiende/whatsapp-gateway": "*"
   }
 }

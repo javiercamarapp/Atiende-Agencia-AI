@@ -1,8 +1,10 @@
-// Mensajes PREGRABADOS de la llamada (es-MX, trato de usted). Son el texto de los avisos que el servicio de voz debe poder
-// decir SIN depender del proveedor de voz: se reproducen desde un audio local (la sintesis del proveedor puede ser justo lo que
-// fallo). Aqui vive el texto y el identificador; los archivos de audio los graba/sintetiza el equipo una sola vez y se
-// publican junto al worker (ver docs/VOZ-PM.md, "Mensajes pregrabados"). Ningun mensaje lleva datos del cliente.
-import { saludoPorHora } from "../../whatsapp/perfil-pm.ts";
+// Mensajes PREGRABADOS de la llamada de Los Taquitos de PM (es-MX, trato de usted). Los identificadores y la regla del saludo por hora son de
+// @atiende/voice-core; aqui vive el TEXTO de restaurantes. Son los avisos que el servicio de voz debe poder decir SIN depender del
+// proveedor de voz: se reproducen desde un audio local (la sintesis del proveedor puede ser justo lo que fallo). Los archivos de audio los
+// graba/sintetiza el equipo una sola vez y se publican junto al worker (ver docs/VOZ-PM.md, "Mensajes pregrabados"). Ningun mensaje lleva
+// datos del cliente.
+import { MENSAJE_IDS, mensajeSaludoRespaldo as mensajeSaludoRespaldoCore } from "@atiende/voice-core";
+import type { CatalogoMensajes, MensajeId } from "@atiende/voice-core";
 
 export const MENSAJES_PREGRABADOS = {
   // Sin palabra de saludo: es el de reserva cuando NO se sabe la hora local (decir "buenas tardes" a toda hora era la regresion X40).
@@ -22,13 +24,10 @@ export const MENSAJES_PREGRABADOS = {
   proveedor_caido: "Tuvimos un problema con el sistema. Una persona del restaurante le devolverá la llamada en unos minutos. Disculpe las molestias.",
   tool_timeout: "Un momento, por favor, el sistema está tardando más de lo normal.",
   despedida: "Gracias por llamar a Los Taquitos de PM. Que tenga buen provecho.",
-} as const;
+} as const satisfies CatalogoMensajes;
 
-export type MensajeId = keyof typeof MENSAJES_PREGRABADOS;
-export const MENSAJE_IDS = Object.keys(MENSAJES_PREGRABADOS) as readonly MensajeId[];
+export type { MensajeId };
+export { MENSAJE_IDS };
 
 /** Pregrabado de saludo de reserva que corresponde a la HORA LOCAL DE MERIDA (misma regla que el agente: `saludoPorHora`). */
-export function mensajeSaludoRespaldo(horaLocalMerida: number | string): MensajeId {
-  const saludo = saludoPorHora(horaLocalMerida);
-  return saludo === "buenos días" ? "saludo_respaldo_dias" : saludo === "buenas tardes" ? "saludo_respaldo_tardes" : "saludo_respaldo_noches";
-}
+export const mensajeSaludoRespaldo: (horaLocalMerida: number | string) => MensajeId = mensajeSaludoRespaldoCore;

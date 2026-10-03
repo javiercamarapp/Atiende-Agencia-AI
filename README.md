@@ -35,11 +35,13 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 **Restaurantes ya no usa ElevenLabs** (decisión del 1-oct-2026): su voz es Gemini Live sobre
 LiveKit SIP, con token de llamada firmado; ver `docs/VOZ-PM.md`. Lo que sigue describe el patrón
-de hoteles y citas, que conservan ElevenLabs.
+de citas, que conserva ElevenLabs hasta su migración. **Hoteles también dejó ElevenLabs** (3-oct-2026): su agente de voz (reservas, pedido F&B y contacto
+no operativo, con su propia persona y guardias) corre sobre `packages/voice-core` con la misma escalera de plataforma que restaurantes (Gemini Live ->
+cascada OpenRouter -> persona/buzón); ver `packages/voice-core/README.md` y `packages/domain-hoteles/src/voz/`.
 
 Las verticales hoteles y citas exponen
 Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
-voice-tools.ts`) que ElevenLabs invoca por webhook durante una llamada en
+voice-tools.ts`; en hoteles las llama el worker de `voice-core`, no ElevenLabs) que ElevenLabs invoca por webhook durante una llamada en
 curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,
 compartido de plataforma en restaurantes/citas, por-property en hoteles) —
 nunca `authMiddleware`/`Origin`, porque ElevenLabs no los manda. Este es el
