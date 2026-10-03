@@ -578,7 +578,7 @@ const rutasContrato: readonly Ruta[] = [
   },
   {
     metodo: "POST",
-    patron: `${L}/tenders/:tid/inconformidad/:did/review`,
+    patron: `${L}/tenders/:tid/inconformidad/:did/mark-reviewed`,
     roles: ROLES_REVISION_INCONFORMIDAD,
     manejador: (p) => {
       const d = ciclo(p).borradores.find((x) => x.id === p.params["did"]);
