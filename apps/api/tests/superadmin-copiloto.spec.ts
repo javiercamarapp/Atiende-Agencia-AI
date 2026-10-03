@@ -25,6 +25,7 @@ interface Guardada {
   scope: ConversacionScope;
   titulo: string;
   mensajes: MensajeGuardadoDto[];
+  herramientas?: Set<string>;
 }
 
 /** Doble en memoria del repositorio de conversaciones: mismo alcance que la base (autor + organizacion + vertical). */
@@ -43,6 +44,10 @@ class RepoEnMemoria implements ConversacionesRepository {
   async get(scope: ConversacionScope, id: string): Promise<ConversacionDetalleDto | null> {
     const c = this.mia(scope, id);
     return c ? { id: c.id, titulo: c.titulo, actualizadaEn: "2026-10-02T12:00:00.000Z", mensajes: c.mensajes } : null;
+  }
+  async herramientasUsadas(scope: ConversacionScope, id: string): Promise<string[] | null> {
+    const c = this.mia(scope, id);
+    return c ? [...(c.herramientas ?? [])] : null;
   }
   async loadHistory(scope: ConversacionScope, id: string, limit: number): Promise<DataChatHistoryTurn[] | null> {
     const c = this.mia(scope, id);
@@ -68,6 +73,7 @@ class RepoEnMemoria implements ConversacionesRepository {
       c = { id: randomUUID(), scope, titulo: turno.userText.slice(0, 60), mensajes: [] };
       this.store.push(c);
     }
+    c.herramientas = new Set([...(c.herramientas ?? []), ...turno.toolCalls.map((t) => t.tool)]);
     const base = c.mensajes.length;
     c.mensajes.push({ id: `${c.id}:${base + 1}`, role: "user", text: turno.userText, seq: base + 1 });
     c.mensajes.push({ id: `${c.id}:${base + 2}`, role: "assistant", text: turno.assistantText, seq: base + 2, status: turno.status, blocks: [...turno.blocks], sources: [...turno.sources] });
@@ -652,6 +658,51 @@ describe("bitacora y conversacion con alcance de plataforma", () => {
     expect(ctx.conv.store[0]!.titulo).toBe("Mis organizaciones");
     expect((await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { method: "DELETE", headers: bearer(a.token) })).status).toBe(204);
     expect((await ctx.app.request("/superadmin/copiloto/conversaciones/no-es-un-uuid", { headers: bearer(a.token) })).status).toBe(404);
+  });
+
+  it("releer una conversacion con herramientas financieras exige step-up y deja fila 'consulta' en cfo_access_log; sin step-up: 403 y huella 'denegado', sin cifras", async () => {
+    const ctx = await setup();
+    const sa = await ctx.alta();
+    const stepUp = await ctx.activarMfa(sa);
+    const cab = { "x-stepup-token": stepUp };
+    const t = await ctx.turno(sa.token, { tool: "mrr", args: { mes: "2026-10" }, conversationId: "new" }, cab);
+    const id = t.conversationId!;
+    const antes = ctx.zona.entries().filter((e) => e.recurso === "copiloto/conversaciones/:id").length;
+    expect(antes).toBe(0);
+    // Sin step-up: ni cifras ni lectura; queda una fila 'denegado'.
+    const sin = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(sa.token) });
+    expect(sin.status).toBe(403);
+    expect(JSON.stringify(await sin.json())).not.toMatch(/mensajes|blocks|text/);
+    expect(ctx.zona.entries().filter((e) => e.accion === "denegado" && /conversaciones/.test(e.recurso))).toHaveLength(1);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id")).toHaveLength(0);
+    // Con step-up: responde y deja UNA fila de 'consulta'.
+    const con = await ctx.app.request(`/superadmin/copiloto/conversaciones/${id}`, { headers: bearer(sa.token, cab) });
+    expect(con.status).toBe(200);
+    expect(((await con.json()) as ConversacionDetalleDto).mensajes).toHaveLength(2);
+    const filas = ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id");
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({ actorUserId: sa.id, actorRol: "superadmin" });
+    expect(filas[0]!.filtros).toMatchObject({ herramientas: ["mrr"] });
+  });
+
+  it("finanzas relee su conversacion financiera SOLO con step-up (y deja huella); una conversacion operativa no pide step-up ni deja fila", async () => {
+    const ctx = await setup();
+    const fin = await ctx.alta({ finanzas: true });
+    const stepUp = await ctx.activarMfa(fin);
+    const cab = { "x-stepup-token": stepUp };
+    const t = await ctx.turno(fin.token, { tool: "mrr", args: { mes: "2026-10" }, conversationId: "new" }, cab);
+    const url = `/superadmin/copiloto/conversaciones/${t.conversationId}`;
+    expect((await ctx.app.request(url, { headers: bearer(fin.token) })).status).toBe(403);
+    expect((await ctx.app.request(url, { headers: bearer(fin.token, cab) })).status).toBe(200);
+    expect(ctx.zona.entries().filter((e) => e.accion === "consulta" && e.recurso === "copiloto/conversaciones/:id")).toHaveLength(1);
+
+    const ctx2 = await setup({ modo: "falsas" });
+    const sa = await ctx2.alta();
+    await ctx2.activarMfa(sa);
+    const op = await ctx2.turno(sa.token, { tool: "organizaciones", conversationId: "new" });
+    const abierta = await ctx2.app.request(`/superadmin/copiloto/conversaciones/${op.conversationId}`, { headers: bearer(sa.token) });
+    expect(abierta.status).toBe(200);
+    expect(ctx2.zona.entries().filter((e) => e.recurso === "copiloto/conversaciones/:id")).toHaveLength(0);
   });
 
   it("un turno que no es parte de la conversacion (tope, rate limit, no activado) no se guarda", async () => {

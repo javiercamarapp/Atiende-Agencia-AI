@@ -288,6 +288,32 @@ describe("rutas HTTP contra la base sin migrar", () => {
 
 vi.setConfig({ testTimeout: 20_000 });
 
+describe("herramientasUsadas (decide si abrir una conversacion sigue la politica de la zona CFO)", () => {
+  it("devuelve los nombres sin repetir, filtra por autor/organizacion/vertical y solo lee mensajes del asistente", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /from core\.data_chat_conversation/i, respond: () => [{ id: ID }] },
+      { match: /from core\.data_chat_message/i, respond: () => [{ tool_calls: [{ tool: "mrr", args: {} }, { tool: "pyl", args: {} }] }, { tool_calls: [{ tool: "mrr", args: {} }] }, { tool_calls: null }] },
+    ]);
+    const vistas: { sql: string; params: unknown[] | undefined }[] = [];
+    const original = session.query.bind(session);
+    session.query = (async (sql: string, params?: unknown[]) => {
+      vistas.push({ sql: sql.replace(/\s+/g, " "), params });
+      return original(sql, params);
+    }) as typeof session.query;
+    expect(await new PostgresConversacionesRepository(session).herramientasUsadas(SCOPE, ID)).toEqual(["mrr", "pyl"]);
+    expect(vistas[0]!.sql).toMatch(/c\.user_id = \$2::uuid and c\.organization_id is not distinct from \$3::uuid and c\.vertical = \$4::text/);
+    expect(vistas[1]!.sql).toMatch(/m\.role = 'assistant'/);
+  });
+
+  it("ajena -> null; 42P01 (0041 pendiente) -> null y la sesion sigue utilizable", async () => {
+    const ajena = new AbortAwareFakeSession([{ match: /from core\.data_chat_conversation/i, respond: () => [] }]);
+    expect(await new PostgresConversacionesRepository(ajena).herramientasUsadas(SCOPE, ID)).toBeNull();
+    const session = new AbortAwareFakeSession([{ match: /data_chat_(conversation|message)/i, respond: () => NO_TABLE }, SIGUIENTE]);
+    expect(await new PostgresConversacionesRepository(session).herramientasUsadas(SCOPE, ID)).toBeNull();
+    await expectSessionUsable(session);
+  });
+});
+
 describe("CHAT-14: cargarFuenteReporte (fuente de un reporte PDF) contra la base sin migrar y con filas reales", () => {
   it("42P01 (0041 pendiente) -> null (404 honesto, nunca 500) y la sesion sigue utilizable", async () => {
     const session = new AbortAwareFakeSession([{ match: /data_chat_(conversation|message)/i, respond: () => NO_TABLE }, SIGUIENTE]);
