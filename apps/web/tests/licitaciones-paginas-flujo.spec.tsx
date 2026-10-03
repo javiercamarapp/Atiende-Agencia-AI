@@ -2,8 +2,7 @@
 //
 // Paginas de L-03: Fuentes y frescura, Seguimiento y Aprobaciones.
 // `fetch` global mockeado por ruta real; se verifican datos reales en pantalla,
-// la honestidad de las metricas (falla de una lectura => "No disponible", nunca
-// un cero) y que cada boton dispare el metodo/ruta/cuerpo reales.
+// la honestidad de los datos (una lectura que falla nunca se pinta como cero) y que cada boton dispare el metodo/ruta/cuerpo reales.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";

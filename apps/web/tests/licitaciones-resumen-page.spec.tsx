@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelPage } from "../src/verticals/licitaciones/pages/Panel.tsx";
 import type { LicitacionesShellContext } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
-import { cierranEnVentana, convocatoriasAbiertas, saludoEnZona, ultimaCorridaPorFuente } from "../src/verticals/licitaciones/lib/resumen.ts";
+import { cierranEnVentana, convocatoriasAbiertas, corridaKyc, corridaSeguimiento, fechaMasReciente, saludoEnZona, ultimaCorridaPorFuente, zonaEfectiva } from "../src/verticals/licitaciones/lib/resumen.ts";
 import type { TenderSummary } from "../src/verticals/licitaciones/lib/tenders-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
@@ -18,6 +18,7 @@ afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const CTX: LicitacionesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Ana María Torres", staffEmail: "ana@example.com" };
@@ -186,6 +187,91 @@ describe("Resumen de licitaciones (PanelPage)", () => {
   });
 });
 
+const TZ_URL = "GET https://api.test/v1/licitaciones/demo/admin/tenant-config";
+const tenantConfig = (timezone: string | null): Routes[string] => () => ({ body: { tenant_config: { organization_id: "org-1", timezone } } });
+/** 2026-10-03T06:00Z = 00:00 del 3 de octubre en Ciudad de Mexico (UTC-6) y 08:00 en Madrid (UTC+2). */
+const AHORA_FIJO = new Date("2026-10-03T06:00:00Z");
+const saludoPintado = () => rendered!.container.querySelector("h1")?.textContent?.split(",")[0];
+
+describe("Resumen de licitaciones: zona horaria de la organizacion (tenant-config)", () => {
+  async function montarConZona(rutaZona: Routes[string] | undefined) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA_FIJO);
+    stubFetch(rutaZona ? { ...COMPLETAS, [TZ_URL]: rutaZona } : COMPLETAS);
+    mount();
+    await settle();
+  }
+
+  it("usa la zona configurada por la organización para el saludo", async () => {
+    await montarConZona(tenantConfig("Europe/Madrid"));
+    expect(saludoPintado()).toBe("Buenos días");
+  });
+
+  it("timezone null cae a America/Mexico_City", async () => {
+    await montarConZona(tenantConfig(null));
+    expect(saludoPintado()).toBe("Buenas noches");
+  });
+
+  it("si la lectura de tenant-config falla (base sin migrar) cae a America/Mexico_City y el resto se pinta", async () => {
+    await montarConZona(() => ({ ok: false, body: {} }));
+    expect(saludoPintado()).toBe("Buenas noches");
+    expect(enlace("Recordatorios de plazo")?.textContent).toContain("1");
+  });
+
+  it("una zona guardada que no es IANA válida cae a America/Mexico_City en vez de romper la pantalla", async () => {
+    await montarConZona(tenantConfig("Marte/Olimpo"));
+    expect(saludoPintado()).toBe("Buenas noches");
+  });
+});
+
+describe("Resumen de licitaciones: ultima corrida de KYC 69-B y de seguimiento (registros reales)", () => {
+  const tarjeta = (nombre: string) => [...rendered!.container.querySelectorAll("div")].find((d) => d.className.includes("px-3 py-2.5") && d.textContent?.startsWith(nombre));
+  const LISTA = { periodo: "2026-09", filas: 1200, ingestadoEn: "2026-10-01T16:00:00Z" };
+
+  it("KYC: con listado ingerido pinta su periodo, filas y fecha real", async () => {
+    stubFetch({ ...COMPLETAS, "GET /kyc-69b": () => ({ body: { available: true, lista: LISTA, listaDisponible: true, periodo: "2026-09", fichas: [], alertas: [] } }) });
+    mount();
+    await settle();
+    const k = tarjeta("KYC proveedores (69-B)");
+    expect(k?.textContent).toContain("Lista ingerida");
+    expect(k?.textContent).toContain("Listado SAT 2026-09");
+    expect(k?.textContent).toContain("1200 filas");
+    expect(k?.textContent).not.toContain("Sin corridas registradas.");
+    expect(k?.querySelector("a")?.getAttribute("href")).toBe("/licitaciones/demo/kyc-69b");
+  });
+
+  it("KYC: sin listado (available:false, lista:null) o con la lectura caída, el vacío honesto", async () => {
+    for (const ruta of [() => ({ body: { available: false, lista: null, listaDisponible: false, periodo: null, fichas: [], alertas: [] } }), () => ({ body: { available: true, lista: null, listaDisponible: false, periodo: null, fichas: [], alertas: [] } }), () => ({ ok: false, body: {} })]) {
+      stubFetch({ ...COMPLETAS, "GET /kyc-69b": ruta });
+      mount();
+      await settle();
+      expect(tarjeta("KYC proveedores (69-B)")?.textContent).toContain("Sin corridas registradas.");
+      rendered?.unmount();
+      rendered = undefined;
+    }
+  });
+
+  it("Alertas y recordatorios: la última corrida es el aviso más reciente (createdAt real) y sin avisos dice vacío", async () => {
+    stubFetch({
+      ...COMPLETAS,
+      "GET /sources/deadline-reminders": () => ({ body: { reminders: [{ acknowledgedAt: null, createdAt: "2026-09-29T10:00:00Z" }] } }),
+      "GET /tender-change-notifications": () => ({ body: { notifications: [{ acknowledgedAt: null, createdAt: "2026-10-01T10:00:00Z" }] } }),
+    });
+    mount();
+    await settle();
+    const a = tarjeta("Alertas y recordatorios");
+    expect(a?.textContent).toContain("Último aviso generado");
+    expect(a?.textContent).toContain("1 oct");
+    rendered?.unmount();
+    rendered = undefined;
+
+    stubFetch({ ...COMPLETAS, "GET /sources/deadline-reminders": () => ({ body: { reminders: [] } }), "GET /tender-change-notifications": () => ({ body: { notifications: [] } }) });
+    mount();
+    await settle();
+    expect(tarjeta("Alertas y recordatorios")?.textContent).toContain("Sin corridas registradas.");
+  });
+});
+
 describe("helpers del Resumen de licitaciones", () => {
   const t = (id: string, status: TenderSummary["status"], deadline: string | null) => ({ id, status, submissionDeadline: deadline }) as TenderSummary;
 
@@ -195,6 +281,30 @@ describe("helpers del Resumen de licitaciones", () => {
     const abiertas = convocatoriasAbiertas(todas);
     expect(abiertas.map((x) => x.id)).toEqual(["1", "6", "7"]);
     expect(cierranEnVentana(abiertas, ahora).map((x) => x.id)).toEqual(["1"]);
+  });
+
+  it("'cierran en 7 días' no cuenta propuestas ya presentadas (submitted)", () => {
+    const ahora = Date.parse("2026-10-03T12:00:00Z");
+    const abiertas = convocatoriasAbiertas([t("1", "submitted", "2026-10-05T00:00:00Z"), t("2", "in_progress", "2026-10-05T00:00:00Z")]);
+    expect(abiertas.map((x) => x.id)).toEqual(["1", "2"]); // siguen abiertas (sin resultado)...
+    expect(cierranEnVentana(abiertas, ahora).map((x) => x.id)).toEqual(["2"]); // ...pero su plazo ya no pide accion
+  });
+
+  it("zonaEfectiva: configurada válida, null, vacía o inválida", () => {
+    expect(zonaEfectiva("America/Tijuana")).toBe("America/Tijuana");
+    expect(zonaEfectiva(null)).toBe("America/Mexico_City");
+    expect(zonaEfectiva(undefined)).toBe("America/Mexico_City");
+    expect(zonaEfectiva("")).toBe("America/Mexico_City");
+    expect(zonaEfectiva("no/es-zona")).toBe("America/Mexico_City");
+  });
+
+  it("corridaKyc y corridaSeguimiento: null cuando no hay registro real", () => {
+    expect(corridaKyc(null)).toBeNull();
+    expect(corridaKyc({ periodo: "2026-09", filas: 1, ingestadoEn: "no-fecha" })).toBeNull();
+    expect(corridaKyc({ periodo: "2026-09", filas: 1, ingestadoEn: "2026-10-01T16:00:00Z" })?.meta).toContain("1 fila");
+    expect(corridaSeguimiento([])).toBeNull();
+    expect(corridaSeguimiento(["basura"])).toBeNull();
+    expect(fechaMasReciente(["2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z", "x"])).toBe("2026-10-01T00:00:00Z");
   });
 
   it("el saludo usa la zona de la organización, no la del navegador", () => {

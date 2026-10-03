@@ -22,14 +22,16 @@ test.describe("resumen de licitaciones @resumen", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/^(Buenos días|Buenas tardes|Buenas noches), /);
     await expect(page.getByTestId("odometro")).toContainText("Convocatorias abiertas");
     const kpi = (nombre: string) => page.getByRole("link", { name: new RegExp(nombre) }).first();
-    await expect(kpi("Recordatorios de plazo")).toContainText("1");
-    await expect(kpi("Firmantes autorizados")).toContainText("1");
+    await expect(kpi("Recordatorios de plazo")).toContainText(/Recordatorios de plazo\s*1(?!\d)/);
+    await expect(kpi("Firmantes autorizados")).toContainText(/Firmantes autorizados\s*1(?!\d)/);
     await expect(kpi("Fuentes obsoletas")).toContainText("1 de 2");
     await expect(page.getByRole("region", { name: "Orquestación de agentes" })).toBeVisible();
     await expect(page.getByRole("link", { name: /Descubrimiento e ingesta/ })).toContainText("1 fuente obsoleta de 2");
     const corrida = page.getByRole("region", { name: "Agentes — última corrida" });
     await expect(corrida).toContainText("Ingesta · CompraNet");
     await expect(corrida).toContainText("24 de 24 resultados");
+    await expect(corrida).toContainText("Listado SAT 2026-09");
+    await expect(corrida).toContainText("Último aviso generado");
     await expect(corrida.getByText("Sin corridas registradas.").first()).toBeVisible();
     await expect(page.getByRole("link", { name: /Ver convocatorias/ })).toHaveAttribute("href", `/licitaciones/${licitaciones.orgSlug}/convocatorias`);
     await afirmarSinScrollHorizontal(page);
