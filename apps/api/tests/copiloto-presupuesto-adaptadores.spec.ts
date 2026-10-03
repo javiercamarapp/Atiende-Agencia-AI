@@ -89,7 +89,7 @@ describe("ProductionOrgMonthlyBudgetStore: reserva con rol y aviso al 80 %", () 
       evento: "superadmin.costo.ia_umbral",
       organizationId: null,
       cuerpo: "Uso: 80 por ciento del presupuesto.",
-      enlace: "/superadmin/gasto-api",
+      enlace: "/superadmin/consumo-ia",
     });
     expect(m.emisiones[0]!.dedupeKey).toMatch(/^superadmin\.costo\.ia_umbral:org:org-1:80:\d{4}-\d{2}$/);
     // Otra organizacion al 85 % genera su propio aviso.
@@ -210,7 +210,7 @@ describe("ProductionLlmUsageRecorder: ventana horaria de respaldos", () => {
     expect(m.emisiones).toHaveLength(0);
     for (let i = 0; i < 5; i += 1) await rec.record(evento(true)); // 6 de 35 = 17 %
     expect(m.emisiones).toHaveLength(1);
-    expect(m.emisiones[0]).toMatchObject({ evento: "superadmin.llm.fallback_alto", organizationId: null, enlace: "/superadmin/gasto-api" });
+    expect(m.emisiones[0]).toMatchObject({ evento: "superadmin.llm.fallback_alto", organizationId: null, enlace: "/superadmin/consumo-ia" });
     expect(m.emisiones[0]!.cuerpo).toMatch(/^En la última hora, \d+ por ciento/);
     for (let i = 0; i < 5; i += 1) await rec.record(evento(true));
     expect(m.emisiones).toHaveLength(1);
