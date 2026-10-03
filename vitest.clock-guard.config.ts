@@ -21,6 +21,7 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-restaurantes/tests/zona-horaria-branch-savepoint.spec.ts",
   "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
   "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
+  "packages/domain-restaurantes/tests/pm-c5-pedido-reciente.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",

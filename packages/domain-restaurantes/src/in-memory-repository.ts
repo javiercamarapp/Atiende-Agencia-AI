@@ -1449,6 +1449,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return order ?? null;
   }
 
+  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null> {
+    const sinceMs = Date.parse(sinceIso);
+    const mios = this.orders
+      .filter((o) => o.organizationId === organizationId && o.status !== "cancelado" && Date.parse(o.createdAt) >= sinceMs && o.customerPhone.replace(/\D/g, "").slice(-10) === customerPhone)
+      .sort((a, b) => (a.createdAt === b.createdAt ? b.id.localeCompare(a.id) : b.createdAt.localeCompare(a.createdAt)));
+    return mios[0] ?? null;
+  }
+
   async listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage> {
     const scope = filter.propertyIds ? new Set(filter.propertyIds) : null;
     const fromMs = filter.dateFrom ? filter.dateFrom.getTime() : null;

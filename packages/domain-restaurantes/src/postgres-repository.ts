@@ -417,6 +417,12 @@ function esErrorCompatibilidadAuditLogBaseSinMigrar(err: unknown): boolean {
   return code === "42883" || code === "42P01" || code === "42703";
 }
 
+/** Permiso (42501), funcion/tabla/columna inexistente (42883/42P01/42703): el estado del pedido "no esta disponible aun" en esa base. */
+function esErrorSinPedidoRecienteDisponible(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
+}
+
 // Compatibilidad con la base SIN migrar para la migracion 026 (estado del pedido / secretos por
 // sucursal / bitacora de voz): funcion o tabla inexistente.
 function esErrorBaseSinMigrar026(err: unknown): boolean {
@@ -1983,6 +1989,32 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [orderId, organizationId],
     );
     return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null> {
+    // Se llama en CADA mensaje de WhatsApp, dentro de la transaccion unica del lote: un error de Postgres (p. ej. un permiso o una
+    // columna que la base vieja no tiene) sin SAVEPOINT la dejaria abortada (25P02) y rompería el turno. Respaldo honesto: "no hay
+    // pedido reciente" (el agente no inventa un estado) y la sesion sigue viva.
+    return runWithSavepointFallback<Order | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_pedido_reciente",
+      primary: async () => {
+        const { rows } = await this.db.query<OrderRow>(
+          `select ${ORDER_COLUMNS}
+           from restaurantes.orders
+           where organization_id = $1
+             and right(regexp_replace(customer_phone, '[^0-9]', '', 'g'), 10) = $2
+             and created_at >= $3::timestamptz
+             and status <> 'cancelado'
+           order by created_at desc, id desc
+           limit 1;`,
+          [organizationId, customerPhone, sinceIso],
+        );
+        return rows[0] ? mapOrder(rows[0]) : null;
+      },
+      isRecoverable: esErrorSinPedidoRecienteDisponible,
+      fallback: async () => null,
+    });
   }
 
   async listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage> {

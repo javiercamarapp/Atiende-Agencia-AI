@@ -113,7 +113,9 @@ export { RestaurantesConfigUnavailableError } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
 
-export { lookupCustomer, getCustomerDetailById, vipNote } from "./customers.ts";
+export { lookupCustomer, lookupCustomerConPedidoReciente, getCustomerDetailById, vipNote } from "./customers.ts";
+export { buscarPedidoReciente, estadoParaCliente, VENTANA_PEDIDO_RECIENTE_MIN } from "./pedido-reciente.ts";
+export type { EstadoPedidoParaCliente, PedidoReciente } from "./pedido-reciente.ts";
 
 export {
   ORDER_STATUSES,

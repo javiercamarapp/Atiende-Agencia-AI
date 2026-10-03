@@ -6,7 +6,7 @@
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
-import { lookupCustomer } from "../customers.ts";
+import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { matchesHighRiskOtherThan } from "./guards.ts";
@@ -124,7 +124,7 @@ export async function handleInboundWhatsAppMessage(
             organizationId,
             phone,
             messages: messagesAfterUser,
-            customer: await lookupCustomer(repo, organizationId, phone),
+            customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
             propertyId: propertyId ?? null,
           });
 

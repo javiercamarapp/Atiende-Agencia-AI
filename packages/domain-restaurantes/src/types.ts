@@ -5,6 +5,8 @@
 // concepto de tenant aislado (`restaurants`) del origen.
 import type { HorarioSucursal } from "./horarios.ts";
 
+import type { PedidoReciente } from "./pedido-reciente.ts";
+
 export interface Branch {
   readonly propertyId: string;
   readonly organizationId: string;
@@ -142,6 +144,8 @@ export type CustomerLookupResult =
       readonly frequentItems: readonly OrderHistoryItem[];
       readonly tier: CustomerTier | null;
       readonly agentNotes: readonly string[];
+      /** Pedido de las ultimas 12 h de este telefono con el estado que marco la sucursal (para "¿ya salio?"); ausente/null si no hay. */
+      readonly pedidoReciente?: PedidoReciente | null;
     };
 
 export interface CreateOrderItemInput {

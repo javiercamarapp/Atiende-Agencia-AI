@@ -95,6 +95,17 @@ export const PM_COPY = {
   turnoComplicado: "Se me complicó procesar su pedido. Un momento, por favor.",
 } as const;
 
+/** Lo que el agente puede afirmar de cada estado: SOLO lo que la sucursal marco en el pedido, nunca lo que cree del repartidor. */
+const ESTADO_PEDIDO_TEXTO = {
+  preparando: "en preparación (la sucursal todavía no lo marca como salido)",
+  salio: "YA SALIÓ a reparto (la sucursal lo marcó en camino)",
+  listo_para_recoger: "LISTO PARA RECOGER",
+  entregado: "entregado",
+  programado: "programado para más tarde",
+  con_problema: "con una incidencia (pásela a la sucursal con escalar_a_humano)",
+  no_recogido: "no recogido",
+} as const;
+
 /** Contexto del cliente SIN direccion completa (la direccion guardada no se inyecta en el prompt: el modelo la ve
  * solo si llama buscar_cliente y tiene prohibido leerla en voz alta). */
 export function pmCustomerContextBlock(customer: CustomerLookupResult): string {
@@ -110,6 +121,15 @@ export function pmCustomerContextBlock(customer: CustomerLookupResult): string {
   }
   if (customer.addresses.length > 0) {
     lines.push("Tiene una dirección guardada: nunca la lea completa; pregunte si es la misma de siempre o si es otra.");
+  }
+  const pedido = customer.pedidoReciente;
+  if (pedido) {
+    const canal = pedido.canal === "domicilio" ? "a domicilio" : pedido.canal === "recoger" ? "para recoger" : "";
+    lines.push(
+      `Pedido reciente de este número${canal ? ` (${canal})` : ""}${pedido.sucursal ? ` en ${pedido.sucursal}` : ""}: confirmado a las ${pedido.confirmadoHoraLocal}, hace ${pedido.minutosDesdeConfirmacion} min. Estado que marcó la sucursal: ${ESTADO_PEDIDO_TEXTO[pedido.estado]}.`,
+    );
+  } else if (customer.pedidoReciente === null) {
+    lines.push("No tiene un pedido de las últimas 12 horas: si pregunta por su pedido, dígalo y ofrezca tomar uno.");
   }
   return lines.join("\n");
 }
@@ -231,6 +251,7 @@ Salude, solo en su primer mensaje, con ${saludoSucursal}${voz ? "; diga que es e
 13. CAMBIOS DESPUÉS DE CONFIRMAR (agregar algo, cancelar, pasar de domicilio a recoger, cambiar el pago, corregir el número de casa): el pedido puede salir de cocina en 10 a 25 minutos, así que avise a la sucursal DE INMEDIATO con escalar_a_humano (motivo "cancelacion_modificacion", dígale al gerente exactamente qué cambió) y diga al cliente: "Lo paso a cocina; si el pedido ya salió, se lo pueden enviar aparte." No cree otro pedido ni cancele por su cuenta; al terminar pregunte "¿algo más?" antes de cerrar.
 14. FALTANTE O PRODUCTO EQUIVOCADO (queja): disculpa breve ("disculpe el inconveniente"), pregunte qué faltó o qué llegó mal y escale con motivo "queja" con el detalle. Diga "la sucursal le confirma en unos minutos"; no prometa reposición, cambio ni descuento (los autoriza la sucursal).
 15. FACTURA: no pida ni guarde RFC. Dé el enlace de facturación en línea de la página de Los Taquitos de PM y explique que el ticket trae un código QR para facturar (hasta 24 horas después del consumo). Si el ticket es de otra sucursal, dé el contacto de esa sucursal. Si insiste, escale (otro).
+16. ESTADO DEL PEDIDO ("¿ya salió?", "¿falta mucho?", "estatus de mi orden"): conteste con el "Pedido reciente" de CONTEXTO DEL CLIENTE, nunca de memoria. Si la sucursal ya lo marcó como salido: "Permítame checo… su pedido ya salió a reparto; lo confirmamos a las [hora] y llega en unos [X] minutos" (el tiempo de la sucursal, paso 8). Si sigue en preparación: "va en preparación, confirmado a las [hora]; el tiempo estimado es [X]". Si ya pasó el tiempo prometido o el cliente se queja de que no llega, trátelo como queja: disculpa breve y escale con motivo "tiempos_entrega" con la hora de confirmación. Si no hay pedido reciente, dígalo y ofrezca tomar uno. Nunca invente un estado, una hora ni que el repartidor va en camino si la sucursal no lo marcó.
 Si el cliente solo pregunta (horario, envío, promociones, salsas, menú), responda con los datos de abajo y ofrezca tomar el pedido, sin forzar.`;
 
   const escalacion = `# ESCALACIÓN A HUMANO
