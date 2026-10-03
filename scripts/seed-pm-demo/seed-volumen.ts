@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildPmSeedPlan } from "../../packages/domain-restaurantes/src/seed/pm-demo.ts";
 import { buildInMemoryPmWorld } from "../../packages/domain-restaurantes/src/seed/pm-world.ts";
-import { DEMO_VOLUME_SCALES, DemoVolumeError, generarVolumenDemo, type DemoVolumeSummary } from "../../packages/domain-restaurantes/src/seed/demo-volume.ts";
+import { DEMO_PERFIL_T7, DEMO_VOLUME_SCALES, DemoVolumeError, generarVolumenDemo, type DemoVolumeSummary } from "../../packages/domain-restaurantes/src/seed/demo-volume.ts";
 import { DemoVolumeSqlError, renderDemoVolumeDoBlock, renderVolumePreflightSql } from "../../packages/domain-restaurantes/src/seed/demo-volume-sql.ts";
 import { assertPuedeAplicar, describirObjetivo, parseVolumeArgs, SeedTargetError } from "../../packages/domain-restaurantes/src/seed/target-safety.ts";
 import { PostgresRestaurantesRepository } from "../../packages/domain-restaurantes/src/postgres-repository.ts";
@@ -20,14 +20,17 @@ import { loadSeedInputs } from "./inputs.ts";
 import { sesionDesdePg } from "./pg-session.ts";
 
 const USO = `Uso: node --experimental-strip-types scripts/seed-pm-demo/seed-volumen.ts [--org-slug=<slug>] [--escala=ligero|moderado|completo]
-       [--dias=N] [--pedidos-por-dia=N] [--semilla=N] [--apply] [--confirm-host=<host>]
+       [--dias=N] [--pedidos-por-dia=N] [--semilla=N] [--perfil=t7] [--apply] [--confirm-host=<host>]
   (sin --apply: dry-run contra un mundo en memoria, no abre ninguna conexion)
   --org-slug   por omision los-taquitos-de-pm-demo (debe estar marcada como demo)
   --escala     ligero = 30 dias x 12/dia; moderado (por omision) = 90 dias x 24/dia (~2,200 pedidos); completo = 90 dias x 1000/dia (~90,000, OPCIONAL)
+  --perfil=t7  ritmo REAL de la sucursal T7 Garcia Lavin (fase 1): solo T7, 139 pedidos en 56 dias, 70 clientes (32 recurrentes = 73 % de los
+               pedidos), todo por WhatsApp. Es lo que carga \`npm run demo:pm\`. Antes de cambiar de perfil/escala limpie: demo:limpiar --modo=volumen
   SEED_DATABASE_URL=postgresql://usuario@host:puerto/base   (obligatoria con --apply)`;
 
 function opciones(args: ReturnType<typeof parseVolumeArgs>) {
   const base = DEMO_VOLUME_SCALES[args.escala];
+  if (args.perfil) return { dias: args.dias ?? DEMO_PERFIL_T7.dias, perfil: args.perfil, seed: args.semilla ?? undefined };
   return { dias: args.dias ?? base.dias, pedidosPorDia: args.pedidosPorDia ?? base.pedidosPorDia, seed: args.semilla ?? undefined };
 }
 
@@ -43,7 +46,11 @@ async function main(): Promise<number> {
     return 0;
   }
   const opts = opciones(args);
-  console.log(`Seed de volumen de "${args.orgSlug}": ${opts.dias} dias x ~${opts.pedidosPorDia} pedidos/dia (escala ${args.escala}${args.escala === "completo" ? ", ~90,000 pedidos: opcion pesada" : ""})`);
+  console.log(
+    args.perfil
+      ? `Seed de volumen de "${args.orgSlug}": perfil ${args.perfil} (ritmo real de T7 Garcia Lavin: ${Math.round((DEMO_PERFIL_T7.pedidos * opts.dias) / DEMO_PERFIL_T7.dias)} pedidos en ${opts.dias} dias, solo T7)`
+      : `Seed de volumen de "${args.orgSlug}": ${opts.dias} dias x ~${"pedidosPorDia" in opts ? opts.pedidosPorDia : 0} pedidos/dia (escala ${args.escala}${args.escala === "completo" ? ", ~90,000 pedidos: opcion pesada" : ""})`,
+  );
 
   if (!args.apply) {
     const { data, agent } = loadSeedInputs();
