@@ -1,6 +1,6 @@
 # Crons de Vercel
 
-Fuente de verdad: `vercel.json::crons` (hoy **33** crons). Todos son rutas `GET|POST /internal/...` que
+Fuente de verdad: `vercel.json::crons` (hoy **34** crons). Todos son rutas `GET|POST /internal/...` que
 Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que `INTERNAL_SECRET`).
 
 ## Reglas
@@ -10,7 +10,7 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
   y 1 minuto como piso de frecuencia. Verifica el plan y los límites vigentes en el dashboard de Vercel; este repo no puede consultarlos.
 - Los horarios de Vercel son **UTC**. Los diarios están escalonados; "0 8" UTC = 02:00 CDMX.
 - Cada cron: rechaza con 401 sin secreto, corre dentro de `withHeartbeat` (latido en `/superadmin/salud` + kill switch) y
-  está en `SWITCHABLE_CRONS` (salvo las 4 excepciones de abajo) (`apps/api/src/platform-switches.ts`). Cadencia esperada del panel se deriva de `vercel.json`.
+  está en `SWITCHABLE_CRONS` (`apps/api/src/platform-switches.ts`; sin excepciones desde PL-35). Cadencia esperada del panel se deriva de `vercel.json`.
 - Solapamiento: Vercel puede reintentar o solapar corridas. Las rutas son idempotentes (SQL que solo toca filas pendientes,
   `dedupe_key` en el outbox, marcas `*_sent_at`, o lease por feed/comanda). Un cron que lanza deja latido `error`
   y alerta al superadmin; una unidad que falla no revierte a las demás (transacción por unidad).
@@ -54,16 +54,15 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/rentas/mensajes-automaticos` | `40 * * * *` | Crea borradores `pendiente_aprobacion` (nunca envía) desde plantillas aprobadas por evento: pre-llegada, check-in, check-out, reseña (una transacción por reserva, marca de idempotencia por reserva+evento, ventana de 24 h en la zona de la propiedad, tope de 50) |
 | `/internal/hoteles/grupos-liberacion` | `30 9 * * *` | Libera bloqueos de grupos por cutoff (zona de la property) y vence cotizaciones (idempotente en SQL) |
 | `/internal/restaurantes/privacidad-retencion` | `30 8 * * *` | Purga por retención de conversaciones de WhatsApp y voz (lotes de 500, máx. 10 por corrida) |
+| `/internal/plataforma/privacidad-retencion` | `50 8 * * *` | PL-35: purga por retención de la plataforma (GET con `Authorization: Bearer` ejecuta; otro GET solo simula). Lote acotado: 4 páginas de 25 organizaciones por corrida (sin cursor persistente) |
 | `/internal/despachos/vencimientos-barrido` | `45 12 * * *` | D-26: por cada cliente con ficha genera las obligaciones fiscales del periodo en curso y escala las que vencen hoy/mañana o ya vencieron; avisa en la campana (`vencimiento_proximo`/`_vencido`, dedupe diario por property). Una transacción por cliente; idempotente |
 | `/internal/despachos/cfdi-estatus-sat` | `20 6 * * 0` | D-27 (semanal, domingo): consulta el estatus de los CFDI ante el servicio **público** del SAT, los más antiguos primero (tope de 60 por corrida y 22 s de presupuesto, 3 consultas en paralelo). Un timeout deja el CFDI como estaba; jamás "vigente" por error. Una cancelación avisa una sola vez (`despachos.cfdi.cancelado`). Una transacción por CFDI |
 | `/internal/despachos/efos-69b/descarga` | `40 7 3 * *` | D-28 (mensual, día 3): baja el CSV público de la lista 69-B (URL en `EFOS_69B_URL`), lo ingiere (idempotente por SHA-256 y periodo) y, si la edición es nueva o corregida, emite `despachos.efos.alerta` por cada CFDI ya ingerido que toca (dedupe por CFDI) |
 
-Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`) y el interruptor global `crons`. Tienen además interruptor por path todos salvo 4 anteriores a este documento: `hoteles/identidad-purga`, `superadmin/resumen-diario`, `superadmin/mantenimiento` y `superadmin/alertas-cfo` (lista cerrada en el test de contrato; un cron nuevo debe ir en `SWITCHABLE_CRONS`).
+Todos tienen latido en el panel de salud (verifica el de cada path en `/superadmin/salud/crons`), el interruptor global `crons` y el interruptor por path (`SWITCHABLE_CRONS`; el test de contrato exige que cada cron de `vercel.json` esté ahí).
 
 ## No agendados a propósito
 
-- `/internal/plataforma/privacidad-retencion`: Vercel solo invoca por GET y la ruta solo **simula** con GET (la purga real exige
-  `POST ?ejecutar=1`). Agendarla no purgaría nada. Se dispara a mano o desde un scheduler externo que haga POST.
 - `/internal/despachos/efos-69b/ingestar`: POST con el listado en el cuerpo y `?periodo=` (tope de 4 MB); no es agendable por Vercel. La descarga automática la hace `/internal/despachos/efos-69b/descarga` (agendada), sin ese tope.
 - `/internal/restaurantes/voz/*`: endpoints de la llamada de voz, no son crons.
 

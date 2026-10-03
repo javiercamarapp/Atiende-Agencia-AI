@@ -40,4 +40,5 @@ export const AGENTES_CRON: Readonly<Record<string, CronAgente>> = {
   "/internal/superadmin/resumen-diario": { vertical: "plataforma", nombre: "Parte diario" },
   "/internal/superadmin/mantenimiento": { vertical: "plataforma", nombre: "Mantenimiento de plataforma" },
   "/internal/superadmin/alertas-cfo": { vertical: "plataforma", nombre: "Alertas CFO" },
+  "/internal/plataforma/privacidad-retencion": { vertical: "plataforma", nombre: "Retención de privacidad de la plataforma" },
 };
