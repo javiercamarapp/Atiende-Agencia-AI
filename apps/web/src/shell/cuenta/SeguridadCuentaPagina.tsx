@@ -21,12 +21,14 @@ export interface SeguridadCuentaPaginaProps {
   readonly token: string;
   readonly orgSlug: string;
   readonly vertical: VerticalCuenta;
+  /** Nombre de la barra superior. `null` deja el del item activo del Sidebar (licitaciones ya la trae como "Seguridad"). @default "Seguridad de la cuenta" */
+  readonly tituloBarra?: string | null;
   /** Tarjetas propias de la vertical, antes de las comunes; reciben los avisos globales de la pantalla. */
   readonly extra?: (avisos: { readonly onAviso: (mensaje: string | null) => void; readonly onError: (mensaje: string | null) => void }) => ReactNode;
 }
 
-export function SeguridadCuentaPagina({ apiBaseUrl, token, orgSlug, vertical, extra }: SeguridadCuentaPaginaProps) {
-  useTituloBarra("Seguridad de la cuenta", ShieldCheck);
+export function SeguridadCuentaPagina({ apiBaseUrl, token, orgSlug, vertical, tituloBarra = "Seguridad de la cuenta", extra }: SeguridadCuentaPaginaProps) {
+  useTituloBarra(tituloBarra, ShieldCheck);
   const [cuenta, setCuenta] = useState<CuentaEstado | null>(null);
   const [sesiones, setSesiones] = useState<SesionesEstado | null>(null);
   const [error, setError] = useState<string | null>(null);

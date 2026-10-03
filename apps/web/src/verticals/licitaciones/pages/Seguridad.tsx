@@ -224,6 +224,7 @@ export function SeguridadPage({ apiBaseUrl, token, orgSlug }: LicitacionesShellC
       token={token}
       orgSlug={orgSlug}
       vertical="licitaciones"
+      tituloBarra={null}
       extra={({ onAviso, onError }) => <DosPasosCard apiBaseUrl={apiBaseUrl} token={token} onAviso={onAviso} onError={onError} />}
     />
   );
