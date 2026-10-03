@@ -51,7 +51,7 @@ export interface SeccionSuperadmin {
   readonly items: readonly RutaSuperadmin[];
 }
 
-/** "Resumen": arriba y fuera de las secciones (en Likida, `Inicio`). Hoy muestra el parte diario real. */
+/** "Resumen": arriba y fuera de las secciones (en Likida, `Inicio`). La pagina es el Resumen de la consola (UNI-RES-superadmin). */
 export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
 
 /**
@@ -119,6 +119,12 @@ export const MOVIL_SUPERADMIN: readonly RutaSuperadmin[] = [
   { to: "/superadmin/salud", label: "Salud", icon: Activity },
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
 ];
+
+/** El parte diario (antes en la raiz) vive aqui, sin item de menu: se llega por "Ver parte diario" del Resumen. */
+export const PARTE_DIARIO = "/superadmin/parte-diario";
+
+/** Rutas con pagina real que NO tienen item de menu (se llega por un enlace). Cuentan como existentes para las pildoras. */
+export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/notificaciones"];
 
 /** Rutas web que cambiaron de lugar: la vieja redirige a la nueva (sin 404). */
 export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
