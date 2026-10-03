@@ -11,7 +11,11 @@ const args = process.argv.slice(2).filter((a) => a !== "--");
 const opt = (nombre: string, def: string) => args.find((a) => a.startsWith(`--${nombre}=`))?.split("=")[1] ?? def;
 const DIAS = Number(opt("dias", "3"));
 const SALIDA = opt("salida", "");
-const INICIO = opt("inicio", "2026-10-01");
+// Por omision el mes simulado EMPIEZA hoy (hora de la property). El now() de Postgres es el real y varias restricciones lo comparan con la fecha
+// de negocio: las de "no puede estar en el pasado" (llegada y corte de un grupo, vigencia) exigen un mes que arranque hoy y no antes; las de
+// "no puede estar en el futuro" (fecha de recepcion de un ARCO) se resuelven mandando la fecha real. Ver el limite declarado en reloj.ts.
+const hoyReal = new Date().toLocaleDateString("en-CA", { timeZone: "America/Cancun" });
+const INICIO = opt("inicio", hoyReal);
 if (!process.env.SIM_DATABASE_URL) throw new Error("falta SIM_DATABASE_URL: corre scripts/simular-mes-hoteles/run.sh");
 if (!Number.isInteger(DIAS) || DIAS < 1 || DIAS > 60) throw new Error("--dias debe ser un entero entre 1 y 60");
 
@@ -104,7 +108,7 @@ try {
   const asertsMod = await import("./asserts.ts");
   const costos = await import("./costos.ts");
   const ledgerMod = await import("./ledger.ts");
-  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, rng: esc.prng(20261001), appSinCredenciales, reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
+  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, hoyReal, rng: esc.prng(20261001), appSinCredenciales, reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
 
   await (await import("./escenarios-agente.ts")).configurarAgente(ctx);
   await esc.precarga(ctx, 36);
@@ -135,7 +139,7 @@ try {
     ultimaCerrada = [...ctx.cerradas].sort().at(-1) ?? null;
     const asserts = [
       { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
-      ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada)),
+      ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada, new Date(reloj.ahoraMs()))),
     ];
     dias.push({ dia: n, fecha: ctx.fecha, eventos, filasCreadas, costos: lineas, costoTotalUsd: costos.totalDeLineas(lineas), http, asserts });
     const fallidos = asserts.filter((a) => !a.ok);

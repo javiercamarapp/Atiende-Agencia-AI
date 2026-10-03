@@ -149,7 +149,7 @@ export async function sondeoSinCredenciales(ctx: Contexto): Promise<void> {
   const f = await sim.api("frontdesk", "GET", `${P(ctx)}/folios/${r.folioId}`, undefined, { silencioso: true });
   const saldo = Number(f.json?.saldo ?? 0);
   if (saldo > 0) {
-    const pago = await sim.api("frontdesk", "POST", `${P(ctx)}/folios/${r.folioId}/pagos`, { monto: Math.min(saldo, 100), metodo: "tarjeta", tokenPago: "tok_sondeo_sin_credenciales" }, { sondeo: ctx.appSinCredenciales, idem: sim.nuevaClaveIdem("sondeo-pago"), tipo: "sondeo.pago_tarjeta_sin_credenciales", esperado: [503], detalle: { esperado: 503 } });
+    const pago = await sim.api("frontdesk", "POST", `${P(ctx)}/folios/${r.folioId}/pagos`, { monto: Math.min(saldo, 100), metodo: "tarjeta", tokenPago: "tok_sondeo_sin_credenciales" }, { sondeo: ctx.appSinCredenciales, idem: sim.nuevaClaveIdem("sondeo-pago"), silencioso: true, esperado: [503] });
     sim.evento("sondeo.pago_tarjeta_sin_credenciales", "sistema", pago.status === 503, pago.status, { esperado: 503 });
     if (pago.status >= 500 && pago.status !== 503) {
       sim.hallazgo(

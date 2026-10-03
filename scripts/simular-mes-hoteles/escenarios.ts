@@ -41,6 +41,8 @@ export interface Reserva {
   cxc?: boolean;
   cerradaDia?: number;
   cfdiId?: string;
+  identidadId?: string;
+  purgaSolicitada?: boolean;
 }
 
 export interface Contexto {
@@ -52,6 +54,8 @@ export interface Contexto {
   /** Fechas de negocio ya cerradas por el night audit (para los asserts). */
   readonly cerradas: Set<string>;
   readonly secretoInterno: string;
+  /** Fecha real (no simulada) de la property al arrancar: para los datos que la base valida contra su now() real. */
+  readonly hoyReal: string;
   readonly appSinCredenciales: import("hono").Hono;
   readonly secretoWhatsApp: string;
   readonly phoneNumberId: string;
@@ -170,7 +174,10 @@ export async function llegadas(ctx: Contexto): Promise<void> {
   for (const r of hoy) {
     const roomId = await habitacionDisponible(ctx, r.tipo, enCasa);
     if (!roomId) {
-      sim.evento("checkin.sin_habitacion_lista", "staff", false, null, { reserva: r.id.slice(0, 8), tipo: r.tipo });
+      const todas = await sim.api("frontdesk", "GET", `${P(ctx)}/habitaciones?roomTypeId=${ctx.mundo.tipos[r.tipo].id}`, undefined, { silencioso: true });
+      const estados: Record<string, number> = {};
+      for (const h of (todas.json ?? []) as { estado: string }[]) estados[h.estado] = (estados[h.estado] ?? 0) + 1;
+      sim.evento("checkin.sin_habitacion_lista", "staff", false, null, { reserva: r.id.slice(0, 8), tipo: r.tipo, estadosDelTipo: JSON.stringify(estados) });
       continue;
     }
     const res = await sim.api("frontdesk", "POST", `${P(ctx)}/recepcion/reservas/${r.id}/check-in`, { roomId }, { tipo: "checkin", detalle: { tipo: r.tipo, habitacion: roomId.slice(0, 8) } });

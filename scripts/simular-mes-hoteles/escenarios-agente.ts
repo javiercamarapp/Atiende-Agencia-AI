@@ -113,7 +113,8 @@ export async function ticketsDeHuesped(ctx: Contexto): Promise<void> {
       await sim.api("frontdesk", "POST", `${P(ctx)}/tickets/${t.id}/cerrar`, { nota: "atendido con el huesped" }, { tipo: "ticket.cerrar", esperado: [200, 403, 409] });
     }
   }
-  await cron(ctx, "/internal/hoteles/tickets-sla", "POST", "cron.tickets_sla");
+  const sweep = await cron(ctx, "/internal/hoteles/tickets-sla", "POST", "cron.tickets_sla");
+  if (process.env.SIM_DEBUG) console.log("tickets-sla:", sweep.status, JSON.stringify(sweep.json).slice(0, 300));
 }
 
 export type { Reserva };

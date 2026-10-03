@@ -14,7 +14,7 @@ function resultado(id: string, descripcion: string, c: { n: number; muestra: str
 
 const ESTADOS_ACTIVOS = `('confirmada','check_in','en_estancia','check_out','cerrada')`;
 
-export async function assertsDeDatos(db: Client, propertyId: string, ultimaNocheCerrada: string | null): Promise<ResultadoAssert[]> {
+export async function assertsDeDatos(db: Client, propertyId: string, ultimaNocheCerrada: string | null, ahoraSim: Date): Promise<ResultadoAssert[]> {
   const out: ResultadoAssert[] = [];
 
   out.push(
@@ -158,6 +158,13 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
           where property_id = $1 group by business_date having count(*) <> 1 or not bool_and(status = 'completado')`,
         [propertyId],
       ),
+    ),
+  );
+  out.push(
+    resultado(
+      "sla-vencido-escalado",
+      "Todo ticket de huesped abierto o en progreso cuyo SLA ya vencio en el reloj simulado fue escalado por el barrido",
+      await contraejemplos(db, `select id, status, sla_due_at from hoteles.guest_ticket where property_id = $1 and status in ('abierto','en_progreso') and sla_due_at < $2::timestamptz and escalated_at is null`, [propertyId, ahoraSim.toISOString()]),
     ),
   );
   out.push(

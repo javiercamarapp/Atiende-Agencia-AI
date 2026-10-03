@@ -3,6 +3,7 @@
 import { P, cron, cancelaciones, cargosDeEstancia, limpiezaDelDia, llegadas, ponerHora, reservaDirecta, salidas, type Contexto } from "./escenarios.ts";
 import { sumarDias } from "./reloj.ts";
 import { configurarRevenue, facturacionDelDia, gruposDelDia, gruposLiberacionCron, revenueDelDia, sondeoSinCredenciales } from "./escenarios-negocio.ts";
+import { arcoDelDia, capturaDeIdentidad, purgaDeIdentidad } from "./escenarios-privacidad.ts";
 import { atenderLoDelAgente, ticketsDeHuesped, turnosDeAgente } from "./escenarios-agente.ts";
 
 /** Night audit de la noche anterior: primero el cron real (sesion de sistema); si falla, el camino manual de gerencia, y el fallo queda como hallazgo. */
@@ -28,6 +29,7 @@ async function nightAudit(ctx: Contexto): Promise<void> {
     );
   }
   const manual = await sim.api("gm", "POST", `${P(ctx)}/night-audit`, { businessDate: noche }, { tipo: "night_audit.manual_gerencia", detalle: { noche } });
+  if (manual.status === 200) sim.evento("night_audit.resultado", "sistema", true, 200, { noche, cargosPosteados: Number(manual.json?.cargosPosteados?.length ?? manual.json?.cargosPosteados ?? 0), noShows: Number(manual.json?.noShows?.length ?? 0) });
   if (manual.status === 200) ctx.cerradas.add(noche);
 }
 
@@ -58,6 +60,7 @@ export async function simularDia(ctx: Contexto): Promise<void> {
   await cancelaciones(ctx);
   ponerHora(ctx, "15:00");
   await llegadas(ctx);
+  await capturaDeIdentidad(ctx);
   await revenueDelDia(ctx);
   ponerHora(ctx, "19:00");
   await cargosDeEstancia(ctx);
@@ -68,6 +71,8 @@ export async function simularDia(ctx: Contexto): Promise<void> {
   ponerHora(ctx, "21:30");
   await ticketsDeHuesped(ctx);
   if (ctx.dia === 3) await sondeoSinCredenciales(ctx);
+  await arcoDelDia(ctx);
+  await purgaDeIdentidad(ctx);
   ponerHora(ctx, "22:00");
   await cron(ctx, "/internal/whatsapp/dispatch", "POST", "cron.whatsapp_dispatch");
   ponerHora(ctx, "23:00");
