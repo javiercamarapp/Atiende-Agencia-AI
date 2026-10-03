@@ -22,6 +22,18 @@
   text-wrap: balance;
 }
 
+/* Sin scroll en pantallas de login (orden de Javier, 3-oct): la pagina mide 100dvh como minimo y, en alturas cortas,
+   se compactan espacios y tamanos (abajo, `@media (max-height)`) para que TODO quepa sin barra vertical. */
+.login-pantalla { min-height: 100vh; min-height: 100dvh; }
+.login-seccion { padding-block: 1.75rem; }
+.login-contenido { padding-block: 3rem; }
+@media (min-width: 1024px) {
+  .login-seccion { padding-block: 2.5rem; }
+  .login-aside { padding-block: 2.5rem; }
+}
+/* Ranura del resultado del envio (enviado / error): ALTURA FIJA, nunca crece ni se vacia, asi el formulario no se mueve. */
+.login-estado { height: 4rem; margin-top: 0.5rem; overflow: hidden; }
+
 .login-titulo { font-size: 38px; }
 @media (min-width: 640px) { .login-titulo { font-size: 44px; } }
 .login-titulo-404 { font-size: clamp(36px, 5.4vw, 74px); line-height: 1.06; }
@@ -202,4 +214,22 @@
 }
 .login-titular-foto {
   font-size: clamp(1.25rem, 1.9vw, 1.6875rem);
+}
+
+/* Alturas cortas (1366x768, 1280x720, iPhone SE 667, Android 740): misma composicion, menos aire. */
+@media (max-height: 820px) {
+  .login .login-seccion { padding-block: 1rem; }
+  .login .login-aside { padding-block: 1rem; }
+  .login .login-contenido { padding-block: 0.5rem; }
+  .login .login-titulo { font-size: 30px; margin-top: 0.75rem; }
+  .login .login-descripcion { font-size: 14px; line-height: 1.5; margin-top: 0.5rem; }
+  .login .login-regla { margin-top: 1.25rem; }
+  .login .login-bloque-google { margin-top: 1.25rem; }
+  .login .login-separador { margin-block: 1rem; }
+  .login .login-btn, .login .login-campo { padding-block: 11px; }
+  .login .login-pie { margin-top: 0.75rem; }
+  .login .login-legales { margin-top: 1rem; }
+}
+@media (min-width: 640px) and (max-height: 820px) {
+  .login .login-titulo { font-size: 34px; }
 }

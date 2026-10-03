@@ -97,7 +97,7 @@ describe("VerticalLogin", () => {
     expect(correo(c).getAttribute("aria-describedby")).toBe(alerta.id);
   });
 
-  it("magic link exitoso: el aviso de enviado va ENCIMA del formulario y el formulario sigue disponible (Likida page.tsx:333)", async () => {
+  it("magic link exitoso: el aviso va en la ranura de altura fija DEBAJO del boton (sin empujar el formulario) y el formulario sigue disponible", async () => {
     iniciarMagicLink.mockResolvedValue({ ok: true });
     const c = await montar();
     changeValue(correo(c), " dueno@negocio.com ");
@@ -108,8 +108,37 @@ describe("VerticalLogin", () => {
     // Un dedazo en el correo no deja sin salida: el campo sigue ahi para volver a escribirlo.
     expect(c.querySelector("form")).not.toBeNull();
     expect(correo(c)).not.toBeNull();
+    // Sin saltos de layout: el aviso vive DENTRO de la ranura `.login-estado` (altura fija), que sigue al formulario.
     const aviso = c.querySelector('[role="status"]')!;
-    expect(aviso.compareDocumentPosition(c.querySelector("form")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const ranura = c.querySelector(".login-estado")!;
+    expect(ranura.contains(aviso)).toBe(true);
+    expect(ranura.getAttribute("data-estado")).toBe("enviado");
+    expect(c.querySelector("form")!.compareDocumentPosition(ranura) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("idle, error de correo, error del servidor y enviado reusan LA MISMA ranura: nunca hay mas de un mensaje ni nodos fuera de ella", async () => {
+    iniciarMagicLink.mockResolvedValueOnce({ ok: false, error: "Demasiados intentos" }).mockResolvedValueOnce({ ok: true });
+    const c = await montar();
+    const ranura = c.querySelector(".login-estado")!;
+    expect(ranura.getAttribute("data-estado")).toBe("reposo");
+    await submitForm(c.querySelector("form")!);
+    expect(ranura.getAttribute("data-estado")).toBe("error");
+    expect(ranura.querySelector('[role="alert"]')).not.toBeNull();
+    changeValue(correo(c), "a@b.com");
+    await submitForm(c.querySelector("form")!);
+    expect(ranura.querySelector('[role="alert"]')!.textContent).toBe("Demasiados intentos");
+    await submitForm(c.querySelector("form")!);
+    expect(ranura.getAttribute("data-estado")).toBe("enviado");
+    expect(ranura.querySelector('[role="alert"]')).toBeNull();
+    // Todo mensaje (status/alert) vive en la ranura: el resto de la pantalla no inserta bloques.
+    expect(c.querySelectorAll('[role="status"], [role="alert"]').length).toBe(1);
+    expect(c.querySelector(".login-aviso-google")).toBeNull();
+  });
+
+  it("el aviso de Google no se inserta en el flujo: va absoluto en el hueco del separador", async () => {
+    verificarGoogle.mockResolvedValue(false);
+    const c = await montar();
+    expect(c.querySelector(".login-aviso-google")!.className).toContain("absolute");
   });
 
   it("magic link rechazado por el servidor muestra el mensaje inline (role=alert) y deja el formulario", async () => {
