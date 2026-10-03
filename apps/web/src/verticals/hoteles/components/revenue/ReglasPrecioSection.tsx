@@ -131,7 +131,7 @@ export function ReglasPrecioSection({ apiBaseUrl, token, propertyId, roomTypes, 
               </FormField>
             </div>
             {pricingError && <Callout tone="danger">{pricingError}</Callout>}
-            <Button type="submit" loading={busy} loadingText="Guardando…" className="self-start">
+            <Button type="submit" loading={busy} loadingText className="self-start">
               Guardar reglas
             </Button>
           </form>
