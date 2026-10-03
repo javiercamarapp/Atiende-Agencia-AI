@@ -110,6 +110,7 @@ describe("CitasShell — nav móvil", () => {
       "Staff",
       "Auditoría",
       "Privacidad",
+      "Seguridad de la cuenta", // PL-21: destino comun del pie, seccion "Cuenta" de la hoja
     ]);
   });
 

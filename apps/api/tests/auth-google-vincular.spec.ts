@@ -141,4 +141,42 @@ describe("vincular Google desde la cuenta", () => {
     const exchange = dest.searchParams.get("code");
     expect(exchange).toBeNull();
   });
+
+  describe("PL-21: las 6 verticales vinculan desde su Seguridad de la cuenta", () => {
+    async function conOrgDe(vertical: string) {
+      const base = await setup();
+      const core = base.core;
+      const orgId = randomUUID();
+      core.addOrganization({ id: orgId, slug: `org-${vertical}`, name: `Org ${vertical}`, vertical });
+      core.addMembership({ userId: base.ctx.staff.owner.id, organizationId: orgId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
+      return base;
+    }
+
+    it.each(["hoteles", "restaurantes", "rentas", "citas", "despachos"])("%s: el regreso va a su /<org>/seguridad (no a licitaciones) y vincula", async (vertical) => {
+      const { app, ctx, security } = await conOrgDe(vertical);
+      fakeGoogle.setNextUser({ sub: `g-${vertical}`, email: `${vertical}@gmail.com`, emailVerified: true });
+      const res = await app.request("/auth/google/vincular/iniciar", authedJson(ctx.staff.owner.token, { orgSlug: `org-${vertical}`, vertical }));
+      expect(res.status).toBe(200);
+      const { url } = (await res.json()) as { url: string };
+      const cb = new URL((await fetch(url, { redirect: "manual" })).headers.get("location")!);
+      const dest = await app.request(`/auth/google/callback?code=${cb.searchParams.get("code")}&state=${cb.searchParams.get("state")}`);
+      const to = new URL(dest.headers.get("location")!);
+      expect(to.pathname).toBe(`/${vertical}/org-${vertical}/seguridad`);
+      expect(to.searchParams.get("google_link")).toBe("ok");
+      expect(await security.listGoogleIdentities(ctx.staff.owner.id)).toHaveLength(1);
+    });
+
+    it("la membresia se valida contra la vertical pedida: un slug de licitaciones no sirve como 'citas'", async () => {
+      const { app, ctx } = await setup();
+      const res = await app.request("/auth/google/vincular/iniciar", authedJson(ctx.staff.owner.token, { orgSlug: "empresa-de-prueba", vertical: "citas" }));
+      expect(res.status).toBe(403);
+    });
+
+    it("vertical fuera de la lista cerrada -> 400; sin vertical se conserva licitaciones", async () => {
+      const { app, ctx } = await setup();
+      expect((await app.request("/auth/google/vincular/iniciar", authedJson(ctx.staff.owner.token, { orgSlug: "empresa-de-prueba", vertical: "../x" }))).status).toBe(400);
+      const sin = await app.request("/auth/google/vincular/iniciar", authedJson(ctx.staff.owner.token, { orgSlug: "empresa-de-prueba" }));
+      expect(sin.status).toBe(200);
+    });
+  });
 });

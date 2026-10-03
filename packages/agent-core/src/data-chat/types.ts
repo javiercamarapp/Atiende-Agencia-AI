@@ -82,6 +82,8 @@ export interface DataChatCatalog {
   /** Una frase: qué negocio es y qué datos cubre este catálogo. */
   readonly domain: string;
   readonly tools: readonly DataChatTool[];
+  /** Texto cuando la pregunta no esta cubierta por ninguna herramienta (aditivo; sin el, el motor usa el texto estandar con la lista de consultas). */
+  readonly outOfCatalogMessage?: string;
   /** Líneas de contexto del alcance (p.ej. nombres de sucursales visibles) para el prompt. */
   describeScope?(scope: DataChatScope, signal: AbortSignal): Promise<string>;
 }

@@ -16,6 +16,7 @@
 // crash — nunca un stub silencioso.
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@atiende/ui";
+import { MarcoPublico } from "../components/MarcoPublico.tsx";
 import { decideOrganizacionSeleccionadaPath } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
@@ -31,11 +32,9 @@ export function SeleccionarOrganizacionPage() {
 
   if (!state?.session || !state.vertical) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
-        <p className="max-w-md text-center text-muted-foreground">
-          No pudimos recuperar tu sesión para mostrarte tus organizaciones. Vuelve a iniciar sesión e inténtalo de nuevo.
-        </p>
-      </main>
+      <MarcoPublico titulo="No pudimos recuperar tu sesión">
+        <p className="text-sm text-muted-foreground">No pudimos recuperar tu sesión para mostrarte tus organizaciones. Vuelve a iniciar sesión e inténtalo de nuevo.</p>
+      </MarcoPublico>
     );
   }
 
@@ -44,32 +43,28 @@ export function SeleccionarOrganizacionPage() {
 
   if (organizaciones.length === 0) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
-        <p className="max-w-md text-center text-muted-foreground">No encontramos ninguna organización de {vertical} en tu cuenta.</p>
-      </main>
+      <MarcoPublico titulo="Sin organizaciones">
+        <p className="text-sm text-muted-foreground">No encontramos ninguna organización de {vertical} en tu cuenta.</p>
+      </MarcoPublico>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
-      <div className="flex w-full max-w-md flex-col gap-3">
-        <h1 className="text-xl font-semibold">Elige una organización</h1>
-        <p className="text-muted-foreground">Tu cuenta pertenece a más de una organización de {vertical}.</p>
-        <div className="flex flex-col gap-2">
-          {organizaciones.map((org) => (
-            <Button
-              key={org.id}
-              type="button"
-              variant="outline"
-              onClick={() => navigate(decideOrganizacionSeleccionadaPath(vertical, org))}
-              className="h-auto flex-col items-start gap-0 px-4 py-3 text-left"
-            >
-              <span className="font-semibold">{org.nombre}</span>
-              <span className="text-sm font-normal text-muted-foreground">rol: {org.rol}</span>
-            </Button>
-          ))}
-        </div>
+    <MarcoPublico titulo="Elige una organización" descripcion={`Tu cuenta pertenece a más de una organización de ${vertical}.`}>
+      <div className="flex flex-col gap-2">
+        {organizaciones.map((org) => (
+          <Button
+            key={org.id}
+            type="button"
+            variant="outline"
+            onClick={() => navigate(decideOrganizacionSeleccionadaPath(vertical, org))}
+            className="h-auto flex-col items-start gap-0 px-4 py-3 text-left"
+          >
+            <span className="font-semibold">{org.nombre}</span>
+            <span className="text-sm font-normal text-muted-foreground">rol: {org.rol}</span>
+          </Button>
+        ))}
       </div>
-    </main>
+    </MarcoPublico>
   );
 }

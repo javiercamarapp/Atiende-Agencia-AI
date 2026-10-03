@@ -9,7 +9,9 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark, Button, FormField, GoogleIcon, notify } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
+import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import "../pages/login.css";
 
@@ -32,7 +34,8 @@ export interface VerticalLoginProps {
   readonly kicker?: string;
   /** @default "tu@negocio.com" */
   readonly placeholderCorreo?: string;
-  readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean };
+  /** `olvidoContrasena` (por defecto activo): enlace "¿Olvidaste tu contraseña?" (PL-21); se apaga solo si la vertical no usa contraseña. */
+  readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean; readonly olvidoContrasena?: boolean };
   readonly hero: VerticalLoginHero;
   /** Reemplaza el pie por defecto ("Pídele a tu negocio que te dé de alta"); p. ej. rentas ofrece alta autoservicio. */
   readonly pie?: ReactNode;
@@ -45,10 +48,13 @@ export function esCorreoValido(correo: string): boolean {
 export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
   const conGoogle = metodos?.google ?? true;
   const conMagicLink = metodos?.magicLink ?? true;
+  const conOlvido = (metodos?.olvidoContrasena ?? true) && esVerticalCuenta(vertical);
+  const [modoOlvido, setModoOlvido] = useState(false);
   const [correo, setCorreo] = useState("");
   const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [enviadoA, setEnviadoA] = useState<string | null>(null);
+  const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(conGoogle);
@@ -85,11 +91,12 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
       return;
     }
     setErrorCorreo(null);
+    setErrorEnvio(null);
     setEnviando(true);
     try {
       const resultado = await iniciarMagicLink(apiBaseUrl, correo.trim(), vertical);
       if (!resultado.ok) {
-        notify.error("No se pudo enviar el enlace", { description: resultado.error ?? "Intenta de nuevo." });
+        setErrorEnvio(resultado.error ?? "No se pudo enviar el enlace. Intenta de nuevo.");
         return;
       }
       setEnviadoA(correo.trim());
@@ -98,100 +105,101 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
     }
   }
 
-  const alerta = googleError ? mensajeGoogleError(googleError) : magicLinkError ? mensajeMagicLinkError(magicLinkError) : null;
+  const alerta = errorEnvio ?? (googleError ? mensajeGoogleError(googleError) : magicLinkError ? mensajeMagicLinkError(magicLinkError) : null);
 
+  // Composición de ~/likida/src/app/login/page.tsx:283-441 (UNI-9). Medidas citadas por línea de Likida:
+  // columna `max-w-[392px]` centrada en la mitad (:292), logo h-6 (:296), bloque centrado en vertical `py-12` (:299),
+  // kicker (:301), titular 38/44 px serif (:304), bajada 15 px/1.6 (:311), aviso de "enviado" ENCIMA del formulario (:333),
+  // hairline `mt-9` (:365), Google `mt-8` (:373), separador `my-6` (:389), formulario `gap-3` (:405), píldora `mt-1` (:431),
+  // pie `mt-7` 14 px (:438), error inline 14 px (:455), legales `mt-10` 12 px (:464) y lámina `p-9` (:512).
   return (
     <main className="login min-h-screen lg:grid lg:grid-cols-2">
       <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
-        <div className="mx-auto flex w-full max-w-[420px] flex-col pt-10 lg:pt-16">
+        <div className="mx-auto flex w-full max-w-[392px] flex-1 flex-col">
           <header className="login-entra flex items-center">
-            <AtiendeWordmark />
+            <AtiendeWordmark markClassName="h-6 w-auto" className="[&>span]:text-xl [&>span]:leading-6" />
           </header>
 
-          <div className="mt-10">
+          <div className="flex flex-1 items-center py-12">
             <div className="w-full">
-              <p className="login-entra [--retraso:40ms] login-kicker">
-                {kicker}
-              </p>
-              <h1 className="login-entra [--retraso:90ms] login-serif mt-3 text-display leading-[1.05] text-foreground">
-                Bienvenido
-                <br />a atiende {nombre}
-              </h1>
-              <p className="login-entra [--retraso:140ms] mt-2 text-base leading-[1.6] text-muted-foreground">
-                {descripcion}
-              </p>
+              <p className="login-entra [--retraso:40ms] login-kicker">{kicker}</p>
+              <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">Bienvenido a atiende {nombre}</h1>
+              <p className="login-entra [--retraso:140ms] login-cuerpo mt-4 text-muted-foreground">{descripcion}</p>
 
-              <div className="login-entra [--retraso:160ms] mt-5 h-px bg-border" />
-
-              {alerta && (
-                <div role="alert" className="login-entra [--retraso:180ms] mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30">
-                  <p className="text-sm leading-relaxed text-foreground">{alerta}</p>
+              {conMagicLink && enviadoA && !modoOlvido && (
+                <div role="status" className="login-entra [--retraso:190ms] mt-9 rounded-[18px] border border-border bg-muted p-5">
+                  <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    Lo enviamos a <span className="font-semibold text-foreground">{enviadoA}</span>. Ábrelo desde este mismo dispositivo; expira en 15 minutos.
+                  </p>
+                  <p className="mt-1.5 text-ui leading-relaxed text-faint">¿No llega o te equivocaste de correo? Vuelve a escribirlo abajo.</p>
                 </div>
               )}
 
-              {conGoogle && (
+              <div className="login-entra [--retraso:180ms] mt-9 h-px bg-border" />
+
+              {modoOlvido && esVerticalCuenta(vertical) ? (
+                <OlvidoContrasena apiBaseUrl={apiBaseUrl} vertical={vertical} correoInicial={correo} onVolver={() => setModoOlvido(false)} />
+              ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={irAGoogle}
-                    disabled={!googleHabilitado}
-                    title={!googleHabilitado ? avisoGoogle : undefined}
-                    className="login-entra [--retraso:200ms] mt-5 login-btn login-btn-borde"
-                  >
-                    <GoogleIcon />
-                    Continuar con Google
-                  </button>
-                  {!googleHabilitado && (
-                    <p className="login-entra [--retraso:210ms] mt-2 text-xs leading-relaxed text-muted-foreground">
-                      {avisoGoogle}
-                    </p>
+                  {conGoogle && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={irAGoogle}
+                        disabled={!googleHabilitado}
+                        title={!googleHabilitado ? avisoGoogle : undefined}
+                        className="login-entra [--retraso:220ms] mt-8 login-btn login-btn-borde"
+                      >
+                        <GoogleIcon />
+                        Continuar con Google
+                      </button>
+                      {!googleHabilitado && <p className="login-entra [--retraso:230ms] mt-2 text-xs leading-relaxed text-muted-foreground">{avisoGoogle}</p>}
+                    </>
+                  )}
+
+                  {conGoogle && conMagicLink && (
+                    <div className="login-entra [--retraso:250ms] my-6 flex items-center gap-4">
+                      <span className="h-px flex-1 bg-border" />
+                      <span className="text-ui lowercase text-faint">o</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+
+                  {conMagicLink && (
+                    <form onSubmit={enviarMagicLink} className={`login-entra [--retraso:280ms] flex flex-col gap-3 ${conGoogle ? "" : "mt-8"}`} noValidate>
+                      <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined}>
+                        {(campo) => (
+                          <input
+                            {...campo}
+                            type="email"
+                            placeholder={placeholderCorreo}
+                            autoComplete="email"
+                        aria-required="true"
+                            value={correo}
+                            onChange={(e) => setCorreo(e.target.value)}
+                            className="login-campo"
+                          />
+                        )}
+                      </FormField>
+                      <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
+                        <span aria-hidden className="login-glifo">
+                          <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                        </span>
+                        <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
+                      </button>
+                    </form>
+                  )}
+
+                  {conOlvido && (
+                    <button type="button" onClick={() => setModoOlvido(true)} className="login-entra [--retraso:300ms] mt-4 text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
+                      ¿Olvidaste tu contraseña?
+                    </button>
                   )}
                 </>
               )}
 
-              {conGoogle && conMagicLink && (
-                <div className="login-entra [--retraso:230ms] my-4 flex items-center gap-4">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="text-sm lowercase text-muted-foreground">o</span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-              )}
-
-              {conMagicLink &&
-                (enviadoA ? (
-                  <div role="status" className="login-entra [--retraso:250ms] rounded-[18px] p-5 bg-primary/5 border border-primary/20">
-                    <p className="text-sm leading-relaxed text-foreground">
-                      Te enviamos un enlace a <span className="font-semibold">{enviadoA}</span>. Ábrelo desde este mismo dispositivo para entrar — expira en 15 minutos.
-                    </p>
-                    <Button type="button" variant="link" size="sm" onClick={() => setEnviadoA(null)} className="mt-2 h-auto px-0 text-foreground">
-                      Usar otro correo
-                    </Button>
-                  </div>
-                ) : (
-                  <form onSubmit={enviarMagicLink} className="login-entra [--retraso:250ms] flex flex-col gap-3" noValidate>
-                    <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
-                      {(campo) => (
-                        <input
-                          {...campo}
-                          type="email"
-                          placeholder={placeholderCorreo}
-                          autoComplete="email"
-                          value={correo}
-                          onChange={(e) => setCorreo(e.target.value)}
-                          className="login-campo"
-                        />
-                      )}
-                    </FormField>
-                    <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta">
-                      <span aria-hidden className="login-glifo">
-                        <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
-                      </span>
-                      <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
-                    </button>
-                  </form>
-                ))}
-
-              <p className="login-entra [--retraso:320ms] mt-5 text-pretty text-sm leading-relaxed text-muted-foreground">
+              <p className="login-entra [--retraso:320ms] mt-7 text-pretty text-sm leading-relaxed text-muted-foreground">
                 {pie ?? (
                   <>
                     ¿Tu correo no tiene acceso? <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
@@ -199,13 +207,19 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                 )}
               </p>
 
-              <p className="login-entra [--retraso:340ms] mt-6 text-pretty text-xs leading-[1.7] text-muted-foreground">
+              {alerta && (
+                <p role="alert" className="mt-5 text-sm text-destructive">
+                  {alerta}
+                </p>
+              )}
+
+              <p className="login-entra [--retraso:360ms] mt-10 text-pretty text-xs leading-[1.7] text-faint">
                 Al continuar, aceptas los{" "}
-                <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                <a href="/terminos" className="underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
                   Términos de Servicio
                 </a>{" "}
                 y el{" "}
-                <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                <a href="/privacidad" className="underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
                   Aviso de Privacidad
                 </a>{" "}
                 de atiende.ai.
@@ -215,17 +229,14 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
         </div>
       </section>
 
+      {/* Lámina: `hidden lg:flex` como Likida (:496): por debajo de 1024 px no se pinta ni se descarga. */}
       <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
-        <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
-          <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto-marca absolute inset-0 w-full h-full object-cover" />
+        <figure className="login-lamina min-h-0 flex-1">
+          <img src={`${import.meta.env.BASE_URL}${hero.imagen}`} alt={hero.alt} className="login-foto" />
           <div className="login-velo" />
-          <figcaption className="absolute inset-x-0 bottom-0 p-9 z-10">
-            <p className="login-kicker login-kicker-foto">
-              {hero.kicker}
-            </p>
-            <p className="login-serif login-titular-foto mt-3.5 foto-texto">
-              {hero.texto}
-            </p>
+          <figcaption className="absolute inset-x-0 bottom-0 p-9">
+            <p className="login-kicker login-kicker-foto">{hero.kicker}</p>
+            <p className="login-serif login-titular-foto foto-texto mt-3.5">{hero.texto}</p>
           </figcaption>
         </figure>
       </aside>

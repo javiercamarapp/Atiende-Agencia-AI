@@ -26,6 +26,7 @@ import {
 import { Errors } from "../errors.ts";
 import { stepUpMiddleware } from "../superadmin-seguridad/step-up.ts";
 import { zonaCfoMiddleware } from "../superadmin-seguridad/zona-cfo.ts";
+import { COPILOTO_CHAT_PATH_RE } from "./superadmin-copiloto.ts";
 import type { AppDeps } from "../deps.ts";
 
 // Rate-limiter por-proceso, compartido por TODA la superficie `/superadmin/*`
@@ -216,7 +217,9 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const result = await deps.engine.withAppSession({ userId: callerId }, (db) => deps.impersonationRepo(db).getActiveSession(callerId));
       return result.availability === "available" && result.session !== null;
     },
-    exemptPathPatterns: [IMPERSONACION_TERMINAR_PATH_RE],
+    // `POST /superadmin/copiloto` (chat de SOLO LECTURA): se exime para que la impersonacion activa se rechace con el 409 propio de la ruta
+    // (el Copiloto ve toda la plataforma y no se usa mientras actuas como un cliente), no con un 403 generico de escritura.
+    exemptPathPatterns: [IMPERSONACION_TERMINAR_PATH_RE, COPILOTO_CHAT_PATH_RE],
   });
   // `ImpersonationWriteBlockedError` (core-authz) no es un `ApiError` (core-auth)
   // -- el `onError` global de apps/api/src/app.ts solo traduce `ApiError` a un

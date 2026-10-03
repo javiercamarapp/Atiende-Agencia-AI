@@ -132,6 +132,34 @@ export const rutasDespachos: readonly Ruta[] = [
       return conStatus(204, undefined);
     },
   },
+  // UNI-RES-despachos: consolidado del Resumen (forma de `DashboardDespacho`). Solo existe en la API simulada de e2e.
+  { metodo: "GET", patron: "/v1/despachos/:org/dashboard", manejador: () => {
+      const cliente = {
+        propertyId: PROP.id,
+        nombre: PROP.nombre,
+        hoy: "2026-09-30",
+        fuentesNoDisponibles: [],
+        cartera: { cuentasPendientes: 3, montoPendiente: 48200, cuentasVencidas: 1, montoVencido: 12800, cuentas90Mas: 0, monto90Mas: 0, porAntiguedad: { "0-30": { count: 2, monto: 35400 }, "31-60": { count: 1, monto: 12800 }, "61-90": { count: 0, monto: 0 }, "90+": { count: 0, monto: 0 } }, scorePromedio: 0.6, cuentasSinCorreo: 0, cuentasSinMonto: 0, cuentasCobradas: 2, montoCobrado: 21000, tasaCobranzaPct: 30.3 },
+        cargaTrabajo: { revisionesPendientes: 1, revisionesAntiguas: 0, vencimientosAbiertos: 2, vencimientosVencidos: 0, vencimientosProximos: 1, tareasCierrePendientes: 1, tareasCierreVencidas: 0, totalPendientes: 4 },
+        cierres: { periodosSinCerrar: 1, periodosVencidos: 0, mesAnterior: { year: 2026, month: 8, estado: "cerrado" }, periodoReciente: null },
+        cfdiMes: { periodo: "2026-09", total: 12, invalidos: 0, requierenRevision: 1 },
+        anomalias: [],
+        nivelAtencion: "atencion",
+      };
+      return {
+        organizacion: { slug: ORG.slug, nombre: ORG.nombre },
+        totalClientesVisibles: 1,
+        truncado: false,
+        totalClientes: 1,
+        clientesPorNivel: { critico: 0, atencion: 1, al_corriente: 0, sin_datos: 0 },
+        cartera: { cuentasPendientes: 3, montoPendiente: 48200, montoVencido: 12800, monto90Mas: 0, montoCobrado: 21000, tasaCobranzaPct: 30.3, clientesConDato: 1 },
+        cargaTrabajo: { revisionesPendientes: 1, vencimientosAbiertos: 2, vencimientosVencidos: 0, tareasCierrePendientes: 1, totalPendientes: 4 },
+        cierres: { periodosSinCerrar: 1, periodosVencidos: 0, clientesMesAnteriorSinCerrar: 0 },
+        anomaliasPorSeveridad: { alta: 0, media: 0, baja: 0 },
+        fuentesNoDisponibles: [],
+        ranking: [cliente],
+      };
+    } },
   { metodo: "GET", patron: "/v1/despachos/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
   { metodo: "GET", patron: `${D}/cierre-mensual/periodos`, manejador: (p) => ({ periodos: p.estado.obtener("desp.periodos", periodosSemilla) }) },
   { metodo: "GET", patron: `${D}/cierre-mensual/periodos/:pid`, manejador: (p) => {
