@@ -156,7 +156,7 @@ function TablaClientesMargen({ titulo, filas }: { readonly titulo: string; reado
   );
 }
 
-export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminCfoDashboardPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Ejecutivo / Board: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [mes, setMes] = useState(mesActual());
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,11 +183,13 @@ export function SuperAdminCfoDashboardPage({ apiBaseUrl, token }: { readonly api
     <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <LineChart className="w-5 h-5" strokeWidth={1.75} />
-            Dashboard ejecutivo (CFO)
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Ingreso recurrente, margen, cobranza y riesgos de toda la plataforma. Lo que no tiene fuente se muestra como «—», nunca como cero.</p>
+          {!incrustada && (
+            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+              <LineChart className="w-5 h-5" strokeWidth={1.75} />
+              Dashboard ejecutivo (CFO)
+            </h1>
+          )}
+          <p className={incrustada ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>Ingreso recurrente, margen, cobranza y riesgos de toda la plataforma. Lo que no tiene fuente se muestra como «—», nunca como cero.</p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="cfo-mes">Mes</Label>

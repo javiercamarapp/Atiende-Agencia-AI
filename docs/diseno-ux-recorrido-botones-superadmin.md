@@ -39,13 +39,14 @@ El plan habla de `web/verticals/superadmin/**`; la ruta real del codigo es `apps
 | Pantalla | Controles (handler -> efecto) | Prueba |
 |---|---|---|
 | **Organizaciones** | solo lectura (`GET /superadmin/organizations`); "Reintentar" en error | No |
+| **Organizaciones (Clientes) y Ficha 360** | "Entrar" -> `ConfirmDialog` con motivo (>= 20 caracteres; el boton queda bloqueado con menos) -> `POST /superadmin/impersonacion/sesiones`; "Cancelar"/Escape no escriben; "Ficha" -> `/superadmin/organizaciones/:id`; pestana "Gestion" monta la gestion de organizaciones | superadmin-organizaciones-page, superadmin-organizacion-ficha-page, humo-superadmin |
 | **Gestion de organizaciones** | "Alta de organizacion" / "Suspender" / "Reactivar" / "Pasar a cuenta ..." -> `FormDialog` con motivo -> `POST /superadmin/organizaciones/acciones` (crea la SOLICITUD, no ejecuta); en "Pendientes de confirmar": **"Confirmar" -> `ConfirmDialog` (peligro en suspender)** -> `POST .../acciones/:id/confirmar`; "Cancelar" -> `POST .../cancelar` | superadmin-gestion-organizaciones-page (incluye Cancelar del dialogo no ejecuta) |
 | **Interruptores** | "Detener" / "Reactivar" -> `FormDialog` con motivo -> `PUT /superadmin/interruptores` | superadmin-interruptores-page |
 | **Seguridad (MFA)** | "Enrolar autenticador" / "Reiniciar enrolamiento" -> `POST /superadmin/mfa/enrolar`; "Activar MFA" (codigo de 6 digitos) -> `POST /superadmin/mfa/verificar`; "Restablecer factor" de otro usuario (con motivo) -> `POST /superadmin/mfa/reset` | superadmin-seguridad-page |
 | **Resumen diario** | "Generar ahora" -> `POST /superadmin/resumen/generar`; fila del historial -> estado local | superadmin-resumen-page |
 | **Salud operativa** | solo lectura (`/superadmin/salud`, `/crons`, `/colas`, `/licitaciones-fuentes`); "Actualizar" | superadmin-salud-page |
 | **Acciones** | "Crear accion" -> `POST /superadmin/acciones/intents`; "Confirmar" -> `AlertDialog` (ya existia) -> `POST .../confirmar`; "Cancelar" -> `POST .../cancelar` | superadmin-acciones-page |
-| **Prospectos** | "Nuevo prospecto" -> `FormDialog` -> `POST /superadmin/prospectos`; selector de etapa -> `PATCH /superadmin/prospectos/:id`; filtros de vertical y etapa (estado local) | No |
+| **Cerebro de ventas** (antes Prospectos; `/superadmin/cerebro`) | "Nuevo prospecto" -> `FormDialog` -> `POST /superadmin/prospectos`; selector de etapa -> `PATCH /superadmin/prospectos/:id`; filtros de vertical y etapa (estado local) | No |
 | **Gasto de API de LLM** | editar tope de plataforma / de organizacion -> `FormDialog` -> `PUT` de tope; rango de fechas | superadmin-gasto-api-page |
 | **Zona CFO segura** | asignar rol finanzas con motivo -> `PUT /superadmin/zona-cfo/roles/:id`; **"Retirar" -> `ConfirmDialog` (peligro, con el correo)** -> el mismo `PUT` con `rol: null`; "mas antiguas" (paginacion) | superadmin-zona-cfo-page (incluye Cancelar no llama al PUT) |
 | **Privacidad (ARCO plataforma)** | solo lectura con casilla "Solo vencidas" | privacidad-plataforma-page |

@@ -32,6 +32,7 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/tope$/, label: "cambiar tope de gasto de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/plataforma\/tope$/, label: "cambiar tope de gasto de plataforma" },
   // Gasto de IA por organizacion y rol (CHAT-07): leer el reporte y ver o cambiar el tope diario de turnos por rol.
+  { method: "GET", pattern: /^\/superadmin\/gasto-api\/consumo-ia$/, label: "leer el consumo de IA por rol y sus alertas" },
   { method: "GET", pattern: /^\/superadmin\/gasto-api\/por-rol$/, label: "leer el gasto de IA por organizacion y rol" },
   { method: "GET", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "ver el tope diario de turnos por rol de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "cambiar el tope diario de turnos por rol de una organizacion" },
@@ -56,6 +57,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },
   // Lista de supresion de plataforma (SA-L-46): agregar un contacto como "no contactar".
   { method: "POST", pattern: /^\/superadmin\/supresion\/no-contactar$/, label: "agregar un contacto a la lista de no contactar" },
+  // Cerebro de ventas (SA-L-38): editar la taxonomia de una vertical crea una version nueva de las reglas del scoring y del mensaje base.
+  { method: "PUT", pattern: /^\/superadmin\/cerebro\/taxonomia\/[^/]+$/, label: "editar la taxonomia de una vertical del cerebro de ventas" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {

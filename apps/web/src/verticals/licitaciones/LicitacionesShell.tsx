@@ -14,7 +14,7 @@
 // diferencia de hoteles): el adaptador resuelve siempre la primera property y no persiste
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
-import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, MessageCircle, Radar, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
+import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
 import { VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
@@ -72,12 +72,18 @@ export interface LicitacionesShellProps {
 // admin-staff.ts), nunca la única barrera.
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
+/** L-20: la privacidad de la organización (ARCO, retención, aviso) es solo de owner/admin: mismo umbral que exige el servidor
+ * (`/v1/privacidad/*` responde 403 al resto). Cosmético: oculta la entrada del menú y evita la llamada; nunca la única barrera. */
+export function puedeVerPrivacidad(role: string): boolean {
+  return STAFF_NAV_ROLES.has(role);
+}
+
 
 // Mismos destinos y rutas que antes (ningún link se agrega ni se quita; "Panel" ahora se llama "Resumen", como en las demás
 // consolas) — UNI-6: categorías en el orden de Likida (Oportunidades, Inteligencia, Organización) con "Resumen" como raíz sin
 // título; Staff solo para owner/admin. "Más" de la barra móvil lista TODOS (las mismas secciones del Sidebar), nada queda
 // inalcanzable en móvil.
-function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarSection[] {
+function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePrivacidad: boolean): SidebarSection[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     {
@@ -114,6 +120,8 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean): SidebarS
         ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
         { to: `${base}/whatsapp`, label: "WhatsApp", icon: MessageCircle },
         { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
+        // L-20: solicitudes ARCO, retención y aviso de privacidad de la organización (solo owner/admin).
+        ...(puedePrivacidad ? [{ to: `${base}/privacidad`, label: "Privacidad", icon: Lock }] : []),
       ],
     },
   ];
@@ -168,7 +176,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       chat={chatConexion}
       copilotoHref={`/licitaciones/${orgSlug}/copiloto`}
       vertical="licitaciones"
-      sections={buildSidebarSections(orgSlug, puedeVerStaff)}
+      sections={buildSidebarSections(orgSlug, puedeVerStaff, puedeVerPrivacidad(role))}
       mobileItems={buildMobileItems(orgSlug)}
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
       onLogout={() => void s.logout()}
