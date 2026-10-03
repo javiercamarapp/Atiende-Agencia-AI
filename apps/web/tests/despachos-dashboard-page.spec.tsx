@@ -159,7 +159,8 @@ describe("DashboardPage (despachos)", () => {
     stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
     rendered = montar(<DashboardPage {...CTX} />);
     await esperar();
-    const etiquetas = [...rendered.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent);
+    // Los 7 primeros chips son la rejilla de KPI del Resumen; los siguientes son del detalle del cliente activo.
+    const etiquetas = [...rendered.container.querySelectorAll('[data-testid="stat-card-chip"]')].slice(0, 7).map((chip) => chip.nextElementSibling?.textContent);
     expect(etiquetas).toEqual(["Clientes", "Cartera vencida", "Tasa de cobranza", "Pendientes de trabajo", "Cierres sin cerrar", "Anomalías", "CFDI del mes"]);
     const hrefs = (texto: string) => [...rendered!.container.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
     expect(hrefs("Cartera vencida")).toEqual(["/despachos/demo/cobranza"]);
