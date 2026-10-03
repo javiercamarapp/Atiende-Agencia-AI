@@ -4,7 +4,7 @@
 // explícitamente en voz del agente; la interfaz además lo etiqueta como simulación.
 import { suavizarConAtaque } from "@atiende/ui";
 import type { LineaTranscripcion, ModoOrb } from "@atiende/ui";
-import type { AdaptadorVoz, CallbacksAdaptador, FabricaAdaptador } from "../../src/verticals/restaurantes/voz/adaptador.ts";
+import type { AdaptadorVoz, CallbacksAdaptador, FabricaAdaptador } from "../../src/lib/voz/adaptador.ts";
 
 export const SALUDO_DEMO_POR_DEFECTO = "Hola, le atiende el asistente virtual del restaurante. ¿En qué le puedo ayudar?";
 const PEDIDO_DEMO = "Quisiera pedir dos órdenes de tacos al pastor para llevar.";

@@ -201,14 +201,19 @@ OpenRouter. `OPENROUTER_MODEL` ya no se lee: el modelo sale de la tabla por rol.
 indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
-## Voz de restaurantes (Gemini Live + LiveKit, sin ElevenLabs)
+## Voz de restaurantes y hoteles (Gemini Live + LiveKit con respaldo en cascada OpenRouter, sin ElevenLabs)
 
-Restaurantes dejó ElevenLabs el 1-oct-2026. Variables, orden de activación, métricas y rollback están en
-`docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
+Restaurantes dejó ElevenLabs el 1-oct-2026 y hoteles el 3-oct-2026: ambos montan SU agente (persona, prompt, tools y guardias propias) sobre el
+mismo esqueleto `packages/voice-core`, con UNA configuración de plataforma (`VOZ_PLATAFORMA`: escalera, modelos y precio por minuto), así que el costo
+por minuto es el mismo en todas las verticales. Escalera híbrida: (1) Gemini Live directo (`GEMINI_API_KEY`) -> (2) cascada OpenRouter
+(`OPENROUTER_API_KEY`, la misma llave del texto: STT -> Gemini por texto vía el gateway -> TTS) si Google falla o no hay llave -> (3) persona/buzón con
+callback. `gpt-live-1` salió de la escalera (pedía otra llave). El costo de cada llamada se registra en `core.usage_cost_event` con el desglose por
+escalon (`proveedor`). Hoteles autentica las tools del worker con el secreto POR PROPERTY (`hoteles.voice_agent_config`, rotación en el panel) y no usa
+`VOICE_TOOL_SECRET`. Variables, orden de activación, métricas y rollback de restaurantes están en `docs/VOZ-PM.md`. Resumen: `GEMINI_API_KEY` y `VOICE_PREVIEW_TOKEN_SECRET` (API), `VOICE_TOOL_SECRET` solo para emitir el token por
 llamada, `VOICE_REQUIRE_CALL_TOKEN=true` al activar, y `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` más el trunk SIP de Twilio en el
-host del worker de telefonía (que aún no existe en el repo). Lo que sigue aplica a hoteles y citas.
+host del worker de telefonía (que aún no existe en el repo, ni para restaurantes ni para hoteles). Lo que sigue aplica solo a citas.
 
-## Voz (ElevenLabs, hoteles y citas) — patrón oficial
+## Voz (ElevenLabs, solo citas) — patrón oficial
 
 Solo existe una dirección real hoy, y **no requiere ninguna API key de
 ElevenLabs**:
@@ -216,12 +221,12 @@ ElevenLabs**:
 **ENTRANTE** (ElevenLabs → nuestra API): `VOICE_TOOL_SECRET` (ver "Secretos
 propios" arriba) autentica las llamadas de las Server Tools que ElevenLabs
 invoca DURANTE una llamada en curso, contra
-`routes/verticals/{restaurantes,hoteles,citas}/voice-tools.ts` — nosotros
-somos el servicio siendo llamado, nunca el que llama a ElevenLabs. Restaurantes
-y citas usan un secreto compartido de plataforma; hoteles usa un secreto **por
-property** (`hoteles.voice_agent_config.tool_webhook_secret`, con endpoint de
-rotación) — ver el comentario de cabecera de cada `voice-tools.ts` para el
-porqué de la divergencia. Este es el patrón oficial para cualquier vertical
+`routes/verticals/citas/voice-tools.ts` — nosotros somos el servicio siendo
+llamado, nunca el que llama a ElevenLabs. Citas usa un secreto compartido de
+plataforma. (Hoteles ya no es de ElevenLabs: sus rutas `voice-tools.ts` las
+ejecuta el worker de `voice-core` con un secreto **por property**,
+`hoteles.voice_agent_config.tool_webhook_secret`, con endpoint de rotación; la
+migración de citas al esqueleto es un PR posterior.) Este es el patrón oficial para cualquier vertical
 nueva que agregue Server Tools de voz.
 
 **`packages/voice-gateway` (retirado del árbol en este PR) — por qué se

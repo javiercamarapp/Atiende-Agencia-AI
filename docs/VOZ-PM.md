@@ -12,7 +12,7 @@ Server Tools de ElevenLabs; este documento es solo de restaurantes.
 |---|---|---|
 | Registro único de herramientas (WhatsApp y voz) con máquina de estados del pedido (cotizado -> confirmado -> creado) | Hecho (ya en main) | `packages/domain-restaurantes/src/agent-tools/` |
 | Token por llamada firmado (caller ID del SIP From, sucursal, callId), secretos por sucursal, bitácora | Hecho (ya en main) | `apps/api/src/voice-call-token.ts`, `.../restaurantes/voice-auth.ts` |
-| Núcleo de la llamada: máquina de estados con barge-in, silencio, ruido, DTMF, límites de duración/costo, reanudación, escalada | Hecho en este PR | `packages/domain-restaurantes/src/voz/llamada/` |
+| Núcleo de la llamada: máquina de estados con barge-in, silencio, ruido, DTMF, límites de duración/costo, reanudación, escalada | Hecho en este PR | `packages/voice-core/src/llamada/` (esqueleto compartido, extraido de restaurantes) |
 | Sesión de llamada con Gemini Live (WebSocket, herramientas, transcripciones, reanudación) | Hecho en este PR; **protocolo sin verificar contra la API real** | `.../voz/llamada/gemini-live-sesion.ts` |
 | Simulador local de llamadas + prueba ciega es-MX (21 guiones, 11 graders), en CI contra el proveedor falso | Hecho en este PR | `.../voz/simulador/`, `tests/voz-simulador-*.spec.ts` |
 | Corrida de la prueba ciega contra Gemini real (manual) | Hecho en este PR; **sin ejecutar (no hay `GEMINI_API_KEY` en este entorno)** | `npm run evals:voz:real -w @atiende/domain-restaurantes` |
