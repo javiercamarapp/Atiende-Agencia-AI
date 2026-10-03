@@ -38,8 +38,8 @@ Financieras, Copiloto CFO (SA-33): `mrr`, `margen_costos_unitarios`, `pyl` y `co
 
 ## Gasto del Copiloto y tope mensual propio
 
-Decisión (migración 0048): el gasto del rol `superadmin:copiloto` **no** entra a `core.llm_usage_daily` (exige organización y su CHECK de vertical admite solo las 6 verticales;
-extenderlo obligaría a inventar una organización y contaminaría los reportes por cliente) **ni** a los topes por organización. Se mide en la fila de resumen de cada turno de
+Decisión (migración 0048): el gasto del rol `superadmin:copiloto` **no** entra a `core.llm_usage_daily` (su CHECK de vertical ya admite `plataforma` desde la 0040, pero `organization_id` es obligatorio;
+registrarlo ahí obligaría a inventar una organización y contaminaría los reportes por cliente) **ni** a los topes por organización. Se mide en la fila de resumen de cada turno de
 `core.data_chat_query_log` (vertical `plataforma`, `costo_micro_usd`, modelo, rol). El tope mensual propio compara contra `core.get_copiloto_plataforma_gasto_mes` y contra un
 acumulador en memoria de la instancia (cubre la base sin migrar). Al agotarse: modo sin IA (las consultas directas siguen). Valor por defecto provisional: 25 USD
 (`TOPE_MENSUAL_COPILOTO_MICRO_USD`); el presupuesto real en producción lo fija Javier (SA-44).
