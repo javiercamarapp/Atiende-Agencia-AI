@@ -41,7 +41,8 @@ export function buildGovernedHotelesTurnHandler(opts: GovernedHotelesTurnOptions
             escalatedRole: opts.escalatedRole,
             ...(opts.reservas ? { reservas: opts.reservas } : {}),
           }).handleInboundMessage(args),
-        blocked: () => acknowledgeOnlyTurnHandler(opts.hoteles).handleInboundMessage(args),
+        // H-20: sin agente (kill switch o presupuesto agotado) la conversacion pasa a atencion humana (aviso a recepcion/reservas).
+        blocked: (state) => acknowledgeOnlyTurnHandler(opts.hoteles, state === "pausado" ? "agente_pausado" : "agente_presupuesto_agotado").handleInboundMessage(args),
         ...(opts.onError ? { onError: opts.onError } : {}),
       }),
   };

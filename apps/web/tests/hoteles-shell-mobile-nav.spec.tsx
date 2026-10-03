@@ -4,7 +4,7 @@
 // HotelesShell.tsx -- mismo patrón que despachos-shell-mobile-nav.spec.tsx/
 // restaurantes-shell-mobile-nav.spec.tsx: el <Sidebar> compartido de
 // @atiende/ui es `hidden md:flex`, así que en viewport móvil el usuario
-// depende por completo de <MobileHeader> + <BottomNav>. Hoteles tiene hasta 16
+// depende por completo de <MobileHeader> + <BottomNav>. Hoteles tiene hasta 17
 // destinos: la barra trae los 4 de uso diario y "Más" abre TODOS (PR-0 del
 // informe de diseno-ux, F-01: antes no había navegación móvil). Protege también
 // que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -93,7 +93,7 @@ describe("HotelesShell — nav móvil", () => {
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Operación", "Huéspedes", "Finanzas", "Agentes", "Configuración"]);
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Recepción", "Reservas", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Recepción", "Reservas", "Conversaciones", "Housekeeping", "Mantenimiento", "Tickets", "Asistencia"]);
     abrirCategoria(root, "Finanzas");
     expect(categoriasAbiertas(root)).toEqual(["Finanzas"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "P&L", "Revenue", "CFDI", "Fraude"]);
@@ -112,7 +112,7 @@ describe("HotelesShell — nav móvil", () => {
     expect(tarjetaUsuario(root).rol).toBe("Housekeeping");
   });
 
-  it('el botón "Más" abre TODOS los destinos del rol (los 16 del owner, con Recepción y Huéspedes), no solo los 4 de la barra', async () => {
+  it('el botón "Más" abre TODOS los destinos del rol (los 17 del owner, con Recepción, Conversaciones y Huéspedes), no solo los 4 de la barra', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
@@ -123,7 +123,7 @@ describe("HotelesShell — nav móvil", () => {
     );
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/hoteles/demo/fraude");
-    expect(hrefs).toEqual(expect.arrayContaining(["/hoteles/demo/recepcion", "/hoteles/demo/huespedes"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/hoteles/demo/recepcion", "/hoteles/demo/huespedes", "/hoteles/demo/conversaciones"]));
     // CHAT-09: el Copiloto tambien esta en la hoja "Más" (solo owner/gm).
     expect(hrefs).toContain("/hoteles/demo/copiloto");
   });

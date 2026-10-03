@@ -44,7 +44,7 @@ test.describe("DS del shell @ds", () => {
   test("cada pantalla tiene un solo <h1> (BUG-E2E-002)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("citas", "owner");
     await page.goto(RESUMEN);
-    await expect(page.getByRole("heading", { name: "Resumen", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^(Buenos días|Buenas tardes|Buenas noches), /, level: 1 })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   });
 });

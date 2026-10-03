@@ -13,8 +13,8 @@ test.describe("errores y latencia @errores", () => {
     const reintentar = page.getByRole("button", { name: "Reintentar" });
     await expect(reintentar).toBeVisible();
     await reintentar.click();
-    await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
-    await expect(page.getByText("Citas hoy")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /^(Buenos días|Buenas tardes|Buenas noches), / })).toBeVisible();
+    await expect(page.getByText("Citas esta semana")).toBeVisible();
     // Una falla inyectada deja huella en el registro (para aserciones del tipo "se reintento").
     const registro = await mock.peticiones();
     expect(registro.filter((p) => p.inyectada && p.status === 503)).toHaveLength(1);
@@ -23,11 +23,11 @@ test.describe("errores y latencia @errores", () => {
 
   test("401 con sesion vencida: la SPA refresca el token una vez y reintenta sin pedir login", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("citas", "owner");
-    await expect(page.getByText("Citas hoy")).toBeVisible(); // la carga inicial ya termino: la falla es para el goto de abajo
+    await expect(page.getByText("Citas esta semana")).toBeVisible(); // la carga inicial ya termino: la falla es para el goto de abajo
     await mock.limpiarRegistro();
     await mock.inyectarFalla({ metodo: "GET", ruta: "/resumen", status: 401, veces: 1 });
     await page.goto(RESUMEN);
-    await expect(page.getByText("Citas hoy")).toBeVisible();
+    await expect(page.getByText("Citas esta semana")).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`${RESUMEN}$`));
     const refrescos = await mock.buscar({ metodo: "POST", ruta: "/auth/refresh" });
     expect(refrescos).toHaveLength(1);
@@ -36,7 +36,7 @@ test.describe("errores y latencia @errores", () => {
 
   test("refresh rechazado: la sesion se limpia y vuelve al login de la vertical", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("citas", "owner");
-    await expect(page.getByText("Citas hoy")).toBeVisible();
+    await expect(page.getByText("Citas esta semana")).toBeVisible();
     await mock.inyectarFalla({ metodo: "GET", ruta: "/resumen", status: 401, veces: 1 });
     await mock.inyectarFalla({ metodo: "POST", ruta: "/auth/refresh", status: 401, veces: 1 });
     await page.goto(RESUMEN);
@@ -56,10 +56,10 @@ test.describe("errores y latencia @errores", () => {
 
   test("latencia: con 700 ms por peticion se ve el estado de carga antes de los datos", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("citas", "owner");
-    await expect(page.getByText("Citas hoy")).toBeVisible();
+    await expect(page.getByText("Citas esta semana")).toBeVisible();
     await mock.configurar({ latenciaMs: 700 });
     await page.goto(RESUMEN);
     await expect(page.getByRole("status", { name: "Cargando resumen…" }).or(page.getByText("Cargando resumen…")).first()).toBeVisible();
-    await expect(page.getByText("Citas hoy")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Citas esta semana")).toBeVisible({ timeout: 15_000 });
   });
 });

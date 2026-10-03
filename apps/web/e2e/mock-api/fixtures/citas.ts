@@ -372,6 +372,22 @@ export const rutasCitas: readonly Ruta[] = [
       pending_to_confirm: 3,
       no_shows_last_30_days: 1,
       new_customers_last_30_days: 12,
+      created_by_source_last_30_days: { voice: 6, whatsapp: 23, web: 4, manual: 1 },
+    }) },
+  // UNI-RES-citas -- tiles de agentes del Resumen: entrega de recordatorios (centro de avisos) y conexion del numero de WhatsApp. Solo
+  // owner/admin los usan en el servidor real. /admin/whatsapp-agente responde 403 a staff (assertVerticalRole); /admin/avisos
+  // responde 200 con `recordatorios.visible:false` a staff; aqui `roles` da 403 a staff, que difiere del servidor, pero el cliente no lo pide para staff.
+  { metodo: "GET", patron: `${P}/admin/avisos`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({
+      generadoEn: new Date().toISOString(),
+      porConfirmar: { horas: 72, total: 0, items: [] },
+      recordatorios: { visible: true, disponible: true, ventanaDias: 7, filas: [{ canal: "whatsapp", estado: "sent", total: 11 }, { canal: "email", estado: "sent", total: 2 }, { canal: "whatsapp", estado: "failed", total: 1 }, { canal: "whatsapp", estado: "dead", total: 2 }] },
+      escalaciones: { visible: true, disponible: true, seguimientoDisponible: true, items: [] },
+    }) },
+  { metodo: "GET", patron: `${P}/admin/whatsapp-agente`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({
+      disponible: true,
+      agente: { version: 1, config: { agentName: null, toneStyle: null, greetingText: null, rulesText: null }, actualizadoEn: null, actualizadoPor: null, promptDeMuestra: "" },
+      conexion: { numero: { phoneNumberId: "100200300", activo: true }, estado: "registrado", credencialDeEnvioDisponible: true, nota: "Número registrado." },
+      opciones: { tonos: [], limites: { agentName: 60, greetingText: 300, rulesMaxLines: 10, ruleLength: 200, rulesText: 2000 }, porOmision: {} },
     }) },
   { metodo: "GET", patron: `${P}/providers`, manejador: () => ({ providers: PROVEEDORES }) },
   { metodo: "GET", patron: `${P}/services`, manejador: () => ({ services: SERVICIOS }) },
