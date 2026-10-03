@@ -16,14 +16,6 @@ const vercel = JSON.parse(readFileSync(path.resolve(here, "..", "..", "..", "ver
   crons: Array<{ path: string; schedule: string }>;
 };
 const MAX_CRONS_PRO = 40;
-// Crons anteriores a este contrato que NO tienen interruptor por path (solo el global `crons`, que
-// withHeartbeat aplica a todos). Un cron nuevo NO debe agregarse aqui: va en SWITCHABLE_CRONS.
-const SIN_INTERRUPTOR_POR_PATH = [
-  "/internal/hoteles/identidad-purga",
-  "/internal/superadmin/alertas-cfo",
-  "/internal/superadmin/mantenimiento",
-  "/internal/superadmin/resumen-diario",
-];
 
 function fuentesApi(dir: string): string[] {
   return readdirSync(dir).flatMap((n: string) => {
@@ -57,12 +49,18 @@ describe("vercel.json::crons -- contrato", () => {
     for (const c of crons) expect(codigo.includes(`"${c.path}"`), c.path).toBe(true);
   });
 
-  it("cada cron esta en SWITCHABLE_CRONS (salvo la lista cerrada de 4 anteriores) y SWITCHABLE_CRONS no tiene entradas fuera de vercel.json", () => {
+  it("cada cron esta en SWITCHABLE_CRONS (PL-35: ya no hay excepciones) y SWITCHABLE_CRONS no tiene entradas fuera de vercel.json", () => {
     const paths = new Set(crons.map((c) => c.path));
-    for (const c of crons) expect(SWITCHABLE_CRONS.includes(c.path) || SIN_INTERRUPTOR_POR_PATH.includes(c.path), c.path).toBe(true);
-    for (const e of SIN_INTERRUPTOR_POR_PATH) expect(SWITCHABLE_CRONS.includes(e), `${e} ya es detenible: quitalo de la lista`).toBe(false);
+    for (const c of crons) expect(SWITCHABLE_CRONS.includes(c.path), c.path).toBe(true);
     for (const s of SWITCHABLE_CRONS) expect(paths.has(s), s).toBe(true);
     expect(new Set(SWITCHABLE_CRONS).size).toBe(SWITCHABLE_CRONS.length);
+  });
+
+  it("PL-15: los 6 drenadores de outbox de correo corren cada 15 minutos (claim atomico con skip locked: un solapamiento no duplica envios)", () => {
+    for (const v of ["citas", "hoteles", "restaurantes", "despachos", "rentas", "licitaciones"]) {
+      const cron = crons.find((c) => c.path === `/internal/${v}/email-dispatch`);
+      expect(cron?.schedule, v).toBe("*/15 * * * *");
+    }
   });
 
   it("cada cron rechaza con 401 un GET sin secreto y con secreto incorrecto (nunca ejecuta nada)", async () => {
