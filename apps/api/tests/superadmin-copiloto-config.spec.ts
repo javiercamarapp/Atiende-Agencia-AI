@@ -3,7 +3,7 @@
 // cambia sus parametros, este test falla en vez de dejar un chip roto en silencio.
 import { describe, expect, it } from "vitest";
 import { parseArgs } from "@atiende/agent-core/data-chat";
-import { COPILOTO_SUPERADMIN, DIRECTAS_COPILOTO_SUPERADMIN } from "../../web/src/superadmin/lib/copiloto-config.ts";
+import { DATOS_COPILOTO_SUPERADMIN as COPILOTO_SUPERADMIN, DIRECTAS_COPILOTO_SUPERADMIN } from "../../web/src/superadmin/lib/copiloto-datos.ts";
 import type { DependenciasAcciones } from "../src/superadmin-copiloto/acciones.ts";
 import type { PlatformScope } from "../src/superadmin-copiloto/alcance.ts";
 import { buildCatalogoPlataforma } from "../src/superadmin-copiloto/catalogo.ts";
