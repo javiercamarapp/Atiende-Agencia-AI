@@ -46,7 +46,7 @@ export const CONVOCATORIAS_SEMILLA: readonly ConvocatoriaMock[] = [
 
 interface DecisionMock { id: string; organizationId: string; tenderId: string; decision: "go" | "no_go"; reasons: string[]; matchScore: number; matchEligibilityStatus: string; matchInputsHash: string; decidedBy: string; decidedAt: string }
 interface ResolucionMock { id: string; organizationId: string; tenderId: string; resolution: "won" | "lost"; fromStatus: EstadoConvocatoria; reason: string; resolvedBy: string; resolvedAt: string }
-interface RequisitoMock { id: string; documentId: string | null; text: string; requirementKind: string; obligatoriedad: string; topicKey: string | null; requiredEvidence: string[]; extractedBy: "rule"; page: number | null; clause: string | null; responsibleRole: string; deadline: string | null; status: string; confidence: number | null }
+interface RequisitoMock { id: string; documentId: string | null; text: string; requirementKind: string; obligatoriedad: string; topicKey: string | null; requiredEvidence: string[]; extractedBy: "rule" | "llm"; page: number | null; clause: string | null; responsibleRole: string; deadline: string | null; status: string; confidence: number | null }
 interface MapeoMock { id: string; topicKey: string; kind: string; refKey: string; statementTemplate: string }
 interface TarifaMock { id: string; concept: string; unitPrice: string; currency: "MXN"; approvalStatus: string; validFrom: string; validUntil: string | null }
 interface CampoMock { id: string; contractDocumentId: string; fieldKey: string; extractedValue: string; sourcePage: number | null; sourceClause: string | null; confidence: number; status: "sugerido" | "confirmado" | "corregido"; confirmedValue: string | null; confirmedBy: string | null; confirmedAt: string | null; createdAt: string }
@@ -75,12 +75,17 @@ interface Ciclo {
   seq: number;
 }
 
+const REQ_BASE = { documentId: "doc-1", requirementKind: "tecnico", obligatoriedad: "obligatorio", topicKey: null, requiredEvidence: [], page: 3, clause: "6.2", responsibleRole: "analyst", deadline: null, status: "pendiente" };
+const REQ_REGLA: RequisitoMock = { ...REQ_BASE, id: "req-regla", text: "Presentar acta constitutiva vigente.", extractedBy: "rule", confidence: null };
+const REQ_LLM: RequisitoMock = { ...REQ_BASE, id: "req-llm", text: "Acreditar experiencia en obra vial de al menos 3 anos.", extractedBy: "llm", confidence: 0.82 };
+
 const ciclo = (p: { readonly estado: { obtener<T>(clave: string, semilla: () => T): T } }): Ciclo =>
   p.estado.obtener<Ciclo>("lic.ciclo", () => ({
     convocatorias: CONVOCATORIAS_SEMILLA.map((c) => ({ ...c, cpvCodes: [...c.cpvCodes] })),
     decisiones: {},
     resoluciones: {},
-    requisitos: {},
+    // L-33: tnd-1 trae requisitos extraidos por IA (`llm`) y por reglas; tnd-2 solo por reglas (el aviso de IA NO debe aparecer).
+    requisitos: { "tnd-1": [REQ_LLM, REQ_REGLA], "tnd-2": [REQ_REGLA] },
     mapeos: {},
     propuestaGenerada: { tecnica: null, economica: null },
     checklist: { overallStatus: "verde", items: [{ id: "chk-1", dimension: "formato", result: "verde", notes: "Todos los archivos cumplen el formato del portal.", evidenceRef: null, checkedAt: "2026-09-30T15:00:00.000Z" }] },

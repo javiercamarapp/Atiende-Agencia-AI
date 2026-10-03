@@ -29,6 +29,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, candidatosDiotDesdeInvoices, construirDiotDesdeInvoices, construirDiotLayout, DECLARACIONES_ROLES, DiotLayoutError, LAYOUT_DIOT_VERSION, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -130,6 +131,8 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     const invoices = await repo.listInvoices(c.req.param("propertyId"), { periodo });
     const { candidatos, rfcContribuyente } = candidatosDiotDesdeInvoices(invoices);
+    // D-38: el layout DIOT (TXT/XML) es un archivo que sale del sistema -> fila de bitacora (periodo y numero de terceros; sin RFC).
+    await auditarAccesoDespachos(deps, c, { recurso: "declaraciones.diot_layout", tipo: "export", metadata: { periodo, terceros: candidatos.length } });
     if (candidatos.length === 0 || rfcContribuyente === null) {
       return c.json({
         version: LAYOUT_DIOT_VERSION,

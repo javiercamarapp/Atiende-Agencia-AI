@@ -59,7 +59,7 @@ import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
-import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
@@ -142,7 +142,7 @@ import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { ConversacionesPage as CitasConversacionesPage } from "./verticals/citas/pages/Conversaciones.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
-import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { LicitacionesShell, puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
@@ -169,6 +169,7 @@ import { AprobacionesPage } from "./verticals/licitaciones/pages/Aprobaciones.ts
 import { SalaGuerraPage } from "./verticals/licitaciones/pages/SalaGuerra.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
+import { SeguridadPage as DespachosSeguridadPage } from "./verticals/despachos/pages/Seguridad.tsx";
 import { DespachosCopilotoPage } from "./verticals/despachos/pages/Copiloto.tsx";
 import { DashboardPage as DespachosDashboardPage } from "./verticals/despachos/pages/Dashboard.tsx";
 import { ReportesPage as DespachosReportesPage } from "./verticals/despachos/pages/Reportes.tsx";
@@ -624,12 +625,12 @@ const CitasPlanRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <PlanYUso
 const DespachosPlanRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const LicitacionesPlanRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 // Seguridad de la cuenta (PL-21): pagina compartida (correo, contrasena, Google, sesiones) en el shell de cada vertical.
-// Licitaciones conserva su propia pagina (`LicitacionesSeguridadRoute`), que antepone la verificacion en dos pasos.
+// Licitaciones y despachos conservan su propia pagina (`LicitacionesSeguridadRoute`, `DespachosSeguridadRoute`), que antepone la verificacion en dos pasos.
 const RestaurantesSeguridadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="restaurantes" />);
 const HotelesSeguridadRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="hoteles" />);
 const RentasSeguridadRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="rentas" />);
 const CitasSeguridadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="citas" />);
-const DespachosSeguridadRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="despachos" />);
+const DespachosSeguridadRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosSeguridadPage {...ctx} />);
 
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
@@ -1010,6 +1011,19 @@ const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitacion
 const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SalaGuerraPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 // L-05: configuración de WhatsApp (opt-in, temas de aviso, decisión go/no-go por botón).
+// L-20: privacidad de la organización (PL-13) también desde la consola de licitaciones. La organización sale del token; un
+// rol que no sea owner/admin ve el estado denegado sin llamar a la API (el servidor también responde 403).
+const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) =>
+  licitacionesPuedeVerPrivacidad(ctx.role) ? (
+    <PrivacidadOrganizacionPage
+      apiBaseUrl={ctx.apiBaseUrl}
+      token={ctx.token}
+      notaVertical="Licitaciones todavía no registra solicitudes ARCO propias ni tiene clases de retención propias (firmantes, bitácora KYC, WhatsApp, documentos de empresa): lo que ves aquí viene de los demás verticales de tu organización."
+    />
+  ) : (
+    <EstadoError mensaje="Solo el owner o un admin de la organización puede administrar la privacidad." />
+  ),
+);
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
@@ -1276,6 +1290,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion" element={<LicitacionesPostAdjudicacionRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/autopsia" element={<LicitacionesAutopsiaRoute />} />
+        <Route path="/licitaciones/:orgSlug/privacidad" element={<LicitacionesPrivacidadRoute />} />
         <Route path="/licitaciones/:orgSlug/radar-renovaciones" element={<LicitacionesRadarRenovacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />

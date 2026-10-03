@@ -59,6 +59,7 @@ import type {
   RequirementFulfillmentMappingRecord,
 } from "../lib/technical-proposal-client.ts";
 import { formatRequirementKind, formatObligatoriedad } from "../lib/format.ts";
+import { AvisoIa } from "../components/AvisoIa.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 // Mismo set literal que Convocatorias.tsx/RequisitosConvocatoria.tsx
@@ -308,6 +309,10 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
           </Link>
         </div>
       </div>
+
+      {technicalItems.some((i) => i.extractedBy === "llm") && (
+        <AvisoIa proposito="Parte de los requisitos con los que se arma esta propuesta fue extraída de las bases con inteligencia artificial. Las secciones se redactan con tus plantillas y datos de empresa, sin generar texto con IA." />
+      )}
 
       {technicalItems.length === 0 && (
         <p className="text-sm text-muted-foreground">
