@@ -170,7 +170,7 @@ describe("cargarOnboarding sobre el seed de PM (datos reales del repositorio)", 
     // Migrada: el dueño deshabilita la voz a proposito en cada sucursal activa y publica su aviso.
     voz.migrada = true;
     privacidad.migrada = true;
-    for (const [, propertyId] of world.propertyBySlug) await voz.upsertConfig(world.organizationId, propertyId, { habilitado: false, proveedor: "gemini-live", voiceId: "Puck", comportamiento: "", mensajeInicial: "" });
+    for (const [, propertyId] of world.propertyBySlug) await voz.upsertConfig(world.organizationId, propertyId, { habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: "", mensajeInicial: "" });
     privacidad.configs.set(world.organizationId, { ...PRIVACY_CONFIG_POR_DEFECTO, configurada: true, noticeUrl: "https://ejemplo.mx/aviso" });
     const listo = await cargarOnboarding(world.repo, world.organizationId, { voz, privacidad, vozProveedorListo: async () => false });
     expect(item(listo, "voz").estado).toBe("hecho");
