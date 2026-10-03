@@ -65,6 +65,13 @@ describe("vercel.json::crons -- contrato", () => {
     expect(new Set(SWITCHABLE_CRONS).size).toBe(SWITCHABLE_CRONS.length);
   });
 
+  it("PL-15: los 6 drenadores de outbox de correo corren cada 15 minutos (claim atomico con skip locked: un solapamiento no duplica envios)", () => {
+    for (const v of ["citas", "hoteles", "restaurantes", "despachos", "rentas", "licitaciones"]) {
+      const cron = crons.find((c) => c.path === `/internal/${v}/email-dispatch`);
+      expect(cron?.schedule, v).toBe("*/15 * * * *");
+    }
+  });
+
   it("cada cron rechaza con 401 un GET sin secreto y con secreto incorrecto (nunca ejecuta nada)", async () => {
     const { deps } = await buildTestDeps();
     const app = buildApp(deps);

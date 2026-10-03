@@ -14,6 +14,8 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 - Solapamiento: Vercel puede reintentar o solapar corridas. Las rutas son idempotentes (SQL que solo toca filas pendientes,
   `dedupe_key` en el outbox, marcas `*_sent_at`, o lease por feed/comanda). Un cron que lanza deja latido `error`
   y alerta al superadmin; una unidad que falla no revierte a las demás (transacción por unidad).
+- Drenadores de correo (`*/email-dispatch`, los 6 verticales con outbox): cada 15 minutos. Cada uno reclama el lote con `claim_email_outbox_batch`
+  (`for update skip locked`, `attempts < 5`) y envía con `Idempotency-Key` por job, así que un solapamiento o reintento no duplica correos.
 - Kill switch: superadmin → Interruptores → cron `<path>` (o global `crons`). Pausado responde 200 `{"skipped":"kill_switch"}`.
 - Verificar a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio><path>`; o `vercel crons run <path>`.
   Revisa el latido en `/superadmin/salud/crons`. **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
@@ -25,17 +27,17 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 | `/internal/licitaciones/discover-tenders` | `0 5 * * *` | Descubre licitaciones nuevas |
 | `/internal/licitaciones/deadline-reminders` | `0 6 * * *` | Avisos de plazos |
 | `/internal/licitaciones/alert-notifications` | `0 7 * * *` | Alertas de coincidencias |
-| `/internal/licitaciones/email-dispatch` | `0 8 * * *` | Drena el outbox de correo |
+| `/internal/licitaciones/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/hoteles/identidad-purga` | `0 8 * * *` | Purga de la bóveda de identidad vencida |
 | `/internal/hoteles/night-audit` | `0 9 * * *` | Auditoría nocturna |
 | `/internal/citas/confirmacion-cita` | `*/30 * * * *` | Recordatorio de cita 24 h antes (ventana ±30 min; marca reminder_24h_sent_at + dedupe_key en el outbox) |
 | `/internal/citas/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo (envía los recordatorios de correo) |
 | `/internal/citas/google-calendar-sync` | `10 14 * * *` | Sincroniza Google Calendar |
-| `/internal/hoteles/email-dispatch` | `15 14 * * *` | Drena el outbox de correo |
-| `/internal/restaurantes/email-dispatch` | `20 14 * * *` | Drena el outbox de correo |
+| `/internal/hoteles/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
+| `/internal/restaurantes/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/despachos/cobranza-reminders` | `25 14 * * *` | Recordatorios de cobranza |
-| `/internal/despachos/email-dispatch` | `30 14 * * *` | Drena el outbox de correo |
-| `/internal/rentas/email-dispatch` | `35 14 * * *` | Drena el outbox de correo |
+| `/internal/despachos/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
+| `/internal/rentas/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/rentas/checkin-recordatorio` | `40 14 * * *` | Recordatorio de check-in |
 | `/internal/rentas/ical-sync` | `*/15 * * * *` | Sincroniza feeds iCal (lease por feed, piso de 10 min, backoff) |
 | `/internal/rentas/checkout-sweep` | `50 14 * * *` | Barrido de check-out |
