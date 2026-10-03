@@ -262,7 +262,7 @@ describe("PlPage (hoteles)", () => {
     const callsAntes = fetchMock.mock.calls.length;
     await submitForm(form);
 
-    expect(rendered.container.textContent).toContain("Descripción requerida.");
+    expect(document.body.querySelector('[role="dialog"]')!.textContent).toContain("Descripción requerida.");
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
   });
 
