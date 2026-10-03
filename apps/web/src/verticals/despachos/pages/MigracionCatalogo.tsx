@@ -244,144 +244,128 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   const columnasMapeos: DataTableColumna<MapeoMigracionCuenta>[] = [
-  {
-    id: "origen",
-    encabezado: "Cuenta origen",
-    principal: true,
-    valorOrden: (m) => m.origenCuentaId,
-    celda: (m) => (
-      <div className="font-semibold text-foreground">
-      {m.origenCuentaId}
-      </div>
-    ),
-  },
-  {
-    id: "destino",
-    encabezado: "Cuenta destino",
-    valorOrden: (m) => m.destinoCuentaId ?? "",
-    celda: (m) => (
-      <div className="text-muted-foreground">
-      {m.destinoCuentaId ?? "—"}
-      </div>
-    ),
-  },
-  {
-    id: "match",
-    encabezado: "Match",
-    valorOrden: (m) => m.tipoMatch,
-    celda: (m) => (
-      <>
-      <TipoMatchBadge tipoMatch={m.tipoMatch} />
-                          
-      </>
-    ),
-  },
-  {
-    id: "score",
-    encabezado: "Score",
-    alinear: "right",
-    valorOrden: (m) => m.score,
-    celda: (m) => (
-      <div className="tabular-nums text-muted-foreground">
-      {m.score}
-      </div>
-    ),
-  },
-  {
-    id: "estado",
-    encabezado: "Estado",
-    valorOrden: (m) => m.estado,
-    celda: (m) => (
-      <>
-      <EstadoBadge estado={m.estado} />
-      {m.aprobadoPor && (
-        <div className="mt-1 text-xs text-muted-foreground">
-          {m.estado === "rechazado" ? "Rechazado" : m.estado === "editado" ? "Editado" : "Aprobado"} por {m.aprobadoPor}
-          {m.aprobadoEn ? ` · ${formatDateTime(m.aprobadoEn)}` : ""}
-        </div>
-      )}
-      {m.nota && <div className="mt-0.5 text-xs text-muted-foreground">{m.nota}</div>}
-      {m.estrategiaConciliacionSaldos && <div className="mt-0.5 text-xs text-muted-foreground">Conciliación: {m.estrategiaConciliacionSaldos}</div>}
-                          
-      </>
-    ),
-  },
-  ...(puedeGestionar
-    ? [
-      {
-        id: "decision",
-        encabezado: "Decisión",
-        celda: (m: MapeoMigracionCuenta) => {
-          const rowState = rowActions[m.id];
-          const draft = draftDe(m.id);
-          const esPendiente = m.estado === "pendiente";
-          return (
-          <>
-          {esPendiente ? (
-            <div className="flex min-w-64 flex-col gap-1.5">
-              <Label htmlFor={`migracion-destino-${m.id}`} className="sr-only">
-                Cuenta destino corregida
-              </Label>
-              <Input
-                id={`migracion-destino-${m.id}`}
-                type="text"
-                placeholder="Cuenta destino corregida (solo para editar)"
-                value={draft.destinoCuentaId}
-                onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })}
-                className="h-9 text-xs"
-              />
-              <Label htmlFor={`migracion-nota-${m.id}`} className="sr-only">
-                Nota del motivo
-              </Label>
-              <Input
-                id={`migracion-nota-${m.id}`}
-                type="text"
-                placeholder="Nota (motivo, obligatoria para rechazar/editar)"
-                value={draft.nota}
-                onChange={(e) => setDraft(m.id, { nota: e.target.value })}
-                className="h-9 text-xs"
-              />
-              <Label htmlFor={`migracion-estrategia-${m.id}`} className="sr-only">
-                Estrategia de conciliación
-              </Label>
-              <Input
-                id={`migracion-estrategia-${m.id}`}
-                type="text"
-                placeholder="Estrategia de conciliación (solo si hay N:1)"
-                value={draft.estrategiaConciliacionSaldos}
-                onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })}
-                className="h-9 text-xs"
-              />
-              <div className="flex flex-wrap gap-1.5">
-                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleAprobar(m)} disabled={rowState?.loading}>
-                  <Check />
-                  {rowState?.loading ? "…" : "Aprobar"}
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive" onClick={() => void handleRechazar(m)} disabled={rowState?.loading}>
-                  <X />
-                  Rechazar
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEditar(m)} disabled={rowState?.loading}>
-                  <Pencil />
-                  Editar
-                </Button>
-              </div>
-              {rowState?.message && (
-                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                  {rowState.message}
-                </span>
-              )}
+    {
+      id: "origen",
+      encabezado: "Cuenta origen",
+      principal: true,
+      valorOrden: (m) => m.origenCuentaId,
+      celda: (m) => <div className="font-semibold text-foreground">{m.origenCuentaId}</div>,
+    },
+    {
+      id: "destino",
+      encabezado: "Cuenta destino",
+      valorOrden: (m) => m.destinoCuentaId ?? "",
+      celda: (m) => <div className="text-muted-foreground">{m.destinoCuentaId ?? "—"}</div>,
+    },
+    {
+      id: "match",
+      encabezado: "Match",
+      valorOrden: (m) => m.tipoMatch,
+      celda: (m) => <TipoMatchBadge tipoMatch={m.tipoMatch} />,
+    },
+    {
+      id: "score",
+      encabezado: "Score",
+      alinear: "right",
+      valorOrden: (m) => m.score,
+      celda: (m) => <div className="tabular-nums text-muted-foreground">{m.score}</div>,
+    },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      valorOrden: (m) => m.estado,
+      celda: (m) => (
+        <>
+          <EstadoBadge estado={m.estado} />
+          {m.aprobadoPor && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {m.estado === "rechazado" ? "Rechazado" : m.estado === "editado" ? "Editado" : "Aprobado"} por {m.aprobadoPor}
+              {m.aprobadoEn ? ` · ${formatDateTime(m.aprobadoEn)}` : ""}
             </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">Ya decidido.</span>
           )}
-                                
-          </>
-          );
-        },
-      },
-      ]
-    : []),
+          {m.nota && <div className="mt-0.5 text-xs text-muted-foreground">{m.nota}</div>}
+          {m.estrategiaConciliacionSaldos && <div className="mt-0.5 text-xs text-muted-foreground">Conciliación: {m.estrategiaConciliacionSaldos}</div>}
+        </>
+      ),
+    },
+    ...(puedeGestionar
+      ? [
+          {
+            id: "decision",
+            encabezado: "Decisión",
+            celda: (m: MapeoMigracionCuenta) => {
+              const rowState = rowActions[m.id];
+              const draft = draftDe(m.id);
+              const esPendiente = m.estado === "pendiente";
+              return esPendiente ? (
+                <div className="flex min-w-64 flex-col gap-1.5">
+                  <Label htmlFor={`migracion-destino-${m.id}`} className="sr-only">
+                    Cuenta destino corregida
+                  </Label>
+                  <Input
+                    id={`migracion-destino-${m.id}`}
+                    type="text"
+                    placeholder="Cuenta destino corregida (solo para editar)"
+                    value={draft.destinoCuentaId}
+                    onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                  <Label htmlFor={`migracion-nota-${m.id}`} className="sr-only">
+                    Nota del motivo
+                  </Label>
+                  <Input
+                    id={`migracion-nota-${m.id}`}
+                    type="text"
+                    placeholder="Nota (motivo, obligatoria para rechazar/editar)"
+                    value={draft.nota}
+                    onChange={(e) => setDraft(m.id, { nota: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                  <Label htmlFor={`migracion-estrategia-${m.id}`} className="sr-only">
+                    Estrategia de conciliación
+                  </Label>
+                  <Input
+                    id={`migracion-estrategia-${m.id}`}
+                    type="text"
+                    placeholder="Estrategia de conciliación (solo si hay N:1)"
+                    value={draft.estrategiaConciliacionSaldos}
+                    onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })}
+                    className="h-9 text-xs"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleAprobar(m)} disabled={rowState?.loading}>
+                      <Check />
+                      {rowState?.loading ? "…" : "Aprobar"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                      onClick={() => void handleRechazar(m)}
+                      disabled={rowState?.loading}
+                    >
+                      <X />
+                      Rechazar
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEditar(m)} disabled={rowState?.loading}>
+                      <Pencil />
+                      Editar
+                    </Button>
+                  </div>
+                  {rowState?.message && (
+                    <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
+                      {rowState.message}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Ya decidido.</span>
+              );
+            },
+          },
+        ]
+      : []),
   ];
 
   return (
