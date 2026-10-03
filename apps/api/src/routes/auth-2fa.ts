@@ -31,7 +31,7 @@ import type { AppDeps } from "../deps.ts";
 
 const ISSUER = "Atiende";
 const TWO_FACTOR_RATE_LIMIT = { max: 12, windowMs: 5 * 60_000 } as const;
-const STEP_UP_SCOPES: readonly StepUpScope[] = ["contract_sensitive", "expediente_approval"];
+const STEP_UP_SCOPES: readonly StepUpScope[] = ["contract_sensitive", "expediente_approval", "despachos_sensitive"];
 
 interface CodeBody {
   readonly code?: unknown;
