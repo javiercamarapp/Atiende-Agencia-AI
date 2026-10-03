@@ -50,8 +50,11 @@ describe("SQL del seed de volumen", () => {
 
 describe("argumentos de los scripts de operador", () => {
   it("seed-volumen: por omision dry-run, escala moderada y la organizacion demo; valida cada bandera", () => {
-    expect(parseVolumeArgs([])).toEqual({ apply: false, confirmHost: null, help: false, orgSlug: DEMO_ORG_SLUG_POR_OMISION, escala: "moderado", dias: null, pedidosPorDia: null, semilla: null });
+    expect(parseVolumeArgs([])).toEqual({ apply: false, confirmHost: null, help: false, orgSlug: DEMO_ORG_SLUG_POR_OMISION, escala: "moderado", dias: null, pedidosPorDia: null, semilla: null, perfil: null });
     expect(parseVolumeArgs(["--escala=completo", "--dias=30", "--pedidos-por-dia=50", "--semilla=7", "--apply", "--confirm-host=h"])).toMatchObject({ escala: "completo", dias: 30, pedidosPorDia: 50, semilla: 7, apply: true, confirmHost: "h" });
+    expect(parseVolumeArgs(["--perfil=t7", "--dias=28"])).toMatchObject({ perfil: "t7", dias: 28 });
+    expect(() => parseVolumeArgs(["--perfil=t9"])).toThrow(/t7/);
+    expect(() => parseVolumeArgs(["--perfil=t7", "--pedidos-por-dia=5"])).toThrow(/fija el total/);
     expect(() => parseVolumeArgs(["--escala=gigante"])).toThrow(SeedTargetError);
     expect(() => parseVolumeArgs(["--dias=abc"])).toThrow(/entero/);
     expect(() => parseVolumeArgs(["--org-slug=Mal Slug"])).toThrow(/invalido/);

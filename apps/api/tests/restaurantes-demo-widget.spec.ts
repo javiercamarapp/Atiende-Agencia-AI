@@ -2,6 +2,7 @@
 // organizaciones marcadas como demo, estado honesto sin proveedor LLM (nunca respuestas simuladas), el agente REAL de
 // WhatsApp (LlmGateway con proveedor falso en el borde de red), topes de tasa (IP, sesion, organizacion), validacion, origen y,
 // sobre todo, que NINGUNA ruta del widget envia a Meta (outbox vacio, cero fetch, sin importar el despachador).
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
@@ -77,7 +78,21 @@ describe("estado del widget", () => {
     const body = await s.json(res);
     expect(body).toMatchObject({ disponible: true, motivo: null, mensaje: null, restaurante: { slug: ORG, nombre: "Los Taquitos de PM" } });
     expect(body.sucursales).toEqual([{ slug: "fco-montejo", nombre: "Francisco de Montejo" }]);
+    // Sin T7 entre las activas el chat abre en "numero general".
+    expect(body.sucursal_predeterminada).toBeNull();
     expect(body.limites).toEqual({ mensajes_por_sesion: DEMO_WIDGET_LIMITS.perSessionPerDay, caracteres_por_mensaje: DEMO_WIDGET_LIMITS.maxMessageChars });
+  });
+
+  it("DEMO-PM: con T7 Garcia Lavin ACTIVA el estado la ofrece como sucursal predeterminada; si esta inactiva, no", async () => {
+    const s = await setup();
+    s.restaurantesRepo.seedBranch({ propertyId: randomUUID(), organizationId: s.organizationId, name: "García Lavín (Victory Platz)", slug: "garcia-lavin", status: "active", phone: null, address: null, lat: null, lng: null });
+    const activa = await s.json(await s.app.request(`${BASE}/estado`));
+    expect(activa.sucursal_predeterminada).toBe("garcia-lavin");
+    expect(activa.sucursales.map((b: { slug: string }) => b.slug)).toContain("garcia-lavin");
+
+    const t = await setup();
+    t.restaurantesRepo.seedBranch({ propertyId: randomUUID(), organizationId: t.organizationId, name: "García Lavín (Victory Platz)", slug: "garcia-lavin", status: "inactive", phone: null, address: null, lat: null, lng: null });
+    expect((await t.json(await t.app.request(`${BASE}/estado`))).sucursal_predeterminada).toBeNull();
   });
 
   it("sin proveedor LLM: estado honesto 'requiere OPENROUTER_API_KEY' (no es una respuesta simulada)", async () => {
