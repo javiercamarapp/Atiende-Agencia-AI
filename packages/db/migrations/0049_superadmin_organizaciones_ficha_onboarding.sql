@@ -258,15 +258,18 @@ grant execute on function core.get_orgs_onboarding_resumen_for_superadmin(uuid) 
 -- 5) Operaciones y costo de IA a 30 dias por organizacion (superadmin)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Ventana: dias de Mexico en (p_hoy - 30, p_hoy]. operaciones null + razon = no medible. Costos null = la fuente no existe
--- todavia (0 = se leyo y no hubo consumo).
+-- todavia (0 = se leyo y no hubo consumo). Incluye el plan asignado (id y nombre, sin precios).
 create or replace function core.get_orgs_metricas_for_superadmin(p_caller_id uuid, p_hoy date)
-returns table (organization_id uuid, operaciones_30d bigint, operaciones_razon text, llm_30d_micro_usd bigint, eventos_30d_micro_usd bigint)
+returns table (organization_id uuid, operaciones_30d bigint, operaciones_razon text, llm_30d_micro_usd bigint, eventos_30d_micro_usd bigint, plan_id text, plan_nombre text, plan_razon text)
 language plpgsql stable security definer set search_path = core, pg_temp as $$
 declare
   v_org record;
   v_c record;
   v_llm bigint;
   v_ev bigint;
+  v_plan_id text;
+  v_plan_nombre text;
+  v_plan_razon text;
 begin
   if auth.uid() is null or auth.uid() <> p_caller_id or not core.is_platform_superadmin(p_caller_id) then
     return;
@@ -290,7 +293,17 @@ begin
     exception when undefined_table or undefined_column or insufficient_privilege then
       v_ev := null;
     end;
+    -- Plan asignado (solo id y nombre: ningun precio; el margen vive en la zona CFO).
+    v_plan_id := null; v_plan_nombre := null; v_plan_razon := null;
+    begin
+      select pl.id, pl.nombre into v_plan_id, v_plan_nombre from core.organization_plan op join core.plan pl on pl.id = op.plan_id where op.organization_id = v_org.id;
+    exception when undefined_table or undefined_column or insufficient_privilege then
+      v_plan_razon := 'fuente_no_migrada';
+    end;
     organization_id := v_org.id;
+    plan_id := v_plan_id;
+    plan_nombre := v_plan_nombre;
+    plan_razon := v_plan_razon;
     operaciones_30d := v_c.o_cantidad;
     operaciones_razon := v_c.o_razon;
     llm_30d_micro_usd := v_llm;

@@ -219,19 +219,19 @@ rollback;
 -- ═══════════════════════════════════════════════════════════════════════════
 -- D) Metricas a 30 dias
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'D1. costo de IA a 30 dias de F1 = 5000 (el de hace 40 dias no entra) y eventos = 900 -- OK'
+\echo 'D1. costo de IA a 30 dias de F1 = 5000 (el de hace 40 dias no entra), eventos = 900 y su plan asignado -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
-select (llm_30d_micro_usd = 5000 and eventos_30d_micro_usd = 900)::int as deberia_ser_1
+select (llm_30d_micro_usd = 5000 and eventos_30d_micro_usd = 900 and plan_id = 'plan-of-rest' and plan_nombre = 'Plan restaurantes OF' and plan_razon is null)::int as deberia_ser_1
 from core.get_orgs_metricas_for_superadmin('00000000-0000-0000-0000-0000000f2100', (now() at time zone 'America/Mexico_City')::date) where organization_id = '00000000-0000-0000-0000-0000000f2000';
 rollback;
 
-\echo 'D2. despachos: operaciones null con razon sin_fuente (no 0) -- OK'
+\echo 'D2. despachos: operaciones null con razon sin_fuente (no 0) y sin plan (null sin razon) -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
-select (operaciones_30d is null and operaciones_razon = 'sin_fuente')::int as deberia_ser_1
+select (operaciones_30d is null and operaciones_razon = 'sin_fuente' and plan_id is null and plan_razon is null)::int as deberia_ser_1
 from core.get_orgs_metricas_for_superadmin('00000000-0000-0000-0000-0000000f2100', (now() at time zone 'America/Mexico_City')::date) where organization_id = '00000000-0000-0000-0000-0000000f2002';
 rollback;
 
