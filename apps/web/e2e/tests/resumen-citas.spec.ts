@@ -29,7 +29,7 @@ test.describe("resumen de citas @resumen", () => {
     await expect(page.getByRole("link", { name: /Agente de WhatsApp/ })).toContainText("Conectado");
     await expect(page.getByRole("link", { name: /Recordatorios 24 h/ })).toContainText("13 enviados · 3 fallidos (7 días)");
     await expect(page.getByRole("link", { name: /^Voz/ })).toContainText("6 citas creadas por voz (30 días)");
-    await expect(page.getByTestId("sin-datos-corrida")).toContainText("Sin datos de corrida");
+    await expect(page.getByTestId("sin-datos-corrida")).toContainText("registro de corridas");
     await expect(page.getByRole("link", { name: /Ver agenda/ })).toHaveAttribute("href", `/citas/${citas.orgSlug}/agenda`);
     await afirmarSinScrollHorizontal(page);
 

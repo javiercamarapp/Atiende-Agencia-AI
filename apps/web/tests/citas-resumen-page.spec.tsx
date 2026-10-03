@@ -108,7 +108,7 @@ describe("ResumenPage (citas)", () => {
     expect(tile("Copiloto")).toContain("Pregunta a tus datos");
     expect(rendered.container.querySelector('a[href="/citas/demo/copiloto"]')).not.toBeNull();
     // Última corrida: estado honesto, sin fechas ni estados inventados.
-    expect(rendered.container.querySelector('[data-testid="sin-datos-corrida"]')?.textContent).toContain("Sin datos de corrida");
+    expect(rendered.container.querySelector('[data-testid="sin-datos-corrida"]')?.textContent).toContain("registro de corridas");
   });
 
   it("staff: ve los conteos de citas pero NO los tiles de agentes ni dispara sus lecturas", async () => {

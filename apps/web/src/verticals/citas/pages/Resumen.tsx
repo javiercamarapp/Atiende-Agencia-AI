@@ -5,7 +5,7 @@
 // GET .../admin/avisos (recordatorios de 24 h) y GET .../admin/whatsapp-agente (conexión del número). Si el resumen falla se
 // muestra el error, nunca un 0 inventado; si una lectura secundaria falla o la base aún no tiene la migración, ese tile dice
 // "no disponible" en vez de una cifra. "Agentes — última corrida" no se pinta con fechas: ningún endpoint del tenant expone el
-// latido del cron de recordatorios (solo la consola de plataforma), así que declara honestamente "sin datos de corrida".
+// registro de corridas (core.agent_run solo lo lee la consola de plataforma; falta un endpoint de tenant), así que declara honestamente que aún no hay registro.
 // El rol staff ve únicamente los conteos de citas; los tiles de agentes (configuración y entrega) son de owner/admin.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -131,16 +131,16 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
 
   const kpis = [
     <div key="semana" className="min-w-0">
-      {ligado(`${base}/agenda`, <StatCard variante="neutra" icon={CalendarDays} label="Citas esta semana" value={String(resumen.week.total)} nota={`${formatDiaCorto(resumen.week.fromDate)} – ${formatDiaCorto(resumen.week.toDate)}`} />)}
+      {ligado(`${base}/agenda`, <StatCard icon={CalendarDays} label="Citas esta semana" value={String(resumen.week.total)} nota={`${formatDiaCorto(resumen.week.fromDate)} – ${formatDiaCorto(resumen.week.toDate)}`} />)}
     </div>,
     <div key="por-confirmar" className="min-w-0">
-      {ligado(`${base}/avisos`, <StatCard variante="neutra" icon={Clock} label="Por confirmar" value={String(resumen.pendingToConfirm)} nota="próximos 30 días" />)}
+      {ligado(`${base}/avisos`, <StatCard icon={Clock} label="Por confirmar" value={String(resumen.pendingToConfirm)} nota="próximos 30 días" />)}
     </div>,
     <div key="no-show" className="min-w-0">
-      {ligado(`${base}/agenda`, <StatCard variante="neutra" icon={CalendarX} label="No asistieron" value={String(resumen.noShowsLast30Days)} nota="últimos 30 días" />)}
+      {ligado(`${base}/agenda`, <StatCard icon={CalendarX} label="No asistieron" value={String(resumen.noShowsLast30Days)} nota="últimos 30 días" />)}
     </div>,
     <div key="nuevos" className="min-w-0">
-      {ligado(`${base}/clientes`, <StatCard variante="neutra" icon={UserPlus} label="Clientes nuevos" value={String(resumen.newCustomersLast30Days)} nota="últimos 30 días" />)}
+      {ligado(`${base}/clientes`, <StatCard icon={UserPlus} label="Clientes nuevos" value={String(resumen.newCustomersLast30Days)} nota="últimos 30 días" />)}
     </div>,
   ];
 
@@ -175,7 +175,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
             </ResumenSeccion>
             <ResumenSeccion titulo="Agentes — última corrida">
               <p data-testid="sin-datos-corrida" className="col-span-full text-xs text-faint">
-                Sin datos de corrida: el latido del recordatorio de 24 h solo lo expone la consola de plataforma y no hay bitácora de corridas por negocio.
+                Aún no hay registro de corridas disponible para tu negocio.
               </p>
             </ResumenSeccion>
           </>
