@@ -37,7 +37,7 @@ describe("GET whatsapp-plantillas", () => {
     expect((await app.request(url)).status).toBe(401);
   });
 
-  it("base sin la migracion 0049: 200 con disponible:false (nunca 500)", async () => {
+  it("base sin la migracion 0050: 200 con disponible:false (nunca 500)", async () => {
     const { ctx, app, url } = await construir({ migrada: false });
     const body = (await (await app.request(url, authedGet(ctx.staff.owner.token))).json()) as Json;
     expect(body.disponible).toBe(false);
@@ -99,7 +99,7 @@ describe("PUT / DELETE whatsapp-plantillas/:evento", () => {
     expect((await app.request(`${url}/appointment.reminder_24h`, authedJson(t, undefined, "DELETE"))).status).toBe(404);
   });
 
-  it("base sin la migracion 0049: PUT y DELETE responden 503 y no cambian nada", async () => {
+  it("base sin la migracion 0050: PUT y DELETE responden 503 y no cambian nada", async () => {
     const { ctx, app, url } = await construir({ migrada: false });
     expect((await app.request(`${url}/appointment.reminder_24h`, authedJson(ctx.staff.owner.token, CUERPO, "PUT" as never))).status).toBe(503);
     expect((await app.request(`${url}/appointment.reminder_24h`, authedJson(ctx.staff.owner.token, undefined, "DELETE"))).status).toBe(503);

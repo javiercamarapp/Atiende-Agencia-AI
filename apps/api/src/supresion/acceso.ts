@@ -78,7 +78,7 @@ export async function registrarSupresion(
 export type ResultadoReactivacion = "reactivada" | "sin_baja" | "no_migrada" | "valor_invalido";
 
 /** ALTA (PL-32): quita SOLO la baja voluntaria (motivo `baja`) del contacto; quejas, rebotes, ARCO y "no contactar" no se revierten
- *  por mensaje. `no_migrada` = la base aun no tiene la migracion 0048 (la ALTA cae al camino anterior: el texto sigue al agente). */
+ *  por mensaje. `no_migrada` = la base aun no tiene la migracion 0050 (la ALTA cae al camino anterior: el texto sigue al agente). */
 export async function reactivarSupresionBaja(db: TenantDbSession, input: { readonly tipo: TipoContacto; readonly valor: string }): Promise<ResultadoReactivacion> {
   const hash = hashearContacto(input.tipo, input.valor);
   if (hash === null) return "valor_invalido";

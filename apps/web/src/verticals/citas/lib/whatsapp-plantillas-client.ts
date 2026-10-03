@@ -30,7 +30,7 @@ export interface EventoPlantillaWire {
 }
 
 export interface PlantillasWire {
-  /** `false` cuando la migracion 0049 todavia no esta aplicada: la pantalla no ofrece editar. */
+  /** `false` cuando la migracion 0050 todavia no esta aplicada: la pantalla no ofrece editar. */
   readonly disponible: boolean;
   readonly estados: readonly EstadoPlantilla[];
   readonly eventos: readonly EventoPlantillaWire[];

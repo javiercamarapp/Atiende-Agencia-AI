@@ -93,12 +93,12 @@ export class InMemoryTenancyEngine implements TenancyEngine {
           this.suprimidos.add(`${tipo}:${hash}`);
           return { rows: [{ nueva }] as unknown as R[] };
         }
-        // PL-32: core.reactivar_supresion_baja (migracion 0049), modelo minimo: el modelo en memoria no distingue motivos.
+        // PL-32: core.reactivar_supresion_baja (migracion 0050), modelo minimo: el modelo en memoria no distingue motivos.
         if (sql.includes("core.reactivar_supresion_baja")) {
           const [tipo, hash] = params as [string, string];
           return { rows: [{ quitada: this.suprimidos.delete(`${tipo}:${hash}`) }] as unknown as R[] };
         }
-        // PL-31: core.whatsapp_plantilla_aprobada (migracion 0049), catalogo minimo en memoria (`seedPlantillaAprobada`).
+        // PL-31: core.whatsapp_plantilla_aprobada (migracion 0050), catalogo minimo en memoria (`seedPlantillaAprobada`).
         if (sql.includes("core.whatsapp_plantilla_aprobada")) {
           const [organizationId, nombre] = params as [string, string];
           return { rows: [{ aprobada: this.plantillasAprobadas.has(`${organizationId}:${nombre}`) }] as unknown as R[] };

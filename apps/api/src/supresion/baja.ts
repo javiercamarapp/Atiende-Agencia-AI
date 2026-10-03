@@ -59,7 +59,7 @@ export interface ResultadoAlta {
 /**
  * ALTA (PL-32): si el mensaje es una ALTA, quita la baja voluntaria y llama `confirmar` UNA sola vez. NO se maneja (el texto sigue al
  * agente) cuando no habia baja que quitar, cuando el contacto sigue suprimido por otro motivo (queja, rebote, ARCO, "no contactar":
- * confirmar seria mentir) o cuando la base aun no tiene la migracion 0048.
+ * confirmar seria mentir) o cuando la base aun no tiene la migracion 0050.
  */
 export async function procesarMensajeAlta(
   db: TenantDbSession,

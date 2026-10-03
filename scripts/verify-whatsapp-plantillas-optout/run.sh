@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verificacion contra Postgres LOCAL real de PL-31/PL-32 (migracion 0049): catalogo de plantillas HSM por organizacion,
+# Verificacion contra Postgres LOCAL real de PL-31/PL-32 (migracion 0050): catalogo de plantillas HSM por organizacion,
 # opt-out por organizacion y ventana de 24 h de citas. Ver assertions.sql para los escenarios positivos, negativos
 # (staff, otro tenant, sistema, anon) y SQLSTATE exacto.
 #

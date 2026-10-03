@@ -66,7 +66,7 @@ describe("variantesTelefonoEntrante", () => {
 describe("decidirEnvioProactivo", () => {
   const base = { phone: TELEFONO, evento: "appointment.reminder_24h", valores: { nombre: "Ana", fecha: "martes", hora: "09:00" }, now: NOW };
 
-  it("base sin la migracion 0049 (undefined): comportamiento anterior, texto libre sin plantilla", async () => {
+  it("base sin la migracion 0050 (undefined): comportamiento anterior, texto libre sin plantilla", async () => {
     const repo = new InMemoryCitasRepository();
     expect(await decidirEnvioProactivo(repo, { ...base, organizationId: "org-a" })).toEqual({ canal: "whatsapp" });
   });
@@ -164,7 +164,7 @@ describe("recordatorio de 24 h (runConfirmacionCitaCore)", () => {
     expect(Array.isArray(payload.buttons)).toBe(true);
   });
 
-  it("base SIN la migracion 0049: comportamiento anterior (WhatsApp de texto libre, sin template)", async () => {
+  it("base SIN la migracion 0050: comportamiento anterior (WhatsApp de texto libre, sin template)", async () => {
     const fixture = buildCitasFixture();
     const startsAt = zonedTimeToUtc("2026-09-15", "09:00", "America/Merida");
     await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Ana", customerPhone: TELEFONO, startsAt: startsAt.toISOString(), source: "web" });
@@ -221,7 +221,7 @@ describe("lista de espera", () => {
   });
 });
 
-describe("PostgresCitasRepository: base sin la migracion 0049 (AbortAwareFakeSession)", () => {
+describe("PostgresCitasRepository: base sin la migracion 0050 (AbortAwareFakeSession)", () => {
   const pg42883 = (fn: string) => Object.assign(new Error(`function ${fn}(uuid, text) does not exist`), { code: "42883" });
 
   it("resolveWhatsappTemplate y lastInboundWhatsappAt devuelven undefined, avisan UNA vez y dejan la sesion utilizable (SAVEPOINT)", async () => {
@@ -280,7 +280,7 @@ describe("PostgresCitasRepository: catalogo de plantillas (AbortAwareFakeSession
     expect(insert[1]).toEqual(["org-a", "appointment.reminder_24h", "recordatorio_cita_24h", "es_MX", ["nombre", "hora"], "aprobada"]);
   });
 
-  it("sin la migracion 0049: list devuelve disponible:false, save/delete unavailable, y la sesion queda utilizable", async () => {
+  it("sin la migracion 0050: list devuelve disponible:false, save/delete unavailable, y la sesion queda utilizable", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const session = new AbortAwareFakeSession([
       { match: /select evento, nombre/, respond: () => sinMigrar("core.whatsapp_plantilla") },

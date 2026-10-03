@@ -4,7 +4,7 @@
 // NO se manda por WhatsApp (se avisa por correo cuando el cliente dejo uno).
 //
 // Autorizacion: owner/admin unicamente (`STAFF_INVITE_ROLES`), en la sesion de STAFF autenticado; la escritura real la vuelve a exigir la RLS
-// de core.whatsapp_plantilla (owner/admin de la organizacion). Base sin la migracion 0048: GET responde 200 con `disponible: false` y las
+// de core.whatsapp_plantilla (owner/admin de la organizacion). Base sin la migracion 0050: GET responde 200 con `disponible: false` y las
 // escrituras 503; nada cambia en los envios.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";

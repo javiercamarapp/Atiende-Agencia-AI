@@ -63,7 +63,7 @@ respuesta a una peticion del cliente debe poner la marca; si la olvida el efecto
   transaccional. Repetirlo no vuelve a confirmar (`registrar_supresion` es idempotente y devuelve si la fila es
   nueva). No pasa al agente. Riesgo conocido: `alto` o `ya no` como respuesta a una pregunta del agente cuenta como
   baja (solo con el mensaje completo; una frase no la activa).
-- **ALTA / START por WhatsApp** (PL-32, migracion 0049): el mensaje completo `alta`, `start`, `reactivar avisos`, `quiero recibir mensajes`... quita
+- **ALTA / START por WhatsApp** (PL-32, migracion 0050): el mensaje completo `alta`, `start`, `reactivar avisos`, `quiero recibir mensajes`... quita
   SOLO la baja voluntaria (motivo `baja`) con `core.reactivar_supresion_baja` y confirma una vez. Quejas, rebotes, ARCO y "no contactar" del superadmin NO se
   revierten por mensaje: si el contacto sigue suprimido por otro motivo no se confirma (seria mentir) y el texto sigue al agente. Sin baja previa o sin la
   migracion, el texto sigue al agente. La deteccion compartida vive en `packages/whatsapp-gateway/src/opt-out.ts` (palabra o frase corta completa; "no puedo ir,

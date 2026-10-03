@@ -15,7 +15,7 @@ Antes de encolar un aviso PROACTIVO (el negocio escribe primero), `decidirEnvioP
 | Escribio hace menos de 23 h (1 h de margen para la demora del despachador) | Texto libre, con botones (recordatorio). Sin plantilla. |
 | Fuera de la ventana y la organizacion tiene la plantilla del evento en estado `aprobada` | Se encola con `template` (nombre, idioma, variables en el orden del catalogo) ademas del texto de respaldo. Sin botones: la plantilla no los lleva. |
 | Fuera de la ventana y sin plantilla aprobada (o que pide una variable que el evento no calcula) | NO se encola WhatsApp (Meta lo rechazaria y quedaria `dead`). El correo cubre si el cliente dejo uno. El cron emite el aviso in-app `citas.whatsapp.sin_plantilla` (una por organizacion, evento y dia, solo el conteo). |
-| Base sin la migracion 0049 | Comportamiento anterior (texto libre). |
+| Base sin la migracion 0050 | Comportamiento anterior (texto libre). |
 
 Eventos cubiertos hoy: recordatorio de 24 h, oferta de lista de espera y aviso manual a la lista de espera. En la oferta y el aviso de lista
 de espera el correo sale como `waitlist.slot_offered` / `waitlist.slot_available_broadcast` solo si el cliente tiene correo; sin correo no se
