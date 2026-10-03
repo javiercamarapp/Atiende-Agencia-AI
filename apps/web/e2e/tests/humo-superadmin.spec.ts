@@ -69,7 +69,9 @@ test.describe("superadmin @humo", () => {
     await expect(page).toHaveURL(/\/superadmin\/organizaciones\/[^/]+$/);
     await afirmarPantallaSana(page, "ficha de organizacion");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Taqueria El Faro/);
-    for (const seccion of ["Uso · últimos 30 días", "Costo", "Membresías", "Últimos errores", "Facturación y contrato", /Onboarding · /]) await expect(page.getByText(seccion).first()).toBeVisible();
+    for (const titulo of ["Uso · últimos 30 días", "Costo"]) await expect(page.getByRole("heading", { level: 2, name: titulo, exact: true })).toBeVisible();
+    for (const titulo of ["Membresías", "Últimos errores", "Facturación y contrato"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Onboarding · \d+\/\d+$/)).toBeVisible();
     await expect(page.getByText("No se pudo medir").or(page.getByText("Pendiente")).first()).toBeVisible();
 
     // Una organizacion inexistente: 404 honesto, no una pantalla en blanco.
