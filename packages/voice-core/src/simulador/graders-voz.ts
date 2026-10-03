@@ -83,10 +83,31 @@ export const G_SIN_TARJETA: Grader = (l) => {
   return ok("G_SIN_TARJETA");
 };
 
+/** Quita lo que va entre comillas («...», "...", “...”): es una cita textual, no el tono del agente. Recorrido lineal (sin expresion regular con
+ * cuantificadores anidados: el texto de una llamada es entrada no confiable en la corrida real). */
+function quitarCitas(texto: string): string {
+  const cierre: Readonly<Record<string, string>> = { "«": "»", '"': '"', "“": "”" };
+  let salida = "";
+  let i = 0;
+  while (i < texto.length) {
+    const c = texto.charAt(i);
+    const fin = cierre[c];
+    const j = fin === undefined ? -1 : texto.indexOf(fin, i + 1);
+    if (j === -1) {
+      salida += c;
+      i += 1;
+    } else {
+      salida += " ";
+      i = j + 1;
+    }
+  }
+  return salida;
+}
+
 export const G_TONO_USTED: Grader = (l) => {
   for (const t of l.transcripcion) {
     if (t.rol !== "agente") continue;
-    const sinCitas = t.texto.replace(/«[^»]*»|"[^"]*"|“[^”]*”/g, " ");
+    const sinCitas = quitarCitas(t.texto);
     const m = TUTEO_RE.exec(sinCitas);
     if (m) return mal("G_TONO_USTED", `tuteo "${m[0]}" en: ${t.texto.slice(0, 100)}`);
   }
