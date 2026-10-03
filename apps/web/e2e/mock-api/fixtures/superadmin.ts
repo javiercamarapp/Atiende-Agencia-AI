@@ -132,6 +132,9 @@ const CORRIDAS_AGENTES = [
 ];
 
 export const rutasSuperadmin: readonly Ruta[] = [
+  { metodo: "GET", patron: "/superadmin/impersonacion/activa", manejador: () => ({ available: true, session: null }) },
+  // Parte diario (/superadmin/parte-diario): sin resumenes generados todavia; la pagina pinta su vacio honesto.
+  { metodo: "GET", patron: "/superadmin/resumen", manejador: () => ({ disponible: true, resumenes: [] }) },
   { metodo: "GET", patron: "/superadmin/consola/resumen", manejador: () => resumenConsola() },
   { metodo: "GET", patron: "/superadmin/consola/agentes-actividad", manejador: () => agentesConsola() },
   { metodo: "GET", patron: "/superadmin/organizations", manejador: () => ({ organizations: organizaciones() }) },

@@ -43,7 +43,7 @@ rol (p.ej. restaurantes:data_chat)
 | `reportes:analisis_general` | `qwen/qwen3-235b-a22b-2507` (EE.UU.) -> `deepseek/deepseek-v4.1-flash` -> `openai/gpt-6-luna` | Etapa de análisis de reportes no financieros. |
 | `reportes:redaccion_financiero`, `reportes:redaccion_general` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` | Rutas separadas por tipo para que el eval decida (Qwen 3.7 Flash como candidato cuando tenga proveedor de EE.UU.). |
 | `plataforma:resumen_diario` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
-| `plataforma:enrutador_turno`, `plataforma:compuerta_escalamiento`, `plataforma:titulos_resumenes`, `plataforma:compactacion_historial` | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Roles pensados para Qwen 3.7 Flash; hoy NO se puede usar (ver política de proveedores). |
+| `plataforma:enrutador_turno`, `plataforma:compuerta_escalamiento`, `plataforma:titulos_resumenes`, `plataforma:compactacion_historial` | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Roles pensados para Qwen 3.7 Flash; hoy NO se puede usar (ver política de proveedores). Tienen llamador real desde MOD-12 (ver "Presupuesto del Copiloto y roles auxiliares"). |
 
 Parámetros por modelo en los defaults:
 
@@ -89,6 +89,35 @@ Parasail, CoreWeave, Groq).
   `compactacion_historial`) quedan con Luna -> DeepSeek V4.1 Flash. Cuando OpenRouter liste un proveedor de EE.UU.
   con ZDR para `qwen/qwen3.7-flash`, basta cambiar su fila de `VERIFIED_MODEL_HOSTS` y poner el modelo primero
   en esas rutas (o hacerlo por `LLM_MODELS_JSON` tras actualizar la tabla).
+
+## Presupuesto del Copiloto y roles auxiliares (CHAT-07, MOD-12)
+
+**Tope diario de turnos por rol.** Un turno es una llamada al gateway. `core.consume_llm_role_turn` cuenta por organización, rol y día de forma
+atómica (el turno N+1 se rechaza sin consumir). Defaults en `apps/api/src/production/llm-role-limits.ts` (Copiloto 400 llamadas/día, su reintento
+100, reportes 40 por rol, enrutador 600, compuerta 300, títulos 300, compactación 150); los agentes de WhatsApp no tienen tope diario. El superadmin
+puede dar un tope propio por organización y rol en Gasto de API (`PUT /superadmin/gasto-api/organizaciones/:id/topes-rol`, con step-up). Al agotarse, el
+Copiloto responde en modo sin IA (consultas directas). Un fallo de infraestructura al contar es *fail-open*: el tope mensual (fail-closed) sigue protegiendo el dinero.
+
+**Subtope del Copiloto.** Los roles `*:data_chat` y `*:data_chat_retry` no pasan del 30 % del tope mensual de su organización
+(`core.copiloto_subtope_pct()`), reservado antes de gastar bajo el mismo candado que los topes de organización y plataforma
+(`reserve_llm_monthly_budget` de 4 argumentos). Agotado el subtope, el Copiloto cae a modo sin IA; el resto del tope sigue disponible para los demás roles.
+
+**Costo por turno.** El motor escribe una fila de resumen del turno en `core.data_chat_query_log` con `costo_micro_usd` (suma exacta de lo que reportó
+el proveedor), `modelo`, `rol` y `route` (`llm`, `escalado`, `sin_ia`). El reporte de Gasto API por organización/rol/mes sale de `core.llm_usage_daily`
+(`GET /superadmin/gasto-api/por-rol`, con step-up).
+
+**Avisos al superadmin.** Al llegar al 80 % del tope mensual de una organización o de la plataforma (`superadmin.costo.ia_umbral`, una por
+organización/mes y una de plataforma/mes) y cuando más del 5 % de las llamadas de la última hora (mínimo 20) cayó a un modelo de respaldo
+(`superadmin.llm.fallback_alto`, una por hora).
+
+**Roles auxiliares (`plataforma:*`, todos apagables en Interruptores; apagado = comportamiento anterior).**
+
+- `enrutador_turno`: antes de la primera llamada clasifica la pregunta (BASE o ESCALAR); ESCALAR corre el turno directo en el modelo de reintento.
+- `compuerta_escalamiento`: tras rechazar la guardia de cifras, decide si vale la pena la llamada escalada o se muestra el texto determinista.
+- `titulos_resumenes`: titula una conversación nueva DESPUÉS de entregar la respuesta (nunca la bloquea; respaldo determinista; sin PII).
+- `compactacion_historial`: resume (sin cifras) la parte vieja de una conversación que pasa de ~1200 tokens; el resumen no se guarda.
+
+Todos reciben solo texto ya redactado (`redactPii`) y, ante cualquier fallo o respuesta ambigua, el flujo es el de siempre.
 
 ## Cómo cambiar un modelo (sin tocar código)
 

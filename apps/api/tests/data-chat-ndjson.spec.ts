@@ -68,7 +68,7 @@ async function licHarness(steps: ScriptStep[], over: Opts = {}) {
   const reader = new LicReader();
   const llm = scriptedCompletion(steps);
   const complete: DataChatCompletion = llm.complete;
-  const audit: Array<{ outcome: string }> = [];
+  const audit: Array<{ outcome: string; tool?: string | null; role?: string }> = [];
   const auditDbs: unknown[] = [];
   const readerDbs: unknown[] = [];
   const dataChat: DataChatDeps = {
@@ -143,7 +143,9 @@ describe("NDJSON: paso / fin", () => {
     const h = await licHarness([ABIERTAS, RESPUESTA]);
     await lines(await h.app.request(url(h), ndjsonReq(h.ctx.staff.owner.token, { question: "x" })));
     expect(h.abiertas.n).toBe(0);
-    expect(h.audit.map((a) => a.outcome)).toEqual(["ok"]);
+    // Una fila de la herramienta y (CHAT-07) la fila de resumen del turno, con el rol del gateway.
+    expect(h.audit.filter((a) => a.tool).map((a) => a.outcome)).toEqual(["ok"]);
+    expect(h.audit.filter((a) => !a.tool).map((a) => a.role)).toEqual(["licitaciones:data_chat"]);
     // readerDbs[0] = comprobacion previa con la sesion del request; readerDbs[1] = catalogo del turno.
     expect(h.readerDbs).toHaveLength(2);
     expect(h.readerDbs[1]).not.toBe(h.readerDbs[0]);

@@ -31,6 +31,10 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/acciones\/intents\/[^/]+\/confirmar$/, label: "confirmar accion sugerida" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/tope$/, label: "cambiar tope de gasto de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/plataforma\/tope$/, label: "cambiar tope de gasto de plataforma" },
+  // Gasto de IA por organizacion y rol (CHAT-07): leer el reporte y ver o cambiar el tope diario de turnos por rol.
+  { method: "GET", pattern: /^\/superadmin\/gasto-api\/por-rol$/, label: "leer el gasto de IA por organizacion y rol" },
+  { method: "GET", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "ver el tope diario de turnos por rol de una organizacion" },
+  { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/topes-rol$/, label: "cambiar el tope diario de turnos por rol de una organizacion" },
   { method: "POST", pattern: /^\/superadmin\/facturacion\/organizaciones\/[^/]+\/checkout$/, label: "crear checkout de suscripcion" },
   { method: "POST", pattern: /^\/superadmin\/mfa\/reset$/, label: "resetear MFA de otro superadmin" },
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },

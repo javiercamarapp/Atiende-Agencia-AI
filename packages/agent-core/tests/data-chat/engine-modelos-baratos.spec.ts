@@ -209,7 +209,7 @@ describe("cascada: SOLO si falla la guardia de cifras, exactamente UNA llamada e
     const a = await t.run();
     expect(a.text).toBe(BUENA);
     expect(retry.requests).toHaveLength(0);
-    expect(t.usos).toEqual([{ route: "barato", llmCalls: 2, escalated: false, costUsd: 0, model: "scripted/data-chat" }]);
+    expect(t.usos).toEqual([{ route: "barato", llmCalls: 2, escalated: false, costUsd: 0, costMicroUsd: 0, model: "scripted/data-chat" }]);
   });
 
   it("guardia rechazada y la escalada acierta: UNA llamada escalada y ruta escalado", async () => {
@@ -284,7 +284,7 @@ describe("cascada: SOLO si falla la guardia de cifras, exactamente UNA llamada e
     expect(a.status).toBe("ok");
     expect(retry.requests).toHaveLength(0);
     expect(t.llm.requests).toHaveLength(0);
-    expect(t.usos).toEqual([{ route: "directa", llmCalls: 0, escalated: false, costUsd: 0 }]);
+    expect(t.usos).toEqual([{ route: "directa", llmCalls: 0, escalated: false, costUsd: 0, costMicroUsd: 0 }]);
   });
 
   it("el costo reportado por el proveedor se suma entre la llamada barata y la escalada", async () => {
@@ -307,7 +307,7 @@ describe("cascada: SOLO si falla la guardia de cifras, exactamente UNA llamada e
       now: NOW,
       onUso: (u) => usos.push(u),
     });
-    expect(usos).toEqual([{ route: "escalado", llmCalls: 3, escalated: true, costUsd: 0.0008, model: "barato/m" }]);
+    expect(usos).toEqual([{ route: "escalado", llmCalls: 3, escalated: true, costUsd: 0.0008, costMicroUsd: 800, model: "barato/m" }]);
   });
 
   it("un onUso que lanza no tumba el turno", async () => {

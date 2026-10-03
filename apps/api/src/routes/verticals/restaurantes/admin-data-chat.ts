@@ -20,9 +20,10 @@ import { mountReporteRoutes } from "../../../data-chat/reporte-routes.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
+import { RESTAURANTES_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import { logUsoDataChat } from "../../../data-chat/uso-log.ts";
 import { mountPinsRoutes, type PinsTurnContext } from "../../../data-chat/pins.ts";
-import { NO_LLM_COMPLETION, directTurnOptions } from "../../../data-chat/turno.ts";
+import { NO_LLM_COMPLETION, auxiliaryTurnOptions, directTurnOptions } from "../../../data-chat/turno.ts";
 
 export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -76,7 +77,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     const userId = c.get("userId");
     // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
-    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "restaurantes" }, propertyId: c.req.param("propertyId") ?? null });
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, tool, signal: c.req.raw.signal, scope: { organizationId, userId, vertical: "restaurantes" }, propertyId: c.req.param("propertyId") ?? null });
     return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
       persist.finish(turnDb, label ?? question, tool, await runDataChatTurn({
         catalog: turn.catalogFor(turnDb)!,
@@ -86,13 +87,17 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
         ...directTurnOptions(dataChat, tool, toolArgs),
         complete: completion ? completion(organizationId) : NO_LLM_COMPLETION,
         ...(completion ? { completeRetry: completion(organizationId, `restaurantes:${DATA_CHAT_RETRY_SUFFIX}`) } : {}),
+        ...auxiliaryTurnOptions(dataChat, organizationId),
+        ...(persist.resumen ? { summary: persist.resumen } : {}),
         rateLimiter: dataChat.rateLimiter,
         audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
         onUso: logUsoDataChat(c, "restaurantes"),
+        auditRole: RESTAURANTES_DATA_CHAT_ROLE,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
       })),
+      persist.despuesDelCommit,
     );
   });
 

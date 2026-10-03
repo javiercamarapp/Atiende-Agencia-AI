@@ -59,10 +59,10 @@ import {
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { emitirNotificacion } from "@atiende/db";
-import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
+import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { DATA_CHAT_RETRY_SUFFIX, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -145,6 +145,12 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   REPORTE_ANALISIS_GENERAL_ROLE,
   REPORTE_REDACCION_FINANCIERO_ROLE,
   REPORTE_REDACCION_GENERAL_ROLE,
+  // MOD-12: roles auxiliares del Copiloto (enrutador de turno, compuerta de escalamiento, titulos de conversaciones, compactacion de historial).
+  // Cada uno tiene llamador real (data-chat/conversaciones.ts y el motor) y es apagable desde el panel de interruptores.
+  ENRUTADOR_TURNO_ROLE,
+  COMPUERTA_ESCALAMIENTO_ROLE,
+  TITULOS_RESUMENES_ROLE,
+  COMPACTACION_HISTORIAL_ROLE,
 ];
 
 /** Reintento por guardia de cifras: un rol "<vertical>:data_chat_retry" por cada rol de data-chat. */
@@ -257,6 +263,8 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
     orgMonthlyBudgetStore: new ProductionOrgMonthlyBudgetStore(engine),
+    // Tope diario de turnos por rol (CHAT-07): sin tope por defecto para los roles que no lo declaran.
+    roleTurnStore: new ProductionRoleDailyTurnStore(engine),
     // Interruptor de plataforma (kill switch por agente/global) -- opcional.
     killSwitch,
   });
