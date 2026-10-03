@@ -119,7 +119,20 @@ export interface WhatsAppOutboundDispatcherOptions {
   readonly now?: () => Date;
 }
 
-export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open" | "suppressed" | "skipped_suppression_unavailable" | "omitido_cuota";
+export type DispatchItemOutcome = "sent" | "retry" | "dead" | "skipped_circuit_open" | "suppressed" | "skipped_suppression_unavailable" | "omitido_cuota" | "omitido_opt_out";
+
+/** Motivo con que un proactivo de un cliente que pidio la BAJA de esa organizacion se marca no enviado (`error_class` del outbox). Sin reintento. */
+export const OPT_OUT_ERROR_CLASS = "omitido_opt_out";
+
+/** PL-32: decide si el cliente dio de baja los avisos proactivos de ESA organizacion (`true` = NO contactar). FAIL-CLOSED: si no
+ *  puede verificarlo debe LANZAR; el dispatcher entonces no envia y deja el mensaje para la siguiente corrida. */
+export type OptOutGuard = (organizationId: string, phone: string) => Promise<boolean>;
+
+/** PL-31: catalogo de plantillas por organizacion. `estaAprobada` dice si la organizacion tiene esa plantilla en estado aprobada.
+ *  Defensa de entrega, nunca de disponibilidad: si LANZA, el despachador la trata como no aprobada en el catalogo y decide la lista global. */
+export interface CatalogoPlantillas {
+  estaAprobada(organizationId: string, templateName: string): Promise<boolean>;
+}
 
 /** Motivo con que un mensaje suprimido se marca no enviado (`error_class` del outbox). Sin reintento. */
 export const SUPPRESSED_ERROR_CLASS = "suprimido";
@@ -159,6 +172,10 @@ export interface DispatchPendingOptions {
   readonly medidor?: MedidorMensajes;
   /** Sin guard (`undefined`) el comportamiento es el anterior a SA-L-46. */
   readonly suppression?: SuppressionGuard;
+  /** Sin guard (`undefined`) el comportamiento es el anterior a PL-32. Solo aplica a proactivos de mensajes con organizacion conocida. */
+  readonly optOut?: OptOutGuard;
+  /** Sin catalogo (`undefined`) decide solo la lista global de plantillas aprobadas del entorno (comportamiento anterior a PL-31). */
+  readonly plantillas?: CatalogoPlantillas;
 }
 
 export interface DispatchItemResult {
@@ -178,6 +195,8 @@ export interface DispatchSummary {
   readonly suppressed?: number;
   /** Proactivos omitidos por el tope de mensajes del plan (PL-16). Solo presente cuando es mayor que 0. */
   readonly omitidosCuota?: number;
+  /** Proactivos omitidos porque el cliente dio de baja los avisos de la organizacion (PL-32). Solo presente cuando es mayor que 0. */
+  readonly omitidosOptOut?: number;
   readonly items: readonly DispatchItemResult[];
 }
 
@@ -211,9 +230,10 @@ export class WhatsAppOutboundDispatcher {
     let skipped = 0;
     let suppressed = 0;
     let omitidosCuota = 0;
+    let omitidosOptOut = 0;
 
     for (const item of claimed) {
-      const result = await this.dispatchOne(port, item, opts.suppression, opts.medidor);
+      const result = await this.dispatchOne(port, item, opts.suppression, opts.medidor, opts.optOut, opts.plantillas);
       items.push(result);
       switch (result.outcome) {
         case "sent":
@@ -235,13 +255,23 @@ export class WhatsAppOutboundDispatcher {
         case "omitido_cuota":
           omitidosCuota++;
           break;
+        case "omitido_opt_out":
+          omitidosOptOut++;
+          break;
       }
     }
 
-    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, ...(suppressed > 0 ? { suppressed } : {}), ...(omitidosCuota > 0 ? { omitidosCuota } : {}), items };
+    return { label: port.label, claimed: claimed.length, sent, retried, dead, skipped, ...(suppressed > 0 ? { suppressed } : {}), ...(omitidosCuota > 0 ? { omitidosCuota } : {}), ...(omitidosOptOut > 0 ? { omitidosOptOut } : {}), items };
   }
 
-  private async dispatchOne(port: MessagingOutboxPort, item: MessagingOutboxItem, suppression: SuppressionGuard | undefined, medidor: MedidorMensajes | undefined): Promise<DispatchItemResult> {
+  private async dispatchOne(
+    port: MessagingOutboxPort,
+    item: MessagingOutboxItem,
+    suppression: SuppressionGuard | undefined,
+    medidor: MedidorMensajes | undefined,
+    optOut: OptOutGuard | undefined,
+    plantillas: CatalogoPlantillas | undefined,
+  ): Promise<DispatchItemResult> {
     let payload: ValidWhatsAppOutboxPayload;
     try {
       payload = parseWhatsAppOutboxPayload(item.payload);
@@ -266,6 +296,22 @@ export class WhatsAppOutboundDispatcher {
       if (suprimido) {
         await port.markDead(item.id, item.attempts + 1, SUPPRESSED_ERROR_CLASS);
         return { id: item.id, outcome: "suppressed" };
+      }
+    }
+
+    // PL-32: baja (BAJA/STOP) del cliente a ESTA organizacion, solo para avisos proactivos. Lo transaccional que el cliente pidio
+    // en la conversacion abierta NUNCA se bloquea. FAIL-CLOSED igual que la supresion.
+    if (optOut && item.organizationId && !payload.transaccional) {
+      let dadoDeBaja: boolean;
+      try {
+        dadoDeBaja = await optOut(item.organizationId, payload.to);
+      } catch (optErr) {
+        console.error("whatsapp-dispatcher: lectura del opt-out fallo (fail-closed)", (optErr as { code?: unknown })?.code ?? null, optErr instanceof Error ? optErr.name : typeof optErr);
+        return { id: item.id, outcome: "skipped_suppression_unavailable", error: "opt_out_no_verificable" };
+      }
+      if (dadoDeBaja) {
+        await port.markDead(item.id, item.attempts + 1, OPT_OUT_ERROR_CLASS);
+        return { id: item.id, outcome: "omitido_opt_out", error: OPT_OUT_ERROR_CLASS };
       }
     }
 
@@ -300,8 +346,18 @@ export class WhatsAppOutboundDispatcher {
       }
     }
 
+    // PL-31: la organizacion declara en su catalogo que plantillas tiene aprobadas en Meta. Una consulta fallida cae a la lista global.
+    let templateApproved = false;
+    if (payload.template && plantillas && item.organizationId) {
+      try {
+        templateApproved = await plantillas.estaAprobada(item.organizationId, payload.template.name);
+      } catch (catErr) {
+        console.error("whatsapp-dispatcher: lectura del catalogo de plantillas fallo (se usa la lista global)", (catErr as { code?: unknown })?.code ?? null, catErr instanceof Error ? catErr.name : typeof catErr);
+      }
+    }
+
     try {
-      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}) });
+      await this.graphClient.sendMessage({ to: payload.to, phoneNumberId: payload.phone_number_id, body: payload.body, buttons: payload.buttons, ...(payload.template ? { template: payload.template } : {}), ...(templateApproved ? { templateApproved: true } : {}) });
       await this.breaker?.reportSuccess(payload.phone_number_id);
       await port.markSent(item.id);
       if (medidor && medicion) {
