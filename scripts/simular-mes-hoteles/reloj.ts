@@ -12,14 +12,14 @@ export class RelojSimulado {
   }
 
   instalar(): void {
-    const reloj = this;
+    const ahoraSimulado = (): number => this.#ms;
     class FechaSimulada extends RealDate {
       constructor(...args: unknown[]) {
-        if (args.length === 0) super(reloj.#ms);
+        if (args.length === 0) super(ahoraSimulado());
         else super(...(args as [number]));
       }
       static override now(): number {
-        return reloj.#ms;
+        return ahoraSimulado();
       }
     }
     (globalThis as unknown as { Date: DateConstructor }).Date = FechaSimulada as unknown as DateConstructor;

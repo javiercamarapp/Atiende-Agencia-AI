@@ -63,6 +63,18 @@ export interface TarifaCitada {
   readonly fuente: string;
 }
 
+/** Bug real o hueco que la simulacion expuso. No es un assert fallido: el simulador lo registra, sigue por el camino alterno y lo reporta. */
+export interface Hallazgo {
+  readonly id: string;
+  readonly severidad: "alta" | "media" | "baja";
+  readonly titulo: string;
+  readonly evidencia: string;
+  /** Dias (1..N) en que se reprodujo. */
+  readonly dias: readonly number[];
+  /** Camino alterno que uso el simulador para poder seguir (vacio si no hizo falta). */
+  readonly caminoAlterno: string;
+}
+
 export interface Ledger {
   readonly version: typeof LEDGER_VERSION;
   readonly corrida: string;
@@ -71,6 +83,7 @@ export interface Ledger {
   readonly propiedad: { readonly habitaciones: number; readonly tipos: number };
   readonly tarifas: Readonly<Record<string, TarifaCitada>>;
   readonly dias: readonly DiaLedger[];
+  readonly hallazgos: readonly Hallazgo[];
   readonly resumen: {
     readonly dias: number;
     readonly eventos: number;
@@ -167,6 +180,12 @@ export function validarLedger(crudo: unknown): string[] {
       });
     }
     esperado += 1;
+  }
+  if (!Array.isArray(crudo.hallazgos)) errores.push("hallazgos: arreglo requerido (puede ser vacio)");
+  else {
+    crudo.hallazgos.forEach((h: unknown, i: number) => {
+      if (!esObjeto(h) || typeof h.id !== "string" || !["alta", "media", "baja"].includes(String(h.severidad)) || typeof h.titulo !== "string" || typeof h.evidencia !== "string" || h.evidencia.length === 0 || !Array.isArray(h.dias) || typeof h.caminoAlterno !== "string") errores.push(`hallazgos[${i}]: {id, severidad, titulo, evidencia, dias[], caminoAlterno} requeridos`);
+    });
   }
   if (!esObjeto(crudo.resumen)) errores.push("resumen: objeto requerido");
   else {

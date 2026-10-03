@@ -31,6 +31,7 @@ function ledgerValido(): Ledger {
     propiedad: { habitaciones: 40, tipos: 4 },
     tarifas: { whatsapp_mensaje_saliente: { usd: null, estado: "sin_verificar", fuente: "sin fuente primaria" } },
     dias,
+    hallazgos: [{ id: "H1", severidad: "alta", titulo: "x", evidencia: "y", dias: [1, 2], caminoAlterno: "ruta manual" }],
     resumen: { dias: 2, eventos: 2, costoTotalUsd: 0.005, costoSinVerificarUnidades: { whatsapp: 4 }, asserts: { total: 2, fallidos: 0 } },
   };
 }
@@ -71,6 +72,14 @@ describe("validarLedger", () => {
     const l = ledgerValido();
     const roto = { ...l, tarifas: { pac: { usd: null, estado: "calculado", fuente: "x" } } };
     expect(validarLedger(roto).join("\n")).toContain("sin precio solo puede ser sin_verificar");
+  });
+
+  it("exige la lista de hallazgos y que cada uno traiga evidencia", () => {
+    const l = ledgerValido();
+    const { hallazgos: _h, ...sin } = l;
+    expect(validarLedger(sin).join("\n")).toContain("hallazgos: arreglo requerido");
+    expect(validarLedger({ ...l, hallazgos: [{ ...l.hallazgos[0]!, evidencia: "" }] }).join("\n")).toContain("hallazgos[0]");
+    expect(validarLedger({ ...l, hallazgos: [] })).toEqual([]);
   });
 
   it("el resumen debe coincidir con los dias (eventos, costo y asserts)", () => {
