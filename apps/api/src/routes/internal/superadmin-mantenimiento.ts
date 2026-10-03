@@ -14,7 +14,7 @@
 // NUNCA envían nada por sí solas -- solo devuelven filas a `pending`/anotan
 // un prospecto, dejando el trabajo real (enviar/decidir) a los dispatchers y
 // al superadmin humano respectivamente.
-import { isUndefinedFunctionError } from "@atiende/db";
+import { emitirNotificacion, isUndefinedFunctionError } from "@atiende/db";
 import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
@@ -29,6 +29,9 @@ const UMBRAL_OUTBOX_MINUTOS = 30;
 /** Umbral de "sin movimiento" para marcar seguimiento -- MISMO valor que
  *  `ejecutar_mantenimiento_ahora`. */
 const UMBRAL_PROSPECTOS_DIAS = 14;
+
+/** Evento del catalogo de notificaciones que emite la funcion de sistema del aviso (el texto vive en la base; ver 0052). */
+const EVENTO_ORGANIZACION_LISTA = "superadmin.organizacion.onboarding_listo";
 
 /** Path EXACTO usado tanto en `vercel.json::crons` como en `withHeartbeat`. */
 export const SUPERADMIN_MANTENIMIENTO_CRON_PATH = "/internal/superadmin/mantenimiento";
@@ -86,12 +89,37 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
         }
       }
 
+      // Aviso 'organizacion lista' (SA-18, evento EVENTO_ORGANIZACION_LISTA): la funcion de SISTEMA core.avisar_organizaciones_listas_for_system
+      // (0052) marca (core.org_onboarding_aviso, PK por organizacion) las que completaron su checklist y devuelve cuales avisar; aqui se emite UNA
+      // notificacion de plataforma por cada una con el productor compartido, EN LA MISMA TRANSACCION: si una emision falla se lanza y la
+      // transaccion revierte todo (marcador incluido), asi que se reintenta en la siguiente corrida y nunca queda una organizacion marcada sin aviso.
+      // Nunca desde un GET: "listo" es un estado y un GET lo reemitiria. Sesion de sistema PROPIA y best-effort: un fallo (o la 0052 sin aplicar)
+      // no altera el resto del cron.
+      let organizacionesAvisadas: number | null = null;
+      const orgFichaRepo = deps.orgFichaRepo;
+      if (orgFichaRepo) {
+        try {
+          organizacionesAvisadas = await deps.engine.withAppSession({ userId: null }, async (db) => {
+            const listas = await orgFichaRepo(db).avisarListasForSystem();
+            if (!listas.ok) return null;
+            for (const organizationId of listas.data) {
+              const emision = await emitirNotificacion(db, { evento: EVENTO_ORGANIZACION_LISTA, organizationId: null, clave: organizationId, entidadTipo: "organization", entidadId: organizationId });
+              if (emision.estado !== "emitida" && emision.estado !== "sin_nuevas") throw new Error(`aviso_organizacion_lista_${emision.estado}`);
+            }
+            return listas.data.length;
+          });
+        } catch (err) {
+          logEvent(c, "warn", "superadmin_mantenimiento_aviso_org_lista_fallo", { sqlstate: err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "desconocido" });
+        }
+      }
+
       return c.json({
         ok: true,
         outbox: outbox.map((q) => ({ queue: q.queueName, aplica: q.aplica, filasMovidas: q.filasMovidas, motivo: q.motivo })),
         filasDesatascadas,
         prospectosMarcados: prospectos.length,
         ...(agentRunRepo ? { corridasPurgadas } : {}),
+        ...(orgFichaRepo ? { organizacionesAvisadas, eventoOrganizacionLista: EVENTO_ORGANIZACION_LISTA } : {}),
       });
     })();
   });

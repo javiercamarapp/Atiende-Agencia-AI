@@ -74,7 +74,6 @@ export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
   { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
   { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
-  { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
   { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
   { to: "/superadmin/pyl", label: "P&L por vertical", icon: ReceiptText },
   { to: "/superadmin/contratos", label: "Contratos por cliente", icon: FileSignature },
@@ -139,6 +138,8 @@ export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/not
 /** Rutas web que cambiaron de lugar: la vieja redirige a la nueva (sin 404). */
 export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
   "/superadmin/resumen": "/superadmin",
+  // SA-L-20: la gestion de organizaciones es la pestana "Gestion" de Organizaciones (sin 404 en enlaces y notificaciones viejas).
+  "/superadmin/gestion-organizaciones": "/superadmin/organizaciones?tab=gestion",
   // Prospectos pasa a "Cerebro de ventas" (SA-L-37): la ruta vieja redirige a la nueva.
   "/superadmin/prospectos": "/superadmin/cerebro",
 };
