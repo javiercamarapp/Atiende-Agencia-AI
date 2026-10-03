@@ -15,7 +15,7 @@ test.describe("superadmin @humo", () => {
     // SA-L-01: el listado de organizaciones ya no es la raiz; vive en su propia ruta.
     await page.goto("/superadmin/organizaciones");
     await afirmarPantallaSana(page, "organizaciones");
-    await expect(page.getByText("Taqueria El Faro")).toBeVisible();
+    await expect(page.locator("[data-org-id]").filter({ hasText: "Taqueria El Faro" })).toBeVisible();
     await recorrerSecciones(page, { minimo: 18 });
     vigilante.verificar();
   });
@@ -35,6 +35,53 @@ test.describe("superadmin @humo", () => {
     // La ruta vieja redirige sin 404.
     await page.goto("/superadmin/resumen");
     await expect(page).toHaveURL(/\/superadmin$/);
+    vigilante.verificar();
+  });
+
+  test("organizaciones: tabla con metricas y 'Entrar' con motivo (Cancelar y Escape no escriben), ficha 360, 404 honesto y pestana Gestion", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("superadmin");
+    await page.goto("/superadmin/organizaciones");
+    await afirmarPantallaSana(page, "organizaciones");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    // Tabla (tarjetas en movil): una fila por organizacion con las columnas reales; despachos no tiene operaciones medibles ("—", no "0").
+    const fila = page.locator("[data-org-id]").filter({ hasText: "Taqueria El Faro" });
+    await expect(fila).toBeVisible();
+    if ((page.viewportSize()?.width ?? 0) >= 768) {
+      const tabla = page.getByRole("table", { name: "Organizaciones" });
+      for (const col of ["Organización", "Plan", "Operaciones 30 d", "Costo IA 30 d", "Margen", "Onboarding"]) await expect(tabla.getByRole("columnheader", { name: new RegExp(col) })).toBeVisible();
+    }
+    await expect(page.locator('[data-org-id]:has-text("Sin fuente: despachos")').first()).toBeAttached();
+    await expect(page.getByTestId("hbars")).toBeVisible();
+    if ((page.viewportSize()?.width ?? 0) >= 640) await expect(page.getByTestId("odometro")).toBeVisible();
+
+    // "Entrar" abre el dialogo con motivo; Cancelar y Escape NO escriben; con un motivo corto el boton queda bloqueado.
+    const entrar = page.getByRole("button", { name: /^Entrar a Taqueria El Faro/ }).first();
+    await afirmarCancelarNoEscribe(page, mock, entrar, { nombre: /Entrar a /, verificarFoco: false });
+    await entrar.click();
+    const dialogo = page.getByRole("alertdialog", { name: /Entrar a / });
+    await dialogo.getByLabel(/Motivo/).fill("corto");
+    await expect(dialogo.getByRole("button", { name: "Abrir sesión" })).toBeDisabled();
+    expect(await mock.escrituras()).toEqual([]);
+    await dialogo.getByRole("button", { name: "Cancelar" }).click();
+
+    // Ficha 360 de la organizacion.
+    await page.getByRole("link", { name: /^Ficha de Taqueria El Faro/ }).first().click();
+    await expect(page).toHaveURL(/\/superadmin\/organizaciones\/[^/]+$/);
+    await afirmarPantallaSana(page, "ficha de organizacion");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Taqueria El Faro/);
+    for (const titulo of ["Uso · últimos 30 días", "Costo"]) await expect(page.getByRole("heading", { level: 2, name: titulo, exact: true })).toBeVisible();
+    for (const titulo of ["Membresías", "Últimos errores", "Facturación y contrato"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Onboarding · \d+\/\d+$/)).toBeVisible();
+    await expect(page.getByText("No se pudo medir").or(page.getByText("Pendiente")).first()).toBeVisible();
+
+    // Una organizacion inexistente: 404 honesto, no una pantalla en blanco.
+    await page.goto("/superadmin/organizaciones/00000000-0000-4000-8000-000000000000");
+    await expect(page.getByText("No encontramos esta organización")).toBeVisible();
+
+    // La ruta vieja de gestion redirige a la pestana, sin 404; la pestana monta la gestion de siempre.
+    await page.goto("/superadmin/gestion-organizaciones");
+    await expect(page).toHaveURL(/\/superadmin\/organizaciones\?tab=gestion$/);
+    await expect(page.getByRole("button", { name: /Alta de organización/ })).toBeVisible();
     vigilante.verificar();
   });
 

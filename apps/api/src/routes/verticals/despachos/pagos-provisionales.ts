@@ -41,6 +41,7 @@ import {
 } from "@atiende/domain-despachos";
 import type { CarteraRepository, ClienteFichaRecord, FacturaLigable, FacturaParaPago, PagosProvisionalesRepository, PapelGuardado, PapelProvisional } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { reporteAPdf } from "./reporte-pdf.ts";
@@ -342,6 +343,8 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
     const propertyId = c.req.param("propertyId");
     const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(deps.despachosRepo(c.get("db")), propertyId));
     const reporte = construirReportePagosProvisionales(x.papel, { nombre: x.ficha.razonSocial, rfc: x.ficha.rfc, generadoEn: hoy });
+    // D-38: export del papel de trabajo (PDF/XLSX) -> fila de bitacora (periodo y formato; sin montos ni RFC).
+    await auditarAccesoDespachos(deps, c, { recurso: "pagos_provisionales.papel", tipo: "export", metadata: { periodo, formato } });
     const cabeceras = { "content-disposition": `attachment; filename="pagos-provisionales-${periodo}.${formato}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" };
     if (formato === "xlsx") return new Response(reporteAXlsx(reporte), { headers: { ...cabeceras, "content-type": XLSX_CONTENT_TYPE } });
     return new Response(await reporteAPdf(reporte), { headers: { ...cabeceras, "content-type": "application/pdf" } });

@@ -20,6 +20,7 @@ import {
   ListChecks,
   Lock,
   MessageSquare,
+  MessageCircle,
   Mic,
   Settings,
   ShieldCheck,
@@ -140,7 +141,11 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     // de gestión, no de operación.
     sections.push({
       title: "Agente",
-      items: [{ to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic }],
+      items: [
+        { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
+        // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
+        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+      ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
     // ver apps/api/src/routes/verticals/restaurantes/auditoria.ts) -- reusa el mismo `canSeeStaff`

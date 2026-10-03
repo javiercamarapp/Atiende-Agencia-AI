@@ -301,7 +301,7 @@ export interface CancellationPolicyRecord {
 export type { ReservationStatus } from "./reservationStateMachine.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Fase 2 — agente de voz (ElevenLabs) y agente de mensajería/WhatsApp con LLM
+// Fase 2 — agente de voz (hoy sobre @atiende/voice-core) y agente de mensajería/WhatsApp con LLM
 // real (ver diseño Fase 2 hoteles §1-§3). Estos tipos son NUEVOS: ningún
 // dominio de WhatsApp/voz existía en domain-hoteles Fase 1 (a diferencia de
 // domain-restaurantes, que ya traía whatsapp/* completo).
@@ -317,7 +317,7 @@ export interface ConversationMessage {
   readonly content: string;
 }
 
-/** Secreto dedicado por PROPERTY para las Server Tools de voz de ElevenLabs —
+/** Secreto dedicado por PROPERTY para las herramientas de voz (las llama el worker de voice-core; antes ElevenLabs) —
  *  decisión explícita del diseño Fase 2 §1/§5.1: a diferencia de
  *  restaurantes (secreto compartido de plataforma, `VOICE_TOOL_SECRET`), aquí
  *  se replica el patrón real del origen (`hotel_voice_agent_config`), porque

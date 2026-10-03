@@ -25,17 +25,8 @@ export type VozConfigInput = VozConfig;
 /** Proveedor con el que el panel guarda la configuración (las voces del catálogo son de Gemini). */
 export const PROVEEDOR_VOZ_PANEL = "gemini-3.8-live";
 
-/** Sesión de vista previa emitida por la API: tokens efímeros y de un solo uso, nunca una API key. */
-export interface SesionPreviewVoz {
-  readonly sesionId: string;
-  readonly proveedor: string;
-  readonly modelo: string;
-  readonly voiceId: string;
-  readonly websocketUrl: string;
-  readonly tokenProveedor: string;
-  readonly tokenPreview: string;
-  readonly expiraEn: string;
-}
+export type { SesionPreviewVoz } from "../../../lib/voz/tipos.ts";
+import type { SesionPreviewVoz } from "../../../lib/voz/tipos.ts";
 
 /** Valores reales del API (`VOZ_RESULTADOS`). */
 export type ResultadoConversacion = "pedido_creado" | "escalado" | "abandonado";

@@ -37,12 +37,12 @@ literal del índice único parcial anti-doble-captura de night-audit
 charge.transfer|folio.split|payment.create` — mismo patrón que
 `restaurantes.create_order_idempotent`, cada vertical mantiene su propia tabla.
 
-Explícitamente fuera de Fase 1 (ver diseño Fase 1 §6): agente de voz ElevenLabs,
+Explícitamente fuera de Fase 1 (ver diseño Fase 1 §6): agente de voz,
 dashboards de KPIs/ROI/P&L, panel de superadmin, `mensajeria.ts`/`agent-core` completo
 de hoteles, máquina de estados completa de reservas, housekeeping, night-audit, CFDI,
 identidad/MRZ, fraude, reputación, UGC, disponibilidad como ruta propia.
 
-## Fase 2 — agente de voz (ElevenLabs) + agente de WhatsApp con LLM real
+## Fase 2 — agente de voz + agente de WhatsApp con LLM real (la voz pasó a `@atiende/voice-core`, ver "Voz de hoteles" abajo)
 
 Construido sobre el diseño Fase 2 hoteles (ver conversación de diseño — hallazgo
 central: el agente conversacional real del origen, `recepcion_virtual`, tiene un
@@ -71,9 +71,9 @@ dominio construido en atiende-fusion):
 - `contacto-no-operativo.ts` — mismo rol que `registerCallbackRequest` de
   restaurantes.
 
-Server Tools HTTP de voz en `apps/api/src/routes/verticals/hoteles/voice-tools.ts`
-(`POST .../voz/tickets-fnb`, `POST .../voz/contacto-no-operativo`) — este es el
-patrón OFICIAL de voz del monorepo (ver docs/CREDENCIALES.md §"Voz (ElevenLabs)").
+Rutas HTTP de voz en `apps/api/src/routes/verticals/hoteles/voice-tools.ts`
+(`POST .../voz/tickets-fnb`, `POST .../voz/contacto-no-operativo`, `POST .../voz/reservas/:herramienta`),
+que ejecuta el worker de `voice-core` (ver "Voz de hoteles" abajo; ya no ElevenLabs).
 Divergencia deliberada de restaurantes: el secreto es **por property**
 (`hoteles.voice_agent_config`, tabla + endpoint de rotación en `voice-tools.ts`), no
 compartido de plataforma — el origen real documenta el aislamiento por tenant como
@@ -456,3 +456,48 @@ Modelo SQL en `migrations/038_hoteles_recepcion_ficha_huesped.sql`: `hoteles.gue
 habitación apta, bitácora, advisory lock por habitación) y `guest_has_arco_restriction` (solo un booleano). Verificación contra Postgres
 real: `scripts/verify-hoteles-recepcion-ficha/`. Fuera de esta entrega: cambio de habitación a OTRA categoría (mueve inventario y tarifa: es una
 reserva nueva), edición del perfil del huésped (la rectificación sigue el flujo ARCO) y exportación de datos del huésped (H-30).
+
+
+## Voz de hoteles (`src/voz/`, sobre `@atiende/voice-core`)
+
+Hoteles conserva SU agente de voz (persona, prompt, herramientas y guardias propias) y lo monta en el esqueleto compartido: LiveKit + Gemini Live
+(`gemini-3.8-live`), respaldo automático en cascada OpenRouter (STT -> Gemini por texto vía el gateway -> TTS) y, si ninguno abre, persona/buzón con
+callback. **Sin ElevenLabs ni gpt-live.** El motor, el modelo y el precio por minuto son los de la plataforma (`VOZ_PLATAFORMA` en voice-core): hoteles
+no elige proveedor, así que el costo por minuto es el mismo que en restaurantes.
+
+### Ciclo de una llamada
+
+1. **Inicio**: el worker (aún no existe en el repo, hueco compartido con restaurantes) lee el `From` del SIP y lo canonicaliza
+   (`canonicalizarTelefonoHoteles`; sin número = llamante anónimo, solo consultas), carga `hoteles.voice_agent_config` (agente encendido + secreto de la
+   property) y arma el `ControladorLlamada` con `crearEscaleraPlataforma`, la instrucción `instruccionVozHotel` y los pregrabados
+   `mensajesPregrabadosHotel`. Si el agente está apagado o hay tope mensual, NO se abre sesión con el proveedor (no cuesta): pregrabado + callback.
+2. **Herramientas** (`registro-tools.ts`): las 6 de reservas H-25 (`consultar_disponibilidad`, `cotizar_estancia`, `crear_pre_reserva`,
+   `estado_pre_reserva`, `cancelar_pre_reserva`, `derivar_a_humano`; el MISMO catálogo y la misma lógica que WhatsApp) más `crear_ticket_huesped_fnb` y
+   `registrar_contacto_no_operativo`. SOLO corre lo que el registro declara. Cada una llega al servidor por `transporteHttpHoteles` (rutas
+   `/v1/hoteles/:propertyId/voz/...`, secreto POR PROPERTY en cabecera, telefono del SIP inyectado por el transporte: nunca el que escriba el modelo). La
+   lógica de servidor vive en `tools-servidor.ts` y la ejecutan igual las rutas y el simulador.
+3. **Máquina de la reserva** (`maquina-reserva.ts`, una por llamada; defensa en profundidad, el servidor y la base vuelven a aplicar todo): no se
+   aparta sin `cotizar_estancia` OK del mismo tipo y fechas y con el total EXACTO cotizado; una sola pre-reserva por llamada (grupos o más de una
+   habitación pasan a una persona); no se cancela sin haber visto el estado de esa pre-reserva. El agente NUNCA confirma una reserva: solo aparta (hold) y
+   una persona la aprueba o el pago la confirma. `crear_pre_reserva` cierra la llamada como `pre_reserva_creada`; `derivar_a_humano` como `escalado`.
+4. **Cierre y costo**: la escalera lleva los tramos por escalón; la vertical llama `eventosCostoLlamada` y `PostgresCostoVozRepository.registrarCostoLlamada`
+   (`core.record_usage_cost_event`, vertical 'hoteles' la fija la base; un evento por escalón con `proveedor` = desglose). Con la base sin la migración 0028
+   el costo queda "no disponible aún" (SAVEPOINT; nunca un 500).
+5. **Panel**: `GET /hoteles/:propertyId/voz/estado` (credenciales por escalón, precio por minuto, vista previa disponible o el motivo) y
+   `POST /hoteles/:propertyId/voz/preview/sesion` (token efímero de Gemini + token propio firmado). La vista previa no llama herramientas.
+
+### Simulador y prueba ciega
+
+`@atiende/domain-hoteles/voz/simulador` corre 13 guiones es-MX (camino feliz, cambio de fechas, cancelación, cancelar reserva confirmada, sin
+disponibilidad, tarifa fuera de guardia, pide humano por DTMF y por voz, fuera de horario, dato ambiguo, abuso, llamante anónimo, pedido F&B con alergia)
+contra el núcleo real de voice-core y el motor real de reservas en memoria, con el proveedor falso y 13 graders deterministas
+(`tests/voz/simulador-guiones.spec.ts`, en CI). Datos de prueba (hotel, tarifas, fechas) inventados para el arnés.
+
+### Huecos conocidos
+
+- Sin worker de telefonía (LiveKit SIP): ningún agente atiende llamadas reales todavía.
+- Sin tabla de llamadas de hoteles (`hoteles.voice_conversation`) ni `core.voice_call`: no se persisten transcripciones ni resultados por llamada, y por eso
+  los KPI/alertas de `kpi.ts` de voice-core aún no tienen de dónde leer en hoteles. El costo SÍ va a `core.usage_cost_event`. Siguiente paso: migración
+  con la tabla genérica.
+- El prompt y la voz del agente no son editables por hotel (la config guardada de H-29 es encendido + secreto): la vista previa usa `instruccionVozHotel`.
+- El protocolo de Gemini Live y los formatos STT/TTS de OpenRouter se probaron con dobles (WebSocket y `fetch` falsos), no contra las APIs reales.

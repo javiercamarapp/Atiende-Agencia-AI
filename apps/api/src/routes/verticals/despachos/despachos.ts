@@ -33,6 +33,7 @@ import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
 import { despachosCfdiEstatusSatRoutes } from "./cfdi-estatus-sat.ts";
 import { despachosCfdiLoteRoutes } from "./cfdi-lote.ts";
 import { despachosCronSatRoutes } from "./cron-sat.ts";
+import { despachosBitacoraRoutes } from "./bitacora.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -93,5 +94,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosColaCobranzaRoutes(deps));
   // D-26/D-27/D-28 -- crons de estatus SAT de CFDI, descarga mensual de la 69-B y barrido diario de vencimientos, ver cron-sat.ts.
   app.route("/", despachosCronSatRoutes(deps));
+  // D-38 -- bitacora de lecturas, descargas y exportaciones (solo admin y auditor con alcance de toda la organizacion), ver bitacora.ts.
+  app.route("/", despachosBitacoraRoutes(deps));
   return app;
 }

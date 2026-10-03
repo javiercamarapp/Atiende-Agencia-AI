@@ -136,13 +136,19 @@ const rutasCierre: readonly Ruta[] = [
     patron: "/auth/step-up",
     manejador: (p) => {
       const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
-      if (c.scope !== "expediente_approval") return fallo(400, "scope desconocido.");
+      // `despachos_sensitive` (D-30): mismas reglas del segundo factor para las acciones sensibles del despacho.
+      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },
   },
   { metodo: "GET", patron: `${L}/tenders/:tid`, manejador: (p) => CONVOCATORIAS.find((c) => c.id === p.params["tid"]) ?? fallo(404, "Convocatoria no encontrada.") },
-  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: () => ({ items: [] }) },
+  // L-33: tnd-1 trae requisitos extraidos por IA (`llm`) y por reglas; tnd-2 solo por reglas (el aviso de IA NO debe aparecer).
+  { metodo: "GET", patron: `${L}/tenders/:tid/requirements`, manejador: (p) => ({ items: requisitosMock(p.params["tid"] ?? "") }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/proposal`, manejador: (p) => ({ id: `prop-${p.params["tid"]}`, tenderId: p.params["tid"], title: "Propuesta", ivaRate: 0.16, economicTotals: null, generationReport: null, correlationId: null, createdAt: "2026-09-30T15:00:00.000Z" }) },
+  { metodo: "GET", patron: `${L}/tenders/:tid/junta`, manejador: (p) => juntaMock(p.params["tid"] ?? "") },
+  // L-20: privacidad de la organizacion (PL-13), solo owner/admin. Solo existe en la API simulada de e2e.
+  { metodo: "GET", patron: "/v1/privacidad/resumen", roles: ["owner", "admin"], manejador: () => resumenPrivacidadMock() },
   { metodo: "GET", patron: `${L}/tenders/:tid/checklist`, manejador: () => ({ overallStatus: "verde", items: [{ id: "chk-1", dimension: "formato", result: "verde", notes: "Todos los archivos cumplen el formato del portal.", evidenceRef: null }] }) },
   { metodo: "GET", patron: `${L}/tenders/:tid/package/latest`, manejador: (p) => {
       const paquete = presentacionMock(p).paquete;
@@ -293,6 +299,38 @@ const rutasSalaGuerra: readonly Ruta[] = [
     },
   },
 ];
+
+function requisitosMock(tenderId: string): unknown[] {
+  const base = { documentId: "doc-1", requirementKind: "tecnico", obligatoriedad: "obligatorio", topicKey: null, requiredEvidence: [], page: 3, clause: "6.2", responsibleRole: "analyst", deadline: null, status: "pendiente" };
+  const porReglas = { ...base, id: "req-regla", text: "Presentar acta constitutiva vigente.", extractedBy: "rule", confidence: null };
+  if (tenderId !== "tnd-1") return [porReglas];
+  return [{ ...base, id: "req-llm", text: "Acreditar experiencia en obra vial de al menos 3 anos.", extractedBy: "llm", confidence: 0.82 }, porReglas];
+}
+
+function juntaMock(tenderId: string): unknown {
+  const pregunta = (id: string, origin: "manual" | "agente") => ({ id, questionText: `Se aceptan contratos estatales como experiencia comprobable? (${id})`, baseReference: "6.2", topic: "tecnico", priority: "alta", origin, draftMissingData: [], status: "borrador", createdAt: "2026-09-30T10:00:00.000Z", approvedAt: null, sentAt: null, sentReference: null, answerText: null, answerActaReference: null, answeredAt: null, discardReason: null });
+  return {
+    available: true,
+    now: AHORA_MOCK,
+    config: { questionsDeadlineAt: "2026-10-10T17:00:00.000Z", meetingAt: "2026-10-12T17:00:00.000Z", actaReference: null },
+    questions: [pregunta("q-1", tenderId === "tnd-1" ? "agente" : "manual")],
+    summary: { counts: { borrador: 1, aprobada: 0, enviada: 0, respondida: 0, descartada: 0 }, pendingToSend: 1, questionsDeadline: { at: "2026-10-10T17:00:00.000Z", semaphore: { color: "verde", state: "en_tiempo", hoursRemaining: 200 } }, meetingAt: "2026-10-12T17:00:00.000Z" },
+    reminders: [],
+    portalSubmission: false,
+  };
+}
+
+function resumenPrivacidadMock(): unknown {
+  return {
+    disponible: true,
+    plazos: { respuestaDias: 20, ejecucionDias: 15, porVencerDias: 5 },
+    arco: { total: 1, solicitudes: [{ vertical: "hoteles", id: "aaaaaaaa-1111-4111-8111-111111111111", referencia: "AAAAAAAA", derecho: "acceso", canal: "web", estado: "abierta", estadoOriginal: "recibida", abiertaEnMs: Date.UTC(2026, 8, 1), respuestaVenceEnMs: null, ejecucionVenceEnMs: null, resueltaEnMs: null, abierta: true, plazo: { estado: "en_plazo", diasRestantes: 12, venceEnMs: null } }] },
+    retencion: [{ claseDato: "restaurantes_whatsapp_conversaciones", vertical: "restaurantes", descripcion: "Mensajes de las conversaciones de WhatsApp.", ejecuta: "plataforma", defectoDias: 180, minimoDias: 30, maximoDias: 1095, diasEfectivos: 180, origen: "defecto" }],
+    bloqueos: [],
+    purgas: [],
+    avisos: [],
+  };
+}
 
 export const rutasLicitaciones: readonly Ruta[] = [
   ...rutasCopiloto,
