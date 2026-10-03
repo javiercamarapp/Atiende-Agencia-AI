@@ -224,7 +224,20 @@ export const rutasSuperadmin: readonly Ruta[] = [
   // Cerebro de ventas (SA-L-37/38/41): la API simulada se comporta como una base SIN la migracion 0051 (disponible:false), la misma
   // respuesta honesta que da el API real; la lista sigue saliendo de los prospectos de siempre.
   { metodo: "GET", patron: "/superadmin/cerebro/prospectos", manejador: (p) => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)), taxonomias: [] }) },
-  { metodo: "GET", patron: "/superadmin/cerebro/taxonomia", manejador: () => ({ disponible: false, mensaje: "Requiere aplicar la migración 0051_cerebro_ventas_base.", verticales: [], versiones: [] }) },
+  { metodo: "GET", patron: "/superadmin/cerebro/taxonomia", manejador: () => ({
+      disponible: true,
+      verticales: ["restaurantes"],
+      versiones: [{
+        vertical: "restaurantes", version: 1, vigente: true, estadoValidacion: "propuesta", planNombre: null,
+        precio: { estado: "por_definir", texto: "Precio por definir" },
+        subtipos: [{ clave: "taqueria", nombre: "Taquería" }],
+        rangosTamano: { unidad: "empleados", rangos: [{ clave: "1_5", etiqueta: "1 a 5" }] },
+        senales: [{ tipo: "sin_menu_en_linea", nombre: "Sin menú en línea", dimension: "ajuste", puntos: 30, comoConseguirla: "Revisar su sitio web." }],
+        icp: { descripcion: "Restaurantes independientes.", subtiposObjetivo: ["taqueria"], tamanosObjetivo: ["1_5"] },
+        objeciones: [{ objecion: "Ya uso WhatsApp", respuesta: "Se integra con el que ya tienes." }],
+        mensajesBase: [{ canal: "correo", variante: "A", texto: "Hola, platiquemos de tus pedidos." }],
+      }],
+    }) },
   { metodo: "POST", patron: "/superadmin/prospectos", manejador: (p) => {
       const cuerpo = (p.cuerpo ?? {}) as Partial<Prospecto>;
       if (!cuerpo.empresa) return fallo(400, "La empresa es requerida");
