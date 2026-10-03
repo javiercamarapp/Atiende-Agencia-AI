@@ -45,6 +45,7 @@ import type { AsientoContable, CuentaAnexo24, EstadoPaqueteContabilidad, Natural
 import { ESTADOS_PAQUETE_CONTABILIDAD } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -198,6 +199,7 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
     const fechaModificacion = optionalString(raw.fechaModificacion) ?? nowIsoSeconds();
     try {
       const xml = generarXmlCatalogo(catalogo, { rfc: optionalString(raw.rfc), ejercicio, mes, fechaModificacion });
+      await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.catalogo", tipo: "export", metadata: { ejercicio, mes } });
       return c.json({ catalogo, xml, sha1: calcularHashSha1(xml) });
     } catch (err) {
       if (err instanceof Error) throw Errors.validation(err.message);
@@ -229,6 +231,7 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
     const fechaModificacion = optionalString(raw.fechaModificacion) ?? nowIsoSeconds();
     const resumen = generarBalanza(catalogo, asientos, periodo, parseSaldosIniciales(raw.saldosIniciales));
     const xml = generarXmlBalanza(resumen.lineas, { rfc: optionalString(raw.rfc), ejercicio, mes, tipoEnvio, fechaModificacion });
+    await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.balanza", tipo: "export", metadata: { ejercicio, mes } });
     return c.json({ resumen, xml, sha1: calcularHashSha1(xml) });
   });
 
@@ -268,6 +271,7 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
         generadoEn,
         fechaModificacionXml,
       });
+      await auditarAccesoDespachos(deps, c, { recurso: "contabilidad_electronica.paquete", tipo: "export", metadata: { ejercicio, mes } });
       return c.json(paquete);
     } catch (err) {
       if (err instanceof Error) throw Errors.validation(err.message);

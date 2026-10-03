@@ -46,6 +46,7 @@ import {
 import type { CarteraRepository, LibroRepository } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
@@ -276,6 +277,7 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const [cuentas, balanza] = [await repo.listarCuentas(propertyId), await repo.balanza(propertyId, ejercicio, mes)];
     if (cuentas.estado === "no_disponible" || balanza.estado === "no_disponible") throw Errors.serviceUnavailable("El libro contable todavía no está disponible en esta base (migración pendiente).");
     if (balanza.datos.length === 0) throw Errors.conflict(`El libro no tiene movimientos en ${periodo}: no hay balanza que generar.`);
+    await auditarAccesoDespachos(deps, c, { recurso: "libro.contabilidad_electronica", tipo: "export", metadata: { periodo } });
     const paquete = generarPaqueteDesdeLibro({ cuentas: cuentas.datos, balanza: balanza.datos, ejercicio, mes, rfc: ficha.rfc, razonSocial: ficha.razonSocial, generadoEn: new Date().toISOString() });
     return c.json({
       periodo,

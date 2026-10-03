@@ -151,6 +151,7 @@ export {
   GESTIONAR_LIBRO_ROLES,
   VER_PAGOS_PROVISIONALES_ROLES,
   GESTIONAR_PAGOS_PROVISIONALES_ROLES,
+  VER_BITACORA_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 

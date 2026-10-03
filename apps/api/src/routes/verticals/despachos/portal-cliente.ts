@@ -48,6 +48,7 @@ import type { PortalClienteRepository, PortalDisponible } from "@atiende/domain-
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { ingestarXmlCfdiDespachos } from "./cfdi.ts";
@@ -277,6 +278,8 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const documentoId = requireUuid(c.req.param("documentoId"), "documentoId");
     const doc = exigirDisponible(await staff(() => repoDe(c.get("db")).contenidoDocumento(c.req.param("propertyId"), documentoId)));
     if (!doc) throw Errors.notFound("Documento no encontrado.");
+    // D-38: la descarga de un documento subido por el cliente deja fila en la bitacora (sin contenido ni nombre de archivo).
+    await auditarAccesoDespachos(deps, c, { recurso: "portal_cliente.documento", tipo: "descarga", metadata: { documentoId, tipoDocumento: doc.tipo } });
     // Lo que subio un tercero se entrega SIEMPRE como descarga, sin interpretacion en el navegador.
     return new Response(doc.contenido, {
       status: 200,
