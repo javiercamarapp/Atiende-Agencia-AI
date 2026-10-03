@@ -8249,7 +8249,7 @@
     {
       "id": "P1",
       "titulo": "Horario real, hora del último pedido y puentes",
-      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Horario de la web; mientras tanto, solo las horas en que coinciden el dueño y la web (T2: lun-vie 6 pm-12 am); último pedido según el cierre; cerrada = no toma pedido; preguntar cuáles abren en puentes.",
+      "detalle": "Fase 1 = T7 García Lavín (decision de Javier, 2-oct-2026). T7: servicio de 12 pm a 1 am todos los dias (lo confirman los chats reales: pedidos hasta las 23:59 y «finalizamos a la 1 am»); el agente solo toma pedidos en ese horario. Siguen pendientes: el horario de T2 entre semana (la web dice 6 pm), el último pedido por sucursal y los puentes.",
       "quien": "dueno",
       "pantalla": "sucursales",
       "estado": "abierta"
@@ -8257,15 +8257,15 @@
     {
       "id": "P2",
       "titulo": "¿El WhatsApp de cada sucursal es el mismo número que su teléfono?",
-      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: El WhatsApp de T2 es el 999 953 7122 y deja de contestarse en la app.",
+      "detalle": "Decision de Javier (2-oct-2026): el WhatsApp de la fase 1 es el de T7 García Lavín, 999 518 2637 (app de WhatsApp Business compartida entre cajeras; el historial se perdia con los mensajes temporales, hay que desactivarlos). Pendiente: el número de WhatsApp de las demas sucursales.",
       "quien": "dueno",
       "pantalla": "configuracion",
       "estado": "abierta"
     },
     {
       "id": "P3",
-      "titulo": "¿Qué hace el agente de T2 con un pedido de otra zona o de otra sucursal?",
-      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: T2 solo toma pedidos de T2; para otra zona o sucursal da el WhatsApp y el teléfono que le toca.",
+      "titulo": "¿Qué hace el agente de T7 con un pedido de otra zona o de otra sucursal?",
+      "detalle": "Decision de Javier (2-oct-2026): T7 solo toma pedidos de su zona; para otra zona o sucursal da el WhatsApp y el teléfono de la que le toca, ofrece recoger en T7 y contesta lo que el cliente preguntó (precio o tiempo). Sigue pendiente la excepcion «si T2 esta cerrada (lunes a jueves de 12 a 5 pm), T7 cubre su zona».",
       "quien": "dueno",
       "pantalla": "configuracion",
       "estado": "abierta"
@@ -8297,7 +8297,7 @@
     {
       "id": "P7",
       "titulo": "¿Qué colonias reparte cada sucursal?",
-      "detalle": "Pregunta abierta para Javier (P0). Propuesta provisional: Colonias de T2 y de T7 o T8 al dueño; mientras tanto, la más cercana o un humano.",
+      "detalle": "Pregunta abierta para Javier. Los chats reales de T7 dan una lista parcial (Temozón Norte, parte de Santa Gertrudis Copó, Montebello, Benito Juárez Norte, Montes de Amé, San Ramón Norte, Sodzil Norte, Cabo Norte, Real Montejo y comisarías al norte; a T8 van Los Pinos y una privada al oriente; a T1 la colonia México), pero sin coordenadas ni polígonos no se cargan: Santa Gertrudis Copó esta partida entre T7 y T8. Mientras tanto, la sucursal más cercana por el pin o un humano.",
       "quien": "dueno",
       "pantalla": "sucursales",
       "estado": "abierta"
