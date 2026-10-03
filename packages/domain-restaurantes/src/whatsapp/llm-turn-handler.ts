@@ -201,11 +201,11 @@ export async function resolveAgentConfig(repo: RestaurantesRepository, organizat
   return aplicarFilaAConfig(await repo.findWhatsAppAgentConfig(organizationId, propertyId), organizationId);
 }
 
-/** Version pura de `resolveAgentConfig`: sirve tambien a la vista previa del editor (sin tocar la base). Los textos
- * editables pasan por `sanitizeInlineText` aunque la fila se haya escrito directo en la base. */
 /** Tope de la espera de rafagas. Muy por debajo del limite de la funcion del webhook (30 s en vercel.json): despues de esperar, la fase B todavia tiene que correr el turno del LLM (hasta 3). */
 export const ESPERA_RAFAGAS_MAX_SEGUNDOS = 10;
 
+/** Version pura de `resolveAgentConfig`: sirve tambien a la vista previa del editor (sin tocar la base). Los textos
+ * editables pasan por `sanitizeInlineText` aunque la fila se haya escrito directo en la base. */
 export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organizationId = ""): WhatsAppLlmAgentConfig {
   if (!row) return getAgentConfig(organizationId);
   const base = row.perfil === "taqueria_pm" ? PM_CONFIG_POR_OMISION : FALLBACK_CONFIG;
