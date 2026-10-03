@@ -145,12 +145,13 @@ test.describe("publicas @humo", () => {
     await afirmarSinScrollHorizontal(page);
 
     // Cancelar y Escape cierran el dialogo SIN llamar al servidor (el helper de escrituras ignora /auth/*: se mira directo).
-    const cerrar = page.getByRole("button", { name: "Cerrar sesión", exact: true });
+    // El Sidebar tambien tiene "Cerrar sesión" (la del usuario): se acota al contenido de la pagina.
+    const cerrar = page.getByRole("main").getByRole("button", { name: "Cerrar sesión", exact: true });
     await mock.limpiarRegistro();
     await cerrarConCancelar(await abrirDialogo(page, cerrar, /Cerrar la sesión de/));
     await cerrarConEscape(page, await abrirDialogo(page, cerrar, /Cerrar la sesión de/));
     expect(await mock.buscar({ metodo: "POST", ruta: "/auth/sessions/cerrar" })).toHaveLength(0);
-    await page.getByRole("button", { name: "Cerrar sesión", exact: true }).click();
+    await cerrar.click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Cerrar sesión" }).click();
     await expect(page.getByText("Sesión cerrada.")).toBeVisible();
     await expect(page.getByText("Safari en iOS")).toHaveCount(0);
