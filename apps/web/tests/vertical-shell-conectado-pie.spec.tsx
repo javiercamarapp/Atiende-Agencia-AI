@@ -97,3 +97,40 @@ describe("VerticalShellConectado — pie del Sidebar", () => {
     expect(aside.textContent).toContain("Propietario");
   });
 });
+
+describe("VerticalShellConectado — destino 'Seguridad de la cuenta' (PL-21)", () => {
+  const pildoraSeguridad = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("aside a")].find((e) => e.getAttribute("aria-label") === "Seguridad de la cuenta");
+
+  it("el pie del Sidebar enlaza a /<vertical>/<org>/seguridad (deducido de la ruta de notificaciones)", async () => {
+    rendered = await montar(undefined);
+    expect(pildoraSeguridad(rendered.container)?.getAttribute("href")).toBe("/x/seguridad");
+  });
+
+  it("si el shell ya trae Seguridad como item de navegacion (licitaciones) no se duplica en el pie", async () => {
+    installMatchMediaStub();
+    installMemoryLocalStorage();
+    const r = renderComponent(
+      <MemoryRouter initialEntries={["/x"]}>
+        <VerticalShellConectado
+          apiBaseUrl="https://api.test"
+          token="tok"
+          notificacionesHref="/x/notificaciones"
+          vertical="prueba"
+          sections={[{ title: "Panel", siempreAbierto: true, items: [{ to: "/x", label: "Resumen", icon: LayoutDashboard, end: true }, { to: "/x/seguridad", label: "Seguridad", icon: LayoutDashboard }] }]}
+          mobileItems={[{ to: "/x", label: "Resumen", icon: LayoutDashboard, end: true }]}
+          user={{ email: "a@b.mx", rol: "owner", nombre: "Ana Pérez", rolEtiqueta: "Propietario" }}
+          onLogout={() => {}}
+          header={{ icon: null, title: "Prueba", fecha: "1 oct" }}
+        >
+          <div>contenido</div>
+        </VerticalShellConectado>
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    rendered = r;
+    expect(pildoraSeguridad(r.container)).toBeUndefined();
+    expect([...r.container.querySelectorAll("aside a")].filter((a) => a.getAttribute("href") === "/x/seguridad")).toHaveLength(1);
+  });
+});

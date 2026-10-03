@@ -8,12 +8,6 @@ import { MemoryRouter } from "react-router-dom";
 import { VerticalLogin, esCorreoValido, type VerticalLoginProps } from "../src/components/VerticalLogin.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
-const notifyError = vi.fn();
-vi.mock("@atiende/ui", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@atiende/ui")>();
-  return { ...actual, notify: { ...actual.notify, error: (...a: unknown[]) => notifyError(...a) } };
-});
-
 const iniciarMagicLink = vi.fn();
 const verificarGoogle = vi.fn();
 vi.mock("../src/lib/google-auth.ts", async (importOriginal) => {
@@ -37,7 +31,6 @@ afterEach(() => {
 beforeEach(() => {
   iniciarMagicLink.mockReset();
   verificarGoogle.mockReset().mockResolvedValue(true);
-  notifyError.mockReset();
 });
 
 async function montar(props: Partial<VerticalLoginProps> = {}, ruta = "/citas/login") {
@@ -104,23 +97,28 @@ describe("VerticalLogin", () => {
     expect(correo(c).getAttribute("aria-describedby")).toBe(alerta.id);
   });
 
-  it("magic link exitoso: confirma el correo y 'Usar otro correo' regresa al formulario", async () => {
+  it("magic link exitoso: el aviso de enviado va ENCIMA del formulario y el formulario sigue disponible (Likida page.tsx:333)", async () => {
     iniciarMagicLink.mockResolvedValue({ ok: true });
     const c = await montar();
     changeValue(correo(c), " dueno@negocio.com ");
     await submitForm(c.querySelector("form")!);
     expect(iniciarMagicLink).toHaveBeenCalledWith("https://api.test", "dueno@negocio.com", "citas");
     expect(c.querySelector('[role="status"]')!.textContent).toContain("dueno@negocio.com");
-    click([...c.querySelectorAll("button")].find((b) => b.textContent === "Usar otro correo")!);
+    expect(c.querySelector('[role="status"]')!.textContent).toContain("Te mandamos un enlace a tu correo.");
+    // Un dedazo en el correo no deja sin salida: el campo sigue ahi para volver a escribirlo.
     expect(c.querySelector("form")).not.toBeNull();
+    expect(correo(c)).not.toBeNull();
+    const aviso = c.querySelector('[role="status"]')!;
+    expect(aviso.compareDocumentPosition(c.querySelector("form")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("magic link rechazado por el servidor avisa con notify.error y deja el formulario", async () => {
+  it("magic link rechazado por el servidor muestra el mensaje inline (role=alert) y deja el formulario", async () => {
     iniciarMagicLink.mockResolvedValue({ ok: false, error: "Demasiados intentos" });
     const c = await montar();
     changeValue(correo(c), "a@b.com");
     await submitForm(c.querySelector("form")!);
-    expect(notifyError).toHaveBeenCalledWith("No se pudo enviar el enlace", { description: "Demasiados intentos" });
+    expect(c.querySelector('p[role="alert"]')!.textContent).toBe("Demasiados intentos");
+    expect(c.querySelector('[role="status"]')).toBeNull();
     expect(c.querySelector("form")).not.toBeNull();
   });
 
@@ -130,7 +128,7 @@ describe("VerticalLogin", () => {
     expect(c.textContent).not.toContain("state_expirado");
     rendered!.unmount();
     c = await montar({}, "/citas/login?magic_link_error=cualquiera");
-    expect(c.querySelector('div[role="alert"]')).not.toBeNull();
+    expect(c.querySelector('p[role="alert"]')).not.toBeNull();
   });
 
   it("los metodos son props: sin Google ni su aviso, sin separador y sin consultar al servidor", async () => {
@@ -144,5 +142,72 @@ describe("VerticalLogin", () => {
     const c = await montar({ metodos: { magicLink: false } });
     expect(c.querySelector("form")).toBeNull();
     expect(c.textContent).toContain("Continuar con Google");
+  });
+});
+
+describe("VerticalLogin — ¿Olvidaste tu contraseña? (PL-21)", () => {
+  const solicitar = vi.fn();
+  beforeEach(() => {
+    solicitar.mockReset();
+    vi.stubGlobal("fetch", solicitar);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const enlaceOlvido = (c: HTMLElement) => [...c.querySelectorAll("button")].find((b) => b.textContent === "¿Olvidaste tu contraseña?");
+  const res = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
+
+  it("el enlace existe en el login, abre el formulario de restablecer y 'Volver' regresa al acceso", async () => {
+    verificarGoogle.mockResolvedValue(false);
+    const c = await montar();
+    click(enlaceOlvido(c)!);
+    expect(c.textContent).toContain("Restablece tu contraseña");
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(false);
+    click([...c.querySelectorAll("button")].find((b) => b.textContent === "Volver a iniciar sesión")!);
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(true);
+  });
+
+  it("respuesta uniforme: manda el correo y la vertical, y el aviso NO confirma que la cuenta exista", async () => {
+    solicitar.mockResolvedValue(res({ ok: true }));
+    const c = await montar();
+    changeValue(correo(c), "dueno@negocio.com");
+    click(enlaceOlvido(c)!);
+    expect(correo(c).value).toBe("dueno@negocio.com"); // no se pide el correo dos veces
+    await submitForm(c.querySelector("form")!);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const [url, init] = solicitar.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.test/auth/password-reset/solicitar");
+    expect(JSON.parse(init.body as string)).toEqual({ email: "dueno@negocio.com", vertical: "citas" });
+    const aviso = c.querySelector('[role="status"]')!.textContent!;
+    expect(aviso).toContain("Si dueno@negocio.com tiene una cuenta");
+    expect(aviso).not.toMatch(/no existe|no encontr/i);
+  });
+
+  it("un correo invalido no llama al servidor; un error del servidor (429) se muestra", async () => {
+    const c = await montar();
+    click(enlaceOlvido(c)!);
+    changeValue(correo(c), "no-es-correo");
+    await submitForm(c.querySelector("form")!);
+    expect(solicitar).not.toHaveBeenCalled();
+    expect(c.querySelector('p[role="alert"]')!.textContent).toContain("correo válido");
+    solicitar.mockResolvedValue(res({ message: "Demasiados intentos. Intenta de nuevo en unos minutos." }, 429));
+    changeValue(correo(c), "a@b.com");
+    await submitForm(c.querySelector("form")!);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(c.querySelector('p[role="alert"]')!.textContent).toContain("Demasiados intentos");
+    expect(c.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("se puede apagar por vertical y no aparece si la vertical no es una de las 6", async () => {
+    let c = await montar({ metodos: { olvidoContrasena: false } });
+    expect(enlaceOlvido(c)).toBeUndefined();
+    rendered!.unmount();
+    c = await montar({ vertical: "otra" });
+    expect(enlaceOlvido(c)).toBeUndefined();
   });
 });

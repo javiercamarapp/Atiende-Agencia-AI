@@ -107,7 +107,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(17);
+    expect(hrefs).toHaveLength(18); // + Seguridad de la cuenta (PL-21)
     expect(hrefs).toEqual(
       expect.arrayContaining(["/rentas/demo/copiloto", "/rentas/demo/precios", "/rentas/demo/finanzas", "/rentas/demo/ical-sync", "/rentas/demo/monitor-sync", "/rentas/demo/acceso-huesped", "/rentas/demo/plantillas", "/rentas/demo/reportes", "/rentas/demo/auditoria", "/rentas/demo/catalogo", "/rentas/demo/equipo", "/rentas/demo/privacidad", "/rentas/demo/privacidad-organizacion"]),
     );
@@ -224,7 +224,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(14);
+    expect(hrefs).toHaveLength(15); // + Seguridad de la cuenta (PL-21)
     expect(hrefs).not.toContain("/rentas/demo/copiloto");
   });
 });

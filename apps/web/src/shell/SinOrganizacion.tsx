@@ -10,6 +10,7 @@
 // cuando estén disponibles, y un mensaje genérico si no (p. ej. si alguien navega
 // aquí directo o recarga la página).
 import { useLocation } from "react-router-dom";
+import { MarcoPublico } from "../components/MarcoPublico.tsx";
 
 interface SinOrganizacionState {
   readonly email?: string;
@@ -21,15 +22,12 @@ export function SinOrganizacionPage() {
   const state = (location.state ?? null) as SinOrganizacionState | null;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
-      <div className="flex max-w-md flex-col gap-3 text-center">
-        <h1 className="text-xl font-semibold">Todavía no perteneces a ninguna organización</h1>
-        <p className="text-muted-foreground">
-          {state?.email ? <>Tu cuenta ({state.email}) inició sesión correctamente,</> : <>Tu cuenta inició sesión correctamente,</>} pero ningún administrador te
-          asignó a una organización{state?.vertical ? ` de ${state.vertical}` : ""} todavía.
-        </p>
-        <p className="text-muted-foreground">Pídele a quien administra tu cuenta que te invite, y vuelve a intentar iniciar sesión.</p>
-      </div>
-    </main>
+    <MarcoPublico titulo="Todavía no perteneces a ninguna organización">
+      <p className="text-sm text-muted-foreground">
+        {state?.email ? <>Tu cuenta ({state.email}) inició sesión correctamente,</> : <>Tu cuenta inició sesión correctamente,</>} pero ningún administrador te asignó a
+        una organización{state?.vertical ? ` de ${state.vertical}` : ""} todavía.
+      </p>
+      <p className="text-sm text-muted-foreground">Pídele a quien administra tu cuenta que te invite, y vuelve a intentar iniciar sesión.</p>
+    </MarcoPublico>
   );
 }
