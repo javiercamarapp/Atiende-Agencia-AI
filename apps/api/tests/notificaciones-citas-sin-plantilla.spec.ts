@@ -34,7 +34,7 @@ async function seedCita(ctx: CitasTestContext, phone: string): Promise<void> {
 }
 
 const cron = (app: ReturnType<typeof buildApp>, secret: string) => app.request("/internal/citas/confirmacion-cita", { method: "POST", headers: { "x-atiende-internal-secret": secret } });
-const sinPlantilla = (emisiones: readonly { evento: string; organizationId?: string | null }[], org: string) => emisiones.filter((e) => e.organizationId === org && e.evento === "citas.whatsapp.sin_plantilla");
+const sinPlantilla = (emisiones: readonly { evento: string; organizationId?: string | null; dedupeKey?: string }[], org: string) => emisiones.filter((e) => e.organizationId === org && e.evento === "citas.whatsapp.sin_plantilla");
 
 describe("citas.whatsapp.sin_plantilla", () => {
   it("sin plantilla aprobada y fuera de la ventana: emite UNA por organizacion y dia con el conteo, sin datos del cliente, y no encola WhatsApp", async () => {
