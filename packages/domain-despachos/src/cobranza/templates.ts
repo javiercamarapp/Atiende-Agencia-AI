@@ -143,7 +143,7 @@ const COBRANZA_TEMPLATES: Record<CobranzaReminderStage, CobranzaTemplateStage> =
 
 /** Formatea un monto a "$12,500.00 MXN" — port literal de `format_monto`. */
 export function formatMontoCobranza(monto: number): string {
-  return `$${monto.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`;
+  return `$${monto.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`;
 }
 
 function fillVars(text: string, vars: CobranzaReminderVars): string {

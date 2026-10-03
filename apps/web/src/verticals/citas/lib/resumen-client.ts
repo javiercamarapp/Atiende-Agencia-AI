@@ -4,6 +4,8 @@
 import { fetchJson } from "./admin-client.ts";
 
 export type EstadoCita = "pending" | "confirmed" | "completed" | "cancelled" | "no_show";
+export type CanalCita = "voice" | "whatsapp" | "web" | "manual";
+export type ConteoPorCanal = Readonly<Record<CanalCita, number>>;
 export type ConteoPorEstado = Readonly<Record<EstadoCita, number>>;
 
 export interface CitasResumen {
@@ -14,6 +16,8 @@ export interface CitasResumen {
   readonly pendingToConfirm: number;
   readonly noShowsLast30Days: number;
   readonly newCustomersLast30Days: number;
+  /** Citas no canceladas creadas en 30 días, por canal. `null` = un servidor anterior que aún no lo informa (no se inventa un 0). */
+  readonly createdBySourceLast30Days: ConteoPorCanal | null;
 }
 
 interface ResumenApiBody {
@@ -24,6 +28,7 @@ interface ResumenApiBody {
   readonly pending_to_confirm: number;
   readonly no_shows_last_30_days: number;
   readonly new_customers_last_30_days: number;
+  readonly created_by_source_last_30_days?: ConteoPorCanal;
 }
 
 export async function fetchCitasResumen(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<CitasResumen> {
@@ -36,6 +41,7 @@ export async function fetchCitasResumen(fetchImpl: typeof fetch, apiBaseUrl: str
     pendingToConfirm: b.pending_to_confirm,
     noShowsLast30Days: b.no_shows_last_30_days,
     newCustomersLast30Days: b.new_customers_last_30_days,
+    createdBySourceLast30Days: b.created_by_source_last_30_days ?? null,
   };
 }
 

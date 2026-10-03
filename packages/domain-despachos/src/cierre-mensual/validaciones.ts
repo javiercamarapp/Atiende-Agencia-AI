@@ -16,7 +16,7 @@ function r2(n: number): number {
 }
 
 function money(n: number): string {
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** Aproxima `str(float)` de Python para los mensajes de error de

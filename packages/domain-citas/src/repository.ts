@@ -556,6 +556,9 @@ export interface CitasRepository {
   /** C-05 -- conteo de citas por estado con `starts_at` en [fromIso, toIso) (agregado SQL,
    * nunca una lista truncada por `limit`). Todos los estados vienen presentes (0 si no hay). */
   countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>>;
+  /** UNI-RES-citas -- citas NO canceladas dadas de alta (`created_at`) desde `sinceIso` (inclusive), por canal de origen (`source`).
+   * Agregado SQL de solo lectura sobre columnas existentes desde 001; todos los canales vienen presentes (0 si no hay). */
+  countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>>;
   /** C-05 -- clientes dados de alta (`created_at`) desde `sinceIso` (inclusive). */
   countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number>;
   listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;

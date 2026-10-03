@@ -40,6 +40,7 @@ import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts
 import { hotelesGruposRoutes } from "./grupos.ts";
 import { hotelesGruposLiberacionCronRoutes } from "./grupos-liberacion-cron.ts";
 import { hotelesReservasAgenteRoutes } from "./reservas-agente.ts";
+import { hotelesConversacionesRoutes } from "./conversaciones.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -126,5 +127,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesGruposLiberacionCronRoutes(deps));
   // H-25 (P0) -- agente de reservas (WhatsApp y voz): lado staff (holds, aprobacion, link de pago registrado, politica), migracion 037.
   app.route("/", hotelesReservasAgenteRoutes(deps));
+  // H-20 (P1) -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / devolver / cerrar / notas / responder via outbox), migracion 043.
+  app.route("/", hotelesConversacionesRoutes(deps));
   return app;
 }

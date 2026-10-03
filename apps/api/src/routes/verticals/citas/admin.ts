@@ -1108,6 +1108,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       pending_to_confirm: r.pendingToConfirm,
       no_shows_last_30_days: r.noShowsLast30Days,
       new_customers_last_30_days: r.newCustomersLast30Days,
+      created_by_source_last_30_days: r.createdBySourceLast30Days,
     });
   });
 

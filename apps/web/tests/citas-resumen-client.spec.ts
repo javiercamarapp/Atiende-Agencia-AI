@@ -9,6 +9,7 @@ const BODY = {
   pending_to_confirm: 4,
   no_shows_last_30_days: 2,
   new_customers_last_30_days: 7,
+  created_by_source_last_30_days: { voice: 6, whatsapp: 23, web: 4, manual: 1 },
 };
 
 describe("fetchCitasResumen", () => {
@@ -29,7 +30,15 @@ describe("fetchCitasResumen", () => {
       pendingToConfirm: 4,
       noShowsLast30Days: 2,
       newCustomersLast30Days: 7,
+      createdBySourceLast30Days: { voice: 6, whatsapp: 23, web: 4, manual: 1 },
     });
+  });
+
+  it("un servidor anterior sin conteo por canal da `null` (no un 0 inventado)", async () => {
+    const { created_by_source_last_30_days: _omitido, ...viejo } = BODY;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(viejo), { status: 200 })) as unknown as typeof fetch;
+    const r = await fetchCitasResumen(fetchImpl, "http://api.local", "tok", "prop-1");
+    expect(r.createdBySourceLast30Days).toBeNull();
   });
 
   it("un error del servidor se propaga (nunca se inventa un resumen en ceros)", async () => {

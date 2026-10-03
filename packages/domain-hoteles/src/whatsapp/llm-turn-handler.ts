@@ -363,10 +363,13 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
       const working: LlmMessage[] = toLlmHistory(messages);
       let fnbOrderId: string | null = null;
       let huboFalloDeHerramienta = false;
+      // H-20: alguna herramienta de reservas pidio que una persona continue (derivar_a_humano o fallo con requiere_humano).
+      let derivarAHumano = false;
+      const conHandoff = <T extends { readonly reply: string; readonly fnbOrderId: string | null }>(r: T) => (derivarAHumano ? { ...r, handoff: { motivo: "agente_derivo" } } : r);
 
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
         if (Date.now() >= deadline) {
-          return { reply: providerFailureReply(fnbOrderId), fnbOrderId };
+          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
 
@@ -382,7 +385,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         } catch {
           // Escalera de proveedores agotada / presupuesto excedido / gate de
           // residencia bloqueado — nunca se propaga un 500 crudo al huésped.
-          return { reply: providerFailureReply(fnbOrderId), fnbOrderId };
+          return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
         }
 
         const toolCalls = completion.toolCalls ?? [];
@@ -408,10 +411,10 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
               } catch {
                 // best-effort
               }
-              return { reply: SAFE_REPLY, fnbOrderId };
+              return { reply: SAFE_REPLY, fnbOrderId, handoff: { motivo: "agente_derivo" } };
             }
           }
-          return { reply, fnbOrderId };
+          return conHandoff({ reply, fnbOrderId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
@@ -429,6 +432,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
             if (reservasCtx && isReservasToolName(call.name)) {
               const outcome = await executeReservasToolCall(repo, options.reservas!, { organizationId, propertyId, phone, turnId, now: options.now ? clock() : undefined }, call.name, input);
               result = outcome.result;
+              if (outcome.handoff) derivarAHumano = true;
               for (const cents of outcome.moneyCents) allowedCents.add(cents);
             } else {
               const executed = await executeToolCall(repo, { organizationId, propertyId, phone, name: call.name, input });
@@ -443,8 +447,8 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
         }
       }
 
-      if (fnbOrderId) return { reply: providerFailureReply(fnbOrderId), fnbOrderId };
-      return { reply: "Se me complicó procesar tu mensaje, un momento por favor.", fnbOrderId };
+      if (fnbOrderId) return conHandoff({ reply: providerFailureReply(fnbOrderId), fnbOrderId });
+      return conHandoff({ reply: "Se me complicó procesar tu mensaje, un momento por favor.", fnbOrderId });
     },
   };
 }

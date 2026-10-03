@@ -26,6 +26,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentSource,
   AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
@@ -646,6 +647,15 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   /** Solo para tests: fecha de alta de un cliente (en Postgres es `created_at`). */
   readonly customerCreatedAt = new Map<string, string>();
+
+  async countAppointmentsCreatedBySource(organizationId: string, sinceIso: string): Promise<Readonly<Record<AppointmentSource, number>>> {
+    const result: Record<AppointmentSource, number> = { voice: 0, whatsapp: 0, web: 0, manual: 0 };
+    const since = Date.parse(sinceIso);
+    for (const a of this.appointments.values()) {
+      if (a.organizationId === organizationId && a.status !== "cancelled" && Date.parse(a.createdAt) >= since) result[a.source] += 1;
+    }
+    return result;
+  }
 
   async countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number> {
     const since = Date.parse(sinceIso);

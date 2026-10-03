@@ -34,7 +34,7 @@ export interface World {
   /** Herramientas ofrecidas al modelo en cada peticion. */
   readonly toolNamesSeen: string[][];
   readonly systemPrompts: string[];
-  run(script: readonly ScriptStep[], opts?: { readonly phone?: string; readonly userText?: string; readonly maxToolUseTurns?: number }): Promise<{ reply: string; results: ToolResult[] }>;
+  run(script: readonly ScriptStep[], opts?: { readonly phone?: string; readonly userText?: string; readonly maxToolUseTurns?: number }): Promise<{ reply: string; results: ToolResult[]; handoff?: { readonly motivo: string } }>;
 }
 
 export function makeWorld(opts: { readonly holdsEnabled?: boolean; readonly mode?: "aprobacion_humana" | "link_pago"; readonly timezone?: string; readonly withReservasPort?: boolean } = {}): World {
@@ -124,7 +124,7 @@ export function makeWorld(opts: { readonly holdsEnabled?: boolean; readonly mode
       messages: [{ role: "user", content: runOpts.userText ?? "quiero reservar" }],
     });
     // El ultimo `results` conocido se refresca con los mensajes del ultimo request; completa con lo ejecutado en el ultimo paso.
-    return { reply: out.reply, results };
+    return { reply: out.reply, results, ...(out.handoff ? { handoff: out.handoff } : {}) };
   }
 
   return { hoteles, reservas, organizationId, propertyId, otherPropertyId, doble, suite, handoffs, toolNamesSeen, systemPrompts, run };

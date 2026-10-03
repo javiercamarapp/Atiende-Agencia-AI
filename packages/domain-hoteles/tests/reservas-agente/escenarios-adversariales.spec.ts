@@ -526,11 +526,19 @@ describe("aprobacion humana, link de pago registrado y confirmacion (solo staff)
 describe("fuera de catalogo: handoff a humano", () => {
   it("53. grupo de 12 personas / negociar precio: el modelo deriva y queda registrado como contacto (source whatsapp)", async () => {
     const w = makeWorld();
-    const { reply } = await w.run([tool("derivar_a_humano", { motivo: "grupo de 12 personas", resumen: "quieren 6 habitaciones y descuento" }), say("Una persona del hotel te contactara.")]);
+    const { reply, handoff } = await w.run([tool("derivar_a_humano", { motivo: "grupo de 12 personas", resumen: "quieren 6 habitaciones y descuento" }), say("Una persona del hotel te contactara.")]);
     expect(reply).toBe("Una persona del hotel te contactara.");
+    // H-20: ademas del contacto, el turno marca el handoff para que la conversacion pase a humano (el agente calla desde el siguiente mensaje).
+    expect(handoff).toEqual({ motivo: "agente_derivo" });
     expect(w.handoffs).toHaveLength(1);
     expect(w.handoffs[0]).toMatchObject({ source: "whatsapp", guestPhone: PHONE_A });
     expect(w.handoffs[0]!.reason).toContain("grupo de 12 personas");
+  });
+
+  it("53b. un turno normal (sin derivar) NO marca handoff, para que el agente siga atendiendo", async () => {
+    const w = makeWorld();
+    const { handoff } = await w.run([say("Con gusto, ¿para qué fechas?")]);
+    expect(handoff).toBeUndefined();
   });
 
   it("54. derivar_a_humano sin motivo se rechaza y no escribe nada", async () => {

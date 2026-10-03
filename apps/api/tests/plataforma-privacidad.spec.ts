@@ -9,6 +9,7 @@ import { InMemoryPlataformaPrivacidadRepository, PostgresPlataformaPrivacidadRep
 import type { ArcoRequestRow } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
 import { buildApp } from "../src/app.ts";
+import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { plazoDe } from "../src/privacidad/plazos.ts";
 import { jsonRequestInit } from "./fixtures.ts";
@@ -427,9 +428,99 @@ describe("/internal/plataforma/privacidad-retencion", () => {
     expect(body).toMatchObject({ unidades: 4, errores: 1 });
     expect(body.resultados.find((r: Json) => r.estado === "error")).toMatchObject({ organizationId: o1, claseDato: "restaurantes_voz_transcripciones", error: "fallo_inesperado" });
     expect(body.resultados.filter((r: Json) => r.estado === "ok")).toHaveLength(3);
-    // 1 lectura de objetivos + 1 transaccion por unidad, todas de sistema.
-    expect(sesiones).toEqual([null, null, null, null, null]);
+    // 1 lectura de objetivos + 1 transaccion por unidad + 1 de la bitacora de corrida (withHeartbeat, PL-35), todas de sistema.
+    expect(sesiones).toEqual([null, null, null, null, null, null]);
     expect(JSON.stringify(body)).not.toMatch(/fallo simulado/);
+  });
+
+  describe("PL-35: agendado por Vercel Cron (GET con Authorization: Bearer)", () => {
+    const CRON = { authorization: `Bearer ${SECRET}` };
+    const ejecuciones = (t: Awaited<ReturnType<typeof construir>>) => t.repo.purgeRuns();
+
+    it("GET con Bearer purga de verdad (modo ejecucion) y deja cada corrida registrada", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      const body: Json = await (await t.app.request(PATH, { headers: CRON })).json();
+      expect(body).toMatchObject({ ok: true, disponible: true, modo: "ejecucion", unidades: 2, errores: 0 });
+      expect(body.resultados.map((r: Json) => r.estado)).toEqual(["ok", "ok"]);
+      expect(ejecuciones(t)).toHaveLength(2);
+    });
+
+    it("GET SIN Bearer nunca purga: con el secreto en x-atiende-internal-secret solo SIMULA, y por query no autentica", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      const sim: Json = await (await t.app.request(PATH, { headers: { "x-atiende-internal-secret": SECRET } })).json();
+      expect(sim).toMatchObject({ modo: "simulacion" });
+      expect(sim.resultados.map((r: Json) => r.estado)).toEqual(["simulacion", "simulacion"]);
+      expect((await t.app.request(`${PATH}?secret=${SECRET}&token=${SECRET}`)).status).toBe(401);
+      expect((await t.app.request(PATH, { headers: { authorization: "Bearer incorrecto" } })).status).toBe(401);
+      expect((await t.app.request(PATH, { headers: { authorization: `Basic ${SECRET}` } })).status).toBe(401);
+    });
+
+    it("GET con ejecutar=1 sin Bearer sigue rechazandose (400); con ejecutar=0 y Bearer simula", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      expect((await t.app.request(`${PATH}?ejecutar=1`, { headers: { "x-atiende-internal-secret": SECRET } })).status).toBe(400);
+      const sim: Json = await (await t.app.request(`${PATH}?ejecutar=0`, { headers: CRON })).json();
+      expect(sim.modo).toBe("simulacion");
+      expect(sim.resultados.map((r: Json) => r.estado)).toEqual(["simulacion", "simulacion"]);
+    });
+
+    it("POST sin ejecutar=1 sigue simulando aunque traiga Bearer (el cron es solo GET)", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      const body: Json = await (await t.app.request(PATH, { method: "POST", headers: CRON })).json();
+      expect(body.modo).toBe("simulacion");
+    });
+
+    it("respeta el interruptor APAGADO: no purga nada y responde skipped kill_switch", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      const guard = createPlatformSwitchGuard(async () => [{ scope: "cron", target: PATH }]);
+      const app = buildApp({ ...t.deps, platformSwitchGuard: guard });
+      const body: Json = await (await app.request(PATH, { headers: CRON })).json();
+      expect(body).toMatchObject({ ok: true, skipped: "kill_switch" });
+      expect(ejecuciones(t)).toHaveLength(0);
+    });
+
+    it("lote acotado: una corrida de cron recorre hasta 4 paginas (100 organizaciones) y devuelve el cursor del resto", async () => {
+      const t = await construir();
+      const ids = Array.from({ length: 110 }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`);
+      for (const id of ids) t.repo.seedPurgeOrg(id);
+      const corrida1: Json = await (await t.app.request(PATH, { headers: CRON })).json();
+      expect(corrida1.unidades).toBe(200);
+      expect(new Set(corrida1.resultados.map((r: Json) => r.organizationId)).size).toBe(100);
+      expect(corrida1.siguienteDespuesDe).toBe(ids[99]);
+      const corrida2: Json = await (await t.app.request(`${PATH}?despuesDe=${corrida1.siguienteDespuesDe}`, { headers: CRON })).json();
+      expect(corrida2.unidades).toBe(20);
+      expect(corrida2.siguienteDespuesDe).toBeNull();
+    });
+
+    it("idempotente: repetir la corrida no falla ni purga dos veces lo mismo (cada unidad vuelve a reportar su estado)", async () => {
+      const t = await construir();
+      t.repo.seedPurgeOrg(t.orgA);
+      const a: Json = await (await t.app.request(PATH, { headers: CRON })).json();
+      const b: Json = await (await t.app.request(PATH, { headers: CRON })).json();
+      expect(a).toMatchObject({ errores: 0, unidades: 2 });
+      expect(b).toMatchObject({ errores: 0, unidades: 2 });
+    });
+
+    it("una unidad que falla en cron deja 200 con el detalle (no 500) y las demas se purgan", async () => {
+      const t = await construir();
+      const [o1, o2] = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
+      t.repo.seedPurgeOrg(o1);
+      t.repo.seedPurgeOrg(o2);
+      const original = t.repo.runRetentionPurge.bind(t.repo);
+      t.repo.runRetentionPurge = async (org, clase, dry, limit) => {
+        if (org === o1 && clase === "restaurantes_voz_transcripciones") throw new Error("fallo simulado de base");
+        return original(org, clase, dry, limit);
+      };
+      const res = await t.app.request(PATH, { headers: CRON });
+      expect(res.status).toBe(200);
+      const body: Json = await res.json();
+      expect(body).toMatchObject({ modo: "ejecucion", unidades: 4, errores: 1 });
+      expect(body.resultados.filter((r: Json) => r.estado === "ok")).toHaveLength(3);
+    });
   });
 
   it("base sin migrar o repo ausente: disponible:false y no toca nada", async () => {
