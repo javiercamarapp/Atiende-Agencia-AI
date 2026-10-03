@@ -31,6 +31,7 @@ import { despachosLibroRoutes } from "./libro.ts";
 import { despachosPagosProvisionalesRoutes } from "./pagos-provisionales.ts";
 import { despachosColaCobranzaRoutes } from "./cola-cobranza.ts";
 import { despachosCfdiEstatusSatRoutes } from "./cfdi-estatus-sat.ts";
+import { despachosCfdiLoteRoutes } from "./cfdi-lote.ts";
 import { despachosCronSatRoutes } from "./cron-sat.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -44,6 +45,8 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosCfdiRoutes(deps));
   // D-27 -- "Verificar en el SAT" por CFDI. DEBE montarse DESPUES de cfdi.ts: hereda su middleware de sesion (ver cfdi-estatus-sat.ts).
   app.route("/", despachosCfdiEstatusSatRoutes(deps));
+  // D-13 -- carga masiva (XML sueltos o ZIP). Misma regla: DESPUES de cfdi.ts (hereda su middleware de sesion).
+  app.route("/", despachosCfdiLoteRoutes(deps));
   app.route("/", despachosEfosRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));
