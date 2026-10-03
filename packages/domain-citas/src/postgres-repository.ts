@@ -13,6 +13,9 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { configAgenteDesdeFila, fotoConfigAgente } from "./whatsapp/agent-config.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import { fotoConfigMensajes } from "./whatsapp/message-config.ts";
+import { variantesTelefonoEntrante } from "./whatsapp/proactivo.ts";
+import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
+import { actorHash } from "./rate-limit.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import { emitirNotificacion, isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
@@ -388,6 +391,17 @@ function mapWhatsappMessageConfigRow(r: WhatsappMessageConfigRowSql): WhatsappMe
     sendWindowStart: r.send_window_start === null ? null : Number(r.send_window_start),
     sendWindowEnd: r.send_window_end === null ? null : Number(r.send_window_end),
   };
+}
+
+const plantillasAdvertidas = new Set<string>();
+function advertirPlantillasNoDisponibles(metodo: string, err: unknown): void {
+  if (plantillasAdvertidas.has(metodo)) return;
+  plantillasAdvertidas.add(metodo);
+  console.warn(
+    `PostgresCitasRepository.${metodo}: el catalogo de plantillas de WhatsApp y la ventana de 24 h (migracion 0048) no estan disponibles en esta base ` +
+      "(SQLSTATE 42883/42P01/42703 o sin acceso) -- los avisos proactivos conservan el comportamiento anterior.",
+    err instanceof Error ? err.message : err,
+  );
 }
 
 const mensajesAdvertidos = new Set<string>();
@@ -1191,6 +1205,43 @@ export class PostgresCitasRepository implements CitasRepository {
       fallback: (err) => {
         advertirMensajesNoDisponibles("getWhatsappMessageConfigForSend", err);
         return Promise.resolve(null);
+      },
+    });
+  }
+
+  async resolveWhatsappTemplate(organizationId: string, evento: string): Promise<PlantillaWhatsappAprobada | null | undefined> {
+    return runWithSavepointFallback<PlantillaWhatsappAprobada | null | undefined>({
+      session: this.db,
+      savepointName: "sp_citas_wa_template_resolve",
+      primary: async () => {
+        const { rows } = await this.db.query<{ nombre: string; idioma: string; variables: string[] }>(`select nombre, idioma, variables from core.whatsapp_plantilla_resolver($1, $2);`, [organizationId, evento]);
+        const row = rows[0];
+        return row ? { name: row.nombre, language: row.idioma, variables: row.variables } : null;
+      },
+      // 42501: una sesion de staff (auth.uid() real) no puede resolver; se actua como "no se puede saber" (comportamiento anterior).
+      isRecoverable: (err) => isMigrationPendingError(err) || sqlState(err) === "42501",
+      fallback: (err) => {
+        advertirPlantillasNoDisponibles("resolveWhatsappTemplate", err);
+        return Promise.resolve(undefined);
+      },
+    });
+  }
+
+  async lastInboundWhatsappAt(organizationId: string, phone: string): Promise<string | null | undefined> {
+    // El ledger guarda sha256 del telefono tal como llego de Meta y `citas.customers` guarda los ultimos 10 digitos: se prueban las variantes.
+    const hashes = variantesTelefonoEntrante(phone).map((v) => actorHash(v));
+    return runWithSavepointFallback<string | null | undefined>({
+      session: this.db,
+      savepointName: "sp_citas_wa_last_inbound",
+      primary: async () => {
+        const { rows } = await this.db.query<{ ultimo: Date | string | null }>(`select citas.ultimo_mensaje_entrante($1, $2::text[]) as ultimo;`, [organizationId, hashes]);
+        const ultimo = rows[0]?.ultimo ?? null;
+        return ultimo === null ? null : ultimo instanceof Date ? ultimo.toISOString() : new Date(ultimo).toISOString();
+      },
+      isRecoverable: (err) => isMigrationPendingError(err) || sqlState(err) === "42501",
+      fallback: (err) => {
+        advertirPlantillasNoDisponibles("lastInboundWhatsappAt", err);
+        return Promise.resolve(undefined);
       },
     });
   }

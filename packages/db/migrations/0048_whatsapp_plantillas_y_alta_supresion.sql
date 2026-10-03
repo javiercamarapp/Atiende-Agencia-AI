@@ -25,7 +25,7 @@
 --     webhook entrante; una sesion de staff con auth.uid() real nunca debe poder borrar bajas de clientes. Borra unicamente
 --     filas con motivo 'baja' del hash pedido y devuelve solo boolean. GRANT solo a `authenticated`.
 --   * citas.ultimo_mensaje_entrante: solo-sistema; devuelve solo una marca de tiempo (cuando escribio el cliente por
---     ultima vez a ESA organizacion), para decidir la ventana de 24 h de Meta. Recibe los hashes (hasta 5, variantes de
+--     ultima vez a ESA organizacion), para decidir la ventana de 24 h de Meta. Recibe los hashes (hasta 8, variantes de
 --     formato del mismo telefono) que ya guarda citas.whatsapp_inbound_events, nunca el telefono.
 --
 -- Orden de despliegue: CUALQUIER ORDEN. El codigo TypeScript captura 42883/42P01/42703 (migracion pendiente) con
@@ -168,7 +168,7 @@ begin
   if auth.uid() is not null then
     raise exception 'ultimo_mensaje_entrante: solo alcanzable desde sesion de sistema' using errcode = '42501';
   end if;
-  if p_phone_hashes is null or cardinality(p_phone_hashes) > 5 or exists (select 1 from unnest(p_phone_hashes) h where h is null or h !~ '^[0-9a-f]{64}$') then
+  if p_phone_hashes is null or cardinality(p_phone_hashes) > 8 or exists (select 1 from unnest(p_phone_hashes) h where h is null or h !~ '^[0-9a-f]{64}$') then
     raise exception 'ultimo_mensaje_entrante: phone_hashes invalido' using errcode = '22023';
   end if;
   return (select max(e.claimed_at) from citas.whatsapp_inbound_events e where e.organization_id = p_organization_id and e.phone_hash = any (p_phone_hashes));

@@ -11,6 +11,7 @@
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
+import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
 import type {
   AppointmentActorChannel,
@@ -920,6 +921,15 @@ export interface CitasRepository {
   /** Para ENVIAR (sesion de sistema o de staff de la organizacion). `null` = sin configuracion o migracion pendiente: el
    * llamador usa el comportamiento de siempre. */
   getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null>;
+
+  /** PL-31: plantilla HSM APROBADA de la organizacion para un evento (core.whatsapp_plantilla, migracion 0048). `null` = no hay una
+   *  aprobada; `undefined` = la base aun no tiene la migracion 0048 (no se puede saber: el llamador conserva el comportamiento anterior).
+   *  Sesion de SISTEMA; con SAVEPOINT. */
+  resolveWhatsappTemplate(organizationId: string, evento: string): Promise<PlantillaWhatsappAprobada | null | undefined>;
+
+  /** PL-31: instante ISO del ultimo mensaje que el cliente `phone` escribio a la organizacion. `null` = nunca escribio; `undefined` =
+   *  la base aun no tiene la migracion 0048. Sesion de SISTEMA; con SAVEPOINT. */
+  lastInboundWhatsappAt(organizationId: string, phone: string): Promise<string | null | undefined>;
   /** Guarda (`actualizado`) o restablece (`restablecido`) con control de version optimista (`expectedVersion` = 0 si aun no
    * hay fila). La funcion SQL valida rol owner/admin y organizacion. */
   saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado>;
