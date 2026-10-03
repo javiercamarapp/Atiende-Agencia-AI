@@ -15,9 +15,9 @@ import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTi
 import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
-import { crearFabricaGeminiLive } from "../voz/adaptador-gemini-live.ts";
-import type { EntornoVoz } from "../voz/adaptador-gemini-live.ts";
-import { entornoNavegador } from "../voz/entorno-navegador.ts";
+import { crearFabricaGeminiLive } from "../../../lib/voz/adaptador-gemini-live.ts";
+import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
+import { entornoNavegador } from "../../../lib/voz/entorno-navegador.ts";
 import { desdeError } from "../voz/carga.ts";
 import type { Carga } from "../voz/carga.ts";
 import { contarEjecuciones, HERRAMIENTAS_AGENTE } from "../voz/herramientas-agente.ts";
@@ -26,7 +26,7 @@ import { PestanaConversaciones } from "../voz/PestanaConversaciones.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
-import { useSesionVoz } from "../voz/useSesionVoz.ts";
+import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 type PestanaId = "resumen" | "voz" | "conocimiento" | "comportamiento" | "mensaje" | "herramientas" | "conversaciones" | "indicadores";

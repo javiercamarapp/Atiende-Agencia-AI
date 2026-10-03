@@ -1,4 +1,4 @@
-// Fase 2 hoteles §1 — Server Tools HTTP reales para el agente de voz de ElevenLabs.
+// Fase 2 hoteles §1 — rutas HTTP reales de las herramientas del agente de voz de hoteles (las ejecuta el worker de voice-core).
 // Mismo patrón de test que voice-tools.spec.ts (restaurantes): HTTP real vía
 // `app.request`, sobre fixtures in-memory, sin mocks de la lógica de negocio.
 //
