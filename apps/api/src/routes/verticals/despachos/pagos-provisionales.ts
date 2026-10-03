@@ -105,10 +105,78 @@ function parametrosGuardados(papeles: readonly PapelGuardado[], mes: number): Pa
   return out;
 }
 
+/** Resultado de registrar un complemento de pago (REP) como pagos de los CFDI PPD que liquida. */
+export interface RegistroRepResultado {
+  readonly folioFiscalRep: string;
+  readonly flujo: string;
+  readonly registrados: number;
+  readonly yaExistian: number;
+  readonly omitidos: readonly { readonly idDocumento: string; readonly motivo: string }[];
+  readonly rechazados: readonly { readonly idDocumento: string; readonly motivo: string }[];
+  readonly advertencias: readonly string[];
+}
+
+const repoDe = (deps: AppDeps, db: TenantDbSession): PagosProvisionalesRepository => (deps.pagosProvisionalesRepo ? deps.pagosProvisionalesRepo(db) : new PostgresPagosProvisionalesRepository(db));
+const carteraDe = (deps: AppDeps, db: TenantDbSession): CarteraRepository => (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db));
+
+/**
+ * Ingesta de un REP (D-23/D-25): parsea, liga cada DoctoRelacionado a las facturas del despacho y registra los pagos. UNA sola
+ * implementación para `POST .../pagos-provisionales/rep` y para la carga masiva de CFDI (`cfdi-lote.ts`). El RFC del contribuyente
+ * sale de la ficha del cliente. Lanza `ApiError` (validación/conflicto) igual que la ruta; el llamador decide el rol requerido.
+ */
+export async function registrarRepDespachos(deps: AppDeps, db: TenantDbSession, organizationId: string, propertyId: string, xml: string): Promise<RegistroRepResultado> {
+  // El RFC del contribuyente sale de la FICHA del cliente (nunca del cuerpo): decide si el flujo es trasladado o acreditable.
+  const ficha = await carteraDe(deps, db).obtenerFicha(propertyId);
+  if (!ficha) throw Errors.conflict("Captura la ficha del cliente (RFC) en Cartera antes de registrar complementos de pago.");
+
+  let rep;
+  try {
+    rep = parseComplementoPagoXml(xml);
+  } catch (err) {
+    if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
+    throw err;
+  }
+  const despachos = deps.despachosRepo(db);
+  const ids = [...new Set(rep.pagos.flatMap((p) => p.documentos.map((d) => d.idDocumento)))].filter((id) => UUID_RE.test(id));
+  const ligables = new Map<string, FacturaLigable>();
+  const paraPago = new Map<string, FacturaParaPago>();
+  for (const id of ids) {
+    const inv = await despachos.findInvoiceByFolioFiscal(organizationId, id);
+    if (!inv || inv.propertyId !== propertyId) continue;
+    const total = inv.totalCentavos ?? Math.round(inv.total * 100);
+    ligables.set(id, { folioFiscal: inv.folioFiscal, rfcEmisor: inv.rfcEmisor, rfcReceptor: inv.rfcReceptor, totalCentavos: total, ivaCentavos: inv.ivaTrasladadoCentavos ?? (inv.iva === null ? null : Math.round(inv.iva * 100)), metodoPago: inv.metodoPago ?? null });
+    paraPago.set(id, { id: inv.id, subtotalCentavos: inv.subtotalCentavos ?? Math.round(inv.subtotal * 100), descuentoCentavos: inv.descuentoCentavos ?? Math.round(inv.descuento * 100), totalCentavos: total });
+  }
+  let analisis;
+  try {
+    analisis = analizarComplementoPago(rep, ficha.rfc, ligables);
+  } catch (err) {
+    if (err instanceof RepRfcAjenoError) throw Errors.validation("El RFC del cliente no es ni el emisor ni el receptor del complemento de pago.");
+    throw err;
+  }
+  const { aRegistrar, omitidos } = prepararPagosDesdeRep(analisis, paraPago);
+  const repo = repoDe(deps, db);
+  let registrados = 0;
+  let yaExistian = 0;
+  const rechazados: { idDocumento: string; motivo: string }[] = [];
+  for (const p of aRegistrar) {
+    try {
+      // Un pago a la vez; cada llamada corre en su propio SAVEPOINT, así que un rechazo (p. ej. sobrepago) no tumba la transacción.
+      if (await repo.registrarPago(propertyId, p)) registrados += 1;
+      else yaExistian += 1;
+    } catch (err) {
+      if (err instanceof PagosDatosInvalidosError || err instanceof PagosNoEncontradoError) {
+        rechazados.push({ idDocumento: ids.find((id) => paraPago.get(id)?.id === p.invoiceId) ?? p.invoiceId, motivo: err.message });
+      } else return traducirPagos(err);
+    }
+  }
+  return { folioFiscalRep: analisis.folioFiscalRep, flujo: analisis.flujo, registrados, yaExistian, omitidos, rechazados, advertencias: analisis.advertencias };
+}
+
 export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repoDe = (db: TenantDbSession): PagosProvisionalesRepository => (deps.pagosProvisionalesRepo ? deps.pagosProvisionalesRepo(db) : new PostgresPagosProvisionalesRepository(db));
-  const carteraDe = (db: TenantDbSession): CarteraRepository => (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db));
+  const repoDeApp = (db: TenantDbSession): PagosProvisionalesRepository => repoDe(deps, db);
+  const carteraDeApp = (db: TenantDbSession): CarteraRepository => carteraDe(deps, db);
 
   app.use("/despachos/:propertyId/pagos-provisionales/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -146,13 +214,13 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
   async function calcular(c: Context<CoreAuthHonoEnv>, ejercicio: number, mes: number, capturados: ParametrosCapturados, regimenSolicitado: string | undefined): Promise<Contexto> {
     const db = c.get("db");
     const propertyId = c.req.param("propertyId") ?? "";
-    const ficha = await carteraDe(db).obtenerFicha(propertyId);
+    const ficha = await carteraDeApp(db).obtenerFicha(propertyId);
     if (!ficha) throw Errors.conflict("Captura la ficha del cliente (RFC y régimen fiscal) en Cartera antes de calcular pagos provisionales.");
     let regimen = regimenSolicitado;
     if (regimen !== undefined && !ficha.regimenesFiscales.includes(regimen)) throw Errors.validation(`regimen: el cliente no tiene el régimen ${regimen} en su ficha (${ficha.regimenesFiscales.join(", ")}).`);
     regimen ??= ficha.regimenesFiscales.find((r) => (REGIMENES_ISR_SOPORTADOS as readonly string[]).includes(r)) ?? ficha.regimenesFiscales[0]!;
 
-    const repo = repoDe(db);
+    const repo = repoDeApp(db);
     // Secuencial a propósito: una sola transacción compartida por request (nunca Promise.all sobre la sesión).
     const base = await repo.leerBase(propertyId, ejercicio, mes);
     if (!base.facturasDisponibles) throw Errors.serviceUnavailable("Los pagos provisionales aún no están disponibles en esta base: falta aplicar la migración 018 (CFDI completo, emitido/recibido).");
@@ -213,7 +281,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
     const capturados = leerParametros(raw);
     const x = await calcular(c, ejercicio, mes, capturados, regimen);
     const propertyId = c.req.param("propertyId");
-    const repo = repoDe(c.get("db"));
+    const repo = repoDeApp(c.get("db"));
     const guardado: { isr: boolean; iva: boolean } = { isr: false, iva: false };
     try {
       if (x.papel.isr.estado === "calculado") {
@@ -257,7 +325,7 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
     const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(deps.despachosRepo(c.get("db")), propertyId));
     if (raw.fechaPresentacion > hoy) throw Errors.validation("fechaPresentacion: no puede ser una fecha futura.");
     try {
-      await repoDe(c.get("db")).presentarPapel(propertyId, ejercicio, mes, impuesto, monto, raw.fechaPresentacion);
+      await repoDeApp(c.get("db")).presentarPapel(propertyId, ejercicio, mes, impuesto, monto, raw.fechaPresentacion);
     } catch (err) {
       return traducirPagos(err);
     }
@@ -281,59 +349,13 @@ export function despachosPagosProvisionalesRoutes(deps: AppDeps): Hono<CoreAuthH
 
   app.post("/despachos/:propertyId/pagos-provisionales/rep", async (c) => {
     assertVerticalRole(c, GESTIONAR_PAGOS_PROVISIONALES_ROLES);
-    const db = c.get("db");
     const propertyId = c.req.param("propertyId");
-    const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<{ xml?: unknown }>(c.req.raw, MAX_REP_BODY_BYTES);
     if (typeof raw.xml !== "string" || raw.xml.trim() === "") throw Errors.validation("xml: se esperaba el XML del complemento de pago como texto.");
     if (raw.xml.length > MAX_XML_BYTES) throw Errors.payloadTooLarge();
-    // El RFC del contribuyente sale de la FICHA del cliente (nunca del cuerpo): decide si el flujo es trasladado o acreditable.
-    const ficha = await carteraDe(db).obtenerFicha(propertyId);
-    if (!ficha) throw Errors.conflict("Captura la ficha del cliente (RFC) en Cartera antes de registrar complementos de pago.");
-
-    let rep;
-    try {
-      rep = parseComplementoPagoXml(raw.xml);
-    } catch (err) {
-      if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
-      throw err;
-    }
-    const despachos = deps.despachosRepo(db);
-    const ids = [...new Set(rep.pagos.flatMap((p) => p.documentos.map((d) => d.idDocumento)))].filter((id) => UUID_RE.test(id));
-    const ligables = new Map<string, FacturaLigable>();
-    const paraPago = new Map<string, FacturaParaPago>();
-    for (const id of ids) {
-      const inv = await despachos.findInvoiceByFolioFiscal(organizationId, id);
-      if (!inv || inv.propertyId !== propertyId) continue;
-      const total = inv.totalCentavos ?? Math.round(inv.total * 100);
-      ligables.set(id, { folioFiscal: inv.folioFiscal, rfcEmisor: inv.rfcEmisor, rfcReceptor: inv.rfcReceptor, totalCentavos: total, ivaCentavos: inv.ivaTrasladadoCentavos ?? (inv.iva === null ? null : Math.round(inv.iva * 100)), metodoPago: inv.metodoPago ?? null });
-      paraPago.set(id, { id: inv.id, subtotalCentavos: inv.subtotalCentavos ?? Math.round(inv.subtotal * 100), descuentoCentavos: inv.descuentoCentavos ?? Math.round(inv.descuento * 100), totalCentavos: total });
-    }
-    let analisis;
-    try {
-      analisis = analizarComplementoPago(rep, ficha.rfc, ligables);
-    } catch (err) {
-      if (err instanceof RepRfcAjenoError) throw Errors.validation("El RFC del cliente no es ni el emisor ni el receptor del complemento de pago.");
-      throw err;
-    }
-    const { aRegistrar, omitidos } = prepararPagosDesdeRep(analisis, paraPago);
-    const repo = repoDe(db);
-    let registrados = 0;
-    let yaExistian = 0;
-    const rechazados: { idDocumento: string; motivo: string }[] = [];
-    for (const p of aRegistrar) {
-      try {
-        // Un pago a la vez; cada llamada corre en su propio SAVEPOINT, así que un rechazo (p. ej. sobrepago) no tumba la transacción.
-        if (await repo.registrarPago(propertyId, p)) registrados += 1;
-        else yaExistian += 1;
-      } catch (err) {
-        if (err instanceof PagosDatosInvalidosError || err instanceof PagosNoEncontradoError) {
-          rechazados.push({ idDocumento: ids.find((id) => paraPago.get(id)?.id === p.invoiceId) ?? p.invoiceId, motivo: err.message });
-        } else return traducirPagos(err);
-      }
-    }
-    if (registrados > 0) await auditar(c, "despachos.pagos-provisionales:registrar-rep", { propertyId, folioFiscalRep: rep.folioFiscal, registrados, yaExistian });
-    return c.json({ folioFiscalRep: analisis.folioFiscalRep, flujo: analisis.flujo, registrados, yaExistian, omitidos, rechazados, advertencias: analisis.advertencias }, registrados > 0 ? 201 : 200);
+    const r = await registrarRepDespachos(deps, c.get("db"), c.get("organizationId"), propertyId, raw.xml);
+    if (r.registrados > 0) await auditar(c, "despachos.pagos-provisionales:registrar-rep", { propertyId, folioFiscalRep: r.folioFiscalRep, registrados: r.registrados, yaExistian: r.yaExistian });
+    return c.json(r, r.registrados > 0 ? 201 : 200);
   });
 
   return app;
