@@ -77,7 +77,10 @@ export function crearEscaleraLlamada(escalones: readonly EscalonLlamada[], opts:
           manejadores.caido(razon, handle);
         },
       };
-      const instruccion = fallidos.length > 0 ? `${apertura.instruccion}${resumenContexto(dicho, lineasContexto)}` : apertura.instruccion;
+      // Solo se avisa de "reconexion" si la llamada YA estaba en curso (hubo un tramo abierto o algo dicho). Si el escalon fallo al ABRIR, nadie ha hablado:
+      // el de respaldo debe saludar con la instruccion original.
+      const aMitadDeLlamada = tramos.length > 0 || dicho.length > 0;
+      const instruccion = fallidos.length > 0 && aMitadDeLlamada ? `${apertura.instruccion}${resumenContexto(dicho, lineasContexto)}` : apertura.instruccion;
       // Una reanudacion con handle solo vale para el escalon que lo emitio (Gemini): los demas abren de cero con el resumen.
       const aperturaEscalon: AperturaLlamada = { ...apertura, instruccion, reanudarHandle: escalon.id === "gemini-3.8-live" ? apertura.reanudarHandle ?? null : null };
       try {

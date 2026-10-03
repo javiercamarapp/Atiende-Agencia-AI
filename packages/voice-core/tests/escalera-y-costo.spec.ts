@@ -77,6 +77,13 @@ describe("escalera de proveedores de una llamada", () => {
     expect(e.escalonActual()).toBe("cascada-openrouter");
   });
 
+  it("si Gemini falla al ABRIR la llamada, la cascada recibe la instruccion original (debe saludar), sin aviso de reconexion", async () => {
+    const cascada = escalon("cascada-openrouter");
+    const e = crearEscaleraLlamada([escalon("gemini-3.8-live", { falla: new VozProveedorError("503", 503) }), cascada]);
+    await e.abrirSesion(APERTURA, { caido: () => undefined } as unknown as ManejadoresSesion);
+    expect(cascada.aperturas[0]!.instruccion).toBe(APERTURA.instruccion);
+  });
+
   it("si Gemini se cae a MEDIA llamada, la reconexion del controlador cae a la cascada con un resumen redactado de lo dicho, y el costo sale por tramo", async () => {
     const r = reloj();
     const gemini = escalon("gemini-3.8-live");
