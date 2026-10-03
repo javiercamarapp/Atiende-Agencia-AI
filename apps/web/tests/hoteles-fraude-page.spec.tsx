@@ -5,7 +5,7 @@
 // de páginas de hoteles: `fetch` global mockeado por ruta real contra
 // apps/api/src/routes/verticals/hoteles/fraude.ts, `toast` mockeado (sonner,
 // mismo criterio que superadmin-acciones-page.spec.tsx), `window.prompt`
-// mockeado (hallazgo de auditoría ya corregido en el componente: cancelar el
+// (hallazgo de auditoría ya corregido en el componente: cancelar el
 // prompt NUNCA debe llamar a la API), estados de carga/vacío/error, filtro por
 // estado, ejecutar escaneo y resolver una alerta (confirmar/descartar).
 import { act } from "react";
@@ -21,7 +21,7 @@ vi.mock("sonner", () => ({ toast: toastMock, Toaster: () => null }));
 import { FraudePage } from "../src/verticals/hoteles/pages/Fraude.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { FraudAlertSummary } from "../src/verticals/hoteles/lib/fraude-client.ts";
-import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -104,6 +104,23 @@ function renderPage(): RenderedComponent {
       <FraudePage {...CTX} />
     </MemoryRouter>,
   );
+}
+
+const dialogo = () => document.body.querySelector('[role="alertdialog"], [role="dialog"]') as HTMLElement | null;
+async function pulsarEnDialogo(etiqueta: string): Promise<void> {
+  const b = [...dialogo()!.querySelectorAll("button")].find((x) => x.textContent?.trim() === etiqueta)!;
+  await act(async () => {
+    click(b);
+    await flushMicrotasks();
+    await flushMicrotasks();
+  });
+}
+async function abrirDecision(etiquetaBoton: string): Promise<void> {
+  const btn = [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent === etiquetaBoton)!;
+  await act(async () => {
+    click(btn);
+    await flushMicrotasks();
+  });
 }
 
 async function esperarCarga(): Promise<void> {
@@ -226,40 +243,40 @@ describe("FraudePage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("Ocurrió un problema");
   });
 
-  it("cancelar el prompt de decisión (window.prompt -> null) NUNCA llama a la API — hallazgo de auditoría ya corregido", async () => {
+  it("cancelar el dialogo de decision NUNCA llama a la API (Cancelar y Escape no ejecutan)", async () => {
     stubFetch({});
-    const promptMock = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const promptMock = vi.spyOn(window, "prompt");
     rendered = renderPage();
     await esperarCarga();
 
     const callsAntes = fetchMock.mock.calls.length;
-    const confirmarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Confirmar")!;
+    await abrirDecision("Confirmar");
+    expect(dialogo()).not.toBeNull();
+    expect(dialogo()!.textContent).toContain("no se puede deshacer");
+    await pulsarEnDialogo("Cancelar");
+    expect(dialogo()).toBeNull();
+
+    await abrirDecision("Confirmar");
     await act(async () => {
-      confirmarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await flushMicrotasks();
+      dialogo()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       await flushMicrotasks();
     });
 
-    expect(promptMock).toHaveBeenCalled();
+    expect(promptMock).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.length).toBe(callsAntes);
-    // Sigue pendiente: no se resolvió nada.
     expect(rendered.container.textContent).toContain("Pendiente");
   });
 
-  it("confirmar una alerta real (prompt con nota): POST .../confirmar con la nota real, y recarga (la alerta ya no aparece en 'pendiente')", async () => {
+  it("confirmar una alerta real (dialogo con nota): POST .../confirmar con la nota real, y recarga (la alerta ya no aparece en 'pendiente')", async () => {
     let alertasActuales: readonly FraudAlertSummary[] = [ALERTA_PENDIENTE];
     stubFetch({ alerts: () => alertasActuales });
-    vi.spyOn(window, "prompt").mockReturnValue("Confirmado tras revisar bitácora de recepción.");
     rendered = renderPage();
     await esperarCarga();
 
-    const confirmarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Confirmar")!;
+    await abrirDecision("Confirmar");
+    changeValue(dialogo()!.querySelector("textarea")!, "Confirmado tras revisar bitácora de recepción.");
     alertasActuales = []; // El filtro sigue en "pendiente": tras confirmar, ya no hay alertas pendientes.
-    await act(async () => {
-      confirmarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await flushMicrotasks();
-      await flushMicrotasks();
-    });
+    await pulsarEnDialogo("Confirmar fraude");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/fraude/alertas/alert-1/confirmar" && init?.method === "POST");
     expect(call).toBeDefined();
@@ -267,18 +284,13 @@ describe("FraudePage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("No hay alertas en este filtro.");
   });
 
-  it("descartar una alerta real (prompt sin nota, cadena vacía): POST .../descartar con nota undefined", async () => {
+  it("descartar una alerta real (dialogo sin nota): POST .../descartar con nota undefined", async () => {
     stubFetch({});
-    vi.spyOn(window, "prompt").mockReturnValue("");
     rendered = renderPage();
     await esperarCarga();
 
-    const descartarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Descartar")!;
-    await act(async () => {
-      descartarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await flushMicrotasks();
-      await flushMicrotasks();
-    });
+    await abrirDecision("Descartar");
+    await pulsarEnDialogo("Descartar");
 
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/fraude/alertas/alert-1/descartar" && init?.method === "POST");
     expect(call).toBeDefined();
