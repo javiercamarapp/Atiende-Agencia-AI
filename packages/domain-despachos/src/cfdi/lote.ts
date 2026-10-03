@@ -81,7 +81,7 @@ export function nombreArchivoParaMostrar(nombre: string): string {
  * si no se encuentra (el parser real dará el error con su mensaje). NO valida nada: la decisión fiscal sigue en el parser.
  */
 export function tipoComprobanteDeXml(xml: string): string | null {
-  const sinPrologo = xml.replace(/^﻿/, "").replace(/<\?xml[^>]*\?>/i, "").replace(/<!--[\s\S]*?-->/g, "");
+  const sinPrologo = xml.replace(/^\uFEFF/, "").replace(/<\?xml[^>]*\?>/i, "").replace(/<!--[\s\S]*?-->/g, "");
   const raiz = /<(?:[A-Za-z_][\w.-]*:)?Comprobante\b([^>]*)>/.exec(sinPrologo);
   if (!raiz) return null;
   const attr = /(?:^|\s)TipoDeComprobante\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(raiz[1]!);
