@@ -40,6 +40,7 @@ import { superadminPlanesRoutes } from "./routes/superadmin-planes.ts";
 import { superadminZonaCfoRoutes } from "./routes/superadmin-zona-cfo.ts";
 import { superadminPrivacidadRoutes } from "./routes/superadmin-privacidad.ts";
 import { superadminSupresionRoutes } from "./routes/superadmin-supresion.ts";
+import { superadminCerebroRoutes } from "./routes/superadmin-cerebro.ts";
 import { superadminCopilotoRoutes } from "./routes/superadmin-copiloto.ts";
 import { privacidadOrgRoutes } from "./routes/privacidad-org.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
@@ -134,6 +135,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminZonaCfoRoutes(deps));
   app.route("/", superadminPrivacidadRoutes(deps));
   app.route("/", superadminSupresionRoutes(deps));
+  app.route("/", superadminCerebroRoutes(deps));
   app.route("/", superadminCopilotoRoutes(deps));
   app.route("/", privacidadOrgRoutes(deps));
   app.route("/", notificationsRoutes(deps));

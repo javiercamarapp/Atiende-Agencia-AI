@@ -46,7 +46,7 @@ El plan habla de `web/verticals/superadmin/**`; la ruta real del codigo es `apps
 | **Resumen diario** | "Generar ahora" -> `POST /superadmin/resumen/generar`; fila del historial -> estado local | superadmin-resumen-page |
 | **Salud operativa** | solo lectura (`/superadmin/salud`, `/crons`, `/colas`, `/licitaciones-fuentes`); "Actualizar" | superadmin-salud-page |
 | **Acciones** | "Crear accion" -> `POST /superadmin/acciones/intents`; "Confirmar" -> `AlertDialog` (ya existia) -> `POST .../confirmar`; "Cancelar" -> `POST .../cancelar` | superadmin-acciones-page |
-| **Prospectos** | "Nuevo prospecto" -> `FormDialog` -> `POST /superadmin/prospectos`; selector de etapa -> `PATCH /superadmin/prospectos/:id`; filtros de vertical y etapa (estado local) | No |
+| **Cerebro de ventas** (antes Prospectos; `/superadmin/cerebro`) | "Nuevo prospecto" -> `FormDialog` -> `POST /superadmin/prospectos`; selector de etapa -> `PATCH /superadmin/prospectos/:id`; filtros de vertical y etapa (estado local) | No |
 | **Gasto de API de LLM** | editar tope de plataforma / de organizacion -> `FormDialog` -> `PUT` de tope; rango de fechas | superadmin-gasto-api-page |
 | **Zona CFO segura** | asignar rol finanzas con motivo -> `PUT /superadmin/zona-cfo/roles/:id`; **"Retirar" -> `ConfirmDialog` (peligro, con el correo)** -> el mismo `PUT` con `rol: null`; "mas antiguas" (paginacion) | superadmin-zona-cfo-page (incluye Cancelar no llama al PUT) |
 | **Privacidad (ARCO plataforma)** | solo lectura con casilla "Solo vencidas" | privacidad-plataforma-page |

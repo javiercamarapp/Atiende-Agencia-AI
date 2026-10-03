@@ -96,20 +96,20 @@ describe("LicitacionesShell — nav móvil", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 14 destinos de un owner (13 + Copiloto), incluidos KYC 69-B, Días inhábiles, Staff, WhatsApp y Seguridad', async () => {
+  it('el botón "Más" abre los 15 destinos de un owner (14 + Copiloto), incluidos KYC 69-B, Días inhábiles, Staff, WhatsApp, Seguridad y Privacidad', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(14);
+    expect(hrefs).toHaveLength(15);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad"]),
+      expect.arrayContaining(["/licitaciones/demo/copiloto", "/licitaciones/demo/radar-renovaciones", "/licitaciones/demo/fuentes", "/licitaciones/demo/kyc-69b", "/licitaciones/demo/dias-inhabiles", "/licitaciones/demo/staff", "/licitaciones/demo/whatsapp", "/licitaciones/demo/seguridad", "/licitaciones/demo/privacidad"]),
     );
   });
 
   // UNI-6: marco de Likida -- Resumen raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 14 destinos del owner en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 15 destinos del owner en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Oportunidades", "Inteligencia", "Organización"]);
@@ -119,11 +119,11 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(categoriasAbiertas(root)).toEqual(["Inteligencia"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Fuentes y frescura", "KYC proveedores (69-B)", "Perfil de matching"]);
     abrirCategoria(root, "Organización");
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Datos de la empresa", "Días inhábiles", "Aprobaciones", "Staff", "WhatsApp", "Seguridad"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Datos de la empresa", "Días inhábiles", "Aprobaciones", "Staff", "WhatsApp", "Seguridad", "Privacidad"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Owner Demo", rol: "Propietario" });
   });
 
-  it("un rol sin gestión de staff no ve Staff (cosmético; el servidor es la barrera) y Más trae los otros 13", async () => {
+  it("un rol sin gestión de staff no ve Staff ni Privacidad (cosmético; el servidor es la barrera) y Más trae los otros 13", async () => {
     installMatchMediaStub();
     installMemoryLocalStorage().setItem(
       "atiende.licitaciones.session",
@@ -145,6 +145,7 @@ describe("LicitacionesShell — nav móvil", () => {
     const hrefs = [...document.body.querySelectorAll('[role="dialog"] a')].map((a) => a.getAttribute("href"));
     expect(hrefs).toHaveLength(13);
     expect(hrefs).not.toContain("/licitaciones/demo/staff");
+    expect(hrefs).not.toContain("/licitaciones/demo/privacidad");
   });
 
   it("el BarraPagina de escritorio se oculta en mobile (hidden md:block)", async () => {

@@ -18,6 +18,7 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
 import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
+import { IndicadoresWhatsappPage as RestaurantesIndicadoresWhatsappPage } from "./verticals/restaurantes/pages/IndicadoresWhatsapp.tsx";
 import { PrivacidadPage as RestaurantesPrivacidadPage } from "./verticals/restaurantes/pages/Privacidad.tsx";
 import { ConversacionesPage as RestaurantesConversacionesPage } from "./verticals/restaurantes/pages/Conversaciones.tsx";
 import { TurnosPage as RestaurantesTurnosPage } from "./verticals/restaurantes/pages/Turnos.tsx";
@@ -32,6 +33,7 @@ import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { SuperAdminOrganizacionesPage } from "./superadmin/pages/Organizaciones.tsx";
 import { SuperAdminOrganizacionFichaPage } from "./superadmin/pages/OrganizacionFicha.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
+import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminGastoApiPage } from "./superadmin/pages/GastoApi.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
@@ -57,7 +59,7 @@ import { SuperAdminPylVerticalPage } from "./superadmin/pages/PylVertical.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { SuperAdminContratosPage } from "./superadmin/pages/Contratos.tsx";
-import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
 import { NotificacionesPagina } from "./components/NotificacionesPagina.tsx";
 import { PlanYUsoPagina } from "./components/PlanYUsoPagina.tsx";
 import { RestaurantePage as StorefrontRestaurantePage } from "./verticals/restaurantes/storefront/RestaurantePage.tsx";
@@ -140,7 +142,7 @@ import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
 import { ConversacionesPage as CitasConversacionesPage } from "./verticals/citas/pages/Conversaciones.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
-import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { LicitacionesShell, puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
@@ -278,6 +280,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
 // Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
 const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
+// R-31: indicadores del agente de WhatsApp (owner/admin).
+const RestaurantesIndicadoresWhatsappRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesIndicadoresWhatsappPage {...ctx} />);
 // PM PR-9 -- privacidad (solicitudes ARCO + aviso/retención/grabación), owner/admin.
 const RestaurantesPrivacidadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrivacidadPage {...ctx} />);
 // PL-13 -- privacidad de la organizacion (ARCO de todos los verticales, retencion, bloqueo de purga, aviso versionado).
@@ -476,6 +480,15 @@ function SuperAdminPrivacidadRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminTaxonomiaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminTaxonomiaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -998,6 +1011,19 @@ const LicitacionesAprobacionesRoute = shellRoute(LicitacionesShell, "/licitacion
 const LicitacionesSalaGuerraRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <SalaGuerraPage {...ctx} />);
 const LicitacionesSeguridadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesSeguridadPage {...ctx} />);
 // L-05: configuración de WhatsApp (opt-in, temas de aviso, decisión go/no-go por botón).
+// L-20: privacidad de la organización (PL-13) también desde la consola de licitaciones. La organización sale del token; un
+// rol que no sea owner/admin ve el estado denegado sin llamar a la API (el servidor también responde 403).
+const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) =>
+  licitacionesPuedeVerPrivacidad(ctx.role) ? (
+    <PrivacidadOrganizacionPage
+      apiBaseUrl={ctx.apiBaseUrl}
+      token={ctx.token}
+      notaVertical="Licitaciones todavía no registra solicitudes ARCO propias ni tiene clases de retención propias (firmantes, bitácora KYC, WhatsApp, documentos de empresa): lo que ves aquí viene de los demás verticales de tu organización."
+    />
+  ) : (
+    <EstadoError mensaje="Solo el owner o un admin de la organización puede administrar la privacidad." />
+  ),
+);
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
@@ -1096,6 +1122,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
         <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
+        <Route path="/restaurantes/:orgSlug/agente-whatsapp" element={<RestaurantesIndicadoresWhatsappRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad" element={<RestaurantesPrivacidadRoute />} />
         <Route path="/restaurantes/:orgSlug/privacidad-organizacion" element={<RestaurantesPrivacidadOrganizacionRoute />} />
         <Route path="/restaurantes/:orgSlug/conversaciones" element={<RestaurantesConversacionesRoute />} />
@@ -1118,7 +1145,8 @@ export function App() {
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
-        <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
+        <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
+        <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
         <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
@@ -1262,6 +1290,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion" element={<LicitacionesPostAdjudicacionRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/autopsia" element={<LicitacionesAutopsiaRoute />} />
+        <Route path="/licitaciones/:orgSlug/privacidad" element={<LicitacionesPrivacidadRoute />} />
         <Route path="/licitaciones/:orgSlug/radar-renovaciones" element={<LicitacionesRadarRenovacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />

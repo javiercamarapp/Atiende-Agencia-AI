@@ -138,8 +138,11 @@ curl -s -X POST -H "x-atiende-internal-secret: $INTERNAL_SECRET" \
 | `GET\|POST /internal/plataforma/privacidad-retencion` | sistema | programado (diario) |
 
 Pantalla por organización: panel de restaurantes → **Privacidad de la organización**
-(`/restaurantes/:orgSlug/privacidad-organizacion`). El API es independiente del vertical; falta enlazarla en los
-demás paneles.
+(`/restaurantes/:orgSlug/privacidad-organizacion`); también en rentas
+(`/rentas/:orgSlug/privacidad-organizacion`) y licitaciones (`/licitaciones/:orgSlug/privacidad`, entrada "Privacidad" en
+Organización, solo owner/admin; otro rol ve el estado denegado). El API es independiente del vertical; falta enlazarla en
+los demás paneles. Licitaciones aún no aporta clases de retención ni ARCO propios al catálogo (firmantes, bitácora KYC,
+WhatsApp, documentos de empresa): la pantalla muestra lo de los demás verticales de la organización y lo declara.
 
 ## Compatibilidad con la base sin migrar
 

@@ -54,7 +54,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
@@ -334,6 +334,7 @@ export function buildProductionDeps(): AppDeps {
     vozRepo: (db) => new PostgresVozRepository(db),
     // KPI de voz, costo y alertas (migración 035): cada consulta degrada con SAVEPOINT contra la base sin migrar.
     vozKpiRepo: (db) => new PostgresVozKpiRepository(db),
+    whatsappKpiRepo: (db) => new PostgresWhatsappKpiRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
