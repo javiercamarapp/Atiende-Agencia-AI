@@ -232,7 +232,7 @@ export function SuperAdminSaludPage({ apiBaseUrl, token }: { readonly apiBaseUrl
             <DollarSign className="w-5 h-5 text-muted-foreground" strokeWidth={1.75} />
             <div>
               <p className="text-xs text-muted-foreground">Gasto de API de LLM</p>
-              <a href="/superadmin/gasto-api" className="text-sm text-primary hover:underline">
+              <a href="/superadmin/consumo-ia" className="text-sm text-primary hover:underline">
                 Ver detalle →
               </a>
             </div>

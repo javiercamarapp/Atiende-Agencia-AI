@@ -123,7 +123,7 @@ function textoIngreso(f: Fila): string {
   return f.ingresoRazon === "sin_plan" ? "— sin plan asignado" : "— plan sin precio";
 }
 
-export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminCostosMargenPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Costos y facturación: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [mes, setMes] = useState(mesActual());
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -199,11 +199,13 @@ export function SuperAdminCostosMargenPage({ apiBaseUrl, token }: { readonly api
     <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <Coins className="w-5 h-5" strokeWidth={1.75} />
-            Costos y margen por organización
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Costo de LLM, voz, WhatsApp y telefonía contra el ingreso esperado de su plan. Las cifras sin dato se muestran como «—», nunca como cero.</p>
+          {!incrustada && (
+            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+              <Coins className="w-5 h-5" strokeWidth={1.75} />
+              Costos y margen por organización
+            </h1>
+          )}
+          <p className={incrustada ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>Costo de LLM, voz, WhatsApp y telefonía contra el ingreso esperado de su plan. Las cifras sin dato se muestran como «—», nunca como cero.</p>
         </div>
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex flex-col gap-1.5">

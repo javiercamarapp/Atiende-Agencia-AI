@@ -93,7 +93,8 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
   it("las rutas viejas que cambian de lugar redirigen a una ruta que existe", () => {
     for (const [desde, hacia] of Object.entries(REDIRECCIONES_SUPERADMIN)) {
       expect(desde).not.toBe(hacia);
-      expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain(hacia);
+      // El destino puede traer `?tab=`: la ruta es lo que va antes del `?`.
+      expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain(hacia.split("?")[0]);
     }
     // El listado de organizaciones ya no es la raiz: el Resumen lo es.
     expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain("/superadmin/organizaciones");
@@ -149,7 +150,7 @@ describe("sidebar del superadmin (SuperAdminShell)", () => {
     rendered = await renderShell("/superadmin");
     const aside = rendered.container.querySelector('aside[aria-label="Navegación principal"]')!;
     const pie = [...aside.querySelectorAll("a")].filter((a) => ["Costos de IA", "Ver los otros paneles"].includes(a.getAttribute("aria-label") ?? ""));
-    expect(pie.map((a) => a.getAttribute("href"))).toEqual(["/superadmin/gasto-api", "/superadmin/paneles"]);
+    expect(pie.map((a) => a.getAttribute("href"))).toEqual(["/superadmin/costos-facturacion", "/superadmin/paneles"]);
     const navHrefs = [...aside.querySelectorAll("nav a")].map((a) => a.getAttribute("href"));
     expect(navHrefs).not.toContain("/superadmin/paneles");
   });

@@ -241,7 +241,7 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
   const acciones = (
     <>
       {rutaExiste("/superadmin/analitica") && <PillLink to="/superadmin/analitica">Ver analítica</PillLink>}
-      {rutaExiste("/superadmin/gasto-api") && <PillLink to="/superadmin/gasto-api">Ver costos de IA</PillLink>}
+      {rutaExiste("/superadmin/consumo-ia") && <PillLink to="/superadmin/consumo-ia">Ver costos de IA</PillLink>}
       <PillLink to={PARTE_DIARIO}>Ver parte diario</PillLink>
     </>
   );

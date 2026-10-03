@@ -102,7 +102,7 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, ini
 const fechaHora = (ms: number) => new Date(ms).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
 const MESES_VALIDOS = /^\d{4}-(0[1-9]|1[0-2])$/u;
 
-export function SuperAdminContratosPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminContratosPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Costos y facturación: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [orgs, setOrgs] = useState<readonly Organizacion[] | null>(null);
   const [orgId, setOrgId] = useState("");
   const [mes, setMes] = useState(mesActual());
@@ -248,17 +248,24 @@ export function SuperAdminContratosPage({ apiBaseUrl, token }: { readonly apiBas
 
   return (
     <PageContainer>
-      <PageHeader
-        titulo="Contratos por cliente"
-        descripcion="Lo que se pactó con cada cliente: base mensual, tarifa por sucursal, bolsa de minutos de voz, excedente, descuentos y vigencia. Cada cambio crea una versión nueva e inmutable con quién la hizo."
-        acciones={
+      {(() => {
+        const descripcion = "Lo que se pactó con cada cliente: base mensual, tarifa por sucursal, bolsa de minutos de voz, excedente, descuentos y vigencia. Cada cambio crea una versión nueva e inmutable con quién la hizo.";
+        const acciones =
           disponible && org ? (
             <Button className="rounded-full" onClick={() => abrir("alta", null)}>
               Nuevo contrato
             </Button>
-          ) : undefined
-        }
-      />
+          ) : undefined;
+        // Embebida en Costos y facturación: sin h1 propio (lo pone la pagina contenedora), pero conserva descripcion y CTA.
+        return incrustada ? (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{descripcion}</p>
+            {acciones}
+          </div>
+        ) : (
+          <PageHeader titulo="Contratos por cliente" descripcion={descripcion} acciones={acciones} />
+        );
+      })()}
 
       {versiones && !versiones.disponible && (
         <Callout tone="warning" titulo="Todavía no disponible en esta base">
