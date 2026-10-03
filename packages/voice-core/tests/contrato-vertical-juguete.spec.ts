@@ -132,7 +132,7 @@ describe("contrato del esqueleto con una vertical de juguete", () => {
   });
 
   it("una herramienta incierta que expira no cierra la llamada como lograda y le avisa al modelo que no lo asegure", async () => {
-    const l = await correrGuionConAdaptador(adaptador, {
+    const guion: Guion = {
       id: "J04-timeout",
       titulo: "agendar_cita lenta",
       rasgos: [],
@@ -140,7 +140,8 @@ describe("contrato del esqueleto con una vertical de juguete", () => {
       toolLenta: { nombre: "agendar_cita", ms: 200 },
       turnos: [{ kind: "voz", cliente: "Agende", agente: [{ tool: "agendar_cita", args: { hora: "17:00" } }, { dice: "Una persona lo verificará." }] }],
       esperado: { resultado: "abandonado", pregrabados: ["tool_timeout"] },
-    } satisfies Guion);
+    };
+    const l = await correr(guion);
     expect(l.resultado).toBe("abandonado");
     expect(JSON.stringify(l.tools[0]?.resultado)).toContain("No se pudo confirmar la cita");
     expect(await fallos(l)).toEqual([]);
@@ -154,6 +155,45 @@ describe("contrato del esqueleto con una vertical de juguete", () => {
     });
     expect(l.mundo.citas[0]?.telefono).toBe(TEL);
     expect(l.tools[0]?.args).toMatchObject({ telefono: "5550001111" });
+  });
+
+  it("la guardia de la vertical bloquea la herramienta ANTES de tocar el servidor y avanza con alResultado", async () => {
+    const vistas: string[] = [];
+    let cotizado = false;
+    const conGuardia: AdaptadorSimulador<Resultado, Memoria, Mundo> = {
+      ...adaptador,
+      registro: {
+        ...REGISTRO,
+        guardia: (nombre) => (nombre === "agendar_cita" && !cotizado ? { error: "falta_consulta", mensaje: "Consulte el cupo antes de agendar." } : null),
+        alResultado: (nombre, _args, _res, okRes) => {
+          vistas.push(`${nombre}:${okRes}`);
+          if (nombre === "consultar_cupo" && okRes) cotizado = true;
+        },
+      },
+    };
+    const guion: Guion = {
+      id: "J06-guardia",
+      titulo: "agenda sin consultar y luego consultando",
+      rasgos: [],
+      turnos: [
+        { kind: "voz", cliente: "Agende", agente: [{ tool: "agendar_cita", args: { hora: "17:00" } }, { tool: "consultar_cupo", args: { hora: "17:00" } }, { tool: "agendar_cita", args: { hora: "17:00" } }, { dice: "Listo." }] },
+      ],
+      esperado: { resultado: "cita_agendada", citas: 1 },
+    };
+    const l = await correrGuionConAdaptador(conGuardia, guion);
+    expect(JSON.stringify(l.tools[0]?.resultado)).toContain("falta_consulta");
+    expect(l.mundo.citas).toHaveLength(1);
+    expect(vistas).toEqual(["consultar_cupo:true", "agendar_cita:true"]);
+    expect(l.resultado).toBe("cita_agendada");
+  });
+
+  it("una vertical con VARIAS herramientas objetivo logra la llamada con cualquiera de ellas", () => {
+    const m = new CallStateMachine<"logrado">({ herramientaObjetivo: ["a", "b"], resultadoObjetivo: "logrado", herramientaEscalar: "e" });
+    m.recibir({ tipo: "conectada" });
+    m.recibir({ tipo: "tool_resultado", nombre: "b", ok: true, entidadId: "x-1" });
+    expect(m.hayObjetivo).toBe(true);
+    expect(m.recibir({ tipo: "cliente_cuelga" })).toEqual([]);
+    expect(m.resultado).toBe("logrado");
   });
 
   it("la maquina exige las reglas de la vertical y un catalogo de mensajes cubre todos los ids", () => {

@@ -31,6 +31,11 @@ export interface RegistroToolsVoz {
   readonly herramientasInciertas: readonly string[];
   /** Lo que se le dice al modelo cuando una tool incierta expira (nombra lo que la vertical crea: el pedido, la reserva). */
   readonly mensajeIncierto: string;
+  /** Maquina de estados de la vertical (defensa en profundidad; el servidor vuelve a aplicar sus reglas): se consulta ANTES de ejecutar y,
+   * si devuelve un rechazo, la herramienta NO se ejecuta y el modelo recibe ese error (p. ej. "no se puede apartar sin cotizar y confirmar"). */
+  guardia?(nombre: string, args: Readonly<Record<string, unknown>>): { readonly error: string; readonly mensaje: string } | null;
+  /** Se avisa de cada herramienta ya ejecutada (`ok` = el servidor no devolvio error) para que la maquina de la vertical avance. */
+  alResultado?(nombre: string, args: Readonly<Record<string, unknown>>, resultado: unknown, ok: boolean): void;
 }
 
 export interface ResultadoTool {
@@ -79,6 +84,9 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
       if (!permitidas.has(nombre)) {
         return { resultado: { error: `Herramienta desconocida: ${nombre}` }, ok: false, timeout: false, entidadId: null, latenciaMs: 0 };
       }
+      const limpios = sanearArgumentos(args);
+      const rechazo = opts.registro.guardia?.(nombre, limpios) ?? null;
+      if (rechazo) return { resultado: { ...rechazo, bloqueada_por_flujo: true }, ok: false, timeout: false, entidadId: null, latenciaMs: 0 };
       const control = new AbortController();
       let temporizador: ReturnType<typeof setTimeout> | undefined;
       const expira = new Promise<"timeout">((resolve) => {
@@ -88,7 +96,7 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
         }, opts.timeoutMs);
       });
       try {
-        const salida = await Promise.race([opts.transporte(nombre, sanearArgumentos(args), control.signal), expira]);
+        const salida = await Promise.race([opts.transporte(nombre, limpios, control.signal), expira]);
         const latenciaMs = Math.max(0, ahora() - t0);
         if (salida === "timeout") {
           const incierto = inciertas.has(nombre);
@@ -107,6 +115,7 @@ export function crearEjecutorTools(opts: EjecutorToolsOpciones): EjecutorTools {
           };
         }
         const conError = typeof salida.resultado === "object" && salida.resultado !== null && "error" in salida.resultado;
+        opts.registro.alResultado?.(nombre, limpios, salida.resultado, !conError);
         return { resultado: salida.resultado, ok: !conError, timeout: false, entidadId: conError ? null : salida.entidadId, latenciaMs };
       } catch {
         if (control.signal.aborted) return { resultado: { error: "La herramienta tardó demasiado.", timeout: true }, ok: false, timeout: true, entidadId: null, latenciaMs: Math.max(0, ahora() - t0) };

@@ -21,8 +21,8 @@ export type MotivoEscalacionLlamada = "no_entiende" | "cliente_lo_pide" | "falla
  * (restaurantes: `crear_pedido` -> `pedido_creado`; hoteles: `apartar_habitacion` -> `reserva_apartada`) y cual es la de pasar a una
  * persona. Una llamada ya lograda nunca se escala: solo se despide. */
 export interface ReglasCierreLlamada<R extends string> {
-  /** Herramienta que, al salir bien y devolver una entidad (`entidadId`), logra el objetivo de la llamada. */
-  readonly herramientaObjetivo: string;
+  /** Herramienta (o varias) que, al salir bien y devolver una entidad (`entidadId`), logran el objetivo de la llamada. */
+  readonly herramientaObjetivo: string | readonly string[];
   readonly resultadoObjetivo: R;
   /** Herramienta con la que el agente pasa por su cuenta a una persona. */
   readonly herramientaEscalar: string;
@@ -230,12 +230,17 @@ export class CallStateMachine<R extends string = string> {
       return [{ tipo: "decir", mensaje: "tool_timeout" }];
     }
     this.timeouts = 0;
-    if (ev.ok && ev.nombre === this.reglas.herramientaObjetivo && ev.entidadId) this.objetivoLogrado = true;
+    if (ev.ok && ev.entidadId && this.esObjetivo(ev.nombre)) this.objetivoLogrado = true;
     if (ev.ok && ev.nombre === this.reglas.herramientaEscalar) {
       this.escalado = true;
       this.cerrarAlTerminar = !this.objetivoLogrado;
     }
     return [];
+  }
+
+  private esObjetivo(nombre: string): boolean {
+    const h = this.reglas.herramientaObjetivo;
+    return typeof h === "string" ? h === nombre : h.includes(nombre);
   }
 
   private reloj(segundos: number): AccionLlamada<R>[] {
