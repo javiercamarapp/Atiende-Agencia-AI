@@ -25,7 +25,6 @@ afterEach(() => {
 });
 
 const DIAS = Array.from({ length: 14 }, (_, i) => `2026-09-${String(19 + i).padStart(2, "0")}`);
-const cero = { costMicroUsd: 0, callCount: 0, fallbackCallCount: 0 };
 
 const CONSUMO: RespuestaConsumoIa = {
   hoy: "2026-10-02",

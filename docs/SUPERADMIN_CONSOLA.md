@@ -46,6 +46,13 @@ El gasto de IA total (USD) del Resumen se sirve sin step-up ni bitácora, a dife
 - La bitácora de corridas real y las tareas x/y son SA-L-07.
 - Notificaciones: sin eventos nuevos; endpoints de solo lectura.
 
+## Costos y facturación, Consumo de IA y Ejecutivo / Board (SA-L-21, SA-L-22, SA-L-24)
+- `/superadmin/costos-facturacion` monta Facturación, Costos y margen, P&L y Contratos como pestañas (`?tab=facturacion|costos|pyl|contratos`); las rutas viejas redirigen a su pestaña. Arriba, dos KpiTiles del Resumen: gasto de IA histórico y costo de IA por operación atendida (gasto / operaciones; `—` con motivo si falta alguno).
+- `/superadmin/consumo-ia` = Gasto de API de LLM más `GET /superadmin/gasto-api/consumo-ia` (step-up, como `por-rol`): gasto de hoy por rol contra su techo e insights deterministas (rol sin techo, rol con fallbacks > 10 % en 30 días, organización > 80 % de su tope mensual). Sin SQL nuevo: reutiliza `core.get_llm_usage_by_org_role_month_for_superadmin` y `core.list_llm_usage_by_organization_for_superadmin`; sin la migración 0047 responde `disponible: false`.
+- El techo de un rol es el tope diario de turnos por organización (`llm-role-limits.ts`), no un techo de dinero; los topes propios por organización no entran en la tabla agregada.
+- `/superadmin/ejecutivo` = Dashboard CFO (incrustado, con su step-up y su bitácora) con el odómetro del MRR contra la meta de $1,000,000 y KpiTiles del Resumen, más "Lo que este panel todavía no puede mostrar" (caja: SA-26; cobranza con aging: SA-09; embudo y cohortes: SA-25 / SA-08).
+- `/superadmin/gasto-api` y `/superadmin/cfo` redirigen a `/superadmin/consumo-ia` y `/superadmin/ejecutivo`.
+
 ## Verificación
 `scripts/verify-superadmin-consola/` (Postgres real, lo corre `scripts/verify-real-postgres-ci/run-gate.mjs`): agregados con datos sembrados y corte de día de México, fuente ausente por vertical, rechazo de staff normal, uid ajeno, sistema y anon, rangos inválidos y bitácora `resumen_mrr`.
 Fixtures de la UI: `apps/web/e2e/mock-api/fixtures/superadmin.ts`.
