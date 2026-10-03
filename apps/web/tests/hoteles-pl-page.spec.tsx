@@ -154,7 +154,7 @@ describe("PlPage (hoteles)", () => {
     await act(async () => {
       click(toggle);
     });
-    const fechaInput = rendered.container.querySelector("#pl-fecha") as HTMLInputElement;
+    const fechaInput = document.body.querySelector("#pl-fecha") as HTMLInputElement;
     expect(fechaInput.value).toBe("2026-09-19");
   });
 
@@ -257,8 +257,8 @@ describe("PlPage (hoteles)", () => {
       click(toggle);
     });
 
-    changeValue(rendered.container.querySelector("#pl-monto") as HTMLInputElement, "-5");
-    const form = [...rendered.container.querySelectorAll("form")].find((f) => f.textContent?.includes("Registrar gasto"))!;
+    changeValue(document.body.querySelector("#pl-monto") as HTMLInputElement, "-5");
+    const form = document.body.querySelector('[role="dialog"] form') as HTMLFormElement;
     const callsAntes = fetchMock.mock.calls.length;
     await submitForm(form);
 
@@ -277,7 +277,7 @@ describe("PlPage (hoteles)", () => {
       click(toggle);
     });
 
-    const root = rendered.container;
+    const root = document.body;
     changeValue(root.querySelector("#pl-departamento") as HTMLSelectElement, "food_beverage");
     changeValue(root.querySelector("#pl-categoria") as HTMLSelectElement, "costo_ventas");
     changeValue(root.querySelector("#pl-fecha") as HTMLInputElement, "2026-09-15");
@@ -286,7 +286,7 @@ describe("PlPage (hoteles)", () => {
 
     expensesActuales = [GASTO_1, { id: "exp-nuevo", departamento: "food_beverage", categoria: "costo_ventas", descripcion: "Compra de camarón", monto: 1250.5, fecha: "2026-09-15", creadoPor: "gm@example.com", creadoEn: "2026-09-19T12:00:00.000Z" }];
 
-    const form = [...root.querySelectorAll("form")].find((f) => f.textContent?.includes("Registrar gasto") && f.querySelector("#pl-descripcion"))!;
+    const form = root.querySelector('[role="dialog"] form') as HTMLFormElement;
     await submitForm(form);
     await esperarCarga();
 
@@ -295,6 +295,22 @@ describe("PlPage (hoteles)", () => {
     expect(JSON.parse(call![1].body as string)).toEqual({ departamento: "food_beverage", categoria: "costo_ventas", descripcion: "Compra de camarón", monto: 1250.5, fecha: "2026-09-15" });
     // El formulario se cierra tras registrar con éxito.
     expect(root.querySelector("#pl-descripcion")).toBeNull();
-    expect(root.textContent).toContain("Compra de camarón");
+    expect(rendered.container.textContent).toContain("Compra de camarón");
+  });
+
+  it("cerrar el dialogo de gasto (Cerrar) no registra nada", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+    const toggle = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Registrar gasto"))!;
+    await act(async () => {
+      click(toggle);
+    });
+    const callsAntes = fetchMock.mock.calls.length;
+    await act(async () => {
+      click(document.body.querySelector('[role="dialog"] button[aria-label="Cerrar"]') as HTMLButtonElement);
+    });
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(fetchMock.mock.calls.length).toBe(callsAntes);
   });
 });
