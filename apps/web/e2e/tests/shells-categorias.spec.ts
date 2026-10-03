@@ -23,7 +23,7 @@ interface Esperado {
 }
 
 const CONSOLAS: Readonly<Record<ObjetivoLogin, Esperado>> = {
-  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/gasto-api"] },
+  superadmin: { categorias: ["Agentes", "Negocio", "Plataforma", "Control", "Sistema"], barra: ["Resumen", "Orgs", "Salud", "Acciones"], pie: ["Costos de IA", "Ver los otros paneles"], repetidos: ["/superadmin/costos-facturacion"] },
   // CHAT-08: la API simulada activa el asistente de restaurantes, asi que su pie lleva la pildora "Pregunta a tus datos" (enlace al Copiloto,
   // que tambien es la entrada "Copiloto" del menu: por eso la hoja "Más" la repite).
   restaurantes: { categorias: ["Operación", "Catálogo", "Clientes", "Agente", "Configuración"], barra: ["Resumen", "Pedidos", "Historial", "Productos"], pie: ["Pregunta a tus datos", "Seguridad de la cuenta"], repetidos: [`/restaurantes/${restaurantes.orgSlug}/copiloto`] },
@@ -80,7 +80,7 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       // Cada destino de la barra tambien esta en la hoja.
       const hrefsHoja = await hoja.getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
       for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
-      // Solo los destinos declarados en `repetidos` se repiten: "Costos de IA" (superadmin, repite "Gasto de API de LLM") y la pildora
+      // Solo los destinos declarados en `repetidos` se repiten: "Costos de IA" (superadmin, repite "Costos y facturación") y la pildora
       // "Pregunta a tus datos" (restaurantes, repite "Copiloto"); en el resto no se repite nada.
       const duplicados = hrefsHoja.filter((h, i) => hrefsHoja.indexOf(h) !== i);
       expect(duplicados, `${objetivo}: destinos repetidos en la hoja`).toEqual([...(esperado.repetidos ?? [])]);

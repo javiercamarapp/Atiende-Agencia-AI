@@ -38,6 +38,34 @@ test.describe("superadmin @humo", () => {
     vigilante.verificar();
   });
 
+  test("costos y facturacion, consumo de IA y ejecutivo: pestanas por URL, redirecciones de las rutas viejas y un solo h1 por pagina", async ({ page, iniciarSesion, vigilante }) => {
+    await iniciarSesion("superadmin");
+    // SA-L-21: las cuatro paginas de costos son pestanas; la activa vive en ?tab= y las rutas viejas redirigen a su pestana.
+    await page.goto("/superadmin/costos-facturacion");
+    await afirmarPantallaSana(page, "costos y facturacion");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Costos y facturación");
+    await expect(page.getByText("Gasto de IA histórico")).toBeVisible();
+    await page.getByRole("tab", { name: "P&L" }).click();
+    await expect(page).toHaveURL(/\/superadmin\/costos-facturacion\?tab=pyl$/);
+    await page.goto("/superadmin/contratos");
+    await expect(page).toHaveURL(/\/superadmin\/costos-facturacion\?tab=contratos$/);
+    await expect(page.getByRole("tab", { name: "Contratos" })).toHaveAttribute("aria-selected", "true");
+    // SA-L-22: Gasto de API de LLM pasa a Consumo de IA, con la tabla por rol y las alertas.
+    await page.goto("/superadmin/gasto-api");
+    await expect(page).toHaveURL(/\/superadmin\/consumo-ia$/);
+    await afirmarPantallaSana(page, "consumo de IA");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Consumo de IA");
+    await expect(page.getByText("Gasto de hoy por rol / agente")).toBeVisible();
+    await expect(page.getByText("sin techo").first()).toBeVisible();
+    // SA-L-24: Dashboard CFO pasa a Ejecutivo / Board.
+    await page.goto("/superadmin/cfo");
+    await expect(page).toHaveURL(/\/superadmin\/ejecutivo$/);
+    await afirmarPantallaSana(page, "ejecutivo");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ejecutivo / Board");
+    await expect(page.getByText("Lo que este panel todavía no puede mostrar")).toBeVisible();
+    vigilante.verificar();
+  });
+
   test("organizaciones: tabla con metricas y 'Entrar' con motivo (Cancelar y Escape no escriben), ficha 360, 404 honesto y pestana Gestion", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("superadmin");
     await page.goto("/superadmin/organizaciones");

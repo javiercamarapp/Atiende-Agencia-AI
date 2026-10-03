@@ -31,6 +31,7 @@ import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
 import { ALL_PRODUCTION_ROLES, DATA_CHAT_RETRY_ROLES } from "../production/llm-gateway.ts";
 import { NEW_PLATFORM_LLM_ROLES } from "../production/llm-models.ts";
+import { armarConsumoIa } from "../production/llm-consumo-ia.ts";
 import { defaultRoleDailyTurnLimit } from "../production/llm-role-limits.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -159,6 +160,32 @@ export function superadminLlmUsageRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     } catch (err) {
       if (isMigrationPendingError(err)) return c.json({ range: { from, to }, disponible: false, mensaje: NO_DISPONIBLE_AUN, filas: [] });
       throw err;
+    }
+  });
+
+  // SA-L-22 (Consumo de IA): corte por rol/agente de HOY contra su techo diario de turnos por organizacion + insights deterministas
+  // (rol sin techo, rol con fallbacks > 10 %, organizacion > 80 % de su tope mensual). Sale de core.llm_usage_daily y llm_org_budget,
+  // SIN SQL nuevo: reutiliza las funciones *_for_superadmin existentes (cada llamada del repo abre su propia transaccion, asi que el
+  // 42883 de una base sin la migracion 0047 no deja abortada la lectura que sigue). Detras de step-up (SENSITIVE_ROUTES), como por-rol.
+  // Base sin 0047: 200 con `disponible: false`, `roles: []`; el insight de organizaciones sigue saliendo (no depende de 0047).
+  app.get("/superadmin/gasto-api/consumo-ia", async (c) => {
+    const callerId = c.get("userId");
+    const hoy = isoDate(new Date());
+    const desdeD = new Date(`${hoy}T00:00:00.000Z`);
+    desdeD.setUTCDate(desdeD.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
+    const desde = isoDate(desdeD);
+    const organizaciones = await deps.llmUsageRepo.listUsageByOrganizationForSuperadmin(callerId, hoy, hoy);
+    try {
+      const [filasHoy, filasVentana] = await Promise.all([
+        deps.llmUsageRepo.listUsageByOrgRoleMonthForSuperadmin(callerId, hoy, hoy),
+        deps.llmUsageRepo.listUsageByOrgRoleMonthForSuperadmin(callerId, desde, hoy),
+      ]);
+      const consumo = armarConsumoIa({ hoy: filasHoy, ventana: filasVentana, organizaciones });
+      return c.json({ hoy, desde, disponible: true, ...consumo });
+    } catch (err) {
+      if (!isMigrationPendingError(err)) throw err;
+      const consumo = armarConsumoIa({ hoy: [], ventana: [], organizaciones });
+      return c.json({ hoy, desde, disponible: false, mensaje: NO_DISPONIBLE_AUN, ...consumo });
     }
   });
 

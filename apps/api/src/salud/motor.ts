@@ -125,7 +125,7 @@ export interface CalcularAlertasInput {
 const HREF_CRONS = "/superadmin/salud/crons";
 const HREF_COLAS = "/superadmin/salud/colas";
 const HREF_LICITACIONES_FUENTES = "/superadmin/salud/licitaciones-fuentes";
-const HREF_GASTO_API = "/superadmin/gasto-api";
+const HREF_GASTO_API = "/superadmin/consumo-ia";
 
 function alertasCrons(crons: readonly CronConEstado[] | null): Alerta[] {
   if (crons === null) {
