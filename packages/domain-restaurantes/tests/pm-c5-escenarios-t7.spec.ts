@@ -93,7 +93,7 @@ describe("escenarios de T7: las cifras citadas coinciden con el motor real sobre
     }
   }
 
-  const casos: ReadonlyArray<readonly [string, string, readonly Renglon[], number, readonly ("crema_ajo" | "salsa_verde")[]?]> = [
+  const casos: Array<[string, string, readonly Renglon[], number, ("crema_ajo" | "salsa_verde")[]?]> = [
     ["T7-001", "1/4 kg de bistec", [["Bistec de Res — 250 g", 1]], 275],
     ["T7-014", "kilo de bistec", [["Bistec de Res — 1 kg", 1]], 1100],
     ["T7-060", "kilo de pastor, bistec, arrachera y costilla", [["Pastor — 1 kg", 1], ["Bistec de Res — 1 kg", 1], ["Arrachera — 1 kg", 1], ["Costilla de Res — 1 kg", 1]], 900 + 1100 + 1400 + 950],
