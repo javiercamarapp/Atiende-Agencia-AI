@@ -166,6 +166,19 @@ describe("PostgresCitasRepository -- conteos del Resumen (AbortAwareFakeSession)
     const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => err }]);
     await expect(new PostgresCitasRepository(session).countAppointmentsByStatus("org", "a", "b")).rejects.toMatchObject({ code: "57014" });
   });
+
+  it("countAppointmentsCreatedBySource rellena con 0 los canales ausentes, ignora canales desconocidos y excluye canceladas en el SQL", async () => {
+    const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => [{ source: "whatsapp", count: "4" }, { source: "voice", count: "2" }, { source: "fax", count: "9" }] }]);
+    const result = await new PostgresCitasRepository(session).countAppointmentsCreatedBySource("org", "2026-09-02T00:00:00Z");
+    expect(result).toEqual({ voice: 2, whatsapp: 4, web: 0, manual: 0 });
+    expect(session.calls[0]).toMatch(/created_at >= \$2 and status <> 'cancelled'/);
+  });
+
+  it("countAppointmentsCreatedBySource propaga un error real de Postgres", async () => {
+    const err = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    const session = new AbortAwareFakeSession([{ match: /from citas\.appointments/, respond: () => err }]);
+    await expect(new PostgresCitasRepository(session).countAppointmentsCreatedBySource("org", "a")).rejects.toMatchObject({ code: "57014" });
+  });
 });
 
 describe("computeCitasResumen -- citas creadas por canal (UNI-RES-citas)", () => {
