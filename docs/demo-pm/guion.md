@@ -73,6 +73,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 - **Se ve [Servidor]**: total exacto **$530** (6 tacos de bistec = 2 órdenes × $194 + guacamole $142, sin costo de envío); al confirmar, bajo la burbuja: «Pedido registrado por $530.00»; en **Pedidos** el pedido nuevo (canal WhatsApp, `pending`) y su ticket.
 - **Se escribe después** (misma conversación): `Quiero lo mismo que la vez pasada`
 - **Se ve [Agente]**: reconoce al cliente por su historial (el sistema ya tiene su pedido) y le ofrece **lo mismo** con **precios de hoy**: vuelve a cotizar **$530**. *Rescate si no lo ofrece: «Mándeme lo mismo de la última vez: 2 órdenes de tacos de bistec y un guacamole».*
+- **Se escribe para cerrar** (misma conversación): `No, gracias, era para saber`. Así no queda un carrito abierto: el escenario 7 parte de un pedido ya registrado, sin una cotización pendiente que el agente pudiera ampliar.
 
 ## Escenario 2: «todas las salsas» y la salsa extra con costo (8:00 a 11:30)
 
@@ -142,6 +143,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 - **Se ve [Agente]**: disculpa breve, pregunta qué faltó y escala con motivo `queja`; dice «la sucursal le confirma en unos minutos»; **no promete reposición, cambio ni descuento** (los autoriza la sucursal).
 - **Panel → Conversaciones**: toma **pendiente** con motivo `queja` y la conversación completa; en **Contactos** aparece el contacto.
 - **Nota honesta**: en la demo la persona no puede **responder por WhatsApp** desde el panel (no hay número conectado); sí puede tomar, anotar y cerrar.
+- **Antes de pasar al 9 y al 10 (obligatorio)**: **Panel → Conversaciones** → abra la toma **pendiente** de la queja → **Tomar conversación** → **Marcar como resuelta**. Mientras la toma siga abierta (pendiente o tomada) el agente **calla** en esa conversación y el escenario 10 no tendría respuesta del agente.
 
 ## Escenario 9: factura (27:00 a 29:00)
 
@@ -157,7 +159,7 @@ Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden d
 *Origen: T7-016: 15 consultas de estado en 8 semanas; la cajera contesta porque ve a los repartidores.*
 
 - **Se dice**: «El agente no ve al repartidor: solo sabe lo que la sucursal marcó en el pedido. Nunca inventa un estado.»
-- **Se hace**: en **Pedidos**, marque el pedido del escenario 1 como **En preparación** (queda en «pendiente» al crearse); luego vuelva a la **pestaña A**.
+- **Se hace**: confirme que la queja del escenario 8 quedó **resuelta** (sin toma abierta, el agente contesta). Diga: «Ahora el cliente, impaciente, pregunta por su pedido antes de que le llegue; usamos el mismo teléfono de la demo». En **Pedidos**, marque el pedido del escenario 1 como **En preparación** (queda en «pendiente» al crearse); luego vuelva a la **pestaña A**.
 - **Se escribe**: `¿Ya salió mi pedido?`; luego, en **Pedidos**, marque el pedido **En camino** y vuelva a escribir `¿Ya salió?`.
 - **Se ve [Agente]**: primero «va en preparación, confirmado a las [hora]; el tiempo estimado es de 60 a 75 minutos»; después de marcarlo **en camino**: «ya salió a reparto». Si ya pasó el tiempo prometido lo trata como queja (`tiempos_entrega`).
 - **Se ve [Servidor]**: el estado que dice sale de `Pedido reciente` (último pedido de ese teléfono en las últimas 12 h), no de la memoria del modelo.

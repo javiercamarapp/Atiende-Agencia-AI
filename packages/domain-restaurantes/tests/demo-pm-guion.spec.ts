@@ -56,6 +56,15 @@ describe("estructura del guion", () => {
     expect(seccion(10)).toContain("En preparación");
   });
 
+  it("el escenario 8 deja la toma de la queja cerrada antes del 9 y el 10 (con una toma abierta el agente calla, R-21) y el 1 cierra su carrito", () => {
+    const s8 = seccion(8);
+    expect(s8).toMatch(/Tomar conversaci[oó]n/);
+    expect(s8).toMatch(/Marcar como resuelta/);
+    expect(s8.indexOf("Marcar como resuelta")).toBeGreaterThan(s8.indexOf("`queja`"));
+    expect(seccion(10)).toMatch(/resuelta/);
+    expect(seccion(1)).toContain("No, gracias, era para saber");
+  });
+
   it("cubre lo que pidio el encargo: recurrente, todas las salsas, 1/4 de kilo, fuera de zona, cambio tras confirmar, queja por faltante y factura", () => {
     const temas: Array<[string, RegExp]> = [
       ["pedido recurrente", /recurrente/i],
