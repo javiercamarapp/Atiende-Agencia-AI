@@ -33,7 +33,9 @@ import type {
   CalendarSyncPort as CitasCalendarSyncPort,
   CitasConversationGuard,
   CitasRepository,
+  ConversacionesRepository as CitasConversacionesRepository,
   ExchangeAuthorizationCodeInput,
+  HandoffAgentGate as CitasHandoffAgentGate,
   ExchangeAuthorizationCodeResult,
   ResolveCalendarPort,
   ResolveCalendarSyncPort,
@@ -247,6 +249,11 @@ export interface AppDeps {
    * comentario de ese campo abajo) — no una tabla de auditoría propia de hoteles. */
   readonly hotelesFraudeAuditSink: AuditSink;
   readonly citasRepo: (db: TenantDbSession) => CitasRepository;
+  /** C-11 (migracion 031): bandeja de conversaciones de WhatsApp de citas con handoff a humano. OPCIONALES: sin ellos las rutas responden 503 honesto
+   * y el webhook de WhatsApp sigue como antes (el agente responde siempre). En produccion son `PostgresConversacionesRepository` /
+   * `PostgresHandoffAgentGate` (SAVEPOINT contra la base sin migrar); los tests inyectan el espejo en memoria. */
+  readonly citasConversacionesRepo?: (db: TenantDbSession) => CitasConversacionesRepository;
+  readonly citasHandoffGate?: (db: TenantDbSession) => CitasHandoffAgentGate;
   /** Fase 2 §2 — turn handler real del agente de WhatsApp de citas (LLM real sobre
    * @atiende/agent-core), inyectado igual que `turnHandler` de restaurantes. */
   readonly citasTurnHandler: CitasWhatsAppTurnHandler;
