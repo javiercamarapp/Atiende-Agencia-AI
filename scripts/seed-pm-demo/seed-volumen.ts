@@ -4,7 +4,7 @@
 // Por defecto es DRY-RUN: genera el volumen contra un mundo EN MEMORIA con el menu del seed de PM, imprime el resumen y NO abre
 // ninguna conexion. Escribir exige `--apply` + SEED_DATABASE_URL (a proposito NO se lee DATABASE_URL), la organizacion debe estar
 // marcada como demo (`seed-pm-demo.ts --demo`, migracion 037) y, si la base no es local, `--confirm-host=<host exacto>`.
-// NUNCA lo corra contra la base real sin el OK del dueño del proyecto. Runbook: docs/DEMO-PM-CARGA.md.
+// NUNCA lo corra contra la base real sin el OK del dueño del proyecto. Runbook: docs/demo-pm/runbook.md.
 //
 //   node --experimental-strip-types scripts/seed-pm-demo/seed-volumen.ts [--escala=ligero|moderado|completo] [--dias=N] [--pedidos-por-dia=N]
 //   SEED_DATABASE_URL=postgresql://... node --experimental-strip-types scripts/seed-pm-demo/seed-volumen.ts --apply [--confirm-host=<host>]
