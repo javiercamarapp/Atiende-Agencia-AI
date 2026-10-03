@@ -67,6 +67,9 @@ describe("demo-pm (comando unico)", () => {
     expect(() => m.parseDemoPmArgs(["--verificar", "--apply"])).toThrow(/solo lectura/);
     expect(() => m.parseDemoPmArgs(["--api-url=https://x"])).toThrow(/--verificar/);
     expect(() => m.parseDemoPmArgs(["--dias=0"])).toThrow(/entero/);
+    expect(() => m.parseDemoPmArgs(["--dias=366"])).toThrow(/1 a 365/);
+    expect(() => m.parseDemoPmArgs(["--dias=999"])).toThrow(/1 a 365/);
+    expect(m.parseDemoPmArgs(["--dias=365"]).dias).toBe(365);
     expect(() => m.parseDemoPmArgs(["--modo=todo"])).toThrow(/desconocido/);
     expect(m.main(["--modo=todo"])).toBe(2);
   });

@@ -27,7 +27,7 @@ import { DEMO_PHONE_PREFIX_VOLUME, demoPhone } from "../demo/types.ts";
  * Perfiles de volumen. `t7` reproduce el ritmo REAL medido en el WhatsApp de la sucursal T7 Garcia Lavin (muestra anonimizada de
  * 104 chats, 7-ago a 1-oct-2026; `docs/demo-pm/guion.md`): SOLO T7, 139 pedidos en 8 semanas (56 dias), 70 clientes de los cuales 32
  * son recurrentes y suman 101 de los 139 pedidos (73 %), 79 % a domicilio, todo por WhatsApp, pago casi mitad y mitad, tickets
- * con mediana ~$640 (p90 ~$1,500), tiempos de entrega de 50 a 90 min (mediana 65) y de 10 a 45 min para recoger, picos de
+ * con mediana ~$640 (p90 ~$1,500), tiempos de entrega de 50 a 90 min (mediana 65) y de 10 a 50 min para recoger, picos de
  * 12-16 h y de 19-22 h con fin de semana mas fuerte. Las cifras son las de la sucursal real; los clientes, direcciones y
  * telefonos son ficticios (rango 0001).
  */

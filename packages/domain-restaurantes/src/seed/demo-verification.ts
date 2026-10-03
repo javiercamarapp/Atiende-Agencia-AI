@@ -92,7 +92,7 @@ export function evaluarVerificacionDemo(f: DemoFacts): DemoCheck[] {
   req("volumen-solo-t7", v.pedidos > 0 && soloT7, soloT7 ? "todo el volumen es de T7" : `volumen repartido en ${v.sucursales} sucursales (perfil t7: limpie con demo:limpiar --modo=volumen y recargue)`);
   req("volumen-ritmo", v.pedidos >= 100 && v.pedidos <= 400, `${v.pedidos} pedidos (el perfil t7 trae ${DEMO_PERFIL_T7.pedidos} en ${DEMO_PERFIL_T7.dias} dias)`);
   const recPct = pct(v.pedidosDeRecurrentes, v.pedidos);
-  req("recurrentes", v.pedidos > 0 && recPct >= 65 && recPct <= 80, `${v.clientesRecurrentes} clientes recurrentes con ${v.pedidosDeRecurrentes} pedidos = ${recPct} % (real: 73 %)`);
+  req("recurrentes", v.pedidos > 0 && recPct >= 65 && recPct <= 80, `${v.clientesRecurrentes} clientes recurrentes con ${v.pedidosDeRecurrentes} pedidos = ${recPct} % de los pedidos no cancelados (el 73 % real se mide sobre todos; rango aceptado 65 a 80 %)`);
   req("whatsapp", v.pedidos > 0 && v.whatsapp === v.pedidos, `${v.whatsapp} de ${v.pedidos} pedidos por WhatsApp`);
   const dom = pct(v.domicilio, v.pedidos);
   req("domicilio", v.pedidos > 0 && dom >= 70 && dom <= 88, `${dom} % a domicilio (real: 79 %)`);

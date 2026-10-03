@@ -40,7 +40,7 @@ export function parseDemoPmArgs(argv) {
     else if (arg.startsWith("--api-url=")) a.apiUrl = arg.slice("--api-url=".length);
     else if (arg.startsWith("--dias=")) {
       const v = arg.slice("--dias=".length);
-      if (!/^\d{1,3}$/.test(v) || Number(v) < 1) throw new DemoPmArgsError("--dias debe ser un entero de 1 a 365.");
+      if (!/^\d{1,3}$/.test(v) || Number(v) < 1 || Number(v) > 365) throw new DemoPmArgsError("--dias debe ser un entero de 1 a 365.");
       a.dias = Number(v);
     } else throw new DemoPmArgsError(`Argumento desconocido: ${arg}`);
   }
