@@ -5,8 +5,8 @@
 --       CHECKs, marcas de tiempo por estado. Positivo, rol member, otro tenant, anon.
 --   (B) core.whatsapp_plantilla_resolver / core.whatsapp_plantilla_aprobada: solo-sistema; devuelven unicamente la plantilla
 --       APROBADA de la organizacion pedida (cross-tenant), y 42501 para staff y anon.
---   (C) core.opt_out_registrar / opt_out_reactivar / opt_out_activo: baja idempotente, alta, aislamiento por organizacion,
---       solo-sistema (42501 staff/anon), telefono invalido 22023 y tabla cerrada a lectura directa.
+--   (C) core.reactivar_supresion_baja (ALTA): quita solo la baja voluntaria (motivo 'baja'), nunca quejas/rebotes/ARCO;
+--       idempotente, solo-sistema (42501 staff/anon) y hash invalido 22023.
 --   (D) citas.ultimo_mensaje_entrante: marca de tiempo de la ultima entrada por organizacion; solo-sistema.
 --
 -- Cada escenario va en su propio begin; ... rollback; (el gate run-gate.mjs los ejecuta como conexiones independientes).
@@ -36,6 +36,14 @@ insert into core.whatsapp_plantilla (organization_id, vertical, evento, nombre, 
   ('00000000-0000-0000-0000-0000000e3101', 'citas', 'appointment.reminder_24h', 'recordatorio_cita_a', 'es_MX', array['nombre', 'fecha', 'hora'], 'aprobada'),
   ('00000000-0000-0000-0000-0000000e3101', 'citas', 'waitlist.slot_offered', 'hueco_lista_espera_a', 'es_MX', array['nombre'], 'borrador'),
   ('00000000-0000-0000-0000-0000000e3102', 'citas', 'appointment.reminder_24h', 'recordatorio_cita_b', 'es_MX', array['nombre', 'hora'], 'aprobada')
+on conflict do nothing;
+
+-- Lista de supresion de plataforma: 1 = solo baja voluntaria; 2 = solo queja; 3 = baja y queja.
+insert into core.supresion_contacto (tipo, valor_hash, motivo, origen) values
+  ('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110001', 'UTF8')), 'hex'), 'baja', 'whatsapp.citas'),
+  ('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110002', 'UTF8')), 'hex'), 'queja', 'superadmin'),
+  ('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110003', 'UTF8')), 'hex'), 'baja', 'whatsapp.citas'),
+  ('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110003', 'UTF8')), 'hex'), 'queja', 'superadmin')
 on conflict do nothing;
 
 -- Una entrada de WhatsApp de A hace 2 h.
@@ -229,126 +237,72 @@ end $$;
 rollback;
 
 -- ============================================================================
--- (C) opt-out por organizacion
+-- (C) core.reactivar_supresion_baja (ALTA)
 -- ============================================================================
 
-\echo '=== C1. (positivo, sistema) la baja es nueva la primera vez e idempotente la segunda (deberia_ser_1) ==='
+\echo '=== C1. (positivo, sistema) ALTA quita la baja voluntaria: reactivar devuelve true y el contacto deja de estar suprimido (deberia_ser_1) ==='
 begin;
 set local role authenticated;
-select (core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas') and not core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas'))::int as baja_idempotente_deberia_ser_1;
+select core.reactivar_supresion_baja('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110001', 'UTF8')), 'hex')) as alta_quito_la_baja;
+select (not core.esta_suprimido('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110001', 'UTF8')), 'hex')))::int as contactable_tras_alta_deberia_ser_1;
 rollback;
 
-\echo '=== C2. (cross-tenant, sistema) la baja de A NO afecta a B (deberia_ser_1) ==='
+\echo '=== C2. (negativo, sistema) una QUEJA no se revierte por mensaje: reactivar devuelve false y sigue suprimido (deberia_ser_1) ==='
 begin;
 set local role authenticated;
-select core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas');
-select (core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp') and not core.opt_out_activo('00000000-0000-0000-0000-0000000e3102', '+5219981110001', 'whatsapp') and not core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110002', 'whatsapp'))::int as baja_aislada_por_organizacion_deberia_ser_1;
+select core.reactivar_supresion_baja('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110002', 'UTF8')), 'hex')) as alta_sobre_queja;
+select core.esta_suprimido('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110002', 'UTF8')), 'hex'))::int as queja_sigue_suprimida_deberia_ser_1;
 rollback;
 
-\echo '=== C3. (positivo, sistema) ALTA: quita la baja y vuelve a ser contactable (deberia_ser_1) ==='
+\echo '=== C3. (sistema) con baja Y queja, la ALTA quita solo la baja y el contacto sigue suprimido por la queja (deberia_ser_1) ==='
 begin;
 set local role authenticated;
-select core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas');
-select core.opt_out_reactivar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp') as alta_quito_la_baja;
-select (not core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp') and not core.opt_out_reactivar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp'))::int as alta_reactiva_deberia_ser_1;
+select core.reactivar_supresion_baja('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110003', 'UTF8')), 'hex')) as alta_quito_solo_la_baja;
+reset role;
+select ((select count(*) from core.supresion_contacto where valor_hash = encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110003', 'UTF8')), 'hex') and motivo = 'queja') = 1 and (select count(*) from core.supresion_contacto where valor_hash = encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110003', 'UTF8')), 'hex') and motivo = 'baja') = 0)::int as solo_queda_la_queja_deberia_ser_1;
 rollback;
 
-\echo '=== C4. (cross-tenant, sistema) la ALTA de B no borra la baja de A (deberia_ser_1) ==='
+\echo '=== C4. (idempotente, sistema) reactivar un contacto sin baja devuelve false (deberia_ser_1) ==='
 begin;
 set local role authenticated;
-select core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas');
-select core.opt_out_reactivar('00000000-0000-0000-0000-0000000e3102', '+5219981110001', 'whatsapp');
-select core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp')::int as baja_de_a_sigue_deberia_ser_1;
+select (not core.reactivar_supresion_baja('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110009', 'UTF8')), 'hex')))::int as sin_baja_no_cambia_nada_deberia_ser_1;
 rollback;
 
-\echo '=== C5. (negativo, SQLSTATE exacto) un STAFF no registra bajas: 42501 ==='
+\echo '=== C5. (negativo, SQLSTATE exacto) un STAFF con auth.uid() real no reactiva bajas: 42501 ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e3111', true);
 do $$
 begin
-  perform core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas');
+  perform core.reactivar_supresion_baja('telefono', encode(sha256(convert_to('atiende:supresion:v1:telefono:+5219981110001', 'UTF8')), 'hex'));
   raise exception 'BLOQUEANTE: se esperaba 42501 para una sesion de staff pero la llamada tuvo exito';
 exception
   when sqlstate '42501' then null;
 end $$;
 rollback;
 
-\echo '=== C6. (negativo, SQLSTATE exacto) un STAFF no consulta ni borra bajas: 42501 ==='
-begin;
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e3111', true);
-do $$
-begin
-  perform core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp');
-  raise exception 'BLOQUEANTE: se esperaba 42501 en opt_out_activo para staff pero tuvo exito';
-exception
-  when sqlstate '42501' then null;
-end $$;
-do $$
-begin
-  perform core.opt_out_reactivar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp');
-  raise exception 'BLOQUEANTE: se esperaba 42501 en opt_out_reactivar para staff pero tuvo exito';
-exception
-  when sqlstate '42501' then null;
-end $$;
-rollback;
-
-\echo '=== C7. (negativo, SQLSTATE exacto) la tabla de bajas esta cerrada a lectura directa para authenticated: 42501 ==='
-begin;
-set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e3111', true);
-do $$
-begin
-  perform count(*) from core.messaging_opt_out;
-  raise exception 'BLOQUEANTE: se esperaba 42501 al leer core.messaging_opt_out pero tuvo exito';
-exception
-  when sqlstate '42501' then null;
-end $$;
-rollback;
-
-\echo '=== C8. (negativo, SQLSTATE exacto) anon no ejecuta las funciones de opt-out: 42501 ==='
+\echo '=== C6. (negativo, SQLSTATE exacto) anon no ejecuta reactivar_supresion_baja: 42501 ==='
 begin;
 set local role anon;
 do $$
 begin
-  perform core.opt_out_activo('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp');
+  perform core.reactivar_supresion_baja('telefono', repeat('a', 64));
   raise exception 'BLOQUEANTE: se esperaba 42501 para anon pero la llamada tuvo exito';
 exception
   when sqlstate '42501' then null;
 end $$;
 rollback;
 
-\echo '=== C9. (validacion, SQLSTATE exacto) un telefono que no es E.164 normalizado se rechaza: 22023 ==='
+\echo '=== C7. (validacion, SQLSTATE exacto) un hash mal formado se rechaza: 22023 ==='
 begin;
 set local role authenticated;
 do $$
 begin
-  perform core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '998 111 0001', 'whatsapp', 'whatsapp.citas');
-  raise exception 'BLOQUEANTE: se esperaba 22023 para un telefono sin normalizar pero tuvo exito';
+  perform core.reactivar_supresion_baja('telefono', 'no-es-un-hash');
+  raise exception 'BLOQUEANTE: se esperaba 22023 para un hash invalido pero tuvo exito';
 exception
   when sqlstate '22023' then null;
 end $$;
-rollback;
-
-\echo '=== C10. (validacion, SQLSTATE exacto) un canal desconocido se rechaza: 22023 ==='
-begin;
-set local role authenticated;
-do $$
-begin
-  perform core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'sms', 'whatsapp.citas');
-  raise exception 'BLOQUEANTE: se esperaba 22023 para un canal desconocido pero tuvo exito';
-exception
-  when sqlstate '22023' then null;
-end $$;
-rollback;
-
-\echo '=== C11. (privacidad) la tabla guarda solo el hash: ninguna columna contiene el telefono en claro (deberia_ser_1) ==='
-begin;
-set local role authenticated;
-select core.opt_out_registrar('00000000-0000-0000-0000-0000000e3101', '+5219981110001', 'whatsapp', 'whatsapp.citas');
-reset role;
-select (count(*) = 1 and bool_and(telefono_hash ~ '^[0-9a-f]{64}$') and bool_and(row(o.*)::text not like '%5219981110001%'))::int as solo_hash_guardado_deberia_ser_1 from core.messaging_opt_out o;
 rollback;
 
 -- ============================================================================

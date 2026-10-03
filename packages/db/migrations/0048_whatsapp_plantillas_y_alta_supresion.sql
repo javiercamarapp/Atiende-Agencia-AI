@@ -1,10 +1,14 @@
--- PL-31 + PL-32: catalogo de plantillas HSM de WhatsApp por organizacion y baja/alta (opt-out) por organizacion.
+-- PL-31 + PL-32: catalogo de plantillas HSM de WhatsApp por organizacion, reactivacion (ALTA) de la lista de supresion de
+-- plataforma y ventana de 24 h de citas.
 --
--- Contexto: un aviso que el NEGOCIO inicia fuera de la ventana de 24 h de Meta solo se entrega como plantilla
+-- Contexto PL-31: un aviso que el NEGOCIO inicia fuera de la ventana de 24 h de Meta solo se entrega como plantilla
 -- aprobada. Hasta hoy la lista de plantillas aprobadas era una variable de entorno GLOBAL; ahora cada organizacion
 -- declara las suyas (la aprobacion en Meta Business Manager sigue siendo un paso externo: aqui solo se registra su
--- estado). El opt-out (BAJA/STOP) es por organizacion y canal: quien pide la baja a un negocio deja de recibir los
--- avisos proactivos de ESE negocio; la lista global de supresion (0043) sigue aparte y sigue siendo global.
+-- estado).
+--
+-- Contexto PL-32: la baja (BAJA/STOP) ya vive en la lista global core.supresion_contacto (0043, SA-L-46); lo que faltaba
+-- era la ALTA (reactivar). core.reactivar_supresion_baja quita SOLO las bajas voluntarias (motivo 'baja'); quejas, rebotes,
+-- solicitudes ARCO y "no contactar" del superadmin NO se pueden revertir por mensaje.
 --
 -- Justificacion de seguridad (cada tabla/funcion/GRANT trae su razon):
 --   * core.whatsapp_plantilla: RLS habilitado. Policies SOLO para owner/admin de la organizacion
@@ -17,20 +21,16 @@
 --     si no). Razon: las consultan el cron de recordatorios y el despachador, que corren sin sesion de usuario; la
 --     resolucion devuelve unicamente la plantilla APROBADA de la organizacion pedida (nunca de otra). GRANT solo a
 --     `authenticated` (rol bajo el que corre withAppSession, con o sin auth.uid()).
---   * core.messaging_opt_out: RLS sin policies y REVOKE ALL a public, anon y authenticated; solo se toca por las
---     funciones definer de abajo. Guarda el telefono SOLO como SHA-256 (prefijo de dominio 'atiende:optout:v1:');
---     la normalizacion a E.164 la hace el API. Misma mitigacion y mismo hueco declarado que 0043 (espacio de
---     telefonos chico: invertible por enumeracion si alguien obtuviera la tabla; mejora pendiente: HMAC con llave).
---   * core.opt_out_registrar / opt_out_reactivar / opt_out_activo: solo-sistema por la misma razon que 0043: las
---     llaman el webhook entrante y el despachador; una sesion de staff con auth.uid() real nunca debe poder
---     fabricar ni borrar bajas de clientes ajenos. opt_out_activo devuelve solo boolean.
+--   * core.reactivar_supresion_baja: solo-sistema por la misma razon que core.registrar_supresion (0043): la llama el
+--     webhook entrante; una sesion de staff con auth.uid() real nunca debe poder borrar bajas de clientes. Borra unicamente
+--     filas con motivo 'baja' del hash pedido y devuelve solo boolean. GRANT solo a `authenticated`.
 --   * citas.ultimo_mensaje_entrante: solo-sistema; devuelve solo una marca de tiempo (cuando escribio el cliente por
---     ultima vez a ESA organizacion), para decidir la ventana de 24 h de Meta. Recibe los hashes (hasta 5, variantes de formato
---     del mismo telefono) que ya guarda citas.whatsapp_inbound_events, nunca el telefono.
+--     ultima vez a ESA organizacion), para decidir la ventana de 24 h de Meta. Recibe los hashes (hasta 5, variantes de
+--     formato del mismo telefono) que ya guarda citas.whatsapp_inbound_events, nunca el telefono.
 --
 -- Orden de despliegue: CUALQUIER ORDEN. El codigo TypeScript captura 42883/42P01/42703 (migracion pendiente) con
--- SAVEPOINT y cae al comportamiento anterior (catalogo global del entorno, sin opt-out por organizacion, ventana
--- desconocida), nunca a un 500.
+-- SAVEPOINT y cae al comportamiento anterior (lista global de plantillas del entorno, sin ALTA, ventana desconocida),
+-- nunca a un 500.
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Catalogo de plantillas
@@ -138,88 +138,26 @@ revoke all on function core.whatsapp_plantilla_aprobada(uuid, text) from public,
 grant execute on function core.whatsapp_plantilla_aprobada(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Opt-out por organizacion y canal
+-- ALTA: reactivar una baja voluntaria de la lista de supresion de plataforma
 -- ---------------------------------------------------------------------------------------------------------------
-create table core.messaging_opt_out (
-  id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references core.organization(id) on delete cascade,
-  canal text not null check (canal in ('whatsapp')),
-  telefono_hash text not null check (telefono_hash ~ '^[0-9a-f]{64}$'),
-  motivo text not null default 'baja' check (motivo in ('baja')),
-  origen text not null check (origen ~ '^[a-z0-9_.:-]{1,60}$'),
-  created_at timestamptz not null default now(),
-  unique (organization_id, canal, telefono_hash)
-);
-alter table core.messaging_opt_out enable row level security;
-revoke all on core.messaging_opt_out from public, anon, authenticated;
-
--- Insumo interno (NO expuesto): valida el telefono E.164 y calcula el hash de dominio.
-create or replace function core.opt_out_hash(p_canal text, p_telefono text)
-returns text language plpgsql immutable set search_path = core, pg_temp as $$
-begin
-  if p_canal is null or p_canal not in ('whatsapp') then
-    raise exception 'opt_out: canal invalido' using errcode = '22023';
-  end if;
-  if p_telefono is null or p_telefono !~ '^\+[1-9][0-9]{7,14}$' then
-    raise exception 'opt_out: el telefono debe venir en E.164 normalizado' using errcode = '22023';
-  end if;
-  return encode(sha256(convert_to('atiende:optout:v1:' || p_canal || ':' || p_telefono, 'UTF8')), 'hex');
-end;
-$$;
-revoke all on function core.opt_out_hash(text, text) from public, anon, authenticated;
-
--- Solo sistema, idempotente: true si la baja es nueva (el llamador confirma UNA sola vez).
-create or replace function core.opt_out_registrar(p_organization_id uuid, p_telefono text, p_canal text, p_origen text)
+create or replace function core.reactivar_supresion_baja(p_tipo text, p_valor_hash text)
 returns boolean language plpgsql security definer set search_path = core, pg_temp as $$
 declare
   v_filas integer;
 begin
   if auth.uid() is not null then
-    raise exception 'opt_out_registrar: solo alcanzable desde sesion de sistema' using errcode = '42501';
+    raise exception 'reactivar_supresion_baja: solo alcanzable desde sesion de sistema' using errcode = '42501';
   end if;
-  if p_origen is null or p_origen !~ '^[a-z0-9_.:-]{1,60}$' then
-    raise exception 'opt_out: origen invalido' using errcode = '22023';
+  if p_tipo is null or p_tipo not in ('telefono', 'correo') or p_valor_hash is null or p_valor_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'reactivar_supresion_baja: parametros invalidos' using errcode = '22023';
   end if;
-  insert into core.messaging_opt_out (organization_id, canal, telefono_hash, origen)
-  values (p_organization_id, p_canal, core.opt_out_hash(p_canal, p_telefono), p_origen)
-  on conflict (organization_id, canal, telefono_hash) do nothing;
+  delete from core.supresion_contacto s where s.tipo = p_tipo and s.valor_hash = p_valor_hash and s.motivo = 'baja';
   get diagnostics v_filas = row_count;
   return v_filas > 0;
 end;
 $$;
-revoke all on function core.opt_out_registrar(uuid, text, text, text) from public, anon;
-grant execute on function core.opt_out_registrar(uuid, text, text, text) to authenticated;
-
--- Solo sistema: ALTA. true si habia una baja que se quito.
-create or replace function core.opt_out_reactivar(p_organization_id uuid, p_telefono text, p_canal text)
-returns boolean language plpgsql security definer set search_path = core, pg_temp as $$
-declare
-  v_filas integer;
-begin
-  if auth.uid() is not null then
-    raise exception 'opt_out_reactivar: solo alcanzable desde sesion de sistema' using errcode = '42501';
-  end if;
-  delete from core.messaging_opt_out o
-  where o.organization_id = p_organization_id and o.canal = p_canal and o.telefono_hash = core.opt_out_hash(p_canal, p_telefono);
-  get diagnostics v_filas = row_count;
-  return v_filas > 0;
-end;
-$$;
-revoke all on function core.opt_out_reactivar(uuid, text, text) from public, anon;
-grant execute on function core.opt_out_reactivar(uuid, text, text) to authenticated;
-
--- Solo sistema: boolean puro.
-create or replace function core.opt_out_activo(p_organization_id uuid, p_telefono text, p_canal text)
-returns boolean language plpgsql stable security definer set search_path = core, pg_temp as $$
-begin
-  if auth.uid() is not null then
-    raise exception 'opt_out_activo: solo alcanzable desde sesion de sistema' using errcode = '42501';
-  end if;
-  return exists (select 1 from core.messaging_opt_out o where o.organization_id = p_organization_id and o.canal = p_canal and o.telefono_hash = core.opt_out_hash(p_canal, p_telefono));
-end;
-$$;
-revoke all on function core.opt_out_activo(uuid, text, text) from public, anon;
-grant execute on function core.opt_out_activo(uuid, text, text) to authenticated;
+revoke all on function core.reactivar_supresion_baja(text, text) from public, anon;
+grant execute on function core.reactivar_supresion_baja(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Ventana de 24 h de Meta (citas): ultima vez que el cliente escribio a la organizacion.
