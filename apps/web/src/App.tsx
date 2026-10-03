@@ -51,7 +51,7 @@ import { SuperAdminModelOpsPage } from "./superadmin/pages/ModelOps.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosFacturacionPage } from "./superadmin/pages/CostosFacturacion.tsx";
-import { SuperAdminCfoDashboardPage } from "./superadmin/pages/CfoDashboard.tsx";
+import { SuperAdminEjecutivoPage } from "./superadmin/pages/Ejecutivo.tsx";
 import { SuperAdminZonaCfoPage } from "./superadmin/pages/ZonaCfo.tsx";
 import { SuperAdminPlanesPage } from "./superadmin/pages/Planes.tsx";
 import { Toaster, VerticalNoEncontrado } from "@atiende/ui";
@@ -521,11 +521,11 @@ function SuperAdminGestionOrganizacionesRoute() {
   );
 }
 
-function SuperAdminCfoDashboardRoute() {
+function SuperAdminEjecutivoRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminCfoDashboardPage {...ctx} />}
+      {(ctx) => <SuperAdminEjecutivoPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1107,7 +1107,7 @@ export function App() {
         <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
         <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
-        <Route path="/superadmin/ejecutivo" element={<SuperAdminCfoDashboardRoute />} />
+        <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
         <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
         <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
         <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
