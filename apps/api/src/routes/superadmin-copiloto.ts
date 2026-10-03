@@ -266,8 +266,37 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.get("/superadmin/copiloto/conversaciones/:conversationId", async (c) => {
-    const found = await repoDe(c.get("db")).get(convScope(c.get("userId")), idDe(c));
+    const callerId = c.get("userId");
+    const id = idDe(c);
+    const repo = repoDe(c.get("db"));
+    const found = await repo.get(convScope(callerId), id);
     if (!found) throw Errors.notFound("Conversación no encontrada.");
+    // Los turnos guardados con herramientas financieras traen cifras (MRR, P&L, margenes) en el texto, los bloques y las fuentes: releerlos es una lectura
+    // financiera y sigue la politica de la zona CFO igual que GET /superadmin/pyl: step-up (obligatorio para `finanzas`) y una fila en core.cfo_access_log
+    // confirmada ANTES de devolver nada. Una conversacion sin herramientas financieras no cambia.
+    const usadas = await repo.herramientasUsadas?.(convScope(callerId), id);
+    if (usadas === undefined) {
+      // El repositorio no sabe decir que herramientas la produjeron: se falla cerrado para quien solo ve cifras CFO.
+      if ((await resolverRol(callerId)) === "finanzas") throw Errors.serviceUnavailable("No se pudo verificar el contenido de la conversación; por seguridad no se muestra.");
+    }
+    const financieras = (usadas ?? []).filter((t) => HERRAMIENTAS_FINANCIERAS.includes(t));
+    if (financieras.length > 0) {
+      const rol = await resolverRol(callerId);
+      const recurso = "copiloto/conversaciones/:id";
+      const stepUp = await evaluarStepUp(c, rol);
+      if (!stepUp.ok) {
+        await registrarDenegado(callerId, `GET ${recurso} (sin step-up)`);
+        throw stepUp.error;
+      }
+      const repoCfo = deps.cfoZoneRepo;
+      if (repoCfo) {
+        try {
+          await deps.engine.withAppSession({ userId: callerId }, (db) => repoCfo(db).logAccess(callerId, "consulta", recurso, { herramientas: financieras.slice(0, 8), _ruta: "/superadmin/copiloto/conversaciones" }));
+        } catch {
+          throw Errors.serviceUnavailable("No se pudo registrar la consulta financiera; por seguridad no se muestra.");
+        }
+      }
+    }
     return c.json(found);
   });
 

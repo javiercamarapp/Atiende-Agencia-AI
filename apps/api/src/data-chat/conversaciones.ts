@@ -118,6 +118,9 @@ export interface ConversacionesRepository {
    *  propia, para re-ejecutarlas con el alcance actual al generar el reporte PDF. `null` = no existe / ajena / no es un
    *  mensaje del asistente / base sin migrar. OPCIONAL: un repositorio sin el no ofrece reportes (503 honesto). */
   cargarFuenteReporte?(scope: ConversacionScope, id: string, seq: number): Promise<FuenteReporte | null>;
+  /** Nombres de las herramientas que produjeron CUALQUIER mensaje del asistente de una conversacion propia (sin repetir). Sirve para decidir si abrirla exige la
+   *  politica de la zona CFO. `null` = no existe / ajena / base sin migrar. OPCIONAL: sin el no se puede saber y quien lo necesite debe tratarlo como desconocido. */
+  herramientasUsadas?(scope: ConversacionScope, id: string): Promise<string[] | null>;
 }
 
 export interface FuenteReporte {
@@ -326,6 +329,29 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         );
         const row = msg.rows[0];
         return row ? { seq, toolCalls: parseToolCallsGuardados(row.tool_calls) } : null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async () => null,
+    });
+  }
+
+  async herramientasUsadas(scope: ConversacionScope, id: string): Promise<string[] | null> {
+    return runWithSavepointFallback<string[] | null>({
+      session: this.db,
+      primary: async () => {
+        const conv = await this.db.query<{ id: string }>(
+          `select c.id from core.data_chat_conversation c
+            where c.id = $1::uuid and c.user_id = $2::uuid and c.organization_id is not distinct from $3::uuid and c.vertical = $4::text;`,
+          [id, scope.userId, scope.organizationId, scope.vertical],
+        );
+        if (!conv.rows[0]) return null;
+        // Consulta secuencial sobre la misma sesion (nunca Promise.all dentro de una transaccion).
+        const msgs = await this.db.query<{ tool_calls: unknown }>(
+          `select m.tool_calls from core.data_chat_message m
+            where m.conversation_id = $1::uuid and m.role = 'assistant';`,
+          [id],
+        );
+        return [...new Set(msgs.rows.flatMap((m) => parseToolCallsGuardados(m.tool_calls).map((t) => t.tool)))];
       },
       isRecoverable: isMigrationPendingError,
       fallback: async () => null,
