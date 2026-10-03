@@ -300,6 +300,30 @@ export const rutasLicitaciones: readonly Ruta[] = [
   ...rutasSalaGuerra,
   { metodo: "GET", patron: "/v1/licitaciones/:org/admin/branches", manejador: () => ({ branches: [{ propertyId: PROP.id, name: PROP.nombre }] }) },
   { metodo: "GET", patron: `${L}/tenders`, manejador: () => ({ tenders: CONVOCATORIAS }) },
+  // Lecturas del Resumen (Panel): mismas formas que lib/{sources,seguimiento,renewal-radar,company-data}-client.ts.
+  { metodo: "GET", patron: `${L}/sources`, manejador: () => ({ connectors: [
+      { id: "compranet", kind: "automated", label: "CompraNet", termsNote: "", cadence: { minIntervalMinutes: 60, note: "cada hora" }, liveVerification: { verified: true, note: "probada en vivo" } },
+      { id: "manual", kind: "manual", label: "Alta manual", termsNote: "", cadence: { minIntervalMinutes: 0, note: "a demanda" }, liveVerification: { verified: false, note: "no aplica" } },
+    ] }) },
+  { metodo: "GET", patron: `${L}/sources/freshness`, manejador: () => ({ freshness: [
+      { source: "compranet", lastRunState: "ok", lastSuccessAt: "2026-09-30T15:00:00.000Z", staleForMs: 3600000, staleThresholdMs: 86400000, stale: false },
+      { source: "manual", lastRunState: null, lastSuccessAt: null, staleForMs: null, staleThresholdMs: 86400000, stale: true },
+    ] }) },
+  { metodo: "GET", patron: `${L}/sources/runs`, manejador: () => ({ runs: [
+      { id: "run-1", source: "compranet", state: "ok", startedAt: "2026-09-30T15:00:00.000Z", finishedAt: "2026-09-30T15:00:04.000Z", evidence: { message: "Ingesta completa", coverage: { expected: 24, obtained: 24 } } },
+    ] }) },
+  { metodo: "GET", patron: `${L}/sources/deadline-reminders`, manejador: () => ({ reminders: [
+      { id: "rem-1", tenderId: "tnd-1", submissionDeadline: "2026-10-20T17:00:00.000Z", daysRemaining: 3, message: "Cierra pronto", createdAt: "2026-09-30T15:00:00.000Z", acknowledgedAt: null },
+    ] }) },
+  { metodo: "GET", patron: `${L}/tender-change-notifications`, manejador: () => ({ notifications: [] }) },
+  { metodo: "GET", patron: `${L}/renewals/alerts`, manejador: () => ({ alerts: [] }) },
+  { metodo: "GET", patron: `${L}/company/documents`, manejador: () => ({ documents: [] }) },
+  { metodo: "GET", patron: `${L}/company/rates`, manejador: () => ({ rates: [] }) },
+  { metodo: "GET", patron: `${L}/company/capabilities`, manejador: () => ({ capabilities: [] }) },
+  { metodo: "GET", patron: `${L}/company/experience`, manejador: () => ({ experience: [] }) },
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/tenant-config", manejador: () => ({ tenant_config: { organization_id: ORG.id, timezone: "America/Tijuana" } }) },
+  { metodo: "GET", patron: `${L}/kyc-69b`, manejador: () => ({ available: true, lista: { periodo: "2026-09", filas: 1200, ingestadoEn: "2026-09-30T16:00:00.000Z" }, listaDisponible: true, periodo: "2026-09", fichas: [], alertas: [] }) },
+  { metodo: "GET", patron: `${L}/company/signers`, manejador: () => ({ signers: [{ id: "sig-1", name: "Representante legal", role: "Apoderado", authorized: true }] }) },
   { metodo: "GET", patron: `${L}/whatsapp/settings`, manejador: (p) => p.estado.obtener("lic.whatsapp", ajustesSemilla) },
   { metodo: "POST", patron: `${L}/whatsapp/opt-out`, manejador: (p) => {
       const a = p.estado.obtener("lic.whatsapp", ajustesSemilla);

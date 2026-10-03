@@ -52,6 +52,34 @@ describe("DemoWhatsAppPage", () => {
     expect(campo()).toBeNull();
   });
 
+  it("DEMO-PM: el chat abre en la sucursal predeterminada que ofrece el servidor (T7) y la manda en cada mensaje; sin predeterminada queda en numero general", async () => {
+    const enviados: unknown[] = [];
+    const estado = { ...ESTADO_OK, sucursales: [{ slug: "prol-montejo", nombre: "Prolongación Montejo" }, { slug: "garcia-lavin", nombre: "García Lavín (Victory Platz)" }], sucursal_predeterminada: "garcia-lavin" };
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/estado")) return json(estado);
+      enviados.push(JSON.parse(String(init?.body)));
+      return json({ tipo: "respuesta", respuesta: "Hola", escalado: false, pedido: null });
+    });
+    rendered = renderComponent(<DemoWhatsAppPage apiBaseUrl="https://api.test" orgSlug="los-taquitos-de-pm" />);
+    await esperar();
+    expect((rendered.container.querySelector("#demo-sucursal") as HTMLSelectElement).value).toBe("garcia-lavin");
+    await act(async () => changeValue(campo(), "Hola"));
+    await act(async () => click(boton("Enviar")!));
+    await esperar();
+    expect(enviados[0]).toMatchObject({ sucursal: "garcia-lavin" });
+    rendered.unmount();
+
+    // Servidor que no la manda (version anterior) o con una sucursal que no esta entre las activas: numero general.
+    for (const sucursal_predeterminada of [undefined, null, "no-existe"]) {
+      fetchMock.mockImplementation(async () => json({ ...estado, sucursal_predeterminada }));
+      rendered = renderComponent(<DemoWhatsAppPage apiBaseUrl="https://api.test" orgSlug="los-taquitos-de-pm" />);
+      await esperar();
+      expect((rendered.container.querySelector("#demo-sucursal") as HTMLSelectElement).value).toBe("");
+      rendered.unmount();
+    }
+    rendered = undefined;
+  });
+
   it("falla de red al consultar el estado: error con reintento", async () => {
     fetchMock.mockRejectedValue(new Error("sin conexion"));
     rendered = renderComponent(<DemoWhatsAppPage apiBaseUrl="https://api.test" orgSlug="x" />);
