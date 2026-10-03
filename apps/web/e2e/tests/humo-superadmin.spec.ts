@@ -15,7 +15,7 @@ test.describe("superadmin @humo", () => {
     // SA-L-01: el listado de organizaciones ya no es la raiz; vive en su propia ruta.
     await page.goto("/superadmin/organizaciones");
     await afirmarPantallaSana(page, "organizaciones");
-    await expect(page.getByText("Taqueria El Faro")).toBeVisible();
+    await expect(page.locator("[data-org-id]").filter({ hasText: "Taqueria El Faro" })).toBeVisible();
     await recorrerSecciones(page, { minimo: 18 });
     vigilante.verificar();
   });
@@ -43,11 +43,14 @@ test.describe("superadmin @humo", () => {
     await page.goto("/superadmin/organizaciones");
     await afirmarPantallaSana(page, "organizaciones");
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    // Tabla: encabezados reales y una fila por organizacion (el despachos no tiene operaciones medibles: "—", no "0").
-    const tabla = page.getByRole("table", { name: "Organizaciones" });
-    await expect(tabla).toBeVisible();
-    for (const col of ["Organización", "Plan", "Operaciones 30 d", "Costo IA 30 d", "Margen", "Onboarding"]) await expect(tabla.getByRole("columnheader", { name: new RegExp(col) })).toBeVisible();
-    await expect(tabla.getByText("Taqueria El Faro")).toBeVisible();
+    // Tabla (tarjetas en movil): una fila por organizacion con las columnas reales; despachos no tiene operaciones medibles ("—", no "0").
+    const fila = page.locator("[data-org-id]").filter({ hasText: "Taqueria El Faro" });
+    await expect(fila).toBeVisible();
+    if ((page.viewportSize()?.width ?? 0) >= 768) {
+      const tabla = page.getByRole("table", { name: "Organizaciones" });
+      for (const col of ["Organización", "Plan", "Operaciones 30 d", "Costo IA 30 d", "Margen", "Onboarding"]) await expect(tabla.getByRole("columnheader", { name: new RegExp(col) })).toBeVisible();
+    }
+    await expect(page.locator('[data-org-id]:has-text("Sin fuente: despachos")').first()).toBeAttached();
     await expect(page.getByTestId("hbars")).toBeVisible();
     if ((page.viewportSize()?.width ?? 0) >= 640) await expect(page.getByTestId("odometro")).toBeVisible();
 
