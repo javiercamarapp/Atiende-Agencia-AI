@@ -89,7 +89,7 @@ describe("vista previa, opciones y restablecer", () => {
     expect(r.status).toBe(200);
     const b = (await r.json()) as Json;
     expect(b.prompt).toContain("Promociones solo para recoger: solo viernes.");
-    expect(b.prompt).toContain('"Hola, gracias por comunicarse');
+    expect(b.prompt).toContain('"Hola. Gracias por escribir a ');
     expect(b.promptVigente).toContain("Promociones solo para recoger: lunes 2x1.");
     expect(b.diferenciasCampos).toEqual([
       { campo: "Saludo", antes: "", despues: "Hola" },
