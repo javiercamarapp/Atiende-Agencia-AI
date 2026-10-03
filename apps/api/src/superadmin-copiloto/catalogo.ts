@@ -677,7 +677,7 @@ const MES_PARAM: ParamsSpec = { mes: { type: "string", maxLength: 7, optional: t
 type MesResuelto = { readonly ok: true; readonly mes: string; readonly enCurso: boolean } | { readonly ok: false; readonly result: DataChatToolResult };
 
 function resolverMes(ctx: DataChatToolContext, args: ParsedArgs, source: string): MesResuelto {
-  const actual = ctx.now.toISOString().slice(0, 7);
+  const actual = hoy(ctx).slice(0, 7); // zona de la plataforma, igual que las herramientas operativas
   const raw = args["mes"];
   const mes = typeof raw === "string" && raw !== "" ? raw : actual;
   if (!MES_RE.test(mes)) return { ok: false, result: falla("needs_clarification", "El mes debe tener formato AAAA-MM (por ejemplo 2026-09).", source) };

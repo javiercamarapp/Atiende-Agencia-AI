@@ -418,4 +418,15 @@ describe("herramientas financieras (Copiloto CFO)", () => {
     const b = await correr(fuentesFalsas(), "mrr", {}, SCOPE_FINANZAS);
     expect(b.rows).toEqual(a.rows);
   });
+
+describe("mes en curso de las herramientas CFO", () => {
+  it("usa la zona de la plataforma: a las 03:00 UTC del 1 de octubre en Mexico todavia es septiembre", async () => {
+    const ctx = { ...ctxHerramienta(SCOPE_SUPERADMIN, new Date("2026-10-01T03:00:00.000Z")) };
+    const t = herramienta(fuentesFalsas(), "mrr");
+    const r = await t.run(ctx, {});
+    expect(JSON.stringify(r)).toMatch(/2026-09/);
+    expect(JSON.stringify(r)).not.toMatch(/2026-10/);
+  });
+});
+
 });
