@@ -52,7 +52,7 @@ const RESENA: GuestReview = {
   calificacion: 2,
   stayState: "post_estancia",
   isPublic: false,
-  topics: [{ topic: "limpieza", esConocido: true }],
+  topics: [{ topic: "limpieza", esConocido: true, menciones: 1, palabrasClave: ["sucio"] }],
   sentiment: "negativo",
   sentimentScore: -0.5,
   createdBy: null,
