@@ -77,28 +77,55 @@ export function sinAcentos(texto: string): string {
   return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+/** Pesos que se venden por fraccion de kilo (chats reales de T7, 2-oct-2026): gramos canonicos de cada frase. El orden importa:
+ * lo mas especifico primero ("kilo y medio" antes que "medio"; "1/4 de bistec" sin unidad es un cuarto de kilo, pero "1/2" sin
+ * unidad NO es peso porque tambien es la "media orden"). */
+const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
+  [/\btres\s+cuartos?\s+de\s+kilo\b|\b3\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.75\s*(?:kg|kilos?)\b|(?<![\d.])0?\.750\b/g, 750],
+  [/\bcuarto\s+de\s+kilo\b|\bun\s+cuarto\b|\b1\s*\/\s*4\b(?:\s*(?:de\s+)?(?:kg|kilos?))?|(?<![\d.])0?\.25\s*(?:kg|kilos?)\b|(?<![\d.])0?\.250\b/g, 250],
+  [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
+  [/\bmedio\s+kilo\b|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
+  [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
+  [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
+  [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
+];
+
+/** Convierte las frases de peso de una consulta en tokens `peso:<gramos>` (uno por frase). Lo que no es peso queda igual. */
+export function normalizarPesosEnConsulta(textoSinAcentos: string): string {
+  let texto = textoSinAcentos;
+  for (const [patron, gramos] of FRASES_DE_PESO) {
+    texto = texto.replace(patron, (...args: unknown[]) => ` peso:${gramos === -1 ? String(args[1]) : gramos} `);
+  }
+  return texto;
+}
+
+/** Peso en gramos que declara el NOMBRE de un producto ("Pastor — 500 g" -> 500; "Pastor — 1.5 kg" -> 1500); null si no trae. */
+export function pesoDeProductoEnGramos(nombre: string): number | null {
+  const m = sinAcentos(nombre).match(/(\d+(?:[.,]\d+)?)\s*(kg|g|gr)\b/);
+  if (!m) return null;
+  const n = Number(m[1]!.replace(",", "."));
+  return Math.round(m[2] === "kg" ? n * 1000 : n);
+}
+
 /**
  * Tokenizador compartido de búsqueda de productos — port literal, incluyendo los dos
  * gaps reales encontrados en producción el 3-sep-2026 (plural "tacos" -> "taco" y
  * pesos pegados "500g"/"1kg" sin espacio) y la normalización de frases de kilos
- * ("medio kilo" -> "500g") encontrada el mismo día.
+ * encontrada el mismo día. Desde el 2-oct-2026 los pesos (fracciones de kilo: 1/4, 1/2, 3/4, 1, 1.5 y 2 kg, y gramos
+ * explicitos) se vuelven UN token `peso:<gramos>` que `matchesProductSearch` compara EXACTO contra el peso del nombre del
+ * producto: "1 kg" ya no encuentra tambien "1.5 kg".
  */
 export function tokenizeForProductSearch(query: string): string[] {
-  const normalizada = sinAcentos(query)
-    .replace(/\bcero\s+punto\s+cero\b/g, "0.0")
-    .replace(/tres\s+cuartos?\s+de\s+kilo/g, "750g")
-    .replace(/cuarto\s+de\s+kilo/g, "250g")
-    .replace(/medio\s+kilo/g, "500g")
-    .replace(/\bkilos?\b/g, "kg")
-    .replace(/\bmedia\s+orden\b/g, "1/2");
+  const normalizada = normalizarPesosEnConsulta(
+    sinAcentos(query).replace(/\bcero\s+punto\s+cero\b/g, "0.0"),
+  ).replace(/\bmedia\s+orden\b/g, "1/2");
 
   const raw = normalizada.split(/\s+/).filter((t) => t.length > 1 && !STOPWORDS_BUSQUEDA.has(t));
 
   const tokens: string[] = [];
   for (const t of raw) {
-    const pesoMatch = t.match(/^(\d+)(kg|gr|g)$/);
-    if (pesoMatch) {
-      tokens.push(pesoMatch[1] as string, pesoMatch[2] === "gr" ? "g" : (pesoMatch[2] as string));
+    if (t.startsWith("peso:")) {
+      tokens.push(t);
       continue;
     }
     tokens.push(t.length > 4 && t.endsWith("s") ? t.slice(0, -1) : t);
@@ -115,7 +142,11 @@ export function matchesProductSearch(
 ): boolean {
   const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));
   const alias = fields.searchKeywords.map(sinAcentos);
-  return tokens.every((t) => textoPlano.includes(t) || alias.some((a) => a.includes(t)));
+  const pesoProducto = pesoDeProductoEnGramos(fields.name);
+  return tokens.every((t) => {
+    if (t.startsWith("peso:")) return pesoProducto !== null && pesoProducto === Number(t.slice(5));
+    return textoPlano.includes(t) || alias.some((a) => a.includes(t));
+  });
 }
 
 /** Tortilla obligatoria al cotizar: los productos "tacos" y los que el MENU dice que van "de maiz o harina" (quesadillas).

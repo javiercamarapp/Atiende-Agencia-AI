@@ -136,6 +136,7 @@ import { AvisosPage as CitasAvisosPage } from "./verticals/citas/pages/Avisos.ts
 import { PrivacidadPage as CitasPrivacidadPage } from "./verticals/citas/pages/Privacidad.tsx";
 import { AgenteWhatsappPage as CitasAgenteWhatsappPage } from "./verticals/citas/pages/AgenteWhatsapp.tsx";
 import { WhatsappMensajesPage as CitasWhatsappMensajesPage } from "./verticals/citas/pages/WhatsappMensajes.tsx";
+import { ConversacionesPage as CitasConversacionesPage } from "./verticals/citas/pages/Conversaciones.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
@@ -898,6 +899,8 @@ const CitasAuditoriaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <Cit
 const CitasAvisosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAvisosPage {...ctx} />);
 const CitasPrivacidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasPrivacidadPage {...ctx} />);
 const CitasWhatsappMensajesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasWhatsappMensajesPage {...ctx} />);
+// C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano.
+const CitasConversacionesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasConversacionesPage {...ctx} />);
 const CitasAgenteWhatsappRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasAgenteWhatsappPage {...ctx} />);
 
 /** 404 DENTRO del shell de citas (PR-4): una ruta desconocida bajo `/citas/:orgSlug/` conserva la navegación y
@@ -1199,6 +1202,7 @@ export function App() {
         <Route path="/citas/:orgSlug/seguridad" element={<CitasSeguridadRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
+        <Route path="/citas/:orgSlug/conversaciones" element={<CitasConversacionesRoute />} />
         <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
         <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />

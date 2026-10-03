@@ -109,11 +109,11 @@ export async function construirAssertions(): Promise<string> {
    and not exists (select 1 from restaurantes.products p join restaurantes.branch_products bp on bp.product_id = p.id and bp.property_id = o.property_id where p.organization_id = o.organization_id and p.name = i->>'name' and bp.price = (i->>'price')::numeric);`,
     ),
     escenario(
-      "V5. Solo las 2 sucursales activas (T1 y T3) reciben pedidos; las inactivas (T2, T4, T5, T7 y T8) ninguno",
+      "V5. Solo las 3 sucursales activas (T1, T3 y T7) reciben pedidos; las inactivas (T2, T4, T5 y T8) ninguno",
       `${aplicar}select (
-  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG}) = 2
-  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG} and bd.slug not in ('prol-montejo', 'pensiones')) = 0
-)::int as dos_sucursales_activas_y_las_demas_vacias_deberia_ser_1;`,
+  (select count(distinct bd.slug) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG}) = 3
+  and (select count(*) from restaurantes.orders o join restaurantes.branch_detail bd on bd.property_id = o.property_id where o.organization_id = ${DEMO_ORG} and bd.slug not in ('prol-montejo', 'pensiones', 'garcia-lavin')) = 0
+)::int as tres_sucursales_activas_y_las_demas_vacias_deberia_ser_1;`,
     ),
     escenario(
       "V6. Reglas duras: ningun pedido a domicilio bajo $200 (antes de descuentos) ni con alcohol (no_domicilio)",
@@ -188,7 +188,7 @@ export async function construirAssertions(): Promise<string> {
     escenario(
       "V16b. LIMPIEZA del volumen: el menu, la politica y la configuracion del agente de la demo siguen ahi",
       `${aplicar}select restaurantes.demo_limpiar(${DEMO_ORG}, 'volumen');\nselect (
-  (select count(*) from restaurantes.products where organization_id = ${DEMO_ORG}) = 237
+  (select count(*) from restaurantes.products where organization_id = ${DEMO_ORG}) = 279
   and (select count(*) from restaurantes.whatsapp_agent_config where organization_id = ${DEMO_ORG}) = 1
 )::int as configuracion_intacta_deberia_ser_1;`,
     ),

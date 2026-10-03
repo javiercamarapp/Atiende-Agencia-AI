@@ -103,6 +103,7 @@ describe("CitasShell — nav móvil", () => {
       "Servicios",
       "Clientes",
       "Disponibilidad",
+      "Conversaciones",
       "Agente de WhatsApp",
       "Mensajes de WhatsApp",
       "Configuración",
@@ -114,7 +115,7 @@ describe("CitasShell — nav móvil", () => {
   });
 
   // UNI-6: marco de Likida -- Resumen, Agenda y Primeros pasos raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 15 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 16 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Negocio", "Comunicación", "Administrar"]);
@@ -122,7 +123,7 @@ describe("CitasShell — nav móvil", () => {
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Agenda", "Avisos", "Primeros pasos", "Proveedores", "Servicios", "Clientes", "Disponibilidad"]);
     abrirCategoria(root, "Comunicación");
     expect(categoriasAbiertas(root)).toEqual(["Comunicación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Agenda", "Avisos", "Primeros pasos", "Agente de WhatsApp", "Mensajes de WhatsApp"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Agenda", "Avisos", "Primeros pasos", "Conversaciones", "Agente de WhatsApp", "Mensajes de WhatsApp"]);
     abrirCategoria(root, "Administrar");
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Agenda", "Avisos", "Primeros pasos", "Configuración", "Staff", "Auditoría", "Privacidad"]);
     expect(tarjetaUsuario(root).rol).toBe("Propietario");

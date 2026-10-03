@@ -359,3 +359,35 @@ export type { AppointmentWhatsappEvent, AppointmentWhatsappResult } from "./what
 // ---- C-10 -- "Chatea con tus datos" de citas (ver docs/DATA-CHAT.md) ----
 export { ALL_CITAS_DATA_CHAT_SQL, buildCitasDataChatCatalog, buildCitasDataChatTools, CitasDataChatUnavailableError, PostgresCitasDataChatReader } from "./data-chat/index.ts";
 export type { CitasDataChatReader, CitasDataChatWindow } from "./data-chat/index.ts";
+
+// ---- C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (migracion 031) ----
+export {
+  ConversacionesConflictoError,
+  ConversacionesNoDisponibleError,
+  ConversacionesRechazadaError,
+  ConversacionesValidacionError,
+  HANDOFF_ESTADOS,
+  HandoffYaTomadoError,
+  InMemoryConversacionesRepository,
+  InMemoryHandoffAgentGate,
+  NOTA_MAX,
+  PostgresConversacionesRepository,
+  PostgresHandoffAgentGate,
+  RESPUESTA_MAX,
+  SinNumeroWhatsappError,
+} from "./conversaciones/index.ts";
+export type {
+  BandejaFiltro,
+  BandejaItem,
+  BandejaPagina,
+  ConversacionDetalle,
+  ConversacionesLectura,
+  ConversacionesRepository,
+  ConversacionSemilla,
+  HandoffAgentGate,
+  HandoffDetalle,
+  HandoffEstado,
+  InMemoryConversacionesOptions,
+  MensajeConversacion,
+  NotaInterna,
+} from "./conversaciones/index.ts";

@@ -5,6 +5,8 @@
 // concepto de tenant aislado (`restaurants`) del origen.
 import type { HorarioSucursal } from "./horarios.ts";
 
+import type { PedidoReciente } from "./pedido-reciente.ts";
+
 export interface Branch {
   readonly propertyId: string;
   readonly organizationId: string;
@@ -142,6 +144,8 @@ export type CustomerLookupResult =
       readonly frequentItems: readonly OrderHistoryItem[];
       readonly tier: CustomerTier | null;
       readonly agentNotes: readonly string[];
+      /** Pedido de las ultimas 12 h de este telefono con el estado que marco la sucursal (para "¿ya salio?"); ausente/null si no hay. */
+      readonly pedidoReciente?: PedidoReciente | null;
     };
 
 export interface CreateOrderItemInput {
@@ -239,6 +243,11 @@ export interface WhatsAppAgentConfigRow {
   readonly escalationReasonsOff?: readonly MotivoEscalacionDesactivable[];
   /** Version de la fila (sube en cada guardado; control de concurrencia optimista). */
   readonly version?: number;
+  // Campos de la migracion 039 (PM-C5). Ausentes en una base sin migrar: todo cae a los valores del perfil.
+  /** Umbral de pedido grande en texto corto (por omision `PM_PEDIDO_GRANDE_POR_OMISION`). Solo perfil `taqueria_pm`. */
+  readonly largeOrderText?: string | null;
+  /** Segundos que el agente espera tras el ultimo mensaje del cliente antes de responder (0 a 30; null = apagado). Solo perfil `taqueria_pm`. */
+  readonly replyDebounceSeconds?: number | null;
 }
 
 /** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,

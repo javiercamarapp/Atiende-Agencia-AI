@@ -22,6 +22,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   Lock,
+  MessageSquare,
   MessageSquareText,
   Scissors,
   Settings,
@@ -121,6 +122,8 @@ function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[
     {
       title: "Comunicación",
       items: [
+        // C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / responder / devolver / cerrar).
+        { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         // C-04 -- agente y mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
         { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
         { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },

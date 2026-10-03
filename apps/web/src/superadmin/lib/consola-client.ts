@@ -5,6 +5,7 @@
 //
 // REGLA DE LA CASA: nunca inventar una cifra. Cada campo del resumen es `{ valor, codigo?, razon? }`; `valor: null` se
 // pinta como "—" con su `razon`, jamas como 0.
+import { formatMoney } from "@atiende/ui";
 import { PIE_SUPERADMIN, RUTAS_SIN_MENU, TODAS_LAS_RUTAS } from "../rutas.ts";
 
 export interface Campo<T> {
@@ -183,7 +184,7 @@ export function costoPorAgente(filas: readonly AgenteActividad[]): readonly { et
 
 // ---- formatos -----------------------------------------------------------------------------------------------------
 
-export const usd = (n: number): string => `US$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const usd = (n: number): string => `US$${formatMoney(n)}`;
 
 export function fechaHoraCorta(iso: string | null): string | null {
   if (!iso) return null;

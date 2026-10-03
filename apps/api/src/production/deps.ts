@@ -58,6 +58,8 @@ import { GeminiLiveProvider, PostgresConversacionesRepository, PostgresDemoRepos
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
+  PostgresConversacionesRepository as PostgresConversacionesRepositoryCitas,
+  PostgresHandoffAgentGate as PostgresHandoffAgentGateCitas,
   RealCalComPort,
   RealCalDavPort,
   createCalendarSyncPortResolver,
@@ -383,6 +385,8 @@ export function buildProductionDeps(): AppDeps {
     // ya no puede ocurrir por este puerto.
     hotelesFraudeAuditSink: new ProductionHotelesFraudeAuditSink(engine),
     citasRepo: (db) => new PostgresCitasRepository(db),
+    citasConversacionesRepo: (db) => new PostgresConversacionesRepositoryCitas(db),
+    citasHandoffGate: (db) => new PostgresHandoffAgentGateCitas(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
     // roles/proveedores registrados, ver ./llm-gateway.ts) ya se construye aquí en
     // cuanto `llmGateway` exista — cada llamada abre su propia sesión de Postgres
