@@ -34,7 +34,7 @@ interface RespuestaLote {
 
 function formulario(archivos: readonly ArchivoPrueba[]): FormData {
   const fd = new FormData();
-  for (const a of archivos) fd.append("archivos", new File([a.datos as BlobPart], a.nombre, { type: a.tipo ?? "application/xml" }));
+  for (const a of archivos) fd.append("archivos", new File([a.datos as never], a.nombre, { type: a.tipo ?? "application/xml" }));
   return fd;
 }
 const enviar = (archivos: readonly ArchivoPrueba[], token = ctx.staff.contador.token, propertyId = ctx.propertyId) =>

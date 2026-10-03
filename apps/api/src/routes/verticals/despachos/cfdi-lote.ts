@@ -90,7 +90,7 @@ export function despachosCfdiLoteRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const rolVertical = c.get("verticalRole");
-    const puedeRegistrarRep = rolVertical !== undefined && GESTIONAR_PAGOS_PROVISIONALES_ROLES.includes(rolVertical);
+    const puedeRegistrarRep = rolVertical !== undefined && (GESTIONAR_PAGOS_PROVISIONALES_ROLES as readonly string[]).includes(rolVertical);
 
     const tipoContenido = c.req.header("content-type") ?? "";
     if (!/^multipart\/form-data\b/i.test(tipoContenido)) throw Errors.validation("Se esperaba multipart/form-data con los archivos XML o un ZIP.");
