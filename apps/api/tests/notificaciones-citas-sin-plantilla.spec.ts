@@ -50,7 +50,7 @@ describe("citas.whatsapp.sin_plantilla", () => {
     expect(mias).toHaveLength(1);
     expect(mias[0]).toMatchObject({ evento: "citas.whatsapp.sin_plantilla", categoria: "salud", severidad: "atencion", enlace: "/citas/{orgSlug}/mensajes-whatsapp", roles: null });
     expect(String((mias[0] as { cuerpo?: string }).cuerpo)).toContain("2");
-    expect(mias[0]!.dedupeKey).toBe(`citas.whatsapp.sin_plantilla:${ctx.organizationId}:${ctx.organizationId}:appointment.reminder_24h:${new Date().toISOString().slice(0, 10)}`);
+    expect(mias[0]!.dedupeKey).toBe(`citas.whatsapp.sin_plantilla:${ctx.organizationId}:appointment.reminder_24h:${new Date().toISOString().slice(0, 10)}`);
     expect(JSON.stringify(mias[0])).not.toContain("99900000");
     expect(ctx.citasRepo.getOutbox().filter((o) => o.channel === "whatsapp")).toHaveLength(0);
   });
