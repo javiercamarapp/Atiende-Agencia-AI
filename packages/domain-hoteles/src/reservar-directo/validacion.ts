@@ -109,3 +109,9 @@ export function parseIdempotencyKey(header: string | null | undefined): string {
   if (typeof header !== "string" || !IDEMPOTENCY_RE.test(header.trim())) throw new ReservarValidationError("Idempotency-Key: obligatoria (8 a 100 caracteres, letras, numeros, guion o guion bajo).");
   return header.trim();
 }
+
+/** El cuerpo de la cancelacion va vacio (`{}`): el unico dato es el token de la URL. Cualquier otra cosa se rechaza. */
+export function parseCancelarVacio(raw: unknown): void {
+  const b = asRecord(raw);
+  if (Object.keys(b).length > 0) throw new ReservarValidationError("El cuerpo de la cancelacion debe ir vacio.");
+}

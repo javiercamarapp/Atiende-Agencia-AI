@@ -152,7 +152,7 @@ export type {
 } from "./cfdi/reglas-fiscales-hospedaje.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 
-export type { PaymentsPort, PaymentChargeInput, PaymentChargeResult } from "./payments-port.ts";
+export type { PaymentsPort, PaymentChargeInput, PaymentChargeResult, PaymentRefundInput, PaymentRefundResult } from "./payments-port.ts";
 export { InMemoryPaymentsPort } from "./payments-port.ts";
 
 export type {

@@ -30,6 +30,8 @@ export interface WebPolicyRecord {
   readonly maxNights: number;
   readonly maxGuests: number;
   readonly maxAdvanceDays: number;
+  /** Terminos de cancelacion vigentes (null = el hotel no configuro ventana: sin penalidad). */
+  readonly terminos: TerminosCancelacion | null;
 }
 
 /** Terminos de cancelacion vigentes del hotel (cancellation_policy). `null` = el hotel no configuro ventana: sin penalidad. */

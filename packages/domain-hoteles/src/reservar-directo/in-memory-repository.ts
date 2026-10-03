@@ -17,7 +17,7 @@ interface NightRow { total: number; booked: number; netCents: number }
 interface PropertyState {
   organizationId: string;
   name: string;
-  policy: Omit<WebPolicyRecord, "disponible">;
+  policy: Omit<WebPolicyRecord, "disponible" | "terminos">;
   terms: TerminosCancelacion | null;
   roomTypes: Map<string, { name: string; maxOccupancy: number }>;
   nights: Map<string, NightRow>;
@@ -50,7 +50,7 @@ export class InMemoryReservarDirectoRepository implements ReservarDirectoReposit
   seedInventory(propertyId: string, roomTypeId: string, desde: string, hasta: string, total: number, netCents: number): void {
     for (let d = desde; d <= hasta; d = addDays(d, 1)) this.prop(propertyId).nights.set(`${roomTypeId}|${d}`, { total, booked: 0, netCents });
   }
-  setPolicy(propertyId: string, patch: Partial<Omit<WebPolicyRecord, "disponible">>): void {
+  setPolicy(propertyId: string, patch: Partial<Omit<WebPolicyRecord, "disponible" | "terminos">>): void {
     Object.assign(this.prop(propertyId).policy, patch);
   }
   setTerms(propertyId: string, terms: TerminosCancelacion | null): void {
@@ -120,8 +120,9 @@ export class InMemoryReservarDirectoRepository implements ReservarDirectoReposit
 
   // ---- puerto ----
   async webPolicy(propertyId: string): Promise<WebPolicyRecord> {
-    if (!this.migrationApplied) return { disponible: false, webEnabled: false, holdsEnabled: false, depositPct: 0, holdTtlMinutes: 120, maxNights: 14, maxGuests: 6, maxAdvanceDays: 365 };
-    return { disponible: true, ...this.prop(propertyId).policy };
+    if (!this.migrationApplied) return { disponible: false, webEnabled: false, holdsEnabled: false, depositPct: 0, holdTtlMinutes: 120, maxNights: 14, maxGuests: 6, maxAdvanceDays: 365, terminos: null };
+    const p = this.prop(propertyId);
+    return { disponible: true, ...p.policy, terminos: p.terms };
   }
 
   async stayOptions(propertyId: string, checkInDate: string, checkOutDate: string, now: Date = this.clock()): Promise<StayOptionsResult> {

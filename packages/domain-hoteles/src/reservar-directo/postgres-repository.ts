@@ -90,12 +90,12 @@ export class PostgresReservarDirectoRepository implements ReservarDirectoReposit
   }
 
   webPolicy(propertyId: string): Promise<WebPolicyRecord> {
-    const missing = (): WebPolicyRecord => ({ disponible: false, webEnabled: false, holdsEnabled: false, depositPct: 0, holdTtlMinutes: 120, maxNights: 14, maxGuests: 6, maxAdvanceDays: 365 });
+    const missing = (): WebPolicyRecord => ({ disponible: false, webEnabled: false, holdsEnabled: false, depositPct: 0, holdTtlMinutes: 120, maxNights: 14, maxGuests: 6, maxAdvanceDays: 365, terminos: null });
     return this.read<WebPolicyRecord>(
       "webPolicy",
       async () => {
-        const { rows } = await this.db.query<{ web_enabled: boolean; holds_enabled: boolean; web_deposit_pct: Num; hold_ttl_minutes: number; max_nights: number; max_guests: number; max_advance_days: number }>(
-          `select web_enabled, holds_enabled, web_deposit_pct, hold_ttl_minutes, max_nights, max_guests, max_advance_days from hoteles.web_booking_policy($1);`,
+        const { rows } = await this.db.query<{ web_enabled: boolean; holds_enabled: boolean; web_deposit_pct: Num; hold_ttl_minutes: number; max_nights: number; max_guests: number; max_advance_days: number; free_until_hours: number | null; penalty_pct: Num | null }>(
+          `select web_enabled, holds_enabled, web_deposit_pct, hold_ttl_minutes, max_nights, max_guests, max_advance_days, free_until_hours, penalty_pct from hoteles.web_booking_policy($1);`,
           [propertyId],
         );
         const r = rows[0];
@@ -103,6 +103,7 @@ export class PostgresReservarDirectoRepository implements ReservarDirectoReposit
         return {
           disponible: true, webEnabled: r.web_enabled, holdsEnabled: r.holds_enabled, depositPct: Number(r.web_deposit_pct), holdTtlMinutes: Number(r.hold_ttl_minutes),
           maxNights: Number(r.max_nights), maxGuests: Number(r.max_guests), maxAdvanceDays: Number(r.max_advance_days),
+          terminos: r.free_until_hours === null || r.penalty_pct === null ? null : { freeUntilHours: Number(r.free_until_hours), penaltyPct: Number(r.penalty_pct) },
         };
       },
       missing,
