@@ -9,10 +9,12 @@ import type { BranchSummary, CustomerLookupResult, PerfilAgenteWhatsApp, WhatsAp
 import { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "../types.ts";
 import type { MotivoEscalacionDesactivable } from "../types.ts";
 import { PM_CONFIG_POR_OMISION, FALLBACK_CONFIG, aplicarFilaAConfig, buildSystemPrompt } from "./llm-turn-handler.ts";
-import { PM_PROMOS_POR_OMISION, PM_SALSAS_POR_OMISION } from "./perfil-pm.ts";
+import { PM_PEDIDO_GRANDE_POR_OMISION, PM_PROMOS_POR_OMISION, PM_SALSAS_POR_OMISION } from "./perfil-pm.ts";
 
 /** Topes de longitud (los mismos CHECK de la migracion 029/033). */
-export const AGENTE_LIMITES = { agentName: 60, businessName: 120, deliveryTimeText: 200, greetingText: 80, salsasText: 300, promosText: 300 } as const;
+export const AGENTE_LIMITES = { agentName: 60, businessName: 120, deliveryTimeText: 200, greetingText: 80, salsasText: 300, promosText: 300, largeOrderText: 200 } as const;
+/** Tope de la espera de rafagas: la funcion del webhook dura 30 s (vercel.json) y tiene que alcanzar para responder. */
+export const ESPERA_RAFAGAS_MAX_SEGUNDOS = 30;
 
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -41,6 +43,8 @@ export function validarConfigAgenteWhatsapp(raw: {
   readonly salsasText?: unknown;
   readonly promosText?: unknown;
   readonly escalationReasonsOff?: unknown;
+  readonly largeOrderText?: unknown;
+  readonly replyDebounceSeconds?: unknown;
 }): ResultadoValidacion<WhatsAppAgentConfigInput> {
   if (typeof raw.perfil !== "string" || !(PERFILES_AGENTE_WHATSAPP as readonly string[]).includes(raw.perfil)) {
     return { ok: false, error: `perfil: uno de ${PERFILES_AGENTE_WHATSAPP.join(", ")}.` };
@@ -56,9 +60,19 @@ export function validarConfigAgenteWhatsapp(raw: {
     greetingText: textoOpcional(raw.greetingText, "greetingText", AGENTE_LIMITES.greetingText),
     salsasText: textoOpcional(raw.salsasText, "salsasText", AGENTE_LIMITES.salsasText),
     promosText: textoOpcional(raw.promosText, "promosText", AGENTE_LIMITES.promosText),
+    largeOrderText: textoOpcional(raw.largeOrderText, "largeOrderText", AGENTE_LIMITES.largeOrderText),
   };
   for (const r of Object.values(campos)) if (!r.ok) return r;
 
+  // Espera de rafagas: entero de 0 a 30 o vacio (= apagado). Un texto, un decimal o un negativo se rechaza (no se redondea en silencio).
+  let espera: number | null = null;
+  if (raw.replyDebounceSeconds !== undefined && raw.replyDebounceSeconds !== null && raw.replyDebounceSeconds !== "") {
+    const n = typeof raw.replyDebounceSeconds === "number" ? raw.replyDebounceSeconds : Number.NaN;
+    if (!Number.isInteger(n) || n < 0 || n > ESPERA_RAFAGAS_MAX_SEGUNDOS) {
+      return { ok: false, error: `replyDebounceSeconds: un entero de 0 a ${ESPERA_RAFAGAS_MAX_SEGUNDOS} (segundos) o vacio.` };
+    }
+    espera = n;
+  }
   let apagados: MotivoEscalacionDesactivable[] = [];
   if (raw.escalationReasonsOff !== undefined && raw.escalationReasonsOff !== null) {
     if (!Array.isArray(raw.escalationReasonsOff)) return { ok: false, error: "escalationReasonsOff: se esperaba una lista." };
@@ -81,16 +95,18 @@ export function validarConfigAgenteWhatsapp(raw: {
     salsasText: value(campos.salsasText),
     promosText: value(campos.promosText),
     escalationReasonsOff: apagados,
+    largeOrderText: value(campos.largeOrderText),
+    replyDebounceSeconds: espera,
   };
-  if (perfil === "generico" && (config.greetingText || config.salsasText || config.promosText || apagados.length > 0)) {
-    return { ok: false, error: "greetingText, salsasText, promosText y escalationReasonsOff solo aplican al perfil taqueria_pm." };
+  if (perfil === "generico" && (config.greetingText || config.salsasText || config.promosText || apagados.length > 0 || config.largeOrderText || espera !== null)) {
+    return { ok: false, error: "greetingText, salsasText, promosText, escalationReasonsOff, largeOrderText y replyDebounceSeconds solo aplican al perfil taqueria_pm." };
   }
   return { ok: true, valor: config };
 }
 
 /** Config en blanco: todo cae a los valores del perfil. Es lo que deja "volver al perfil por defecto". */
 export function configPorDefectoDelPerfil(perfil: PerfilAgenteWhatsApp): WhatsAppAgentConfigInput {
-  return { perfil, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, greetingText: null, salsasText: null, promosText: null, escalationReasonsOff: [] };
+  return { perfil, agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, greetingText: null, salsasText: null, promosText: null, escalationReasonsOff: [], largeOrderText: null, replyDebounceSeconds: null };
 }
 
 /** Lo que cada campo vale cuando esta vacio (para mostrarlo como sugerencia en la pantalla). */
@@ -106,6 +122,9 @@ export function valoresPorOmisionDelPerfil(perfil: PerfilAgenteWhatsApp) {
     salsasText: perfil === "taqueria_pm" ? PM_SALSAS_POR_OMISION : null,
     promosText: perfil === "taqueria_pm" ? PM_PROMOS_POR_OMISION : null,
     escalationReasonsOff: [] as readonly MotivoEscalacionDesactivable[],
+    largeOrderText: perfil === "taqueria_pm" ? PM_PEDIDO_GRANDE_POR_OMISION : null,
+    /** Apagada por omision: una espera de rafagas nueva no se activa sola (la enciende el dueño desde el panel). */
+    replyDebounceSeconds: null as number | null,
   };
 }
 
@@ -138,6 +157,8 @@ const ETIQUETAS_CAMPO: Readonly<Record<string, string>> = {
   salsasText: "Salsas incluidas",
   promosText: "Promociones",
   escalationReasonsOff: "Motivos de escalacion desactivados",
+  largeOrderText: "Umbral de pedido grande",
+  replyDebounceSeconds: "Espera de rafagas (segundos)",
 };
 
 function comoTexto(v: unknown): string {
@@ -158,6 +179,8 @@ export function fotoConfigAgente(config: WhatsAppAgentConfigInput | null): Recor
     salsasText: config.salsasText ?? null,
     promosText: config.promosText ?? null,
     escalationReasonsOff: [...(config.escalationReasonsOff ?? [])],
+    largeOrderText: config.largeOrderText ?? null,
+    replyDebounceSeconds: config.replyDebounceSeconds ?? null,
   };
 }
 

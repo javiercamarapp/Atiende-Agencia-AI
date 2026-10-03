@@ -2455,6 +2455,28 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   // ---- Agente de WhatsApp por organizacion/sucursal (migracion 029) ----
   async findWhatsAppAgentConfig(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    // Con la migracion 039 trae ademas el umbral de pedido grande y la espera de rafagas; sin ella (42703) cae al lector de 033/029.
+    return runWithSavepointFallback<WhatsAppAgentConfigRow | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_read_039",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `select property_id, perfil, agent_name, business_name, tone_style, delivery_time_text,
+                  greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, version
+             from restaurantes.whatsapp_agent_config
+            where organization_id = $1 and enabled = true and (property_id = $2 or property_id is null)
+            order by (property_id is null) asc
+            limit 1;`,
+          [organizationId, propertyId],
+        );
+        return rows[0] ? mapWhatsAppAgentConfigRow(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: () => this.findWhatsAppAgentConfigV033(organizationId, propertyId),
+    });
+  }
+
+  private async findWhatsAppAgentConfigV033(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
     // Lectura dentro de la transaccion unica del turno: una base sin migrar (42P01/42703/42501/42883)
     // NO puede abortarla; con SAVEPOINT cae a "sin config" y el turno sigue con el agente generico.
     // Con la migracion 033 trae ademas los campos nuevos y la version; sin ella (42703) cae al SELECT de 029.
@@ -2498,6 +2520,25 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   async findWhatsAppAgentConfigExacta(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
     return runWithSavepointFallback<WhatsAppAgentConfigRow | null>({
       session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_exacta_039",
+      primary: async () => {
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `select property_id, perfil, agent_name, business_name, tone_style, delivery_time_text,
+                  greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, version
+             from restaurantes.whatsapp_agent_config
+            where organization_id = $1 and property_id is not distinct from $2::uuid;`,
+          [organizationId, propertyId],
+        );
+        return rows[0] ? mapWhatsAppAgentConfigRow(rows[0]) : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: () => this.findWhatsAppAgentConfigExactaV033(organizationId, propertyId),
+    });
+  }
+
+  private async findWhatsAppAgentConfigExactaV033(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    return runWithSavepointFallback<WhatsAppAgentConfigRow | null>({
+      session: this.db,
       savepointName: "sp_restaurantes_whatsapp_agent_config_exacta",
       primary: async () => {
         const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
@@ -2530,6 +2571,102 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async guardarWhatsAppAgentConfig(
+    organizationId: string,
+    propertyId: string | null,
+    config: WhatsAppAgentConfigInput,
+    meta: { readonly accion: WhatsAppAgentConfigAccion; readonly actorUserId: string; readonly versionEsperada: number | null },
+  ): Promise<WhatsAppAgentConfigRow> {
+    return runWithSavepointFallback<WhatsAppAgentConfigRow>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_agent_config_guardar_039",
+      primary: async () => {
+        const previa = await this.leerConfigExactaV3(organizationId, propertyId);
+        const conflict = propertyId === null ? "(organization_id) where property_id is null" : "(organization_id, property_id) where property_id is not null";
+        const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+          `insert into restaurantes.whatsapp_agent_config as c
+             (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, enabled, version, updated_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::text[], $12, $13, true, 1, now())
+           on conflict ${conflict} do update set
+             perfil = excluded.perfil,
+             agent_name = excluded.agent_name,
+             business_name = excluded.business_name,
+             tone_style = excluded.tone_style,
+             delivery_time_text = excluded.delivery_time_text,
+             greeting_text = excluded.greeting_text,
+             salsas_text = excluded.salsas_text,
+             promos_text = excluded.promos_text,
+             escalation_reasons_off = excluded.escalation_reasons_off,
+             large_order_text = excluded.large_order_text,
+             reply_debounce_seconds = excluded.reply_debounce_seconds,
+             enabled = true,
+             version = c.version + 1,
+             updated_at = excluded.updated_at
+             where $14::int is null or c.version = $14::int
+           returning property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, version;`,
+          [
+            organizationId,
+            propertyId,
+            config.perfil,
+            config.agentName,
+            config.businessName,
+            config.toneStyle,
+            config.deliveryTimeText,
+            config.greetingText ?? null,
+            config.salsasText ?? null,
+            config.promosText ?? null,
+            [...(config.escalationReasonsOff ?? [])],
+            config.largeOrderText ?? null,
+            config.replyDebounceSeconds ?? null,
+            meta.versionEsperada,
+          ],
+        );
+        // Sin fila devuelta: la fila existe con otra version (otro guardado gano) -> conflicto, no 500.
+        if (!rows[0]) throw new WhatsAppAgentConfigConflictError();
+        const guardada = mapWhatsAppAgentConfigRow(rows[0]);
+        try {
+          await this.db.query(
+            `insert into restaurantes.whatsapp_agent_config_history (organization_id, property_id, version, accion, anterior, nuevo, actor_id)
+             values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7);`,
+            [
+              organizationId,
+              propertyId,
+              guardada.version,
+              meta.accion,
+              previa ? JSON.stringify(fotoConfigAgente(previa)) : null,
+              JSON.stringify(fotoConfigAgente(guardada)),
+              meta.actorUserId,
+            ],
+          );
+        } catch (err) {
+          // Dos guardados con la misma version (indice unico del historial) = conflicto de concurrencia.
+          if ((err as { code?: string } | null)?.code === "23505") throw new WhatsAppAgentConfigConflictError();
+          throw err;
+        }
+        return guardada;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async (err) => {
+        // Base sin la migracion 039: se puede guardar todo lo de 033/029, pero NO el umbral ni la espera (no se descartan en silencio).
+        if (config.largeOrderText || (config.replyDebounceSeconds !== null && config.replyDebounceSeconds !== undefined)) {
+          advertirModeloPmNoDisponible("whatsapp_agent_config", err, "039_agente_config_umbral_y_rafagas.sql");
+          throw new RestaurantesConfigUnavailableError();
+        }
+        return this.guardarWhatsAppAgentConfigV033(organizationId, propertyId, config, meta);
+      },
+    });
+  }
+
+  private async leerConfigExactaV3(organizationId: string, propertyId: string | null): Promise<WhatsAppAgentConfigRow | null> {
+    const { rows } = await this.db.query<WhatsAppAgentConfigRowSql>(
+      `select property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, version
+         from restaurantes.whatsapp_agent_config
+        where organization_id = $1 and property_id is not distinct from $2::uuid;`,
+      [organizationId, propertyId],
+    );
+    return rows[0] ? mapWhatsAppAgentConfigRow(rows[0]) : null;
+  }
+
+  private async guardarWhatsAppAgentConfigV033(
     organizationId: string,
     propertyId: string | null,
     config: WhatsAppAgentConfigInput,
@@ -3103,6 +3240,9 @@ interface WhatsAppAgentConfigRowSql {
   promos_text?: string | null;
   escalation_reasons_off?: string[] | null;
   version?: number | null;
+  // Migracion 039: ausentes cuando se consulto con el SELECT de 033.
+  large_order_text?: string | null;
+  reply_debounce_seconds?: number | null;
 }
 
 function mapWhatsAppAgentConfigRow(row: WhatsAppAgentConfigRowSql): WhatsAppAgentConfigRow {
@@ -3122,6 +3262,8 @@ function mapWhatsAppAgentConfigRow(row: WhatsAppAgentConfigRowSql): WhatsAppAgen
           promosText: row.promos_text ?? null,
           escalationReasonsOff: (row.escalation_reasons_off ?? []).filter((m): m is MotivoEscalacionDesactivable => (MOTIVOS_ESCALACION_DESACTIVABLES as readonly string[]).includes(m)),
           version: row.version,
+          largeOrderText: row.large_order_text ?? null,
+          replyDebounceSeconds: row.reply_debounce_seconds === undefined || row.reply_debounce_seconds === null ? null : Number(row.reply_debounce_seconds),
         }),
   };
 }

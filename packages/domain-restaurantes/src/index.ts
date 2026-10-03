@@ -215,6 +215,7 @@ export type {
 export { WhatsAppAgentConfigConflictError } from "./errors.ts";
 export {
   AGENTE_LIMITES,
+  ESPERA_RAFAGAS_MAX_SEGUNDOS,
   configPorDefectoDelPerfil,
   diffLineasPrompt,
   diferenciasConfigAgente,

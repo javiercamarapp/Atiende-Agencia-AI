@@ -243,6 +243,11 @@ export interface WhatsAppAgentConfigRow {
   readonly escalationReasonsOff?: readonly MotivoEscalacionDesactivable[];
   /** Version de la fila (sube en cada guardado; control de concurrencia optimista). */
   readonly version?: number;
+  // Campos de la migracion 039 (PM-C5). Ausentes en una base sin migrar: todo cae a los valores del perfil.
+  /** Umbral de pedido grande en texto corto (por omision `PM_PEDIDO_GRANDE_POR_OMISION`). Solo perfil `taqueria_pm`. */
+  readonly largeOrderText?: string | null;
+  /** Segundos que el agente espera tras el ultimo mensaje del cliente antes de responder (0 a 30; null = apagado). Solo perfil `taqueria_pm`. */
+  readonly replyDebounceSeconds?: number | null;
 }
 
 /** Motivos de escalacion que un owner/admin puede apagar. Los demas (queja, alergia, cliente_lo_pide, falla_sistema,

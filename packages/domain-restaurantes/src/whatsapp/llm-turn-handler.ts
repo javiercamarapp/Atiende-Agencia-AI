@@ -158,6 +158,9 @@ export interface WhatsAppLlmAgentConfig {
   readonly salsasText?: string;
   readonly promosText?: string;
   readonly motivosDesactivados?: readonly string[];
+  /** PM-C5 (solo perfil PM): umbral de pedido grande en texto corto y espera de rafagas en segundos (0/ausente = apagada). */
+  readonly largeOrderText?: string;
+  readonly replyDebounceSeconds?: number;
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -210,6 +213,8 @@ export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organiz
   const saludo = texto(row.greetingText, 80);
   const salsas = texto(row.salsasText, 300);
   const promos = texto(row.promosText, 300);
+  const umbral = texto(row.largeOrderText, 200);
+  const espera = row.replyDebounceSeconds !== undefined && row.replyDebounceSeconds !== null && Number.isInteger(row.replyDebounceSeconds) && row.replyDebounceSeconds > 0 ? Math.min(row.replyDebounceSeconds, 30) : undefined;
   const apagados = (row.escalationReasonsOff ?? []).filter((m) => (MOTIVOS_ESCALACION_DESACTIVABLES as readonly string[]).includes(m));
   return {
     ...base,
@@ -222,6 +227,9 @@ export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organiz
     ...(salsas ? { salsasText: salsas } : {}),
     ...(promos ? { promosText: promos } : {}),
     ...(apagados.length > 0 ? { motivosDesactivados: apagados } : {}),
+    // El perfil generico no usa estos dos campos (el editor los rechaza); una fila escrita directo en la base se ignora.
+    ...(row.perfil === "taqueria_pm" && umbral ? { largeOrderText: umbral } : {}),
+    ...(row.perfil === "taqueria_pm" && espera ? { replyDebounceSeconds: espera } : {}),
   };
 }
 
@@ -248,6 +256,7 @@ export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: read
       salsasTexto: config.salsasText ?? null,
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
+      pedidoGrandeTexto: config.largeOrderText ?? null,
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.

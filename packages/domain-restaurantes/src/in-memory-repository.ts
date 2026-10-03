@@ -1698,6 +1698,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   /** `true` simula la base sin la migracion 033 (solo el guardado de 029, sin historial ni version). */
   whatsAppAgentConfigSin033 = false;
+  /** `true` simula la base con la 033 pero SIN la 039 (PM-C5): guarda todo menos el umbral de pedido grande y la espera de rafagas. */
+  whatsAppAgentConfigSin039 = false;
   readonly whatsAppAgentConfigHistorial: Array<WhatsAppAgentConfigHistorialEntry & { readonly organizationId: string }> = [];
 
   async guardarWhatsAppAgentConfig(
@@ -1708,9 +1710,15 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   ): Promise<WhatsAppAgentConfigRow> {
     if (propertyId && this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`guardarWhatsAppAgentConfig: la property "${propertyId}" no pertenece a la organizacion.`);
     if (this.whatsAppAgentConfigSin033) {
-      const usaCamposNuevos = Boolean(config.greetingText || config.salsasText || config.promosText || (config.escalationReasonsOff?.length ?? 0) > 0);
+      const usaCamposNuevos = Boolean(
+        config.greetingText || config.salsasText || config.promosText || (config.escalationReasonsOff?.length ?? 0) > 0 || config.largeOrderText || (config.replyDebounceSeconds !== null && config.replyDebounceSeconds !== undefined),
+      );
       if (usaCamposNuevos) throw new RestaurantesConfigUnavailableError();
       return this.upsertWhatsAppAgentConfig(organizationId, propertyId, config);
+    }
+    if (this.whatsAppAgentConfigSin039) {
+      // Sin la 039 no se puede guardar el umbral ni la espera, y nunca se descartan en silencio.
+      if (config.largeOrderText || (config.replyDebounceSeconds !== null && config.replyDebounceSeconds !== undefined)) throw new RestaurantesConfigUnavailableError();
     }
     const previa = await this.findWhatsAppAgentConfigExacta(organizationId, propertyId);
     const versionVigente = previa?.version ?? (previa ? 1 : 0);
