@@ -47,6 +47,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
   });
 
   app.post("/v1/restaurantes/whatsapp/webhook", async (c) => {
+    // El reloj del presupuesto de 30 s arranca al entrar al handler: la lectura del body y la verificacion de firma ya cuentan.
+    const inicioMs = (deps.relojMs ?? Date.now)();
     const declaredLength = Number(c.req.header("content-length") ?? 0);
     if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BODY_BYTES) {
       return c.text("Payload too large", 413);
@@ -59,7 +61,6 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       return c.text("Invalid signature", 401);
     }
 
-    const inicioMs = (deps.relojMs ?? Date.now)();
     let payload: unknown;
     try {
       payload = JSON.parse(new TextDecoder().decode(rawBody));
