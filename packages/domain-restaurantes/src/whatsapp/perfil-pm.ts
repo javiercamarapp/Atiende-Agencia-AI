@@ -40,23 +40,9 @@ export interface PerfilPmContexto {
   readonly pedidoGrandeTexto?: string | null;
 }
 
-export type SaludoPorHora = "buenos días" | "buenas tardes" | "buenas noches";
-
-/** Saludo segun la HORA LOCAL DE MERIDA (X40: el seed y el pregrabado decian "buenas tardes" a toda hora). Acepta la hora entera
- * (0-23) o un texto con "HH:MM" ("11:59", "lunes 18:30"). Buenos dias de 5:00 a 11:59, buenas tardes de 12:00 a 18:59 y buenas
- * noches el resto (incluida la madrugada). Un valor que no es hora lanza: callar el error daria un saludo equivocado. */
-export function saludoPorHora(horaLocalMerida: number | string): SaludoPorHora {
-  let hora: number;
-  if (typeof horaLocalMerida === "number") hora = horaLocalMerida;
-  else {
-    const m = /(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?!\d)/.exec(horaLocalMerida);
-    hora = m ? Number(m[1]) : Number.NaN;
-  }
-  if (!Number.isInteger(hora) || hora < 0 || hora > 23) throw new RangeError(`saludoPorHora: hora local invalida (${String(horaLocalMerida)})`);
-  if (hora >= 5 && hora < 12) return "buenos días";
-  if (hora >= 12 && hora < 19) return "buenas tardes";
-  return "buenas noches";
-}
+// El saludo por hora es una regla compartida de la voz: vive en @atiende/voice-core y aqui se conserva la ruta historica.
+export { saludoPorHora } from "@atiende/voice-core";
+export type { SaludoPorHora } from "@atiende/voice-core";
 
 export const PM_AGENT_NAME_POR_OMISION = "el asistente virtual";
 /** Valores por omision de los textos editables (R-10). Sin personalizar, el prompt resultante es IDENTICO al de antes. */
