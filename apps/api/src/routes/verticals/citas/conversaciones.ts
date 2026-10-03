@@ -27,6 +27,7 @@ import {
   NOTA_MAX,
   RESPUESTA_MAX,
   SinNumeroWhatsappError,
+  STAFF_INVITE_ROLES,
 } from "@atiende/domain-citas";
 import type { BandejaItem, ConversacionesRepository, HandoffEstado } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
@@ -65,7 +66,7 @@ function aHttp(err: unknown): never {
   throw err;
 }
 
-function serializeItem(i: BandejaItem) {
+function serializeItem(i: BandejaItem, userId: string) {
   return {
     conversationId: i.conversationId,
     telefono: enmascararTelefono(i.telefono),
@@ -80,6 +81,7 @@ function serializeItem(i: BandejaItem) {
     tomadaPor: i.tomadaPor,
     tomadaPorNombre: i.tomadaPorNombre,
     tomadaEn: i.tomadaAt,
+    esMia: i.estado === "tomada" && i.tomadaPor === userId,
     cita: i.citaId ? { id: i.citaId, iniciaEn: i.citaInicio, estado: i.citaEstado } : null,
   };
 }
@@ -105,6 +107,11 @@ export function citasConversacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     return deps.citasConversacionesRepo(c.get("db"));
   }
 
+  /** owner/admin pueden devolver o cerrar la toma de otra persona (la base lo vuelve a exigir): el panel lo usa solo para mostrar los botones. */
+  function puedeGestionar(c: Context<CoreAuthHonoEnv>): boolean {
+    return STAFF_INVITE_ROLES.includes((c.get("verticalRole") ?? "") as never);
+  }
+
   /** `requirePropertyMembership` ya fijo organizacion y sucursal reales del staff; aqui solo se exige el rol de citas. */
   function contexto(c: Context<CoreAuthHonoEnv>): { organizationId: string; propertyId: string } {
     assertVerticalRole(c, CITAS_ROLES);
@@ -123,7 +130,8 @@ export function citasConversacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
         disponible: lectura.disponible,
         total: lectura.valor.total,
         nextOffset: offset + limit < lectura.valor.total ? offset + limit : null,
-        items: lectura.valor.items.map(serializeItem),
+        puedeGestionar: puedeGestionar(c),
+        items: lectura.valor.items.map((i) => serializeItem(i, c.get("userId"))),
       });
     } catch (err) {
       return aHttp(err);
@@ -142,11 +150,13 @@ export function citasConversacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
         conversationId: d.conversationId,
         telefono: enmascararTelefono(d.telefono),
         citaId: d.citaId,
+        puedeGestionar: puedeGestionar(c),
         mensajes: d.mensajes.map((m) => ({ rol: m.rol, texto: m.texto })),
         handoff: d.handoff
           ? {
               handoffId: d.handoff.handoffId, estado: d.handoff.estado, solicitadoPor: d.handoff.solicitadoPor, motivo: d.handoff.motivo, crisis: d.handoff.crisis,
               solicitadaEn: d.handoff.solicitadaAt, ultimoClienteEn: d.handoff.ultimoClienteAt, tomadaPor: d.handoff.tomadaPor, tomadaPorNombre: d.handoff.tomadaPorNombre, tomadaEn: d.handoff.tomadaAt,
+              esMia: d.handoff.estado === "tomada" && d.handoff.tomadaPor === c.get("userId"),
             }
           : null,
         notas: d.notas.map((n) => ({ id: n.id, autor: n.autorNombre, autorId: n.autorId, texto: n.texto, creadoEn: n.createdAt })),

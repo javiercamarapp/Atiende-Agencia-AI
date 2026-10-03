@@ -131,10 +131,15 @@ describe("tomar / devolver / cerrar / notas / responder", () => {
     expect(store.outbox).toEqual([expect.objectContaining({ organizationId: ctx.organizationId, to: PHONE, body: "Ya le atiendo" })]);
 
     const bandeja = await (await app.request(`${base}/conversaciones`, authedGet(ctx.staff.staffMember.token))).json();
-    expect(bandeja.items[0]).toMatchObject({ estado: "tomada", handoffId, tomadaPor: ctx.staff.staffMember.id, tomadaPorNombre: "Staff" });
+    expect(bandeja.items[0]).toMatchObject({ estado: "tomada", handoffId, tomadaPor: ctx.staff.staffMember.id, tomadaPorNombre: "Staff", esMia: true });
+    expect(bandeja.puedeGestionar).toBe(false); // staff: no devuelve ni cierra la toma de otra persona
+    const comoOwner = await (await app.request(`${base}/conversaciones`, authedGet(ctx.staff.owner.token))).json();
+    expect(comoOwner.puedeGestionar).toBe(true);
+    expect(comoOwner.items[0]).toMatchObject({ estado: "tomada", esMia: false });
     const detalle = await (await app.request(`${base}/conversaciones/${conv}`, authedGet(ctx.staff.staffMember.token))).json();
     expect(detalle.notas.map((n: { texto: string }) => n.texto)).toEqual(["Quiere factura"]);
     expect(detalle.mensajes.at(-1)).toEqual({ rol: "humano", texto: "Ya le atiendo" });
+    expect(detalle).toMatchObject({ puedeGestionar: false, handoff: { esMia: true, estado: "tomada" } });
 
     const dev = await app.request(`${base}/handoffs/${handoffId}/devolver`, authedJson(ctx.staff.staffMember.token, {}, "POST"));
     expect(await dev.json()).toMatchObject({ estado: "devuelta", cambio: true });
