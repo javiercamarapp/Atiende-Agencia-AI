@@ -6,6 +6,7 @@ import { afirmarCancelarNoEscribe, dialogo } from "../../helpers/dialogos.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import type { Page } from "../../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../../helpers/humo.ts";
+import { esMovil, sidebar } from "../../helpers/navegacion.ts";
 import { BASE, CODIGO_TOTP, CONCEPTO_CON_TARIFA, TENDER_ID, TENDER_TITULO, TEXTO_BASES, TEXTO_CONTRATO, rutaConvocatoria } from "../../helpers/ciclo-licitaciones.ts";
 import type { ClienteMock } from "../../mock-api/cliente.ts";
 
@@ -78,6 +79,11 @@ test.describe("licitaciones: viaje del propietario @viaje", () => {
       expect(await unaEscritura(mock, "POST", "/go-no-go")).toEqual({ decision: "go", reasons: ["Encaja con la especialidad de la empresa.", "Hay capacidad de residente de obra."] });
       // El estatus de la ficha se recarga del servidor.
       await expect(page.getByText("Go", { exact: true }).first()).toBeVisible();
+      // Pestanas de solo lectura de la ficha: matching (desglose del score) y checklist (ultimo resultado ya corrido).
+      await page.getByRole("tab", { name: "Matching" }).click();
+      await expect(page.getByText("Desglose del score contra el perfil de la empresa.")).toBeVisible();
+      await page.getByRole("tab", { name: "Checklist" }).click();
+      await expect(page.getByText("Último resultado ya corrido — esta ficha nunca ejecuta el checklist.")).toBeVisible();
     });
 
     // ---- 3. Bases y requisitos.
@@ -149,6 +155,13 @@ test.describe("licitaciones: viaje del propietario @viaje", () => {
       await expect(page.getByRole("alert").filter({ hasText: "Fila 1: el concepto es obligatorio." })).toBeVisible();
       expect(await mock.buscar({ metodo: "POST", ruta: "/proposal/economic/generate" })).toHaveLength(0);
 
+      // Filas del concepto: agregar y quitar son estado local (no escriben).
+      await page.getByRole("button", { name: "Agregar concepto" }).click();
+      await expect(page.locator("#economico-concepto-1")).toBeVisible();
+      await page.getByRole("button", { name: "Quitar" }).nth(1).click();
+      await expect(page.locator("#economico-concepto-1")).toHaveCount(0);
+      expect(await mock.escrituras()).toEqual([]);
+
       await page.locator("#economico-concepto-0").fill("Concepto sin tarifa");
       await page.getByRole("button", { name: "Generar propuesta económica" }).click();
       await expect(page.getByText("Sin total: 1 concepto(s) sin tarifa aprobada/vigente.")).toBeVisible();
@@ -174,6 +187,12 @@ test.describe("licitaciones: viaje del propietario @viaje", () => {
       await expect(page.getByRole("alert").filter({ hasText: "Declara al menos una firma requerida" })).toBeVisible();
       expect(await mock.buscar({ metodo: "POST", ruta: "/checklist/run" })).toHaveLength(0);
 
+      // Firmas: agregar y quitar una fila es estado local (no escribe).
+      await page.getByRole("button", { name: "Agregar firma" }).click();
+      await expect(page.getByPlaceholder("representante_legal")).toHaveCount(2);
+      await page.getByRole("button", { name: "Quitar" }).last().click();
+      await expect(page.getByPlaceholder("representante_legal")).toHaveCount(1);
+      expect(await mock.escrituras()).toEqual([]);
       await page.getByPlaceholder("representante_legal").fill("representante_legal");
       await page.getByRole("button", { name: "Correr checklist" }).click();
       await expect(page.getByText("Falta confirmar la firma de: representante_legal.")).toBeVisible();
@@ -350,8 +369,13 @@ test.describe("licitaciones: viaje del propietario @viaje", () => {
     await test.step("cierre de sesion: manda al login y limpia la sesion", async () => {
       await page.goto(`${BASE}/panel`);
       await mock.limpiarRegistro();
-      const lateral = page.getByRole("complementary", { name: "Navegación principal" });
-      await lateral.getByRole("button", { name: "Cerrar sesión" }).click();
+      // Escritorio: pie del Sidebar. Movil: el Sidebar esta oculto y "Cerrar sesión" vive en el menu de cuenta de la cabecera.
+      if (esMovil(page)) {
+        await page.getByRole("button", { name: "Abrir menú de cuenta" }).click();
+        await page.getByRole("menuitem", { name: "Cerrar sesión" }).or(page.getByRole("button", { name: "Cerrar sesión" })).first().click();
+      } else {
+        await sidebar(page).getByRole("button", { name: "Cerrar sesión" }).click();
+      }
       const confirmar = page.getByRole("alertdialog");
       if (await confirmar.isVisible().catch(() => false)) await confirmar.getByRole("button", { name: "Cerrar sesión" }).click();
       await page.waitForURL(/\/licitaciones\/login/);

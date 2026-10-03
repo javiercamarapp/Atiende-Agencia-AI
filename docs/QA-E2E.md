@@ -148,6 +148,50 @@ Defectos conocidos:
   de la pagina). Ahora la barra superior (`BarraPagina`) pinta el nombre de la pagina en un `<p>` y el unico `<h1>` es el de
   la pagina; si una pagina no pinta ninguno, la barra hace de encabezado de nivel 1 hasta que aparezca. Lo cubren
   `ds-shell.spec.ts` y `barra-pagina.spec.ts` (el nombre de cada pagina de las 7 consolas y un solo `<h1>` por pantalla).
+- **BUG-E2E-003 (media, accesibilidad; corregido en el PR de L-31)**: en la propuesta tecnica el texto "(Tipo · Obligatoriedad)" de cada
+  requisito del mapeo usaba `text-muted-foreground/70`: 2.99:1 en claro y 4.34:1 en oscuro (WCAG 1.4.3 pide 4.5:1). Lo destapo
+  `tests/licitaciones/a11y-licitaciones.spec.ts`, que ahora es su prueba de regresion.
+
+## Ciclo de licitaciones de punta a punta (L-31)
+
+Specs en `apps/web/e2e/tests/licitaciones/` (todos llevan "licitaciones" en el titulo: `npm run test:e2e -- --grep licitaciones`):
+
+- `viaje-propietario.spec.ts`: un solo viaje, con clics reales, de la convocatoria a la cobranza: alta manual, go/no-go, bases
+  y requisitos, propuesta tecnica y economica, checklist, aprobacion por seccion, doble aprobacion (propietario y administrador),
+  paquete y descarga, presentacion, ganada, contrato (metadatos, documento con campos sugeridos, transiciones con step-up),
+  factura, inconformidad y cierre de sesion. En cada paso se afirma la peticion exacta (`mock.buscar`) y que Cancelar/Escape
+  no escriben.
+- `viaje-roles.spec.ts`: lo que ven y pueden `viewer`, `writer`, `reviewer` y `analyst` (roles de
+  `domain-licitaciones/src/roles.ts`): un rol sin permiso no ve la accion o recibe la explicacion y nunca manda la peticion.
+- `a11y-licitaciones.spec.ts`: orden de encabezados, nombres accesibles y contraste de cada pantalla del ciclo, en claro,
+  oscuro, escritorio y movil. Son chequeos propios (`helpers/accesibilidad.ts`): `@axe-core/playwright` no esta instalado y no
+  se agrego una dependencia. El contraste se mide con las transiciones de color terminadas (a medio camino un tab cambiando de
+  estado da un falso 4.09:1).
+
+La API simulada del ciclo vive en `mock-api/fixtures/licitaciones-ciclo.ts`: cada escritura cambia el estado del escenario y
+replica las reglas del servidor real (roles WRITE/DECISION/GO_NO_GO/revision de inconformidad, 409 de transiciones del contrato,
+step-up de "pagado", plazo de 17 dias habiles de la factura). El extractor de requisitos y de campos del contrato es un
+sustituto por lineas de texto; el ZIP del paquete es un texto. `helpers/ciclo-licitaciones.ts` trae un cliente de siembra
+(`ApiCiclo`) que prepara el punto de partida de un escenario con el token de una persona; lo que se afirma sobre la UI siempre
+es con clics.
+
+Cobertura de controles del recorrido de botones (`docs/diseno-ux-recorrido-botones-licitaciones.md`):
+
+| Pantalla | Cubierto | Hueco (motivo) |
+|---|---|---|
+| Convocatorias | Nueva convocatoria (abrir, Cancelar, Escape, validacion, guardar), lista con score, enlace al detalle | Paginacion de la tabla (sin mas de 25 filas en el escenario) |
+| Convocatoria (detalle) | Pestanas Matching, Go / No-go, Resolucion, Checklist; Marcar Go; Marcar No-go (confirmacion, Cancelar/Escape); Marcar ganada/perdida (confirmacion); enlaces a requisitos, cierre, contrato; Bitacora en `sala-guerra-gate-licitaciones.spec.ts` | Enlace a autopsia (ruta "perdida": sin fixture de autopsia) |
+| Requisitos | Subir bases, quitar archivo pendiente, documento sin texto (se excluye y se reporta), extraer, enlace a la propuesta | Archivo de mas de 22 MB (no se genera uno en e2e) |
+| Propuesta tecnica | Generar tecnica (con bloqueos y sin ellos), condiciones aplica/no aplica, guardar mapeo y su validacion, generar economica (validacion, concepto sin tarifa, total con IVA), agregar y quitar concepto | Actualizar un mapeo ya guardado (solo se crea) |
+| Cierre | Correr checklist (validaciones y resultados), agregar y quitar firma, aprobar seccion, doble aprobacion con step-up, ensamblar, descargar ZIP, declarar presentacion (Cancelar/Escape en `cierre-licitaciones.spec.ts`) | Adjuntar el acuse en la presentacion; "Quitar" de un archivo ya elegido en el checklist |
+| Contrato | Registrar, metadatos, subir documento, confirmar y corregir campo, transiciones (motivo obligatorio, rescindir con confirmacion, "pagado" con step-up correcto e incorrecto), historial | Evidencia de la transicion (campo opcional) |
+| Post-adjudicacion | Registrar factura, marcar pagada, generar borrador de inconformidad, marcar revisado por abogado (reviewer/owner; analyst no) | Factura vencida y totales vencidos (el escenario no siembra facturas vencidas) |
+| Sala de guerra | Gate final y bitacora (spec existente) | Tablero (agregar item, importar requisitos) y Junta de aclaraciones: la API simulada devuelve el tablero vacio; fixtures de escritura pendientes |
+| Autopsia del fallo | - | Sin fixture de `fallo-autopsia` en la API simulada |
+| Datos de la empresa, Aprobaciones | La tarifa aprobada que usa la propuesta economica sale de `company/rates` | Alta, aprobar, rechazar y revocar firmante: sin fixtures de escritura |
+| Staff, Perfil de matching, Fuentes, Seguimiento, Radar, KYC, Dias inhabiles, WhatsApp, Seguridad | Recorrido de navegacion sin errores (`humo-licitaciones.spec.ts`), WhatsApp opt-out, Staff oculto para viewer | Botones propios de cada una: fuera del ciclo del expediente |
+
+Los huecos se cierran con fixtures de escritura en la API simulada y un viaje por pantalla; no hay codigo de producto pendiente.
 
 ## CI
 
