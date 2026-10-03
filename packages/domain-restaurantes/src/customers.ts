@@ -4,6 +4,7 @@
 // teléfono: no solo el último pedido, sino frequent_items (productos más pedidos
 // across TODO su historial real) y tier (percentil real, calc_customer_tier). Esta es
 // la "memoria de cliente por teléfono" que el brief pide preservar explícitamente.
+import { buscarPedidoReciente } from "./pedido-reciente.ts";
 import { normalizePhone } from "./phone.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { CustomerLookupResult, CustomerTier, OrderHistoryItem, PersistedOrderItem } from "./types.ts";
@@ -73,6 +74,15 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
     tier,
     agentNotes,
   };
+}
+
+/** `lookupCustomer` + el pedido de las ultimas 12 h con el estado que marco la sucursal (para "¿ya salio?"). Es lo que ve el AGENTE (contexto del
+ * prompt y herramienta buscar_cliente); la ficha de admin y `lookupCustomer` quedan como estaban. Un cliente nunca visto sigue siendo `isNew`. */
+export async function lookupCustomerConPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<CustomerLookupResult> {
+  const base = await lookupCustomer(repo, organizationId, phone);
+  if (base.isNew) return base;
+  const pedidoReciente = await buscarPedidoReciente(repo, organizationId, phone, now);
+  return pedidoReciente === undefined ? base : { ...base, pedidoReciente };
 }
 
 /**

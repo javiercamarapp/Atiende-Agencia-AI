@@ -65,16 +65,21 @@ describe("cada precio sale de un menu impreso y una prueba lo ata", () => {
       const delSeed = new Map<string, number>();
       for (const p of data.productos) {
         const precio = p.precios_por_sucursal[sucursal];
-        if (precio !== undefined) delSeed.set(`${normalizar(p.impreso!.categoria)}|${normalizar(p.impreso!.item)}`, precio);
+        // Las fracciones de kilo y los extras no son items impresos: su precio sale de otra regla (ver pruebas de abajo).
+        if (precio !== undefined && p.fuente_precio[sucursal] === "impreso") delSeed.set(`${normalizar(p.impreso!.categoria)}|${normalizar(p.impreso!.item)}`, precio);
       }
       expect([...delSeed].sort()).toEqual([...items].sort());
     }
   });
 
-  it("ningun precio de T1, T3 ni T5 es provisional: solo T2, T7 y T8 pueden serlo y los datos reales no los traen", () => {
+  it("ningun precio de T1, T3 ni T5 es provisional; T7 = lista T1-2026 (mismo precio que T1) y T2 y T8 son provisionales hasta confirmar su catalogo", () => {
     for (const p of data.productos) {
-      expect(Object.keys(p.precios_por_sucursal).every((id) => ["T1", "T3", "T5"].includes(id))).toBe(true);
-      expect(Object.values(p.fuente_precio).every((f) => f === "impreso")).toBe(true);
+      for (const [id, fuente] of Object.entries(p.fuente_precio)) {
+        if (["T1", "T3", "T5"].includes(id)) expect(["impreso", "proporcional_kilo", "decision_2oct"], `${p.nombre} ${id}`).toContain(fuente);
+        if (id === "T7" && !p.fraccion_kg && fuente !== "decision_2oct") expect(fuente, `${p.nombre} T7`).toBe("lista_t1_2026");
+        if (id === "T7") expect(p.precios_por_sucursal.T7, `${p.nombre} T7`).toBe(p.precios_por_sucursal.T1);
+        if ((id === "T2" || id === "T8") && !p.fraccion_kg && fuente !== "decision_2oct") expect(fuente, `${p.nombre} ${id}`).toBe("provisional_P5");
+      }
     }
   });
 });
@@ -100,7 +105,7 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
 
   it("taco al pastor: $42 en T1, $36 en T3 y $42 en T5; el precio base del producto es el de T1", () => {
     const pastor = plan.products.find((p) => p.name === "Taco Al Pastor (individual)")!;
-    expect(pastor.branchPrices).toEqual({ T1: 42, T5: 42, T3: 36 });
+    expect(pastor.branchPrices).toEqual({ T1: 42, T5: 42, T3: 36, T7: 42, T8: 42, T2: 42 });
     expect(pastor.price).toBe(42);
   });
 
@@ -109,14 +114,15 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     expect(await cotizar("prol-montejo", "Ensalada de PM")).toBe(206);
   });
 
-  it("sin el OK de P5, T2, T7 y T8 no tienen productos y T4 tampoco", async () => {
+  it("T4 (Galerias) no tiene productos; T7 es la unica sucursal nueva ACTIVA y T2 y T8 tienen catalogo provisional pero inactivo", async () => {
     const { repo, propertyBySlug } = await buildInMemoryPmWorld(plan);
-    for (const slug of ["fco-montejo", "garcia-lavin", "altabrisa", "galerias"]) expect(await repo.listAvailableProductsForBranch(propertyBySlug.get(slug)!), slug).toEqual([]);
-    expect(plan.branches.filter((b) => b.catalogSize === 0).map((b) => b.id)).toEqual(["T2", "T4", "T7", "T8"]);
+    expect(await repo.listAvailableProductsForBranch(propertyBySlug.get("galerias")!)).toEqual([]);
+    expect(plan.branches.filter((b) => b.catalogSize === 0).map((b) => b.id)).toEqual(["T4"]);
+    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.id)).toEqual(["T1", "T3", "T7"]);
   });
 
-  it("con el OK de P5 (fixture): T2 no encuentra codzitos ni ensalada de PM; T7 si encuentra codzitos; T2 vende Heineken Silver a $90", async () => {
-    const { repo, propertyBySlug } = await buildInMemoryPmWorld(buildPmSeedPlan(dataConP5Aprobado(data), agent));
+  it("T2 no encuentra codzitos ni ensalada de PM; T7 si encuentra codzitos y flautas; T2 vende Heineken Silver a $90", async () => {
+    const { repo, propertyBySlug } = await buildInMemoryPmWorld(plan);
     const nombres = async (slug: string) => (await repo.listAvailableProductsForBranch(propertyBySlug.get(slug)!)).map((p) => p.name);
     const t2 = await nombres("fco-montejo");
     const t7 = await nombres("garcia-lavin");
@@ -127,7 +133,7 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     expect(t2).toContain("Heineken Silver");
     expect(t7).toContain("Codzitos (orden de 4)");
     expect(t7).toContain("Flauta de Pastor");
-    expect(buildPmSeedPlan(dataConP5Aprobado(data), agent).products.find((p) => p.name === "Heineken Silver")!.branchPrices).toEqual({ T5: 90, T2: 90 });
+    expect(plan.products.find((p) => p.name === "Heineken Silver")!.branchPrices).toEqual({ T5: 90, T2: 90 });
   });
 
   it("T5 no encuentra Sprite ni comida regional ni flautas, y si vende Heineken Silver; T3 no la vende", async () => {
@@ -144,28 +150,60 @@ describe("precio y catalogo por sucursal en el motor de pedidos", () => {
     expect(t3).toContain("Vino Tinto Selección (copa)");
   });
 
-  it("ningun producto tiene fraccion de kilo disponible en ninguna sucursal; solo existe el kilo completo", async () => {
+  it("fracciones de kilo (decision de Javier, 2-oct): 1/4, 1/2, 3/4, 1.5 y 2 kg a precio proporcional del kilo, redondeo a $0.50, en toda sucursal que vende el kilo", async () => {
     const world = await buildInMemoryPmWorld(plan);
+    expect(plan.products.filter((p) => p.name.endsWith(" — 1 kg"))).toHaveLength(8);
+    expect(plan.products.filter((p) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(p.name))).toHaveLength(40);
+    expect(plan.products.find((p) => p.name === "Pastor — 1 kg")!.branchPrices).toEqual({ T1: 900, T5: 900, T3: 750, T7: 900, T8: 900, T2: 900 });
+    // Casos del anexo del analisis: 3/4 de bistec de res = $825 en 2026 y $712.50 en 2025; 1/4 = $275; 1/2 kg de pastor = $450; 1.5 kg de pastor = $1,350.
+    expect(plan.products.find((p) => p.name === "Bistec de Res — 750 g")!.branchPrices).toMatchObject({ T1: 1100 * 0.75, T3: 712.5, T7: 825 });
+    expect(plan.products.find((p) => p.name === "Bistec de Res — 250 g")!.branchPrices).toMatchObject({ T1: 275, T3: 237.5 });
+    expect(plan.products.find((p) => p.name === "Pastor — 500 g")!.branchPrices).toMatchObject({ T1: 450, T3: 375 });
+    expect(plan.products.find((p) => p.name === "Pastor — 1.5 kg")!.branchPrices).toMatchObject({ T1: 1350, T7: 1350 });
     for (const [slug, propertyId] of world.propertyBySlug) {
       const nombres = (await world.repo.listAvailableProductsForBranch(propertyId)).map((p) => p.name);
-      expect(nombres.filter((n) => / — (250|500|750) g$/.test(n)), slug).toEqual([]);
+      const conKilo = nombres.filter((n) => / — 1 kg$/.test(n));
+      const fracciones = nombres.filter((n) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(n));
+      expect(fracciones.length, slug).toBe(conKilo.length * 5);
     }
-    expect(plan.products.filter((p) => p.name.endsWith(" — 1 kg"))).toHaveLength(8);
-    expect(plan.products.find((p) => p.name === "Pastor — 1 kg")!.branchPrices).toEqual({ T1: 900, T5: 900, T3: 750 });
+  });
+
+  it("T7 cotiza 1/4 kg de bistec a $275, ni un peso mas: el motor cobra el precio proporcional del catalogo", async () => {
+    expect(await cotizar("garcia-lavin", "Bistec de Res — 250 g")).toBe(275);
+    expect(await cotizar("garcia-lavin", "Bistec de Res — 750 g")).toBe(825);
+    expect(await cotizar("pensiones", "Bistec de Res — 750 g")).toBe(712.5);
+  });
+
+  it("T7 vende Extra Salsa y Extra Piña a $19 (T3 y T5 no los traen)", async () => {
+    const world = await buildInMemoryPmWorld(plan);
+    for (const slug of ["garcia-lavin", "prol-montejo", "fco-montejo", "altabrisa"]) {
+      const productos = await world.repo.listAvailableProductsForBranch(world.propertyBySlug.get(slug)!);
+      expect(productos.find((p) => p.name === "Extra Salsa")?.price, slug).toBe(19);
+      expect(productos.find((p) => p.name === "Extra Piña")?.price, slug).toBe(19);
+    }
+    for (const slug of ["pensiones", "playa"]) {
+      const nombres = (await world.repo.listAvailableProductsForBranch(world.propertyBySlug.get(slug)!)).map((p) => p.name);
+      expect(nombres, slug).not.toContain("Extra Salsa");
+    }
   });
 });
 
 describe("validaciones del seed por sucursal", () => {
   const casos: Array<[string, (d: Mutable) => void, RegExp]> = [
     ["un producto con centavos", (d) => { producto(d, "Taco Al Pastor (individual)").precios_por_sucursal.T1 = 42.5; }, /centavos/],
-    ["una fraccion de kilo", (d) => { const p = producto(d, "Pastor — 1 kg"); p.nombre = "Pastor — 500 g"; }, /fracciones de kilo/],
+    ["una fraccion de kilo sin fraccion_kg", (d) => { const p = producto(d, "Pastor — 1 kg"); p.nombre = "Pastor — 500 g"; }, /fraccion de kilo .* debe declarar `fraccion_kg`/],
+    ["una fraccion de kilo con precio que no es el proporcional", (d) => { producto(d, "Pastor — 500 g").precios_por_sucursal.T1 = 449; }, /vale 449 pero 500 g de un kilo de 900 es 450/],
+    ["una fraccion de kilo con fuente impresa", (d) => { producto(d, "Pastor — 500 g").fuente_precio.T1 = "impreso"; }, /solo admite fuente proporcional_kilo/],
+    ["lista_t1_2026 con un precio distinto al de T1", (d) => { producto(d, "Flan").precios_por_sucursal.T7 = 80; }, /MISMO precio que T1/],
+    ["decision_2oct en un producto que no es el extra", (d) => { producto(d, "Flan").fuente_precio.T7 = "decision_2oct"; }, /decision_2oct solo vale para Extra Salsa y Extra Piña/],
     ["un producto sin precio en ninguna sucursal", (d) => { const p = producto(d, "Flan"); p.precios_por_sucursal = {}; p.fuente_precio = {}; }, /ninguna sucursal/],
     ["un precio en una sucursal que no existe", (d) => { producto(d, "Flan").precios_por_sucursal.T9 = 83; }, /sucursal desconocida/],
     ["un precio sin fuente", (d) => { delete producto(d, "Flan").fuente_precio.T1; }, /falta fuente_precio/],
     ["un precio impreso sin el item del menu", (d) => { delete producto(d, "Flan").impreso; }, /necesita el item/],
-    ["precios de T2 sin el OK de Javier a P5", (d) => { const p = producto(d, "Flan"); p.precios_por_sucursal.T2 = 83; p.fuente_precio.T2 = "provisional_P5"; }, /no se carga mientras Javier no conteste P5/],
-    ["precios de T7 declarados `impreso` (no existe su menu)", (d) => { d.pendientes_dueno.find((x) => x.id === "P5")!.estado = "resuelta"; const p = producto(d, "Flan"); p.precios_por_sucursal.T7 = 83; p.fuente_precio.T7 = "impreso"; }, /no tiene menu impreso/],
+    ["precios de T2 sin el OK de Javier a P5", (d) => { d.pendientes_dueno.find((x) => x.id === "P5")!.estado = "abierta"; }, /no se carga mientras Javier no conteste P5/],
+    ["precios de T7 declarados `impreso` (no existe su menu: usa lista_t1_2026)", (d) => { producto(d, "Flan").fuente_precio.T7 = "impreso"; }, /no tiene menu impreso/],
     ["provisional_P5 en una sucursal con menu impreso", (d) => { producto(d, "Flan").fuente_precio.T1 = "provisional_P5"; }, /provisional_P5 solo aplica a T2, T7 y T8/],
+    ["lista_t1_2026 fuera de T7", (d) => { producto(d, "Flan").fuente_precio.T1 = "lista_t1_2026"; }, /lista_t1_2026 solo aplica a T7/],
     ["producto en Galerias (T4)", (d) => { const p = producto(d, "Flan"); p.precios_por_sucursal.T4 = 83; p.fuente_precio.T4 = "impreso"; }, /T4/],
     ["codzitos en T3", (d) => { const p = producto(d, "Codzitos (orden de 4)"); p.precios_por_sucursal.T3 = 131; p.fuente_precio.T3 = "impreso"; }, /T3 no lo vende/],
     ["flautas en T5", (d) => { const p = producto(d, "Flauta de Pastor"); p.precios_por_sucursal.T5 = 276; p.fuente_precio.T5 = "impreso"; }, /T5 no lo vende/],
@@ -197,19 +235,22 @@ describe("validaciones del seed por sucursal", () => {
     expect(plan.branches.find((b) => b.id === "T5")!.status).toBe("inactive");
   });
 
-  it("una sucursal activa necesita al menos 150 productos: activar T2 sin catalogo falla", () => {
+  it("una sucursal activa necesita al menos 150 productos: activar T2 con el catalogo recortado falla", () => {
     const copia = mutable();
     copia.sucursales.find((b) => b.id === "T2")!.activa = true;
-    expect(() => buildPmSeedPlan(copia as unknown as PmSeedData, agent)).toThrow(/al menos 150 productos \(tiene 0\)/);
+    for (const p of copia.productos.slice(0, 150)) { delete p.precios_por_sucursal.T2; delete p.fuente_precio.T2; }
+    expect(() => buildPmSeedPlan(copia as unknown as PmSeedData, agent)).toThrow(/al menos 150 productos \(tiene 1[0-9]{2}\)/);
   });
 });
 
 describe("pendientes del dueño y SQL del catalogo por sucursal", () => {
-  it("quedan las 25 preguntas P1-P25 con su estado: P5 sigue abierta (por eso T2, T7 y T8 no se cargan) y la identidad de T4 resuelta", () => {
+  it("quedan las 25 preguntas P1-P25 con su estado: P5, P11 y P19 resueltas por Javier el 2-oct (T2, T7 y T8 se cargan) y la identidad de T4 resuelta", () => {
     const plan = buildPmSeedPlan(data, agent);
     const ids = plan.pendientes.map((p) => p.id);
     for (let i = 1; i <= 25; i++) expect(ids).toContain(`P${i}`);
-    expect(plan.pendientes.find((p) => p.id === "P5")).toMatchObject({ estado: "abierta" });
+    expect(plan.pendientes.find((p) => p.id === "P5")).toMatchObject({ estado: "resuelta" });
+    expect(plan.pendientes.find((p) => p.id === "P11")).toMatchObject({ estado: "resuelta" });
+    expect(plan.pendientes.find((p) => p.id === "P19")).toMatchObject({ estado: "resuelta" });
     expect(plan.pendientes.find((p) => p.id === "identidad_t4")).toMatchObject({ estado: "resuelta" });
     expect(plan.pendientes.find((p) => p.id === "combo_martes")!.detalle).toMatch(/P13/);
   });
@@ -242,6 +283,6 @@ describe("menu-pm.json del arnes de evaluacion (regenerado desde el seed)", () =
       const regional = ["Comida Regional", "Flautas de PM"].includes(categoriaPorSlug.get(p.nombre)!) || ["Ensalada de PM", "Jericallas", "Café"].includes(p.nombre);
       expect(p.regional, p.nombre).toBe(regional);
     }
-    expect(menu.some((p) => / — (250|500|750) g$/.test(p.nombre))).toBe(false);
+    expect(menu.filter((p) => / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/.test(p.nombre))).toHaveLength(40);
   });
 });

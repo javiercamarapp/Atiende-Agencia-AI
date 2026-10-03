@@ -47,8 +47,20 @@ export interface PmSeedBranch {
   readonly nota?: string;
 }
 
-/** `impreso` = precio del menu impreso de la sucursal; `provisional_P5` = propuesta pendiente del OK de Javier (solo T2, T7 y T8). */
-export type PmFuentePrecio = "impreso" | "provisional_P5";
+/** Procedencia de un precio:
+ *  - `impreso`: precio del menu impreso de la sucursal.
+ *  - `provisional_P5`: lista 2026 de T1 cargada como propuesta mientras no se confirma el catalogo exacto (solo T2, T7 y T8).
+ *  - `lista_t1_2026`: T7 usa la lista T1-2026 (decision de Javier, 2-oct-2026, confirmada con los totales de los chats reales de T7);
+ *    solo T7 y el precio debe ser IGUAL al de T1.
+ *  - `proporcional_kilo`: fraccion de kilo (1/4, 1/2, 3/4, 1.5 y 2 kg) = precio del kilo de la MISMA sucursal x fraccion, redondeado a $0.50.
+ *  - `decision_2oct`: precio fijado por Javier el 2-oct-2026 (extras de salsa y piña a $19). */
+export type PmFuentePrecio = "impreso" | "provisional_P5" | "lista_t1_2026" | "proporcional_kilo" | "decision_2oct";
+const FUENTES_PRECIO: readonly string[] = ["impreso", "provisional_P5", "lista_t1_2026", "proporcional_kilo", "decision_2oct"];
+
+/** Redondeo de caja de una fraccion de kilo: al $0.50 mas cercano (mitades hacia arriba). */
+export function precioFraccionDeKilo(precioKilo: number, gramos: number): number {
+  return Math.floor((precioKilo * gramos) / 1000 * 2 + 0.5) / 2;
+}
 
 export interface PmSeedProduct {
   readonly nombre: string;
@@ -56,7 +68,9 @@ export interface PmSeedProduct {
   readonly descripcion: string | null;
   readonly es_alcohol: boolean;
   readonly popular: boolean;
-  /** Item de los menus impresos del que sale el precio (categoria + nombre impreso). Obligatorio si alguna fuente es `impreso`. */
+  /** Fraccion de kilo de OTRO producto del seed (`base`, el "— 1 kg"): sus precios salen de `precioFraccionDeKilo`. */
+  readonly fraccion_kg?: { readonly base: string; readonly gramos: number };
+  /** Item de los menus impresos del que sale el precio (categoria + nombre impreso). Obligatorio si alguna fuente es `impreso` o `lista_t1_2026`. */
   readonly impreso?: { readonly categoria: string; readonly item: string };
   /** id de sucursal (T1, T3...) -> precio entero en MXN. Si una sucursal no tiene la llave, el producto no existe en ella. */
   readonly precios_por_sucursal: Readonly<Record<string, number>>;
@@ -284,7 +298,9 @@ export const MIN_PRODUCTOS_SUCURSAL_ACTIVA = 150;
 /** Sucursales cuyo catalogo espera la respuesta P5 de Javier (plan-integracion-cerebro, «Lo que NO entra»). */
 export const SUCURSALES_PENDIENTES_P5: readonly string[] = ["T2", "T7", "T8"];
 const PRECIO_BASE_ORDEN: readonly string[] = ["T1", "T5", "T3"];
-const FRACCION_DE_KILO = / — (250|500|750) g$/;
+/** Un nombre con peso de fraccion ("Pastor — 500 g", "— 1.5 kg", "— 2 kg") es una fraccion de kilo y necesita `fraccion_kg`. */
+const NOMBRE_FRACCION_DE_KILO = / — (250 g|500 g|750 g|1\.5 kg|2 kg)$/;
+const GRAMOS_FRACCION = [250, 500, 750, 1500, 2000] as const;
 
 /** Lo que cada sucursal NO vende segun los menus impresos y el repo (plan PM-C1 y P10): por categoria o por nombre. */
 const EXCLUSIONES_POR_SUCURSAL: Readonly<Record<string, { readonly categorias: readonly string[]; readonly nombres: readonly string[] }>> = {
@@ -354,21 +370,39 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
     if (!categorySlug) fail(`Producto "${p.nombre}": categoria desconocida "${p.categoria}".`);
     if (!p.nombre.trim() || productNames.has(p.nombre)) fail(`Producto duplicado o sin nombre: "${p.nombre}".`);
     productNames.add(p.nombre);
-    if (FRACCION_DE_KILO.test(p.nombre)) fail(`Producto "${p.nombre}": las fracciones de kilo (250, 500 y 750 g) no estan en ningun menu impreso (P11); solo se vende el kilo completo.`);
+    const esFraccion = NOMBRE_FRACCION_DE_KILO.test(p.nombre);
+    if (esFraccion !== (p.fraccion_kg !== undefined)) fail(`Producto "${p.nombre}": una fraccion de kilo (nombre "— 250 g | 500 g | 750 g | 1.5 kg | 2 kg") debe declarar \`fraccion_kg\` y solo ellas.`);
+    if (p.fraccion_kg) {
+      const base = data.productos.find((x) => x.nombre === p.fraccion_kg!.base);
+      if (!base || !/ — 1 kg$/.test(base.nombre)) fail(`Producto "${p.nombre}": su base "${p.fraccion_kg.base}" debe ser el producto "— 1 kg" del seed.`);
+      if (!(GRAMOS_FRACCION as readonly number[]).includes(p.fraccion_kg.gramos)) fail(`Producto "${p.nombre}": fraccion de ${p.fraccion_kg.gramos} g no vendible (solo 250, 500, 750, 1500 y 2000).`);
+      const etiqueta = p.fraccion_kg.gramos >= 1500 ? `${p.fraccion_kg.gramos / 1000} kg` : `${p.fraccion_kg.gramos} g`;
+      if (p.nombre !== `${base!.nombre.replace(/ — 1 kg$/, "")} — ${etiqueta}`) fail(`Producto "${p.nombre}": el nombre no corresponde a su base y a sus gramos (se esperaba "${base!.nombre.replace(/ — 1 kg$/, "")} — ${etiqueta}").`);
+    }
     const branchPrices: Record<string, number> = {};
     const entradas = Object.entries(p.precios_por_sucursal ?? {});
     if (entradas.length === 0) fail(`Producto "${p.nombre}": no tiene precio en ninguna sucursal.`);
     for (const [branchId, price] of entradas) {
       if (!branchIds.has(branchId)) fail(`Producto "${p.nombre}": sucursal desconocida "${branchId}" en precios_por_sucursal.`);
       if (!esPrecio(price)) fail(`Producto "${p.nombre}": precio invalido en ${branchId}.`);
-      if (price % 1 !== 0) fail(`Producto "${p.nombre}": precio con centavos en ${branchId} (${price}); los menus impresos solo traen pesos enteros.`);
       const fuente = p.fuente_precio?.[branchId];
-      if (fuente !== "impreso" && fuente !== "provisional_P5") fail(`Producto "${p.nombre}": falta fuente_precio (impreso | provisional_P5) en ${branchId}.`);
-      if (fuente === "impreso" && !p.impreso) fail(`Producto "${p.nombre}": un precio impreso necesita el item del menu en \`impreso\`.`);
+      if (fuente === undefined || !FUENTES_PRECIO.includes(fuente)) fail(`Producto "${p.nombre}": falta fuente_precio (${FUENTES_PRECIO.join(" | ")}) en ${branchId}.`);
+      // Pesos enteros salvo las fracciones de kilo, que pueden traer $0.50 (3/4 de un kilo de $950 = $712.50, como en caja).
+      if (price % 1 !== 0 && !(fuente === "proporcional_kilo" && (price * 2) % 1 === 0)) fail(`Producto "${p.nombre}": precio con centavos en ${branchId} (${price}); los menus impresos solo traen pesos enteros.`);
+      if (fuente === "proporcional_kilo") {
+        const base = p.fraccion_kg ? data.productos.find((x) => x.nombre === p.fraccion_kg!.base) : undefined;
+        const precioKilo = base?.precios_por_sucursal?.[branchId];
+        if (!p.fraccion_kg || precioKilo === undefined) fail(`Producto "${p.nombre}": precio proporcional_kilo en ${branchId} sin fraccion_kg o sin precio del kilo en esa sucursal.`);
+        else if (price !== precioFraccionDeKilo(precioKilo, p.fraccion_kg.gramos)) fail(`Producto "${p.nombre}": en ${branchId} vale ${price} pero ${p.fraccion_kg.gramos} g de un kilo de ${precioKilo} es ${precioFraccionDeKilo(precioKilo, p.fraccion_kg.gramos)}.`);
+      } else if (p.fraccion_kg) fail(`Producto "${p.nombre}": una fraccion de kilo solo admite fuente proporcional_kilo (${branchId}).`);
+      if ((fuente === "impreso" || fuente === "lista_t1_2026") && !p.impreso) fail(`Producto "${p.nombre}": un precio impreso necesita el item del menu en \`impreso\`.`);
+      if (fuente === "lista_t1_2026" && (branchId !== "T7" || price !== p.precios_por_sucursal.T1)) fail(`Producto "${p.nombre}": lista_t1_2026 solo aplica a T7 y con el MISMO precio que T1 (${branchId}).`);
+      if (fuente === "decision_2oct" && !/^Extra (Salsa|Piña)$/.test(p.nombre)) fail(`Producto "${p.nombre}": decision_2oct solo vale para Extra Salsa y Extra Piña.`);
       const pendienteP5 = SUCURSALES_PENDIENTES_P5.includes(branchId);
       if (pendienteP5 && !p5Resuelta) fail(`Producto "${p.nombre}": ${branchId} no se carga mientras Javier no conteste P5 (pendientes_dueno P5 resuelta).`);
       if (fuente === "provisional_P5" && !pendienteP5) fail(`Producto "${p.nombre}": provisional_P5 solo aplica a T2, T7 y T8 (${branchId}).`);
       if (fuente === "impreso" && pendienteP5) fail(`Producto "${p.nombre}": ${branchId} no tiene menu impreso; su precio es provisional_P5.`);
+      if (fuente === "lista_t1_2026" && !pendienteP5) fail(`Producto "${p.nombre}": lista_t1_2026 solo aplica a T7 (${branchId}).`);
       const exclusion = EXCLUSIONES_POR_SUCURSAL[branchId];
       if (exclusion && (exclusion.categorias.includes(p.categoria) || exclusion.nombres.includes(p.nombre))) fail(`Producto "${p.nombre}": ${branchId} no lo vende segun su menu (plan PM-C1, P10).`);
       if (branchId === "T4") fail(`Producto "${p.nombre}": T4 (Galerias) no recibe pedidos ni catalogo (P9).`);

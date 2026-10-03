@@ -42,12 +42,13 @@ describe("prompt de PM", () => {
   it("no contradice las 9 salsas incluidas: habanero y crema de ajo no son 'solo si las pide'", () => {
     const p = promptPm();
     expect(p).not.toMatch(/habanero y la crema de ajo solo si/);
-    expect(p).toMatch(/Todas van incluidas por omisión/);
+    expect(p).toMatch(/Por omisión van solo las básicas \(roja, verde, cebolla con cilantro y limones\)/);
+    expect(p).toMatch(/Las demás \(crema de ajo, guacamolera, mexicana \(pico de gallo\) y habanero picado o soasado\) van sin costo, pero solo si el cliente las pide/);
   });
 
   it("saluda con el nombre de la sucursal y sigue el orden del cuestionario", () => {
     const p = promptPm();
-    expect(p).toContain("Buenas tardes, gracias por comunicarse a Los Taquitos de PM, sucursal Francisco de Montejo.");
+    expect(p).toContain("Buenas tardes. Gracias por escribir a Los Taquitos de PM, sucursal Francisco de Montejo, le atiende Lupita, el asistente virtual. ¿Es para recoger o a domicilio?");
     // Orden del cerebro (PM-C3): la sucursal queda definida ANTES de los platillos y la cotizacion va despues de la hora.
     const orden = ["¿Para recoger o a domicilio?", "2. Nombre.", "3. Teléfono", "4. Sucursal y dirección", "5. Platillos.", "6. Cambios.", "7. Pago:", "8. Hora.", "9. Cotizar:"];
     const posiciones = orden.map((t) => p.indexOf(t));
@@ -56,7 +57,7 @@ describe("prompt de PM", () => {
   });
 
   it("sin sucursal de entrada saluda sin inventar una", () => {
-    expect(promptPm({ entryBranch: null })).toContain('"Buenas tardes, gracias por comunicarse a Los Taquitos de PM."');
+    expect(promptPm({ entryBranch: null })).toContain('"Buenas tardes. Gracias por escribir a Los Taquitos de PM, le atiende Lupita, el asistente virtual. ¿Es para recoger o a domicilio?"');
   });
 
   it("contiene las reglas del dueno: minimo $200, sin envio, sin alcohol a domicilio, promos solo recoger, no modificar platillos, 9 salsas", () => {
@@ -215,7 +216,7 @@ describe("saludoPorHora (X40: el saludo sigue la hora local de Merida)", () => {
   });
 
   it("el prompt saluda con la franja que recibe, aunque llegue en minusculas", () => {
-    expect(promptPm({ saludo: saludoPorHora("20:10") })).toContain("Buenas noches, gracias por comunicarse a Los Taquitos de PM, sucursal Francisco de Montejo.");
+    expect(promptPm({ saludo: saludoPorHora("20:10") })).toContain("Buenas noches. Gracias por escribir a Los Taquitos de PM, sucursal Francisco de Montejo, le atiende Lupita, el asistente virtual.");
   });
 });
 
@@ -262,13 +263,13 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toContain("Pensiones: todos los días de 6 pm a 12 am");
     expect(p).toContain("García Lavín (Victory Platz) y Victory Altabrisa: todos los días de 12 pm a 1 am");
     expect(p).toMatch(/Playa \(Chicxulub\): solo en Semana Santa y julio-agosto, de 6 pm a 1 am/);
-    expect(p).toMatch(/solo si la entrega \(de 40 a 50 minutos\) cae antes del cierre/);
+    expect(p).toMatch(/solo si la entrega \(con el tiempo de la sucursal, ver paso 8\) cae antes del cierre/);
     expect(p).toMatch(/Con la sucursal cerrada o pasado el último pedido: diga que está cerrada y a qué hora abre; no tome el pedido ni lo deje programado/);
     expect(p).toMatch(/manda sobre cualquier franja más amplia/);
   });
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
-    expect(p).toMatch(/40 o más piezas, o total de \$1,500 o más/);
+    expect(p).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
     expect(p).toMatch(/no lo rechace; tome todos los datos y escale \(pedido_grande\) para que la sucursal lo confirme/);
   });
 

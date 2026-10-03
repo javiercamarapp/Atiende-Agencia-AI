@@ -6,7 +6,7 @@
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash } from "../rate-limit.ts";
-import { lookupCustomer } from "../customers.ts";
+import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
 import { matchesHighRiskOtherThan } from "./guards.ts";
@@ -124,7 +124,7 @@ export async function handleInboundWhatsAppMessage(
             organizationId,
             phone,
             messages: messagesAfterUser,
-            customer: await lookupCustomer(repo, organizationId, phone),
+            customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
             propertyId: propertyId ?? null,
           });
 
@@ -166,6 +166,230 @@ export async function handleInboundWhatsAppMessage(
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
     await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", errorClass);
+    return { ok: false, retryable: true };
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// ESPERA DE RAFAGAS (PM-C5, recomendacion 17 del analisis de chats reales de T7). El 19 % de los turnos del cliente trae 3 o mas
+// mensajes seguidos (saludo, pedido, pin, pago por separado) y 25 mensajes se editaron despues de enviarse: responder al primero
+// cuesta una respuesta equivocada por cada fragmento. Con `replyDebounceSeconds` > 0 (config del agente, apagada por omision) el
+// webhook trabaja en DOS fases con una espera entre ellas:
+//   Fase A (`recibirMensajeConEspera`, transaccion corta que SE CONFIRMA): reclama el mensaje (dedupe), lo agrega al historial y
+//     toma el turno de responder si esta libre. Si otro mensaje de ese telefono ya tiene el turno, este queda "absorbido": su texto
+//     ya esta en el historial y quien tiene el turno lo vera.
+//   (espera de `replyDebounceSeconds`, SIN transaccion abierta: los mensajes que lleguen ahora se agregan y se absorben)
+//   Fase B (`responderTrasEspera`, transaccion nueva): relee el historial COMPLETO, contesta todo lo pendiente en UN solo turno y,
+//     antes de soltar el turno, revisa si llego algo mas (hasta `MAX_PASADAS_RAFAGA` turnos; despues de soltarlo lo revisa una vez
+//     mas y, si hay algo sin contestar, vuelve a tomar el turno o deja que lo tome el mensaje nuevo).
+// El camino sin espera (`handleInboundWhatsAppMessage`) conserva su logica; en el webhook solo se agrega la lectura de la config del agente (en savepoint) y el pedido reciente del cliente.
+// Una correccion ("mejor 3", "perdon, son 2") llega como un mensaje mas: el prompt indica tomar el ultimo dato. WhatsApp Cloud API no
+// avisa por webhook cuando un cliente EDITA un mensaje ya enviado.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Turnos de respuesta que una misma fase B puede dar (cada uno contesta lo que llego durante el anterior). */
+export const MAX_PASADAS_RAFAGA = 3;
+/** Vigencia del turno de responder. La fase A ya la CONFIRMO: si la funcion muere (timeout de 30 s) el turno queda tomado hasta que venza, y mientras tanto los
+ * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
+ * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
+export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
+export const FUNCION_MAX_MS = 30_000;
+/** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
+export const RESERVA_FASE_B_MS = 15_000;
+
+/** Lo que se estima que tarda UNA pasada (turno del agente + escritura): no se empieza otra si no cabe antes del fin de la funcion. */
+export const PASADA_ESTIMADA_MS = 7_000;
+
+/** Espera real de la rafaga: la configurada, recortada para que despues de esperar todavia quepa la fase B; 0 = no hay tiempo, se responde ya. */
+export function esperaEfectivaMs(esperaSegundos: number, transcurridoMs: number): number {
+  const disponible = FUNCION_MAX_MS - RESERVA_FASE_B_MS - Math.max(0, transcurridoMs);
+  return Math.max(0, Math.min(esperaSegundos * 1000, disponible));
+}
+
+/**
+ * La fase B fallo de forma detectable (la transaccion no pudo confirmar): su `failed` quedo revertido con ella y el mensaje seguia en
+ * 'processing' con el turno tomado. En una transaccion NUEVA se marca `failed` y se suelta el turno para que el reintento de Meta lo reclame
+ * y los mensajes que lleguen no se absorban sin respuesta. Si la funcion muere por timeout esto no corre: ahi manda el vencimiento del lease.
+ */
+export async function liberarTurnoTrasFalloDeFaseB(
+  repo: RestaurantesRepository,
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string },
+): Promise<void> {
+  await repo.finishWhatsAppMessage(args.organizationId, args.messageId, actorHash(args.phone), "failed", "FaseBFallo");
+}
+
+export type RecepcionConEspera =
+  /** Ya reclamado o procesado (Meta entrega al menos una vez): nada que hacer. */
+  | { readonly estado: "duplicado" }
+  /** Otro mensaje de este telefono tiene el turno de responder y vera este texto en el historial. */
+  | { readonly estado: "absorbido" }
+  /** Este mensaje tiene el turno: hay que esperar y llamar a `responderTrasEspera`. */
+  | { readonly estado: "responder" }
+  /** Fallo real: Meta debe reintentar. */
+  | { readonly estado: "fallo"; readonly retryable: true };
+
+/** Mensajes del cliente despues de la ultima respuesta del agente (todos, si el agente aun no ha contestado). */
+export function mensajesSinResponder(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
+  let ultimaRespuesta = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "assistant") ultimaRespuesta = i;
+  });
+  return messages.slice(ultimaRespuesta + 1).filter((m) => m.role === "user");
+}
+
+/** Cuantos mensajes del cliente hay ANTES de la ultima respuesta del agente (los que ya tuvieron su turno). */
+export function usuariosRespondidos(messages: readonly ConversationMessage[]): number {
+  let ultimaRespuesta = -1;
+  messages.forEach((m, i) => {
+    if (m.role === "assistant") ultimaRespuesta = i;
+  });
+  return messages.slice(0, ultimaRespuesta + 1).filter((m) => m.role === "user").length;
+}
+
+/**
+ * Lo pendiente de contestar, contado por NUMERO de mensaje del cliente y no por posicion: un mensaje que llega mientras el agente
+ * contesta se guarda ANTES de la respuesta de ese turno (que no lo vio), asi que por posicion parecería contestado. `vista` es el
+ * historial que se le da al modelo: los pendientes van al final, despues de la ultima respuesta, para que los vea como lo nuevo.
+ */
+export function analizarHistorial(
+  messages: readonly ConversationMessage[],
+  respondidos: number,
+): { readonly pendientes: readonly ConversationMessage[]; readonly vista: readonly ConversationMessage[]; readonly totalUsuarios: number } {
+  let ordinal = 0;
+  const pendientes: ConversationMessage[] = [];
+  const resto: ConversationMessage[] = [];
+  for (const m of messages) {
+    if (m.role === "user") {
+      if (ordinal >= respondidos) pendientes.push(m);
+      else resto.push(m);
+      ordinal += 1;
+    } else {
+      resto.push(m);
+    }
+  }
+  return { pendientes, vista: [...resto, ...pendientes], totalUsuarios: ordinal };
+}
+
+export async function recibirMensajeConEspera(
+  repo: RestaurantesRepository,
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string },
+): Promise<RecepcionConEspera> {
+  const { organizationId, messageId, phone, body } = args;
+  const phoneHash = actorHash(phone);
+  const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
+  if (!claimed) return { estado: "duplicado" };
+  try {
+    return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
+      await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: redactSensitiveInfo(body) });
+      const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
+      if (!turno) {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { estado: "absorbido" };
+      }
+      return { estado: "responder" };
+    });
+  } catch {
+    // Mismo contrato que el camino sin espera: el fallo se marca y Meta reintenta (el append quedo revertido por el savepoint).
+    await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "failed", "RecepcionConEsperaFallo");
+    return { estado: "fallo", retryable: true };
+  }
+}
+
+export async function responderTrasEspera(
+  repo: RestaurantesRepository,
+  turnHandler: WhatsAppTurnHandler,
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    readonly phoneNumberId: string;
+    readonly propertyId?: string | null;
+    readonly handoffGate?: HandoffAgentGate;
+    readonly privacy?: PrivacidadRepository;
+    readonly deliverReply?: boolean;
+    /** Instante (ms, mismo reloj que `reloj`) en que muere la funcion. Las pasadas 2 y 3 no empiezan si no caben antes; la pasada 1 siempre corre
+     * (la reserva de la fase B la garantiza). Sin esto no hay limite de tiempo. */
+    readonly finFuncionMs?: number;
+    readonly reloj?: () => number;
+  },
+): Promise<InboundMessageOutcome> {
+  const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const reloj = args.reloj ?? Date.now;
+  const deliverReply = args.deliverReply !== false;
+  const phoneHash = actorHash(phone);
+  const leerHistorial = () => repo.whatsappAppendTurn(organizationId, phone, [], null, null, null);
+  let owner = messageId;
+  let ultimo: InboundMessageOutcome = { ok: true, retryable: false };
+  let respondidos = -1; // se fija con el primer historial leido
+  try {
+    for (let pasada = 1; pasada <= MAX_PASADAS_RAFAGA; pasada++) {
+      const historialCrudo = await leerHistorial();
+      if (respondidos < 0) respondidos = usuariosRespondidos(historialCrudo);
+      const { pendientes, vista: historial, totalUsuarios } = analizarHistorial(historialCrudo, respondidos);
+      if (pendientes.length === 0) {
+        // Nada que contestar (lo hizo una pasada anterior): se suelta el turno y se revisa una vez mas por si llego un mensaje justo ahora.
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+        if (analizarHistorial(await leerHistorial(), respondidos).pendientes.length === 0) return ultimo;
+        owner = `${messageId}:p${pasada + 1}`;
+        if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
+        continue;
+      }
+      if (pasada > 1 && args.finFuncionMs !== undefined && reloj() + PASADA_ESTIMADA_MS > args.finFuncionMs) {
+        // No cabe otra pasada: un timeout a medias revertiria tambien la respuesta ya dada en las anteriores (misma transaccion). Se cierra aqui, lo
+        // pendiente queda sin responder y se marca `failed` para que Meta reintente y el reintento lo conteste (esas respuestas ya estan en el historial).
+        await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", "SinTiempoParaPasada");
+        return { ok: false, retryable: true };
+      }
+      const textoPendiente = pendientes.map((m) => m.content).join("\n");
+      const turnoDePasada = await repo.runWithRowSavepoint(async (): Promise<{ readonly salida: InboundMessageOutcome; readonly silencio: boolean }> => {
+        const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
+        if (handoffGate && !arco) {
+          const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
+          if (handoff) return { salida: { ok: true, retryable: false }, silencio: true };
+        }
+        const turn = arco
+          ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
+          : await turnHandler.handleInboundMessage({
+              organizationId,
+              phone,
+              messages: historial,
+              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+              propertyId: propertyId ?? null,
+            });
+        let reply = turn.reply;
+        if (privacy) {
+          const config = await privacy.getPrivacyConfig(organizationId);
+          const claimed = await privacy.claimPrivacyNotice(organizationId, phoneHash, "whatsapp", config.noticeVersion);
+          // Con varios mensajes antes de la primera respuesta el historial ya no tiene 1 solo: "primer contacto" = el agente nunca ha contestado.
+          const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant");
+          if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
+        }
+        await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        if (turn.escalacion && handoffGate) {
+          await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });
+        }
+        if (deliverReply) {
+          await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
+            to: phone,
+            phone_number_id: phoneNumberId,
+            body: reply,
+            transaccional: true, // SA-L-46: respuesta que el cliente pidio; la lista de supresion no la bloquea.
+          });
+        }
+        return { salida: { ok: true, retryable: false, reply, orderId: turn.orderId ?? null, escalated: Boolean(turn.escalacion && handoffGate) }, silencio: false };
+      });
+      ultimo = turnoDePasada.salida;
+      // Todo lo que el turno vio ya tuvo su respuesta; lo que llegue mientras tanto es lo siguiente.
+      respondidos = totalUsuarios;
+      // Con una toma de handoff abierta el agente calla: lo pendiente es de la persona que atiende, no se repite el intento.
+      if (turnoDePasada.silencio) break;
+    }
+    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", null);
+    return ultimo;
+  } catch (err) {
+    const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
+    await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "failed", errorClass);
     return { ok: false, retryable: true };
   }
 }

@@ -13,7 +13,7 @@
 //     WhatsApp de sucursal), una tool que apunte a otra sucursal de la organizacion se
 //     rechaza.
 import { registerCallbackRequest } from "../callback-requests.ts";
-import { lookupCustomer } from "../customers.ts";
+import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
 import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
@@ -603,7 +603,7 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
   switch (def.name) {
     case "buscar_cliente": {
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede consultar el historial.");
-      const result = await lookupCustomer(repo, organizationId, ctx.phone);
+      const result = await lookupCustomerConPedidoReciente(repo, organizationId, ctx.phone);
       return { result, raw: result, orderId: null, propertyId: null };
     }
     case "consultar_sucursal": {

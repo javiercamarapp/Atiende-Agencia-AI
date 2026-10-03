@@ -19,11 +19,12 @@ const CONFIG = { perfil: "taqueria_pm", agentName: "Lupita", businessName: null,
 const OPCIONES = {
   perfiles: [
     { perfil: "generico", agentName: null, businessName: "este restaurante", toneStyle: "calido_cercano", deliveryTimeText: "40 a 50 minutos", salsasText: null, promosText: null },
-    { perfil: "taqueria_pm", agentName: "el asistente virtual", businessName: "Los Taquitos de PM", toneStyle: "formal_directo", deliveryTimeText: "de 40 a 50 minutos", salsasText: "roja, verde", promosText: "lunes 2x1" },
+    { perfil: "taqueria_pm", agentName: "el asistente virtual", businessName: "Los Taquitos de PM", toneStyle: "formal_directo", deliveryTimeText: "de 40 a 50 minutos", salsasText: "roja, verde", promosText: "lunes 2x1", largeOrderText: "más de $4,000 o más de 5 kg" },
   ],
   tonos: ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"],
   motivosDesactivables: ["pedido_grande", "zona_ambigua", "producto_agotado", "no_entiende"],
-  limites: { agentName: 60, businessName: 120, deliveryTimeText: 200, greetingText: 80, salsasText: 300, promosText: 300 },
+  limites: { agentName: 60, businessName: 120, deliveryTimeText: 200, greetingText: 80, salsasText: 300, promosText: 300, largeOrderText: 200 },
+  esperaRafagasMaxSegundos: 30,
 };
 const PREVIA = {
   prompt: "PROMPT COMPLETO",
@@ -89,6 +90,67 @@ describe("AgenteWhatsappSeccion", () => {
     expect(rendered!.container.textContent).toContain("· Jefa");
     expect(rendered!.container.textContent).toContain("· Marta");
     expect(rendered!.container.textContent).not.toContain("Edición limitada");
+  });
+
+  it("PM-C5: umbral de pedido grande y espera de ráfagas se editan, se validan y viajan en el PUT (vacío = valores por omisión / apagada)", async () => {
+    let put: Record<string, unknown> | null = null;
+    montar({
+      organizacion: { ...CONFIG, largeOrderText: "más de $5,000", replyDebounceSeconds: 6 },
+      escritura: (_u, init) => {
+        if (init?.method === "PUT") {
+          put = JSON.parse(String(init.body));
+          return json({ ...CONFIG, largeOrderText: "más de $6,000", replyDebounceSeconds: 8, version: 3 });
+        }
+        return undefined;
+      },
+    });
+    await esperar();
+    const umbral = campo("Umbral de pedido grande") as HTMLTextAreaElement;
+    const espera = campo("Espera de ráfagas") as HTMLInputElement;
+    expect(umbral.value).toBe("más de $5,000");
+    expect(umbral.placeholder).toBe("más de $4,000 o más de 5 kg");
+    expect(espera.value).toBe("6");
+    expect(espera.max).toBe("30");
+    expect(espera.min).toBe("0");
+    changeValue(umbral, "más de $6,000");
+    changeValue(espera, "8");
+    await esperar();
+    click(boton("Revisar cambios")!);
+    await esperar();
+    click(boton("Confirmar y guardar")!);
+    await esperar();
+    expect(put).toMatchObject({ alcance: "organizacion", largeOrderText: "más de $6,000", replyDebounceSeconds: 8, versionEsperada: 2 });
+  });
+
+  it("PM-C5: con los dos campos vacíos el PUT manda null (la espera queda apagada y el umbral vuelve al de siempre)", async () => {
+    let put: Record<string, unknown> | null = null;
+    montar({
+      organizacion: { ...CONFIG, largeOrderText: "más de $5,000", replyDebounceSeconds: 6 },
+      escritura: (_u, init) => {
+        if (init?.method === "PUT") {
+          put = JSON.parse(String(init.body));
+          return json({ ...CONFIG, version: 3 });
+        }
+        return undefined;
+      },
+    });
+    await esperar();
+    changeValue(campo("Umbral de pedido grande"), "");
+    changeValue(campo("Espera de ráfagas"), "");
+    await esperar();
+    click(boton("Revisar cambios")!);
+    await esperar();
+    click(boton("Confirmar y guardar")!);
+    await esperar();
+    expect(put).toMatchObject({ largeOrderText: null, replyDebounceSeconds: null });
+  });
+
+  it("PM-C5: los campos solo existen en el perfil de la taquería (el genérico no los muestra)", async () => {
+    montar({ organizacion: { ...CONFIG, perfil: "generico" } });
+    await esperar();
+    const etiquetas = Array.from(rendered!.container.querySelectorAll("label")).map((l) => l.textContent ?? "");
+    expect(etiquetas.some((t) => t.startsWith("Umbral de pedido grande"))).toBe(false);
+    expect(etiquetas.some((t) => t.startsWith("Espera de ráfagas"))).toBe(false);
   });
 
   it("revisar -> vista previa con diferencias y prompt de solo lectura -> confirmar manda PUT con la version vista", async () => {
