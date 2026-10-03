@@ -49,9 +49,15 @@ export class InMemoryTenancyEngine implements TenancyEngine {
   private readonly memberships: SeedTenancyMembership[] = [];
   /** SA-L-46: lista de supresion de plataforma (core.supresion_contacto), solo `tipo:hash` (como la real). */
   private readonly suprimidos = new Set<string>();
+  private readonly plantillasAprobadas = new Set<string>();
 
   seedProperty(property: SeedTenancyProperty): void {
     this.properties.set(property.id, property);
+  }
+
+  /** PL-31: declara una plantilla aprobada de una organizacion (solo pruebas). */
+  seedPlantillaAprobada(organizationId: string, nombre: string): void {
+    this.plantillasAprobadas.add(`${organizationId}:${nombre}`);
   }
 
   seedMembership(membership: SeedTenancyMembership): void {
@@ -86,6 +92,16 @@ export class InMemoryTenancyEngine implements TenancyEngine {
           const nueva = !this.suprimidos.has(`${tipo}:${hash}`);
           this.suprimidos.add(`${tipo}:${hash}`);
           return { rows: [{ nueva }] as unknown as R[] };
+        }
+        // PL-32: core.reactivar_supresion_baja (migracion 0050), modelo minimo: el modelo en memoria no distingue motivos.
+        if (sql.includes("core.reactivar_supresion_baja")) {
+          const [tipo, hash] = params as [string, string];
+          return { rows: [{ quitada: this.suprimidos.delete(`${tipo}:${hash}`) }] as unknown as R[] };
+        }
+        // PL-31: core.whatsapp_plantilla_aprobada (migracion 0050), catalogo minimo en memoria (`seedPlantillaAprobada`).
+        if (sql.includes("core.whatsapp_plantilla_aprobada")) {
+          const [organizationId, nombre] = params as [string, string];
+          return { rows: [{ aprobada: this.plantillasAprobadas.has(`${organizationId}:${nombre}`) }] as unknown as R[] };
         }
         // H-20: las funciones de la bandeja de conversaciones (migracion 043) no existen en este motor de alcance angosto: se comporta como una
         // base SIN la 043 (SQLSTATE 42883, funcion inexistente), el camino que el codigo ya degrada. Asi el webhook de hoteles armado con este motor

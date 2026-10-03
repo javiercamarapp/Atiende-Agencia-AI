@@ -67,6 +67,8 @@ describe("runListaEsperaCore — aislamiento por fila (hallazgo adicional f2-cit
       },
       { match: /citas\.system_resolve_active_whatsapp_phone_number_id/, respond: () => [{ system_resolve_active_whatsapp_phone_number_id: "phone-1" }] },
       { match: /from core\.organization/, respond: () => [{ id: ORG_ID, name: "Negocio de prueba" }] },
+      // Base sin la migracion 0050: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
+      { match: /citas\.ultimo_mensaje_entrante/, respond: () => Object.assign(new Error("function citas.ultimo_mensaje_entrante(uuid, text[]) does not exist"), { code: "42883" }) },
       {
         match: /citas\.claim_waitlist_notification_slot/,
         respond: () => {

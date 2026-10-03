@@ -54,6 +54,10 @@ export interface OutboundWhatsAppMessagePayload {
   /** Plantilla HSM opcional (ver `OutboundTemplate`). `body` sigue siendo obligatorio: es el texto libre de
    *  respaldo cuando la plantilla no esta declarada como aprobada. */
   readonly template?: OutboundTemplate;
+  /** PL-31: el despachador ya verifico que la organizacion duena del mensaje tiene ESTA plantilla en estado aprobada en su
+   *  catalogo (`core.whatsapp_plantilla`). Con `true` el cliente la envia como `type: "template"` aunque no este en la lista
+   *  global de plantillas aprobadas del entorno. Ausente o `false` = decide solo la lista global (comportamiento anterior). */
+  readonly templateApproved?: boolean;
 }
 
 export interface WhatsAppSendResult {

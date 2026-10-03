@@ -9,12 +9,13 @@
 // existe o el de la organización, nunca el del host). Ver diseño Fase 1 §0.4/§5.3:
 // es la pieza de mayor riesgo silencioso de todo el vertical — un bug de timezone no
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
+import { decidirEnvioProactivo, encolarCorreoListaEspera } from "./whatsapp/proactivo.ts";
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import { eventoRecordatorioFallido } from "./notification-events.ts";
 import type { EventoRecordatorioFallido } from "./notification-events.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 import { appointmentReminderButtons } from "./whatsapp/appointment-button-ids.ts";
-import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
+import { MENSAJES_CONFIG_POR_OMISION, ANTICIPACION_POR_OMISION_HORAS, sanitizarValor, dentroDelHorarioDeEnvio, legacyReminderBody, reservaMuyReciente, textoPropio, ventanaDeRecordatorio } from "./whatsapp/message-config.ts";
 import { armarMensaje, formatearFechaYHora, nuevoCacheValores, resolverValoresCita } from "./whatsapp/message-send.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
@@ -47,6 +48,10 @@ export interface ConfirmacionCitaSummary {
   skippedNoWhatsappConfig: boolean;
   /** C-04 -- citas que se dejaron para despues porque ahora cae fuera del horario de envio configurado. */
   skippedOutsideSendWindow: number;
+  /** PL-31 -- recordatorios cuyo WhatsApp NO se encolo porque el cliente no escribio en las ultimas 23 h y la organizacion no tiene la
+   * plantilla del evento aprobada: Meta lo rechazaria, asi que no se finge un envio. El correo (si el cliente dejo uno) sale igual.
+   * La corrida del cron emite UNA notificacion por organizacion y dia con este conteo. */
+  skippedSinPlantilla: number;
   /** Auditoría a3 (hallazgo confirmado #7) — ids de citas cuyo procesamiento
    * lanzó un error REAL (no capturado por los best-effort internos de WhatsApp/
    * correo) dentro de esta corrida. Cada iteración corre bajo su propio
@@ -95,7 +100,7 @@ export interface ConfirmacionCitaSummary {
  * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, skippedOutsideSendWindow: 0, failedAppointmentIds: [], failedAppointmentErrors: [], failedReminderEvents: [] };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, skippedOutsideSendWindow: 0, skippedSinPlantilla: 0, failedAppointmentIds: [], failedAppointmentErrors: [], failedReminderEvents: [] };
 
   // C-04 -- anticipacion, horario de envio y texto editables desde el panel. Sin configuracion guardada (o con la base sin
   // migrar: el metodo del repositorio degrada con SAVEPOINT a `null`) es exactamente el comportamiento de siempre: 24 h
@@ -160,6 +165,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       let skippedNoPhoneLocal = 0;
       let skippedOutsideWindowLocal = 0;
       let sinCanalLocal = false;
+      let sinPlantillaLocal = false;
 
       await repo.runWithRowSavepoint(async () => {
         let remindedSomehow = false;
@@ -183,18 +189,24 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
           if (!apt.customerPhone) {
             skippedNoPhoneLocal += 1;
           } else {
-            const body = usaTextoDeSiempre
-              ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora)
-              : armarMensaje(config, "recordatorio", await resolverValoresCita(repo, organizationId, { providerId: apt.providerId, serviceId: apt.serviceId, startsAt: apt.startsAt, customerName: apt.customerName }, timeZone, valoresCache));
+            const valores = await resolverValoresCita(repo, organizationId, { providerId: apt.providerId, serviceId: apt.serviceId, startsAt: apt.startsAt, customerName: apt.customerName }, timeZone, valoresCache);
+            // PL-31 -- ventana de 24 h de Meta: texto libre dentro de ella; fuera, solo con plantilla aprobada de la organizacion.
+            const decision = await decidirEnvioProactivo(repo, { organizationId, phone: apt.customerPhone, evento: "appointment.reminder_24h", valores: { ...valores }, now });
+            if (decision.canal === "sin_plantilla") {
+              sinPlantillaLocal = true;
+            } else {
+              const body = usaTextoDeSiempre ? legacyReminderBody(apt.customerName, formatearFechaYHora(apt.startsAt, timeZone).hora) : armarMensaje(config, "recordatorio", valores);
 
-            await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
-              to: apt.customerPhone,
-              phone_number_id: phoneNumberId,
-              body,
-              buttons: appointmentReminderButtons(apt.appointmentId),
-            });
-            sentLocal += 1;
-            remindedSomehow = true;
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
+                to: apt.customerPhone,
+                phone_number_id: phoneNumberId,
+                body,
+                buttons: appointmentReminderButtons(apt.appointmentId),
+                ...(decision.template ? { template: decision.template } : {}),
+              });
+              sentLocal += 1;
+              remindedSomehow = true;
+            }
           }
         }
 
@@ -217,7 +229,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
         // WhatsApp — no es un estado silencioso, el cron la vuelve a intentar.
         if (remindedSomehow) {
           await repo.markReminderSent(apt.appointmentId, now.toISOString());
-        } else if (config.reminderEnabled) {
+        } else if (config.reminderEnabled && !sinPlantillaLocal) {
           // Recordatorio activo pero ningun canal aplico: no se marca (la siguiente corrida lo reintenta) y se registra el
           // evento para avisar al negocio en vez de dejar la cita sin aviso en silencio.
           sinCanalLocal = true;
@@ -230,6 +242,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
       summary.sentEmail += sentEmailLocal;
       summary.skippedNoPhone += skippedNoPhoneLocal;
       summary.skippedOutsideSendWindow += skippedOutsideWindowLocal;
+      if (sinPlantillaLocal) summary.skippedSinPlantilla += 1;
       if (sinCanalLocal) summary.failedReminderEvents.push(eventoRecordatorioFallido(organizationId, apt.appointmentId, "sin_canal"));
     } catch (err) {
       console.error(`reminders: la cita ${apt.appointmentId} falló con un error real de Postgres, aislada por SAVEPOINT -- se sigue con las demás citas de la organización:`, err);
@@ -246,7 +259,9 @@ export interface OptimizadorResult {
   readonly matched: boolean;
   readonly waitlistId?: string;
   readonly customerPhone?: string;
-  readonly reason?: "no_match" | "no_whatsapp_config" | "lost_race";
+  readonly reason?: "no_match" | "no_whatsapp_config" | "lost_race" | "sin_plantilla";
+  /** PL-31 -- presente solo cuando el aviso salio por correo porque WhatsApp no podia (fuera de la ventana de 24 h y sin plantilla aprobada). */
+  readonly channel?: "correo";
 }
 
 function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: string, serviceId: string | undefined, slotDateStr: string, window: TimeWindow): boolean {
@@ -301,6 +316,24 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
   if (!phoneNumberId) return { matched: false, reason: "no_whatsapp_config" };
 
   const winner = matches[0]!;
+  // PL-31 -- ventana de 24 h de Meta: se decide ANTES de reclamar el cupo de notificacion (un aviso que no sale no gasta un intento del cliente).
+  const decision = await decidirEnvioProactivo(repo, {
+    organizationId,
+    phone: winner.customerPhone,
+    evento: "waitlist.slot_offered",
+    valores: async () => ({ nombre: sanitizarValor(winner.customerName, 60) || "cliente", negocio: sanitizarValor((await repo.findOrganizationById(organizationId))?.name, 120) || "nuestro negocio" }),
+    now: new Date(),
+  });
+  const dedupeKey = `waitlist-offer:${winner.id}:${event.startsAt}`;
+  if (decision.canal === "sin_plantilla") {
+    const cliente = await repo.findCustomerByPhone(organizationId, winner.customerPhone);
+    if (!cliente?.email) return { matched: false, reason: "sin_plantilla" };
+    const claimedPorCorreo = await repo.claimWaitlistNotificationSlot(winner.id, MAX_WAITLIST_NOTIFICATIONS);
+    if (!claimedPorCorreo) return { matched: false, reason: "lost_race" };
+    await encolarCorreoListaEspera(repo, { organizationId, phone: winner.customerPhone, evento: "waitlist.slot_offered", dedupeKey });
+    return { matched: true, waitlistId: winner.id, customerPhone: winner.customerPhone, channel: "correo" };
+  }
+
   const claimed = await repo.claimWaitlistNotificationSlot(winner.id, MAX_WAITLIST_NOTIFICATIONS);
   if (!claimed) {
     // Otro proceso ya lo notificó (o ya llegó al tope) justo antes.
@@ -308,10 +341,11 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
   }
 
   const name = winner.customerName ? ` ${winner.customerName}` : "";
-  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_offered", `waitlist-offer:${winner.id}:${event.startsAt}`, {
+  await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_offered", dedupeKey, {
     to: winner.customerPhone,
     phone_number_id: phoneNumberId,
     body: `¡Buenas noticias${name}! Se liberó un espacio que coincide con lo que buscaba. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
+    ...(decision.template ? { template: decision.template } : {}),
   });
 
   return { matched: true, waitlistId: winner.id, customerPhone: winner.customerPhone };
@@ -429,6 +463,8 @@ export interface ListaEsperaSummary {
    * "venenoso" a mitad de la corrida ya NO revierte los candidatos ANTERIORES
    * de esta misma corrida que sí se notificaron con éxito. */
   failedWaitlistIds: string[];
+  /** PL-31 -- candidatos a los que no se avisó: fuera de la ventana de 24 h, sin plantilla aprobada y sin correo. No gastan un intento del cliente. */
+  skippedSinPlantilla: number;
 }
 
 /**
@@ -479,7 +515,7 @@ export async function runListaEsperaCore(
   const candidates = await repo.loadLiveWaitlistCandidatesAsSystem(organizationId);
   const filtered = filterAndRankWaitlistForBroadcast(candidates, event, effectiveLimit);
 
-  const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false, failedWaitlistIds: [] };
+  const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false, failedWaitlistIds: [], skippedSinPlantilla: 0 };
   if (filtered.length === 0) return summary;
 
   // Corrección post-revisión de f2-citas-lista-de-espera — mismo motivo que en
@@ -519,18 +555,42 @@ export async function runListaEsperaCore(
   for (const row of filtered) {
     try {
       let claimedLocal = false;
+      let sinPlantillaLocal = false;
       await repo.runWithRowSavepoint(async () => {
+        // PL-31 -- ventana de 24 h de Meta: se decide ANTES de reclamar el cupo (un aviso que no sale no gasta un intento del cliente).
+        const decision = await decidirEnvioProactivo(repo, {
+          organizationId,
+          phone: row.customerPhone,
+          evento: "waitlist.slot_available_broadcast",
+          valores: { nombre: sanitizarValor(row.customerName, 60) || "cliente", negocio: sanitizarValor(organization?.name, 120) || "nuestro negocio" },
+          now: new Date(),
+        });
+        const dedupeKey = `waitlist-broadcast:${row.id}:${runToken}`;
+        if (decision.canal === "sin_plantilla") {
+          const cliente = await repo.findCustomerByPhone(organizationId, row.customerPhone);
+          if (!cliente?.email) {
+            sinPlantillaLocal = true;
+            return;
+          }
+          if (!(await repo.claimWaitlistNotificationSlot(row.id, MAX_WAITLIST_NOTIFICATIONS))) return;
+          await encolarCorreoListaEspera(repo, { organizationId, phone: row.customerPhone, evento: "waitlist.slot_available_broadcast", dedupeKey });
+          claimedLocal = true;
+          return;
+        }
+
         const claimed = await repo.claimWaitlistNotificationSlot(row.id, MAX_WAITLIST_NOTIFICATIONS);
         if (!claimed) return; // ya en su tope o ya no 'active' — se salta, nunca tumba la corrida completa
 
         const name = row.customerName ? ` ${row.customerName}` : "";
-        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_available_broadcast", `waitlist-broadcast:${row.id}:${runToken}`, {
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_available_broadcast", dedupeKey, {
           to: row.customerPhone,
           phone_number_id: phoneNumberId,
           body: `¡Buenas noticias${name}! Se acaba de liberar un espacio${negocio}. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
+          ...(decision.template ? { template: decision.template } : {}),
         });
         claimedLocal = true;
       });
+      if (sinPlantillaLocal) summary.skippedSinPlantilla += 1;
       // Solo se cuenta como notificado tras un `runWithRowSavepoint` que NO
       // lanzó -- mismo criterio que `sentLocal` en `runConfirmacionCitaCore`
       // (nunca contar algo que un SAVEPOINT pudo haber revertido).
