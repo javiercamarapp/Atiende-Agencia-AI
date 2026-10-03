@@ -54,10 +54,11 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
     expect(new Set(titulos).size).toBe(titulos.length);
   });
 
-  it("una seccion sin paginas reales no se pinta; Agentes tiene el Panel (SA-L-08), las tres fichas (SA-L-09) y Model Ops (SA-L-10)", () => {
+  it("una seccion sin paginas reales no se pinta; Agentes tiene el Copiloto (CHAT-17) primero, el Panel (SA-L-08), las tres fichas (SA-L-09) y Model Ops (SA-L-10)", () => {
     expect(SECCIONES.every((s) => s.items.length > 0)).toBe(true);
     const agentes = SECCIONES.find((s) => s.title === "Agentes");
     expect(agentes?.items.map((i) => i.to)).toEqual([
+      "/superadmin/copiloto",
       "/superadmin/agentes",
       "/superadmin/agente-extractor",
       "/superadmin/agente-conciliacion",
