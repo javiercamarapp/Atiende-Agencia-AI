@@ -112,9 +112,20 @@ const SIN_REPO: Fuente<never> = { ok: false, razon: "sin_repositorio" };
  * repositorio es de sesion, o el repositorio fijo del back office (que abre su propia sesion con el `callerId`) dentro de un try/catch.
  */
 export function fuentesDeProduccion(deps: AppDeps, db: TenantDbSession, callerId: string): FuentesPlataforma {
-  /** Lectura con repositorio ligado a la sesion del turno: SAVEPOINT + degradacion a "no disponible". */
-  const enSesion = <T>(leer: () => Promise<Fuente<T>>): Promise<Fuente<T>> =>
-    runWithSavepointFallback<Fuente<T>>({ session: db, primary: leer, isRecoverable: () => true, fallback: async (err) => ({ ok: false, razon: razonDe(err) }) });
+  /**
+   * Lectura con repositorio ligado a la sesion del turno: SAVEPOINT + degradacion a "no disponible". La sesion del turno es UNA sola transaccion: dos
+   * SAVEPOINT concurrentes se intercalan en la cola FIFO del cliente (SP A, SP B, QA, QB, RELEASE A, RELEASE B) y el RELEASE de A destruye tambien B, con lo que
+   * RELEASE B falla (3B001) y la transaccion queda abortada. Por eso las lecturas en sesion se encolan en una cadena: aunque la herramienta las lance con
+   * Promise.all, se ejecutan una tras otra y cada SAVEPOINT se abre y se cierra antes de que empiece el siguiente.
+   */
+  let colaSesion: Promise<unknown> = Promise.resolve();
+  const enSesion = <T>(leer: () => Promise<Fuente<T>>): Promise<Fuente<T>> => {
+    const turno = colaSesion.then(() =>
+      runWithSavepointFallback<Fuente<T>>({ session: db, primary: leer, isRecoverable: () => true, fallback: async (err) => ({ ok: false, razon: razonDe(err) }) }),
+    );
+    colaSesion = turno.catch(() => undefined);
+    return turno;
+  };
   /** Lectura con un repositorio fijo (su propia sesion): un fallo no toca la transaccion del turno. */
   const propio = async <T>(leer: () => Promise<T>): Promise<Fuente<T>> => {
     try {
