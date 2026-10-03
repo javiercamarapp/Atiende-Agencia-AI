@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { LayoutGrid, MessageCircle } from "lucide-react";
-import { Button, NotificationBell, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { Button, NotificationBell, SheetClose, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
@@ -101,8 +101,10 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
     <NotificationBell className={className} href="/superadmin/notificaciones" hayNoLeidas={notif.hayNoLeidas} />
   );
 
-  const botonCopiloto = (className?: string) =>
-    enPaginaCopiloto ? null : (
+  /** `enHoja` = el boton vive en la hoja del menu de cuenta movil: al pulsarlo la hoja se cierra y el panel (pantalla completa) queda a la vista. */
+  const botonCopiloto = (className?: string, enHoja = false) => {
+    if (enPaginaCopiloto) return null;
+    const boton = (
       <Button
         type="button"
         variant="outline"
@@ -117,6 +119,8 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
         <kbd className="hidden font-mono text-2xs text-muted-foreground md:inline">⌘J</kbd>
       </Button>
     );
+    return enHoja ? <SheetClose asChild>{boton}</SheetClose> : boton;
+  };
 
   return (
     <VerticalShell
@@ -131,7 +135,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       notificationBell={campana()}
       mobileNotificationBell={campana("w-10 h-10")}
       chatButton={botonCopiloto()}
-      mobileChatButton={botonCopiloto("h-10 w-full justify-center")}
+      mobileChatButton={botonCopiloto("h-10 w-full justify-center", true)}
       panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">

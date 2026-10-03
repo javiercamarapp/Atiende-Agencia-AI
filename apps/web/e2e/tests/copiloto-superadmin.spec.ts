@@ -94,7 +94,8 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await expect(panel(page).getByText(TEXTO)).toBeVisible();
     await panel(page).getByRole("link", { name: "Abrir en página completa" }).click();
     await expect(page).toHaveURL(new RegExp(`${RUTA}\\?c=`));
-    await expect(page.getByRole("log", { name: "Conversación con el Copiloto" }).getByText(TEXTO)).toBeVisible();
+    // El panel sigue montado (cerrado e inert) en la pagina completa: se acota el hilo a la pagina.
+    await expect(page.locator("main").getByRole("log", { name: "Conversación con el Copiloto" }).getByText(TEXTO)).toBeVisible();
     vigilante.verificar();
   });
 

@@ -118,6 +118,20 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(hrefs).toContain("/superadmin/integraciones");
   });
 
+  it("en la hoja de cuenta, 'Chatea con tus datos' cierra la hoja y deja el Copiloto a la vista (CHAT-17)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } })));
+    rendered = await renderShell();
+    const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
+    click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
+    const boton = [...document.body.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.includes("Chatea con tus datos"))!;
+    await act(async () => {
+      click(boton);
+      await flushMicrotasks();
+    });
+    expect(document.getElementById("copiloto-panel")?.getAttribute("data-abierto")).toBe("true");
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   it("campana y cerrar sesión son alcanzables en móvil, y 'Chatea con tus datos' abre el Copiloto (CHAT-17)", async () => {
     const onRequireLogin = vi.fn();
     rendered = await renderShell(onRequireLogin);
