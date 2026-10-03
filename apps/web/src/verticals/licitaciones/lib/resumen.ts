@@ -8,9 +8,21 @@ import type { TenderSummary } from "./tenders-client.ts";
 export const DIA_MS = 24 * 60 * 60 * 1000;
 export const VENTANA_PLAZO_DIAS = 7;
 
-/** Licitaciones no tiene aun una zona horaria por organizacion expuesta por la API: el resto del vertical (radar, dias
- * inhabiles) usa la de Ciudad de Mexico como valor por defecto y el Resumen hace lo mismo. */
+/** Zona por defecto: la de Ciudad de Mexico, la misma que usa el resto del vertical (radar, dias inhabiles). El Resumen la usa
+ * SOLO cuando la organizacion no configuro la suya (`timezone: null`), cuando la lectura de tenant-config fallo (por ejemplo
+ * en una base sin la migracion 027) o cuando el valor guardado no es una zona IANA valida. */
 export const ZONA_LICITACIONES = "America/Mexico_City";
+
+/** Zona efectiva del Resumen: la configurada por la organizacion si es una zona IANA valida; si no, `ZONA_LICITACIONES`. */
+export function zonaEfectiva(configurada: string | null | undefined): string {
+  if (!configurada) return ZONA_LICITACIONES;
+  try {
+    new Intl.DateTimeFormat("es-MX", { timeZone: configurada });
+    return configurada;
+  } catch {
+    return ZONA_LICITACIONES;
+  }
+}
 
 const ESTADOS_CERRADOS: ReadonlySet<string> = new Set(["won", "lost", "cancelled", "no_go"]);
 
@@ -19,9 +31,11 @@ export function convocatoriasAbiertas(tenders: readonly TenderSummary[]): readon
   return tenders.filter((t) => t.status === null || !ESTADOS_CERRADOS.has(t.status));
 }
 
-/** Abiertas cuyo plazo de presentacion cae entre ahora y `VENTANA_PLAZO_DIAS` dias. */
+/** Abiertas cuyo plazo de presentacion cae entre ahora y `VENTANA_PLAZO_DIAS` dias. Una propuesta ya presentada (`submitted`)
+ * no cuenta: su plazo ya no pide accion. */
 export function cierranEnVentana(abiertas: readonly TenderSummary[], ahoraMs: number): readonly TenderSummary[] {
   return abiertas.filter((t) => {
+    if (t.status === "submitted") return false;
     if (!t.submissionDeadline) return false;
     const ms = new Date(t.submissionDeadline).getTime() - ahoraMs;
     return ms >= 0 && ms <= VENTANA_PLAZO_DIAS * DIA_MS;
@@ -96,4 +110,35 @@ export function ultimaCorridaPorFuente(conectores: readonly SourceConnectorInfo[
     const cobertura = r.evidence.coverage ? ` · ${r.evidence.coverage.obtained} de ${r.evidence.coverage.expected} resultados` : "";
     return { source: id, nombre, estado: { tone: TONO_CORRIDA[r.state] ?? "neutral", etiqueta: r.state === "ok" ? "OK" : SOURCE_STATE_LABELS[r.state] ?? r.state }, meta: `${fechaHoraCortaEnZona(r.finishedAt, zona)}${cobertura}` };
   });
+}
+
+/** La fecha ISO mas reciente de la lista (ignora las no parseables); null si no hay ninguna. */
+export function fechaMasReciente(isos: readonly string[]): string | null {
+  let mejor: string | null = null;
+  let mejorMs = Number.NEGATIVE_INFINITY;
+  for (const iso of isos) {
+    const ms = new Date(iso).getTime();
+    if (Number.isFinite(ms) && ms > mejorMs) {
+      mejor = iso;
+      mejorMs = ms;
+    }
+  }
+  return mejor;
+}
+
+export interface CorridaSimple {
+  readonly estado: { readonly tone: StatusTone; readonly etiqueta: string };
+  readonly meta: string;
+}
+
+/** Ultima ingesta del listado 69-B del SAT (GET .../kyc-69b -> `lista`); sin lista ingerida no hay corrida que mostrar. */
+export function corridaKyc(lista: { readonly periodo: string; readonly filas: number; readonly ingestadoEn: string } | null | undefined, zona: string = ZONA_LICITACIONES): CorridaSimple | null {
+  if (!lista || Number.isNaN(new Date(lista.ingestadoEn).getTime())) return null;
+  return { estado: { tone: "success", etiqueta: "Lista ingerida" }, meta: `Listado SAT ${lista.periodo} · ${plural(lista.filas, "fila", "filas")} · ${fechaHoraCortaEnZona(lista.ingestadoEn, zona)}` };
+}
+
+/** Ultimo recordatorio o cambio de convocatoria generado (`createdAt` real); null si no hay ninguno. */
+export function corridaSeguimiento(creados: readonly string[], zona: string = ZONA_LICITACIONES): CorridaSimple | null {
+  const ultima = fechaMasReciente(creados);
+  return ultima ? { estado: { tone: "success", etiqueta: "Generó avisos" }, meta: `Último aviso generado ${fechaHoraCortaEnZona(ultima, zona)}` } : null;
 }

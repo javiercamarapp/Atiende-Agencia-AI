@@ -5,9 +5,11 @@
 // TODA cifra sale de una lectura real de la API que ya existia (tenders, sources/freshness, sources, sources/runs,
 // deadline-reminders, tender-change-notifications, renewals/alerts, company/*, company/signers). Si una lectura falla, su tarjeta
 // dice "No se pudo leer" en vez de un cero inventado; si TODAS fallan, la pantalla muestra el error con reintento. KPIs que NO se
-// pintan por falta de endpoint a nivel organizacion: go/no-go pendientes (las decisiones se leen por convocatoria) y facturas
-// de cobranza vencidas (el resumen de cartera se lee por contrato). Solo la ingesta tiene bitacora de corridas
-// (licitaciones.source_run); los demas agentes dicen "Sin corridas registradas.".
+// pintan por falta de endpoint a nivel organizacion: go/no-go pendientes (la decision se registra por convocatoria; el estatus
+// de la lista solo es un proxy) y facturas de cobranza vencidas (el resumen de cartera se lee por contrato). La fecha y el
+// saludo usan la zona de la organizacion (admin/tenant-config; America/Mexico_City si no esta configurada o no se pudo leer).
+// "Ultima corrida" sale de registros reales: la ingesta (sources/runs), el listado 69-B (kyc-69b -> lista.ingestadoEn) y el ultimo
+// aviso de seguimiento (createdAt); extractor, junta y WhatsApp no tienen bitacora legible y dicen "Sin corridas registradas.".
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -47,9 +49,13 @@ import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchSourceConnectors, fetchSourceFreshness, fetchSourceRuns } from "../lib/sources-client.ts";
 import type { SourceConnectorInfo, SourceFreshness, SourceRun } from "../lib/sources-client.ts";
 import { fetchDeadlineReminders, fetchTenderChangeNotifications } from "../lib/seguimiento-client.ts";
+import { fetchTenantConfig } from "../lib/admin-client.ts";
+import { fetchKycResumen } from "../lib/kyc-69b-client.ts";
+import type { KycResumen } from "../lib/kyc-69b-client.ts";
 import { fetchRenewalAlerts } from "../lib/renewal-radar-client.ts";
 import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience, fetchCompanySigners } from "../lib/company-data-client.ts";
-import { convocatoriasAbiertas, cierranEnVentana, fechaLargaEnZona, plural, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS } from "../lib/resumen.ts";
+import type { CorridaSimple } from "../lib/resumen.ts";
+import { convocatoriasAbiertas, cierranEnVentana, corridaKyc, corridaSeguimiento, fechaLargaEnZona, plural, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS, zonaEfectiva } from "../lib/resumen.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 /** Resultado de una lectura: valor, o null cuando fallo (la tarjeta lo muestra como "No se pudo leer"). */
@@ -65,6 +71,11 @@ interface Resumen {
   renovacionesPendientes: Medida<number>;
   aprobacionesPendientes: Medida<number>;
   firmantesAutorizados: Medida<number>;
+  /** Zona de la organizacion (tenant-config) ya resuelta: cae a Mexico si no esta configurada o la lectura fallo. */
+  zona: string;
+  kyc: Medida<KycResumen>;
+  /** `createdAt` de los recordatorios y cambios leidos (null si alguna de las dos lecturas fallo). */
+  avisosCreados: Medida<readonly string[]>;
   /** Cuantas de las lecturas fallaron (de `LECTURAS`): si fallan todas, la pantalla muestra el error en vez de 8 "sin dato". */
   fallidas: number;
 }
@@ -90,6 +101,8 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
     let cancelado = false;
     setResumen(null);
     (async () => {
+      // Lecturas auxiliares (no cuentan para el error total): si fallan, zona = Mexico y la tarjeta de KYC queda sin corrida.
+      const auxiliares = Promise.allSettled([fetchTenantConfig(fetch, apiBaseUrl, token, orgSlug), fetchKycResumen(fetch, apiBaseUrl, token, propertyId)]);
       const lecturas = await Promise.allSettled([
         fetchTenders(fetch, apiBaseUrl, token, propertyId),
         fetchSourceFreshness(fetch, apiBaseUrl, token, propertyId),
@@ -104,6 +117,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
         fetchSourceConnectors(fetch, apiBaseUrl, token, propertyId),
         fetchSourceRuns(fetch, apiBaseUrl, token, propertyId, { limit: 50 }),
       ]);
+      const [tz, kycLectura] = await auxiliares;
       if (cancelado) return;
       const [tenders, fuentes, recs, cambios, renov, docs, rates, caps, exps, firmantes, conectores, corridas] = lecturas;
       const datosEmpresa = [docs, rates, caps, exps];
@@ -125,13 +139,16 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
         renovacionesPendientes: rn ? rn.filter((x) => x.status === "pendiente").length : null,
         aprobacionesPendientes: aprobaciones,
         firmantesAutorizados: fi ? fi.filter((x) => x.authorized).length : null,
+        zona: zonaEfectiva(tz.status === "fulfilled" ? tz.value.timezone : null),
+        kyc: ok(kycLectura),
+        avisosCreados: r && c ? [...r.map((x) => x.createdAt), ...c.map((x) => x.createdAt)] : null,
         fallidas: lecturas.filter((x) => x.status === "rejected").length,
       });
     })();
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, recarga]);
+  }, [apiBaseUrl, token, propertyId, orgSlug, recarga]);
 
   const base = `/licitaciones/${orgSlug}`;
 
@@ -184,16 +201,25 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   const abiertasN = abiertas?.length ?? null;
   const subtitulo =
     abiertasN === null
-      ? `${fechaLargaEnZona(ahora)} · convocatorias no disponibles`
-      : `${fechaLargaEnZona(ahora)} · ${plural(abiertasN, "convocatoria abierta", "convocatorias abiertas")}`;
+      ? `${fechaLargaEnZona(ahora, resumen.zona)} · convocatorias no disponibles`
+      : `${fechaLargaEnZona(ahora, resumen.zona)} · ${plural(abiertasN, "convocatoria abierta", "convocatorias abiertas")}`;
 
-  const corridasPorFuente = resumen.conectores && resumen.corridas ? ultimaCorridaPorFuente(resumen.conectores, resumen.corridas) : null;
+  const corridasPorFuente = resumen.conectores && resumen.corridas ? ultimaCorridaPorFuente(resumen.conectores, resumen.corridas, resumen.zona) : null;
+  const corridaDeKyc = resumen.kyc?.available ? corridaKyc(resumen.kyc.lista, resumen.zona) : null;
+  const corridaDeSeguimiento = resumen.avisosCreados ? corridaSeguimiento(resumen.avisosCreados, resumen.zona) : null;
+  /** Con corrida real: la ficha lleva su propio "ver ficha"; sin ella, la tarjeta entera enlaza a la pantalla del agente. */
+  const tarjetaCorrida = (nombre: string, href: string, c: CorridaSimple | null) =>
+    c ? (
+      <AgentRunCard key={nombre} nombre={nombre} estado={c.estado} meta={c.meta} href={href} />
+    ) : (
+      <Link key={nombre} to={href} className="block min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <AgentRunCard nombre={nombre} />
+      </Link>
+    );
   const sinBitacora = [
     { nombre: "Extractor de requisitos", href: `${base}/convocatorias` },
     { nombre: "Borrador de junta de aclaraciones", href: `${base}/convocatorias` },
-    { nombre: "Alertas y recordatorios", href: `${base}/seguimiento` },
     { nombre: "WhatsApp", href: `${base}/whatsapp` },
-    { nombre: "KYC proveedores (69-B)", href: `${base}/kyc-69b` },
   ];
 
   const descripcionIngesta =
@@ -204,7 +230,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
       <ResumenLayout
-        saludo={saludoEnZona(ahora)}
+        saludo={saludoEnZona(ahora, resumen.zona)}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         subtitulo={subtitulo}
         // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra viaja en el subtítulo.
@@ -244,6 +270,8 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
           ) : (
             corridasPorFuente.map((c) => <AgentRunCard key={c.source} nombre={`Ingesta · ${c.nombre}`} estado={c.estado} meta={c.meta} href={`${base}/fuentes`} />)
           )}
+          {tarjetaCorrida("Alertas y recordatorios", `${base}/seguimiento`, corridaDeSeguimiento)}
+          {tarjetaCorrida("KYC proveedores (69-B)", `${base}/kyc-69b`, corridaDeKyc)}
           {sinBitacora.map((a) => (
             <Link key={a.nombre} to={a.href} className="block min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <AgentRunCard nombre={a.nombre} />
