@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { MessageSquare, RefreshCw, UserRound } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, NativeSelect, PageContainer, PageHeader, StatusBadge, Textarea } from "@atiende/ui";
 import {
   CONVERSACIONES_REASIGNAR_ROLES,
   CONVERSACIONES_ROLES,
@@ -131,10 +131,7 @@ export function ConversacionesPage({ apiBaseUrl, token, propertyId, orgSlug, rol
             </option>
           ))}
         </NativeSelect>
-        <label className="inline-flex items-center gap-2 text-sm text-foreground">
-          <input type="checkbox" checked={soloNoLeidas} onChange={(e) => setSoloNoLeidas(e.target.checked)} className="size-4" />
-          Solo no leídas
-        </label>
+        <Checkbox label="Solo no leídas" checked={soloNoLeidas} onChange={(e) => setSoloNoLeidas(e.target.checked)} />
         {huespedId && (
           <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             Filtrando por un huésped
