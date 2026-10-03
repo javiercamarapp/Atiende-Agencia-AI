@@ -1,13 +1,8 @@
 // Fixtures de los LISTADOS de despachos que migraron a DataTable (UNI-C-despachos.3): cobranza, vencimientos y staff.
 // Forma = apps/web/src/verticals/despachos/lib/{cobranza,vencimientos,staff}-client.ts. Solo existe en la API simulada de e2e.
-import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
 
-const PROP = propiedadDe("despachos");
-const ORG = orgDe("despachos");
 const D = "/despachos/:id";
-void ORG;
-void PROP;
 
 const CUENTAS = [
   { id: "cta-1", invoiceId: "inv-1", facturaId: "A1B2C3D4-1111-2222-3333", monto: 11600, fechaVencimiento: "2026-08-15", diasVencido: 46, bucket: "31-60", score: 0.55, clienteNombre: "Abarrotes del Sureste SA de CV", clienteEmail: "compras@abarrotes.example.test", montoPagado: null, pagadoEn: null, creadoEn: "2026-08-01T15:00:00.000Z" },
