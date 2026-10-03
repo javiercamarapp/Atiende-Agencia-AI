@@ -52,14 +52,20 @@ export interface DependenciasAcciones {
 // Token firmado de la propuesta de interruptor
 // ------------------------------------------------------------------------------------------------------------------------------
 const LETRAS = "abcdefghijklmnopqrstuvwxyz";
+/** 16 letras: cada letra sale de UN nibble (4 bits) de bytes aleatorios o de la firma, asi el mapeo no tiene sesgo de modulo. */
+const NIBBLES = "abcdefghijklmnop";
 const TOKEN_RE = /^[a-z]{44}$/;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const esTokenInterruptor = (s: string): boolean => TOKEN_RE.test(s);
 
+/** `n` letras (alfabeto de 16) a partir de los nibbles de `buf`: sin modulo, por lo tanto sin sesgo. */
 function aLetras(buf: Uint8Array, n: number): string {
   let s = "";
-  for (let i = 0; i < n; i++) s += LETRAS[(buf[i] ?? 0) % 26];
+  for (let i = 0; i < n; i++) {
+    const byte = buf[i >> 1] ?? 0;
+    s += NIBBLES[i % 2 === 0 ? byte >> 4 : byte & 15];
+  }
   return s;
 }
 
@@ -103,7 +109,7 @@ export interface PropuestaInterruptor {
 export function firmarPropuestaInterruptor(secreto: string, actor: string, agente: string, bloquear: boolean, antes: boolean | null, ahoraMs: number): string {
   const flag = banderas(bloquear, antes);
   const exp = expALetras(Math.floor((ahoraMs + VIDA_PROPUESTA_MS) / 1000));
-  const nonce = aLetras(randomBytes(10), 10);
+  const nonce = aLetras(randomBytes(5), 10);
   return `${flag}${exp}${nonce}${firma(secreto, actor, agente, flag, exp, nonce)}`;
 }
 

@@ -103,7 +103,7 @@ function instalarFetch(estado: () => Response = () => json(200, estadoOk()), ext
     }),
   );
 }
-const confirmaciones = () => llamadas.filter((l) => l.method === "POST" && /\/acciones\/(confirmar|intents)|\/confirmar$/.test(l.url));
+const confirmaciones = () => llamadas.filter((l) => l.method === "POST" && /(?:\/acciones\/confirmar|\/intents\/[^/]+\/confirmar)$/.test(l.url));
 
 let rendered: RenderedComponent | undefined;
 beforeEach(() => {
