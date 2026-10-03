@@ -42,6 +42,7 @@ import {
   statusTone,
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -139,9 +140,10 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto">
         <Table className="min-w-[720px] text-xs">
+          <TableCaption className="sr-only">Captura de movimientos bancarios del lote</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="h-9">Fecha *</TableHead>
+              <TableHead className="sticky left-0 z-10 bg-canvas h-9">Fecha *</TableHead>
               <TableHead className="h-9">Descripción</TableHead>
               <TableHead className="h-9">Referencia</TableHead>
               <TableHead className="h-9">Cargo</TableHead>
@@ -153,7 +155,7 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
           <TableBody>
             {filas.map((f) => (
               <TableRow key={f.key}>
-                <TableCell className="p-1.5">
+                <TableCell className="sticky left-0 z-10 bg-card p-1.5">
                   <Label htmlFor={`mov-fecha-${f.key}`} className="sr-only">
                     Fecha
                   </Label>
