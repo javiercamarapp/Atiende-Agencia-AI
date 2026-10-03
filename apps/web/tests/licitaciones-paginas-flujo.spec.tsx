@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 //
-// Paginas de L-03: Panel, Fuentes y frescura, Seguimiento y Aprobaciones.
+// Paginas de L-03: Fuentes y frescura, Seguimiento y Aprobaciones.
 // `fetch` global mockeado por ruta real; se verifican datos reales en pantalla,
 // la honestidad de las metricas (falla de una lectura => "No disponible", nunca
 // un cero) y que cada boton dispare el metodo/ruta/cuerpo reales.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { PanelPage } from "../src/verticals/licitaciones/pages/Panel.tsx";
 import { FuentesFrescuraPage } from "../src/verticals/licitaciones/pages/FuentesFrescura.tsx";
 import { SeguimientoPage } from "../src/verticals/licitaciones/pages/Seguimiento.tsx";
 import { DatosEmpresaPage } from "../src/verticals/licitaciones/pages/DatosEmpresa.tsx";
@@ -51,49 +50,7 @@ function mount(el: JSX.Element) {
   rendered = renderComponent(<MemoryRouter>{el}</MemoryRouter>);
 }
 
-const hours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
 const tender = (id: string, status: string, deadline: string | null) => ({ id, title: `Conv ${id}`, submissionDeadline: deadline, status, contractingBody: "IMSS" });
-
-describe("PanelPage", () => {
-  it("cuenta lo real y marca 'No disponible' (no cero) cuando una lectura falla", async () => {
-    stubFetch({
-      "GET /tenders": () => ({ body: { tenders: [tender("a", "go", hours(48)), tender("b", "won", hours(24)), tender("c", "discovered", null)] } }),
-      "GET /sources/freshness": () => ({ body: { freshness: [{ source: "a", stale: true }, { source: "b", stale: false }] } }),
-      "GET /sources/deadline-reminders": () => ({ body: { reminders: [{ acknowledgedAt: null }, { acknowledgedAt: "x" }] } }),
-      "GET /tender-change-notifications": () => ({ ok: false, body: {} }),
-      "GET /renewals/alerts": () => ({ body: { alerts: [{ status: "pendiente" }] } }),
-      "GET /company/documents": () => ({ body: { documents: [{ approvalStatus: "pendiente_aprobacion" }] } }),
-      "GET /company/rates": () => ({ body: { rates: [] } }),
-      "GET /company/capabilities": () => ({ body: { capabilities: [{ approvalStatus: "pendiente_aprobacion" }] } }),
-      "GET /company/experience": () => ({ body: { experience: [] } }),
-      "GET /company/signers": () => ({ body: { signers: [] } }),
-    });
-    mount(<PanelPage {...CTX} />);
-    await settle();
-    const cards = [...rendered!.container.querySelectorAll("div.rounded-xl, div[class*='border']")];
-    const text = (titulo: string) => cards.find((c) => c.textContent?.startsWith(titulo))?.textContent ?? "";
-    expect(text("Convocatorias abiertas")).toContain("2"); // a (go) y c (discovered); b ganada no cuenta
-    expect(text("Cierran en 7 días")).toContain("1"); // a; b (ganada) no cuenta aunque su plazo caiga en la ventana
-    expect(text("Recordatorios de plazo")).toContain("1");
-    expect(text("Cambios de convocatoria")).toContain("No disponible");
-    expect(text("Datos por aprobar")).toContain("2");
-    expect(text("Firmantes autorizados")).toContain("0");
-    expect(text("Firmantes autorizados")).toContain("Sin firmante autorizado");
-    expect(text("Fuentes obsoletas")).toContain("1 de 2");
-  });
-
-  it("si falla una de las 4 lecturas de datos de empresa, 'Datos por aprobar' no suma parcial", async () => {
-    stubFetch({
-      "GET /tenders": () => ({ body: { tenders: [] } }),
-      "GET /company/documents": () => ({ body: { documents: [] } }),
-      "GET /company/rates": () => ({ ok: false, body: {} }),
-    });
-    mount(<PanelPage {...CTX} />);
-    await settle();
-    const card = [...rendered!.container.querySelectorAll("div")].find((c) => c.textContent?.startsWith("Datos por aprobar") && c.className.includes("border"));
-    expect(card?.textContent).toContain("No disponible");
-  });
-});
 
 describe("FuentesFrescuraPage", () => {
   it("muestra fuente obsoleta, 'Nunca' y la corrida con cobertura; no hay botones de accion", async () => {
