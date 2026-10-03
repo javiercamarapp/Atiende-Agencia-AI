@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Resumen de licitaciones (UNI-RES-licitaciones): composicion del Resumen de Likida. TODA cifra sale de las lecturas
-// existentes (API simulada por ruta real); una lectura caida dice "sin dato" (nunca un cero); sin ninguna lectura
+// existentes (API simulada por ruta real); una lectura caida dice "No se pudo leer" (nunca un cero); sin ninguna lectura
 // muestra el error con reintento; los agentes sin bitacora dicen "Sin corridas registradas.".
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";

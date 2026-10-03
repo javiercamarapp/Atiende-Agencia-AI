@@ -4,7 +4,7 @@
 //
 // TODA cifra sale de una lectura real de la API que ya existia (tenders, sources/freshness, sources, sources/runs,
 // deadline-reminders, tender-change-notifications, renewals/alerts, company/*, company/signers). Si una lectura falla, su tarjeta
-// dice "sin dato" en vez de un cero inventado; si TODAS fallan, la pantalla muestra el error con reintento. KPIs que NO se
+// dice "No se pudo leer" en vez de un cero inventado; si TODAS fallan, la pantalla muestra el error con reintento. KPIs que NO se
 // pintan por falta de endpoint a nivel organizacion: go/no-go pendientes (las decisiones se leen por convocatoria) y facturas
 // de cobranza vencidas (el resumen de cartera se lee por contrato). Solo la ingesta tiene bitacora de corridas
 // (licitaciones.source_run); los demas agentes dicen "Sin corridas registradas.".
@@ -52,7 +52,7 @@ import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fe
 import { convocatoriasAbiertas, cierranEnVentana, fechaLargaEnZona, plural, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS } from "../lib/resumen.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
-/** Resultado de una lectura: valor, o null cuando fallo (la tarjeta lo muestra como "sin dato"). */
+/** Resultado de una lectura: valor, o null cuando fallo (la tarjeta lo muestra como "No se pudo leer"). */
 type Medida<T> = T | null;
 
 interface Resumen {
@@ -156,7 +156,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   const enPreparacion = resumen.tenders ? propuestasEnPreparacion(resumen.tenders) : null;
   const obsoletas = resumen.fuentes ? resumen.fuentes.filter((f) => f.stale).length : null;
 
-  /** KPI de dos capas: con dato = cifra; sin dato = "—" y el motivo (nunca un cero). */
+  /** KPI de dos capas: con dato = cifra; sin dato = "—" y "No se pudo leer" (nunca un cero). */
   const kpi = (clave: string, to: string, icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>, label: string, valor: number | string | null, nota: string) => (
     <div key={clave} className="min-w-0">
       {enlazada(to, valor === null ? <StatCard icon={icon} label={label} value="" sinDato={SIN_LECTURA} /> : <StatCard icon={icon} label={label} value={String(valor)} nota={nota} />)}
