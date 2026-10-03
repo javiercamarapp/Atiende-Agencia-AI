@@ -217,7 +217,7 @@ describe("FraudePage (hoteles)", () => {
     });
 
     expect(fetchMock.mock.calls.some(([url, init]) => url === "https://api.test/hoteles/prop-1/fraude/escaneos" && init?.method === "POST")).toBe(true);
-    expect(toastMock.success).toHaveBeenCalledWith("Escaneo completo: 2 alerta(s) nueva(s), 1 ya existían.");
+    expect(toastMock.success).toHaveBeenCalledWith("Escaneo completo: 2 alerta(s) nueva(s), 1 ya existían.", expect.anything());
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 
