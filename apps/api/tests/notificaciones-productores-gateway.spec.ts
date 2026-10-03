@@ -79,7 +79,7 @@ describe("superadmin.costo.ia_umbral (tope mensual agotado)", () => {
       evento: "superadmin.costo.ia_umbral",
       organizationId: null,
       severidad: "atencion",
-      enlace: "/superadmin/gasto-api",
+      enlace: "/superadmin/consumo-ia",
       cuerpo: "Uso: 100 por ciento del presupuesto.",
       dedupeKey: "superadmin.costo.ia_umbral:100:2026-10",
     });

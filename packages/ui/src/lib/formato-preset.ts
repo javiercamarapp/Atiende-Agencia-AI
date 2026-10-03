@@ -2,9 +2,9 @@
 // equivalente de `admin/ui/formato-preset.ts` de Likida. Un preset de texto en vez de un callback para que
 // la pagina que arma la tarjeta solo pase datos; todos formatean con separador de miles `es-MX` y NUNCA
 // calculan ni redondean dinero (solo muestran la cifra que el backend ya calculo).
-export type FormatoPreset = "numero" | "entero" | "mxn" | "usd" | "porcentaje" | "porcentajeSigno";
+export type FormatoPreset = "numero" | "entero" | "mxn" | "usd" | "usd4" | "porcentaje" | "porcentajeSigno";
 
-function miles(v: number, decimales: 0 | 2): string {
+function miles(v: number, decimales: 0 | 2 | 4): string {
   return v.toLocaleString("es-MX", { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
 }
 
@@ -14,6 +14,9 @@ export function resolverFormato(preset: FormatoPreset = "numero"): (v: number) =
       return (v) => `$${miles(v, 2)}`;
     case "usd":
       return (v) => `US$${miles(v, 2)}`;
+    // Costos unitarios (US$0.0042 por operacion): con 2 decimales un costo por operacion se veria como US$0.00.
+    case "usd4":
+      return (v) => `US$${miles(v, 4)}`;
     case "porcentaje":
       return (v) => `${Math.round(v)}%`;
     // Con signo explicito en positivos: "+22%" / "-8%", nunca "22%" ambiguo.

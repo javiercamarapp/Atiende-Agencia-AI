@@ -256,4 +256,9 @@ describe("resolverFormato", () => {
     expect(resolverFormato("porcentajeSigno")(-8)).toBe("-8%");
     expect(resolverFormato("usd")(1234.5)).toBe("US$1,234.50");
   });
+
+  it("usd4 conserva 4 decimales para costos unitarios (un costo por operacion no se ve como US$0.00)", () => {
+    expect(resolverFormato("usd4")(0.004)).toBe("US$0.0040");
+    expect(resolverFormato("usd4")(1234.5)).toBe("US$1,234.5000");
+  });
 });
