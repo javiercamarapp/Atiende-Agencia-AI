@@ -5,6 +5,10 @@
 // presupuesto, y la decision de aprobaciones con motivo (DS v2: DataTable + useConfirm, nunca window.prompt).
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastMock, Toaster: () => null }));
+
 import { AgentesPage } from "../src/verticals/hoteles/pages/Agentes.tsx";
 import { AprobacionesAgentesPage } from "../src/verticals/hoteles/pages/Aprobaciones.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
@@ -14,6 +18,7 @@ import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComp
 let rendered: RenderedComponent | undefined;
 
 afterEach(() => {
+  toastMock.success.mockClear();
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
@@ -162,7 +167,7 @@ describe("AprobacionesAgentesPage", () => {
     await settle();
     expect(writes).toEqual([{ method: "POST", url: "https://api.test/hoteles/prop-1/aprobaciones/a1/aprobar", body: { motivo: "Ocupacion baja el fin de semana" } }]);
     expect(prompt).not.toHaveBeenCalled();
-    expect(text()).toContain("Solicitud aprobada.");
+    expect(toastMock.success).toHaveBeenCalledWith("Solicitud aprobada.", expect.anything());
   });
 
   it("rechazar tambien exige motivo; un rol sin acceso de aprobador (housekeeping) no ve botones", async () => {
@@ -227,26 +232,42 @@ describe("AprobacionesAgentesPage", () => {
     expect(text()).toContain("el agente no ejecuta acciones sensibles por su cuenta");
   });
 
+  it("Volver (o Escape) en el dialogo de ejecutar o aprobar NUNCA escribe", async () => {
+    const { writes } = stub({ aprobaciones: [aprobacion({ estado: "aprobada" }), aprobacion({ id: "a4", accion: "respuesta_resena", porcentaje: null, contenido: "Gracias" })] });
+    rendered = renderComponent(<AprobacionesAgentesPage {...ctx("owner")} />);
+    await settle();
+    click(buttons("Ejecutar")[0]!);
+    await settle();
+    await pulsarEnDialogo("Volver");
+    expect(dialogo()).toBeNull();
+    click(buttons("Aprobar")[0]!);
+    await settle();
+    await act(async () => {
+      dialogo()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await flushMicrotasks();
+    });
+    await settle();
+    expect(writes).toHaveLength(0);
+  });
+
   it("nueva solicitud: manda la llave de idempotencia y avisa que la decide otra persona", async () => {
     const { writes } = stub({ aprobaciones: [] });
     rendered = renderComponent(<AprobacionesAgentesPage {...ctx("frontdesk")} />);
     await settle();
-    const tab = Array.from(rendered.container.querySelectorAll("button, [role=tab]")).find((b) => b.textContent === "Nueva solicitud")!;
-    await act(async () => {
-      tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    });
+    click(buttons("Nueva solicitud")[0]!);
     await settle();
-    const inputs = Array.from(rendered.container.querySelectorAll("input")) as HTMLInputElement[];
+    const inputs = Array.from(dialogo()!.querySelectorAll("input")) as HTMLInputElement[];
     changeValue(inputs.find((i) => i.type === "number")!, "12");
     changeValue(inputs.find((i) => i.placeholder.startsWith("Ej."))!, "Descuento por baja ocupacion");
     await act(async () => {
-      rendered!.container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
     });
     await settle();
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ method: "POST", url: "https://api.test/hoteles/prop-1/aprobaciones", body: { accion: "descuento_tarifa", resumen: "Descuento por baja ocupacion", porcentaje: 12 } });
     expect((writes[0]!.body as { llaveIdempotencia: string }).llaveIdempotencia.length).toBeGreaterThanOrEqual(8);
-    expect(text()).toContain("otra persona con rol de aprobador debe decidirla");
+    expect(toastMock.success).toHaveBeenCalledWith(expect.stringContaining("otra persona con rol de aprobador debe decidirla"), expect.anything());
+    expect(dialogo()).toBeNull();
   });
 });
