@@ -48,8 +48,9 @@ describe("reportes-client", () => {
   });
 
   it("formatea moneda y ocupación sin punto flotante en centavos", () => {
-    expect(formatearMoneda(100003, "MXN")).toBe("$1,000.03 MXN");
-    expect(formatearMoneda(-5, "MXN")).toBe("-$0.05 MXN");
+    expect(formatearMoneda(100003, "MXN")).toBe("$1,000.03");
+    expect(formatearMoneda(-5, "MXN")).toBe("-$0.05");
+    expect(formatearMoneda(250000, "USD")).toBe("$2,500.00 USD");
     expect(formatearOcupacion(7550)).toBe("75.5%");
     expect(formatearOcupacion(null)).toBe("—");
   });
