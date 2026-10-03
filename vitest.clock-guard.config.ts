@@ -19,6 +19,8 @@ export const SPECS_SENSIBLES_AL_RELOJ = [
   "packages/domain-citas/tests/whatsapp-llm-turn-handler-zona-horaria.spec.ts",
   "packages/domain-citas/tests/reminders-ventana-cron.spec.ts",
   "packages/domain-restaurantes/tests/zona-horaria-branch-savepoint.spec.ts",
+  "packages/domain-restaurantes/tests/pm-c4-herramientas.spec.ts",
+  "packages/domain-restaurantes/tests/pm-c5-escenarios-t7.spec.ts",
   "apps/api/tests/rentas-pricing-servidor-hoy.spec.ts",
   "apps/api/tests/rentas-cotizacion-servidor-hoy.spec.ts",
   "apps/api/tests/hoteles-night-audit-servidor-hoy.spec.ts",

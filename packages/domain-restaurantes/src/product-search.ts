@@ -86,7 +86,7 @@ const FRASES_DE_PESO: ReadonlyArray<readonly [RegExp, number]> = [
   [/\bkilo\s+y\s+medio\b|(?<![\d.])1[.,]5\s*(?:kg|kilos?)\b|\b1\s+1\s*\/\s*2\s*(?:kg|kilos?)\b/g, 1500],
   [/\bmedio\s+kilo\b|\b1\s*\/\s*2\s*(?:de\s+)?(?:kg|kilos?)\b|(?<![\d.])0?\.5\s*(?:kg|kilos?)\b|(?<![\d.])0?\.500\b/g, 500],
   [/\bdos\s+kilos?\b|\b2\s*(?:kg|kilos?)\b/g, 2000],
-  [/(?<![\d.\/])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
+  [/(?<![\d./])(\d{2,4})\s*(?:gr|g|gramos)\b/g, -1],
   [/\b1\s*(?:kg|kilo)\b|\bun\s+kilo\b|\bkilos?\b|\bkg\b/g, 1000],
 ];
 
