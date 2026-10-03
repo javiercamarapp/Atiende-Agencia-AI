@@ -22,3 +22,16 @@ Pasa por el `OpenRouterProvider` del gateway (el mismo que produccion; ver `docs
 
 Un LLM hace de agente (prompt de PM + herramientas del registro) y otro de cliente. Se corta al llegar al tope de gasto y
 lista los casos sin correr. La frase `debe_decir_algo_equivalente_a` no se evalua de forma determinista (requiere juez LLM, pendiente).
+
+## Escenarios de chats reales de T7 (PM-C5)
+`escenarios-t7.json` (+ `escenarios-t7.ts`): 71 escenarios sacados de una muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7
+Garcia Lavin (8 semanas, 2-oct-2026). A diferencia de los casos dorados de `casos.json`, cada escenario trae lo que el cliente escribe
+(`turnos_cliente`), lo que el agente debe hacer (`comportamiento_esperado`) y lo que NO debe hacer (`que_no_debe_hacer`) en texto libre
+para un juez (LLM o persona): no se evaluan con graders deterministas ni corren en el modo LLM real todavia.
+- `estado: "pendiente_decision"` = depende de una decision de Javier aun abierta (`dudas`, ver `DECISIONES_PENDIENTES`): se listan pero
+  NO fallan el CI. Hoy son 8 (P1/P18 pedidos programados antes de abrir, P3/P7 cobertura cuando la sucursal dueña de la zona esta cerrada,
+  P22 menu por link, P25 celulares personales).
+- Datos personales: ninguno. Telefonos, nombres, enlaces y direcciones van como marcadores (`[NOMBRE]`, `[TEL]`, `[LINK DE MAPS]`...) y la
+  prueba `tests/pm-c5-escenarios-t7.spec.ts` lo vigila con patrones. Nunca copies aqui texto de la muestra cruda.
+- La prueba tambien ata las cifras que citan los escenarios (fracciones de kilo, extras a $19, totales) al motor real de pedidos sobre el
+  catalogo sembrado de T7.

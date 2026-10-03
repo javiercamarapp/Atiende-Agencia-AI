@@ -757,7 +757,7 @@
    "nombre": "Quesadilla de Natural",
    "categoria": "Quesadillas",
    "precio_mxn": 109,
-   "pack_size": 1,
+   "pack_size": 3,
    "es_alcohol": false,
    "regional": false
   },
@@ -765,7 +765,7 @@
    "nombre": "Quesadilla de Rajas",
    "categoria": "Quesadillas",
    "precio_mxn": 124,
-   "pack_size": 1,
+   "pack_size": 3,
    "es_alcohol": false,
    "regional": false
   },
@@ -773,7 +773,7 @@
    "nombre": "Quesadilla de Champiñones",
    "categoria": "Quesadillas",
    "precio_mxn": 127,
-   "pack_size": 1,
+   "pack_size": 3,
    "es_alcohol": false,
    "regional": false
   },
@@ -781,7 +781,7 @@
    "nombre": "Quesadilla de Chorizo",
    "categoria": "Quesadillas",
    "precio_mxn": 135,
-   "pack_size": 1,
+   "pack_size": 3,
    "es_alcohol": false,
    "regional": false
   },
@@ -1114,9 +1114,89 @@
    "regional": false
   },
   {
+   "nombre": "Pastor — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 225,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 450,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 675,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1350,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pastor — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1800,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
    "nombre": "Bistec de Res — 1 kg",
    "categoria": "Kilos a Domicilio",
    "precio_mxn": 1100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 275,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 550,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 825,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1650,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 2200,
    "pack_size": 1,
    "es_alcohol": false,
    "regional": false
@@ -1130,9 +1210,89 @@
    "regional": false
   },
   {
+   "nombre": "Bistec de Res Encebollado — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 287.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 575,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 862.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1725,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Bistec de Res Encebollado — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 2300,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
    "nombre": "Chuleta de Cerdo — 1 kg",
    "categoria": "Kilos a Domicilio",
    "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1425,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Chuleta de Cerdo — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1900,
    "pack_size": 1,
    "es_alcohol": false,
    "regional": false
@@ -1146,9 +1306,89 @@
    "regional": false
   },
   {
+   "nombre": "Pechuga de Pollo — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1425,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Pechuga de Pollo — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1900,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
    "nombre": "Poc-Chuc — 1 kg",
    "categoria": "Kilos a Domicilio",
    "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1425,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Poc-Chuc — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1900,
    "pack_size": 1,
    "es_alcohol": false,
    "regional": false
@@ -1162,9 +1402,89 @@
    "regional": false
   },
   {
+   "nombre": "Arrachera — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 350,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 700,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1050,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 2100,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Arrachera — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 2800,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
    "nombre": "Costilla de Res — 1 kg",
    "categoria": "Kilos a Domicilio",
    "precio_mxn": 950,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 250 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 237.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 500 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 475,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 750 g",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 712.5,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 1.5 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1425,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Costilla de Res — 2 kg",
+   "categoria": "Kilos a Domicilio",
+   "precio_mxn": 1900,
    "pack_size": 1,
    "es_alcohol": false,
    "regional": false
@@ -1896,6 +2216,22 @@
    "pack_size": 1,
    "es_alcohol": false,
    "regional": true
+  },
+  {
+   "nombre": "Extra Salsa",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 19,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
+  },
+  {
+   "nombre": "Extra Piña",
+   "categoria": "Guarniciones Extra",
+   "precio_mxn": 19,
+   "pack_size": 1,
+   "es_alcohol": false,
+   "regional": false
   }
  ]
 }

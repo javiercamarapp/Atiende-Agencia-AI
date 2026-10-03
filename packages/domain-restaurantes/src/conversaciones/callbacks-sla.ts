@@ -5,9 +5,10 @@ import type { CallbackEstado } from "./types.ts";
 
 /** Objetivo general: una hora. */
 export const SLA_CALLBACK_MIN_GENERAL = 60;
-/** Motivos de escalacion urgentes (el cliente espera ya): quince minutos. */
+/** Motivos de escalacion urgentes (el cliente espera ya): quince minutos. `cancelacion_modificacion` (agregar, cancelar o cambiar un
+ * pedido ya confirmado) entra desde PM-C5: el pedido sale de cocina a los 10 a 25 minutos, asi que el aviso es prioritario. */
 export const SLA_CALLBACK_MIN_URGENTE = 15;
-const MOTIVOS_URGENTES: ReadonlySet<string> = new Set(["escalada:queja", "escalada:alergia_salud", "escalada:urgencia", "escalada:cobro_duplicado"]);
+const MOTIVOS_URGENTES: ReadonlySet<string> = new Set(["escalada:queja", "escalada:alergia_salud", "escalada:urgencia", "escalada:cobro_duplicado", "escalada:cancelacion_modificacion"]);
 /** Cuando queda menos de este porcentaje del objetivo sin que nadie contacte, el callback esta "por vencer". */
 const POR_VENCER_FRACCION = 0.25;
 

@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { extractMetaInboundMessages, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
@@ -47,6 +47,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
   });
 
   app.post("/v1/restaurantes/whatsapp/webhook", async (c) => {
+    // El reloj del presupuesto de 30 s arranca al entrar al handler: la lectura del body y la verificacion de firma ya cuentan.
+    const inicioMs = (deps.relojMs ?? Date.now)();
     const declaredLength = Number(c.req.header("content-length") ?? 0);
     if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BODY_BYTES) {
       return c.text("Payload too large", 413);
@@ -79,9 +81,14 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     );
     if (!inboundAllowed) return c.text("Too Many Requests", 429);
 
+    // PM-C5 (espera de rafagas): los mensajes de un telefono con `replyDebounceSeconds` > 0 se reciben en una transaccion que SE CONFIRMA, el
+    // webhook espera SIN transaccion abierta y recien entonces responde todo junto en otra transaccion. Con la espera apagada (lo normal)
+    // este arreglo queda vacio y el camino es exactamente el de antes.
+    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number }> = [];
+
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    const fase1 = await deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       // Modelo PM: un numero de WhatsApp por sucursal. `resolveWhatsAppChannel` devuelve la
       // organizacion y, si el numero pertenece a una sucursal, esa sucursal; contra una base
@@ -119,6 +126,20 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.alta_confirmada", `alta-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberIdOfBatch, body: ALTA_CONFIRMADA_TEXTO, transaccional: true }),
           });
           if (atendida) continue;
+          // La lectura de la config va en savepoint: un error de Postgres aqui no aborta la transaccion del lote ni lo tumba con 500; solo ese mensaje
+          // cae al camino sin espera (el de siempre).
+          const esperaSegundos = await repo
+            .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
+            .catch(() => 0);
+          if (esperaSegundos > 0) {
+            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body });
+            if (recepcion.estado === "responder") {
+              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos });
+            } else if (recepcion.estado === "fallo") {
+              hadRetryableFailure = true;
+            }
+            continue;
+          }
           const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
             organizationId,
             messageId: message.id,
@@ -150,7 +171,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         }
       }
       // Nada que procesar (sin mensajes de texto validos o ningun numero reconocido): ack silencioso.
-      if (!processedAny) return c.json({ ok: true });
+      if (!processedAny) return { ack: true as const };
 
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
       // best-effort que citas/whatsapp.ts, ver comentario de cabecera de
@@ -162,11 +183,60 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
       await triggerRestaurantesEmailDispatchInline(deps, db, repo);
 
-      // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
-      // mensajes ya procesados quedan idempotentemente saltados por el ledger de
-      // entrada; los fallidos/ocupados se pueden reclamar en el reintento.
-      return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
+      return { ack: false as const, hadRetryableFailure };
     });
+    if (fase1.ack) return c.json({ ok: true });
+    let hadRetryableFailure = fase1.hadRetryableFailure;
+
+    // Fase 2 de la espera de rafagas: despues de la espera (sin transaccion abierta) se responde, en una transaccion nueva, TODO lo que
+    // llego a cada telefono durante ella.
+    if (diferidos.length > 0) {
+      const esperar = deps.esperarRafaga ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      // La espera se recorta para que la fase B (turnos del LLM) todavia quepa en la vida de la funcion; sin tiempo, se responde de inmediato.
+      const esperaMs = esperaEfectivaMs(Math.max(...diferidos.map((d) => d.esperaSegundos)), (deps.relojMs ?? Date.now)() - inicioMs);
+      if (esperaMs > 0) await esperar(esperaMs);
+      try {
+        const reintento = await deps.engine.withAppSession({ userId: null }, async (db) => {
+          const repo = deps.restaurantesRepo(db);
+          let hayReintento = false;
+          for (const d of diferidos) {
+            const outcome = await responderTrasEspera(repo, deps.turnHandler, {
+              organizationId: d.organizationId,
+              messageId: d.messageId,
+              phone: d.phone,
+              phoneNumberId: d.phoneNumberId,
+              propertyId: d.propertyId,
+              ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+              handoffGate: deps.handoffGate?.(db),
+              finFuncionMs: inicioMs + FUNCION_MAX_MS,
+              reloj: deps.relojMs ?? Date.now,
+            });
+            if (outcome.retryable) hayReintento = true;
+          }
+          await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
+          await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+          return hayReintento;
+        });
+        if (reintento) hadRetryableFailure = true;
+      } catch {
+        // La transaccion de la fase B no pudo confirmar (su `failed` se revirtio con ella): se suelta el turno que confirmo la fase A para que
+        // Meta reintente y los mensajes siguientes no se absorban sin respuesta.
+        hadRetryableFailure = true;
+        try {
+          await deps.engine.withAppSession({ userId: null }, async (db) => {
+            const repo = deps.restaurantesRepo(db);
+            for (const d of diferidos) await liberarTurnoTrasFalloDeFaseB(repo, { organizationId: d.organizationId, messageId: d.messageId, phone: d.phone });
+          });
+        } catch {
+          // Sin base no se puede liberar: manda el vencimiento del lease (45 s).
+        }
+      }
+    }
+
+    // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
+    // mensajes ya procesados quedan idempotentemente saltados por el ledger de
+    // entrada; los fallidos/ocupados se pueden reclamar en el reintento.
+    return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
   });
 
   return app;

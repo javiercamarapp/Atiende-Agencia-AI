@@ -131,6 +131,8 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
           body: message.body,
           interactive: message.interactive,
           phoneNumberId,
+          // C-11: con un handoff abierto el agente calla (solo se guarda el mensaje); sin el puerto o con la base sin la migracion 031 responde como antes.
+          ...(deps.citasHandoffGate ? { handoffGate: deps.citasHandoffGate(db) } : {}),
         });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `citas.messaging_outbox`

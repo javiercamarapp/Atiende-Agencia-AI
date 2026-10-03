@@ -55,12 +55,12 @@ const subtotal = (o: DemoOrderRow) => Math.round(o.items.reduce((s, i) => s + i.
 const descuento = (o: DemoOrderRow) => Number(/Promoción aplicada: [A-Z0-9_-]+ \(-\$([0-9.]+)\)/.exec(o.notes)?.[1] ?? 0);
 
 describe("generarVolumenDemo (motor real de pedidos)", () => {
-  it("genera volumen moderado solo en las sucursales activas (T1 y T3) y NUNCA toca las inactivas (T2, T4, T5, T7 y T8)", async () => {
+  it("genera volumen moderado solo en las sucursales activas (T1, T3 y T7) y NUNCA toca las inactivas (T2, T4, T5 y T8)", async () => {
     const { orders, summary } = await generar();
     expect(orders.length).toBeGreaterThan(300);
     expect(summary.orders).toBe(orders.length);
-    expect(Object.keys(summary.porSucursal).sort()).toEqual(["pensiones", "prol-montejo"]);
-    for (const inactiva of ["fco-montejo", "galerias", "playa", "garcia-lavin", "altabrisa"]) expect(orders.some((o) => o.branchSlug === inactiva)).toBe(false);
+    expect(Object.keys(summary.porSucursal).sort()).toEqual(["garcia-lavin", "pensiones", "prol-montejo"]);
+    for (const inactiva of ["fco-montejo", "galerias", "playa", "altabrisa"]) expect(orders.some((o) => o.branchSlug === inactiva)).toBe(false);
     // Proporcion ilustrativa: la sucursal grande vende mas que la mas chica.
     expect(summary.porSucursal["prol-montejo"]!).toBeGreaterThan(summary.porSucursal["pensiones"]!);
   });

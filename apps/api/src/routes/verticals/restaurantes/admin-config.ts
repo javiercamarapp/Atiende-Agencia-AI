@@ -34,6 +34,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   AGENTE_LIMITES,
+  ESPERA_RAFAGAS_MAX_SEGUNDOS,
   MOTIVOS_ESCALACION_DESACTIVABLES,
   PERFILES_AGENTE_WHATSAPP,
   STAFF_INVITE_ROLES,
@@ -110,6 +111,8 @@ interface UpsertAgenteWhatsappBody {
   readonly salsasText?: unknown;
   readonly promosText?: unknown;
   readonly escalationReasonsOff?: unknown;
+  readonly largeOrderText?: unknown;
+  readonly replyDebounceSeconds?: unknown;
   /** Version que la pantalla vio al cargar (0 = no habia fila); si ya no es la vigente, 409. Opcional. */
   readonly versionEsperada?: unknown;
 }
@@ -132,6 +135,8 @@ function serializeAgenteWhatsapp(row: WhatsAppAgentConfigRow | null) {
         salsasText: row.salsasText ?? null,
         promosText: row.promosText ?? null,
         escalationReasonsOff: row.escalationReasonsOff ?? [],
+        largeOrderText: row.largeOrderText ?? null,
+        replyDebounceSeconds: row.replyDebounceSeconds ?? null,
         // null = base sin la migracion 033 (no hay version ni historial).
         version: row.version ?? null,
       }
@@ -411,6 +416,7 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       tonos: TONOS_AGENTE_WHATSAPP,
       motivosDesactivables: MOTIVOS_ESCALACION_DESACTIVABLES,
       limites: AGENTE_LIMITES,
+      esperaRafagasMaxSegundos: ESPERA_RAFAGAS_MAX_SEGUNDOS,
     });
   });
 

@@ -248,7 +248,7 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
               )}
             </div>
 
-            <FormField label="Tiempos de entrega" hint={`Texto que el agente dice al cliente. ${contador(form.deliveryTimeText, lim?.deliveryTimeText) ?? ""}`}>
+            <FormField label="Tiempos de entrega y de recogida" hint={`Texto que el agente dice al cliente: domicilio y recoger, normal y en hora pico (por ejemplo «a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)»). ${contador(form.deliveryTimeText, lim?.deliveryTimeText) ?? ""}`}>
               <Textarea rows={2} value={form.deliveryTimeText} maxLength={lim?.deliveryTimeText} placeholder={defaults?.deliveryTimeText} onChange={(e) => cambiar("deliveryTimeText", e.target.value)} />
             </FormField>
 
@@ -259,6 +259,12 @@ export function AgenteWhatsappSeccion({ apiBaseUrl, token, propertyId }: Props) 
                 </FormField>
                 <FormField label="Promociones (solo para recoger)" hint={`El agente solo las menciona; el descuento lo calcula el sistema. ${contador(form.promosText, lim?.promosText) ?? ""}`}>
                   <Textarea rows={2} value={form.promosText} maxLength={lim?.promosText} placeholder={defaults?.promosText ?? ""} onChange={(e) => cambiar("promosText", e.target.value)} />
+                </FormField>
+                <FormField label="Umbral de pedido grande" hint={`A partir de aquí el agente toma los datos y avisa a la sucursal para que lo confirme; por debajo lo toma normal. ${contador(form.largeOrderText, lim?.largeOrderText) ?? ""}`}>
+                  <Textarea rows={2} value={form.largeOrderText} maxLength={lim?.largeOrderText} placeholder={defaults?.largeOrderText ?? ""} onChange={(e) => cambiar("largeOrderText", e.target.value)} />
+                </FormField>
+                <FormField label="Espera de ráfagas (segundos)" hint={`Cuántos segundos espera el agente tras el último mensaje del cliente antes de responder, para contestar todo junto. Vacío o 0 = responde enseguida; máximo ${opciones.esperaRafagasMaxSegundos ?? 10}.`}>
+                  <Input type="number" inputMode="numeric" min={0} max={opciones.esperaRafagasMaxSegundos ?? 10} step={1} value={form.replyDebounceSeconds} placeholder="Apagada" onChange={(e) => cambiar("replyDebounceSeconds", e.target.value)} />
                 </FormField>
                 <fieldset className="flex flex-col gap-2 rounded-card border border-border p-3">
                   <legend className="px-1 text-sm font-medium">Motivos por los que el agente avisa a una persona</legend>

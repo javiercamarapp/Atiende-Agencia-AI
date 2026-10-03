@@ -365,3 +365,35 @@ export { VENTANA_SEGURA_MS, armarParametrosPlantilla, decidirEnvioProactivo, enc
 export type { DecisionProactivo, PlantillaParaEncolar, PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
 export { EVENTOS_PLANTILLA_CITAS, PLANTILLA_ESTADOS, PLANTILLA_IDIOMA_RE, PLANTILLA_MAX_VARIABLES, PLANTILLA_NOMBRE_RE, eventoPlantillaCitas, validarPlantillaWhatsapp } from "./whatsapp/plantillas.ts";
 export type { EstadoPlantillaWhatsapp, EventoPlantillaCitas, PlantillaWhatsappInput, PlantillaWhatsappRecord, ResultadoValidacionPlantilla } from "./whatsapp/plantillas.ts";
+
+// ---- C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (migracion 031) ----
+export {
+  ConversacionesConflictoError,
+  ConversacionesNoDisponibleError,
+  ConversacionesRechazadaError,
+  ConversacionesValidacionError,
+  HANDOFF_ESTADOS,
+  HandoffYaTomadoError,
+  InMemoryConversacionesRepository,
+  InMemoryHandoffAgentGate,
+  NOTA_MAX,
+  PostgresConversacionesRepository,
+  PostgresHandoffAgentGate,
+  RESPUESTA_MAX,
+  SinNumeroWhatsappError,
+} from "./conversaciones/index.ts";
+export type {
+  BandejaFiltro,
+  BandejaItem,
+  BandejaPagina,
+  ConversacionDetalle,
+  ConversacionesLectura,
+  ConversacionesRepository,
+  ConversacionSemilla,
+  HandoffAgentGate,
+  HandoffDetalle,
+  HandoffEstado,
+  InMemoryConversacionesOptions,
+  MensajeConversacion,
+  NotaInterna,
+} from "./conversaciones/index.ts";

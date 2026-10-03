@@ -33,7 +33,9 @@ import type {
   CalendarSyncPort as CitasCalendarSyncPort,
   CitasConversationGuard,
   CitasRepository,
+  ConversacionesRepository as CitasConversacionesRepository,
   ExchangeAuthorizationCodeInput,
+  HandoffAgentGate as CitasHandoffAgentGate,
   ExchangeAuthorizationCodeResult,
   ResolveCalendarPort,
   ResolveCalendarSyncPort,
@@ -145,6 +147,11 @@ export interface AppDeps {
    * las comandas van a captura manual (nunca se inventan codigos). */
   readonly softRestaurantMapeo?: { readonly resolverCodigos: ResolverCodigosPos; readonly resolverSucursal: ResolverSucursalPos };
   readonly turnHandler: WhatsAppTurnHandler;
+  /** PM-C5: espera real (en ms) entre las dos fases del webhook de WhatsApp cuando el agente tiene `replyDebounceSeconds` > 0. OPCIONAL: sin
+   * ella se usa `setTimeout`; los tests inyectan una espera controlada. Con la espera apagada (lo normal) nunca se llama. */
+  readonly esperarRafaga?: (ms: number) => Promise<void>;
+  /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
+  readonly relojMs?: () => number;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con
@@ -253,6 +260,11 @@ export interface AppDeps {
    * comentario de ese campo abajo) — no una tabla de auditoría propia de hoteles. */
   readonly hotelesFraudeAuditSink: AuditSink;
   readonly citasRepo: (db: TenantDbSession) => CitasRepository;
+  /** C-11 (migracion 031): bandeja de conversaciones de WhatsApp de citas con handoff a humano. OPCIONALES: sin ellos las rutas responden 503 honesto
+   * y el webhook de WhatsApp sigue como antes (el agente responde siempre). En produccion son `PostgresConversacionesRepository` /
+   * `PostgresHandoffAgentGate` (SAVEPOINT contra la base sin migrar); los tests inyectan el espejo en memoria. */
+  readonly citasConversacionesRepo?: (db: TenantDbSession) => CitasConversacionesRepository;
+  readonly citasHandoffGate?: (db: TenantDbSession) => CitasHandoffAgentGate;
   /** Fase 2 §2 — turn handler real del agente de WhatsApp de citas (LLM real sobre
    * @atiende/agent-core), inyectado igual que `turnHandler` de restaurantes. */
   readonly citasTurnHandler: CitasWhatsAppTurnHandler;

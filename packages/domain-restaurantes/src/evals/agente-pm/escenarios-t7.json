@@ -1,0 +1,1272 @@
+{
+ "suite": "escenarios-t7-muestra-2oct",
+ "version": "2026-10-02",
+ "nota": "71 escenarios sacados de la muestra ANONIMIZADA de 104 chats reales de WhatsApp de T7 Garcia Lavin (8 semanas, 2-oct-2026). Sin telefonos, nombres de clientes, direcciones exactas ni coordenadas (una prueba lo vigila). `comportamiento_esperado` y `que_no_debe_hacer` son texto libre para el juez (LLM o persona): no se evaluan de forma determinista. `estado: pendiente_decision` = depende de una decision de Javier aun abierta (`dudas`): se listan pero NO fallan el CI.",
+ "escenarios": [
+  {
+   "id": "T7-001",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_nuevo_fraccion_kilo",
+   "turnos_cliente": [
+    "Hola",
+    "Me puedes mandar 1/4 de bistec, por favor con tortilla de maíz y todas las salsas, ajo y guacamole por favor",
+    "[NOMBRE DEL DESARROLLO], [comisaría al norte de Mérida] + [UBICACIÓN]",
+    "Depa [N]",
+    "Pago con tarjeta por favor"
+   ],
+   "comportamiento_esperado": "Reconoce 1/4 kg de bistec como fracción vendible a precio proporcional ($275 con la lista 2026). Confirma salsas: las básicas (roja, verde, cebolla con cilantro, limones) más crema de ajo y guacamolera a petición sin costo. Anota 'llevar terminal'. Valida zona con el pin, da el tiempo real de la sucursal, repite el pedido completo con total y pide un 'sí'.",
+   "que_no_debe_hacer": "Decir que solo se vende el kilo completo; cobrar las salsas pedidas como extra; mandar la plantilla larga de bienvenida cuando el cliente ya dio todo; prometer 40-50 min fijos.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-002",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pregunta_precio_cambio_de_lista",
+   "turnos_cliente": [
+    "Hola",
+    "Me puedes mandar 1/4 de bistec con tortilla de maíz y todas las salsas, ajo y guacamole",
+    "Pago con tarjeta",
+    "¿Ya subió?"
+   ],
+   "comportamiento_esperado": "Responde con amabilidad que el precio vigente es el que da la cotización ($275) y que la lista se actualizó en septiembre. Sigue con el pedido.",
+   "que_no_debe_hacer": "Igualar el precio anterior, dar descuento o justificarse de más.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-003",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "factura_ticket_otra_sucursal",
+   "turnos_cliente": [
+    "[FOTO DEL TICKET]",
+    "Buenas noches",
+    "¿Me ayuda a facturar?",
+    "¿Puede ayudarme usted, porfa?"
+   ],
+   "comportamiento_esperado": "Explica que la factura se hace en línea con el QR o el enlace del ticket dentro de las 24 h siguientes. Si el ticket es de otra sucursal, lo dice y da el contacto público de esa sucursal o el correo de facturas. Si el cliente insiste en que lo hagan por él, pasa a humano.",
+   "que_no_debe_hacer": "Pedir o guardar RFC, razón social o correo por chat; prometer que 'ya quedó facturado'; ignorar la foto.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-004",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "factura_fuera_de_horario",
+   "turnos_cliente": [
+    "[FOTO DEL TICKET]",
+    "Me ayuda con la factura por favor"
+   ],
+   "comportamiento_esperado": "Aunque sea la 1:10 am, contesta: da el enlace de facturación en línea y el plazo, y avisa que si necesita ayuda la sucursal lo atiende en horario.",
+   "que_no_debe_hacer": "Dejar el mensaje sin respuesta hasta el día siguiente; facturar o pedir datos fiscales.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-005",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pregunta_producto_y_sustitucion",
+   "turnos_cliente": [
+    "Buenas noches",
+    "Las tiras de pollo, ¿cuántas trae?",
+    "Las empanizadas, ¿cómo vienen?",
+    "¿Cuánto cuesta?",
+    "¿BBQ y blue cheese se puede?",
+    "En lugar de la ensalada, ¿pueden ser papas a la francesa?",
+    "¿No hay manera de plano que pueda conseguir BBQ?",
+    "Está bien, así como viene, me lo pueden mandar",
+    "Cambio de 500"
+   ],
+   "comportamiento_esperado": "Mapea 'tiras de pollo empanizadas' a Crujientes de pechuga; describe lo que la herramienta diga (14-16 piezas con blue cheese/búfalo y ensalada) y el precio ($329). Dice con amabilidad que no manejan BBQ ni sustituyen la ensalada; ofrece la orden de papas aparte con su precio. Anota que paga con $500.",
+   "que_no_debe_hacer": "Inventar salsa BBQ, aceptar la sustitución o cobrarla sin herramienta; insistir o regañar.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-006",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "recoger_cliente_llega_pide_terminal",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "Me puedes dar 1/4 de bistec para pasar a buscar a la sucursal y pagar ahí con tarjeta",
+    "Con todas las salsas",
+    "Maíz",
+    "Ajo y salsa de guacamole porfa",
+    "(25 min después) Ya estoy afuera, en un auto gris, enfrente. ¿Pueden traerme la terminal?"
+   ],
+   "comportamiento_esperado": "Toma el pedido para recoger ($275, tiempo de recogida de la sucursal). Cuando el cliente avisa que llegó, avisa a la sucursal (paso a humano o notificación) que el cliente está afuera y pide terminal; le pide que prenda las intermitentes.",
+   "que_no_debe_hacer": "Responder que tiene que bajarse; ignorar el aviso; crear otro pedido.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003007"
+  },
+  {
+   "id": "T7-007",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "evento_fecha_futura",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "Quería ver si tienen servicio para el 18 de octubre, por favor",
+    "No, pero servicio para eventos"
+   ],
+   "comportamiento_esperado": "Entiende que pregunta por servicio de eventos (trompo o bufeteras) y da el contacto oficial de eventos (correo y oficina). No toma un pedido para otra fecha.",
+   "que_no_debe_hacer": "Contestar con el horario de la sucursal; dar celulares personales salvo autorización de Javier [P25]; programar un pedido para el 18.",
+   "dudas": [
+    "P25"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003008"
+  },
+  {
+   "id": "T7-008",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "productos_no_manejados_en_lista",
+   "turnos_cliente": [
+    "Hola, ¿me podrían mandar un pedido?",
+    "1 orden de tacos de bistec, 1 alambre suizo de bistec (con tortillas de maíz), 1 frijolitos con totopos, 1 orden de salchichas rojas para asar, 1 queso fundido con champiñones",
+    "[DIRECCIÓN: edificio, depto]",
+    "¿Manejan chistorra?",
+    "¿Longaniza?",
+    "Una orden de papas a la francesa",
+    "De pura casualidad, ¿tiene dedos de queso?",
+    "Me manda terminal porfavor"
+   ],
+   "comportamiento_esperado": "Responde a cada producto inexistente con 'no lo manejamos' y ofrece lo parecido que sí hay (crujientes de pollo). Pregunta la tortilla del queso fundido. Aclara si 'frijolitos con totopos' es el frijol con tostada. Cotiza solo lo existente, repite y anota terminal.",
+   "que_no_debe_hacer": "Agregar productos que no están en el catálogo; cotizarlos; perder los productos válidos del pedido.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003010"
+  },
+  {
+   "id": "T7-009",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "recurrente_instrucciones_de_empaque",
+   "turnos_cliente": [
+    "Hola, buenas noches, ¿le puedo hacer un pedido?",
+    "[EDIFICIO] Donde siempre, depto [N]",
+    "1 orden de frijoles charros especiales; 1 francés suizo SIN CEBOLLA; 1 alambre suizo SIN CEBOLLA tortillas de maíz; 1 frijoles con totopos; 1 nachos de pastor con el pastor sin picar y el guacamole aparte. Aviso importante: todas las órdenes en bolsas separadas con sus salsas (verde, roja, ajo, pico de gallo, cebolla y cilantro)",
+    "Y traer terminal",
+    "El francés suizo y el alambre de bistec, lo demás pastor"
+   ],
+   "comportamiento_esperado": "Reconoce al cliente y la dirección guardada sin leerla completa. Pregunta la carne del francés y del alambre si falta. Anota como ajustes las instrucciones de empaque y de preparación (sin cebolla, pastor sin picar, guacamole aparte, bolsas separadas con salsas). Cotiza, da el tiempo real y repite.",
+   "que_no_debe_hacer": "Escalar las instrucciones como 'modificación de platillo'; omitir las notas en la comanda; tutear.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003010"
+  },
+  {
+   "id": "T7-010",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "mensaje_fuera_de_horario_madrugada",
+   "turnos_cliente": [
+    "Hola, ¿aún están disponibles?"
+   ],
+   "comportamiento_esperado": "A las 2:16 am contesta que la sucursal ya cerró (cierra a la 1 am) y que abre a las 12 del día. Si la regla lo permite, ofrece dejar el pedido programado para después de la apertura [P1/P18].",
+   "que_no_debe_hacer": "Dejar sin respuesta; tomar el pedido como inmediato; prometer entrega esa madrugada.",
+   "dudas": [
+    "P1",
+    "P18"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003010"
+  },
+  {
+   "id": "T7-011",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "todo_en_un_mensaje_y_cambios_antes_de_confirmar",
+   "turnos_cliente": [
+    "Hola, buenas tardes",
+    "Escribo para hacer un pedido",
+    "[NOMBRE] [TEL] [DIRECCIÓN temporal, Benito Juárez Norte] 1 francés de pastor, 2 gringas de pastor de harina, 1 frijoles con tostadas, todas las salsas incluyendo ajo, guacamole y piña, 1 Coca-Cola sin azúcar, 1 Coca-Cola regular. Pago en efectivo",
+    "¿Puedo pagar con tarjeta?",
+    "¿Podría agregar unos frijoles charros especiales?"
+   ],
+   "comportamiento_esperado": "No manda la bienvenida: usa los datos dados. Aclara que 'francés' es francés suizo y que la gringa viene en orden de 2 (¿1 orden?). Cambia el pago a tarjeta (terminal) y agrega los charros antes de cotizar. Da un solo total con todo, el tiempo y repite.",
+   "que_no_debe_hacer": "Volver a pedir nombre, teléfono y dirección; dar dos totales distintos; ignorar el cambio de pago.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003014"
+  },
+  {
+   "id": "T7-012",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "aclarar_presentacion_gringas",
+   "turnos_cliente": [
+    "Hola, buenas tardes",
+    "[NOMBRE] [TEL] [DIRECCIÓN, Montes de Amé] 3 gringas de pastor de harina, todas las salsas incluyendo ajo, guacamole y piña. Pago en efectivo"
+   ],
+   "comportamiento_esperado": "Aclara que las gringas vienen en orden de 2 y pregunta si son 3 órdenes (6 gringas) o 3 piezas (no se venden sueltas). Cotiza según la respuesta y pregunta con cuánto paga.",
+   "que_no_debe_hacer": "Suponer la cantidad; cobrar 3 piezas sueltas.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003014"
+  },
+  {
+   "id": "T7-013",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "horario_de_otra_sucursal",
+   "turnos_cliente": [
+    "Buenas tardes, ¿trabaja hoy desde el mediodía la sucursal de Francisco de Montejo?"
+   ],
+   "comportamiento_esperado": "Da el horario de esa sucursal según la herramienta (entre semana abre a las 6 pm) y ofrece tomar el pedido en la sucursal del chat si la dirección está en su cobertura, o para recoger.",
+   "que_no_debe_hacer": "Inventar un horario; tomar el pedido para la sucursal cerrada.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003017"
+  },
+  {
+   "id": "T7-014",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "kilo_con_referencia_visual",
+   "turnos_cliente": [
+    "[TEL] [NOMBRE] [DIRECCIÓN en Real Montejo] Son 5 casas iguales, es la única con cochera techada. Un kilo de bistec con tortillas de maíz, todas las salsas incluyendo la guacamolera. Pago con tarjeta de crédito"
+   ],
+   "comportamiento_esperado": "Cotiza $1,100, anota la referencia visual y 'llevar terminal', y **pide el pin antes de confirmar** para que vaya en la comanda. Da el tiempo real.",
+   "que_no_debe_hacer": "Confirmar sin pin y pedirlo 40 min después; cobrar la guacamolera.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003017"
+  },
+  {
+   "id": "T7-015",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_recurrente_mensaje_corto",
+   "turnos_cliente": [
+    "B tardes",
+    "¿Podrías enviarme 1/4 de bistec y 1/4 de pechuga de pollo?",
+    "Maíz, salsas solo pico de gallo"
+   ],
+   "comportamiento_esperado": "Reconoce el número: '¿[NOMBRE]? ¿a [privada/colonia] como siempre?'. Cotiza las dos fracciones ($275 + $237.50 = $512.50 con la lista 2026), anota solo salsa mexicana, pregunta el pago (suele ser terminal) y da el tiempo.",
+   "que_no_debe_hacer": "Mandar la plantilla larga; pedir todos los datos otra vez; leer la dirección completa.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003018"
+  },
+  {
+   "id": "T7-016",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "estado_del_pedido",
+   "turnos_cliente": [
+    "B tardes",
+    "¿Ya salió mi pedido para acá?"
+   ],
+   "comportamiento_esperado": "Si existe la herramienta de estado, la consulta y responde. Si no: dice la hora en que se confirmó y el tiempo prometido. Si ya se pasó el tiempo, pasa a la sucursal con motivo tiempos_entrega.",
+   "que_no_debe_hacer": "Inventar 'ya salió' o 'ya va en camino' sin dato; prometer una hora exacta.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003018"
+  },
+  {
+   "id": "T7-017",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "queja_producto_equivocado_y_gramaje",
+   "turnos_cliente": [
+    "[FOTO]",
+    "Buenas tardes. Se confundieron y nos dieron pastor en lugar de bistec, además de que pesó 200 gramos en vez de 250. ¿Me podría mandar el cuarto de kilo de bistec y les devuelvo el pastor?",
+    "Es la comida de mi madre, que es mayor, y le cae pesado el pastor"
+   ],
+   "comportamiento_esperado": "Se disculpa breve y con empatía, registra qué pasó (producto y peso), pide la dirección o el pin para la reposición y pasa a la sucursal con motivo queja/reposicion_descuento, con prioridad. Dice que la sucursal le confirma en minutos.",
+   "que_no_debe_hacer": "Prometer la reposición o una cortesía por su cuenta; culpar al cliente; pedirle que vuelva a la sucursal.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003019"
+  },
+  {
+   "id": "T7-018",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cobertura_cuando_otra_sucursal_esta_cerrada",
+   "turnos_cliente": [
+    "Buenas tardes. ¿A qué hora empiezan a recibir pedidos para servicio a domicilio?",
+    "¿Ustedes no pueden llevar mi pedido a [colonia de la zona de Francisco de Montejo]? Creo que me surte la de Montejo, pero casi siempre se equivocan con el pedido"
+   ],
+   "comportamiento_esperado": "Responde que reciben desde las 12. Sobre la cobertura, aplica la regla que confirme Javier: si la sucursal dueña de la zona está cerrada (T2 abre a las 6 pm), la del chat cubre en horario de día [P3/P7]. Si no hay regla, ofrece recoger o pasa a humano.",
+   "que_no_debe_hacer": "Hablar mal de la otra sucursal; prometer cobertura sin regla.",
+   "dudas": [
+    "P3",
+    "P7"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003019"
+  },
+  {
+   "id": "T7-019",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cambio_domicilio_a_recoger_tras_confirmar",
+   "turnos_cliente": [
+    "(pedido a domicilio ya confirmado) Buenas tardes, me salió un pendiente y voy a pasar al ladito de ustedes, por lo que puedo pasar a buscar mi pedido en unos 10 minutos y así no me lo tienen que llevar"
+   ],
+   "comportamiento_esperado": "Pasa el cambio a la sucursal de inmediato (cancelacion_modificacion) para que no salga el repartidor; avisa que puede tardar de 15 a 30 min en estar listo y que lo esperan en la sucursal.",
+   "que_no_debe_hacer": "Crear un segundo pedido; decir 'listo' sin avisar a la sucursal.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003019"
+  },
+  {
+   "id": "T7-020",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "mensaje_guardado_recurrente",
+   "turnos_cliente": [
+    "Hola!!! Buenas noches. Un pedido a domicilio porfi. [TEL] [NOMBRE] [DIRECCIÓN, Santa Gertrudis Copó] Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta",
+    "[UBICACIÓN]"
+   ],
+   "comportamiento_esperado": "Sin bienvenida. Confirma salsas en una línea, cotiza ($388 + $142 = $530), anota terminal, da el tiempo y repite el pedido antes de confirmar. Nota: el guacamole es la entrada, no la salsa guacamolera.",
+   "que_no_debe_hacer": "Confundir guacamole (entrada) con frijol o con salsa guacamolera; pedir datos que ya vienen en el mensaje.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003020"
+  },
+  {
+   "id": "T7-021",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "queja_faltante_guacamole",
+   "turnos_cliente": [
+    "Hola!",
+    "Recibieron el pedido, pero me dicen que no mandaron el guacamole"
+   ],
+   "comportamiento_esperado": "Se disculpa, revisa lo que quedó en la comanda, pregunta si quiere que se lo envíen y pasa a la sucursal con motivo queja.",
+   "que_no_debe_hacer": "Negar el error sin revisar; prometer descuento.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003020"
+  },
+  {
+   "id": "T7-022",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "salsa_extra_con_costo",
+   "turnos_cliente": [
+    "Un pedido a domicilio por favor, ubicación: [PRIVADA, casa N] - nachos de bistec, con todas las salsas + extra de ajo. Efectivo, cambio de $500",
+    "[UBICACIÓN]",
+    "[NOMBRE]"
+   ],
+   "comportamiento_esperado": "Cotiza los nachos de bistec y la porción extra de ajo con la herramienta ($373 + $19 = $392 si 'Extra salsa' está dada de alta). Confirma las salsas y anota que paga con $500.",
+   "que_no_debe_hacer": "Regalar o cobrar el extra sin que entre en el total; omitir el total.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003021"
+  },
+  {
+   "id": "T7-023",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_para_recoger_no_debe_quedar_sin_respuesta",
+   "turnos_cliente": [
+    "Un pedido *para pasar a buscar* tacos PM Plaza Victory - nachos de bistec, con todas las salsas + extra de ajo. Efectivo"
+   ],
+   "comportamiento_esperado": "Responde de inmediato, confirma el nombre del contacto, cotiza, da el tiempo de recogida y repite.",
+   "que_no_debe_hacer": "Dejar el mensaje sin respuesta (en la muestra nunca se contestó).",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003021"
+  },
+  {
+   "id": "T7-024",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_con_menu_viejo_y_cortesia",
+   "turnos_cliente": [
+    "Buenas noches, quisiera hacer una orden",
+    "1 francés suizo de bistec, 2 órdenes de tacos suizos de bistec con tortillas de maíz, 1 Coca Cola regular",
+    "[TEL] [NOMBRE] [DIRECCIÓN, Montebello]",
+    "Con tarjeta",
+    "Con la orden normalmente ustedes envían de cortesía totopos y salsa mexicana, ¿ya no lo hacen?",
+    "¿Me podías indicar los precios detallados?",
+    "Puedes cancelar la orden",
+    "Las personas que pidieron ya no desean porque el precio está diferente al menú, aparte hay que pagar extra por lo que antes era cortesía"
+   ],
+   "comportamiento_esperado": "Pregunta si la coca es de lata. Desglosa ($283, $291 c/u, $53) y explica que la cortesía de totopos es solo en comedor, que la salsa mexicana sí va sin costo y que puede agregar frijol con tostada por $93. Acepta la cancelación sin presión (aún no se preparaba) y registra el motivo.",
+   "que_no_debe_hacer": "Igualar precios viejos; inventar cortesías; insistir o discutir.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003023"
+  },
+  {
+   "id": "T7-025",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "tacos_al_pastor_por_pieza",
+   "turnos_cliente": [
+    "Hola, quisiera ordenar en VictoryPlatz",
+    "Sería entrega a domicilio",
+    "[TEL] [NOMBRE] [DIRECCIÓN con negocio de referencia, Benito Juárez Norte] Orden: entrada de frijol con tostadas y orden de tacos al pastor. Pago: efectivo"
+   ],
+   "comportamiento_esperado": "Pregunta cuántos tacos al pastor (se venden por pieza) y la tortilla. Con 3 tacos de maíz: $126 + $93 = $219. Pregunta con cuánto paga.",
+   "que_no_debe_hacer": "Suponer 3 o 5 tacos; escribir en mayúsculas.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003024"
+  },
+  {
+   "id": "T7-026",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "fuera_de_cobertura_pasa_a_recoger_programado",
+   "turnos_cliente": [
+    "Hola, buenas tardes, para hacer pedido para Victory",
+    "[LINK DE MAPS]",
+    "¿Entregan aquí?",
+    "Entonces sería para recoger",
+    "[NOMBRE] 1 kg de bistec, 1 kg de pastor, [TEL]",
+    "Mixta",
+    "Lo necesito para la tarde, ¿le puedo decir la hora?",
+    "A las 7",
+    "Y me puede dar las salsas todas porfa",
+    "Una pregunta: la tortilla está aparte, ¿verdad?",
+    "Voy a tener que cambiar la hora, lo paso a buscar a las 5 pm por favor"
+   ],
+   "comportamiento_esperado": "Revisa la cobertura con el link. Si no cubre, lo dice y ofrece recoger. Toma 1 kg + 1 kg con tortilla mixta ($2,000), registra la hora de recogida estructurada (7 pm y luego la cambia a 5 pm) y confirma que la tortilla va aparte.",
+   "que_no_debe_hacer": "Aceptar domicilio fuera de zona; escalar solo por el monto de $2,000 si el umbral se sube [P19]; registrar la hora solo como nota libre.",
+   "dudas": [
+    "P19"
+   ],
+   "estado": "activo",
+   "fuente": "chat 00003025"
+  },
+  {
+   "id": "T7-027",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "antes_de_abrir_pregunta_y_programa",
+   "turnos_cliente": [
+    "Hola, buenos días",
+    "¿Cuánto cuesta medio kilo de chuleta? ¿Y un frijol con tostadas?",
+    "¿Me lo podrían llevar por fis a las 2:30?",
+    "Y también cilantro y cebolla, muy importante, por favor",
+    "Y tortillas de maíz",
+    "[DIRECCIÓN, casa N, Temozón Norte]",
+    "Terminal por favor"
+   ],
+   "comportamiento_esperado": "A las 10:27 contesta: precios ($475 y $93), que el servicio empieza a las 12 y que se lo pueden dejar programado para las 2:30 pm [P1/P18]. Pide la dirección o el pin, cotiza $568, anota terminal y la hora de entrega.",
+   "que_no_debe_hacer": "No contestar hasta las 12; tomarlo como inmediato.",
+   "dudas": [
+    "P1",
+    "P18"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003027"
+  },
+  {
+   "id": "T7-028",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pregunta_producto_turista_aviso_llegada",
+   "turnos_cliente": [
+    "Hola, quisiera ordenar en VictoryPlatz",
+    "Una pregunta: las alitas, ¿cuántas vienen y qué sabores tiene?",
+    "[NOMBRE, TEL, DIRECCIÓN en San Ramón Norte] 1 orden de tacos al pastor, 1 orden de alitas blue cheese, 1 orden de alitas búfalo, 2 coca colas, 1 jericalla, 1 orden de papas a la francesa. Efectivo",
+    "¿Cómo?",
+    "Mira, estoy aquí, es que vengo de turista [CAPTURA DE MAPA]",
+    "Cuando esté el repartidor afuera, ¿me pueden avisar? Son departamentos, para salir por mi pedido"
+   ],
+   "comportamiento_esperado": "Explica que la orden de alitas trae 7 piezas con las dos salsas aparte (búfalo y blue cheese), así que no hace falta pedir dos órdenes por sabor; pregunta cuántas órdenes quiere. Pregunta cuántos tacos al pastor y la tortilla. Acepta la captura o el pin como ubicación y pide una referencia del edificio. Anota 'avisar al llegar'.",
+   "que_no_debe_hacer": "Cobrar dos órdenes de alitas sin aclarar; exigir cruzamientos a un turista.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003029"
+  },
+  {
+   "id": "T7-029",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "bistec_solo_en_orden_de_3",
+   "turnos_cliente": [
+    "Buenas noches",
+    "Quisiera hacer un pedido: un francés suizo de pastor, 6 tacos de pastor tortilla de maíz (naturales, sin nada encima), 4 tacos de bisteck tortilla de maíz",
+    "Para pasar a buscar",
+    "[NOMBRE]",
+    "Pago en efectivo"
+   ],
+   "comportamiento_esperado": "Explica que el bistec se vende en orden de 3 y ofrece 1 o 2 órdenes. Anota los tacos de pastor naturales (sin verdura). Confirma la sucursal de recogida, cotiza y da el tiempo de recogida.",
+   "que_no_debe_hacer": "Vender 4 tacos de bistec sueltos; usar la despedida de domicilio en un pedido para recoger.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003032"
+  },
+  {
+   "id": "T7-030",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "apodo_burrito_es_chetaco",
+   "turnos_cliente": [
+    "Hola, buenas noches. ¿Puedo pedirte una orden de tacos de arrachera y un burrito de arrachera?",
+    "Y frijoles charros",
+    "Sí, por favor, sería aquí"
+   ],
+   "comportamiento_esperado": "Mapea 'burrito' al Chetaco de arrachera (tortilla de harina extra grande) y lo confirma con el cliente. Pregunta si los charros son normales, si es a domicilio o para recoger, y la dirección. Cotiza ($254 + $373 + $123 = $750).",
+   "que_no_debe_hacer": "Decir 'no manejamos burritos' sin ofrecer el chetaco.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003048"
+  },
+  {
+   "id": "T7-031",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "flautas_y_entrega_programada",
+   "turnos_cliente": [
+    "Hola, buenas tardes, ¿le puedo hacer un pedido?",
+    "[DIRECCIÓN: privada, casa N, fraccionamiento] [NOMBRE] [TEL] [UBICACIÓN]",
+    "1 kg de bistec, 1/2 kg de pastor, 1 orden de flautas con pollo doradas. ¿Lo pueden traer a las 8:30 pm?",
+    "No sé si tienen flautas",
+    "Tortillas mixtas",
+    "Pueden mandar la terminal",
+    "¿Cuánto sería el total?"
+   ],
+   "comportamiento_esperado": "Confirma que hay flautas de pechuga (en una sucursal de menú grande), pregunta la tortilla de los kilos, programa la entrega a las 8:30 pm y cotiza ($1,100 + $450 + $283 = $1,833) con terminal.",
+   "que_no_debe_hacer": "Negar las flautas sin consultar el catálogo de la sucursal; ignorar la hora pedida.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003034"
+  },
+  {
+   "id": "T7-032",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "apodo_torta_y_agregado_tras_confirmar",
+   "turnos_cliente": [
+    "1 nachos de bistec, 1 torta de bistek sin queso, 1 orden de tacos de bistec, 1 orden de tacos de pastor",
+    "¿Cuánto cuesta 1/2 kg de bistec?",
+    "1 nachos de bistec, 1 torta de bistek sin queso, 1/2 kg de bistec",
+    "Maíz",
+    "[UBICACIÓN] Aquí, Temozón Norte",
+    "Si de 1500",
+    "¿Cuánto cuestan los nachos y la torta?",
+    "(después de confirmar) Me puedes mandar una orden de frijol también y todas las salsas, porfavor"
+   ],
+   "comportamiento_esperado": "Mapea 'torta' al francés suizo de bistec (sin queso como ajuste) y lo confirma. Toma el pedido final ($373 + $283 + $550), desglosa si se lo piden y anota cambio de $1,500. Ante el agregado posterior, pregunta '¿frijol charro o con tostada?' y lo pasa de inmediato a la sucursal como modificación, avisando que si ya salió se puede enviar aparte.",
+   "que_no_debe_hacer": "Crear un segundo pedido; sumar el agregado al total confirmado sin la sucursal; dejar la pregunta sin seguimiento.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003038"
+  },
+  {
+   "id": "T7-033",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "registro_a_nombre_de_otra_persona",
+   "turnos_cliente": [
+    "[UBICACIÓN] Aquí, Temozón Norte",
+    "A nombre de [OTRA PERSONA] debe estar registrada",
+    "[FOTO DE FACHADA] Calle [N], tablaje [N], Temozón Norte"
+   ],
+   "comportamiento_esperado": "Busca por el teléfono del chat. Si no hay registro, no revela ni busca datos de otra persona: pide el pin y una referencia visible, y da de alta al cliente con lo que manda.",
+   "que_no_debe_hacer": "Revelar una dirección guardada de otro cliente; exigir cruzamientos cuando hay pin y foto.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003038"
+  },
+  {
+   "id": "T7-034",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "consulta_domicilio_y_tiempo",
+   "turnos_cliente": [
+    "Hola! ¿Tienen delivery?",
+    "Ahh ok, pero ¿sí hacen entregas entonces?",
+    "Si es entrega a domicilio, ¿cuánto es el tiempo estimado?"
+   ],
+   "comportamiento_esperado": "Responde que sí, con repartidores propios; da el tiempo real de la sucursal en ese momento y pregunta la colonia para confirmar cobertura. Invita a mandar su pedido.",
+   "que_no_debe_hacer": "Dar 40-50 min si la sucursal está dando 60-75; mandar la plantilla larga.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003040"
+  },
+  {
+   "id": "T7-035",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "todas_las_salsas_y_queja_por_opcionales",
+   "turnos_cliente": [
+    "Buenas noches",
+    "¿Tienes servicio a domicilio hoy?",
+    "Una orden de nachos de pastor grande, sin jalapeños, con todas las salsas",
+    "[TEL] [NOMBRE] [PRIVADA, Temozón Norte] Pago en efectivo",
+    "(90 min después) No me llegó: salsa de ajo, salsa guacamolera, salsa habanero. ¿Las tengo que pedir o por qué no las mandaron?",
+    "¿Siempre tengo que especificar qué salsas necesito?"
+   ],
+   "comportamiento_esperado": "Al tomar el pedido aclara 'todas las salsas': las básicas más cuáles de las a petición (crema de ajo, guacamolera, mexicana, habanero). En la queja: se disculpa, explica la diferencia, guarda la preferencia del cliente para sus próximos pedidos y pasa a la sucursal por si quiere reposición.",
+   "que_no_debe_hacer": "Responder 'así es, caballero' sin ofrecer nada; dar a entender que el cliente se equivocó.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003043"
+  },
+  {
+   "id": "T7-036",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pedido_grande_para_recoger_antes_de_abrir",
+   "turnos_cliente": [
+    "Hola, buenos días",
+    "¿Te puedo hacer un pedido para pasar a buscar?",
+    "2 kg de pastor, 1/2 kg de bistec",
+    "Tortillas mixtas (harina y maíz). Salsas: verde, roja, pico de gallo, habanero soasado, cebolla cilantro, crema de ajo, crema guacamolera, limones",
+    "[TEL] [NOMBRE]",
+    "Me queda al paso, yo paso mejor",
+    "¿Puedo pasar a la 1 pm?"
+   ],
+   "comportamiento_esperado": "Contesta aunque sean las 11:27. Programa la recogida a la 1 pm, anota las 8 salsas (sin costo, porción normal), cotiza $2,350 y confirma.",
+   "que_no_debe_hacer": "Escalar solo por el monto si el umbral se sube [P19]; preguntar otra vez si es para recoger cuando ya lo dijo.",
+   "dudas": [
+    "P18",
+    "P19"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003043"
+  },
+  {
+   "id": "T7-037",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cancelar_pedido_para_recoger",
+   "turnos_cliente": [
+    "(pedido para recoger confirmado hace 10 min) Ya no lo podré ir a buscar, perdón",
+    "¿Lo puedo cancelar?"
+   ],
+   "comportamiento_esperado": "Ofrece enviarlo a domicilio como alternativa; si quiere cancelar, lo pasa a la sucursal de inmediato (cancelacion_modificacion) y le dice que la sucursal le confirma.",
+   "que_no_debe_hacer": "Cancelar por su cuenta o asegurar que ya quedó cancelado sin la sucursal.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003046"
+  },
+  {
+   "id": "T7-038",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "media_orden_contra_medio_kilo",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "Para hacer un pedido a domicilio",
+    "[UBICACIÓN] Depto [N], [DESARROLLO]",
+    "1 orden de chicharrón de queso, media orden de bistec con tortilla de maíz",
+    "Pago tarjeta",
+    "O sea, medio kilo, perdón",
+    "Salsa ajo, roja, verde y guacamolera"
+   ],
+   "comportamiento_esperado": "Detecta que el bistec no tiene media orden. Con la corrección toma medio kilo ($550) y el chicharrón de queso ($172) = $722. Anota terminal y salsas.",
+   "que_no_debe_hacer": "Cobrar 'media orden de bistec' inventada; ignorar la corrección.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003046"
+  },
+  {
+   "id": "T7-039",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "apodo_costra_de_queso_y_tiempos",
+   "turnos_cliente": [
+    "Buen día",
+    "¿Cuánto tiempo de espera están dando? A Montes de Amé",
+    "¿Y si lo paso a buscar?",
+    "Me pueden dar 1 orden de medio kilo de bistec y una costra de queso. Salsas: ajo, verde, roja y guacamolera. Paso en 25 min"
+   ],
+   "comportamiento_esperado": "Da el tiempo real a domicilio y para recoger. Mapea 'costra de queso' a chicharrón de queso y lo confirma. Pregunta la tortilla, cotiza ($722) y registra la hora de recogida.",
+   "que_no_debe_hacer": "Decir que no tienen 'costra'.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003046"
+  },
+  {
+   "id": "T7-040",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "totopos_ambiguo_y_salsa_soasada",
+   "turnos_cliente": [
+    "Buenas noches, me podrían enviar: medio kilo de bistec, medio kilo de pastor bien asado por favor, 2 órdenes de totopos",
+    "Sería a domicilio",
+    "Tortillas de maíz",
+    "Salsa sauceada se la encargo mucho porque ya no me la mandan",
+    "Piña"
+   ],
+   "comportamiento_esperado": "Aclara '2 órdenes de totopos': ¿solo tostadas o frijol con tostadas? Mapea 'sauceada' a habanero soasado y lo anota. Anota 'pastor bien asado' y piña. Repite antes de confirmar.",
+   "que_no_debe_hacer": "Cobrar solo tostadas sin preguntar (en la muestra causó una queja); omitir la salsa pedida.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003049"
+  },
+  {
+   "id": "T7-041",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "debajo_del_minimo_y_cerca_de_la_sucursal",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "¿Puedo hacerte un pedido?",
+    "[TEL] [NOMBRE] [DIRECCIÓN, Montebello] Una orden de tacos de bisteck. Tarjeta",
+    "¿Y cuánto es?",
+    "Pues 1 taco adicional de pastor",
+    "¿65 min??? Estoy a 3 cuadras de ustedes",
+    "Paso por ellos, ¿en cuánto tiempo?",
+    "Entonces el taco de pastor no"
+   ],
+   "comportamiento_esperado": "Explica el mínimo de $200 a domicilio con el precio actual ($194). Acepta el taco extra ($236). Ante la queja por el tiempo, explica con calma que hay pedidos antes en distintas rutas y ofrece recoger (25-35 min). Al pasar a recoger, quita el taco extra y cotiza $194.",
+   "que_no_debe_hacer": "Aceptar domicilio debajo de $200; justificarse de más; dejar el taco extra en el pedido para recoger.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003083"
+  },
+  {
+   "id": "T7-042",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "quitar_producto_y_salsas_a_peticion",
+   "turnos_cliente": [
+    "Hola, buenas tardes",
+    "Para encargar a nombre de [NOMBRE], para pasar a buscar: 1 nachos de pastor, 2 órdenes de mestiza de pastor, 1 guacamole",
+    "Quítame el guacamole, porfa, tengo un montón de aguacate aquí",
+    "Mándame salsa guacamolera y ajo, porfa, tanto para los nachos como para los tacos",
+    "Pico de gallo y salsa roja"
+   ],
+   "comportamiento_esperado": "Quita el guacamole y recalcula. Anota las salsas a petición sin costo. Si el cliente quiere porción doble para cada orden, ofrece el extra a $19 por porción y lo cotiza con la herramienta antes de confirmar.",
+   "que_no_debe_hacer": "Cobrar las salsas normales; agregar el extra sin decirlo.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003064"
+  },
+  {
+   "id": "T7-043",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "agregar_tras_confirmar_y_ya_salio",
+   "turnos_cliente": [
+    "Buenas noches, para hacer un pedido",
+    "1/2 orden de nachos de bistec",
+    "Domicilio",
+    "[DIRECCIÓN, Montebello] [UBICACIÓN] [FOTO]",
+    "Terminal por favor",
+    "(16 min después) Disculpe, ¿le pudiera agregar 3 tacos de pastor tortilla maíz naturales?"
+   ],
+   "comportamiento_esperado": "Pasa el agregado de inmediato a la sucursal y le avisa al cliente: si el pedido ya salió, se lo pueden enviar aparte (aprox. 60 min) o puede pedirlo después [P20].",
+   "que_no_debe_hacer": "Prometer que va en el mismo envío; crear un pedido nuevo debajo del mínimo sin la sucursal.",
+   "dudas": [
+    "P20"
+   ],
+   "estado": "activo",
+   "fuente": "chat 00003074"
+  },
+  {
+   "id": "T7-044",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cambio_a_recoger_por_tiempo",
+   "turnos_cliente": [
+    "Buenas tardes, para hacer un pedido",
+    "2 órdenes de taquitos de pechuga, 1 orden de alambre de pechuga (SIN tocino/SIN queso), 1 orden taquitos de bistec, 4 tacos de pastor naturales, 1 guacamole. Con todas las salsas y chile habanero picado: guacamolera, ajo, mexicana, habanero, verde y roja",
+    "Sería a domicilio, ¿en cuánto tiempo?",
+    "[DIRECCIÓN, Montebello]",
+    "Pago efectivo",
+    "¿Y si lo paso a buscar?",
+    "Paso a buscarlo mejor"
+   ],
+   "comportamiento_esperado": "Anota 'sin tocino/sin queso' (alambre normal, no suizo), da el tiempo real a domicilio y, ante la pregunta, el de recoger. Cambia a recoger antes de confirmar y repite con total ($1,141) y hora.",
+   "que_no_debe_hacer": "Dejar el pedido como domicilio; cobrar el alambre suizo.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003074"
+  },
+  {
+   "id": "T7-045",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "extra_pina_en_frances",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "¿Tienes servicio a domicilio?",
+    "[NOMBRE] 2 órdenes de frijol con tostadas, 1 francés suizo de pastor planchado SIN guacamole, 1 chicharrón de queso. Con todas las salsas: xnipec, salsa roja, salsa de ajo, cebolla y cilantro y piña",
+    "[RESIDENCIAL al norte]"
+   ],
+   "comportamiento_esperado": "Mapea 'xnipec' a salsa mexicana. Anota 'pastor planchado' y 'sin guacamole' como ajustes. Explica que el francés no lleva piña y ofrece la piña extra a $19 cotizada con la herramienta. Total con extra: $639.",
+   "que_no_debe_hacer": "Agregar la piña gratis o cobrarla sin herramienta; escalar 'sin guacamole'.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003075"
+  },
+  {
+   "id": "T7-046",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "retraso_repartidor_no_encuentra",
+   "turnos_cliente": [
+    "Hola, buenas noches. ¿Le podrían dar estatus de mi orden, por favor?",
+    "¿En cuánto tiempo llegaría?",
+    "Hola, sigue sin llegar",
+    "Sí, ya había mandado la ubicación",
+    "¿En cuánto tiempo aprox. llega?"
+   ],
+   "comportamiento_esperado": "Sin herramienta de estado, no inventa minutos. Pasado el tiempo prometido, se disculpa y pasa a la sucursal con motivo tiempos_entrega, adjuntando el pin y el depto para que se los reenvíen al repartidor.",
+   "que_no_debe_hacer": "Dar '6 minutos' o '10 a 15' sin dato; culpar al cliente por la ubicación.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003076"
+  },
+  {
+   "id": "T7-047",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "auxiliar_de_pedido_telefonico",
+   "turnos_cliente": [
+    "[UBICACIÓN]",
+    "Pedido [NOMBRE]",
+    "¿Me podrían avisar cuando llegue? No se oye el timbre"
+   ],
+   "comportamiento_esperado": "Entiende que el pedido se hizo por teléfono: no crea otro. Asocia el pin y la nota 'avisar al llegar, no se oye el timbre' al pedido existente o se los pasa a la sucursal.",
+   "que_no_debe_hacer": "Pedirle que vuelva a hacer el pedido; crear un pedido duplicado.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003079"
+  },
+  {
+   "id": "T7-048",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "reservacion",
+   "turnos_cliente": [
+    "Buenas tardeees",
+    "Para una reserva para mañana",
+    "Vamos 7 personas mañana a las 2 pm, a nombre de [NOMBRE]"
+   ],
+   "comportamiento_esperado": "Responde con amabilidad que no se toman reservaciones y que pueden llegar a la sucursal en su horario; ofrece pedido para recoger o a domicilio.",
+   "que_no_debe_hacer": "Confirmar una reservación.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003082"
+  },
+  {
+   "id": "T7-049",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "fuera_de_zona_hacia_T8",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "[TEL] [NOMBRE] [DIRECCIÓN en Los Pinos] Efectivo",
+    "[UBICACIÓN]",
+    "Es casa naranja con rejas blancas sin candado"
+   ],
+   "comportamiento_esperado": "Con la herramienta de zona detecta que corresponde a Altabrisa (T8): lo explica con calidez, da el WhatsApp y el teléfono públicos de T8 y ofrece recoger en la sucursal del chat si le queda bien.",
+   "que_no_debe_hacer": "Tomar el pedido a domicilio fuera de zona; contestar seco o en mayúsculas.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003069"
+  },
+  {
+   "id": "T7-050",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "fuera_de_zona_hacia_T1_con_pregunta",
+   "turnos_cliente": [
+    "Buenas noches",
+    "Quisiera hacer un pedido",
+    "[TEL] [NOMBRE] [DIRECCIÓN, colonia México] 4 tacos de pastor con piña. Efectivo",
+    "[FOTO DE STREET VIEW] [LINK]",
+    "¿Cuánto sería y cuánto es el tiempo de espera?"
+   ],
+   "comportamiento_esperado": "Le dice que su zona la atiende Prolongación Montejo (T1) y le da el contacto. Contesta lo que preguntó: el precio, si es el mismo en todas las sucursales, y que el tiempo lo da esa sucursal. Ofrece recoger en la del chat.",
+   "que_no_debe_hacer": "Ignorar la pregunta de precio y tiempo; tomar el pedido.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003070"
+  },
+  {
+   "id": "T7-051",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "insiste_por_cercania_fuera_de_zona",
+   "turnos_cliente": [
+    "Hola, quisiera hacer un pedido a domicilio de medio kilo de pastor, medio kilo de bistec y una orden de frijoles",
+    "Para privada [NOMBRE] casa [N]",
+    "[NOMBRE]",
+    "[UBICACIÓN]",
+    "Estamos más cerca de Victory Plaza"
+   ],
+   "comportamiento_esperado": "Explica que las zonas de reparto son fijas y que a su domicilio lo atiende Altabrisa; da su contacto. Ofrece que pase a recoger en Victory, que le queda cerca, y le toma el pedido para recoger si acepta.",
+   "que_no_debe_hacer": "Responder 'POR POLÍTICAS DE LA EMPRESA…' en mayúsculas; aceptar domicilio fuera de zona; no ofrecer recoger.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003104"
+  },
+  {
+   "id": "T7-052",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "alambre_con_queso_es_suizo",
+   "turnos_cliente": [
+    "Buenas tardes, marqué para hacer un pedido",
+    "[UBICACIÓN]",
+    "Mi pedido sería el siguiente: 2 órdenes de frijoles charros normal, 2 órdenes de bistec con maíz, 1 orden de alambre de bistec con queso",
+    "De maíz",
+    "Pues pagaría con un billete de 1000 o dos de 500"
+   ],
+   "comportamiento_esperado": "Entiende que 'frágiles carros' o 'frijoles charros normal' son frijoles charros normales. Aclara que el alambre con queso es el alambre suizo y lo confirma. Cotiza ($246 + $388 + $314 = $948) y anota que paga con $1,000. Valida la cobertura del pin.",
+   "que_no_debe_hacer": "Cobrar el alambre normal con 'queso extra' inventado; pedirle que vuelva a llamar.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003100"
+  },
+  {
+   "id": "T7-053",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "encargo_grande_programado_por_kilo",
+   "turnos_cliente": [
+    "Hola, quisiera encargar para las 8 de la noche unas órdenes para ir a buscar, ¿es posible?",
+    "¿Se puede encargar por kilos?",
+    "[NOMBRE]",
+    "Sería kilo y medio de carne al pastor, un kilo de bistec",
+    "De maíz, por favor",
+    "5 quesadillas con champiñones y 5 quesadillas con chorizo",
+    "¿Puedo encargar el frijol que se da con tostadas? Me encantaría un bote de litro",
+    "Tortilla de harina, porfa",
+    "Perdón, ¿puede agregar dos órdenes de papadzules?"
+   ],
+   "comportamiento_esperado": "A las 11:47 contesta que sí se puede por kilo y lo programa para recoger a las 8 pm. Explica que las quesadillas vienen en orden de 3 (2 y 2 órdenes) y pregunta la tortilla. Equivale el litro de frijol a unas 4 órdenes de frijol con tostada. Agrega los papadzules si la sucursal los vende. Total $3,734, con hora de recogida estructurada.",
+   "que_no_debe_hacer": "Rechazar por ser antes de las 12; vender 5 quesadillas sueltas; escalar solo por el monto si el umbral se sube [P19].",
+   "dudas": [
+    "P18",
+    "P19"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003103"
+  },
+  {
+   "id": "T7-054",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cotizacion_evento",
+   "turnos_cliente": [
+    "Buenas tardes. ¿Para cotizar un servicio para 20 personas en Conkal?"
+   ],
+   "comportamiento_esperado": "Identifica que es un evento y da el contacto oficial de eventos (correo y oficina, con su horario).",
+   "que_no_debe_hacer": "Cotizar como pedido normal; dar celulares personales sin autorización [P25].",
+   "dudas": [
+    "P25"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003058"
+  },
+  {
+   "id": "T7-055",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pregunta_tarjeta_tras_confirmar",
+   "turnos_cliente": [
+    "(pedido a domicilio confirmado en efectivo) ¿Tienen pago con tarjeta o no?"
+   ],
+   "comportamiento_esperado": "Responde que sí y cambia la forma de pago en la comanda (o pasa la nota a la sucursal) para que el repartidor lleve terminal.",
+   "que_no_debe_hacer": "Crear otro pedido; decir que ya no se puede cambiar.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003065"
+  },
+  {
+   "id": "T7-056",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "apodo_papa_rellena",
+   "turnos_cliente": [
+    "Buenas tardes!?",
+    "Para hacerte un pedido",
+    "[TEL] [NOMBRE] [PRIVADA, Temozón Norte] Una papa rellena. Pago con tarjetas",
+    "De bistec",
+    "[UBICACIÓN]"
+   ],
+   "comportamiento_esperado": "Mapea 'papa rellena' a Papas de PM, pregunta la carne, cotiza ($283), anota terminal y da el tiempo real.",
+   "que_no_debe_hacer": "Decir que no hay papas rellenas.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003106"
+  },
+  {
+   "id": "T7-057",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "torta_completa_quitando_ingredientes",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "Para un pedido",
+    "[NOMBRE] [TEL] [TORRE, depto N] Una torta de bistec completa, natural, sin guacamole y sin frijol, solo pan, carne y queso. Y 1 suizo de bistec",
+    "Pago con tarjeta",
+    "Favor de solo mandar limones y salsa habanera"
+   ],
+   "comportamiento_esperado": "Mapea la torta al francés suizo de bistec y anota 'sin guacamole, sin frijol' como ajuste por resta. Aclara si '1 suizo de bistec' es la orden de tacos suizos (5) y su tortilla. Cotiza ($283 + $291 = $574), da la despedida después del total y pide el pin antes de confirmar.",
+   "que_no_debe_hacer": "Escalar el quitar ingredientes como modificación; mandar la despedida antes del total.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003117"
+  },
+  {
+   "id": "T7-058",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cliente_dice_que_ya_llamo",
+   "turnos_cliente": [
+    "Hola",
+    "Acabo de marcar",
+    "Quiero hacer un pedido",
+    "[NOMBRE] 3 tacos de pastor de harina con cebolla, cilantro y piña aparte, una orden de crujientes, 1 coca y un agua mineral Topo Chico",
+    "[UBICACIÓN] [PRIVADA, casa N]"
+   ],
+   "comportamiento_esperado": "Toma el pedido por WhatsApp normalmente: verdura aparte como nota y pregunta qué agua mineral (Topo Chico o Cristal). Cotiza, pide el pago y da el tiempo.",
+   "que_no_debe_hacer": "Pedirle que vuelva a llamar; ignorar 'aparte'.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003118"
+  },
+  {
+   "id": "T7-059",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "rafaga_de_mensajes_cortos",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "Puedo ordenar",
+    "Todas las salsas ajo 🧄",
+    "Tortillas mixtas",
+    "[DIRECCIÓN en esquina, Benito Juárez Norte]",
+    "[NOMBRE]",
+    "Medio kilo de pastor y medio de bistec",
+    "2 orden de frijol botanero",
+    "Puede ser con tarjeta"
+   ],
+   "comportamiento_esperado": "Espera unos segundos y consolida la ráfaga en un solo pedido. Mapea 'frijol botanero' a frijol con tostada y lo confirma. Cotiza ($450 + $550 + $186 = $1,186), anota terminal y repite.",
+   "que_no_debe_hacer": "Responder mensaje por mensaje; dar un total equivocado y corregirlo después.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003087"
+  },
+  {
+   "id": "T7-060",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "cotizacion_kilo_de_res",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "Es para cotización: ¿qué cuesta el kilo de carne al pastor y el kilo de carne de res?",
+    "El de bistec, ¿qué precio tiene el kilo?"
+   ],
+   "comportamiento_esperado": "Da el kilo de pastor ($900) y aclara que de res hay bistec ($1,100), arrachera ($1,400) y costilla ($950), con lo que traiga el kilo (salsas, limones y tortillas). Invita a pedir y menciona que también venden medio y cuarto de kilo.",
+   "que_no_debe_hacer": "Tardar 12 minutos en el segundo precio; dar solo el link del menú.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003113"
+  },
+  {
+   "id": "T7-061",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "fraccion_en_el_minimo",
+   "turnos_cliente": [
+    "B tardes, para pedir 1/4 de pollo bien picada para tacos con tortilla de maíz. Salsas: guacamolera, crema de ajo, roja, verde, cebolla y limón. [DIRECCIÓN: privada, depto N, Temozón Norte]… tocar timbre en [depto]",
+    "Será pago con tarjeta, mandar terminal"
+   ],
+   "comportamiento_esperado": "Mapea '1/4 de pollo' a 1/4 kg de pechuga ($237.50 en 2026, arriba del mínimo). Anota 'bien picada' y 'tocar timbre en el depto', y terminal.",
+   "que_no_debe_hacer": "Rechazar por el mínimo si ya lo cumple; perder la nota de acceso.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003114"
+  },
+  {
+   "id": "T7-062",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "tortilla_mixta_dentro_de_una_orden",
+   "turnos_cliente": [
+    "Buenas noches, para servicio a domicilio porfavor",
+    "A Benito Juárez Norte",
+    "[NOMBRE] La orden sería: 1 frijoles charros, alambre suizo de pastor, media orden de nachos de pastor. [TEL] [DIRECCIÓN, esquina, casa blanca portón negro]",
+    "[UBICACIÓN] En efectivo",
+    "3 de harina y 2 de maíz porfa"
+   ],
+   "comportamiento_esperado": "Pregunta la tortilla del alambre suizo y anota '3 de harina y 2 de maíz' como ajuste. Cotiza ($123 + $306 + $232 = $661) y pregunta con cuánto paga.",
+   "que_no_debe_hacer": "Obligar a elegir una sola tortilla.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003115"
+  },
+  {
+   "id": "T7-063",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "queja_faltante_sin_poder_llamar",
+   "turnos_cliente": [
+    "Buenas noches, no me mandaron el frijol",
+    "No llegaron [las tostadas tampoco]",
+    "No puedo contestar llamadas en este momento"
+   ],
+   "comportamiento_esperado": "Se disculpa, registra que faltó el frijol con tostada y pasa a la sucursal con motivo queja, dejando claro que el cliente no puede atender llamadas: todo por WhatsApp.",
+   "que_no_debe_hacer": "Pedirle que llame; prometer la reposición sin la sucursal.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003116"
+  },
+  {
+   "id": "T7-064",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "minimo_con_un_solo_producto",
+   "turnos_cliente": [
+    "Hola!! Una duda: ¿cuál es el costo de una orden de frijoles con tostadas a domicilio?",
+    "¿Le podría encargar una, por favor?",
+    "[UBICACIÓN] [FOTO]",
+    "Okok, ¿y para pasar a buscar en cuánto tiempo?",
+    "De hecho, si pudieran darme solo el frijol, sin tostada, mejor"
+   ],
+   "comportamiento_esperado": "Da el precio ($93), explica el mínimo de $200 a domicilio y ofrece agregar algo o recoger. Toma el pedido para recoger con 'sin tostada' como ajuste.",
+   "que_no_debe_hacer": "Aceptar domicilio por $93.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003080"
+  },
+  {
+   "id": "T7-065",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "pide_el_menu",
+   "turnos_cliente": [
+    "Hola!",
+    "¿Tienen servicio a domicilio?",
+    "¿Me podrías compartir el menú, porfa?"
+   ],
+   "comportamiento_esperado": "Confirma el domicilio y comparte el menú de la sucursal (link o PDF aprobados, [P22]); pregunta qué se le antoja y su colonia.",
+   "que_no_debe_hacer": "Pegar el menú completo en texto; mandar el menú de otra sucursal.",
+   "dudas": [
+    "P22"
+   ],
+   "estado": "pendiente_decision",
+   "fuente": "chat 00003022"
+  },
+  {
+   "id": "T7-066",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "instrucciones_de_acceso_a_privada",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "[TEL] [NOMBRE] [PRIVADA sobre carretera, 2a calle a la izquierda, casa con palapas] Observación: llegando a la privada, mandarme mensaje de WhatsApp para que les abra la puerta",
+    "1 kg de bistec, tortillas mixtas",
+    "[UBICACIÓN]"
+   ],
+   "comportamiento_esperado": "Cotiza ($1,100) y anota en la comanda la indicación de acceso ('avisar por WhatsApp al llegar para abrir'). Pregunta el pago y da el tiempo.",
+   "que_no_debe_hacer": "Omitir la indicación de acceso.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003120"
+  },
+  {
+   "id": "T7-067",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "corrige_dato_tras_confirmar",
+   "turnos_cliente": [
+    "(pedido confirmado) El número de la casa es [N]"
+   ],
+   "comportamiento_esperado": "Agradece y corrige la dirección en la comanda o pasa la corrección a la sucursal de inmediato.",
+   "que_no_debe_hacer": "Ignorar la corrección.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003056"
+  },
+  {
+   "id": "T7-068",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "recoger_en_dia_pico",
+   "turnos_cliente": [
+    "Hola, buenas tardes, ¿puedo hacer un pedido para pasar a recoger?",
+    "Está bien, estaría listo en una hora entonces",
+    "Necesito medio kg de pastor y medio de bistec, por favor",
+    "De las dos, por favor",
+    "[NOMBRE]",
+    "¿Cuál sería el total?"
+   ],
+   "comportamiento_esperado": "Avisa desde el inicio el tiempo real de recogida de ese día (60 min). Entiende 'de las dos' como tortilla mixta. Da el total ($1,000) **antes** de despedirse.",
+   "que_no_debe_hacer": "Despedirse sin dar el total; prometer 15-30 min en un día pico.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003098"
+  },
+  {
+   "id": "T7-069",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "producto_inexistente_chipotle_y_salsa_recordada",
+   "turnos_cliente": [
+    "Buenas noches",
+    "¿Llegan a Temozón? ¿O qué sucursal? [DESARROLLO DE DEPTOS]",
+    "[NOMBRE] francés suizo de pastor con salsa de ajo y chipotle y la verde, limones, etc. Entrega a domicilio. [TEL]",
+    "Pago con tarjeta",
+    "No olvidar las salsas, plz, la otra vez no mandaron ajo y no podemos comer sin salsas, gracias! 🙏🏻",
+    "Entre [calle] y [calle], departamentos, abajo, en el portón"
+   ],
+   "comportamiento_esperado": "Confirma la cobertura de la zona. Dice que no manejan chipotle y confirma ajo y verde. Pone la nota de salsas en la comanda (es una queja previa). Cotiza ($262) y da el tiempo real.",
+   "que_no_debe_hacer": "Prometer chipotle; omitir el ajo otra vez.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003072"
+  },
+  {
+   "id": "T7-070",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "frijol_extra_ambiguo",
+   "turnos_cliente": [
+    "Hola, buenas noches",
+    "Me gustaría hacer un pedido",
+    "[UBICACIÓN] [DEPTO]",
+    "[NOMBRE]",
+    "Nachos de bistec",
+    "Frijol extra",
+    "Tarjeta"
+   ],
+   "comportamiento_esperado": "Pregunta si 'frijol extra' es una orden de frijol con tostada aparte ($93) o más frijol en los nachos (extra con costo según la herramienta). Cotiza según la respuesta y anota terminal.",
+   "que_no_debe_hacer": "Ignorar 'frijol extra' y cobrar solo los nachos sin aclarar.",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003076"
+  },
+  {
+   "id": "T7-071",
+   "canal": "chat",
+   "sucursal": "garcia-lavin",
+   "intencion": "aviso_cuando_va_en_camino",
+   "turnos_cliente": [
+    "Buenas tardes",
+    "Te puedo hacer un pedido: medio kilo de pastor, 1/4 de bistec, frijol con tostadas, crema de ajo",
+    "Temozón",
+    "Mixta",
+    "También un chicharrón de queso",
+    "Tarjeta",
+    "(44 min después) ¿Me podrías avisar cuando ya esté en camino, porfa?"
+   ],
+   "comportamiento_esperado": "Reconoce al cliente y confirma la dirección por la colonia. Cotiza ($450 + $275 + $93 + $172 = $990) con terminal. Al pedido de aviso: si hay herramienta de estado, avisa al salir; si no, anota la petición y pasa la nota a la sucursal. Nunca deja el mensaje sin respuesta.",
+   "que_no_debe_hacer": "Dejar sin respuesta la petición de aviso (en la muestra no se contestó).",
+   "dudas": [],
+   "estado": "activo",
+   "fuente": "chat 00003054"
+  }
+ ]
+}

@@ -23,6 +23,7 @@ import { citasAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { citasOnboardingRoutes } from "./onboarding.ts";
 import { citasAvisosRoutes } from "./avisos.ts";
 import { citasPublicoRoutes } from "./publico.ts";
+import { citasConversacionesRoutes } from "./conversaciones.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -62,5 +63,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasAvisosRoutes(deps));
   // C-19 -- API publica de solo lectura de la pagina de reservas (catalogo + disponibilidad), sin sesion.
   app.route("/", citasPublicoRoutes(deps));
+  // C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / devolver / cerrar / notas / responder via outbox), migracion 031.
+  app.route("/", citasConversacionesRoutes(deps));
   return app;
 }

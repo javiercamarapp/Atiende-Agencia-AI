@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
-import { PM_PROMOS_POR_OMISION, PM_SALSAS_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
+import { PM_PROMOS_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, comportamientoVozPm } from "../src/voz/perfil-voz-pm.ts";
 import { instruccionVozPm } from "../src/voz/simulador/prompt-voz.ts";
 import { MENSAJES_PREGRABADOS, mensajeSaludoRespaldo } from "../src/voz/llamada/mensajes.ts";
@@ -94,9 +94,10 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     expect(voz).not.toMatch(/2 aguas de cortes[ií]a|elige dos aguas/i);
     expect(voz).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am");
     expect(voz).toContain("hora_recogida");
-    expect(voz).toMatch(/40 o más piezas, o \$1,500 o más/);
+    expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
     expect(voz).toContain(PM_PROMOS_POR_OMISION);
-    expect(voz).toContain(PM_SALSAS_POR_OMISION);
+    // La voz es compacta (tope de 8000 caracteres): no lista las salsas, dice cuales van siempre y cuales solo si las piden.
+    expect(voz).toContain("las salsas incluidas (las básicas siempre; las demás, solo si el cliente las pide) van sin costo");
     expect(voz).not.toContain("Precios iguales");
     expect(voz).toMatch(/Sucursal.*\[prol-montejo\]/);
   });
