@@ -57,14 +57,14 @@ la junta de aclaraciones, la seguridad de la cuenta, WhatsApp y el chat con tus 
 | **Aprobaciones** | "Aprobar" / "Rechazar" (reversible: un rechazado se puede aprobar despues) -> `updateCompanyDocument` etc. | No |
 | **Staff** | invitar -> `createStaffInvite`; **"Revocar" -> `ConfirmDialog` (peligro, con el correo)** -> `revokeStaffInvite`; selector de rol -> `updateStaffRole`; zona horaria -> `updateTenantConfigTimezone` | licitaciones-admin-client (cliente); pagina: No |
 | **WhatsApp** | guardar telefono y temas -> `saveWhatsAppSettings`; **"Dejar de recibir avisos" -> `ConfirmDialog` (peligro)** -> `optOutWhatsApp`; "Pedir decision" -> `requestWhatsAppDecision` | licitaciones-whatsapp-page (incluye Cancelar no llama opt-out) |
-| **Seguridad de la cuenta** | activar 2FA -> `startTwoFactorSetup` / `confirmTwoFactorSetup`; codigos de respaldo -> `regenerateBackupCodes`; "Desactivar..." -> formulario con contrasena + codigo -> `disableTwoFactor`; correo / contrasena / Google (vincular, "Desvincular..." con contrasena y Cancelar); **"Cerrar sesion", "Cerrar todas las demas", "Cerrar mis otras sesiones" -> `ConfirmDialog` (peligro)** -> `cerrarSesion` / `cerrarOtrasSesiones` / `revokeOtherSessions` | licitaciones-seguridad-page, licitaciones-cuenta-pages (incluye Cancelar no cierra) |
+| **Seguridad de la cuenta** | activar 2FA -> `startTwoFactorSetup` / `confirmTwoFactorSetup`; codigos de respaldo -> `regenerateBackupCodes`; "Desactivar..." -> formulario con contrasena + codigo -> `disableTwoFactor`; correo / contrasena / Google (vincular, "Desvincular..." con contrasena y Cancelar); **"Cerrar sesion", "Cerrar todas las demas", "Cerrar mis otras sesiones" -> `ConfirmDialog` (peligro)** -> `cerrarSesion` / `cerrarOtrasSesiones` / `revokeOtherSessions` | licitaciones-seguridad-page, cuenta-pages.spec.tsx (incluye Cancelar no cierra) |
 
 ## Regla "descartar un dialogo NUNCA ejecuta la accion"
 
 Todos los `useConfirm` de esta vertical resuelven `false` al Cancelar, al cerrar con la "x", con Escape o al hacer clic fuera
 (es el contrato del hook de `@atiende/ui`) y la accion solo corre tras un `true`. Pruebas que lo fijan:
 
-- `licitaciones-cuenta-pages`: "Cancelar el dialogo (o cerrarlo) NUNCA cierra sesiones".
+- `cuenta-pages.spec.tsx`: "Cancelar el dialogo (o cerrarlo) NUNCA cierra sesiones".
 - `licitaciones-whatsapp-page`: "Cancelar el dialogo de salida NUNCA llama a opt-out".
 - `licitaciones-convocatoria-detalle-page`: "Cancelar el dialogo de 'Marcar No-go' NUNCA registra la decision".
 
