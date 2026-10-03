@@ -205,9 +205,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   const colaNoDisponible = cola !== null && !cola.disponible;
 
-  const colaItems = cola?.disponible ? cola.items : [];
-  const outboxLista = outbox?.disponible ? outbox.lista : [];
-  const columnasCola: DataTableColumna<(typeof colaItems)[number]>[] = [
+  const columnasCola: DataTableColumna<ItemCola>[] = [
     {
       id: "urgencia",
       encabezado: "Urgencia",
@@ -265,7 +263,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
           {
             id: "acciones",
             encabezado: "Acciones",
-            celda: (item: (typeof colaItems)[number]) => (
+            celda: (item: ItemCola) => (
               <div className="flex min-w-44 flex-col gap-1.5">
                 <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "cumplida")}>
                   Cumplida
@@ -282,12 +280,12 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
                 </Button>
               </div>
             ),
-          } satisfies DataTableColumna<(typeof colaItems)[number]>,
+          } satisfies DataTableColumna<ItemCola>,
         ]
       : []),
   ];
 
-  const columnasOutbox: DataTableColumna<(typeof outboxLista)[number]>[] = [
+  const columnasOutbox: DataTableColumna<MensajeOutbox>[] = [
     { id: "cliente", encabezado: "Cliente", principal: true, valorOrden: (m) => m.rfcReceptor, celda: (m) => <span className="font-mono text-xs text-muted-foreground">{m.rfcReceptor}</span> },
     { id: "mensaje", encabezado: "Mensaje", celda: (m) => <span className="max-w-md whitespace-pre-wrap text-sm text-muted-foreground">{m.cuerpo}</span> },
     { id: "estado", encabezado: "Estado", valorOrden: (m) => m.estado, celda: (m) => <StatusBadge tone={OUTBOX_TONES[m.estado]}>{OUTBOX_ETIQUETAS[m.estado]}</StatusBadge> },
