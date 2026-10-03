@@ -23,6 +23,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   ADMIN_ROLES,
+  PostgresMensajeriaConfigRepository,
   PostgresReservasAgenteRepository,
   VozToolValidacionError,
   consumeRateLimit,
@@ -189,13 +190,17 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.get("/hoteles/:propertyId/voz/estado", async (c) => {
     assertVerticalRole(c, ADMIN_ROLES);
     const propertyId = c.req.param("propertyId");
-    const config = await deps.hotelesRepo(c.get("db")).findVoiceAgentConfig(propertyId).catch(() => null);
+    // Lectura de STAFF (la misma de Mensajeria): `findVoiceAgentConfig` es una funcion de SOLO sistema (exige auth.uid() nulo) y bajo la sesion de staff
+    // abortaria la transaccion compartida del request. `getVoiceAgent` corre en SAVEPOINT y cae a "no configurado" contra la base sin migrar.
+    const mensajeria = deps.hotelesMensajeriaConfigRepo ? deps.hotelesMensajeriaConfigRepo(c.get("db")) : new PostgresMensajeriaConfigRepository(c.get("db"));
+    const agente = await mensajeria.getVoiceAgent(propertyId);
+    const motivoPreview = await motivoSinPreview();
     const escalera = estadoEscalera({ geminiApiKey: deps.env.geminiApiKey ?? null, openrouterApiKey: deps.env.llmProviders.openrouter?.apiKey ?? null, llm: deps.llmGateway ? { completar: () => Promise.reject(new Error("solo estado")) } : null });
     return c.json({
-      agente: { configurado: config !== null, habilitado: config?.enabled === true },
+      agente: { configurado: agente.configurado, habilitado: agente.enabled },
       escalera,
       precioMicroUsdPorMinuto: { "gemini-3.8-live": VOZ_PLATAFORMA.gemini.precioMicroUsdPorMinuto, "cascada-openrouter": VOZ_PLATAFORMA.cascada.precioMicroUsdPorMinuto },
-      preview: { disponible: (await motivoSinPreview()) === null, motivo: await motivoSinPreview() },
+      preview: { disponible: motivoPreview === null, motivo: motivoPreview },
     });
   });
 
@@ -216,9 +221,11 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const provider = deps.voiceProvider!;
     const secreto = deps.env.voicePreviewTokenSecret!;
 
+    // `consume_api_rate_limit` es de SOLO sistema (exige auth.uid() nulo): se consume en su propia sesion de sistema (commit propio, patron de
+    // privacidad-publica.ts), no en la transaccion de staff del request.
+    const allowed = await deps.engine.withAppSession({ userId: null }, async (db) => (await consumeRateLimit(deps.hotelesRepo(db), "voz-preview-sesion", requestActor(c.req.raw, actorUserId), 20, 600)).allowed);
+    if (!allowed) throw Errors.tooManyRequests();
     const repo = deps.hotelesRepo(c.get("db"));
-    const limited = await consumeRateLimit(repo, "voz-preview-sesion", requestActor(c.req.raw, actorUserId), 20, 600);
-    if (!limited.allowed) throw Errors.tooManyRequests();
 
     const voiceId = raw.voiceId ?? VOZ_POR_DEFECTO;
     if (!provider.catalogoVoces().some((v) => v.id === voiceId)) throw Errors.validation("voiceId: no está en el catálogo de voces del proveedor.");
