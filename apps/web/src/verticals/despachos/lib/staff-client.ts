@@ -4,7 +4,8 @@
 // EXACTO de apps/web/src/verticals/restaurantes/lib/staff-client.ts (leído
 // primero como plantilla) sobre los 4 roles de despachos en vez de los de
 // restaurantes, y sin `fetchRepartidores` (despachos no tiene un rol análogo).
-import { deleteJson, fetchJson, patchJson, postJson } from "./admin-client.ts";
+import { deleteJson, despachosAuthContext, fetchJson, patchJson, postJson } from "./admin-client.ts";
+import { conStepUp } from "./step-up.ts";
 
 /** Mismos 4 roles que `DESPACHOS_ROLES` de `@atiende/domain-despachos/src/roles.ts`
  * -- duplicado aquí a propósito, no importado: apps/web no depende de los paquetes
@@ -44,14 +45,15 @@ export async function createStaffInvite(
   propertyId: string,
   input: { readonly email: string; readonly verticalRole: StaffVerticalRole },
 ): Promise<CreatedStaffInvite> {
-  return postJson<CreatedStaffInvite>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/invitaciones`, token, input);
+  // D-30: invitar da acceso al despacho -> segundo factor reciente (lib/step-up.ts).
+  return conStepUp({ fetchImpl, apiBaseUrl, token }, (h) => postJson<CreatedStaffInvite>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/invitaciones`, token, input, h));
 }
 
 /** Idempotente en el servidor solo para el PRIMER llamado -- una invitación ya
  * aceptada/revocada responde 404 ("Invitación no encontrada, ya fue usada, o ya
  * estaba revocada", ver admin-staff.ts), que `deleteJson` propaga como error real. */
 export async function revokeStaffInvite(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, inviteId: string): Promise<void> {
-  await deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/invitaciones/${inviteId}`, token);
+  await conStepUp({ fetchImpl, apiBaseUrl, token }, (h) => deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/invitaciones/${inviteId}`, token, despachosAuthContext(), h));
 }
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -85,5 +87,5 @@ export async function updateStaffRole(
   userId: string,
   verticalRole: StaffVerticalRole,
 ): Promise<OrgMember> {
-  return patchJson<OrgMember>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/miembros/${userId}`, token, { verticalRole });
+  return conStepUp({ fetchImpl, apiBaseUrl, token }, (h) => patchJson<OrgMember>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/miembros/${userId}`, token, { verticalRole }, h));
 }

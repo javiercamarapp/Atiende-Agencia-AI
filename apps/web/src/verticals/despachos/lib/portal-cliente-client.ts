@@ -4,6 +4,7 @@
 //    Ninguna funcion de aqui pone el token en una URL ni lo escribe en consola.
 //  * STAFF (panel del despacho): /despachos/:propertyId/portal-cliente/* con la sesion normal.
 import { fetchBlob, fetchJson, postJson } from "./admin-client.ts";
+import { conStepUp } from "./step-up.ts";
 
 // ------------------------------------------------------------------ tipos compartidos
 export interface PortalObligacion {
@@ -181,10 +182,11 @@ export function fetchPortalEnlaces(f: typeof fetch, apiBaseUrl: string, token: s
   return fetchJson<{ disponible: boolean; enlaces: readonly PortalEnlaceStaff[] }>(f, `${base(apiBaseUrl, propertyId)}/enlaces`, token);
 }
 export function crearPortalEnlace(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, etiqueta: string, dias: number) {
-  return postJson<{ id: string; etiqueta: string; expiraEn: string; url: string }>(f, `${base(apiBaseUrl, propertyId)}/enlaces`, token, { etiqueta, dias });
+  // D-30: un enlace nuevo da acceso a un tercero -> segundo factor reciente (lib/step-up.ts).
+  return conStepUp({ fetchImpl: f, apiBaseUrl, token }, (h) => postJson<{ id: string; etiqueta: string; expiraEn: string; url: string }>(f, `${base(apiBaseUrl, propertyId)}/enlaces`, token, { etiqueta, dias }, h));
 }
 export function revocarPortalEnlace(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, enlaceId: string) {
-  return postJson<{ revocado: boolean }>(f, `${base(apiBaseUrl, propertyId)}/enlaces/${enlaceId}/revocar`, token, {});
+  return conStepUp({ fetchImpl: f, apiBaseUrl, token }, (h) => postJson<{ revocado: boolean }>(f, `${base(apiBaseUrl, propertyId)}/enlaces/${enlaceId}/revocar`, token, {}, h));
 }
 export function fetchPortalDocumentos(f: typeof fetch, apiBaseUrl: string, token: string, propertyId: string) {
   return fetchJson<{ disponible: boolean; documentos: readonly PortalDocumentoStaff[] }>(f, `${base(apiBaseUrl, propertyId)}/documentos`, token);

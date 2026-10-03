@@ -56,6 +56,7 @@ import { clearDespachosSession, logout, readPersistedDespachosSession } from "./
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
 
@@ -258,6 +259,8 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       contentKey={propertyId}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      {/* D-30: dialogo de segundo factor de las acciones sensibles (lib/step-up.ts); se monta una sola vez por shell. */}
+      <StepUpDialog orgSlug={orgSlug} />
     </VerticalShellConectado>
   );
 }
