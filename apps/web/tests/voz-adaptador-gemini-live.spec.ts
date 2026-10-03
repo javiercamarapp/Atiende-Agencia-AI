@@ -1,10 +1,10 @@
 // Adaptador REAL de la vista previa (Gemini Live por token efimero) contra un entorno falso: protocolo, transcripcion en vivo,
 // barge-in, silencio, errores honestos y limpieza. Nada de WebAudio ni red: la capa del navegador esta detras de `EntornoVoz`.
 import { describe, expect, it } from "vitest";
-import { crearFabricaGeminiLive } from "../src/verticals/restaurantes/voz/adaptador-gemini-live.ts";
-import type { CapturaMicrofono, EntornoVoz, ReproductorAudio, SocketPreview } from "../src/verticals/restaurantes/voz/adaptador-gemini-live.ts";
-import { aPcm16Base64, dePcm16Base64, nivelRms, remuestrear } from "../src/verticals/restaurantes/voz/audio-pcm.ts";
-import type { CallbacksAdaptador, CambioEstado } from "../src/verticals/restaurantes/voz/adaptador.ts";
+import { crearFabricaGeminiLive } from "../src/lib/voz/adaptador-gemini-live.ts";
+import type { CapturaMicrofono, EntornoVoz, ReproductorAudio, SocketPreview } from "../src/lib/voz/adaptador-gemini-live.ts";
+import { aPcm16Base64, dePcm16Base64, nivelRms, remuestrear } from "../src/lib/voz/audio-pcm.ts";
+import type { CallbacksAdaptador, CambioEstado } from "../src/lib/voz/adaptador.ts";
 import type { SesionPreviewVoz } from "../src/verticals/restaurantes/lib/voz-client.ts";
 import type { LineaTranscripcion } from "@atiende/ui";
 

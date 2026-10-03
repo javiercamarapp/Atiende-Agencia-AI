@@ -19,6 +19,7 @@
     "@atiende/core-pii": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
+    "@atiende/voice-core": "*",
     "@atiende/whatsapp-gateway": "*"
   }
 }
