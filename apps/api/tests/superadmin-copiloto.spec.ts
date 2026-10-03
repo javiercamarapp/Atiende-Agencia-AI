@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { totpAt } from "@atiende/core-auth";
 import { scriptedCompletion, type DataChatAnswer, type DataChatAuditEntry, type DataChatHistoryTurn, type ScriptStep } from "@atiende/agent-core/data-chat";
-import { InMemoryCfoRepository, InMemoryCfoZoneRepository, InMemoryImpersonationRepository, InMemoryPylRepository } from "@atiende/db";
+import { InMemoryCfoRepository, InMemoryCfoZoneRepository, InMemoryImpersonationRepository, InMemoryPylRepository, type InMemoryTenancyEngine } from "@atiende/db";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import type { ConversacionDetalleDto, ConversacionResumenDto, ConversacionScope, ConversacionesRepository, MensajeGuardadoDto, ResultadoGuardado, TurnoAGuardar } from "../src/data-chat/conversaciones.ts";
@@ -414,6 +415,61 @@ describe("interruptor 'agente superadmin:copiloto' y tope mensual propio", () =>
     const segundo = await ctx.turno(sa.token, { question: "y ahora cuantas" });
     expect(segundo.status).toBe("budget_exceeded");
     expect(ctx.scripted.requests).toHaveLength(llamadas);
+  });
+});
+
+describe("notificacion in-app del tope mensual propio (superadmin.copiloto.tope_mensual)", () => {
+  /** Registra las llamadas a core.emit_notification (el motor en memoria no la modela) y las da por emitidas. */
+  function grabarNotificaciones(engine: InMemoryTenancyEngine): { userId: string | null; params: unknown[] }[] {
+    const emitidas: { userId: string | null; params: unknown[] }[] = [];
+    const original = engine.withAppSession.bind(engine);
+    engine.withAppSession = (async (claims: { userId: string | null }, fn: (s: TenantDbSession) => Promise<unknown>) =>
+      original(claims, async (session) =>
+        fn({
+          ...session,
+          query: async (sql: string, params: unknown[] = []) => {
+            if (sql.includes("core.emit_notification")) {
+              emitidas.push({ userId: claims.userId, params });
+              return { rows: [{ emit_notification: 1 }] };
+            }
+            return session.query(sql, params);
+          },
+        } as TenantDbSession),
+      )) as typeof engine.withAppSession;
+    return emitidas;
+  }
+
+  it("al 80 % del tope avisa UNA vez (sesion de sistema, sin organizacion, solo el porcentaje) y el turno sigue; al 100 % avisa y responde sin IA", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, fuentes: { copilotoGastoMes: async () => ({ ok: true, data: 20_000_000 }) } });
+    const emitidas = grabarNotificaciones(ctx.s.base.deps.engine as InMemoryTenancyEngine);
+    const sa = await ctx.alta();
+    const a = await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(a.status).toBe("ok");
+    await ctx.turno(sa.token, { question: "y de nuevo" });
+    expect(emitidas).toHaveLength(1);
+    expect(emitidas[0]!.userId).toBeNull();
+    expect(emitidas[0]!.params[0]).toBeNull();
+    expect(emitidas[0]!.params[2]).toBe("superadmin.copiloto.tope_mensual");
+    expect(emitidas[0]!.params[5]).toBe("El Copiloto de superadmin usó 80 por ciento de su tope mensual");
+    expect(String(emitidas[0]!.params[10])).toMatch(/^superadmin\.copiloto\.tope_mensual:80:\d{4}-\d{2}$/);
+    expect(emitidas[0]!.params[7]).toBe("/superadmin/gasto-api");
+    // Cruza el 100 %: segundo umbral, y el modelo ya no se llama.
+    (ctx.deps.superadminCopiloto as { fuentes: unknown }).fuentes = (db: TenantDbSession, id: string) => ({ ...fuentesDeProduccion(ctx.deps, db, id), ...fuentesFalsas({ copilotoGastoMes: async () => ({ ok: true, data: 26_000_000 }) }) });
+    const llamadas = ctx.scripted.requests.length;
+    const b = await ctx.turno(sa.token, { question: "otra mas" });
+    expect(b.status).toBe("budget_exceeded");
+    expect(ctx.scripted.requests).toHaveLength(llamadas);
+    expect(emitidas).toHaveLength(2);
+    expect(String(emitidas[1]!.params[10])).toMatch(/:100:/);
+    expect(JSON.stringify(emitidas)).not.toContain(sa.email);
+  });
+
+  it("por debajo del 80 % no avisa", async () => {
+    const ctx = await setup({ modo: "falsas", steps: LLM_ORGANIZACIONES, fuentes: { copilotoGastoMes: async () => ({ ok: true, data: 5_000_000 }) } });
+    const emitidas = grabarNotificaciones(ctx.s.base.deps.engine as InMemoryTenancyEngine);
+    const sa = await ctx.alta();
+    await ctx.turno(sa.token, { question: "cuantas organizaciones tenemos" });
+    expect(emitidas).toHaveLength(0);
   });
 });
 

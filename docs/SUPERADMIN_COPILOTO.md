@@ -41,7 +41,7 @@ Financieras, Copiloto CFO (SA-33): `mrr`, `margen_costos_unitarios`, `pyl` y `co
 Decisión (migración 0048): el gasto del rol `superadmin:copiloto` **no** entra a `core.llm_usage_daily` (su CHECK de vertical ya admite `plataforma` desde la 0040, pero `organization_id` es obligatorio;
 registrarlo ahí obligaría a inventar una organización y contaminaría los reportes por cliente) **ni** a los topes por organización. Se mide en la fila de resumen de cada turno de
 `core.data_chat_query_log` (vertical `plataforma`, `costo_micro_usd`, modelo, rol). El tope mensual propio compara contra `core.get_copiloto_plataforma_gasto_mes` y contra un
-acumulador en memoria de la instancia (cubre la base sin migrar). Al agotarse: modo sin IA (las consultas directas siguen). Valor por defecto provisional: 25 USD
+acumulador en memoria de la instancia (cubre la base sin migrar). Al llegar al 80 % y al 100 % avisa a los superadmins (`superadmin.copiloto.tope_mensual`). Al agotarse: modo sin IA (las consultas directas siguen). Valor por defecto provisional: 25 USD
 (`TOPE_MENSUAL_COPILOTO_MICRO_USD`); el presupuesto real en producción lo fija Javier (SA-44).
 
 Usa un gateway **dedicado** (`buildSuperadminCopilotoLlmGateway`): su propio circuit breaker, topes de corrida y día en memoria, interruptor de plataforma y la escalera del rol
@@ -58,4 +58,4 @@ Usa un gateway **dedicado** (`buildSuperadminCopilotoLlmGateway`): su propio cir
 * SA-44: presupuesto real de gasto del Copiloto en producción (queda para Javier).
 * `prospectos` solo cubre el modelo actual del cerebro de ventas.
 * `proponer_accion` y la UI son de chat-17.
-* Notificaciones in-app: el productor compartido aún no tiene eventos del Copiloto (tope mensual alcanzado, interruptor apagado); listados en el cuerpo de la PR.
+* Notificaciones in-app: solo el tope mensual propio emite aviso (`superadmin.copiloto.tope_mensual`, umbrales 80 y 100, sin PII). Una consulta financiera denegada ya queda en `core.cfo_access_log`, que no tiene aviso in-app (sin evento definido en el catálogo).

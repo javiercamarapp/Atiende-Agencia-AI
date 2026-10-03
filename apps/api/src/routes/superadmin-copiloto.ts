@@ -29,6 +29,7 @@ import { MonthlyBudgetExceededError, KillSwitchEngagedError } from "@atiende/age
 import { runDataChatTurn } from "@atiende/agent-core/data-chat";
 import type { DataChatCompletion } from "@atiende/agent-core/data-chat";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { emitirNotificacion } from "@atiende/db";
 import type { AppDeps } from "../deps.ts";
 import { Errors } from "../errors.ts";
 import { exigirStepUp } from "../superadmin-seguridad/step-up.ts";
@@ -122,6 +123,22 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const scopeDe = (callerId: string, rol: RolPlataforma, stepUp: boolean): PlatformScope => ({ userId: callerId, rol, stepUp, timezone: PLATAFORMA_TIMEZONE });
   const convScope = (callerId: string): ConversacionScope => ({ organizationId: null, userId: callerId, vertical: PLATAFORMA_VERTICAL });
 
+  /** Aviso in-app a los superadmins al llegar al 80 % y al 100 % del tope mensual propio (`superadmin.copiloto.tope_mensual`; solo el porcentaje, sin PII).
+   *  Mejor esfuerzo, en una sesion de sistema propia: nunca altera ni retrasa el turno. Un aviso por umbral y mes por instancia (la base deduplica el resto). */
+  const avisados = new Set<string>();
+  async function avisarUmbral(gasto: number, limite: number): Promise<void> {
+    const umbral = gasto >= limite ? 100 : gasto * 100 >= limite * 80 ? 80 : 0;
+    if (umbral === 0) return;
+    const clave = `${umbral}:${new Date().toISOString().slice(0, 7)}`;
+    if (avisados.has(clave)) return;
+    avisados.add(clave);
+    try {
+      await deps.engine.withAppSession({ userId: null }, (sesion) => emitirNotificacion(sesion, { evento: "superadmin.copiloto.tope_mensual", organizationId: null, clave, parametros: { porcentaje: umbral } }));
+    } catch {
+      avisados.delete(clave);
+    }
+  }
+
   /** Completador del turno: interruptor, tope mensual propio y luego el gateway dedicado. Si algo lo detiene, lanza el error que el motor traduce a modo sin IA. */
   function completadorDelTurno(c: SuperadminCopilotoDeps, fuentes: FuentesPlataforma): DataChatCompletion {
     const inner = c.completion;
@@ -131,6 +148,7 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       const limite = tope();
       const medido = await fuentes.copilotoGastoMes();
       const gasto = Math.max(medido.ok ? medido.data : 0, c.ledger.mes());
+      await avisarUmbral(gasto, limite);
       if (gasto >= limite) throw new MonthlyBudgetExceededError("copilot", "plataforma", gasto, limite);
       if (!inner) throw new Error("superadmin_copiloto_sin_proveedor");
       return inner(req);
