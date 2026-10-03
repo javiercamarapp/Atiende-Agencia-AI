@@ -134,6 +134,7 @@ Campana y página de notificaciones del panel de cada vertical y de superadmin. 
 | `citas.cita.nueva` | operacion | info | owner/admin, staff | CalendarPlus | `/citas/{orgSlug}/agenda` | una por cita | 7 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
 | `citas.cita.cancelada` | operacion | atencion | owner/admin, staff | CalendarX | `/citas/{orgSlug}/agenda` | una por cita cancelada | 7 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
 | `citas.recordatorio.fallido` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/mensajes-whatsapp` | una por dia | 5 d | conectado: `apps/api/src/routes/verticals/citas/reminders.ts` |
+| `citas.whatsapp.sin_plantilla` | salud | atencion | owner/admin | BellOff | `/citas/{orgSlug}/mensajes-whatsapp` | una por organizacion por evento y dia | 5 d | conectado: `apps/api/src/routes/verticals/citas/reminders.ts` |
 | `citas.escalacion.crisis` | agentes | critica | owner/admin | LifeBuoy | `/citas/{orgSlug}/avisos` | una por escalacion (clave = id de la escalacion) | 14 d | conectado: `packages/domain-citas/src/postgres-repository.ts` |
 | `citas.escalacion.sin_seguimiento` | agentes | critica | owner/admin | Siren | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |
 | `citas.cita.por_confirmar` | operacion | atencion | owner/admin, staff | CalendarClock | `/citas/{orgSlug}/avisos` | una por dia | 3 d | conectado: `apps/api/src/routes/verticals/citas/avisos-ciclo.ts` |

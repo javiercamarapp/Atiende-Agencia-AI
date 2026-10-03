@@ -199,3 +199,22 @@ export function correoCitaModificada(c: CitaCorreo): Correo {
     texto: `Hola ${c.clienteNombre}, se actualizó tu cita en ${c.tenantNombre}.\nServicio: ${c.servicioNombre}\nCon: ${c.proveedorNombre}\nFecha y hora: ${c.fechaHoraTexto}`,
   };
 }
+
+/** PL-31 -- aviso de lista de espera por correo cuando el WhatsApp no puede salir (fuera de la ventana de 24 h y sin plantilla aprobada). */
+export function correoListaEsperaCupo(c: { readonly clienteNombre: string; readonly tenantNombre: string }): Correo {
+  const nombre = escapeHtml(c.clienteNombre);
+  const tenant = escapeHtml(c.tenantNombre);
+  const html = renderCorreo({
+    titulo: "Se liberó un espacio",
+    preheader: `Hay un espacio disponible en ${c.tenantNombre}`,
+    etiqueta: { texto: "Lista de espera", color: "#1D4ED8" },
+    parrafosHtml: [`Hola ${nombre}, se liberó un espacio que coincide con lo que buscabas en <strong>${tenant}</strong>.`],
+    nota: "Si todavía te interesa, contáctanos por el mismo medio por el que te anotaste y te lo agendamos.",
+    piePorQueLlego: `Recibes este correo porque te anotaste en la lista de espera de ${c.tenantNombre} a través de atiende.`,
+  });
+  return {
+    asunto: `Se liberó un espacio · ${c.tenantNombre}`,
+    html,
+    texto: `Hola ${c.clienteNombre}, se liberó un espacio que coincide con lo que buscabas en ${c.tenantNombre}. Si todavía te interesa, contáctanos y te lo agendamos.`,
+  };
+}
