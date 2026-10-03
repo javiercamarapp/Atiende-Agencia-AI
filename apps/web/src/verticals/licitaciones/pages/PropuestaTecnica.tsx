@@ -448,7 +448,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
                       <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
                         {relatedItems.slice(0, 3).map((i) => (
                           <li key={i.id}>
-                            {i.text} <span className="text-muted-foreground/70">({formatRequirementKind(i.requirementKind)} · {formatObligatoriedad(i.obligatoriedad)})</span>
+                            {i.text} <span>({formatRequirementKind(i.requirementKind)} · {formatObligatoriedad(i.obligatoriedad)})</span>
                           </li>
                         ))}
                         {relatedItems.length > 3 && <li>+{relatedItems.length - 3} más con este mismo tema…</li>}
