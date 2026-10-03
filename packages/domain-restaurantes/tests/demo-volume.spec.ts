@@ -368,3 +368,13 @@ describe("perfil t7 (ritmo real de la sucursal fase 1)", () => {
     await expect(gen.next()).rejects.toThrow(/garcia-lavin.*ACTIVA/);
   });
 });
+
+describe("sucursal predeterminada del chat de la demo", () => {
+  it("es la misma que el perfil t7 y solo se ofrece si esta entre las activas", async () => {
+    const { DEMO_SUCURSAL_PREDETERMINADA, sucursalPredeterminadaDemo } = await import("../src/demo/types.ts");
+    expect(DEMO_SUCURSAL_PREDETERMINADA).toBe(DEMO_PERFIL_T7.sucursal);
+    expect(sucursalPredeterminadaDemo([{ slug: "prol-montejo" }, { slug: "garcia-lavin" }])).toBe("garcia-lavin");
+    expect(sucursalPredeterminadaDemo([{ slug: "prol-montejo" }])).toBeNull();
+    expect(sucursalPredeterminadaDemo([])).toBeNull();
+  });
+});
