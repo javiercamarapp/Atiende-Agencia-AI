@@ -211,6 +211,11 @@ Idénticas a Likida (`admin/notificaciones.tsx`, `dashboard/notificaciones/lista
   `/internal/licitaciones/alert-notifications`; el de bases, de la escritura que crea la version; el KYC, de
   `POST /internal/licitaciones/kyc-69b/retamizar` (migracion 034). Sin PII: solo conteos. Sin productor y por que:
   `licitaciones.fallo.publicado` (depende de un agregador comercial sin proveedor elegido). No se agrego ningun cron a `vercel.json`.
+- **L-27 (post-adjudicacion de licitaciones)**: suma 3 eventos conectados en
+  `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts`: garantia de contrato por vencer (30 dias), garantia no entregada
+  dentro de su plazo e hito vencido. Salen del barrido existente `/internal/licitaciones/alert-notifications` (migracion 035; sin ella
+  no emiten). UN aviso por garantia o hito y fecha (clave = id + fecha), con enlace a la post-adjudicacion de la convocatoria
+  (`{entidadId}` = id de la convocatoria) y sin PII: ningun monto, afianzadora ni titulo. No se agrego ningun cron a `vercel.json`.
 - **Parte B**: la campana con punto rojo sin número (se apaga al leer) y la página de notificaciones en las 7 consolas.
 - Los eventos `pendiente` son huecos declarados: la columna Productor dice qué falta. Siguen sin conectar y por lo tanto
   la página los mostrará vacíos hasta que su flujo origen emita.
