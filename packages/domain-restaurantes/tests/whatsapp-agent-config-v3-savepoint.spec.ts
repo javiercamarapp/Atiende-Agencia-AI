@@ -100,8 +100,21 @@ describe("guardado (guardarWhatsAppAgentConfig)", () => {
     await sesionSigueViva(session);
   });
 
+  it("sin la 039 y espera en 0 (apagada): 0 equivale a null, no da 503 y se guarda por la ruta de 033", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: EXACTA_039, respond: () => pgError("42703") },
+      { match: EXACTA_033, respond: () => [V033] },
+      { match: UPSERT_033, respond: () => [V033] },
+      { match: HISTORIAL_INSERT, respond: () => [] },
+      SIGUIENTE,
+    ]);
+    const guardada = await new PostgresRestaurantesRepository(session).guardarWhatsAppAgentConfig(ORG_ID, null, { ...CONFIG_SIN_039, replyDebounceSeconds: 0 }, META);
+    expect(guardada).toMatchObject({ version: 3 });
+    await sesionSigueViva(session);
+  });
+
   it("sin la 039 y CON umbral o espera: RestaurantesConfigUnavailableError (503 honesto, nada se descarta en silencio) y la sesion sigue viva", async () => {
-    for (const config of [CONFIG, { ...CONFIG_SIN_039, replyDebounceSeconds: 0 }, { ...CONFIG_SIN_039, largeOrderText: "más de $1" }]) {
+    for (const config of [CONFIG, { ...CONFIG_SIN_039, largeOrderText: "más de $1" }]) {
       const session = new AbortAwareFakeSession([{ match: EXACTA_039, respond: () => pgError("42703") }, SIGUIENTE]);
       await expect(new PostgresRestaurantesRepository(session).guardarWhatsAppAgentConfig(ORG_ID, null, config, META)).rejects.toBeInstanceOf(RestaurantesConfigUnavailableError);
       await sesionSigueViva(session);

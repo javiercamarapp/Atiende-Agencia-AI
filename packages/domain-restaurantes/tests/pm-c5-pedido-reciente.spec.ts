@@ -119,6 +119,14 @@ describe("el agente ve el estado en su contexto", () => {
     expect("pedidoReciente" in base).toBe(false);
   });
 
+  it("si la lectura del pedido no estuvo disponible (undefined), el prompt NO afirma que no hay pedido", async () => {
+    const { world } = await mundoConPedido("domicilio");
+    world.repo.findLatestOrderByPhone = async () => undefined;
+    const ficha = await lookupCustomerConPedidoReciente(world.repo, world.organizationId, TELEFONO);
+    expect("pedidoReciente" in ficha).toBe(false);
+    expect(pmCustomerContextBlock(ficha)).not.toMatch(/pedido de las últimas 12 horas|Pedido reciente/);
+  });
+
   it("lookupCustomerConPedidoReciente agrega el estado y el contexto del prompt dice YA SALIO solo si la sucursal lo marco", async () => {
     const { world, order } = await mundoConPedido("domicilio");
     const preparando = await lookupCustomerConPedidoReciente(world.repo, world.organizationId, TELEFONO);

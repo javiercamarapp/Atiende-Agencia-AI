@@ -59,9 +59,9 @@ describe("findLatestOrderByPhone", () => {
     ["42P01", 'relation "restaurantes.orders" does not exist'],
     ["42703", 'column "customer_phone" does not exist'],
     ["42883", "function regexp_replace does not exist"],
-  ])("SQLSTATE %s: devuelve null (sin pedido reciente) y la sesion del request sigue viva", async (code, mensaje) => {
+  ])("SQLSTATE %s: devuelve undefined (estado desconocido, distinto de null) y la sesion del request sigue viva", async (code, mensaje) => {
     const session = new AbortAwareFakeSession([{ match: /from restaurantes\.orders|select id, organization_id/i, respond: () => pgError(code, mensaje) }, SIGUIENTE]);
-    expect(await new PostgresRestaurantesRepository(session).findLatestOrderByPhone(ORG_ID, "9991234567", "2026-10-02T08:00:00.000Z")).toBeNull();
+    expect(await new PostgresRestaurantesRepository(session).findLatestOrderByPhone(ORG_ID, "9991234567", "2026-10-02T08:00:00.000Z")).toBeUndefined();
     await expect(session.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
   });

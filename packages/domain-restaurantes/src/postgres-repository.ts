@@ -1991,11 +1991,11 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows[0] ? mapOrder(rows[0]) : null;
   }
 
-  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null> {
+  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null | undefined> {
     // Se llama en CADA mensaje de WhatsApp, dentro de la transaccion unica del lote: un error de Postgres (p. ej. un permiso o una
     // columna que la base vieja no tiene) sin SAVEPOINT la dejaria abortada (25P02) y rompería el turno. Respaldo honesto: "no hay
-    // pedido reciente" (el agente no inventa un estado) y la sesion sigue viva.
-    return runWithSavepointFallback<Order | null>({
+    // pedido reciente conocido" (undefined: el agente no inventa un estado) y la sesion sigue viva.
+    return runWithSavepointFallback<Order | null | undefined>({
       session: this.db,
       savepointName: "sp_restaurantes_pedido_reciente",
       primary: async () => {
@@ -2013,7 +2013,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
         return rows[0] ? mapOrder(rows[0]) : null;
       },
       isRecoverable: esErrorSinPedidoRecienteDisponible,
-      fallback: async () => null,
+      // undefined = estado DESCONOCIDO (no es lo mismo que "no hay pedido": el prompt no afirma nada).
+      fallback: async () => undefined,
     });
   }
 
@@ -2647,7 +2648,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: async (err) => {
         // Base sin la migracion 039: se puede guardar todo lo de 033/029, pero NO el umbral ni la espera (no se descartan en silencio).
-        if (config.largeOrderText || (config.replyDebounceSeconds !== null && config.replyDebounceSeconds !== undefined)) {
+        // 0 equivale a "apagada" (null): no exige la migracion 039.
+        if (config.largeOrderText || (config.replyDebounceSeconds ?? 0) > 0) {
           advertirModeloPmNoDisponible("whatsapp_agent_config", err, "039_agente_config_umbral_y_rafagas.sql");
           throw new RestaurantesConfigUnavailableError();
         }

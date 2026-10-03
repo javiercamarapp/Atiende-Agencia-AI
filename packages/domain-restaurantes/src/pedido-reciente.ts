@@ -49,11 +49,12 @@ function horaLocal(iso: string, zona: string): string {
   return new Intl.DateTimeFormat("es-MX", { timeZone: zona, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 }
 
-/** Pedido mas reciente de este telefono dentro de la ventana, o null. Solo lee columnas de `orders` que existen desde la migracion 001
+/** Pedido mas reciente de este telefono dentro de la ventana; null = no hay; undefined = no se pudo leer (base sin migrar). Solo lee columnas de `orders` de las migraciones 001, 003 y 008
  * y `canal` por el camino que ya degrada contra la base sin migrar (`listOrderPickupInfo`). */
-export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null> {
+export async function buscarPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<PedidoReciente | null | undefined> {
   const desde = new Date(now.getTime() - VENTANA_PEDIDO_RECIENTE_MIN * 60_000).toISOString();
   const order = await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), desde);
+  if (order === undefined) return undefined; // la lectura no estuvo disponible: estado desconocido
   if (!order) return null;
   const estado = estadoParaCliente(order.status);
   if (!estado) return null;

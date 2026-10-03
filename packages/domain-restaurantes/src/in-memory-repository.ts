@@ -1449,7 +1449,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return order ?? null;
   }
 
-  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null> {
+  async findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null | undefined> {
     const sinceMs = Date.parse(sinceIso);
     const mios = this.orders
       .filter((o) => o.organizationId === organizationId && o.status !== "cancelado" && Date.parse(o.createdAt) >= sinceMs && o.customerPhone.replace(/\D/g, "").slice(-10) === customerPhone)

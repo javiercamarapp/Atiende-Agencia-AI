@@ -81,7 +81,8 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
 export async function lookupCustomerConPedidoReciente(repo: RestaurantesRepository, organizationId: string, phone: string, now: Date = new Date()): Promise<CustomerLookupResult> {
   const base = await lookupCustomer(repo, organizationId, phone);
   if (base.isNew) return base;
-  return { ...base, pedidoReciente: await buscarPedidoReciente(repo, organizationId, phone, now) };
+  const pedidoReciente = await buscarPedidoReciente(repo, organizationId, phone, now);
+  return pedidoReciente === undefined ? base : { ...base, pedidoReciente };
 }
 
 /**

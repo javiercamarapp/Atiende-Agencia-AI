@@ -402,7 +402,7 @@ export interface RestaurantesRepository {
 
   findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
   /** Pedido MAS RECIENTE (no cancelado) de un telefono (10 digitos, `normalizePhone`) creado desde `sinceIso`, o null. Para "¿ya salio?". */
-  findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null>;
+  findLatestOrderByPhone(organizationId: string, customerPhone: string, sinceIso: string): Promise<Order | null | undefined>;
   /** Sirve tanto "pedidos en operación" (filtro por status, sin rango de fechas)
    * como "historial de órdenes" (rango de fechas + paginación) — mismos datos,
    * mismo filtro compuesto, ver diseño §1.3/§1.4: fragmentarlo en dos endpoints
