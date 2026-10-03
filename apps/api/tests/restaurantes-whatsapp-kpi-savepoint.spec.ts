@@ -8,6 +8,12 @@ import type { AppDeps } from "../src/deps.ts";
 import { AbortAwareFakeSession, type FakeSessionHandler } from "../../../packages/domain-restaurantes/tests/support/aborting-fake-session.ts";
 import { authedGet, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Resp = Omit<Response, "json"> & { json(): Promise<any> };
+function envolver(app: ReturnType<typeof buildApp>): { request(input: string, init?: RequestInit): Promise<Resp> } {
+  return { request: (input, init) => Promise.resolve(app.request(input, init)) as Promise<Resp> };
+}
+
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente_query_del_request/, respond: () => [{ ok: true }] };
 
 function pgError(code: string, message: string): Error & { code: string } {
@@ -20,7 +26,7 @@ async function construir(handlers: readonly FakeSessionHandler[]) {
   const ctx = await buildRestaurantesKpiTestContext(buildApp);
   const session = new AbortAwareFakeSession([...handlers, SIGUIENTE]);
   const deps: AppDeps = { ...ctx.deps, whatsappKpiRepo: () => new PostgresWhatsappKpiRepository(session) };
-  return { ctx, session, app: buildApp(deps), url: `/v1/restaurantes/${ctx.propertyIdA}/admin/whatsapp/kpi` };
+  return { ctx, session, app: envolver(buildApp(deps)), url: `/v1/restaurantes/${ctx.propertyIdA}/admin/whatsapp/kpi` };
 }
 
 describe("ruta de KPI de WhatsApp contra la base sin migrar, con la transacción del request en estado abortado", () => {

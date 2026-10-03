@@ -7,6 +7,12 @@ import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { authedGet, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Resp = Omit<Response, "json"> & { json(): Promise<any> };
+function envolver(app: ReturnType<typeof buildApp>): { request(input: string, init?: RequestInit): Promise<Resp> } {
+  return { request: (input, init) => Promise.resolve(app.request(input, init)) as Promise<Resp> };
+}
+
 afterEach(() => vi.useRealTimers());
 
 function hoyFijo(iso = "2026-03-10T18:00:00Z") {
@@ -19,7 +25,7 @@ async function construir(opts: { sinRepo?: boolean; zona?: string | null } = {})
   const kpi = new InMemoryWhatsappKpiRepository();
   if (opts.zona !== undefined) await ctx.restaurantesRepo.upsertBranchZonaHoraria(ctx.propertyIdA, opts.zona);
   const deps: AppDeps = { ...ctx.deps, ...(opts.sinRepo ? {} : { whatsappKpiRepo: () => kpi }) };
-  return { ctx, kpi, app: buildApp(deps), url: `/v1/restaurantes/${ctx.propertyIdA}/admin/whatsapp/kpi` };
+  return { ctx, kpi, app: envolver(buildApp(deps)), url: `/v1/restaurantes/${ctx.propertyIdA}/admin/whatsapp/kpi` };
 }
 
 const dia = (fecha: string, parcial: Partial<WhatsappKpiDia> = {}): WhatsappKpiDia => ({ ...whatsappDiaVacio(fecha), ...parcial });
