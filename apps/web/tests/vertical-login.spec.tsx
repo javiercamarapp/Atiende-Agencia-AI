@@ -144,3 +144,70 @@ describe("VerticalLogin", () => {
     expect(c.textContent).toContain("Continuar con Google");
   });
 });
+
+describe("VerticalLogin — ¿Olvidaste tu contraseña? (PL-21)", () => {
+  const solicitar = vi.fn();
+  beforeEach(() => {
+    solicitar.mockReset();
+    vi.stubGlobal("fetch", solicitar);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const enlaceOlvido = (c: HTMLElement) => [...c.querySelectorAll("button")].find((b) => b.textContent === "¿Olvidaste tu contraseña?");
+  const res = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
+
+  it("el enlace existe en el login, abre el formulario de restablecer y 'Volver' regresa al acceso", async () => {
+    verificarGoogle.mockResolvedValue(false);
+    const c = await montar();
+    click(enlaceOlvido(c)!);
+    expect(c.textContent).toContain("Restablece tu contraseña");
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(false);
+    click([...c.querySelectorAll("button")].find((b) => b.textContent === "Volver a iniciar sesión")!);
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(true);
+  });
+
+  it("respuesta uniforme: manda el correo y la vertical, y el aviso NO confirma que la cuenta exista", async () => {
+    solicitar.mockResolvedValue(res({ ok: true }));
+    const c = await montar();
+    changeValue(correo(c), "dueno@negocio.com");
+    click(enlaceOlvido(c)!);
+    expect(correo(c).value).toBe("dueno@negocio.com"); // no se pide el correo dos veces
+    await submitForm(c.querySelector("form")!);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    const [url, init] = solicitar.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.test/auth/password-reset/solicitar");
+    expect(JSON.parse(init.body as string)).toEqual({ email: "dueno@negocio.com", vertical: "citas" });
+    const aviso = c.querySelector('[role="status"]')!.textContent!;
+    expect(aviso).toContain("Si dueno@negocio.com tiene una cuenta");
+    expect(aviso).not.toMatch(/no existe|no encontr/i);
+  });
+
+  it("un correo invalido no llama al servidor; un error del servidor (429) se muestra", async () => {
+    const c = await montar();
+    click(enlaceOlvido(c)!);
+    changeValue(correo(c), "no-es-correo");
+    await submitForm(c.querySelector("form")!);
+    expect(solicitar).not.toHaveBeenCalled();
+    expect(c.querySelector('p[role="alert"]')!.textContent).toContain("correo válido");
+    solicitar.mockResolvedValue(res({ message: "Demasiados intentos. Intenta de nuevo en unos minutos." }, 429));
+    changeValue(correo(c), "a@b.com");
+    await submitForm(c.querySelector("form")!);
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(c.querySelector('p[role="alert"]')!.textContent).toContain("Demasiados intentos");
+    expect(c.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("se puede apagar por vertical y no aparece si la vertical no es una de las 6", async () => {
+    let c = await montar({ metodos: { olvidoContrasena: false } });
+    expect(enlaceOlvido(c)).toBeUndefined();
+    rendered!.unmount();
+    c = await montar({ vertical: "otra" });
+    expect(enlaceOlvido(c)).toBeUndefined();
+  });
+});

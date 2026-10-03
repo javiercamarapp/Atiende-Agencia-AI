@@ -119,6 +119,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Auditoría",
       "Privacidad",
       "Privacidad de la organización",
+      "Seguridad de la cuenta", // PL-21: destino comun del pie, seccion "Cuenta" de la hoja
     ]);
   });
 

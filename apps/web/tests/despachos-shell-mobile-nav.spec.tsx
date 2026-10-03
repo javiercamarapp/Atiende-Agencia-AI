@@ -92,7 +92,7 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(21);
+    expect(hrefs).toHaveLength(22); // 20 destinos + Copiloto + Seguridad de la cuenta (PL-21)
     // CHAT-11: el Copiloto tambien esta en la hoja "Más" (admin, contador, auditor y readonly).
     expect(hrefs).toContain("/despachos/demo/copiloto");
     expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));

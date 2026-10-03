@@ -3,6 +3,7 @@
 // boton "Chatea con tus datos". Cada vertical migrada monta este componente en
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
 import { useState } from "react";
+import { ShieldCheck } from "lucide-react";
 import { NotificationBell, VerticalShell } from "@atiende/ui";
 import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
@@ -29,6 +30,11 @@ export function planHrefDe(notificacionesHref: string): string {
   return notificacionesHref.replace(/\/notificaciones\/?$/, "/plan");
 }
 
+/** `/<vertical>/<orgSlug>/notificaciones` -> `/<vertical>/<orgSlug>/seguridad` (Seguridad de la cuenta, PL-21). */
+export function seguridadHrefDe(notificacionesHref: string): string {
+  return notificacionesHref.replace(/\/notificaciones\/?$/, "/seguridad");
+}
+
 export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
   const chat = ocultarChat ? undefined : chatProp;
@@ -36,8 +42,13 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
   // boton de la barra y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
   const chatDisponible = useChatDatosDisponible(chat);
   const [chatAbierto, setChatAbierto] = useState(false);
+  // PL-21: destino de "Seguridad de la cuenta" en el pie del Sidebar (y en la hoja "Mas" del movil, seccion "Cuenta"),
+  // comun a las 6 verticales. Si el shell ya lo trae como item de navegacion (licitaciones) no se duplica.
+  const seguridadHref = seguridadHrefDe(notificacionesHref);
+  const yaEnNavegacion = shell.sections.some((sec) => sec.items.some((item) => item.to === seguridadHref));
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
+    ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
     ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregunta a tus datos", to: copilotoHref } : { label: "Pregunta a tus datos", onClick: () => setChatAbierto(true) }] : []),
   ];
   const campana = (className?: string) => (

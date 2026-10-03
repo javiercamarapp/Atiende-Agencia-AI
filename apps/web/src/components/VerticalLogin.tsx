@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
+import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import "../pages/login.css";
 
@@ -32,7 +34,8 @@ export interface VerticalLoginProps {
   readonly kicker?: string;
   /** @default "tu@negocio.com" */
   readonly placeholderCorreo?: string;
-  readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean };
+  /** `olvidoContrasena` (por defecto activo): enlace "¿Olvidaste tu contraseña?" (PL-21); se apaga solo si la vertical no usa contraseña. */
+  readonly metodos?: { readonly google?: boolean; readonly magicLink?: boolean; readonly olvidoContrasena?: boolean };
   readonly hero: VerticalLoginHero;
   /** Reemplaza el pie por defecto ("Pídele a tu negocio que te dé de alta"); p. ej. rentas ofrece alta autoservicio. */
   readonly pie?: ReactNode;
@@ -45,6 +48,8 @@ export function esCorreoValido(correo: string): boolean {
 export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
   const conGoogle = metodos?.google ?? true;
   const conMagicLink = metodos?.magicLink ?? true;
+  const conOlvido = (metodos?.olvidoContrasena ?? true) && esVerticalCuenta(vertical);
+  const [modoOlvido, setModoOlvido] = useState(false);
   const [correo, setCorreo] = useState("");
   const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -121,7 +126,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
               <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">Bienvenido a atiende {nombre}</h1>
               <p className="login-entra [--retraso:140ms] login-cuerpo mt-4 text-muted-foreground">{descripcion}</p>
 
-              {conMagicLink && enviadoA && (
+              {conMagicLink && enviadoA && !modoOlvido && (
                 <div role="status" className="login-entra [--retraso:190ms] mt-9 rounded-[18px] border border-border bg-muted p-5">
                   <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
                   <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
@@ -133,54 +138,65 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
 
               <div className="login-entra [--retraso:180ms] mt-9 h-px bg-border" />
 
-              {conGoogle && (
+              {modoOlvido && esVerticalCuenta(vertical) ? (
+                <OlvidoContrasena apiBaseUrl={apiBaseUrl} vertical={vertical} correoInicial={correo} onVolver={() => setModoOlvido(false)} />
+              ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={irAGoogle}
-                    disabled={!googleHabilitado}
-                    title={!googleHabilitado ? avisoGoogle : undefined}
-                    className="login-entra [--retraso:220ms] mt-8 login-btn login-btn-borde"
-                  >
-                    <GoogleIcon />
-                    Continuar con Google
-                  </button>
-                  {!googleHabilitado && <p className="login-entra [--retraso:230ms] mt-2 text-xs leading-relaxed text-muted-foreground">{avisoGoogle}</p>}
+                  {conGoogle && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={irAGoogle}
+                        disabled={!googleHabilitado}
+                        title={!googleHabilitado ? avisoGoogle : undefined}
+                        className="login-entra [--retraso:220ms] mt-8 login-btn login-btn-borde"
+                      >
+                        <GoogleIcon />
+                        Continuar con Google
+                      </button>
+                      {!googleHabilitado && <p className="login-entra [--retraso:230ms] mt-2 text-xs leading-relaxed text-muted-foreground">{avisoGoogle}</p>}
+                    </>
+                  )}
+
+                  {conGoogle && conMagicLink && (
+                    <div className="login-entra [--retraso:250ms] my-6 flex items-center gap-4">
+                      <span className="h-px flex-1 bg-border" />
+                      <span className="text-ui lowercase text-faint">o</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+
+                  {conMagicLink && (
+                    <form onSubmit={enviarMagicLink} className={`login-entra [--retraso:280ms] flex flex-col gap-3 ${conGoogle ? "" : "mt-8"}`} noValidate>
+                      <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
+                        {(campo) => (
+                          <input
+                            {...campo}
+                            type="email"
+                            placeholder={placeholderCorreo}
+                            autoComplete="email"
+                            value={correo}
+                            onChange={(e) => setCorreo(e.target.value)}
+                            className="login-campo"
+                          />
+                        )}
+                      </FormField>
+                      <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
+                        <span aria-hidden className="login-glifo">
+                          <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                        </span>
+                        <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
+                      </button>
+                    </form>
+                  )}
+
+                  {conOlvido && (
+                    <button type="button" onClick={() => setModoOlvido(true)} className="login-entra [--retraso:300ms] mt-4 text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  )}
                 </>
               )}
-
-              {conGoogle && conMagicLink && (
-                <div className="login-entra [--retraso:250ms] my-6 flex items-center gap-4">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="text-ui lowercase text-faint">o</span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-              )}
-
-              {conMagicLink && (
-                <form onSubmit={enviarMagicLink} className={`login-entra [--retraso:280ms] flex flex-col gap-3 ${conGoogle ? "" : "mt-8"}`} noValidate>
-                  <FormField label={<span className="sr-only">Tu correo</span>} error={errorCorreo ?? undefined} required>
-                    {(campo) => (
-                      <input
-                        {...campo}
-                        type="email"
-                        placeholder={placeholderCorreo}
-                        autoComplete="email"
-                        value={correo}
-                        onChange={(e) => setCorreo(e.target.value)}
-                        className="login-campo"
-                      />
-                    )}
-                  </FormField>
-                  <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
-                    <span aria-hidden className="login-glifo">
-                      <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
-                    </span>
-                    <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
-                  </button>
-                </form>
-              )}
-
 
               <p className="login-entra [--retraso:320ms] mt-7 text-pretty text-sm leading-relaxed text-muted-foreground">
                 {pie ?? (
