@@ -57,6 +57,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },
   // Lista de supresion de plataforma (SA-L-46): agregar un contacto como "no contactar".
   { method: "POST", pattern: /^\/superadmin\/supresion\/no-contactar$/, label: "agregar un contacto a la lista de no contactar" },
+  // Cerebro de ventas (SA-L-38): editar la taxonomia de una vertical crea una version nueva de las reglas del scoring y del mensaje base.
+  { method: "PUT", pattern: /^\/superadmin\/cerebro\/taxonomia\/[^/]+$/, label: "editar la taxonomia de una vertical del cerebro de ventas" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {

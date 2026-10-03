@@ -32,7 +32,7 @@ describe("superadmin.organizacion.accion_pendiente", () => {
       propertyId: null,
       categoria: "aprobaciones",
       severidad: "atencion",
-      enlace: "/superadmin/gestion-organizaciones",
+      enlace: "/superadmin/organizaciones?tab=gestion",
       dedupeKey: `superadmin.organizacion.accion_pendiente:${accion.id}`,
     });
     expect(JSON.stringify(emisiones[0])).not.toContain("mora");

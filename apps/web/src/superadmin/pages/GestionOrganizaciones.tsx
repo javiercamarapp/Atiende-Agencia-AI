@@ -64,7 +64,11 @@ function badgeDeEstado(status: Organizacion["status"]) {
   return <StatusBadge tone={statusTone(ORG_STATUS_TONES, status)}>{status === "active" ? "Activa" : status === "suspended" ? "Suspendida" : "Prueba"}</StatusBadge>;
 }
 
-export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+/**
+ * `embebida`: se monta como la pestana 'Gestion' de Organizaciones (SA-L-20): la pagina contenedora ya pone el `<h1>` y el `PageContainer`, asi que
+ * aqui solo va el texto de apoyo y el boton de alta. Sin `embebida` (uso historico y pruebas) conserva su cabecera y su contenedor.
+ */
+export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebida = false }: { readonly apiBaseUrl: string; readonly token: string; readonly embebida?: boolean }) {
   const { confirmar, dialogo } = useConfirm();
   const [organizaciones, setOrganizaciones] = useState<readonly Organizacion[] | null>(null);
   const [acciones, setAcciones] = useState<readonly Accion[]>([]);
@@ -185,15 +189,19 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
   const pendientes = acciones.filter((a) => a.estado === "pending" && a.venceEnMs > Date.now());
   const nombreDe = (id: string | null) => (id ? (organizaciones.find((o) => o.id === id)?.name ?? id) : "(organización nueva)");
 
+  const Contenedor = embebida ? "div" : PageContainer;
+  const propsContenedor = embebida ? { className: "space-y-4 [&>*]:min-w-0" } : { padding: "none" as const, className: "[&>*]:min-w-0" };
   return (
-    <PageContainer padding="none" className="[&>*]:min-w-0">
+    <Contenedor {...propsContenedor}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <Building2 className="w-5 h-5" strokeWidth={1.75} />
-            Gestión de organizaciones
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          {!embebida && (
+            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+              <Building2 className="w-5 h-5" strokeWidth={1.75} />
+              Gestión de organizaciones
+            </h1>
+          )}
+          <p className={embebida ? "text-ui text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>
             Alta, suspender, reactivar y plan de cuenta. Cada cambio se solicita con motivo y se confirma aparte con tu código MFA. Suspender corta el acceso del equipo de esa organización a su panel; no toca el cobro.
           </p>
         </div>
@@ -420,6 +428,6 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token }: { rea
         </form>
       </FormDialog>
       {dialogo}
-    </PageContainer>
+    </Contenedor>
   );
 }

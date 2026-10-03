@@ -75,9 +75,11 @@ interface Resumen {
 export interface PrivacidadOrganizacionPageProps {
   readonly apiBaseUrl: string;
   readonly token: string;
+  /** Alcance honesto del vertical desde el que se abre la pantalla (p. ej. datos propios que aún no entran al catálogo). */
+  readonly notaVertical?: string;
 }
 
-export function PrivacidadOrganizacionPage({ apiBaseUrl, token }: PrivacidadOrganizacionPageProps) {
+export function PrivacidadOrganizacionPage({ apiBaseUrl, token, notaVertical }: PrivacidadOrganizacionPageProps) {
   const base = `${apiBaseUrl.replace(/\/$/, "")}/v1/privacidad`;
   const [datos, setDatos] = useState<Resumen | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -179,6 +181,11 @@ export function PrivacidadOrganizacionPage({ apiBaseUrl, token }: PrivacidadOrga
   return (
     <PageContainer>
       {encabezado}
+      {notaVertical && (
+        <Callout tone="info" titulo="Alcance en este vertical">
+          {notaVertical}
+        </Callout>
+      )}
       {accionError && (
         <Callout tone="danger" titulo="No se pudo completar la acción">
           {accionError}

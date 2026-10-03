@@ -8,6 +8,33 @@ a diferencia de `domain-hoteles`/`domain-citas`/`domain-rentas`/`domain-restaura
 de `src/` para el diseño de cada una); esta entrada arranca documentando la fase que
 lo agrega.
 
+## Seguridad de las rutas de staff (D-15, D-30, D-38)
+
+### Toda ruta nueva se declara en la matriz en el MISMO PR (D-15)
+
+`apps/api/tests/despachos-guardas-matriz.ts` es la verdad de diseno de quien puede llamar cada ruta bajo `/despachos/:propertyId/*` y `/v1/despachos/*`.
+`apps/api/tests/despachos-guardas-rutas.spec.ts` enumera TODAS las rutas registradas en la app Hono y **falla** si una existe y no esta declarada en la matriz
+(o si la matriz declara una que ya no existe). Por ruta comprueba: sin token 401, otra organizacion 403/404 sin filtrar datos, staff acotado a otra property 403,
+cada rol fuera de su acceso 403 y cada rol dentro de el no bloqueado, y que `auditor` y `readonly` nunca escriben (salvo las calculadoras puras declaradas).
+
+Al agregar una ruta: (1) escribe su entrada en `MATRIZ_GUARDAS` con los roles a proposito (`TODOS`, `ESCRIBE`, `SOLO_ADMIN` o `ADMIN_Y_AUDITOR`); (2) si solo calcula y no persiste,
+anadela a `POST_DE_SOLO_CALCULO`; (3) si exige step-up, a `RUTAS_CON_STEP_UP`. Leccion real del 1-oct: #302 rompio `main` por no declarar sus rutas en la matriz de hoteles.
+
+### Step-up TOTP en acciones sensibles (D-30)
+
+Alcance `despachos_sensitive` (`@atiende/core-auth`), header `x-step-up-token` (5 min, atado a usuario+organizacion+alcance; se emite con `POST /auth/step-up`).
+Lo exigen: cerrar un periodo del cierre mensual, crear y revocar enlaces del portal del cliente, exportar el paquete de contabilidad electronica
+(`POST .../contabilidad-electronica/paquete` y `GET .../libro/contabilidad-electronica`) e invitar, revocar invitacion y cambiar rol de staff. Se aplica DESPUES del rol
+(`apps/api/src/routes/verticals/despachos/step-up.ts`). Sin TOTP dado de alta: 403 `step_up_enrollment_required` (sin bypass); sin token vigente: 403 `step_up_required`.
+Compatibilidad con la base sin migrar: sin el puerto de 2FA o con su migracion pendiente la guardia no exige nada (queda el control por rol).
+
+### Bitacora de lecturas, descargas y exportaciones (D-38)
+
+`apps/api/src/routes/verticals/despachos/auditoria-acceso.ts` registra en `despachosAuditSink` (`despachos.audit_log`) cada descarga del portal, PDF/XLSX de reportes, XML de contabilidad
+electronica, layout DIOT, export de pagos provisionales y cartera en PDF: accion `despachos.<recurso>:<lectura|descarga|export>`, actor por id (sin correo) y solo identificadores
+y parametros de forma en `metadata` (nunca contenido ni nombres de archivo). Se consulta con `GET /v1/despachos/:orgSlug/admin/bitacora?limit=&offset=` (solo `admin` y `auditor` con alcance de toda
+la organizacion). Una exportacion o descarga nueva debe llamar a `auditarAccesoDespachos` en el mismo PR.
+
 ## Fase 10 — cobranza automatizada (cuentas por cobrar)
 
 Gap real verificado contra el original (`~/Desktop/supabase/despachos/b2b_ai/

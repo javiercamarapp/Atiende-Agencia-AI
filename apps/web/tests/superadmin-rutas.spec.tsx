@@ -93,9 +93,10 @@ describe("mapa de rutas del superadmin (rutas.ts)", () => {
   it("las rutas viejas que cambian de lugar redirigen a una ruta que existe", () => {
     for (const [desde, hacia] of Object.entries(REDIRECCIONES_SUPERADMIN)) {
       expect(desde).not.toBe(hacia);
-      // El destino puede traer `?tab=`: la ruta es lo que va antes del `?`.
+      // La consulta (`?tab=gestion`) solo elige una pestana: la ruta destino es la de antes del `?`.
       expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain(hacia.split("?")[0]);
     }
+    expect(REDIRECCIONES_SUPERADMIN["/superadmin/gestion-organizaciones"]).toBe("/superadmin/organizaciones?tab=gestion");
     // El listado de organizaciones ya no es la raiz: el Resumen lo es.
     expect(TODAS_LAS_RUTAS.map((r) => r.to)).toContain("/superadmin/organizaciones");
     expect(REDIRECCIONES_SUPERADMIN["/superadmin/resumen"]).toBe("/superadmin");

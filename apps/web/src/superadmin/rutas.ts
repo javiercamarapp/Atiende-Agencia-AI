@@ -16,6 +16,7 @@ import {
   AlertOctagon,
   ArrowLeftRight,
   BellOff,
+  Brain,
   Building2,
   Coins,
   Cpu,
@@ -35,7 +36,6 @@ import {
   ShieldCheck,
   ShieldOff,
   Tags,
-  TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -69,9 +69,8 @@ export const AGENTES: readonly RutaSuperadmin[] = [
 
 export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
-  { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
+  { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
   { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
-  { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
   // SA-L-21/22/24: en Likida Costos & Facturacion, Consumo de IA y Ejecutivo / Board son UNA entrada cada uno. Las rutas viejas
   // (facturacion, costos-margen, pyl, contratos, gasto-api, cfo) siguen vivas como redireccion (REDIRECCIONES_SUPERADMIN).
   { to: "/superadmin/costos-facturacion", label: "Costos y facturación", icon: Coins },
@@ -130,7 +129,7 @@ export const MOVIL_SUPERADMIN: readonly RutaSuperadmin[] = [
 export const PARTE_DIARIO = "/superadmin/parte-diario";
 
 /** Rutas con pagina real que NO tienen item de menu (se llega por un enlace). Cuentan como existentes para las pildoras. */
-export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/notificaciones"];
+export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/notificaciones", "/superadmin/cerebro/taxonomia"];
 
 /** Rutas web que cambiaron de lugar: la vieja redirige a la nueva (sin 404). */
 export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
@@ -143,6 +142,10 @@ export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
   // SA-L-22 y SA-L-24: renombradas como en Likida.
   "/superadmin/gasto-api": "/superadmin/consumo-ia",
   "/superadmin/cfo": "/superadmin/ejecutivo",
+  // SA-L-20: la gestion de organizaciones es la pestana "Gestion" de Organizaciones (sin 404 en enlaces y notificaciones viejas).
+  "/superadmin/gestion-organizaciones": "/superadmin/organizaciones?tab=gestion",
+  // Prospectos pasa a "Cerebro de ventas" (SA-L-37): la ruta vieja redirige a la nueva.
+  "/superadmin/prospectos": "/superadmin/cerebro",
 };
 
 export interface PendienteSuperadmin {
