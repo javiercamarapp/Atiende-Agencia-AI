@@ -194,9 +194,29 @@ export function enmascararTelefono(phone: string): string {
 }
 
 /** Minimizacion para roles sin PII completa: correos y secuencias de 7+ digitos (telefonos, documentos) se ocultan del texto. */
-export function minimizarTextoPii(texto: string): string {
+/** Un token es un correo si tiene un `@` con texto antes y un punto con texto despues (sin regex: tiempo lineal por construccion). */
+function esCorreo(token: string): boolean {
+  const at = token.indexOf("@");
+  if (at < 1 || token.indexOf("@", at + 1) !== -1) return false;
+  const punto = token.lastIndexOf(".");
+  return punto > at + 1 && punto < token.length - 1;
+}
+
+function ocultarCorreos(texto: string): string {
   return texto
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[correo]")
+    .split(/(\s+)/)
+    .map((token) => {
+      if (!token.includes("@")) return token;
+      let fin = token.length;
+      while (fin > 0 && ",.;:)!?\"'".includes(token[fin - 1]!)) fin -= 1;
+      const nucleo = token.slice(0, fin);
+      return esCorreo(nucleo) ? `[correo]${token.slice(fin)}` : token;
+    })
+    .join("");
+}
+
+export function minimizarTextoPii(texto: string): string {
+  return ocultarCorreos(texto)
     // Una sola clase de caracteres con cuantificador simple (tiempo lineal, sin grupos repetidos): la corrida se oculta solo si
     // lleva 7 o mas digitos; los espacios de los extremos se conservan.
     .replace(/[\d\s().+-]{7,}/g, (m) => (m.replace(/\D/g, "").length >= 7 ? `${/^\s/.test(m) ? " " : ""}[número]${/\s$/.test(m) ? " " : ""}` : m));

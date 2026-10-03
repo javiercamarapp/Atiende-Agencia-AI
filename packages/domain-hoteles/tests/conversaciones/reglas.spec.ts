@@ -35,6 +35,14 @@ describe("minimizacion de PII", () => {
   it("texto: oculta correos y numeros largos, deja cifras cortas (cuartos, horas)", () => {
     expect(minimizarTextoPii("Escribe a ana@example.com o llama al 55 1234 5678, cuarto 410 a las 3")).toBe("Escribe a [correo] o llama al [número], cuarto 410 a las 3");
   });
+  it("correos con puntuacion final y entradas largas (sin degradar)", () => {
+    expect(minimizarTextoPii("Mi correo: ana@example.com.")).toBe("Mi correo: [correo].");
+    expect(minimizarTextoPii("no es correo: a@b ni @x.com ni a@@b.com")).toBe("no es correo: a@b ni @x.com ni a@@b.com");
+    const largo = "%".repeat(50_000) + "@" + "a.".repeat(20_000);
+    const t0 = Date.now();
+    minimizarTextoPii(largo);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
   it("detecta tarjeta/documento (13 a 19 digitos con espacios o guiones) y valida el texto", () => {
     expect(textoTieneDatoSensible("4111 1111 1111 1111")).toBe(true);
     expect(textoTieneDatoSensible("4111-1111-1111-1111")).toBe(true);
