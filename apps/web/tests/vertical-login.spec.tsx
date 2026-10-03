@@ -135,6 +135,23 @@ describe("VerticalLogin", () => {
     expect(c.querySelector(".login-aviso-google")).toBeNull();
   });
 
+  it("la etiqueta del boton no cambia de caja al enviar: 'Enviando…' ya existe apilada y solo cambia cual es invisible", async () => {
+    let terminar: (v: { ok: boolean }) => void = () => undefined;
+    iniciarMagicLink.mockReturnValue(new Promise((r) => (terminar = r)));
+    const c = await montar();
+    const boton = [...c.querySelectorAll("button")].find((b) => b.getAttribute("type") === "submit")!;
+    const textos = () => [...boton.querySelectorAll(".login-etiqueta > span")].map((n) => [n.textContent, n.classList.contains("invisible")]);
+    expect(textos()).toEqual([["Continuar con correo", false], ["Enviando…", true]]);
+    changeValue(correo(c), "a@b.com");
+    await submitForm(c.querySelector("form")!);
+    expect(boton.getAttribute("aria-busy")).toBe("true");
+    expect(textos()).toEqual([["Continuar con correo", true], ["Enviando…", false]]);
+    terminar({ ok: true });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+  });
+
   it("el aviso de Google no se inserta en el flujo: va absoluto en el hueco del separador", async () => {
     verificarGoogle.mockResolvedValue(false);
     const c = await montar();
@@ -192,9 +209,9 @@ describe("VerticalLogin — ¿Olvidaste tu contraseña? (PL-21)", () => {
     const c = await montar();
     click(enlaceOlvido(c)!);
     expect(c.textContent).toContain("Restablece tu contraseña");
-    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(false);
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent?.includes("Continuar con correo"))).toBe(false);
     click([...c.querySelectorAll("button")].find((b) => b.textContent === "Volver a iniciar sesión")!);
-    expect([...c.querySelectorAll("button")].some((b) => b.textContent === "Continuar con correo")).toBe(true);
+    expect([...c.querySelectorAll("button")].some((b) => b.textContent?.includes("Continuar con correo"))).toBe(true);
   });
 
   it("respuesta uniforme: manda el correo y la vertical, y el aviso NO confirma que la cuenta exista", async () => {

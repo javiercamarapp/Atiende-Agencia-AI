@@ -6,6 +6,7 @@
 import { useId, useState } from "react";
 import type { FormEvent } from "react";
 import { FormField } from "@atiende/ui";
+import { EtiquetaBoton } from "../../components/EtiquetaBoton.tsx";
 import { solicitarRestablecerContrasena } from "./cuenta-client.ts";
 import type { VerticalCuenta } from "./cuenta-client.ts";
 
@@ -49,10 +50,10 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
   }
 
   return (
-    <div className="login-entra mt-8 flex flex-col gap-3">
+    <div className="login-entra login-olvido mt-8 flex flex-col gap-3">
       <div>
         <p className="login-cuerpo font-semibold text-foreground">Restablece tu contraseña</p>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">Escribe tu correo y, si tiene una cuenta, te enviamos un enlace para elegir una contraseña nueva.</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">Escribe tu correo y, si tiene una cuenta, te enviamos un enlace para elegir otra.</p>
       </div>
 
       <form onSubmit={enviar} className="flex flex-col gap-3" noValidate>
@@ -60,7 +61,7 @@ export function OlvidoContrasena({ apiBaseUrl, vertical, correoInicial = "", onV
           {(campo) => <input {...campo} type="email" placeholder="tu@negocio.com" autoComplete="email" aria-required="true" aria-invalid={errorCorreo ? true : undefined} aria-describedby={errorCorreo ? idAlerta : undefined} value={correo} onChange={(e) => setCorreo(e.target.value)} className="login-campo" />}
         </FormField>
         <button type="submit" disabled={enviando} aria-busy={enviando || undefined} className="login-btn login-btn-tinta mt-1">
-          {enviando ? "Enviando…" : "Enviarme el enlace"}
+          <EtiquetaBoton ocupado={enviando} reposo="Enviarme el enlace" enCurso="Enviando…" />
         </button>
       </form>
 

@@ -10,6 +10,7 @@ import { useEffect, useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
 import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
@@ -133,7 +134,8 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
             <div className="w-full">
               <p className="login-entra [--retraso:40ms] login-kicker">{kicker}</p>
               <h1 className="login-entra [--retraso:90ms] login-serif login-titulo mt-5 text-foreground">Bienvenido a atiende {nombre}</h1>
-              <p className="login-entra [--retraso:140ms] login-cuerpo login-descripcion mt-4 text-muted-foreground">{descripcion}</p>
+              {/* En "olvidé mi contraseña" el panel ya explica la pantalla: se omite la bajada para que esa vista tampoco pase del alto de la ventana. */}
+              {!modoOlvido && <p className="login-entra [--retraso:140ms] login-cuerpo login-descripcion mt-4 text-muted-foreground">{descripcion}</p>}
 
               <div className="login-entra [--retraso:180ms] login-regla mt-9 h-px bg-border" />
 
@@ -188,7 +190,7 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                         <span aria-hidden className="login-glifo">
                           <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
                         </span>
-                        <span>{enviando ? "Enviando…" : "Continuar con correo"}</span>
+                        <EtiquetaBoton ocupado={enviando} reposo="Continuar con correo" enCurso="Enviando…" />
                       </button>
                     </form>
                   )}
