@@ -419,8 +419,13 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       // la MISMA operación -- generaliza el disparador anterior (solo
       // `submissionDeadline`) a CUALQUIER campo de bases que haya cambiado
       // (REQ-151/155, ver tender-version-registry.ts).
-      await this.recordTenderVersion(organizationId, existing.id, input.actorId);
-      return { tender: updated, created: false, submissionDeadlineChanged: previousDeadline !== input.submissionDeadline };
+      const versionResult = await this.recordTenderVersion(organizationId, existing.id, input.actorId);
+      return {
+        tender: updated,
+        created: false,
+        submissionDeadlineChanged: previousDeadline !== input.submissionDeadline,
+        versionCambiada: versionResult.created && versionResult.version.version > 1 ? versionResult.version.version : null,
+      };
     }
 
     const created: TenderRecord = {

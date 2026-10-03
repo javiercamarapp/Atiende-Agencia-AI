@@ -78,8 +78,8 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
 }
 
 export const rutasComunes: readonly Ruta[] = [
-  // El banner de plan (BannerPlan) lee /billing/uso en cada consola: en e2e es el estado honesto 'no disponible' (sin Stripe ni topes).
-  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "Todavía no disponible en este despliegue." }) },
+  // El banner de plan (BannerPlan) pide /billing/uso en todas las verticales; la API simulada responde el estado honesto "no disponible".
+  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "Plan y uso no disponible en la API simulada de e2e." }) },
   { metodo: "GET", patron: "/notifications/unread-count", manejador: (p) => ({ unreadCount: noLeidas(lista(p.estado, p.persona)) }) },
   { metodo: "GET", patron: "/notifications", manejador: (p) => {
       const todas = lista(p.estado, p.persona);
@@ -98,6 +98,9 @@ export const rutasComunes: readonly Ruta[] = [
       for (const n of todas) n.readAt = n.readAt ?? MARCA_LECTURA;
       return { ok: true, markedCount: marcadas, unreadCount: 0 };
     } },
+  // Plan y uso (PL-16): el banner del shell lo pide en cada pantalla. La API simulada no factura: responde el estado honesto "no disponible"
+  // (el cliente lo trata como sin banner), sin inventar un plan ni cifras de uso.
+  { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "La API simulada de e2e no tiene facturación." }) },
   { metodo: "POST", patron: "/notifications/:id/read", manejador: (p) => {
       const todas = lista(p.estado, p.persona);
       const n = todas.find((x) => x.id === p.params.id);

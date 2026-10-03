@@ -17,6 +17,9 @@ import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenan
 import {
   GUEST_CRM_ROLES,
   GUEST_NOTE_KINDS,
+  IDENTITY_ADMIN_ROLES,
+  PostgresGuestDataRepository,
+  guestDataToCsv,
   GUEST_NOTE_MAX_LENGTH,
   HuespedesAccessDeniedError,
   HuespedesArcoRestrictionError,
@@ -28,9 +31,11 @@ import {
   resumirEstancias,
   type GuestNoteKind,
   type GuestNoteRecord,
+  type GuestDataRepository,
   type HuespedesRepository,
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
+import { toApiError as privacyToApiError } from "./identidad.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -124,6 +129,36 @@ export function hotelesHuespedesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // restriccion = ARCO de cancelacion u oposicion en curso: bloquea notas nuevas. null = sin la migracion 038.
       arco: restriccionArco === null ? null : { restriccion: restriccionArco },
     });
+  });
+
+  // ---- Exportacion de datos (H-30) -------------------------------------------------------------------------------------
+  // Derecho de acceso/portabilidad: perfil, estancias, notas, consentimientos, solicitudes de contacto y conversaciones del
+  // huesped en JSON o CSV. SOLO owner/gm (igual que el resto de privacidad). El documento de identidad NUNCA sale: de la boveda
+  // solo id, tipo, estado y vigencia. La funcion de la base autoriza, arma el documento y deja UNA huella en la bitacora de
+  // privacidad en la misma llamada: no hay exportacion sin registro.
+  app.get("/hoteles/:propertyId/huespedes/:guestId/exportar-datos", async (c) => {
+    assertVerticalRole(c, IDENTITY_ADMIN_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const guestId = guestIdOf(c);
+    const formato = c.req.query("formato") ?? "json";
+    if (formato !== "json" && formato !== "csv") throw Errors.validation("formato: se esperaba json o csv.");
+    const repo: GuestDataRepository = deps.hotelesGuestDataRepo ? deps.hotelesGuestDataRepo(c.get("db")) : new PostgresGuestDataRepository(c.get("db"));
+    let doc;
+    try {
+      doc = await repo.exportGuestData(propertyId, guestId, formato);
+    } catch (err) {
+      throw privacyToApiError(err);
+    }
+    c.header("Cache-Control", "no-store");
+    const nombre = `datos-huesped-${guestId.slice(0, 8)}`;
+    if (formato === "csv") {
+      c.header("Content-Type", "text/csv; charset=utf-8");
+      c.header("Content-Disposition", `attachment; filename="${nombre}.csv"`);
+      return c.body(`\uFEFF${guestDataToCsv(doc)}`);
+    }
+    c.header("Content-Type", "application/json; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${nombre}.json"`);
+    return c.body(JSON.stringify({ exportadoEn: new Date().toISOString(), ...doc }, null, 2));
   });
 
   // ---- Notas y preferencias -------------------------------------------------------------------------------------------

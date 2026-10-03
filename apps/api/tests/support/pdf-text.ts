@@ -6,7 +6,9 @@ import { inflateSync } from "node:zlib";
 export function textoDelPdf(bytes: Uint8Array): string {
   const raw = Buffer.from(bytes).toString("latin1");
   const partes: string[] = [];
-  for (const m of raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+  // OJO: el delimitador de cierre es solo "\nendstream". Con "\r?\nendstream" la regex se comia un 0x0D que fuera el ULTIMO byte
+  // del flujo comprimido (1 de cada 256 flujos): el inflate fallaba en silencio y el texto de esa pagina desaparecia (flake).
+  for (const m of raw.matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)) {
     let contenido: string;
     try {
       contenido = inflateSync(Buffer.from(m[1]!, "latin1")).toString("latin1");

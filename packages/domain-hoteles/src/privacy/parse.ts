@@ -4,7 +4,7 @@
 import { PrivacyInvalidInputError } from "./errors.ts";
 import { BLOCK_WINDOW_DAYS_MAX, BLOCK_WINDOW_DAYS_MIN } from "./rules.ts";
 import {
-  ARCO_CHANNELS,
+  ARCO_STAFF_CHANNELS,
   ARCO_RIGHTS,
   CONSENT_CHANNELS,
   CONSENT_EVIDENCE_METHODS,
@@ -146,7 +146,7 @@ export function parseArcoInput(raw: unknown, today: string): NewArcoRequestInput
     rightType: oneOf(b.derecho, ARCO_RIGHTS, "derecho") as ArcoRight,
     requesterName: text(b.solicitante, "solicitante", 2, 200),
     requesterContact: optionalText(b.contacto, "contacto", 3, 200),
-    channel: oneOf(b.canal, ARCO_CHANNELS, "canal") as ArcoChannel,
+    channel: oneOf(b.canal, ARCO_STAFF_CHANNELS, "canal") as ArcoChannel,
     description: optionalText(b.descripcion, "descripcion", 1, 1000),
     receivedOn,
     guestId: optionalUuid(b.huespedId, "huespedId"),

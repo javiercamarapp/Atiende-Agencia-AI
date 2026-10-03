@@ -17,7 +17,18 @@ export interface HotelesWhatsAppTurnHandler {
     readonly phone: string;
     /** Historial completo, ya con el mensaje nuevo appended. */
     readonly messages: readonly ConversationMessage[];
-  }): Promise<{ readonly reply: string; readonly fnbOrderId: string | null }>;
+  }): Promise<HotelesTurnOutcome>;
+}
+
+/**
+ * Resultado de un turno. `handoff` (H-20): el agente pide que una persona continue la conversacion (lo pidio el huesped o el
+ * agente, o el gobierno lo bloqueo por kill switch / presupuesto). `motivo` es un codigo corto sin PII (a-z, 0-9, _).
+ * Quien procesa el mensaje (inbound.ts) marca la conversacion en `humano` y notifica; mientras este en humano el agente calla.
+ */
+export interface HotelesTurnOutcome {
+  readonly reply: string;
+  readonly fnbOrderId: string | null;
+  readonly handoff?: { readonly motivo: string };
 }
 
 /**
@@ -25,7 +36,7 @@ export interface HotelesWhatsAppTurnHandler {
  * para que un humano de la property responda. Reemplazable sin tocar la ruta HTTP ni
  * la plomería de whatsapp/inbound.ts.
  */
-export function acknowledgeOnlyTurnHandler(repo: HotelesRepository): HotelesWhatsAppTurnHandler {
+export function acknowledgeOnlyTurnHandler(repo: HotelesRepository, handoffMotivo?: string): HotelesWhatsAppTurnHandler {
   return {
     async handleInboundMessage({ organizationId, propertyId, phone }) {
       await registerContactoNoOperativo(repo, {
@@ -40,6 +51,8 @@ export function acknowledgeOnlyTurnHandler(repo: HotelesRepository): HotelesWhat
       return {
         reply: "Gracias por tu mensaje. Alguien del hotel te va a contactar en breve.",
         fnbOrderId: null,
+        // H-20: sin agente (pausado / sin presupuesto) el mensaje debe llegar a una persona: la conversacion pasa a humano.
+        ...(handoffMotivo ? { handoff: { motivo: handoffMotivo } } : {}),
       };
     },
   };

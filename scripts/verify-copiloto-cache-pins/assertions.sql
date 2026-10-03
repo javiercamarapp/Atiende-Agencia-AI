@@ -536,9 +536,9 @@ begin;
 select count(*)::int as columnas_deberia_ser_2 from information_schema.column_privileges where table_schema = 'core' and table_name = 'copiloto_pin' and grantee = 'authenticated' and privilege_type = 'UPDATE';
 rollback;
 
-\echo '74. las funciones definer nuevas fijan search_path'
+\echo '74. las funciones definer nuevas fijan search_path (record_data_chat_query cuenta sus tres sobrecargas: 7, 8 y, desde 0047, 11 argumentos)'
 begin;
-select count(*)::int as search_path_deberia_ser_7 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.prosecdef and p.proname in ('data_chat_cache_get', 'data_chat_cache_put', 'data_chat_cache_purge', 'copiloto_pin_create', 'copiloto_pin_author_is_admin', 'record_data_chat_query') and exists (select 1 from unnest(p.proconfig) c where c = 'search_path=core, pg_temp');
+select count(*)::int as search_path_deberia_ser_8 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'core' and p.prosecdef and p.proname in ('data_chat_cache_get', 'data_chat_cache_put', 'data_chat_cache_purge', 'copiloto_pin_create', 'copiloto_pin_author_is_admin', 'record_data_chat_query') and exists (select 1 from unnest(p.proconfig) c where c = 'search_path=core, pg_temp');
 rollback;
 
 \echo '75. anon no puede ejecutar ninguna funcion nueva'

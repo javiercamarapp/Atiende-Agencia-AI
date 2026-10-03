@@ -109,6 +109,8 @@ export interface TenderUpsertResult {
   readonly created: boolean;
   /** `true` solo si esta operación fue una ACTUALIZACIÓN (created=false) y `submissionDeadline` cambió respecto del valor previo -- dispara `recordChange` sobre la propuesta abierta de esta convocatoria, si existe. */
   readonly submissionDeadlineChanged: boolean;
+  /** L-30: numero de la version NUEVA que esta operacion creo sobre una convocatoria que ya tenia una (cambio real de bases/requisitos); `null` si no hubo cambio o si fue la primera version (el alta). Es lo que justifica el aviso de la campana. */
+  readonly versionCambiada?: number | null;
 }
 
 /** Fila de `licitaciones.tender_audit_log` (007_matching_profile.sql), ya

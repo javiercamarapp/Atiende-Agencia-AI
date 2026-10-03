@@ -41,3 +41,11 @@ export class PrivacyInvalidInputError extends Error {
     this.name = "PrivacyInvalidInputError";
   }
 }
+
+/** El registro pedido no existe en esta property (huesped, solicitud): 404 honesto, sin revelar otros tenants. */
+export class PrivacyNotFoundError extends Error {
+  constructor(what: string) {
+    super(`${what} no encontrado.`);
+    this.name = "PrivacyNotFoundError";
+  }
+}

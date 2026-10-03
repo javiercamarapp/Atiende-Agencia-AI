@@ -40,6 +40,7 @@ import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.ts
 import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
+import { SuperAdminConsolaResumenPage } from "./superadmin/pages/ConsolaResumen.tsx";
 import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { SuperAdminSeguridadPage } from "./superadmin/pages/Seguridad.tsx";
 import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.tsx";
@@ -67,6 +68,8 @@ import { RestaurantesCopilotoPage } from "./verticals/restaurantes/pages/Copilot
 import { RentasCopilotoPage } from "./verticals/rentas/pages/Copiloto.tsx";
 import { DemoWhatsAppPage } from "./verticals/restaurantes/demo/DemoWhatsAppPage.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
+import { AvisoPublicoPage } from "./verticals/hoteles/privacidad-publica/AvisoPublicoPage.tsx";
+import { MisDatosPage } from "./verticals/hoteles/privacidad-publica/MisDatosPage.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { HotelesCopilotoPage } from "./verticals/hoteles/pages/Copiloto.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -82,6 +85,7 @@ import { GruposPage } from "./verticals/hoteles/pages/Grupos.tsx";
 import { RecepcionPage } from "./verticals/hoteles/pages/Recepcion.tsx";
 import { HuespedesPage } from "./verticals/hoteles/pages/Huespedes.tsx";
 import { HuespedFichaPage } from "./verticals/hoteles/pages/HuespedFicha.tsx";
+import { ConversacionesPage as HotelesConversacionesPage } from "./verticals/hoteles/pages/Conversaciones.tsx";
 import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { IdentidadPage } from "./verticals/hoteles/pages/Identidad.tsx";
@@ -299,6 +303,15 @@ function DemoWhatsAppRoute() {
   const { orgSlug = "" } = useParams();
   return <DemoWhatsAppPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
 }
+// H-30 -- privacidad PUBLICA del huesped de hoteles (aviso + ARCO sin login, y "mis datos" con enlace firmado): sin shell de panel.
+function HotelesAvisoPublicoRoute() {
+  const { orgSlug = "" } = useParams();
+  return <AvisoPublicoPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
+function HotelesMisDatosRoute() {
+  const { orgSlug = "" } = useParams();
+  return <MisDatosPage apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} />;
+}
 // Pagina PUBLICA de reservas de citas (C-19): sin login ni shell; solo necesita el slug del negocio.
 function ReservarCitasRoute() {
   const { orgSlug = "" } = useParams();
@@ -335,6 +348,16 @@ function GoogleCallbackRoute() {
 /** Back office de plataforma — igual patrón de shell+ruta que cada vertical,
  * pero sin `orgSlug` (el superadmin no está dentro de ninguna organización). */
 function SuperAdminRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminConsolaResumenPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+/** El parte diario (antes en la raíz): ruta propia sin item de menú; el Resumen lo enlaza con "Ver parte diario". */
+function SuperAdminParteDiarioRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
@@ -627,6 +650,7 @@ const HotelesGruposRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <
 const HotelesRecepcionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <RecepcionPage {...ctx} />);
 const HotelesHuespedesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedesPage {...ctx} />);
 const HotelesHuespedFichaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HuespedFichaPage {...ctx} />);
+const HotelesConversacionesRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesConversacionesPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
@@ -1039,6 +1063,7 @@ export function App() {
         <Route path="/pedir/:orgSlug/pedido/:token" element={<StorefrontRastreoRoute />} />
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
+        <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
@@ -1069,6 +1094,8 @@ export function App() {
         <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
+        <Route path="/hoteles/:orgSlug/aviso" element={<HotelesAvisoPublicoRoute />} />
+        <Route path="/hoteles/:orgSlug/mis-datos" element={<HotelesMisDatosRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/copiloto" element={<HotelesCopilotoRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
@@ -1084,6 +1111,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/recepcion" element={<HotelesRecepcionRoute />} />
         <Route path="/hoteles/:orgSlug/huespedes" element={<HotelesHuespedesRoute />} />
         <Route path="/hoteles/:orgSlug/huespedes/:guestId" element={<HotelesHuespedFichaRoute />} />
+        <Route path="/hoteles/:orgSlug/conversaciones" element={<HotelesConversacionesRoute />} />
         <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/identidad" element={<HotelesIdentidadRoute />} />

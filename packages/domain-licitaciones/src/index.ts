@@ -537,3 +537,7 @@ export { evaluarGateSalaGuerra, buildCuentaRegresiva, resolveGateTimeZone, GATE_
 export type { GateColor, GateConditionId, GateLink, GateCondition, GateZipCheck, GatePackageInput, GateApprovalsInput, GateSalaGuerraInput, GateCuentaRegresiva, GateSalaGuerraResult } from "./gate-sala-guerra.ts";
 export { BITACORA_FUENTES, BITACORA_DEFAULT_LIMIT, BITACORA_MAX_LIMIT, isBitacoraFuente, buildBitacoraEventos, paginarBitacora } from "./bitacora-convocatoria.ts";
 export type { BitacoraFuente, BitacoraEvento, BitacoraFuentes, BitacoraFiltros, BitacoraPagina } from "./bitacora-convocatoria.ts";
+
+// L-30/L-32: lecturas/escrituras de sistema para los avisos de la campana y el re-tamizado KYC (migracion 034).
+export { PostgresAvisosSistemaRepository } from "./avisos-sistema-repository.ts";
+export type { AvisosSistemaRepository, KycRetamizadoOrganizacion, KycRetamizadoResultado } from "./avisos-sistema-repository.ts";

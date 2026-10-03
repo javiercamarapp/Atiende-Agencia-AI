@@ -50,14 +50,14 @@ export function wantsNdjson(c: Context<CoreAuthHonoEnv>): boolean {
  * Responde un turno del chat en el formato que pidio el cliente. `run` recibe la sesion con la que debe consultar:
  * la del request en modo JSON (igual que antes) o una propia en modo NDJSON.
  */
-export function respondDataChat(c: Context<CoreAuthHonoEnv>, deps: AppDeps, run: DataChatTurnRunner): Response | Promise<Response> {
+export function respondDataChat(c: Context<CoreAuthHonoEnv>, deps: AppDeps, run: DataChatTurnRunner, despuesDelCommit?: () => Promise<void>): Response | Promise<Response> {
   const abort = new AbortController();
   const onRawAbort = (): void => abort.abort();
   const raw = c.req.raw.signal;
   if (raw.aborted) abort.abort();
   else raw.addEventListener("abort", onRawAbort, { once: true });
 
-  if (!wantsNdjson(c)) return respondJson(c, run, abort, () => raw.removeEventListener("abort", onRawAbort));
+  if (!wantsNdjson(c)) return respondJson(c, run, abort, () => raw.removeEventListener("abort", onRawAbort), despuesDelCommit);
 
   const userId = c.get("userId");
   const encoder = new TextEncoder();
@@ -89,6 +89,8 @@ export function respondDataChat(c: Context<CoreAuthHonoEnv>, deps: AppDeps, run:
             // Con conversacion guardada, el evento `fin` lleva su id y el seq (contrato de CopilotoTransporte).
             send({ t: "fin", respuesta, ...(respuesta.conversationId ? { conversacionId: respuesta.conversationId } : {}), ...(respuesta.seq !== undefined ? { seq: respuesta.seq } : {}) });
             finish();
+            // MOD-12: la transaccion ya se confirmo y el flujo ya se cerro: lo que falte (titulo con modelo) corre ahora, sin bloquear al usuario.
+            if (despuesDelCommit) void despuesDelCommit().catch(() => undefined);
           },
           (err: unknown) => {
             if (!isDataChatAbortedError(err)) {
@@ -120,9 +122,20 @@ export function respondDataChatStatic(c: Context<CoreAuthHonoEnv>, respuesta: Da
   });
 }
 
-async function respondJson(c: Context<CoreAuthHonoEnv>, run: DataChatTurnRunner, abort: AbortController, cleanup: () => void): Promise<Response> {
+/** Esperas (ms) antes de intentar el trabajo posterior en modo JSON: la sesion del request se confirma al devolver el handler, asi que el primer
+ *  intento espera y el segundo reintenta (es idempotente: el UPDATE solo cambia el titulo determinista). */
+export const DESPUES_DEL_COMMIT_ESPERAS_MS: readonly number[] = [400, 2_500];
+
+async function respondJson(c: Context<CoreAuthHonoEnv>, run: DataChatTurnRunner, abort: AbortController, cleanup: () => void, despuesDelCommit?: () => Promise<void>): Promise<Response> {
   try {
-    return c.json(await run(c.get("db"), () => {}, abort.signal));
+    const respuesta = await run(c.get("db"), () => {}, abort.signal);
+    if (despuesDelCommit && respuesta.conversationId) {
+      for (const ms of DESPUES_DEL_COMMIT_ESPERAS_MS) {
+        const timer = setTimeout(() => void despuesDelCommit().catch(() => undefined), ms);
+        timer.unref?.();
+      }
+    }
+    return c.json(respuesta);
   } catch (err) {
     // Cliente que cerro la conexion: nadie leera la respuesta; cualquier otro error sigue su camino de siempre.
     if (isDataChatAbortedError(err)) return c.json({ status: "unavailable", text: "La consulta se canceló.", blocks: [], sources: [], toolsUsed: [] });

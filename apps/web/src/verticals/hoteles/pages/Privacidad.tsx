@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone, toast } from "@atiende/ui";
 import {
+  ARCO_CANALES_STAFF,
   ARCO_CANAL_LABELS,
   ARCO_DERECHO_LABELS,
   ARCO_ESTADO_LABELS,
@@ -33,6 +34,7 @@ import {
   fetchIncidentes,
   fetchPrivacidadInfo,
   fetchRetenciones,
+  issueEnlaceMisDatos,
   openArco,
   publishAviso,
   releaseRetencion,
@@ -42,9 +44,11 @@ import {
   saveVentanaBloqueo,
   textoPlazo,
 } from "../lib/privacidad-client.ts";
+import { buscarHuespedes } from "../lib/huespedes-client.ts";
+import type { GuestOption } from "../lib/huespedes-client.ts";
 import type {
   AccesoSummary,
-  ArcoCanal,
+  ArcoCanalStaff,
   ArcoDerecho,
   ArcoSummary,
   AvisoSummary,
@@ -342,15 +346,16 @@ function AvisoSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
 // ARCO
 // ---------------------------------------------------------------------------
 
-function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
+function ArcoSection({ apiBaseUrl, token, propertyId, isAdmin }: Props) {
   const [data, setData] = useState<(Lista<ArcoSummary> & { hoy: string }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [derecho, setDerecho] = useState<ArcoDerecho>("acceso");
   const [solicitante, setSolicitante] = useState("");
-  const [canal, setCanal] = useState<ArcoCanal>("mostrador");
+  const [canal, setCanal] = useState<ArcoCanalStaff>("mostrador");
   const [contacto, setContacto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [saving, setSaving] = useState(false);
+  const [enlaceDe, setEnlaceDe] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -429,8 +434,8 @@ function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
               </div>
               <div>
                 <Label htmlFor="arco-canal">Canal de recepción</Label>
-                <NativeSelect id="arco-canal" value={canal} onChange={(e) => setCanal(e.target.value as ArcoCanal)}>
-                  {(Object.keys(ARCO_CANAL_LABELS) as ArcoCanal[]).map((c) => (
+                <NativeSelect id="arco-canal" value={canal} onChange={(e) => setCanal(e.target.value as ArcoCanalStaff)}>
+                  {ARCO_CANALES_STAFF.map((c) => (
                     <option key={c} value={c}>
                       {ARCO_CANAL_LABELS[c]}
                     </option>
@@ -500,16 +505,120 @@ function ArcoSection({ apiBaseUrl, token, propertyId }: Props) {
                   Marcar ejecutada
                 </Button>
               )}
+              {isAdmin && a.derecho === "acceso" && (a.estado === "procedente" || a.estado === "ejecutada") && (
+                <Button type="button" size="sm" variant="outline" onClick={() => setEnlaceDe(enlaceDe === a.id ? null : a.id)}>
+                  Enlace «Mis datos»
+                </Button>
+              )}
               {a.prorrogaDisponible.disponible && (
                 <Button type="button" size="sm" variant="outline" onClick={() => void handleExtend(a)}>
                   Prórroga (+{a.prorrogaDisponible.dias} d)
                 </Button>
               )}
             </div>
+            {enlaceDe === a.id && <EnlaceMisDatosPanel apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} arco={a} />}
           </CardContent>
         </Card>
       ))}
     </div>
+  );
+}
+
+/** H-30 -- emite el enlace "Mis datos" (derecho de acceso) de una solicitud procedente: el titular lo abre sin sesion. */
+function EnlaceMisDatosPanel({ apiBaseUrl, token, propertyId, arco }: { apiBaseUrl: string; token: string; propertyId: string; arco: ArcoSummary }) {
+  const [q, setQ] = useState("");
+  const [huespedes, setHuespedes] = useState<readonly GuestOption[]>([]);
+  const [huespedId, setHuespedId] = useState(arco.huespedId ?? "");
+  const [enviarCorreo, setEnviarCorreo] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [resultado, setResultado] = useState<Awaited<ReturnType<typeof issueEnlaceMisDatos>> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const tieneCorreo = Boolean(arco.contacto && arco.contacto.includes("@"));
+
+  useEffect(() => {
+    if (arco.huespedId) return;
+    let cancelado = false;
+    const t = setTimeout(() => {
+      buscarHuespedes(fetch, apiBaseUrl, token, propertyId, q.trim() || undefined)
+        .then((r) => !cancelado && setHuespedes(r))
+        .catch((err) => !cancelado && setError(errorMessage(err, "No se pudo buscar el huésped.")));
+    }, 250);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [apiBaseUrl, token, propertyId, q, arco.huespedId]);
+
+  async function generar(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      setResultado(await issueEnlaceMisDatos(fetch, apiBaseUrl, token, propertyId, arco.id, huespedId, enviarCorreo && tieneCorreo));
+    } catch (err) {
+      setError(errorMessage(err, "No se pudo generar el enlace."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void generar(e)} className="mt-2 flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Enlace Mis datos">
+      <p className="text-xs text-muted-foreground">
+        El titular verá solo su perfil, estancias, consentimientos y el estado de su identidad (nunca el documento ni las notas internas). El enlace vence en 24 horas y deja de funcionar si la solicitud deja de estar procedente.
+      </p>
+      {!arco.huespedId && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`mis-datos-q-${arco.id}`}>Buscar huésped</Label>
+            <Input id={`mis-datos-q-${arco.id}`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nombre, correo o teléfono" />
+          </div>
+          <div>
+            <Label htmlFor={`mis-datos-h-${arco.id}`}>Huésped titular</Label>
+            <NativeSelect id={`mis-datos-h-${arco.id}`} value={huespedId} onChange={(e) => setHuespedId(e.target.value)} required>
+              <option value="">Selecciona…</option>
+              {huespedes.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombreCompleto}
+                  {g.email ? ` · ${g.email}` : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Checkbox id={`mis-datos-c-${arco.id}`} checked={enviarCorreo && tieneCorreo} disabled={!tieneCorreo} onChange={(e) => setEnviarCorreo(e.target.checked)} />
+        <Label htmlFor={`mis-datos-c-${arco.id}`}>{tieneCorreo ? "Enviar el enlace al correo del titular" : "El titular no dejó un correo: copia el enlace y entrégalo por otro medio"}</Label>
+      </div>
+      <div>
+        <Button type="submit" size="sm" disabled={busy || huespedId === ""}>
+          {busy ? "Generando…" : "Generar enlace"}
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {resultado && (
+        <div className="flex flex-col gap-1" data-testid="enlace-mis-datos-resultado">
+          <Label htmlFor={`mis-datos-url-${arco.id}`}>Enlace para el titular (vence {new Date(resultado.venceEn).toLocaleString("es-MX")})</Label>
+          <div className="flex gap-2">
+            <Input id={`mis-datos-url-${arco.id}`} value={resultado.enlace} readOnly onFocus={(e) => e.currentTarget.select()} />
+            <Button type="button" size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(resultado.enlace).then(() => toast.success("Enlace copiado."))}>
+              Copiar
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {resultado.correo === "encolado" && resultado.envioDeCorreo === "habilitado" && "El correo se envió o está por enviarse al titular."}
+            {resultado.correo === "encolado" && resultado.envioDeCorreo === "pendiente_de_configuracion" && "El correo quedó en la cola, pero NO saldrá hasta que se configure el envío de correo (Resend). Copia el enlace y entrégalo por otro medio."}
+            {resultado.correo === "sin_correo" && "El titular no dejó un correo: entrega el enlace por otro medio."}
+            {resultado.correo === "omitido" && "No se envió correo (no se pidió o la cola no está disponible): entrega el enlace por otro medio."}
+          </p>
+        </div>
+      )}
+    </form>
   );
 }
 

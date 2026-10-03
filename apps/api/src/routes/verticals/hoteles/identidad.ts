@@ -38,6 +38,7 @@ import {
   PrivacyConflictError,
   PrivacyDoubleControlError,
   PrivacyInvalidInputError,
+  PrivacyNotFoundError,
   PrivacyUnavailableError,
   assertConsentMatchesNotice,
   parseConsentFields,
@@ -96,6 +97,7 @@ export function toApiError(err: unknown): unknown {
   if (err instanceof IdentityDecryptError) return Errors.serviceUnavailable(err.message);
   // H-02 (privacidad): mismos codigos que la boveda -- 503 migracion pendiente, 403 sin permiso/doble control, 409 estado, 400 entrada.
   if (err instanceof PrivacyUnavailableError) return Errors.serviceUnavailable(err.message);
+  if (err instanceof PrivacyNotFoundError) return Errors.notFound(err.message);
   if (err instanceof PrivacyAccessDeniedError || err instanceof PrivacyDoubleControlError) return Errors.forbidden(err.message);
   if (err instanceof PrivacyInvalidInputError) return Errors.validation(err.message);
   if (err instanceof PrivacyConflictError) return Errors.conflict(err.message);

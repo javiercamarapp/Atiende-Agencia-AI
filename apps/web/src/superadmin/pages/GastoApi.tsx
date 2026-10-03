@@ -14,7 +14,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, DollarSign, Gauge, Hash, Pencil } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
 import { BarraProgreso } from "../../components/BarraProgreso.tsx";
-import { fetchConStepUp } from "../lib/stepup.ts";
+import { fetchJson } from "../lib/fetch-json.ts";
+import { GastoApiPorRol } from "./GastoApiPorRol.tsx";
 
 interface RangoFechas {
   readonly from: string;
@@ -83,18 +84,6 @@ function BarraTope({ pct, alerta }: { readonly pct: number; readonly alerta: boo
       <span className="text-xs text-muted-foreground">{pct.toFixed(1)}% del tope</span>
     </div>
   );
-}
-
-async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetchConStepUp(apiBaseUrl, token, `${apiBaseUrl.replace(/\/$/, "")}${path}`, {
-    ...init,
-    headers: { authorization: `Bearer ${token}`, ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers },
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "No se pudo completar la solicitud.");
-  }
-  return res.json() as Promise<T>;
 }
 
 export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
@@ -363,6 +352,8 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
           )}
         </CardContent>
       </Card>
+
+      <GastoApiPorRol apiBaseUrl={apiBaseUrl} token={token} from={from} to={to} organizaciones={organizaciones} />
 
       <FormDialog
         open={editando !== null}

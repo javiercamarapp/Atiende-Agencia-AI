@@ -40,6 +40,10 @@ export interface DataChatDeps {
   /** Repositorio de conversaciones guardadas (CHAT-04) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de
    *  Postgres (`PostgresConversacionesRepository`); existe para inyectar uno en memoria en pruebas. */
   readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
+  /** MOD-12: activa los roles auxiliares del Copiloto (enrutador de turno, compuerta de escalamiento, titulos de conversaciones y compactacion de
+   *  historial, todos `plataforma:*` y apagables desde el panel de interruptores). OPCIONAL: sin el (pruebas con un LLM guionado) el turno corre como
+   *  siempre y no se hace ninguna llamada extra. `buildProductionDataChat` lo enciende. */
+  readonly rolesAuxiliares?: boolean;
   /** Cache de resultados de herramientas (CHAT-06/MOD-05; ver cache.ts). OPCIONAL: sin ella todo corre como siempre. */
   readonly cache?: DataChatCache;
   /** Repositorio de fijados (CHAT-15) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de Postgres; existe para
@@ -65,40 +69,53 @@ export class PostgresDataChatAuditSink implements DataChatAuditSink {
 
   async record(entry: DataChatAuditEntry): Promise<void> {
     const common = [entry.organizationId, entry.tool, JSON.stringify(entry.params), entry.outcome, entry.rowCount, entry.durationMs, entry.errorCode ?? null];
-    await runWithSavepointFallback<void>({
-      session: this.db,
-      // Con ruta (migracion 0045): sobrecarga de 8 argumentos. Si todavia no existe (42883) cae a la de 7 (sin ruta) y, si
-      // tampoco existe la bitacora, al log estructurado. Cada nivel en su propio SAVEPOINT: la transaccion del request sigue viva.
-      primary: async () => {
+    const recoverable = (err: unknown): boolean => isUndefinedFunctionError(err) || isUndefinedTableError(err) || isUndefinedColumnError(err);
+    // Niveles, del mas nuevo al mas viejo, cada uno en su propio SAVEPOINT (la transaccion del request sigue viva si falta la funcion):
+    //   1) 11 argumentos (migracion 0047): ruta, costo real en micro-USD, modelo y rol -- solo si la entrada trae alguno de los tres;
+    //   2) 8 argumentos (migracion 0045): ruta;
+    //   3) 7 argumentos (migracion 0029): sin ruta;
+    //   4) log estructurado SIN resultados ni PII si ni la bitacora existe.
+    const niveles: (() => Promise<void>)[] = [];
+    if (entry.costMicroUsd !== undefined || entry.model !== undefined || entry.role !== undefined) {
+      niveles.push(async () => {
+        await this.db.query(`select core.record_data_chat_query($1::uuid, $2::text, $3::jsonb, $4::text, $5::int, $6::int, $7::text, $8::text, $9::bigint, $10::text, $11::text);`, [
+          ...common,
+          entry.route ?? null,
+          entry.costMicroUsd === undefined ? null : Math.max(0, Math.trunc(entry.costMicroUsd)),
+          entry.model ?? null,
+          entry.role ?? null,
+        ]);
+      });
+    }
+    niveles.push(
+      async () => {
         await this.db.query(`select core.record_data_chat_query($1::uuid, $2::text, $3::jsonb, $4::text, $5::int, $6::int, $7::text, $8::text);`, [...common, entry.route ?? null]);
       },
-      isRecoverable: (err) => isUndefinedFunctionError(err) || isUndefinedTableError(err) || isUndefinedColumnError(err),
-      fallback: async () => {
-        await runWithSavepointFallback<void>({
-          session: this.db,
-          primary: async () => {
-            await this.db.query(`select core.record_data_chat_query($1::uuid, $2::text, $3::jsonb, $4::text, $5::int, $6::int, $7::text);`, common);
-          },
-          isRecoverable: (err) => isUndefinedFunctionError(err) || isUndefinedTableError(err) || isUndefinedColumnError(err),
-          fallback: async () => {
-            this.log(
-              JSON.stringify({
-                level: "info",
-                event: "data_chat_query_unlogged_pending_migration",
-                organizationId: entry.organizationId,
-                userId: entry.userId,
-                vertical: entry.vertical,
-                tool: entry.tool,
-                params: entry.params,
-                outcome: entry.outcome,
-                rowCount: entry.rowCount,
-                ...(entry.route ? { route: entry.route } : {}),
-              }),
-            );
-          },
-        });
+      async () => {
+        await this.db.query(`select core.record_data_chat_query($1::uuid, $2::text, $3::jsonb, $4::text, $5::int, $6::int, $7::text);`, common);
       },
-    });
+    );
+    const sinBitacora = async (): Promise<void> => {
+      this.log(
+        JSON.stringify({
+          level: "info",
+          event: "data_chat_query_unlogged_pending_migration",
+          organizationId: entry.organizationId,
+          userId: entry.userId,
+          vertical: entry.vertical,
+          tool: entry.tool,
+          params: entry.params,
+          outcome: entry.outcome,
+          rowCount: entry.rowCount,
+          ...(entry.route ? { route: entry.route } : {}),
+        }),
+      );
+    };
+    const desde = (i: number): Promise<void> =>
+      i >= niveles.length
+        ? sinBitacora()
+        : runWithSavepointFallback<void>({ session: this.db, primary: niveles[i]!, isRecoverable: recoverable, fallback: () => desde(i + 1) });
+    await desde(0);
   }
 }
 
@@ -107,6 +124,7 @@ export function buildProductionDataChat(gateway: LlmGateway | undefined, engine?
   const cache = buildDataChatCache(createDataChatCacheStore(engine));
   return {
     ...(cache ? { cache } : {}),
+    rolesAuxiliares: true,
     restaurantesReader: (db) => new PostgresRestaurantesDataChatReader(db),
     hotelesReader: (db) => new PostgresHotelesDataChatReader(db),
     rentasReader: (db) => new PostgresRentasDataChatReader(db),

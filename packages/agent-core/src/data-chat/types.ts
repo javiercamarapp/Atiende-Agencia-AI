@@ -144,8 +144,15 @@ export interface DataChatAuditEntry {
   readonly rowCount: number;
   readonly durationMs: number;
   readonly errorCode?: string;
-  /** Como se obtuvo el resultado: "directa" (chip/boton, sin modelo), "cache" (resultado guardado) o "llm" (la pidio el modelo). */
-  readonly route?: "directa" | "cache" | "llm";
+  /** Como se obtuvo el resultado: "directa" (chip/boton, sin modelo), "cache" (resultado guardado), "llm" (la pidio el modelo),
+   *  "escalado" (el texto lo redacto el modelo de reintento) o "sin_ia" (el turno cayo al modo sin IA: tope, proveedor caido o apagado). */
+  readonly route?: "directa" | "cache" | "llm" | "escalado" | "sin_ia";
+  /** Costo REAL del turno (micro-USD, suma de lo que reporto el proveedor en cada llamada). Solo en la fila de resumen del turno. */
+  readonly costMicroUsd?: number;
+  /** Modelo que respondio la ultima llamada barata, si se conoce. */
+  readonly model?: string;
+  /** Rol del gateway del turno (`<vertical>:data_chat`). */
+  readonly role?: string;
 }
 
 export interface DataChatAuditSink {
@@ -171,6 +178,8 @@ export interface DataChatUsage {
   readonly cacheHits?: number;
   /** Suma del costo reportado por el proveedor en cada llamada (USD). */
   readonly costUsd: number;
+  /** El mismo costo en micro-USD enteros (lo que se persiste). */
+  readonly costMicroUsd: number;
   /** Modelo que respondio la ultima llamada barata (el reportado por el proveedor), si se conoce. */
   readonly model?: string;
 }

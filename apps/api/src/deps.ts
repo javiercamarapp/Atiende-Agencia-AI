@@ -25,7 +25,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -39,7 +39,7 @@ import type {
   ResolveCalendarSyncPort,
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import type { DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
+import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
 import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
@@ -210,6 +210,12 @@ export interface AppDeps {
   /** H-27 -- ficha de huesped (notas, preferencias, historial; migracion 038). OPCIONAL: en produccion no se define y las rutas usan
    *  `PostgresHuespedesRepository` (RLS real, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
   readonly hotelesHuespedesRepo?: (db: TenantDbSession) => HuespedesRepository;
+  /** H-20 -- bandeja de conversaciones de WhatsApp con handoff a humano (migracion 043). OPCIONAL: en produccion no se define y las rutas usan
+   *  `PostgresConversacionesRepository` (funciones security definer, SAVEPOINT contra base sin migrar); solo los tests lo sobreescriben con el repo en memoria. */
+  readonly hotelesConversacionesRepo?: (db: TenantDbSession) => HotelesConversacionesRepository;
+  /** H-20 -- puerto de SISTEMA del webhook (registrar entrante, derivar a humano + notificacion; migracion 043). OPCIONAL: en produccion no se define y el
+   *  webhook usa `PostgresConversacionesSistema`; solo los tests inyectan el espejo en memoria. */
+  readonly hotelesConversacionesSistema?: (db: TenantDbSession) => HotelesConversacionesSistemaPort;
   /** H-25 -- agente de reservas (migracion 037): holds, aprobacion, politica. OPCIONAL: en produccion no se define y las rutas (staff y voz) usan
    *  `PostgresReservasAgenteRepository` (RLS real, SAVEPOINT contra base sin migrar); solo las pruebas HTTP inyectan el espejo en memoria. */
   readonly hotelesReservasAgenteRepo?: (db: TenantDbSession) => ReservasAgenteRepository;
@@ -217,6 +223,11 @@ export interface AppDeps {
    *  en produccion no se define y las rutas usan `PostgresPrivacyRepository` (fabrica por-request, RLS real);
    *  solo los tests lo sobreescriben con `InMemoryPrivacyRepository`. */
   readonly hotelesPrivacidadRepo?: (db: TenantDbSession) => PrivacyRepository;
+  /** H-30 -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, "mis datos"; migracion 042), sesion de
+   *  SISTEMA. OPCIONAL: en produccion no se define y las rutas usan `PostgresPublicPrivacyRepository`; solo los tests inyectan el espejo. */
+  readonly hotelesPrivacidadPublicaRepo?: (db: TenantDbSession) => PublicPrivacyRepository;
+  /** H-30 -- exportacion de datos del huesped y emision del enlace "mis datos" (staff owner/gm; migracion 042). OPCIONAL, igual que arriba. */
+  readonly hotelesGuestDataRepo?: (db: TenantDbSession) => GuestDataRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no
    * lee/escribe directamente contra Postgres), así que no es una fábrica: el gap de
@@ -307,6 +318,8 @@ export interface AppDeps {
   readonly licitacionesWhatsAppRepo?: (db: TenantDbSession) => WhatsAppRepository;
   /** L-08: KYC negativo 69-B (fichas, consulta con bitacora por tenant). `production/deps.ts` lo cablea a `PostgresKyc69bRepository`; OPCIONAL a proposito: si falta, las lecturas responden `available: false` y las escrituras 503. */
   readonly licitacionesKycRepo?: (db: TenantDbSession) => Kyc69bRepository;
+  /** L-30/L-32: lecturas/escrituras de SISTEMA de la migracion 034 (re-tamizado de la cartera KYC y conteo de documentos por vencer). `production/deps.ts` lo cablea a `PostgresAvisosSistemaRepository`; OPCIONAL a proposito: si falta, ni el re-tamizado ni el aviso de documentos hacen nada (nunca un error). */
+  readonly licitacionesAvisosRepo?: (db: TenantDbSession) => AvisosSistemaRepository;
   /** L-22: dias inhabiles que declara cada organizacion o convocatoria (migracion 032). `production/deps.ts` lo cablea a `PostgresDiasInhabilesRepository`; OPCIONAL a proposito: si falta (o falta la migracion), los plazos se calculan con los dias OFICIALES de plataforma, la lectura responde `available: false` y las escrituras 503. */
   readonly licitacionesDiasInhabilesRepo?: (db: TenantDbSession) => DiasInhabilesRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;

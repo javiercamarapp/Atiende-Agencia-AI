@@ -31,6 +31,7 @@ import { hotelesReputacionRoutes } from "./reputacion.ts";
 import { hotelesIdentidadRoutes } from "./identidad.ts";
 import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 import { hotelesPrivacidadRoutes } from "./privacidad.ts";
+import { hotelesPrivacidadPublicaRoutes } from "./privacidad-publica.ts";
 import { hotelesTicketsRoutes } from "./tickets.ts";
 import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
 import { hotelesAdminDataChatRoutes } from "./admin-data-chat.ts";
@@ -39,6 +40,7 @@ import { hotelesAgentesExpiracionCronRoutes } from "./agentes-expiracion-cron.ts
 import { hotelesGruposRoutes } from "./grupos.ts";
 import { hotelesGruposLiberacionCronRoutes } from "./grupos-liberacion-cron.ts";
 import { hotelesReservasAgenteRoutes } from "./reservas-agente.ts";
+import { hotelesConversacionesRoutes } from "./conversaciones.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -107,6 +109,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // H-02 (P0) -- consentimiento, aviso de privacidad, ARCO, bloqueo previo a la purga, retencion legal e
   // incidentes (migrations/032_hoteles_consentimiento_arco_incidentes.sql), ver privacidad.ts.
   app.route("/", hotelesPrivacidadRoutes(deps));
+  // H-30 (P1) -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, mis datos), sin login; migracion 042.
+  app.route("/", hotelesPrivacidadPublicaRoutes(deps));
   // H-05 (P0) -- tickets de huesped con SLA, escalacion automatica, bitacora y creacion desde resenas
   // (migrations/034_guest_ticket_sla_escalacion.sql), ver tickets.ts y el barrido de SLA (tickets-sla-cron.ts).
   app.route("/", hotelesTicketsRoutes(deps));
@@ -123,5 +127,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesGruposLiberacionCronRoutes(deps));
   // H-25 (P0) -- agente de reservas (WhatsApp y voz): lado staff (holds, aprobacion, link de pago registrado, politica), migracion 037.
   app.route("/", hotelesReservasAgenteRoutes(deps));
+  // H-20 (P1) -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / devolver / cerrar / notas / responder via outbox), migracion 043.
+  app.route("/", hotelesConversacionesRoutes(deps));
   return app;
 }
