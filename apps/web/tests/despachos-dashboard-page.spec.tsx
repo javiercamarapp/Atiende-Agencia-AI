@@ -1,24 +1,31 @@
 // @vitest-environment jsdom
 //
-// D-01 — <DashboardPage /> (dashboard gerencial): estados de carga/vacío/error, KPIs reales
-// formateados, "sin dato" (nunca cero) cuando falta una fuente, aviso de fuentes no
-// disponibles, ranking con anomalías y detalle del cliente activo.
+// D-01 + UNI-RES-despachos — <DashboardPage /> (Resumen del despacho): estados de carga/vacío/error, los 7 KPI en orden con
+// formato real, "sin dato" (nunca cero) cuando falta una fuente, saludo por hora de México con reloj fijo, píldoras con su
+// href, un solo h1, aviso de fuentes no disponibles, ranking con anomalías y detalle del cliente activo.
 import { act } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DashboardPage } from "../src/verticals/despachos/pages/Dashboard.tsx";
+import type { ReactElement } from "react";
+import { cfdiDelMes, DashboardPage } from "../src/verticals/despachos/pages/Dashboard.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { DashboardDespacho, KpisCliente } from "../src/verticals/despachos/lib/dashboard-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 
+function montar(el: ReactElement) {
+  return renderComponent(<MemoryRouter>{el}</MemoryRouter>);
+}
+
 afterEach(() => {
+  vi.useRealTimers();
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
 });
 
-const CTX: DespachosShellContext = { apiBaseUrl: "https://api.test", token: "tok-123", propertyId: "prop-1", orgSlug: "demo", role: "readonly", staffFullName: "Auditor", staffEmail: "a@example.com" };
+const CTX: DespachosShellContext = { apiBaseUrl: "https://api.test", token: "tok-123", propertyId: "prop-1", orgSlug: "demo", role: "readonly", staffFullName: "Ana María Torres", staffEmail: "a@example.com" };
 
 const CLIENTE_CRITICO: KpisCliente = {
   propertyId: "prop-1",
@@ -90,7 +97,7 @@ async function esperar() {
 describe("DashboardPage (despachos)", () => {
   it("muestra carga y luego los KPIs reales con formato MXN", async () => {
     const fetchMock = stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
-    rendered = renderComponent(<DashboardPage {...CTX} />);
+    rendered = montar(<DashboardPage {...CTX} />);
     expect(rendered.container.textContent).toContain("Cargando dashboard");
     await esperar();
     const text = rendered.container.textContent!;
@@ -104,7 +111,7 @@ describe("DashboardPage (despachos)", () => {
 
   it("detalle del cliente activo y anomalías visibles en el ranking", async () => {
     stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
-    rendered = renderComponent(<DashboardPage {...CTX} />);
+    rendered = montar(<DashboardPage {...CTX} />);
     await esperar();
     const text = rendered.container.textContent!;
     expect(text).toContain("Cliente activo · Cliente Uno SA de CV");
@@ -115,7 +122,7 @@ describe("DashboardPage (despachos)", () => {
 
   it("un cliente sin fuentes muestra 'Sin dato' (nunca 0) y el aviso de fuentes no disponibles", async () => {
     stub(() => new Response(JSON.stringify({ ...DASHBOARD, cartera: null, cargaTrabajo: null, cierres: null, ranking: [CLIENTE_SIN_DATOS] }), { status: 200 }));
-    rendered = renderComponent(<DashboardPage {...CTX} propertyId="prop-2" />);
+    rendered = montar(<DashboardPage {...CTX} propertyId="prop-2" />);
     await esperar();
     const text = rendered.container.textContent!;
     expect(text).toContain("Sin dato");
@@ -128,14 +135,14 @@ describe("DashboardPage (despachos)", () => {
 
   it("despacho sin clientes visibles: estado vacío explícito", async () => {
     stub(() => new Response(JSON.stringify({ ...DASHBOARD, totalClientes: 0, totalClientesVisibles: 0, ranking: [] }), { status: 200 }));
-    rendered = renderComponent(<DashboardPage {...CTX} />);
+    rendered = montar(<DashboardPage {...CTX} />);
     await esperar();
     expect(rendered.container.textContent).toContain("Todavía no hay clientes");
   });
 
   it("error del servidor: mensaje real y no se queda en 'Cargando'", async () => {
     stub(() => new Response(JSON.stringify({ message: "No perteneces a esta organización." }), { status: 403 }));
-    rendered = renderComponent(<DashboardPage {...CTX} />);
+    rendered = montar(<DashboardPage {...CTX} />);
     await esperar();
     expect(rendered.container.textContent).not.toContain("Cargando dashboard");
     expect(rendered.container.textContent).toContain("No perteneces a esta organización.");
@@ -143,8 +150,83 @@ describe("DashboardPage (despachos)", () => {
 
   it("avisa cuando el consolidado está truncado", async () => {
     stub(() => new Response(JSON.stringify({ ...DASHBOARD, truncado: true, totalClientesVisibles: 250, totalClientes: 100 }), { status: 200 }));
-    rendered = renderComponent(<DashboardPage {...CTX} />);
+    rendered = montar(<DashboardPage {...CTX} />);
     await esperar();
     expect(rendered.container.textContent).toContain("primeros 100 de 250 clientes");
+  });
+
+  it("los 7 KPI salen en el orden pedido y cada uno enlaza a su pantalla", async () => {
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} />);
+    await esperar();
+    const etiquetas = [...rendered.container.querySelectorAll('[data-testid="stat-card-chip"]')].map((chip) => chip.nextElementSibling?.textContent);
+    expect(etiquetas).toEqual(["Clientes", "Cartera vencida", "Tasa de cobranza", "Pendientes de trabajo", "Cierres sin cerrar", "Anomalías", "CFDI del mes"]);
+    const hrefs = (texto: string) => [...rendered!.container.querySelectorAll("a")].filter((a) => a.textContent?.includes(texto)).map((a) => a.getAttribute("href"));
+    expect(hrefs("Cartera vencida")).toEqual(["/despachos/demo/cobranza"]);
+    expect(hrefs("Pendientes de trabajo")).toEqual(["/despachos/demo/vencimientos"]);
+    expect(hrefs("Cierres sin cerrar")).toEqual(["/despachos/demo/cierre-mensual"]);
+    expect(hrefs("CFDI del mes")).toEqual(["/despachos/demo/cfdi"]);
+  });
+
+  it("destacado 'Cartera pendiente' con el monto real y píldoras 'Ver cobranza' / 'Ver cierre' con su href", async () => {
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} />);
+    await esperar();
+    const odometro = rendered.container.querySelector('[data-testid="odometro"]');
+    expect(odometro?.getAttribute("aria-label")).toBe("Cartera pendiente: $11,600");
+    const pildora = (texto: string) => [...rendered!.container.querySelectorAll("a")].find((a) => a.textContent?.trim() === texto)?.getAttribute("href");
+    expect(pildora("Ver cobranza")).toBe("/despachos/demo/cobranza");
+    expect(pildora("Ver cierre")).toBe("/despachos/demo/cierre-mensual");
+  });
+
+  it("un solo h1 (el saludo) con el primer nombre del staff", async () => {
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} />);
+    await esperar();
+    const h1s = rendered.container.querySelectorAll("h1");
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]!.textContent).toMatch(/^(Buenos días|Buenas tardes|Buenas noches), Ana$/);
+  });
+
+  it.each([
+    ["2026-10-02T15:00:00.000Z", "Buenos días"], // 09:00 en CDMX (UTC-6)
+    ["2026-10-02T20:00:00.000Z", "Buenas tardes"], // 14:00 en CDMX
+    ["2026-10-03T03:30:00.000Z", "Buenas noches"], // 21:30 en CDMX
+  ])("saludo por hora de México con reloj fijo (%s -> %s)", async (instante, saludo) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(instante));
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} />);
+    await esperar();
+    expect(rendered.container.querySelector("h1")?.textContent).toBe(`${saludo}, Ana`);
+  });
+
+  it("sin fuentes (cartera/trabajo/cierres null y sin cfdiMes): cada KPI sin fuente es '—' y no hay ceros inventados", async () => {
+    stub(() => new Response(JSON.stringify({ ...DASHBOARD, cartera: null, cargaTrabajo: null, cierres: null, ranking: [CLIENTE_SIN_DATOS] }), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} propertyId="prop-2" />);
+    await esperar();
+    for (const etiqueta of ["Cartera vencida", "Tasa de cobranza", "Pendientes de trabajo", "Cierres sin cerrar", "CFDI del mes"]) {
+      expect(rendered.container.querySelector(`[aria-label="${etiqueta}: sin dato"]`), etiqueta).not.toBeNull();
+    }
+    // El odómetro del destacado tampoco inventa una cifra.
+    expect(rendered.container.querySelector('[data-testid="odometro"]')?.getAttribute("aria-label")).toBe("Cartera pendiente: sin cartera registrada");
+    expect(rendered.container.textContent).not.toContain("$0.00");
+  });
+
+  it("'Última corrida' declara honestamente que no hay registro de corridas y las tiles de agentes enlazan a pantallas reales", async () => {
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = montar(<DashboardPage {...CTX} />);
+    await esperar();
+    const text = rendered.container.textContent!;
+    expect(text).toContain("Orquestación de agentes");
+    expect(text).toContain("Sin registro de corridas");
+    const hrefs = [...rendered.container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    for (const ruta of ["cola-cobranza", "cfdi", "conciliacion", "copiloto"]) expect(hrefs).toContain(`/despachos/demo/${ruta}`);
+  });
+
+  it("cfdiDelMes suma los clientes que lo reportan y es null si ninguno", () => {
+    expect(cfdiDelMes([CLIENTE_CRITICO, CLIENTE_SIN_DATOS])).toEqual({ total: 4, periodo: "2026-09", clientes: 1 });
+    expect(cfdiDelMes([CLIENTE_SIN_DATOS])).toBeNull();
+    expect(cfdiDelMes([])).toBeNull();
   });
 });
