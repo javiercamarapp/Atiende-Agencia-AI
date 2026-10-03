@@ -13,7 +13,7 @@ import { Brain, ChevronDown, ChevronRight, Building2, Pencil, Plus, TrendingUp, 
 import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, NativeSelect, PageContainer, PageHeader, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone } from "@atiende/ui";
 import { BarraProgreso } from "../../components/BarraProgreso.tsx";
 import type { BarraProgresoTono } from "../../components/BarraProgreso.tsx";
-import { fechaHoraEsMx } from "../../lib/formato-fecha.ts";
+import { fechaCortaEsMx, fechaHoraEsMx } from "../../lib/formato-fecha.ts";
 import { fetchJson } from "../lib/fetch-json.ts";
 import { PROSPECTO_ESTADO_TONES } from "../lib/status-tones.ts";
 
@@ -787,7 +787,7 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
                           </TableCell>
                         )}
                         <TableCell className="text-muted-foreground">{p.fuente || "—"}</TableCell>
-                        <TableCell className="text-muted-foreground">{new Date(p.updatedAt).toLocaleDateString("es-MX")}</TableCell>
+                        <TableCell className="text-muted-foreground">{fechaCortaEsMx(new Date(p.updatedAt))}</TableCell>
                       </TableRow>,
                     ];
                     if (abierto) {
