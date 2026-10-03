@@ -26,7 +26,7 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
-import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, ReservarDirectoRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
   CalComPortConfig,
@@ -239,6 +239,10 @@ export interface AppDeps {
   /** H-30 -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, "mis datos"; migracion 042), sesion de
    *  SISTEMA. OPCIONAL: en produccion no se define y las rutas usan `PostgresPublicPrivacyRepository`; solo los tests inyectan el espejo. */
   readonly hotelesPrivacidadPublicaRepo?: (db: TenantDbSession) => PublicPrivacyRepository;
+  /** H-42 -- reserva directa PUBLICA del hotel (disponibilidad, cotizacion, confirmacion, estado y cancelacion por token; migracion 044), sesion de
+   *  SISTEMA, mas el KPI de room-nights directas (sesion de staff). OPCIONAL: en produccion no se define y las rutas usan
+   *  `PostgresReservarDirectoRepository`; solo los tests inyectan el espejo en memoria. */
+  readonly hotelesReservarPublicoRepo?: (db: TenantDbSession) => ReservarDirectoRepository;
   /** H-30 -- exportacion de datos del huesped y emision del enlace "mis datos" (staff owner/gm; migracion 042). OPCIONAL, igual que arriba. */
   readonly hotelesGuestDataRepo?: (db: TenantDbSession) => GuestDataRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos

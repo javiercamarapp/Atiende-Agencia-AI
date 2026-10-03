@@ -32,6 +32,7 @@ import { hotelesIdentidadRoutes } from "./identidad.ts";
 import { hotelesIdentidadPurgaCronRoutes } from "./identidad-purga-cron.ts";
 import { hotelesPrivacidadRoutes } from "./privacidad.ts";
 import { hotelesPrivacidadPublicaRoutes } from "./privacidad-publica.ts";
+import { hotelesReservarPublicoRoutes } from "./reservar-publico.ts";
 import { hotelesTicketsRoutes } from "./tickets.ts";
 import { hotelesTicketsSlaCronRoutes } from "./tickets-sla-cron.ts";
 import { hotelesAdminDataChatRoutes } from "./admin-data-chat.ts";
@@ -111,6 +112,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesPrivacidadRoutes(deps));
   // H-30 (P1) -- superficie PUBLICA de privacidad del huesped (aviso, ARCO publico verificado, mis datos), sin login; migracion 042.
   app.route("/", hotelesPrivacidadPublicaRoutes(deps));
+  // H-42 (P1) -- motor de reservas directo PUBLICO (disponibilidad, cotizacion, confirmacion, estado y cancelacion por token), sin login; migracion 044.
+  app.route("/", hotelesReservarPublicoRoutes(deps));
   // H-05 (P0) -- tickets de huesped con SLA, escalacion automatica, bitacora y creacion desde resenas
   // (migrations/034_guest_ticket_sla_escalacion.sql), ver tickets.ts y el barrido de SLA (tickets-sla-cron.ts).
   app.route("/", hotelesTicketsRoutes(deps));
