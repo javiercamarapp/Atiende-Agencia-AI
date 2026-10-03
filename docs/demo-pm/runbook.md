@@ -89,7 +89,7 @@ select bd.slug, count(*) from restaurantes.orders o join restaurantes.branch_det
 
 | Opción | Efecto |
 | --- | --- |
-| `--dias=N` | Ventana del volumen (56 por omisión = las 8 semanas de la muestra real); escala los pedidos (28 días ≈ 70 pedidos) |
+| `--dias=N` | Ventana del volumen (56 por omisión = las 8 semanas de la muestra real); escala los pedidos (máximo 365). Los umbrales de `demo:pm --verificar` están calibrados para los 56 días: con otro valor la carga termina bien pero la verificación puede marcar «Demo NO lista»; para presentar, déjelo en el valor por omisión |
 | `--owner-email=…` | Enlaza como *owner* a un usuario de staff existente |
 | `--conservar-sesiones` | No borra los ensayos del chat |
 | `--verificar` | Solo lectura (no se combina con `--apply`) |

@@ -47,6 +47,15 @@ describe("estructura del guion", () => {
     }
   });
 
+  it("los escenarios que dependen del pedido del 1 (7, 8 y 10) mandan a la pestana A y los demas a la B, porque 'Nueva conversacion' borra la sesion", () => {
+    expect(guion).toContain("**«Nueva conversación» la borra**");
+    expect(seccion(1)).toContain("pestaña A");
+    for (const n of [7, 8, 10]) expect(seccion(n), `escenario ${n}`).toContain("pestaña A");
+    for (const n of [7, 8, 10]) expect(seccion(n), `escenario ${n}`).not.toMatch(/Nueva conversaci[oó]n\*\*/);
+    for (const n of [2, 3, 4, 5, 6, 9]) expect(seccion(n), `escenario ${n}`).toContain("pestaña B");
+    expect(seccion(10)).toContain("En preparación");
+  });
+
   it("cubre lo que pidio el encargo: recurrente, todas las salsas, 1/4 de kilo, fuera de zona, cambio tras confirmar, queja por faltante y factura", () => {
     const temas: Array<[string, RegExp]> = [
       ["pedido recurrente", /recurrente/i],

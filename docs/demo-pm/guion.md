@@ -17,6 +17,15 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 - Los importes salen del motor de pedidos sobre el catálogo sembrado de T7 (lista T1-2026) y una prueba (`demo-pm-guion.spec.ts`) los compara con el motor:
   si cambia un precio o el guion cita otra cifra, la prueba falla.
 
+## Orden de las conversaciones (dos pestañas)
+
+El chat guarda la conversación solo en la pestaña abierta: **«Nueva conversación» la borra** y el teléfono ficticio del cliente cambia con ella. Por eso se usan **dos pestañas** del chat de la demo:
+
+- **Pestaña A**: se abre para el escenario 1 y **no se pulsa «Nueva conversación» en ella**. Se reutiliza en los escenarios 7, 8 y 10 (necesitan el pedido del 1).
+- **Pestaña B**: para los escenarios 2 a 6 y el 9; en ella sí se pulsa **«Nueva conversación»** al empezar cada uno.
+
+Pestaña A no se cierra ni se recarga hasta terminar el escenario 10. El orden de presentación es el numerado; solo se cambia de pestaña.
+
 ## Qué es la demo (una frase por pieza)
 
 | Pieza | Qué es de verdad |
@@ -54,6 +63,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-020 («mensaje guardado», 12 clientes y ~35 sesiones en la muestra) y T7-015 (recurrente con mensaje corto).*
 
 - **Se dice**: «El 73 % de sus pedidos son de recurrentes y casi todos pegan siempre el mismo mensaje. El agente lo toma completo, sin bienvenida larga.»
+- **Se hace**: abra el chat de la demo en la **pestaña A** (la que se conserva hasta el escenario 10).
 - **Se escribe**:
   1. `Hola!!! Buenas noches. Un pedido a domicilio porfi. 9990000001 Ana Prueba, Privada Los Almendros casa 13, Santa Gertrudis Copó. Orden: 2 orden de tacos de bistec tortilla de maíz. 1 guacamole. Pago con tarjeta`
   2. (cuando pida el pin) `[Ubicación compartida por WhatsApp] lat=21.021100 lng=-89.614100`
@@ -69,7 +79,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-035 (la queja más repetida: faltaron salsas), T7-022 (extra de ajo) y T7-001.*
 
 - **Se dice**: «“Todas las salsas” para el cliente son todas; para la cocina son cuatro. Aquí el agente lo aclara antes de cotizar y no cobra lo que va incluido.»
-- **Se hace**: **Nueva conversación**; elija a **T7** si no está.
+- **Se hace**: cambie a la **pestaña B** y pulse **Nueva conversación**; elija a **T7** si no está.
 - **Se escribe**: `Quiero pasar a recoger una orden de nachos de pastor con todas las salsas, pago en efectivo` → (aclaración) `Sí, también ajo, guacamolera, mexicana y habanero` → `Y una extra de ajo`
 - **Se ve [Agente]**: aclara que **roja, verde, cebolla con cilantro y limones** van siempre y pregunta si le agrega crema de ajo, guacamolera, mexicana y habanero (**sin costo**, solo si las pide); la **extra de ajo** la manda como doble porción, **no como producto**.
 - **Se ve [Servidor]**: total **$347** (nachos de pastor $328 + extra salsa $19); no cobra ninguna salsa incluida; pregunta la hora de recogida y **no** pregunta propina (efectivo).
@@ -79,7 +89,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-001 y T7-061: las fracciones de kilo son de lo que más se pide; la regla vieja «solo el kilo completo» era falsa.*
 
 - **Se dice**: «Se venden 1/4, 1/2, 3/4, 1.5 y 2 kilos al precio proporcional, con centavos. El agente no hace cuentas: el precio sale del menú.»
-- **Se hace**: **Nueva conversación**.
+- **Se hace**: **pestaña B**, **Nueva conversación**.
 - **Se escribe**: `Me puedes mandar 1/4 de bistec y medio kilo de pastor para recoger, tortilla de maíz, todas las salsas, ajo y guacamole` → `Efectivo`
 - **Se ve [Servidor]**: renglones «Bistec de Res — 250 g» ($275) y «Pastor — 500 g» ($450); total **$725**; sin pregunta de propina.
 - **Se ve [Agente]**: «ajo y guacamole» los toma como **salsas a petición** (sin costo), no como producto; repite el pedido en lista antes de crear nada.
@@ -88,7 +98,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 
 *Origen: T7-029: el bistec solo se vende en órdenes de 3; el personal no vende sueltos.*
 
-- **Se hace**: **Nueva conversación**.
+- **Se hace**: **pestaña B**, **Nueva conversación**.
 - **Se escribe**: `Hola, para recoger 4 tacos de bistec, tortilla de maíz` → `Sí, una orden`
 - **Se ve [Servidor]**: la herramienta rechaza el múltiplo («solo se vende en órdenes de 3 piezas. Pediste 4; puedes pedir 3 o 6»); el agente **nunca convierte piezas en órdenes por su cuenta**.
 - **Se ve [Agente]**: lo explica con calidez y propone **una orden (3 tacos) por $194** o dos órdenes (6 tacos, $388); repite el resumen para confirmar.
@@ -98,7 +108,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-050 (la zona de T1 con pregunta de precio y tiempo) y T7-049.*
 
 - **Se dice**: «Hoy el cliente de otra zona se queda sin respuesta o recibe una negativa seca. El agente asigna por kilómetros, da el teléfono de la sucursal que le toca y aun así contesta lo que preguntó.»
-- **Se hace**: **Nueva conversación** en T7.
+- **Se hace**: **pestaña B**, **Nueva conversación** en T7.
 - **Se escribe**: `Buenas noches, quisiera 4 tacos de pastor a domicilio, efectivo. Mi ubicación: [Ubicación compartida por WhatsApp] lat=21.028200 lng=-89.609800 ¿Cuánto sería y en cuánto tiempo?`
 - **Se ve [Servidor]**: la herramienta de zona asigna **Prolongación Montejo** (T1) a ese pin y **no T7**.
 - **Se ve [Agente]**: **no toma el pedido para T7**; da el **teléfono de Prolongación Montejo (999 944 0342)** con calidez; **contesta lo que preguntó** (4 tacos de pastor = **$168**) y **ofrece recoger en T7**. Sin mayúsculas ni «por políticas de la empresa».
@@ -108,7 +118,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 
 *Origen: T7-064 y T7-041: un cliente pidió una sola orden de frijol y el personal no explicó el mínimo.*
 
-- **Se hace**: **Nueva conversación**.
+- **Se hace**: **pestaña B**, **Nueva conversación**.
 - **Se escribe**: `Hola, una orden de frijoles con tostadas a domicilio, pago en efectivo` (después de dar nombre y pin) 
 - **Se ve [Servidor]**: «El pedido mínimo a domicilio en García Lavín (Victory Platz) es de $200. El pedido suma $93; faltan $107»; **no se crea ningún pedido**.
 - **Se ve [Agente]**: invita a **agregar algo** o a **pasar a recoger** (para recoger no hay mínimo).
@@ -118,7 +128,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-019 y T7-043: el pedido sale de cocina en 10 a 25 minutos y a dos clientes ya no les alcanzó el agregado.*
 
 - **Se dice**: «Hoy agregar algo después de confirmar se pierde. Aquí el agente avisa a la sucursal **de inmediato**.»
-- **Se hace**: en la conversación del escenario 1 (pedido ya registrado).
+- **Se hace**: vuelva a la **pestaña A** (la conversación del escenario 1, con su pedido ya registrado).
 - **Se escribe**: `Disculpe, ¿le pudiera agregar un guacamole a mi pedido?`
 - **Se ve [Agente]**: **no crea otro pedido ni promete**; dice «Lo paso a cocina; si el pedido ya salió, se lo pueden enviar aparte».
 - **Se ve [Servidor]**: la escalación abre una toma pendiente con motivo `cancelacion_modificacion` y la nota de qué cambió. **Panel → Conversaciones**: aparece como **pendiente**; pulse **Tomar conversación** y el agente **calla** (escriba otro mensaje en el chat y verá «Una persona del equipo tiene tomada esta conversación»); agregue una nota interna y **Marcar como resuelta**.
@@ -127,7 +137,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 
 *Origen: T7-021 y T7-063: la queja más repetida es «no me mandaron el guacamole / el frijol».*
 
-- **Se hace**: misma conversación (o una nueva con pedido previo).
+- **Se hace**: en la **pestaña A** (misma conversación del escenario 1; sin ese pedido previo el agente no tiene a qué referirse).
 - **Se escribe**: `Recibí el pedido pero no mandaron el guacamole`
 - **Se ve [Agente]**: disculpa breve, pregunta qué faltó y escala con motivo `queja`; dice «la sucursal le confirma en unos minutos»; **no promete reposición, cambio ni descuento** (los autoriza la sucursal).
 - **Panel → Conversaciones**: toma **pendiente** con motivo `queja` y la conversación completa; en **Contactos** aparece el contacto.
@@ -137,7 +147,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 
 *Origen: T7-003 y T7-004: un cliente pidió facturar a la 1:10 am con la foto del ticket.*
 
-- **Se hace**: **Nueva conversación**.
+- **Se hace**: **pestaña B**, **Nueva conversación**.
 - **Se escribe**: `Buenas noches, ¿me ayuda a facturar?`
 - **Se ve [Agente]**: **no pide ni guarda RFC**; explica que el **ticket trae un código QR** para facturar en línea hasta 24 horas después del consumo; si el ticket es de otra sucursal, da el contacto de esa sucursal; **no escala** salvo que insista.
 - **Nota honesta**: el widget no recibe fotos; el cliente real la manda y el agente no la lee.
@@ -147,7 +157,7 @@ agente de WhatsApp **real** (perfil `taqueria_pm`) conversa en una página web, 
 *Origen: T7-016: 15 consultas de estado en 8 semanas; la cajera contesta porque ve a los repartidores.*
 
 - **Se dice**: «El agente no ve al repartidor: solo sabe lo que la sucursal marcó en el pedido. Nunca inventa un estado.»
-- **Se hace**: en la conversación del escenario 1 (pedido **en preparación**).
+- **Se hace**: en **Pedidos**, marque el pedido del escenario 1 como **En preparación** (queda en «pendiente» al crearse); luego vuelva a la **pestaña A**.
 - **Se escribe**: `¿Ya salió mi pedido?`; luego, en **Pedidos**, marque el pedido **En camino** y vuelva a escribir `¿Ya salió?`.
 - **Se ve [Agente]**: primero «va en preparación, confirmado a las [hora]; el tiempo estimado es de 60 a 75 minutos»; después de marcarlo **en camino**: «ya salió a reparto». Si ya pasó el tiempo prometido lo trata como queja (`tiempos_entrega`).
 - **Se ve [Servidor]**: el estado que dice sale de `Pedido reciente` (último pedido de ese teléfono en las últimas 12 h), no de la memoria del modelo.
