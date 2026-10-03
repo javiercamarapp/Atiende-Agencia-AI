@@ -18,7 +18,7 @@ import type { MensajeId } from "./mensajes.ts";
 export type MotivoEscalacionLlamada = "no_entiende" | "cliente_lo_pide" | "falla_sistema" | "no_puedo_resolver" | "otro";
 
 /** Lo que la vertical le dice a la maquina sobre SU objetivo: que herramienta, cuando sale bien, cierra la llamada como lograda
- * (restaurantes: `crear_pedido` -> `pedido_creado`; hoteles: `apartar_habitacion` -> `reserva_apartada`) y cual es la de pasar a una
+ * (restaurantes: `crear_pedido` -> `pedido_creado`; hoteles: `crear_pre_reserva` -> `pre_reserva_creada`) y cual es la de pasar a una
  * persona. Una llamada ya lograda nunca se escala: solo se despide. */
 export interface ReglasCierreLlamada<R extends string> {
   /** Herramienta (o varias) que, al salir bien y devolver una entidad (`entidadId`), logran el objetivo de la llamada. */

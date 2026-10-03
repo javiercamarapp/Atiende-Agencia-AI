@@ -26,8 +26,8 @@ paquetes del monorepo: el core no sabe de pedidos, menus, reservas ni citas.
 
 ## Como una vertical monta su agente
 
-1. **Reglas de cierre** (`ReglasCierreLlamada<R>`): la herramienta objetivo (`crear_pedido`, `apartar_habitacion`...), el resultado de cierre propio
-   de la vertical (`pedido_creado`, `reserva_apartada`...) y la herramienta con la que el agente pasa a una persona. Una llamada ya lograda nunca se
+1. **Reglas de cierre** (`ReglasCierreLlamada<R>`): la herramienta objetivo (`crear_pedido`, `crear_pre_reserva`...), el resultado de cierre propio
+   de la vertical (`pedido_creado`, `pre_reserva_creada`...) y la herramienta con la que el agente pasa a una persona. Una llamada ya lograda nunca se
    escala: solo se despide. `escalado` y `abandonado` los decide el core.
 2. **Registro de tools** (`RegistroToolsVoz`): las `ToolDefinicion` que se le declaran al proveedor, cuales son de escritura con resultado incierto si
    expiran (`herramientasInciertas`) y el aviso al modelo en ese caso. SOLO corre lo que el registro declara; el telefono nunca sale de los argumentos.

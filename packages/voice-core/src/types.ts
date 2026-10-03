@@ -14,7 +14,7 @@ export function proveedorDeFila(valor: string): VozProveedorId {
 }
 
 /** Resultados que la maquina de la llamada decide por si sola, sin saber de la vertical. Cada vertical agrega UNO propio: el de
- * "la llamada logro su objetivo" (restaurantes: `pedido_creado`; hoteles: `reserva_apartada`). */
+ * "la llamada logro su objetivo" (restaurantes: `pedido_creado`; hoteles: `pre_reserva_creada`). */
 export type VozResultadoBase = "escalado" | "abandonado";
 
 export type VozRolTurno = "cliente" | "agente" | "herramienta";

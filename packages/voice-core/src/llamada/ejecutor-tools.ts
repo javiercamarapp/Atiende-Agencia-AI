@@ -27,7 +27,7 @@ export interface ToolDefinicion {
 export interface RegistroToolsVoz {
   /** Las tools que el agente de voz de la vertical puede llamar (nada mas corre). */
   definiciones(): readonly ToolDefinicion[];
-  /** Tools de escritura cuyo timeout deja un resultado incierto (restaurantes: `crear_pedido`; hoteles: `apartar_habitacion`). */
+  /** Tools de escritura cuyo timeout deja un resultado incierto (restaurantes: `crear_pedido`; hoteles: `crear_pre_reserva`). */
   readonly herramientasInciertas: readonly string[];
   /** Lo que se le dice al modelo cuando una tool incierta expira (nombra lo que la vertical crea: el pedido, la reserva). */
   readonly mensajeIncierto: string;
