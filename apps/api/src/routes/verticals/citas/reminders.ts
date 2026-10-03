@@ -40,6 +40,8 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       let processed = 0;
       let sent = 0;
       let sentEmail = 0;
+      // PL-31 -- recordatorios cuyo WhatsApp no salio por falta de plantilla aprobada fuera de la ventana de 24 h, por organizacion.
+      const sinPlantillaPorOrg = new Map<string, number>();
       // C-14 -- eventos de "recordatorio fallido" para notificaciones (sin PII; ver domain-citas/notification-events.ts).
       const notificationEvents: EventoRecordatorioFallido[] = [];
       const failures: { organization_id: string; appointment_id?: string; error: string }[] = [];
@@ -52,6 +54,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           processed += summary.processed;
           sent += summary.sent;
           sentEmail += summary.sentEmail;
+          if (summary.skippedSinPlantilla > 0) sinPlantillaPorOrg.set(org.id, summary.skippedSinPlantilla);
           notificationEvents.push(...summary.failedReminderEvents);
           // Re-revisión a3 (bloqueante #1) — `runConfirmacionCitaCore` YA aísla cada
           // cita venenosa con SAVEPOINT y no lanza para la organización completa
@@ -82,11 +85,19 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           .catch(() => undefined);
       }
 
+      // PL-31 -- aviso in-app (campana): una por organizacion, evento y dia con el CONTEO de avisos que no salieron por WhatsApp porque falta
+      // la plantilla aprobada (el correo cubre cuando el cliente dejo uno). Mismo criterio best-effort que el aviso de arriba; sin datos del cliente.
+      for (const [organizationId, cantidad] of sinPlantillaPorOrg) {
+        await deps.engine
+          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.whatsapp.sin_plantilla", organizationId, clave: `${organizationId}:appointment.reminder_24h:${hoy}`, parametros: { cantidad } }))
+          .catch(() => undefined);
+      }
+
       // C-16 -- avisos in-app del ciclo (por confirmar, recordatorios agotados, escalaciones sin seguimiento): una transaccion por organizacion,
       // best-effort (ver avisos-ciclo.ts); no altera la respuesta ni el latido.
       await emitirAvisosDeCitas(deps, organizations.map((o) => o.id));
 
-      const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, notification_events: notificationEvents, failures });
+      const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, sin_plantilla: [...sinPlantillaPorOrg.values()].reduce((a, b) => a + b, 0), notification_events: notificationEvents, failures });
       if (failures.length > 0) {
         // `failures.length` mezcla organizaciones que lanzaron completas (catch de
         // arriba) con citas individuales aisladas por SAVEPOINT dentro de una

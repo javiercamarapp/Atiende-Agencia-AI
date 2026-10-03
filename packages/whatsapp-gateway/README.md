@@ -104,6 +104,11 @@ Soporte en el gateway:
 - Ninguna prueba ni build de este paquete envía algo real: los tests usan `FakeWhatsAppGraphClient` o un
   `fetchImpl` falso.
 
+PL-31: el despachador acepta ademas un catalogo por organizacion (`dispatchPending(port, { plantillas })`, ver
+`docs/PLANTILLAS-WHATSAPP.md`): si la organizacion dueña del mensaje tiene esa plantilla en estado aprobada, el cliente la envia como
+`type: "template"` aunque no este en la lista global (`OutboundWhatsAppMessagePayload.templateApproved`). Una consulta fallida cae a la lista global.
+La deteccion determinista de BAJA/ALTA esta en `src/opt-out.ts` (`detectarOptOut`).
+
 Lo que sigue siendo un paso EXTERNO (no resoluble con código): crear cada plantilla en el Business
 Manager de Meta, enviarla a revisión y esperar la aprobación; después agregar su nombre a
 `WHATSAPP_APPROVED_TEMPLATES`. Las plantillas de estado de pedido (nombre, idioma `es_MX`, variables
