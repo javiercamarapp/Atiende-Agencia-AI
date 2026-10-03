@@ -1,17 +1,17 @@
 // Tabla de Organizaciones con metricas (SA-L-20), Ficha 360 (SA-07) y onboarding medido (SA-18) del back office.
 //   GET /superadmin/organizaciones/resumen        -- una fila por organizacion: operaciones y costo de IA a 30 dias, plan y onboarding 'x/y'.
-//                                                    Base sin la 0050: `disponible: false` y las columnas nuevas en null con su razon.
+//                                                    Base sin la 0052: `disponible: false` y las columnas nuevas en null con su razon.
 //   GET /superadmin/organizaciones/margen         -- margen del mes por organizacion. Es una ruta de la ZONA CFO (RUTAS_FINANCIERAS: step-up si hay
 //                                                    MFA activo y bitacora de cada consulta en core.cfo_access_log); por eso va aparte y la pantalla la pide
 //                                                    por separado: el rechazo de step-up solo deja en blanco la columna Margen.
 //   GET /superadmin/organizaciones/:id/ficha      -- ficha 360 de una organizacion; inexistente -> 404 honesto.
 //
 // SOLO LECTURA: ninguna de las dos rutas escribe (el aviso 'organizacion lista' lo emite el cron de mantenimiento, nunca un GET).
-// La autorizacion (superadmin real, auth.uid() = p_caller_id) vive en las funciones SQL de 0050; el gateo de `/superadmin/*`
+// La autorizacion (superadmin real, auth.uid() = p_caller_id) vive en las funciones SQL de 0052; el gateo de `/superadmin/*`
 // (owner, rate-limit, bitacora de denegaciones, step-up) ya corrio antes (routes/superadmin.ts).
 //
 // Compatibilidad con la base sin migrar: la lista de organizaciones, el staff y el plan salen de funciones que ya existen en
-// produccion; metricas, onboarding y ficha salen de la 0050 y cada una falla POR SEPARADO (SAVEPOINT en el repositorio). Un campo
+// produccion; metricas, onboarding y ficha salen de la 0052 y cada una falla POR SEPARADO (SAVEPOINT en el repositorio). Un campo
 // no medible es `{ valor: null, razon }`, nunca 0.
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -25,7 +25,7 @@ import type { AppDeps } from "../deps.ts";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 const RAZONES: Readonly<Record<string, string>> = {
-  no_migrado: "No disponible aún: falta aplicar la migración 0050_superadmin_organizaciones_ficha_onboarding en este despliegue.",
+  no_migrado: "No disponible aún: falta aplicar la migración 0052_superadmin_organizaciones_ficha_onboarding en este despliegue.",
   error: "No se pudo leer esta fuente; el resto de la pantalla sigue disponible.",
   fuente_no_migrada: "No disponible aún: la migración de esta vertical no está aplicada en este despliegue.",
   sin_fuente: "Sin fuente: despachos no guarda un registro de operaciones (la conciliación bancaria no se persiste).",
@@ -71,7 +71,7 @@ export function superadminOrganizacionesFichaRoutes(deps: AppDeps, opciones: { r
     const organizaciones = await deps.coreRepo.listAllOrganizationsForSuperadmin(callerId);
     const staff = await deps.coreRepo.countStaffByOrganizationForSuperadmin(callerId);
 
-    // Metricas y onboarding (0050): UNA sesion, cada fuente con su SAVEPOINT (el repositorio).
+    // Metricas y onboarding (0052): UNA sesion, cada fuente con su SAVEPOINT (el repositorio).
     const repo = deps.orgFichaRepo;
     let metricas: ReadonlyMap<string, OrgMetricaRow> | null = null;
     let onboarding: ReadonlyMap<string, OrgOnboardingResumenRow> | null = null;
@@ -173,7 +173,7 @@ export function superadminOrganizacionesFichaRoutes(deps: AppDeps, opciones: { r
       return c.json(armarFicha(ficha, hoy));
     }
 
-    // Base sin la 0050 (o la fuente fallo): la organizacion se busca igual en la lista que ya existe en produccion para no
+    // Base sin la 0052 (o la fuente fallo): la organizacion se busca igual en la lista que ya existe en produccion para no
     // confundir "no existe" con "no disponible aun".
     const todas = await deps.coreRepo.listAllOrganizationsForSuperadmin(callerId);
     const org = todas.find((o) => o.id === id);

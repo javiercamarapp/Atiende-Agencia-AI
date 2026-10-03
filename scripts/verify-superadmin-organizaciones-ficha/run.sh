@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificacion manual, opt-in, contra un Postgres LOCAL real -- mismo patron que
 # scripts/verify-superadmin-costos-planes/run.sh. Acompana a
-# packages/db/migrations/0050_superadmin_organizaciones_ficha_onboarding.sql (SA-L-20 tabla de organizaciones, SA-07 ficha 360 y SA-18 onboarding medido:
+# packages/db/migrations/0052_superadmin_organizaciones_ficha_onboarding.sql (SA-L-20 tabla de organizaciones, SA-07 ficha 360 y SA-18 onboarding medido:
 # conteos por organizacion, no_se_pudo_medir distinto de pendiente, aviso unico de organizacion lista)
 # y prueba, contra RLS/GRANT/auth.uid() reales: caller-binding, superadmin real, anon sin acceso, aislamiento
 # entre organizaciones, ventana de 30 dias, ficha sin datos personales y marcador del aviso (una sola vez).
@@ -48,7 +48,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0050_superadmin_organizaciones_ficha_onboarding.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0052_superadmin_organizaciones_ficha_onboarding.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

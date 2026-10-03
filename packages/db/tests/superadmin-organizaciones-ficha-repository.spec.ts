@@ -1,4 +1,4 @@
-// Repositorio de metricas, ficha y onboarding por organizacion (0050): cada fuente falla por separado con una sesion que reproduce el
+// Repositorio de metricas, ficha y onboarding por organizacion (0052): cada fuente falla por separado con una sesion que reproduce el
 // estado ABORTADO real de una transaccion (AbortAwareFakeSession); una plana no sirve.
 import { describe, expect, it } from "vitest";
 import { InMemoryOrgFichaRepository, PostgresOrgFichaRepository } from "../src/index.ts";
@@ -45,7 +45,7 @@ describe("PostgresOrgFichaRepository", () => {
     await expect(new PostgresOrgFichaRepository(session).ficha("u1", "o1", "2026-09-30")).resolves.toEqual({ ok: true, data: null });
   });
 
-  it("el aviso de sistema devuelve los ids a avisar (sin emitir nada) y degrada sin la 0050", async () => {
+  it("el aviso de sistema devuelve los ids a avisar (sin emitir nada) y degrada sin la 0052", async () => {
     const ok = new AbortAwareFakeSession([{ match: /avisar_organizaciones_listas_for_system/, respond: () => [{ organization_id: "o1" }, { organization_id: "o2" }] }]);
     await expect(new PostgresOrgFichaRepository(ok).avisarListasForSystem()).resolves.toEqual({ ok: true, data: ["o1", "o2"] });
     expect(ok.calls.some((c) => /emit_notification/.test(c))).toBe(false);

@@ -30,7 +30,7 @@ const UMBRAL_OUTBOX_MINUTOS = 30;
  *  `ejecutar_mantenimiento_ahora`. */
 const UMBRAL_PROSPECTOS_DIAS = 14;
 
-/** Evento del catalogo de notificaciones que emite la funcion de sistema del aviso (el texto vive en la base; ver 0050). */
+/** Evento del catalogo de notificaciones que emite la funcion de sistema del aviso (el texto vive en la base; ver 0052). */
 const EVENTO_ORGANIZACION_LISTA = "superadmin.organizacion.onboarding_listo";
 
 /** Path EXACTO usado tanto en `vercel.json::crons` como en `withHeartbeat`. */
@@ -90,10 +90,10 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
       }
 
       // Aviso 'organizacion lista' (SA-18, evento EVENTO_ORGANIZACION_LISTA): la funcion de SISTEMA core.avisar_organizaciones_listas_for_system
-      // (0050) marca (core.org_onboarding_aviso, PK por organizacion) las que completaron su checklist y devuelve cuales avisar; aqui se emite UNA
+      // (0052) marca (core.org_onboarding_aviso, PK por organizacion) las que completaron su checklist y devuelve cuales avisar; aqui se emite UNA
       // notificacion de plataforma por cada una con el productor compartido, EN LA MISMA TRANSACCION: si una emision falla se lanza y la
       // transaccion revierte todo (marcador incluido), asi que se reintenta en la siguiente corrida y nunca queda una organizacion marcada sin aviso.
-      // Nunca desde un GET: "listo" es un estado y un GET lo reemitiria. Sesion de sistema PROPIA y best-effort: un fallo (o la 0050 sin aplicar)
+      // Nunca desde un GET: "listo" es un estado y un GET lo reemitiria. Sesion de sistema PROPIA y best-effort: un fallo (o la 0052 sin aplicar)
       // no altera el resto del cron.
       let organizacionesAvisadas: number | null = null;
       const orgFichaRepo = deps.orgFichaRepo;

@@ -54,7 +54,7 @@ Verificacion SQL contra Postgres real: `scripts/verify-superadmin-gestion-organi
 
 # Organizaciones / Clientes, Ficha 360 y onboarding medido (SA-L-20, SA-07, SA-18)
 
-Codigo: `packages/db/migrations/0050_superadmin_organizaciones_ficha_onboarding.sql` (espejo `supabase/migrations/20240101000298_...`),
+Codigo: `packages/db/migrations/0052_superadmin_organizaciones_ficha_onboarding.sql` (espejo `supabase/migrations/20240101000298_...`),
 `packages/db/src/superadmin-organizaciones-ficha-repository.ts`, `apps/api/src/routes/superadmin-organizaciones-ficha.ts`,
 `apps/web/src/superadmin/pages/{Organizaciones,OrganizacionFicha}.tsx`. Verificacion SQL contra Postgres real:
 `scripts/verify-superadmin-organizaciones-ficha/` (la corre el gate de CI).
@@ -97,7 +97,7 @@ Las organizaciones con mas de 30 dias de alta se marcan sin notificar (no son no
 
 ## Compatibilidad con la base sin migrar
 
-Sin la 0050: la lista de organizaciones, el staff y el plan siguen saliendo de las funciones que ya existen; `GET .../resumen` responde 200
+Sin la 0052: la lista de organizaciones, el staff y el plan siguen saliendo de las funciones que ya existen; `GET .../resumen` responde 200
 con `disponible: false` y las columnas nuevas en "—" con su razon; la ficha de una organizacion existente responde 200 `disponible: false` y la de una
 inexistente 404; el cron sigue en `ok`. Cada fuente corre bajo su propio SAVEPOINT (`runWithSavepointFallback`).
 

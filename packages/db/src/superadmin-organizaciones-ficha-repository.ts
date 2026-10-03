@@ -1,12 +1,12 @@
 // Repositorio de la tabla de Organizaciones (SA-L-20), la Ficha 360 (SA-07) y el onboarding medido (SA-18) -- puerto contra las
-// funciones de packages/db/migrations/0050_superadmin_organizaciones_ficha_onboarding.sql.
+// funciones de packages/db/migrations/0052_superadmin_organizaciones_ficha_onboarding.sql.
 //
 // SESIONES: los metodos de lectura son caller-bound (`withAppSession({ userId: callerId })`); `avisarListasForSystem` es de SOLO
 // SISTEMA (`withAppSession({ userId: null })`). Esta clase no elige la sesion, recibe el `TenantDbSession` ya abierto.
 //
 // CADA FUENTE FALLA POR SEPARADO (mismo criterio que superadmin-consola-repository.ts): cada metodo corre bajo
 // `runWithSavepointFallback`; un error SQL revierte SOLO su savepoint y devuelve `{ ok: false, razon }`:
-//   * `no_migrado` -- SQLSTATE 42883/42P01/42703 (la 0050 no esta aplicada en este despliegue);
+//   * `no_migrado` -- SQLSTATE 42883/42P01/42703 (la 0052 no esta aplicada en este despliegue);
 //   * `error`      -- cualquier otro error SQL (solo se registra su SQLSTATE).
 // Nunca un 500 ni un valor simulado: el llamador responde `disponible: false` o deja el campo en null con su razon.
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -94,7 +94,7 @@ function warnOnce(): void {
   if (warned) return;
   warned = true;
   console.warn(
-    "superadmin-organizaciones-ficha-repository: las funciones de 0050_superadmin_organizaciones_ficha_onboarding.sql no existen todavia " +
+    "superadmin-organizaciones-ficha-repository: las funciones de 0052_superadmin_organizaciones_ficha_onboarding.sql no existen todavia " +
       "(SQLSTATE 42883/42P01/42703) -- degradando a 'no disponible aun' (nunca 500, nunca exito simulado). Aplica la migracion " +
       "(o su espejo en supabase/migrations/) para habilitar las metricas, la ficha y el onboarding por organizacion.",
   );

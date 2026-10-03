@@ -134,11 +134,11 @@ describe("SuperAdminOrganizacionFichaPage", () => {
     expect([...rendered.container.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/superadmin/organizaciones")).toBe(true);
   });
 
-  it("base sin la 0050: aviso honesto con la cabecera de la organizacion, sin tarjetas ni cifras inventadas", async () => {
+  it("base sin la 0052: aviso honesto con la cabecera de la organizacion, sin tarjetas ni cifras inventadas", async () => {
     stub({
       ficha: () =>
         json({
-          disponible: false, mensaje: "No disponible aún: falta aplicar la migración 0050_superadmin_organizaciones_ficha_onboarding en este despliegue.",
+          disponible: false, mensaje: "No disponible aún: falta aplicar la migración 0052_superadmin_organizaciones_ficha_onboarding en este despliegue.",
           organizacion: FICHA.organizacion,
         }),
     });
@@ -146,7 +146,7 @@ describe("SuperAdminOrganizacionFichaPage", () => {
     await esperar();
     const t = rendered.container.textContent ?? "";
     expect(t).toContain("Los Taquitos de PM");
-    expect(t).toContain("0050_superadmin_organizaciones_ficha_onboarding");
+    expect(t).toContain("0052_superadmin_organizaciones_ficha_onboarding");
     expect(t).not.toContain("Uso · últimos 30 días");
   });
 

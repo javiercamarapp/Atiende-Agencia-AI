@@ -1,5 +1,5 @@
 -- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), la migracion
--- packages/db/migrations/0050_superadmin_organizaciones_ficha_onboarding.sql (SA-L-20, SA-07, SA-18):
+-- packages/db/migrations/0052_superadmin_organizaciones_ficha_onboarding.sql (SA-L-20, SA-07, SA-18):
 --
 --   A) Caller-binding: solo un superadmin real con su propio uid ve algo; staff normal, uid ajeno, sesion de sistema -> CERO filas;
 --      anon no ejecuta nada (sin GRANT).
