@@ -260,3 +260,13 @@ export type {
   RetentionSource,
 } from "./plataforma-privacidad-repository.ts";
 export { InMemoryPlataformaPrivacidadRepository, PlataformaPrivacidadError, PostgresPlataformaPrivacidadRepository } from "./plataforma-privacidad-repository.ts";
+export type {
+  OrgFicha,
+  OrgFichaRepository,
+  OrgFichaValor,
+  OrgMetricaRow,
+  OrgOnboardingEstado,
+  OrgOnboardingPaso,
+  OrgOnboardingResumenRow,
+} from "./superadmin-organizaciones-ficha-repository.ts";
+export { InMemoryOrgFichaRepository, PostgresOrgFichaRepository } from "./superadmin-organizaciones-ficha-repository.ts";

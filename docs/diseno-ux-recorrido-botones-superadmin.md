@@ -39,6 +39,7 @@ El plan habla de `web/verticals/superadmin/**`; la ruta real del codigo es `apps
 | Pantalla | Controles (handler -> efecto) | Prueba |
 |---|---|---|
 | **Organizaciones** | solo lectura (`GET /superadmin/organizations`); "Reintentar" en error | No |
+| **Organizaciones (Clientes) y Ficha 360** | "Entrar" -> `ConfirmDialog` con motivo (>= 20 caracteres; el boton queda bloqueado con menos) -> `POST /superadmin/impersonacion/sesiones`; "Cancelar"/Escape no escriben; "Ficha" -> `/superadmin/organizaciones/:id`; pestana "Gestion" monta la gestion de organizaciones | superadmin-organizaciones-page, superadmin-organizacion-ficha-page, humo-superadmin |
 | **Gestion de organizaciones** | "Alta de organizacion" / "Suspender" / "Reactivar" / "Pasar a cuenta ..." -> `FormDialog` con motivo -> `POST /superadmin/organizaciones/acciones` (crea la SOLICITUD, no ejecuta); en "Pendientes de confirmar": **"Confirmar" -> `ConfirmDialog` (peligro en suspender)** -> `POST .../acciones/:id/confirmar`; "Cancelar" -> `POST .../cancelar` | superadmin-gestion-organizaciones-page (incluye Cancelar del dialogo no ejecuta) |
 | **Interruptores** | "Detener" / "Reactivar" -> `FormDialog` con motivo -> `PUT /superadmin/interruptores` | superadmin-interruptores-page |
 | **Seguridad (MFA)** | "Enrolar autenticador" / "Reiniciar enrolamiento" -> `POST /superadmin/mfa/enrolar`; "Activar MFA" (codigo de 6 digitos) -> `POST /superadmin/mfa/verificar`; "Restablecer factor" de otro usuario (con motivo) -> `POST /superadmin/mfa/reset` | superadmin-seguridad-page |

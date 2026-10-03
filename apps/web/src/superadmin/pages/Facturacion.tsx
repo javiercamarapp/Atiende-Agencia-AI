@@ -305,7 +305,7 @@ function PanelCheckout({ apiBaseUrl, token, org, onClose }: { readonly apiBaseUr
   );
 }
 
-export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminFacturacionPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Costos y facturación: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [organizaciones, setOrganizaciones] = useState<readonly OrganizacionFacturacion[] | null>(null);
   const [eventos, setEventos] = useState<{ eventos: readonly EventoWebhook[]; total: number } | null>(null);
@@ -380,8 +380,8 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
     <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Facturación</h1>
-          <p className="text-sm text-muted-foreground mt-1">Suscripción SaaS que Atiende le cobra a cada organización cliente — estado real, asientos, y descuadres contra el staff activo.</p>
+          {!incrustada && <h1 className="text-2xl font-semibold text-foreground">Facturación</h1>}
+          <p className={incrustada ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>Suscripción SaaS que Atiende le cobra a cada organización cliente — estado real, asientos, y descuadres contra el staff activo.</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void cargar()} disabled={cargando}>
           <RefreshCw className={cargando ? "animate-spin" : undefined} />

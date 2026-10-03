@@ -11,6 +11,7 @@ import type {
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
+  OrgFichaRepository,
   FichasAgenteRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
@@ -651,6 +652,11 @@ export interface AppDeps {
    *  del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL: ausente o migracion sin aplicar -> los campos
    *  salen `null` con su razon y `disponible: false` (200), nunca un 500. */
   readonly consolaRepo?: (db: TenantDbSession) => ConsolaRepository;
+  /** Tabla de Organizaciones con metricas, Ficha 360 y onboarding medido (SA-L-20/SA-07/SA-18; ver
+   *  packages/db/migrations/0049_superadmin_organizaciones_ficha_onboarding.sql y routes/superadmin-organizaciones-ficha.ts). Fabrica por
+   *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
+   *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
+  readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
   /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
    *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
    *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */

@@ -461,12 +461,13 @@ select public.seed_pm_demo();
 select count(*)::int as zonas_deberia_ser_4 from restaurantes.known_zone z join core.organization o on o.id = z.organization_id where o.slug = 'los-taquitos-de-pm';
 rollback;
 
-\echo '=== B6. Asignacion por colonia con la funcion SQL real: "Altabrisa" empata con la zona de Victory Altabrisa, pero esa sucursal esta inactiva: se asigna la activa mas cercana (T7, a 1.83 km; T1 queda a 1.84 km) y nunca la inactiva ==='
+\echo '=== B6. Asignacion por colonia con la funcion SQL real: "Altabrisa" empata con la zona de Victory Altabrisa, pero esa sucursal esta inactiva: se asigna UNA activa de las dos mas cercanas (T7 a 1.83 km y T1 a 1.84 km; ambas redondean a 1.8 km y la funcion ordena por el valor redondeado sin desempate, asi que cual sale de las dos NO es determinista) y nunca la inactiva ==='
 begin;
 select public.seed_pm_demo();
 select (
   (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug = 'altabrisa') = 0
-  and (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug = 'garcia-lavin' and n.distance_km > 0) = 1
+  and (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa') n where n.slug in ('garcia-lavin', 'prol-montejo') and n.distance_km = 1.8) = 1
+  and (select count(*) from restaurantes.nearest_branch_by_colonia((select id from core.organization where slug = 'los-taquitos-de-pm'), 'Altabrisa')) = 1
 )::int as asigna_activa_mas_cercana_y_no_la_inactiva_deberia_ser_1;
 rollback;
 
