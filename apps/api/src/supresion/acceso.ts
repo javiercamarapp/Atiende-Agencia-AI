@@ -75,6 +75,27 @@ export async function registrarSupresion(
   });
 }
 
+export type ResultadoReactivacion = "reactivada" | "sin_baja" | "no_migrada" | "valor_invalido";
+
+/** ALTA (PL-32): quita SOLO la baja voluntaria (motivo `baja`) del contacto; quejas, rebotes, ARCO y "no contactar" no se revierten
+ *  por mensaje. `no_migrada` = la base aun no tiene la migracion 0048 (la ALTA cae al camino anterior: el texto sigue al agente). */
+export async function reactivarSupresionBaja(db: TenantDbSession, input: { readonly tipo: TipoContacto; readonly valor: string }): Promise<ResultadoReactivacion> {
+  const hash = hashearContacto(input.tipo, input.valor);
+  if (hash === null) return "valor_invalido";
+  return runWithSavepointFallback<ResultadoReactivacion>({
+    session: db,
+    primary: async () => {
+      const { rows } = await db.query<{ quitada: boolean }>("select core.reactivar_supresion_baja($1, $2) as quitada;", [input.tipo, hash]);
+      return rows[0]?.quitada === true ? "reactivada" : "sin_baja";
+    },
+    isRecoverable: esSupresionNoMigrada,
+    fallback: async () => {
+      avisarSupresionNoMigrada("reactivar_supresion_baja");
+      return "no_migrada";
+    },
+  });
+}
+
 /** Guard de correo para `dispatchPendingEmailJobs` de las 6 verticales (`true` = NO contactar). */
 export function crearGuardCorreo(db: TenantDbSession): (correo: string) => Promise<boolean> {
   const guard = crearGuardSupresion(db);

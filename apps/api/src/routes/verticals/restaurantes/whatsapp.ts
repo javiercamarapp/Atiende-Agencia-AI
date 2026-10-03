@@ -17,7 +17,7 @@ import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { BAJA_CONFIRMADA_TEXTO, procesarMensajeBaja } from "../../../supresion/index.ts";
+import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -107,16 +107,18 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         const phoneNumberIdOfBatch = batch.phoneNumberId;
 
         for (const message of incomingMessages) {
-          // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; no pasa al agente.
-          const baja = await procesarMensajeBaja(db, {
+          // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
+          const atendida = await procesarBajaOAlta(db, {
             telefono: `+${message.from}`,
             texto: message.body,
             origen: "whatsapp.restaurantes",
             organizationId,
-            confirmar: () =>
+            confirmarBaja: () =>
               repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.baja_confirmada", `baja-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberIdOfBatch, body: BAJA_CONFIRMADA_TEXTO, transaccional: true }),
+            confirmarAlta: () =>
+              repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.alta_confirmada", `alta-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberIdOfBatch, body: ALTA_CONFIRMADA_TEXTO, transaccional: true }),
           });
-          if (baja.manejada) continue;
+          if (atendida) continue;
           const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
             organizationId,
             messageId: message.id,

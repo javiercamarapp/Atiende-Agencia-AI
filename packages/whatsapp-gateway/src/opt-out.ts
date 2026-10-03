@@ -68,6 +68,3 @@ export function detectarOptOut(texto: string, opciones: OpcionesDeteccionOptOut 
   if (FRASES_ALTA.has(t)) return "alta";
   return null;
 }
-
-export const OPT_OUT_BAJA_CONFIRMADA_TEXTO = "Listo: ya no recibirás avisos automáticos por WhatsApp de este negocio. Si cambias de opinión, escribe ALTA. Puedes escribirnos cuando quieras y te atendemos.";
-export const OPT_OUT_ALTA_CONFIRMADA_TEXTO = "Listo: volverás a recibir los avisos automáticos de este negocio por WhatsApp. Si quieres dejar de recibirlos, escribe BAJA.";
