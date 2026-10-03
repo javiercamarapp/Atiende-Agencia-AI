@@ -1087,8 +1087,8 @@ export class InMemoryCitasRepository implements CitasRepository {
     return this.whatsappMessageConfigByOrg.get(organizationId)?.config ?? null;
   }
 
-  // ---- PL-31 -- catalogo de plantillas y ventana de 24 h (migracion 0048). Por omision la base "no esta migrada" (undefined), igual que
-  // la base real sin la 0048: los avisos conservan el comportamiento anterior hasta que una prueba la habilita. ----
+  // ---- PL-31 -- catalogo de plantillas y ventana de 24 h (migracion 0049). Por omision la base "no esta migrada" (undefined), igual que
+  // la base real sin la 0049: los avisos conservan el comportamiento anterior hasta que una prueba la habilita. ----
   private plantillasDisponibles = false;
   private readonly plantillasWhatsappPorEvento = new Map<string, PlantillaWhatsappAprobada>();
   private readonly entradasWhatsapp = new Map<string, string>();

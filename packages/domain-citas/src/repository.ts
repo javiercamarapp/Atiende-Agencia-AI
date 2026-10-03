@@ -924,20 +924,20 @@ export interface CitasRepository {
   getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null>;
 
   /** PL-31: plantillas de WhatsApp de la organizacion (core.whatsapp_plantilla, vertical citas). Sesion de STAFF (RLS owner/admin).
-   *  `disponible: false` = la base aun no tiene la migracion 0048. */
+   *  `disponible: false` = la base aun no tiene la migracion 0049. */
   listWhatsappTemplates(organizationId: string): Promise<{ readonly disponible: boolean; readonly items: readonly PlantillaWhatsappRecord[] }>;
-  /** Alta o edicion de la plantilla de un evento. `forbidden` = sin rol owner/admin en esa organizacion (RLS); `unavailable` = base sin la 0048. */
+  /** Alta o edicion de la plantilla de un evento. `forbidden` = sin rol owner/admin en esa organizacion (RLS); `unavailable` = base sin la 0049. */
   saveWhatsappTemplate(organizationId: string, evento: string, valor: PlantillaWhatsappInput): Promise<"saved" | "forbidden" | "unavailable">;
   /** Descarta la plantilla de un evento. */
   deleteWhatsappTemplate(organizationId: string, evento: string): Promise<"deleted" | "not_found" | "forbidden" | "unavailable">;
 
-  /** PL-31: plantilla HSM APROBADA de la organizacion para un evento (core.whatsapp_plantilla, migracion 0048). `null` = no hay una
-   *  aprobada; `undefined` = la base aun no tiene la migracion 0048 (no se puede saber: el llamador conserva el comportamiento anterior).
+  /** PL-31: plantilla HSM APROBADA de la organizacion para un evento (core.whatsapp_plantilla, migracion 0049). `null` = no hay una
+   *  aprobada; `undefined` = la base aun no tiene la migracion 0049 (no se puede saber: el llamador conserva el comportamiento anterior).
    *  Sesion de SISTEMA; con SAVEPOINT. */
   resolveWhatsappTemplate(organizationId: string, evento: string): Promise<PlantillaWhatsappAprobada | null | undefined>;
 
   /** PL-31: instante ISO del ultimo mensaje que el cliente `phone` escribio a la organizacion. `null` = nunca escribio; `undefined` =
-   *  la base aun no tiene la migracion 0048. Sesion de SISTEMA; con SAVEPOINT. */
+   *  la base aun no tiene la migracion 0049. Sesion de SISTEMA; con SAVEPOINT. */
   lastInboundWhatsappAt(organizationId: string, phone: string): Promise<string | null | undefined>;
   /** Guarda (`actualizado`) o restablece (`restablecido`) con control de version optimista (`expectedVersion` = 0 si aun no
    * hay fila). La funcion SQL valida rol owner/admin y organizacion. */

@@ -29,7 +29,7 @@ describe("PL-31: catalogo de plantillas por organizacion", () => {
     expect(spy.mock.calls[0]![1]).toEqual([ORG_A, "recordatorio_cita"]);
   });
 
-  it("base SIN la migracion 0048: false (decide la lista global) con la sesion UTILIZABLE despues (SAVEPOINT)", async () => {
+  it("base SIN la migracion 0049: false (decide la lista global) con la sesion UTILIZABLE despues (SAVEPOINT)", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const session = new AbortAwareFakeSession([
       { match: /core\.whatsapp_plantilla_aprobada/, respond: () => pgError("42883", "function core.whatsapp_plantilla_aprobada(uuid, text) does not exist") },
@@ -115,7 +115,7 @@ describe("PL-32: ALTA de la lista de supresion", () => {
     expect(confirmar).not.toHaveBeenCalled();
   });
 
-  it("base sin la migracion 0048: no se maneja, log sin PII y sesion sana", async () => {
+  it("base sin la migracion 0049: no se maneja, log sin PII y sesion sana", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const session = new AbortAwareFakeSession([
       { match: /core\.reactivar_supresion_baja/, respond: () => pgError("42883", "function core.reactivar_supresion_baja(text, text) does not exist") },

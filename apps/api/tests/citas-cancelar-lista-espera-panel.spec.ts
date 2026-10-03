@@ -181,7 +181,7 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/canc
       // encontró en este mismo archivo).
       { match: /citas\.system_resolve_active_whatsapp_phone_number_id/, respond: () => [{ system_resolve_active_whatsapp_phone_number_id: "phone-1" }] },
       // El corazón del hallazgo confirmado: SIEMPRE 42501 en sesión de staff.
-      // Base sin la migracion 0048: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
+      // Base sin la migracion 0049: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
       { match: /citas\.ultimo_mensaje_entrante/, respond: () => Object.assign(new Error("function citas.ultimo_mensaje_entrante(uuid, text[]) does not exist"), { code: "42883" }) },
       { match: /citas\.claim_waitlist_notification_slot/, respond: () => pgPermissionDenied() },
     ]);

@@ -68,7 +68,7 @@ describe("citas.whatsapp.sin_plantilla", () => {
     expect((wa[0]!.payload as { template: { name: string } }).template.name).toBe("recordatorio_cita_24h");
   });
 
-  it("base sin la migracion 0048 (comportamiento anterior): no emite y el WhatsApp sale como siempre", async () => {
+  it("base sin la migracion 0049 (comportamiento anterior): no emite y el WhatsApp sale como siempre", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const { deps, emisiones } = conEmisiones(ctx.deps);
     await seedCita(ctx, "9990000024");

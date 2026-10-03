@@ -399,7 +399,7 @@ function advertirPlantillasNoDisponibles(metodo: string, err: unknown): void {
   if (plantillasAdvertidas.has(metodo)) return;
   plantillasAdvertidas.add(metodo);
   console.warn(
-    `PostgresCitasRepository.${metodo}: el catalogo de plantillas de WhatsApp y la ventana de 24 h (migracion 0048) no estan disponibles en esta base ` +
+    `PostgresCitasRepository.${metodo}: el catalogo de plantillas de WhatsApp y la ventana de 24 h (migracion 0049) no estan disponibles en esta base ` +
       "(SQLSTATE 42883/42P01/42703 o sin acceso) -- los avisos proactivos conservan el comportamiento anterior.",
     err instanceof Error ? err.message : err,
   );

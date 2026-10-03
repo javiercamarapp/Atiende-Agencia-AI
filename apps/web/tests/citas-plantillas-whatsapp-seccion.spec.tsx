@@ -69,7 +69,7 @@ describe("PlantillasWhatsappSeccion (citas)", () => {
     expect(texto).toContain("este aviso no sale por WhatsApp");
   });
 
-  it("base sin la migracion 0048: aviso honesto y NINGUN control de edicion (no es una maqueta)", async () => {
+  it("base sin la migracion 0049: aviso honesto y NINGUN control de edicion (no es una maqueta)", async () => {
     stub({ disponible: false });
     rendered = renderComponent(<PlantillasWhatsappSeccion {...props} />);
     await esperar();

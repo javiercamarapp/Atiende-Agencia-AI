@@ -1,5 +1,5 @@
--- Verificacion contra Postgres REAL de PL-31/PL-32, migracion 0048
--- (packages/db/migrations/0048_whatsapp_plantillas_y_opt_out.sql):
+-- Verificacion contra Postgres REAL de PL-31/PL-32, migracion 0049
+-- (packages/db/migrations/0049_whatsapp_plantillas_y_alta_supresion.sql):
 --
 --   (A) core.whatsapp_plantilla (catalogo por organizacion): RLS solo owner/admin de SU organizacion, GRANT a nivel columna,
 --       CHECKs, marcas de tiempo por estado. Positivo, rol member, otro tenant, anon.

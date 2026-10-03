@@ -1,4 +1,4 @@
-// PL-31: acceso al catalogo de plantillas HSM por organizacion (core.whatsapp_plantilla, migracion 0048) desde el despachador de
+// PL-31: acceso al catalogo de plantillas HSM por organizacion (core.whatsapp_plantilla, migracion 0049) desde el despachador de
 // WhatsApp. La lectura corre en una sesion de SISTEMA (auth.uid() es null) dentro de la UNICA transaccion del despachador: todo
 // acceso va dentro de `runWithSavepointFallback` (SAVEPOINT / ROLLBACK TO SAVEPOINT) para que una base sin la migracion (SQLSTATE
 // 42P01/42883/42703) NO deje la transaccion abortada ni rompa el envio: cae a "no aprobada en el catalogo" y decide la lista global.

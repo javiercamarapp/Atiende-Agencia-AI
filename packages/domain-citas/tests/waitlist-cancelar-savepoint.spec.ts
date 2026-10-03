@@ -125,7 +125,7 @@ describe("tryNotifyWaitlistOfFreedSlot / tryEnqueueAppointmentEmail — SAVEPOIN
     const session = new AbortAwareFakeSession([
       { match: /citas\.system_load_live_waitlist_candidates/, respond: () => [{ out_id: WAITLIST_ID, out_customer_phone: "5215500000001", out_customer_name: "Candidato", out_notified_count: 0, out_provider_id: PROVIDER_ID, out_service_id: null, out_preferred_date_from: null, out_preferred_date_to: null, out_preferred_time_window: "any", out_created_at: "2026-01-01T00:00:00.000Z" }] },
       { match: /citas\.system_resolve_active_whatsapp_phone_number_id/, respond: () => [{ system_resolve_active_whatsapp_phone_number_id: "phone-1" }] },
-      // Base sin la migracion 0048: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
+      // Base sin la migracion 0049: la ventana de 24 h no se puede saber y el aviso conserva el comportamiento anterior.
       { match: /citas\.ultimo_mensaje_entrante/, respond: () => Object.assign(new Error("function citas.ultimo_mensaje_entrante(uuid, text[]) does not exist"), { code: "42883" }) },
       { match: /citas\.claim_waitlist_notification_slot/, respond: () => [{ id: WAITLIST_ID, notified_count: 1 }] },
       { match: /citas\.enqueue_messaging_outbox/, respond: () => [{ enqueue_messaging_outbox: "00000000-0000-0000-0000-0000000000e1" }] },

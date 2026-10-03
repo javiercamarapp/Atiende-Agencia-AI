@@ -6,7 +6,7 @@
 //      se encola con `template` (evento + variables en el orden que declara la plantilla).
 //   3. fuera de la ventana y sin plantilla aprobada -> `sin_plantilla`: NO se encola WhatsApp (Meta lo rechazaria y quedaria `dead`);
 //      el llamador usa el correo si hay y deja el estado honesto.
-// BASE SIN MIGRAR (0048): el repositorio devuelve `undefined` ("no se puede saber") y se conserva el comportamiento anterior.
+// BASE SIN MIGRAR (0049): el repositorio devuelve `undefined` ("no se puede saber") y se conserva el comportamiento anterior.
 import { correoListaEsperaCupo } from "../emails/appointment-templates.ts";
 import type { CitasRepository } from "../repository.ts";
 
@@ -67,7 +67,7 @@ export async function decidirEnvioProactivo(
   input: { readonly organizationId: string; readonly phone: string; readonly evento: string; readonly valores: Valores | (() => Promise<Valores>); readonly now: Date },
 ): Promise<DecisionProactivo> {
   const ultimo = await repo.lastInboundWhatsappAt(input.organizationId, input.phone);
-  if (ultimo === undefined) return { canal: "whatsapp" }; // base sin la migracion 0048: comportamiento anterior
+  if (ultimo === undefined) return { canal: "whatsapp" }; // base sin la migracion 0049: comportamiento anterior
   const hace = input.now.getTime() - Date.parse(ultimo ?? "");
   if (ultimo !== null && Number.isFinite(hace) && hace < VENTANA_SEGURA_MS) return { canal: "whatsapp" };
 

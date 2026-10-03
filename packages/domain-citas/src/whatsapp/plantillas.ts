@@ -1,4 +1,4 @@
-// PL-31 -- catalogo de plantillas HSM de WhatsApp por organizacion (core.whatsapp_plantilla, migracion 0048): eventos de citas que
+// PL-31 -- catalogo de plantillas HSM de WhatsApp por organizacion (core.whatsapp_plantilla, migracion 0049): eventos de citas que
 // pueden salir como plantilla, sus variables permitidas y la validacion del formulario. El producto aprueba la plantilla en Meta
 // Business Manager (paso externo); aqui solo se registra su nombre, idioma, orden de variables y estado.
 //
