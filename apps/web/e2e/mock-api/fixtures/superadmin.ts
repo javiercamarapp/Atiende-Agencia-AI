@@ -131,6 +131,51 @@ const CORRIDAS_AGENTES = [
   { id: "run-2", agente: "/internal/rentas/ical-sync", vertical: "rentas", organizationId: null, disparo: "cron", estado: "fallo", tareasHechas: null, tareasTotal: null, costoUsd: null, error: "timeout del proveedor de calendario", iniciadoEn: "2026-09-30T17:45:00.000Z", terminadoEn: "2026-09-30T17:45:01.000Z", duracionMs: 900 },
 ];
 
+// Organizaciones / Clientes y Ficha 360 (SA-L-20 / SA-07): misma forma que apps/api/src/routes/superadmin-organizaciones-ficha.ts. Solo existe en la
+// API simulada de e2e; en produccion sale de las funciones core.get_orgs_metricas_for_superadmin / get_org_ficha_for_superadmin.
+const campoOrg = <T,>(valor: T) => ({ valor, razon: null });
+const sinDatoOrg = (razon: string) => ({ valor: null, razon });
+const razonSinFuenteOps = "Sin fuente: despachos no guarda un registro de operaciones (la conciliación bancaria no se persiste).";
+
+function filasResumenOrg() {
+  return organizaciones().map((o, i) => {
+    const despachos = o.vertical === "despachos";
+    return {
+      id: o.id, nombre: o.name, slug: o.slug, vertical: o.vertical, estado: o.status, creadaEn: o.createdAt, staff: o.staffCount,
+      plan: i % 2 === 0 ? campoOrg({ id: `plan-${o.vertical}`, nombre: `Plan ${o.vertical}` }) : sinDatoOrg("Sin plan asignado: no hay ingreso esperado contra el cual calcular el margen."),
+      operaciones30d: despachos ? sinDatoOrg(razonSinFuenteOps) : campoOrg(40 + i * 7),
+      costoIa30dUsd: campoOrg(Math.round((12 - i * 1.7) * 100) / 100),
+      onboarding: despachos ? campoOrg({ hechos: 1, total: 4, noMedibles: 1 }) : campoOrg({ hechos: Math.min(6, 2 + i), total: 6, noMedibles: 0 }),
+    };
+  });
+}
+
+function fichaOrg(id: string) {
+  const o = organizaciones().find((x) => x.id === id);
+  if (!o) return null;
+  const despachos = o.vertical === "despachos";
+  return {
+    disponible: true, mensaje: null, mes: "2026-09", ventanaDias: 30,
+    organizacion: { id: o.id, nombre: o.name, slug: o.slug, vertical: o.vertical, estado: o.status, creadaEn: o.createdAt },
+    uso: { operaciones30d: despachos ? sinDatoOrg(razonSinFuenteOps) : campoOrg(52), conversaciones30d: campoOrg(130), minutosVoz30d: campoOrg(8.5) },
+    costo: { llm30dUsd: campoOrg(9.8), eventos30dUsd: campoOrg(1.2), costoPorEventoUsd: campoOrg(0.4) },
+    membresias: { porRol: [{ rol: "owner / staff", cantidad: 1 }, { rol: "member / staff", cantidad: 3 }], ultimosAccesos: campoOrg([{ rol: "member", ultimoAcceso: "2026-09-30T16:00:00.000Z" }]) },
+    errores: {
+      outboxMuerto: campoOrg(0),
+      denegaciones30d: { valor: 0, razon: null, ultimas: [] },
+      crons: sinDatoOrg("Sin fuente por organización: los crons se miden para toda la plataforma (ver Salud operativa)."),
+    },
+    facturacion: { plan: { id: `plan-${o.vertical}`, nombre: `Plan ${o.vertical}` }, cobro: { estado: "activa", periodoHasta: "2026-10-30T00:00:00.000Z", asientos: 3 }, contrato: { contractId: "contrato-1", version: 1 } },
+    onboarding: [
+      { paso: "staff_invitado", titulo: "Staff invitado", estado: "hecho", razon: null, razonTexto: null },
+      despachos
+        ? { paso: "primera_operacion", titulo: "Primera operación real", estado: "no_se_pudo_medir", razon: "sin_fuente", razonTexto: "Sin fuente: despachos no guarda un registro de operaciones (la conciliación bancaria no se persiste)." }
+        : { paso: "primera_operacion", titulo: "Primera operación real", estado: "hecho", razon: null, razonTexto: null },
+      { paso: "plan_asignado", titulo: "Plan asignado", estado: "pendiente", razon: null, razonTexto: null },
+    ],
+  };
+}
+
 export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/impersonacion/activa", manejador: () => ({ available: true, session: null }) },
   // Parte diario (/superadmin/parte-diario): sin resumenes generados todavia; la pagina pinta su vacio honesto.
@@ -138,6 +183,13 @@ export const rutasSuperadmin: readonly Ruta[] = [
   { metodo: "GET", patron: "/superadmin/consola/resumen", manejador: () => resumenConsola() },
   { metodo: "GET", patron: "/superadmin/consola/agentes-actividad", manejador: () => agentesConsola() },
   { metodo: "GET", patron: "/superadmin/organizations", manejador: () => ({ organizations: organizaciones() }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/resumen", manejador: () => ({ disponible: true, mensaje: null, ventanaDias: 30, organizaciones: filasResumenOrg() }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/margen", manejador: () => ({
+      disponible: true, mes: "2026-09", mensaje: null,
+      margenes: Object.fromEntries(organizaciones().map((o, i) => [o.id, i % 2 === 0 ? campoOrg({ mxn: 1498 - i * 100, pct: 93.7 - i, ingresoMxn: 1598 }) : sinDatoOrg("Sin plan asignado: no hay ingreso esperado contra el cual calcular el margen.")])),
+    }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/acciones", manejador: () => ({ disponible: true, acciones: [] }) },
+  { metodo: "GET", patron: "/superadmin/organizaciones/:id/ficha", manejador: (p) => fichaOrg(String(p.params["id"])) ?? fallo(404, "Organización no encontrada.") },
   { metodo: "GET", patron: "/superadmin/prospectos", manejador: (p) => ({ prospectos: p.estado.obtener("sa.prospectos", () => structuredClone(PROSPECTOS)) }) },
   { metodo: "POST", patron: "/superadmin/prospectos", manejador: (p) => {
       const cuerpo = (p.cuerpo ?? {}) as Partial<Prospecto>;
