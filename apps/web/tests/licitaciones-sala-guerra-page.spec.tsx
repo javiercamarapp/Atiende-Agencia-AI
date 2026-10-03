@@ -307,6 +307,19 @@ async function openJunta(ctx: LicitacionesShellContext, junta: unknown, extra: R
 }
 
 describe("SalaGuerraPage -- junta de aclaraciones", () => {
+  // L-33 (REQ-115): el aviso de IA solo aparece si la API devuelve preguntas redactadas por el asistente.
+  it("con una pregunta del asistente (origin agente) muestra el aviso de uso de IA", async () => {
+    await openJunta(CTX, JUNTA({ questions: [Q({ origin: "agente" })] }));
+    const nota = rendered!.container.querySelector('[role="note"][aria-label="Aviso de uso de inteligencia artificial"]');
+    expect(nota).not.toBeNull();
+    expect(nota!.textContent).toContain("redactadas con inteligencia artificial");
+  });
+
+  it("con solo preguntas capturadas por una persona NO hay aviso de IA", async () => {
+    await openJunta(CTX, JUNTA({ questions: [Q({ origin: "manual" })] }));
+    expect(rendered!.container.querySelector('[aria-label="Aviso de uso de inteligencia artificial"]')).toBeNull();
+  });
+
   it("muestra preguntas, semaforo de la fecha limite y el recordatorio; reconocer el recordatorio hace POST", async () => {
     await openJunta(CTX, JUNTA(), { "POST /junta/reminders/rem1/acknowledge": () => ({ body: {} }) });
     const text = rendered!.container.textContent!;
