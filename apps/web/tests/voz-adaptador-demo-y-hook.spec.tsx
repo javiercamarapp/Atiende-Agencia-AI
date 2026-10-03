@@ -6,8 +6,8 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VoiceSessionController } from "@atiende/ui";
 import { crearFabricaDemo, SALUDO_DEMO_POR_DEFECTO, volumenSintetico } from "./support/adaptador-demo.ts";
-import type { AdaptadorVoz, CallbacksAdaptador, FabricaAdaptador } from "../src/verticals/restaurantes/voz/adaptador.ts";
-import { useSesionVoz } from "../src/verticals/restaurantes/voz/useSesionVoz.ts";
+import type { AdaptadorVoz, CallbacksAdaptador, FabricaAdaptador } from "../src/lib/voz/adaptador.ts";
+import { useSesionVoz } from "../src/lib/voz/useSesionVoz.ts";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;

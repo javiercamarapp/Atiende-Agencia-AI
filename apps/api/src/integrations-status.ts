@@ -65,9 +65,9 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
   },
   {
     id: "voice-tool-secret",
-    nombre: "Server Tools de ElevenLabs (secreto propio)",
+    nombre: "Server Tools de voz (secreto propio)",
     habilita:
-      "Autentica llamadas ENTRANTES de ElevenLabs Server Tools (header x-atiende-tool-secret) en los agentes de voz de citas/hoteles/restaurantes. No requiere ninguna API key de ElevenLabs (esa dirección — llamadas SALIENTES a la API de ElevenLabs — no está conectada en este repo, ver nota en docs/CREDENCIALES.md). Sin esto, loadApiEnv() lanza y la API entera no arranca.",
+      "Autentica llamadas ENTRANTES a las herramientas de voz (header x-atiende-tool-secret) de citas (Server Tools de ElevenLabs, aún sin migrar al esqueleto de voz) y de restaurantes (camino de compatibilidad y emisión del token por llamada). Hoteles NO lo usa: su secreto es por property (hoteles.voice_agent_config). No requiere ninguna API key de ElevenLabs (ver nota en docs/CREDENCIALES.md). Sin esto, loadApiEnv() lanza y la API entera no arranca.",
     variables: ["VOICE_TOOL_SECRET"],
   },
   {
@@ -198,12 +198,12 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["SW_API_TOKEN", "SW_CSD_CERT_PATH", "SW_CSD_KEY_PATH", "SW_CSD_PASSWORD", "SW_WEBHOOK_SECRET"],
   },
 
-  // ---- Voz de restaurantes (Gemini 3.8 Live) ----
+  // ---- Voz de restaurantes y hoteles (Gemini 3.8 Live; respaldo cascada OpenRouter) ----
   {
     id: "voz-gemini-live",
-    nombre: "Voz de restaurantes — Gemini 3.8 Live (preview del panel)",
+    nombre: "Voz de restaurantes y hoteles — Gemini 3.8 Live (preview del panel)",
     habilita:
-      "Emisión de la sesión de preview de voz del panel (POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion): GEMINI_API_KEY pide a Gemini un token efímero de un solo uso (la llave nunca sale del servidor) y VOICE_PREVIEW_TOKEN_SECRET (mínimo 16 caracteres, lo generas tú) firma el token propio ligado a organización+sucursal+sesión. Sin cualquiera de las dos, la ruta responde 503 \"voz no configurada\" (nunca un falso éxito); la configuración de voz y las conversaciones siguen disponibles.",
+      "Emisión de la sesión de preview de voz del panel (POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion y POST /hoteles/:propertyId/voz/preview/sesion): GEMINI_API_KEY pide a Gemini un token efímero de un solo uso (la llave nunca sale del servidor) y VOICE_PREVIEW_TOKEN_SECRET (mínimo 16 caracteres, lo generas tú) firma el token propio ligado a organización+sucursal+sesión. Sin cualquiera de las dos, la ruta responde 503 \"voz no configurada\" (nunca un falso éxito); la configuración de voz y las conversaciones siguen disponibles. La escalera de voz de la plataforma (@atiende/voice-core) usa además OPENROUTER_API_KEY (la misma del texto, ver \"llm-openrouter\") para la cascada de respaldo STT -> LLM -> TTS cuando Gemini falla o no hay GEMINI_API_KEY; GET /hoteles/:propertyId/voz/estado muestra qué escalones tienen credencial.",
     variables: ["GEMINI_API_KEY", "VOICE_PREVIEW_TOKEN_SECRET"],
   },
 
