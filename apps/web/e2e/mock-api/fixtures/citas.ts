@@ -222,7 +222,8 @@ export const rutasCitas: readonly Ruta[] = [
       created_by_source_last_30_days: { voice: 6, whatsapp: 23, web: 4, manual: 1 },
     }) },
   // UNI-RES-citas -- tiles de agentes del Resumen: entrega de recordatorios (centro de avisos) y conexion del numero de WhatsApp. Solo
-  // owner/admin los usan en el servidor real; en e2e `roles` hace que staff reciba 403 igual que el servidor.
+  // owner/admin los usan en el servidor real. /admin/whatsapp-agente responde 403 a staff (assertVerticalRole); /admin/avisos
+  // responde 200 con `recordatorios.visible:false` a staff; aqui `roles` da 403 a staff, que difiere del servidor, pero el cliente no lo pide para staff.
   { metodo: "GET", patron: `${P}/admin/avisos`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({
       generadoEn: new Date().toISOString(),
       porConfirmar: { horas: 72, total: 0, items: [] },
