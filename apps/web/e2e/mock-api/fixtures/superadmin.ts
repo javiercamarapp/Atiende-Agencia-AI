@@ -121,6 +121,88 @@ function agentesConsola() {
   };
 }
 
+// Fichas de agente (SA-L-09) y Model Ops (SA-L-10): misma forma que apps/api/src/routes/superadmin-agentes-fichas.ts. Solo existe en la
+// API simulada de e2e; en produccion sale de las funciones core.get_fichas_*_for_superadmin (0049) y de core.llm_usage_daily.
+function serieFicha(): Array<{ dia: string; llamadas: number; costoUsd: number }> {
+  return Array.from({ length: 7 }, (_, i) => ({ dia: new Date(Date.UTC(2026, 8, 24 + i)).toISOString().slice(0, 10), llamadas: 3 + i * 2, costoUsd: Math.round((0.05 + i * 0.02) * 100) / 100 }));
+}
+function fichaBase(ficha: string, nombre: string, roles: string[], llamadas: number, totalUsd: number) {
+  return {
+    disponible: true,
+    ficha,
+    nombre,
+    nombreConfirmado: false,
+    generadoEn: "2026-09-30T18:00:00.000Z",
+    hoy: HOY_CONSOLA,
+    roles,
+    gastado: { valor: { totalUsd, llmUsd: totalUsd, vozUsd: null } },
+    llamadas: { valor: llamadas },
+    fallbacks: { valor: { total: Math.round(llamadas / 50), tasaPct: 2 } },
+    costoPorModelo: {
+      valor: [
+        { proveedor: "openai", modelo: "openai/gpt-6-luna", llamadas: Math.round(llamadas * 0.2), fallbacks: 1, costoUsd: Math.round(totalUsd * 0.1 * 100) / 100, tokensEntrada: 52_000, tokensSalida: 14_000 },
+        { proveedor: "deepinfra", modelo: "deepseek/deepseek-v4.1-flash", llamadas: Math.round(llamadas * 0.05), fallbacks: 0, costoUsd: Math.round(totalUsd * 0.02 * 100) / 100, tokensEntrada: 9_000, tokensSalida: 3_000 },
+      ],
+    },
+    serie7d: { valor: serieFicha() },
+  };
+}
+function fichaAgente(ficha: string) {
+  if (ficha === "extractor") {
+    return {
+      ...fichaBase("extractor", "Agente extractor", ["licitaciones:requirement_extractor"], 50, 2.5),
+      documentosExtraidos: { valor: { documentos: 6, requisitos: 41, licitaciones: 3 } },
+      precision: { valor: null, codigo: "sin_verdad_de_terreno", razon: "Sin verdad de terreno todavía: no hay un conjunto de documentos etiquetados a mano contra el cual medir la precisión del extractor." },
+      notas: ["La precisión del extractor no está medida: no existe un conjunto de documentos con verdad de terreno."],
+    };
+  }
+  if (ficha === "conciliacion") {
+    return {
+      ...fichaBase("conciliacion", "Agente de conciliación", ["despachos:conciliacion_llm_agent"], 140, 2.2),
+      movimientosConciliados: { valor: { total: 30, porMotor: 20, porLlmAprobado: 6, porManual: 4, sugerenciasPendientes: 2, sugerenciasTotal: 9 } },
+    };
+  }
+  return {
+    ...fichaBase("whatsapp", "Agente de WhatsApp y voz", ["hoteles:whatsapp_agent", "restaurantes:whatsapp_agent", "restaurantes:whatsapp_agent_escalated"], 2760, 31.2),
+    gastado: { valor: { totalUsd: 35.1, llmUsd: 31.2, vozUsd: 3.9 } },
+    conversaciones: { valor: 214 },
+    minutosVoz: { valor: 318.5 },
+    escalamiento: { valor: { escaladas: 160, total: 2760, tasaPct: 5.8 } },
+    porVertical: {
+      valor: [
+        { vertical: "hoteles", llamadas: 920, costoLlmUsd: 9.8, escaladas: 160, conversaciones: { valor: 94 }, minutosVoz: { valor: 0 }, costoVozUsd: { valor: 0 } },
+        { vertical: "restaurantes", llamadas: 1840, costoLlmUsd: 21.4, escaladas: 0, conversaciones: { valor: 120 }, minutosVoz: { valor: 318.5 }, costoVozUsd: { valor: 3.9 } },
+        { vertical: "rentas", llamadas: 0, costoLlmUsd: 0, escaladas: 0, conversaciones: { valor: null, codigo: "sin_whatsapp", razon: "Sin fuente: esta vertical no guarda conversaciones de WhatsApp." }, minutosVoz: { valor: 0 }, costoVozUsd: { valor: 0 } },
+      ],
+    },
+  };
+}
+function modelOps() {
+  const escalera = (modelos: string[]) => modelos.map((modelo, i) => ({ orden: i + 1, modelo, razonamiento: "low", proveedores: i === 0 ? ["openai", "azure"] : ["deepinfra", "together"] }));
+  const rol = (role: string, llamadas: number, costo: number, fallback: number | null) => ({
+    role,
+    vertical: role.slice(0, role.indexOf(":")),
+    modelo: "openai/gpt-6-luna",
+    proveedores: ["openai", "azure"],
+    escalera: escalera(["openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash"]),
+    carril: llamadas > 0 ? { valor: ["interactive"] } : { valor: null },
+    llamadas30d: { valor: llamadas },
+    costo30dUsd: { valor: costo },
+    tasaFallbackPct: fallback === null ? { valor: null, codigo: "sin_llamadas", razon: "Sin llamadas en el periodo: no hay base para calcular la tasa." } : { valor: fallback },
+    circuitBreaker: { valor: null, codigo: "breaker_no_legible", razon: "No legible: el circuit breaker vive en memoria de cada instancia (o en Upstash) y este endpoint no lo consulta." },
+  });
+  return {
+    disponible: true,
+    generadoEn: "2026-09-30T18:00:00.000Z",
+    hoy: HOY_CONSOLA,
+    desde: "2026-09-01",
+    fichas: [rol("despachos:conciliacion_llm_agent", 40, 0.6, 0), rol("hoteles:whatsapp_agent", 300, 3.1, 1.7), rol("restaurantes:whatsapp_agent", 610, 7.2, 2.1), rol("citas:data_chat", 0, 0, null)],
+    porAgente: { valor: [{ role: "restaurantes:whatsapp_agent", costoUsd: 7.2 }, { role: "hoteles:whatsapp_agent", costoUsd: 3.1 }, { role: "despachos:conciliacion_llm_agent", costoUsd: 0.6 }] },
+    porModelo: { valor: [{ modelo: "openai/gpt-6-luna", costoUsd: 8.9 }, { modelo: "deepseek/deepseek-v4.1-flash", costoUsd: 2 }] },
+    notas: ["Esta pantalla no versiona prompts ni cambia modelos: el modelo de cada rol se cambia con LLM_MODELS_JSON (ver docs/LLM-GATEWAY.md) y se despliega como configuración."],
+  };
+}
+
 const AGENTES_PANEL = [
   { id: "restaurantes:whatsapp_agent", nombre: "Agente de WhatsApp de restaurantes", vertical: "restaurantes", canal: "whatsapp", disparador: "Mensaje entrante de un comensal", estado: "vivo", modelo: "deepseek/deepseek-v4.1-flash", ultimaCorrida: { en: "2026-09-30T17:20:00.000Z", estado: "ok" }, exito30d: { corridas: 3, ok: 2, porcentaje: 66.7 }, costo30dUsd: 0.02, llamadas30d: 2, presupuestoDiaUsd: null, insumos: "fuera de alcance" },
   { id: "hoteles:whatsapp_agent", nombre: "Agente de WhatsApp de hoteles", vertical: "hoteles", canal: "whatsapp", disparador: "Mensaje entrante de un huesped", estado: "vivo", modelo: "deepseek/deepseek-v4.1-flash", ultimaCorrida: null, exito30d: { corridas: 0, ok: 0, porcentaje: null }, costo30dUsd: 0, llamadas30d: 0, presupuestoDiaUsd: 5, insumos: "fuera de alcance" },
@@ -162,6 +244,11 @@ export const rutasSuperadmin: readonly Ruta[] = [
       };
     } },
   { metodo: "GET", patron: "/superadmin/agentes/corridas", manejador: () => ({ disponible: true, corridas: CORRIDAS_AGENTES }) },
+  { metodo: "GET", patron: "/superadmin/agentes/:ficha", manejador: (p) => {
+      const ficha = p.params["ficha"] ?? "";
+      return ["extractor", "conciliacion", "whatsapp"].includes(ficha) ? fichaAgente(ficha) : fallo(404, "Ficha de agente no encontrada.");
+    } },
+  { metodo: "GET", patron: "/superadmin/model-ops", manejador: () => modelOps() },
   { metodo: "GET", patron: "/superadmin/interruptores", manejador: (p) => ({
       disponible: true,
       catalogo: { globales: ["llm", "crons"], agentes: ["restaurantes-whatsapp", "citas-whatsapp"], crons: ["recordatorios-citas", "sync-ical-rentas"] },

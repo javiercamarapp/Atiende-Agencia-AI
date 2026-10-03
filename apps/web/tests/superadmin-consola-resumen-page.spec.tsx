@@ -283,17 +283,20 @@ describe("error por bloque", () => {
 });
 
 describe("orquestacion y ultima corrida", () => {
-  it("las 4 tarjetas dan su linea real; sin llamadas dicen 'Sin corridas registradas.' y NINGUNA lleva enlace (SA-L-09)", async () => {
+  it("las 4 tarjetas dan su linea real; las 3 fichas (SA-L-09) enlazan a su ruta y el Copiloto (sin pagina) NO lleva enlace", async () => {
     stubApi();
     rendered = await montar();
-    const tarjetas = [...rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')];
-    expect(tarjetas).toHaveLength(4);
-    const por = (n: string) => tarjetas.find((t) => t.textContent?.includes(n))!;
+    const enlaces = [...rendered.container.querySelectorAll<HTMLAnchorElement>('a[href^="/superadmin/agente-"]')];
+    expect(enlaces.map((a) => a.getAttribute("href")).sort()).toEqual(["/superadmin/agente-conciliacion", "/superadmin/agente-extractor", "/superadmin/agente-whatsapp"]);
+    const por = (n: string) => enlaces.find((t) => t.textContent?.includes(n))!;
     expect(por("Agente de WhatsApp y voz").textContent).toContain("2,000 llamadas al modelo · US$22.50 — histórico");
     expect(por("Agente de conciliación").textContent).toContain("140 llamadas al modelo · US$2.20 — histórico");
     expect(por("Agente extractor").textContent).toContain("Sin corridas registradas.");
-    expect(por("Copiloto").textContent).toContain("Sin corridas registradas.");
-    for (const t of tarjetas) expect(t.querySelector("a")).toBeNull();
+    const sinRuta = [...rendered.container.querySelectorAll('[data-testid="tarjeta-agente"]')];
+    expect(sinRuta).toHaveLength(1);
+    expect(sinRuta[0]!.textContent).toContain("Copiloto");
+    expect(sinRuta[0]!.textContent).toContain("Sin corridas registradas.");
+    expect(sinRuta[0]!.querySelector("a")).toBeNull();
   });
 
   it("cada cron es una AgentRunCard con badge OK/Fallo, fecha, vertical, 'tareas: no medido' y 'ver detalle' hacia /superadmin/salud", async () => {
