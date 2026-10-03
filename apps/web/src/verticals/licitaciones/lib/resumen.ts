@@ -16,7 +16,7 @@ const ESTADOS_CERRADOS: ReadonlySet<string> = new Set(["won", "lost", "cancelled
 
 /** Convocatorias sin resolver: no ganadas, perdidas, canceladas ni descartadas (no-go). */
 export function convocatoriasAbiertas(tenders: readonly TenderSummary[]): readonly TenderSummary[] {
-  return tenders.filter((t) => !ESTADOS_CERRADOS.has(t.status));
+  return tenders.filter((t) => t.status === null || !ESTADOS_CERRADOS.has(t.status));
 }
 
 /** Abiertas cuyo plazo de presentacion cae entre ahora y `VENTANA_PLAZO_DIAS` dias. */
