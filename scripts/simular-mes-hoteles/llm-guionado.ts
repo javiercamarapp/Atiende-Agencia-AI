@@ -79,7 +79,7 @@ export class LlmGuionado {
   #decidir(texto: string, herramientas: MensajeWire[], disponibles: Set<string>): { texto?: string; llamada?: { name: string; args: Record<string, unknown> } } {
     const t = texto.toLowerCase();
     const hechas = herramientas.length;
-    const habitacion = /habitaci[oó]n (\d{3})/.exec(texto)?.[1];
+    const habitacion = /habitaci[oó]n (\d{3})/i.exec(texto)?.[1];
     if (/aire|fuga|no funciona|descompuest|no enfr/.test(t) && disponibles.has("crear_ticket_mantenimiento")) {
       if (hechas === 0) return { llamada: { name: "crear_ticket_mantenimiento", args: { titulo: "Falla reportada por el huesped", descripcion: texto.slice(0, 280), ...(habitacion ? { habitacion } : {}), severidad: /fuga|sin luz/.test(t) ? "alta" : "media" } } };
       return { texto: "Ya registre el reporte; mantenimiento le dara seguimiento." };

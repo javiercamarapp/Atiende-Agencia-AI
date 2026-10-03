@@ -81,7 +81,7 @@ export function lineasDeCosto(uso: UsoDia): LineaCosto[] {
     fuente: `tarifa de referencia ${WA_SALIENTE_USD} USD/mensaje sin fuente primaria de Meta: no se suma al total (ver tarifas.whatsapp_mensaje_saliente)`,
   });
   lineas.push({ concepto: "pac", unidades: uso.timbres, unidad: "timbres CFDI", precioUnitarioUsd: null, costoUsd: null, estado: "sin_verificar", fuente: "sin tarifa de PAC contratada" });
-  lineas.push({ concepto: "correo", unidades: uso.correos, unidad: "correos", precioUnitarioUsd: null, costoUsd: null, estado: "sin_verificar", fuente: "sin tarifa de Resend contratada" });
+  lineas.push({ concepto: "correo", unidades: uso.correos, unidad: "correos encolados (el envio requiere RESEND_API_KEY)", precioUnitarioUsd: null, costoUsd: null, estado: "sin_verificar", fuente: "sin tarifa de Resend contratada" });
   lineas.push({ concepto: "voz", unidades: 0, unidad: "minutos", precioUnitarioUsd: null, costoUsd: null, estado: "sin_verificar", fuente: "la simulacion no genera voz" });
   return lineas;
 }

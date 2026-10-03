@@ -2,7 +2,7 @@
 // en el orden en que ocurren (night audit de madrugada, limpieza, ventas, salidas, llegadas, cargos, mensajes, tickets, despacho).
 import { P, cron, cancelaciones, cargosDeEstancia, limpiezaDelDia, llegadas, ponerHora, reservaDirecta, salidas, type Contexto } from "./escenarios.ts";
 import { sumarDias } from "./reloj.ts";
-import { configurarRevenue, facturacionDelDia, gruposDelDia, gruposLiberacionCron, revenueDelDia, sondeoSinCredenciales } from "./escenarios-negocio.ts";
+import { configurarRevenue, facturacionDelDia, gruposDelDia, gruposLiberacionCron, resenasDelDia, revenueDelDia, sondeoSinCredenciales } from "./escenarios-negocio.ts";
 import { arcoDelDia, capturaDeIdentidad, purgaDeIdentidad } from "./escenarios-privacidad.ts";
 import { atenderLoDelAgente, ticketsDeHuesped, turnosDeAgente } from "./escenarios-agente.ts";
 
@@ -68,6 +68,8 @@ export async function simularDia(ctx: Contexto): Promise<void> {
   await turnosDeAgente(ctx);
   ponerHora(ctx, "21:00");
   await atenderLoDelAgente(ctx);
+  ponerHora(ctx, "21:15");
+  await resenasDelDia(ctx);
   ponerHora(ctx, "21:30");
   await ticketsDeHuesped(ctx);
   if (ctx.dia === 3) await sondeoSinCredenciales(ctx);

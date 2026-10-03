@@ -165,3 +165,26 @@ export async function sondeoSinCredenciales(ctx: Contexto): Promise<void> {
     }
   }
 }
+
+const RESENAS_BUENAS = ["Excelente atencion y el cuarto muy limpio, volveremos", "Todo perfecto, el personal fue muy amable y el desayuno delicioso"];
+const RESENAS_MALAS = ["El aire acondicionado no funciono y el servicio fue lento, muy decepcionante", "Cuarto sucio, mal olor y el personal grosero. No volveremos"];
+
+/** Resena: el dia despues de su salida, ~30% de los huespedes responde la encuesta propia; las negativas se vuelven ticket y se atienden. */
+export async function resenasDelDia(ctx: Contexto): Promise<void> {
+  const { sim, rng } = ctx;
+  const ayer = [...ctx.reservas.values()].filter((r) => r.cerradaDia === ctx.dia - 1 && r.folioId);
+  for (const r of ayer) {
+    if (rng() > 0.3) continue;
+    const mala = rng() < 0.3;
+    const texto = (mala ? RESENAS_MALAS : RESENAS_BUENAS)[Math.floor(rng() * 2)]!;
+    await sim.api("gm", "POST", `${P(ctx)}/reputacion/resenas`, { texto, calificacion: mala ? 1 + Math.floor(rng() * 2) : 4 + Math.floor(rng() * 2), source: "encuesta_propia", stayState: "post_estancia", guestId: r.guestId, folioId: r.folioId, isPublic: false }, { tipo: mala ? "resena.negativa" : "resena.positiva", detalle: { calificacion: mala ? "baja" : "alta" }, esperado: [201] });
+  }
+  const pend = await sim.api("gm", "GET", `${P(ctx)}/tickets/resenas-pendientes`, undefined, { silencioso: true, esperado: [200, 503] });
+  for (const rv of ((pend.json?.resenas ?? []) as { id: string }[]).slice(0, 3)) {
+    const t = await sim.api("gm", "POST", `${P(ctx)}/tickets/desde-resena`, { resenaId: rv.id }, { tipo: "ticket.desde_resena", esperado: [201, 400] });
+    const id = t.json?.id as string | undefined;
+    if (id) {
+      await sim.api("gm", "POST", `${P(ctx)}/tickets/${id}/cerrar`, { nota: "se contacto al huesped y se le ofrecio compensacion" }, { tipo: "ticket.cerrar_resena", esperado: [200, 409] });
+    }
+  }
+}

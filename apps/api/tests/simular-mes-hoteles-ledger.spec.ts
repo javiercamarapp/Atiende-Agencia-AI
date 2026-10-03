@@ -1,5 +1,8 @@
 // Valida el ESQUEMA del ledger de la simulacion de un mes de hoteles (scripts/simular-mes-hoteles/ledger.ts), su aritmetica de costos
 // y el reloj simulado. No levanta Postgres ni la app: lo que corre contra Postgres real es scripts/simular-mes-hoteles/run.sh.
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { LEDGER_VERSION, validarLedger, type DiaLedger, type Ledger } from "../../../scripts/simular-mes-hoteles/ledger.ts";
 import { RelojSimulado, instanteLocalIso, sumarDias } from "../../../scripts/simular-mes-hoteles/reloj.ts";
@@ -157,5 +160,20 @@ describe("reloj simulado", () => {
   it("suma dias de calendario", () => {
     expect(sumarDias("2026-10-31", 1)).toBe("2026-11-01");
     expect(sumarDias("2026-03-01", -1)).toBe("2026-02-28");
+  });
+});
+
+describe("ledgers guardados en docs/qa", () => {
+  it("todo docs/qa/*-simulacion-mes-hoteles/ledger.json cumple el esquema y trae sus asserts en verde", () => {
+    const raiz = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/qa");
+    const carpetas = readdirSync(raiz).filter((d) => d.endsWith("-simulacion-mes-hoteles"));
+    expect(carpetas.length).toBeGreaterThan(0);
+    for (const carpeta of carpetas) {
+      const ledger = JSON.parse(readFileSync(resolve(raiz, carpeta, "ledger.json"), "utf8")) as unknown;
+      expect(validarLedger(ledger), carpeta).toEqual([]);
+      const l = ledger as Ledger;
+      expect(l.resumen.asserts.fallidos, `${carpeta}: asserts fallidos`).toBe(0);
+      for (const h of l.hallazgos) expect(h.evidencia.length, `${carpeta}: ${h.id}`).toBeGreaterThan(40);
+    }
   });
 });

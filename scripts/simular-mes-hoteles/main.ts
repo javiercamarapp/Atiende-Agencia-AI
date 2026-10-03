@@ -117,6 +117,8 @@ try {
 
   const dias: import("./ledger.ts").DiaLedger[] = [];
   let ultimaCerrada: string | null = null;
+  const totalLlm = { llamadas: 0, tokensEntrada: 0, tokensSalida: 0, costoUsd: 0 };
+  let correosPrevios = Number((await db.query<{ n: string }>(`select count(*)::text as n from hoteles.messaging_outbox where channel = 'email'`)).rows[0]!.n);
   let waPrevio = 0;
   let timbresPrevios = 0;
   for (let n = 1; n <= DIAS; n++) {
@@ -128,8 +130,13 @@ try {
     const despues = await sim.conteosTablas();
     const { eventos, http } = sim.cerrarDia();
     const filasCreadas = diferenciaConteos(antes, despues);
-    const correos = (despues["hoteles.messaging_outbox"] ?? 0) - (antes["hoteles.messaging_outbox"] ?? 0);
+    const correosTotal = Number((await db.query<{ n: string }>(`select count(*)::text as n from hoteles.messaging_outbox where channel = 'email'`)).rows[0]!.n);
+    const correos = correosTotal - correosPrevios;
+    correosPrevios = correosTotal;
     const { uso: usoLlm, herramientas } = llm.cerrarDia();
+    totalLlm.llamadas += usoLlm.llamadas;
+    totalLlm.tokensEntrada += usoLlm.tokensEntrada;
+    totalLlm.tokensSalida += usoLlm.tokensSalida;
     const waDia = graphFalso.sent.length - waPrevio;
     waPrevio = graphFalso.sent.length;
     const timbresDia = uso.timbres - timbresPrevios;
@@ -141,6 +148,7 @@ try {
       { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
       ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada, new Date(reloj.ahoraMs()))),
     ];
+    totalLlm.costoUsd += lineas.find((l) => l.concepto === "llm")?.costoUsd ?? 0;
     dias.push({ dia: n, fecha: ctx.fecha, eventos, filasCreadas, costos: lineas, costoTotalUsd: costos.totalDeLineas(lineas), http, asserts });
     const fallidos = asserts.filter((a) => !a.ok);
     console.log(`dia ${n} ${ctx.fecha}: ${eventos.length} eventos, ${http.total} HTTP (5xx=${http.cincoXX}), asserts ${asserts.length - fallidos.length}/${asserts.length}`);
@@ -148,7 +156,13 @@ try {
   }
 
   // ---- asserts globales ----
+  // El gateway REAL registro cada llamada en core.llm_usage_daily: el uso medido en la base debe coincidir con lo que el doble le reporto.
+  const { rows: usoBd } = await db.query<{ llamadas: string; tin: string; tout: string; micro: string }>(`select coalesce(sum(call_count),0)::text as llamadas, coalesce(sum(tokens_in),0)::text as tin, coalesce(sum(tokens_out),0)::text as tout, coalesce(sum(cost_micro_usd),0)::text as micro from core.llm_usage_daily where organization_id = $1`, [base.organizationId]);
+  const bd = usoBd[0]!;
+  const dentroDeRedondeo = Math.abs(Number(bd.micro) / 1e6 - totalLlm.costoUsd) <= Math.max(0.0001, totalLlm.llamadas * 2e-6);
+  const llmCuadra = Number(bd.llamadas) === totalLlm.llamadas && Number(bd.tin) === totalLlm.tokensEntrada && Number(bd.tout) === totalLlm.tokensSalida && dentroDeRedondeo;
   const finales = [
+    { id: "llm-uso-registrado-coincide", descripcion: "El uso LLM que registro el gateway real en core.llm_usage_daily (llamadas, tokens y costo) coincide con lo reportado por el proveedor doble", ok: llmCuadra, detalle: `base: ${bd.llamadas} llamadas, ${bd.tin}/${bd.tout} tokens, ${Number(bd.micro) / 1e6} USD; simulador: ${totalLlm.llamadas} llamadas, ${totalLlm.tokensEntrada}/${totalLlm.tokensSalida} tokens, ${totalLlm.costoUsd} USD` },
     { id: "cero-llamadas-externas", descripcion: "Ninguna llamada saliente real (Meta, PAC, Stripe, OpenRouter, Resend)", ok: guarda.bloqueadas.length === 0, detalle: guarda.bloqueadas.length === 0 ? "0 intentos" : JSON.stringify(guarda.bloqueadas.slice(0, 5)) },
     { id: "sin-rechazos-inesperados", descripcion: "Todo rechazo 4xx de la API era el esperado por el escenario", ok: sim.inesperados.length === 0, detalle: sim.inesperados.length === 0 ? "0 rechazos inesperados" : JSON.stringify(sim.inesperados.slice(0, 5)) },
   ];
