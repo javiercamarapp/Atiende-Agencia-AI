@@ -26,6 +26,24 @@ export interface TurnoTranscrito {
   readonly texto: string;
 }
 
+/** Lo que decide una guardia determinista del cliente (nunca el modelo). `texto` se dice TAL CUAL al cliente (no se reformula ni se resume). */
+export interface DecisionGuardiaCliente {
+  readonly texto: string;
+  /** Motivo de la escalada (llega a `construirEscalacion`; sin datos del cliente). */
+  readonly motivo: string;
+  readonly resumen: string;
+}
+
+/** Guardia de seguridad de la vertical sobre lo que DICE el cliente (citas: crisis). Corre en cada habla inteligible, ANTES de que el modelo
+ * la reciba (en modo texto) o conteste (en audio, se interrumpe al agente). Si decide, el controlador interrumpe al agente, dice el texto,
+ * escala a una persona con `construirEscalacion` y cierra la llamada como `escalado`. `evaluar` es sincrona y pura (sin red): la escalacion
+ * persistente corre en la herramienta de escalar, del lado del servidor. */
+export interface GuardiaCliente {
+  evaluar(texto: string): DecisionGuardiaCliente | null;
+  /** Reproduce el texto al cliente (en produccion, sintesis local; en el simulador, queda en `textosGuardia`). Se espera a que termine. */
+  decir(texto: string): void | Promise<void>;
+}
+
 export interface DepsControlador<R extends string = string> {
   readonly callId: string;
   /** Lo que la vertical le dice a la maquina sobre su objetivo y su herramienta de escalar. */
@@ -35,6 +53,8 @@ export interface DepsControlador<R extends string = string> {
   readonly propertyId: string;
   readonly organizationId: string;
   readonly abrirSesion: AbrirSesionLlamada;
+  /** Guardia determinista de la vertical sobre lo que dice el cliente (opcional). */
+  readonly guardiaCliente?: GuardiaCliente;
   readonly ejecutor: EjecutorTools;
   readonly instruccion: string;
   readonly voiceId: string;
@@ -104,6 +124,8 @@ export class ControladorLlamada<R extends string = string> {
   usuarioDijo(texto: string, inteligible = true): Promise<void> {
     return this.encolar(async () => {
       this.transcripcion.push({ rol: "cliente", texto: redactarTranscripcion(texto) });
+      // La guardia va ANTES del modelo: el texto del cliente con una senal de seguridad nunca se le manda para que decida el.
+      if (inteligible && (await this.aplicarGuardia(texto))) return;
       await this.eventoInterno({ tipo: "usuario_dijo", inteligible });
       if (inteligible && this.maquina.estadoActual !== "cerrada") this.sesion?.enviarTexto(texto);
     });
@@ -163,6 +185,7 @@ export class ControladorLlamada<R extends string = string> {
         interrumpido: () => void this.encolar(() => this.eventoInterno({ tipo: "agente_termina" })),
         usuarioDijo: (texto) => void this.encolar(async () => {
           this.transcripcion.push({ rol: "cliente", texto: redactarTranscripcion(texto) });
+          if (await this.aplicarGuardia(texto)) return;
           await this.eventoInterno({ tipo: "usuario_dijo", inteligible: true });
         }),
         ejecutarTool: (llamada) => this.herramienta(llamada),
@@ -170,6 +193,22 @@ export class ControladorLlamada<R extends string = string> {
         caido: (razon, handle) => void this.encolar(() => this.alCaer(razon, handle)),
       },
     );
+  }
+
+  /** Corre la guardia del cliente; `true` si actuo (dijo su texto, escalo y cerro): el evento ya no sigue su camino normal. */
+  private async aplicarGuardia(texto: string): Promise<boolean> {
+    const guardia = this.deps.guardiaCliente;
+    if (!guardia || this.maquina.estadoActual === "cerrada") return false;
+    const decision = guardia.evaluar(texto);
+    if (!decision) return false;
+    // Solo el MOTIVO queda en el log: nunca lo que dijo el cliente.
+    this.log("guardia_cliente", { motivo: decision.motivo });
+    this.sesion?.interrumpir();
+    this.deps.cortarAudio?.();
+    await guardia.decir(decision.texto);
+    await this.escalar(decision.motivo, decision.resumen);
+    await this.eventoInterno({ tipo: "escalada_forzada" });
+    return true;
   }
 
   private async herramienta(llamada: ToolCallPedida): Promise<unknown> {
