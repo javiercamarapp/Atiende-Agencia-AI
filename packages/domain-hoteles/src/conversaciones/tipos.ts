@@ -197,7 +197,9 @@ export function enmascararTelefono(phone: string): string {
 export function minimizarTextoPii(texto: string): string {
   return texto
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[correo]")
-    .replace(/(?:\+?\d[\s().-]?){7,}/g, (m) => (m.replace(/\D/g, "").length >= 7 ? "[número]" : m));
+    // Una sola clase de caracteres con cuantificador simple (tiempo lineal, sin grupos repetidos): la corrida se oculta solo si
+    // lleva 7 o mas digitos; los espacios de los extremos se conservan.
+    .replace(/[\d\s().+-]{7,}/g, (m) => (m.replace(/\D/g, "").length >= 7 ? `${/^\s/.test(m) ? " " : ""}[número]${/\s$/.test(m) ? " " : ""}` : m));
 }
 
 /** Motivo de derivacion (codigo corto, sin PII) -> texto para la UI. */
