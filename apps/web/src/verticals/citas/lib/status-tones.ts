@@ -30,3 +30,12 @@ export function syncTone(syncStatus: string | null | undefined): StatusTone {
 export function activoTone(isActive: boolean): StatusTone {
   return isActive ? "success" : "neutral";
 }
+
+/** Estado de la toma de una conversacion de WhatsApp (bandeja de conversaciones, C-11). */
+export const HANDOFF_ESTADO_TONES: Readonly<Record<string, StatusTone>> = {
+  agente: "neutral",
+  pendiente: "warning",
+  tomada: "info",
+  devuelta: "success",
+  cerrada: "neutral",
+};

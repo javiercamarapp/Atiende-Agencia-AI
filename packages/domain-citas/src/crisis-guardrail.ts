@@ -12,6 +12,7 @@
 // Aplica hoy solo al canal de WhatsApp (whatsapp/inbound.ts) — el agente de voz de
 // ElevenLabs corre su propio loop de conversación fuera de este repo y no pasa por
 // aquí (mismo alcance que el origen).
+import type { HandoffAgentGate } from "./conversaciones/repository.ts";
 import type { CitasRepository } from "./repository.ts";
 import { CRISIS_ESCALATION_MESSAGE, detectCrisisKeyword, requiresCrisisGuardrail } from "./vertical-config.ts";
 
@@ -64,7 +65,7 @@ async function notifyOwnerOfEscalation(repo: CitasRepository, organizationId: st
  * mensaje de crisis a devolver AL CLIENTE TAL CUAL — sin pasar por el LLM, nunca
  * reformulado ni resumido.
  */
-export async function runCrisisGuardrail(repo: CitasRepository, organizationId: string, customerPhone: string, customerMessage: string): Promise<CrisisGuardrailResult> {
+export async function runCrisisGuardrail(repo: CitasRepository, organizationId: string, customerPhone: string, customerMessage: string, handoffGate?: HandoffAgentGate): Promise<CrisisGuardrailResult> {
   const tenantConfig = await repo.findTenantConfig(organizationId);
   if (!tenantConfig || !requiresCrisisGuardrail(tenantConfig.rubro)) return { triggered: false };
 
@@ -78,6 +79,11 @@ export async function runCrisisGuardrail(repo: CitasRepository, organizationId: 
     keywordMatched: keyword,
     messageExcerpt: (customerMessage ?? "").slice(0, 300),
   });
+
+  // C-11 -- la escalacion abre un handoff (pendiente, marcado como crisis) para que una persona tome la conversacion y el agente deje de
+  // responder; el motivo es texto fijo (sin la palabra clave ni el mensaje). Sin puerto, o con la base sin migrar, no hace nada: la
+  // escalacion de arriba ya quedo registrada y el comportamiento es el de siempre.
+  await handoffGate?.solicitarHumano({ organizationId, phone: customerPhone, motivo: "Escalación de crisis: un cliente necesita atención humana.", crisis: true });
 
   await notifyOwnerOfEscalation(repo, organizationId, tenantConfig.ownerNotificationPhone, escalation.id, keyword, customerPhone);
 

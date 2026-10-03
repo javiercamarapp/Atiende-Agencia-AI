@@ -33,6 +33,7 @@ import { lookupCitasCustomer } from "../customers.ts";
 import { actorHash } from "../rate-limit.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import type { HandoffAgentGate } from "../conversaciones/repository.ts";
 
 import { redactSensitiveInfo } from "../redaction.ts";
 import type { MetaInteractiveReply } from "./channel-config.ts";
@@ -45,6 +46,8 @@ export interface InboundMessageOutcome {
   /** true si Meta debe reintentar el batch firmado completo. */
   readonly retryable: boolean;
   readonly reply?: string;
+  /** C-11: la conversacion esta en atencion humana (handoff abierto): el mensaje se guardo y NO se corrio el agente ni se respondio. */
+  readonly silenciado?: boolean;
 }
 
 /**
@@ -119,9 +122,11 @@ export async function handleInboundWhatsAppMessage(
     readonly phoneNumberId: string;
     /** C-01 -- presente solo cuando el mensaje es un `button_reply`/`list_reply` de Meta. */
     readonly interactive?: MetaInteractiveReply;
+    /** C-11 -- handoff a humano (migracion 031). Sin este puerto, o con la base sin migrar, el agente responde siempre (comportamiento anterior). */
+    readonly handoffGate?: HandoffAgentGate;
   },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId, interactive } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, interactive, handoffGate } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -169,7 +174,7 @@ export async function handleInboundWhatsAppMessage(
           // (nunca reformulado/resumido por el agente) y la escalación humana ya
           // quedó registrada, sin importar qué haría el turn handler con ese mismo
           // mensaje.
-          const crisisCheck = button?.kind === "reply" ? { triggered: false as const } : await runCrisisGuardrail(repo, organizationId, phone, userText);
+          const crisisCheck = button?.kind === "reply" ? { triggered: false as const } : await runCrisisGuardrail(repo, organizationId, phone, userText, handoffGate);
           // C-02 -- fast-path ARCO (acceso/rectificación/cancelación/oposición):
           // MISMA posición y filosofía que el guardrail de crisis (determinista, antes
           // del LLM), pero DESPUÉS de él -- una crisis siempre tiene prioridad. Solo
@@ -177,6 +182,16 @@ export async function handleInboundWhatsAppMessage(
           // nunca del texto). Sin la migración 024 aplicada devuelve `null` y el
           // mensaje sigue al agente como antes (ver arco-intent.ts).
           const arco = crisisCheck.triggered || button ? null : await runArcoFastPath(repo, organizationId, phone, body);
+          // C-11 -- handoff a humano: mientras haya una toma abierta (pendiente o tomada) el agente CALLA. El mensaje del cliente ya quedo guardado
+          // arriba; aqui NO se llama al LLM (sin gasto), no se guarda respuesta y no se encola nada. La consulta tambien registra el ping del
+          // cliente. Solo frena al agente conversacional: la crisis (arriba), ARCO y los botones del recordatorio son deterministas y siguen
+          // funcionando. Sin puerto o con la base sin migrar devuelve null y todo sigue como antes.
+          const aDeterminista = crisisCheck.triggered || button?.kind === "reply" || arco;
+          const humanoActivo = !aDeterminista && handoffGate ? await handoffGate.estadoParaAgente(organizationId, phone) : null;
+          if (humanoActivo) {
+            await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+            return null;
+          }
           const turn = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
             : button?.kind === "reply"
@@ -214,6 +229,7 @@ export async function handleInboundWhatsAppMessage(
       return { ok: false, retryable: true };
     }
 
+    if (guardResult.result === null) return { ok: true, retryable: false, silenciado: true };
     return { ok: true, retryable: false, reply: guardResult.result?.reply };
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
