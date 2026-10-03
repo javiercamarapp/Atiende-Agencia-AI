@@ -266,7 +266,7 @@ describe("turno con LLM guionado", () => {
     expect(a.sources[0]?.scopeLabel).toBe("Toda la plataforma");
     // El modelo vio SOLO las herramientas del catalogo de plataforma (16) y el alcance en el prompt.
     const primera = ctx.scripted.requests[0]!;
-    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(16);
+    expect(primera.tools?.map((t) => t.name).sort()).toHaveLength(17); // 16 de lectura + proponer_accion (CHAT-17: solo propone)
     expect(primera.system).toMatch(/Plataforma completa \(superadmin\)/);
   });
 
