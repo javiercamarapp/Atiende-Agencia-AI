@@ -69,6 +69,7 @@ import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@a
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
+import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -147,6 +148,11 @@ export interface AppDeps {
    * las comandas van a captura manual (nunca se inventan codigos). */
   readonly softRestaurantMapeo?: { readonly resolverCodigos: ResolverCodigosPos; readonly resolverSucursal: ResolverSucursalPos };
   readonly turnHandler: WhatsAppTurnHandler;
+  /** PM-C5: espera real (en ms) entre las dos fases del webhook de WhatsApp cuando el agente tiene `replyDebounceSeconds` > 0. OPCIONAL: sin
+   * ella se usa `setTimeout`; los tests inyectan una espera controlada. Con la espera apagada (lo normal) nunca se llama. */
+  readonly esperarRafaga?: (ms: number) => Promise<void>;
+  /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
+  readonly relojMs?: () => number;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con
@@ -550,6 +556,10 @@ export interface AppDeps {
    *  resumen se redacta con la plantilla determinista, nunca finge una
    *  llamada al LLM. */
   readonly resumenDiarioLlmGateway: LlmGateway | undefined;
+  /** Copiloto de superadmin (CHAT-16): `POST /superadmin/copiloto` y `GET /superadmin/copiloto/estado`. OPCIONAL: sin el las rutas responden "no
+   *  activado". En produccion lo arma `buildProductionSuperadminCopiloto` con un gateway DEDICADO (no el de los tenants); las pruebas inyectan un LLM
+   *  guionado y fuentes en memoria. Ver `superadmin-copiloto/deps.ts`. */
+  readonly superadminCopiloto?: SuperadminCopilotoDeps;
   /** Dispatcher REAL compartido de WhatsApp saliente (@atiende/whatsapp-gateway) —
    *  drena `messaging_outbox` de las 3 verticales (citas/hoteles/restaurantes) vía
    *  Graph API real, consumido SOLO por `POST /internal/whatsapp/dispatch`

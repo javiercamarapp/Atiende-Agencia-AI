@@ -152,6 +152,34 @@ describe("verificacion de correo", () => {
   });
 });
 
+describe("enlaces del correo por vertical (PL-21)", () => {
+  // La web monta /<vertical>/restablecer-contrasena y /<vertical>/verificar-correo en las 6 verticales: el
+  // enlace que arma la API debe apuntar a la ruta de la vertical que lo pidio, no a una fija.
+  const VERTICALES = ["hoteles", "restaurantes", "rentas", "licitaciones", "citas", "despachos"] as const;
+
+  it.each(VERTICALES)("%s: el correo de 'olvide mi contrasena' lleva a su ruta /restablecer-contrasena del dominio de la app", async (vertical) => {
+    const { app, ctx } = await setup();
+    const sent = captureResend();
+    expect((await app.request("/auth/password-reset/solicitar", json({ email: ctx.staff.owner.email, vertical }))).status).toBe(200);
+    expect(sent).toHaveLength(1);
+    const enlace = new URL(sent[0]!.text.match(/https?:\/\/\S+/)![0]);
+    expect(enlace.origin).toBe(new URL(TEST_ENV.appBaseUrl).origin);
+    expect(enlace.pathname).toBe(`/${vertical}/restablecer-contrasena`);
+    expect(enlace.searchParams.get("token")).toBeTruthy();
+  });
+
+  it.each(VERTICALES)("%s: el correo de verificacion lleva a su ruta /verificar-correo", async (vertical) => {
+    const { app, ctx, core } = await setup();
+    const sent = captureResend();
+    core.addStaff({ id: "00000000-0000-0000-0000-00000000f002", email: "sin-verificar-vertical@empresa-de-prueba.mx", fullName: "Sin verificar", passwordHash: null, createdVia: "registro_autoservicio", emailVerifiedAt: null });
+    const { signAccessToken } = await import("@atiende/core-auth");
+    const token = await signAccessToken({ sub: "00000000-0000-0000-0000-00000000f002", org_id: ctx.organizationId, vertical, property_ids: null, email: "sin-verificar-vertical@empresa-de-prueba.mx" }, TEST_ENV.jwtSecret, 600);
+    expect((await app.request("/auth/email-verification/enviar", authedJson(token, { vertical }))).status).toBe(200);
+    const enlace = new URL(sent[0]!.text.match(/https?:\/\/\S+/)![0]);
+    expect(enlace.pathname).toBe(`/${vertical}/verificar-correo`);
+  });
+});
+
 describe("bordes y seguridad de los enlaces de un solo uso (L-02)", () => {
   it("pedir un segundo enlace de reset invalida el primero (un solo enlace vivo por cuenta)", async () => {
     const { app, ctx } = await setup();

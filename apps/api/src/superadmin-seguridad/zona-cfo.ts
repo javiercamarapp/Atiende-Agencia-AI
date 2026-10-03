@@ -72,6 +72,15 @@ const AUTOSERVICIO_FINANZAS: readonly RutaAutoservicio[] = [
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/estado$/ },
 ];
 
+/** Copiloto de superadmin (CHAT-16): el rol `finanzas` puede abrir el chat y ver sus propias conversaciones. La RUTA es quien aplica la politica de la zona:
+ *  el catalogo del rol `finanzas` contiene SOLO herramientas financieras, todas exigen step-up (obligatorio, sin degradarse) y cada llamada deja una fila en
+ *  core.cfo_access_log. Renombrar o borrar conversaciones (PATCH/DELETE) NO esta aqui: sigue siendo solo del superadmin completo. */
+const COPILOTO_FINANZAS: readonly RutaAutoservicio[] = [
+  { method: "GET", pattern: /^\/superadmin\/copiloto\/estado$/ },
+  { method: "POST", pattern: /^\/superadmin\/copiloto$/ },
+  { method: "GET", pattern: /^\/superadmin\/copiloto\/conversaciones(\/[^/]+)?$/ },
+];
+
 export function rutaFinanciera(method: string, path: string): RutaFinanciera | null {
   const m = method.toUpperCase();
   if (m !== "GET" && m !== "HEAD") return null;
@@ -80,7 +89,7 @@ export function rutaFinanciera(method: string, path: string): RutaFinanciera | n
 
 function esAutoservicio(method: string, path: string): boolean {
   const m = method.toUpperCase() === "HEAD" ? "GET" : method.toUpperCase();
-  return AUTOSERVICIO_FINANZAS.some((r) => r.method === m && r.pattern.test(path));
+  return [...AUTOSERVICIO_FINANZAS, ...COPILOTO_FINANZAS].some((r) => r.method === m && r.pattern.test(path));
 }
 
 const CLAVE_VALIDA = /^[A-Za-z0-9_]{1,40}$/u;

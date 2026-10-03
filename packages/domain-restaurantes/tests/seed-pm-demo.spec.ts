@@ -33,17 +33,17 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 describe("buildPmSeedPlan", () => {
   const plan = buildPmSeedPlan(data, agent);
 
-  it("modela las 7 sucursales: solo T1 y T3 activas (con catalogo impreso); T5 inactiva fuera de temporada; T2, T7 y T8 sin catalogo hasta P5; T4 Galerias sin pedidos", () => {
+  it("modela las 7 sucursales: T1, T3 y T7 activas; T5 inactiva fuera de temporada; T2 y T8 con catalogo provisional pero inactivas; T4 Galerias sin pedidos", () => {
     expect(plan.branches).toHaveLength(7);
-    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["pensiones", "prol-montejo"]);
-    expect(plan.branches.map((b) => [b.id, b.catalogSize])).toEqual([["T1", 236], ["T2", 0], ["T3", 211], ["T4", 0], ["T5", 222], ["T7", 0], ["T8", 0]]);
+    expect(plan.branches.filter((b) => b.status === "active").map((b) => b.slug).sort()).toEqual(["garcia-lavin", "pensiones", "prol-montejo"]);
+    expect(plan.branches.map((b) => [b.id, b.catalogSize])).toEqual([["T1", 278], ["T2", 263], ["T3", 251], ["T4", 0], ["T5", 262], ["T7", 278], ["T8", 278]]);
     expect(plan.branches.find((b) => b.slug === "galerias")).toMatchObject({ status: "inactive", catalogSize: 0, phone: "999 941 9612", lat: null, lng: null });
     expect(plan.branches.find((b) => b.slug === "playa")).toMatchObject({ status: "inactive", phone: "969 688 4195", address: "C. 19 x 22 y 24, Chicxulub, Progreso" });
     expect(plan.branches.find((b) => b.slug === "garcia-lavin")!.name).toBe("García Lavín (Victory Platz)");
   });
 
-  it("237 productos; los 42 de alcohol son no_domicilio y solo ellos", () => {
-    expect(plan.products).toHaveLength(237);
+  it("279 productos (237 + 40 fracciones de kilo + Extra Salsa y Extra Piña); los 42 de alcohol son no_domicilio y solo ellos", () => {
+    expect(plan.products).toHaveLength(279);
     expect(plan.products.filter((p) => p.noDomicilio)).toHaveLength(42);
     expect(plan.products.find((p) => p.name === "Heineken")!.noDomicilio).toBe(true);
     expect(plan.products.find((p) => p.name === "Taco Al Pastor (individual)")!.noDomicilio).toBe(false);
@@ -52,9 +52,9 @@ describe("buildPmSeedPlan", () => {
     expect(cervezas.some((p) => p.noDomicilio) && cervezas.some((p) => !p.noDomicilio)).toBe(true);
   });
 
-  it("precios por sucursal: T1 236 + T3 211 + T5 222 = 669 (cada uno sale de su menu impreso)", () => {
-    expect(plan.summary.productsByBranch).toEqual({ T1: 236, T2: 0, T3: 211, T4: 0, T5: 222, T7: 0, T8: 0 });
-    expect(plan.summary.branchProducts).toBe(236 + 211 + 222);
+  it("precios por sucursal: T1 278, T2 263, T3 251, T5 262, T7 278 y T8 278 (menus impresos + fracciones de kilo + extras; T7 = lista T1-2026)", () => {
+    expect(plan.summary.productsByBranch).toEqual({ T1: 278, T2: 263, T3: 251, T4: 0, T5: 262, T7: 278, T8: 278 });
+    expect(plan.summary.branchProducts).toBe(278 + 263 + 251 + 262 + 278 + 278);
   });
 
   it("politica PM: franja 12:00-01:00 todos los dias, minimo a domicilio $200, propina solo con tarjeta", () => {
@@ -80,7 +80,7 @@ describe("buildPmSeedPlan", () => {
   it("el comportamiento de voz cabe en el tope de la migracion 025 y la voz no se habilita", () => {
     expect(plan.voice.comportamiento.length).toBeLessThanOrEqual(COMPORTAMIENTO_MAX);
     expect(plan.voice.comportamiento).toMatch(/REGLAS DURAS/);
-    expect(plan.voice.greetings).toHaveLength(2);
+    expect(plan.voice.greetings).toHaveLength(3);
     expect(plan.voice.greetings.every((g) => !/buenas tardes/i.test(g.mensajeInicial))).toBe(true);
     expect(renderPmSeedPlpgsql(plan)).toMatch(/false, v->'voice'->>'voiceId'/);
   });
@@ -96,7 +96,7 @@ describe("buildPmSeedPlan -- rechaza datos que rompen el modelo", () => {
   const casos: Array<[string, (d: Mutable) => void, RegExp]> = [
     ["menos de 7 sucursales", (d) => { d.sucursales.pop(); }, /7 sucursales/],
     ["T4 activa", (d) => { sucursal(d, "T4").activa = true; }, /T4.*inactiva/],
-    ["sucursal activa sin catalogo suficiente", (d) => { sucursal(d, "T5").activa = true; for (const p of d.productos.slice(0, 80)) { delete (p.precios_por_sucursal as Record<string, number>).T5; delete (p.fuente_precio as Record<string, string>).T5; } }, /al menos 150 productos/],
+    ["sucursal activa sin catalogo suficiente", (d) => { sucursal(d, "T5").activa = true; for (const p of d.productos.slice(0, 150)) { delete (p.precios_por_sucursal as Record<string, number>).T5; delete (p.fuente_precio as Record<string, string>).T5; } }, /al menos 150 productos/],
     ["slug duplicado", (d) => { sucursal(d, "T2").slug = "altabrisa"; }, /duplicada/],
     ["lat sin lng", (d) => { sucursal(d, "T1").lng = null; }, /juntas/],
     ["producto con precio 0", (d) => { (d.productos[0]!.precios_por_sucursal as Record<string, number>).T1 = 0; }, /precio invalido/],

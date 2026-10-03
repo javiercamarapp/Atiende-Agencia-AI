@@ -156,7 +156,8 @@ import { SeguridadPage as LicitacionesSeguridadPage } from "./verticals/licitaci
 import { WhatsappPage as LicitacionesWhatsappPage } from "./verticals/licitaciones/pages/Whatsapp.tsx";
 import { DiasInhabilesPage as LicitacionesDiasInhabilesPage } from "./verticals/licitaciones/pages/DiasInhabiles.tsx";
 import { Kyc69bPage as LicitacionesKyc69bPage } from "./verticals/licitaciones/pages/Kyc69b.tsx";
-import { RestablecerContrasenaPage as LicitacionesRestablecerContrasenaPage, VerificarCorreoPage as LicitacionesVerificarCorreoPage } from "./verticals/licitaciones/pages/CuentaEnlaces.tsx";
+import { RestablecerContrasenaPage, VerificarCorreoPage } from "./shell/cuenta/CuentaEnlaces.tsx";
+import { SeguridadCuentaPagina } from "./shell/cuenta/SeguridadCuentaPagina.tsx";
 import { PanelPage as LicitacionesPanelPage } from "./verticals/licitaciones/pages/Panel.tsx";
 import { FuentesFrescuraPage } from "./verticals/licitaciones/pages/FuentesFrescura.tsx";
 import { SeguimientoPage } from "./verticals/licitaciones/pages/Seguimiento.tsx";
@@ -571,6 +572,13 @@ const RentasPlanRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <PlanY
 const CitasPlanRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const DespachosPlanRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const LicitacionesPlanRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+// Seguridad de la cuenta (PL-21): pagina compartida (correo, contrasena, Google, sesiones) en el shell de cada vertical.
+// Licitaciones conserva su propia pagina (`LicitacionesSeguridadRoute`), que antepone la verificacion en dos pasos.
+const RestaurantesSeguridadRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="restaurantes" />);
+const HotelesSeguridadRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="hoteles" />);
+const RentasSeguridadRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="rentas" />);
+const CitasSeguridadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="citas" />);
+const DespachosSeguridadRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <SeguridadCuentaPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} orgSlug={ctx.orgSlug} vertical="despachos" />);
 
 function SuperAdminBreakGlassRoute() {
   const navigate = useNavigate();
@@ -1030,6 +1038,9 @@ export function App() {
       <Toaster />
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
+        {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/restaurantes/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
+        <Route path="/restaurantes/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
         <Route path="/restaurantes/:orgSlug" element={<RestaurantesDashboardRoute />} />
         <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
         <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
@@ -1054,6 +1065,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
+        <Route path="/restaurantes/:orgSlug/seguridad" element={<RestaurantesSeguridadRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -1097,6 +1109,9 @@ export function App() {
         <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
+        {/* PL-21: enlaces del correo de hoteles (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/hoteles/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="hoteles" />} />
+        <Route path="/hoteles/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="hoteles" />} />
         <Route path="/hoteles/:orgSlug/aviso" element={<HotelesAvisoPublicoRoute />} />
         <Route path="/hoteles/:orgSlug/mis-datos" element={<HotelesMisDatosRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
@@ -1122,11 +1137,15 @@ export function App() {
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/notificaciones" element={<HotelesNotificacionesRoute />} />
         <Route path="/hoteles/:orgSlug/plan" element={<HotelesPlanRoute />} />
+        <Route path="/hoteles/:orgSlug/seguridad" element={<HotelesSeguridadRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
         <Route path="/hoteles/:orgSlug/reputacion" element={<HotelesReputacionRoute />} />
         <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
+        {/* PL-21: enlaces del correo de rentas (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/rentas/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="rentas" />} />
+        <Route path="/rentas/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="rentas" />} />
         <Route path="/rentas/registro" element={<RentasRegistroRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
@@ -1144,6 +1163,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/auditoria" element={<RentasAuditoriaRoute />} />
         <Route path="/rentas/:orgSlug/notificaciones" element={<RentasNotificacionesRoute />} />
         <Route path="/rentas/:orgSlug/plan" element={<RentasPlanRoute />} />
+        <Route path="/rentas/:orgSlug/seguridad" element={<RentasSeguridadRoute />} />
         <Route path="/rentas/:orgSlug/catalogo" element={<RentasCatalogoRoute />} />
         <Route path="/rentas/:orgSlug/equipo" element={<RentasEquipoRoute />} />
         <Route path="/rentas/:orgSlug/copiloto" element={<RentasCopilotoRoute />} />
@@ -1158,6 +1178,9 @@ export function App() {
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
+        {/* PL-21: enlaces del correo de citas (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/citas/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="citas" />} />
+        <Route path="/citas/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="citas" />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
         <Route path="/citas/:orgSlug/resumen" element={<CitasResumenRoute />} />
         <Route path="/citas/:orgSlug/copiloto" element={<CitasCopilotoRoute />} />
@@ -1176,15 +1199,16 @@ export function App() {
         <Route path="/citas/:orgSlug/avisos" element={<CitasAvisosRoute />} />
         <Route path="/citas/:orgSlug/notificaciones" element={<CitasNotificacionesRoute />} />
         <Route path="/citas/:orgSlug/plan" element={<CitasPlanRoute />} />
+        <Route path="/citas/:orgSlug/seguridad" element={<CitasSeguridadRoute />} />
         <Route path="/citas/:orgSlug/privacidad" element={<CitasPrivacidadRoute />} />
         <Route path="/citas/:orgSlug/mensajes-whatsapp" element={<CitasWhatsappMensajesRoute />} />
         <Route path="/citas/:orgSlug/conversaciones" element={<CitasConversacionesRoute />} />
         <Route path="/citas/:orgSlug/agente-whatsapp" element={<CitasAgenteWhatsappRoute />} />
         <Route path="/citas/:orgSlug/*" element={<CitasNoEncontradoRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
-        {/* L-02: enlaces del correo (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
-        <Route path="/licitaciones/restablecer-contrasena" element={<LicitacionesRestablecerContrasenaPage apiBaseUrl={API_BASE_URL} />} />
-        <Route path="/licitaciones/verificar-correo" element={<LicitacionesVerificarCorreoPage apiBaseUrl={API_BASE_URL} />} />
+        {/* PL-21: enlaces del correo de licitaciones (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/licitaciones/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="licitaciones" />} />
+        <Route path="/licitaciones/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="licitaciones" />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
@@ -1212,11 +1236,15 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/aprobaciones" element={<LicitacionesAprobacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/firmantes" element={<LicitacionesFirmantesRedirect />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
+        {/* PL-21: enlaces del correo de despachos (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
+        <Route path="/despachos/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="despachos" />} />
+        <Route path="/despachos/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="despachos" />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/dashboard" element={<DespachosDashboardRoute />} />
         <Route path="/despachos/:orgSlug/copiloto" element={<DespachosCopilotoRoute />} />
         <Route path="/despachos/:orgSlug/notificaciones" element={<DespachosNotificacionesRoute />} />
         <Route path="/despachos/:orgSlug/plan" element={<DespachosPlanRoute />} />
+        <Route path="/despachos/:orgSlug/seguridad" element={<DespachosSeguridadRoute />} />
         <Route path="/despachos/:orgSlug/reportes" element={<DespachosReportesRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />

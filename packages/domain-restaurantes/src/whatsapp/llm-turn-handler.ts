@@ -158,6 +158,9 @@ export interface WhatsAppLlmAgentConfig {
   readonly salsasText?: string;
   readonly promosText?: string;
   readonly motivosDesactivados?: readonly string[];
+  /** PM-C5 (solo perfil PM): umbral de pedido grande en texto corto y espera de rafagas en segundos (0/ausente = apagada). */
+  readonly largeOrderText?: string;
+  readonly replyDebounceSeconds?: number;
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -186,7 +189,7 @@ export const PM_CONFIG_POR_OMISION: WhatsAppLlmAgentConfig = {
   businessName: "Los Taquitos de PM",
   toneStyle: "formal_directo",
   timezone: "America/Merida",
-  deliveryTimeText: "aproximadamente de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
+  deliveryTimeText: "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)",
   perfil: "taqueria_pm",
   agentName: PM_AGENT_NAME_POR_OMISION,
 };
@@ -197,6 +200,9 @@ export const PM_CONFIG_POR_OMISION: WhatsAppLlmAgentConfig = {
 export async function resolveAgentConfig(repo: RestaurantesRepository, organizationId: string, propertyId: string | null): Promise<WhatsAppLlmAgentConfig> {
   return aplicarFilaAConfig(await repo.findWhatsAppAgentConfig(organizationId, propertyId), organizationId);
 }
+
+/** Tope de la espera de rafagas. Muy por debajo del limite de la funcion del webhook (30 s en vercel.json): despues de esperar, la fase B todavia tiene que correr el turno del LLM (hasta 3). */
+export const ESPERA_RAFAGAS_MAX_SEGUNDOS = 10;
 
 /** Version pura de `resolveAgentConfig`: sirve tambien a la vista previa del editor (sin tocar la base). Los textos
  * editables pasan por `sanitizeInlineText` aunque la fila se haya escrito directo en la base. */
@@ -210,6 +216,8 @@ export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organiz
   const saludo = texto(row.greetingText, 80);
   const salsas = texto(row.salsasText, 300);
   const promos = texto(row.promosText, 300);
+  const umbral = texto(row.largeOrderText, 200);
+  const espera = row.replyDebounceSeconds !== undefined && row.replyDebounceSeconds !== null && Number.isInteger(row.replyDebounceSeconds) && row.replyDebounceSeconds > 0 ? Math.min(row.replyDebounceSeconds, ESPERA_RAFAGAS_MAX_SEGUNDOS) : undefined;
   const apagados = (row.escalationReasonsOff ?? []).filter((m) => (MOTIVOS_ESCALACION_DESACTIVABLES as readonly string[]).includes(m));
   return {
     ...base,
@@ -222,6 +230,9 @@ export function aplicarFilaAConfig(row: WhatsAppAgentConfigInput | null, organiz
     ...(salsas ? { salsasText: salsas } : {}),
     ...(promos ? { promosText: promos } : {}),
     ...(apagados.length > 0 ? { motivosDesactivados: apagados } : {}),
+    // El perfil generico no usa estos dos campos (el editor los rechaza); una fila escrita directo en la base se ignora.
+    ...(row.perfil === "taqueria_pm" && umbral ? { largeOrderText: umbral } : {}),
+    ...(row.perfil === "taqueria_pm" && espera ? { replyDebounceSeconds: espera } : {}),
   };
 }
 
@@ -248,6 +259,7 @@ export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: read
       salsasTexto: config.salsasText ?? null,
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
+      pedidoGrandeTexto: config.largeOrderText ?? null,
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.

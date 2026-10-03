@@ -38,6 +38,9 @@ export interface ConfigAgenteForm {
   readonly salsasText: string;
   readonly promosText: string;
   readonly escalationReasonsOff: readonly string[];
+  /** PM-C5: umbral de pedido grande (texto; vacio = el de siempre) y espera de rafagas en segundos (texto numerico; vacio = apagada). */
+  readonly largeOrderText: string;
+  readonly replyDebounceSeconds: string;
 }
 
 export interface ConfigAgenteWire {
@@ -50,6 +53,9 @@ export interface ConfigAgenteWire {
   readonly salsasText: string | null;
   readonly promosText: string | null;
   readonly escalationReasonsOff: readonly string[];
+  /** `null` = la base todavia no tiene la migracion 039 (PM-C5). */
+  readonly largeOrderText?: string | null;
+  readonly replyDebounceSeconds?: number | null;
   /** `null` = la base todavia no tiene la migracion 033 (sin version ni historial). */
   readonly version: number | null;
 }
@@ -60,10 +66,12 @@ export interface AgenteWhatsappWire {
 }
 
 export interface OpcionesAgenteWire {
-  readonly perfiles: readonly { readonly perfil: PerfilAgente; readonly agentName: string | null; readonly businessName: string; readonly toneStyle: TonoAgente; readonly deliveryTimeText: string; readonly salsasText: string | null; readonly promosText: string | null }[];
+  readonly perfiles: readonly { readonly perfil: PerfilAgente; readonly agentName: string | null; readonly businessName: string; readonly toneStyle: TonoAgente; readonly deliveryTimeText: string; readonly salsasText: string | null; readonly promosText: string | null; readonly largeOrderText: string | null }[];
   readonly tonos: readonly TonoAgente[];
   readonly motivosDesactivables: readonly string[];
-  readonly limites: Readonly<Record<"agentName" | "businessName" | "deliveryTimeText" | "greetingText" | "salsasText" | "promosText", number>>;
+  readonly limites: Readonly<Record<"agentName" | "businessName" | "deliveryTimeText" | "greetingText" | "salsasText" | "promosText" | "largeOrderText", number>>;
+  /** Tope de la espera de rafagas en segundos (el de la funcion del webhook). */
+  readonly esperaRafagasMaxSegundos?: number;
 }
 
 export interface LineaDiffWire {
@@ -102,7 +110,16 @@ export function formDesdeWire(c: ConfigAgenteWire | null, perfilPorOmision: Perf
     salsasText: c?.salsasText ?? "",
     promosText: c?.promosText ?? "",
     escalationReasonsOff: c?.escalationReasonsOff ?? [],
+    largeOrderText: c?.largeOrderText ?? "",
+    replyDebounceSeconds: c?.replyDebounceSeconds === null || c?.replyDebounceSeconds === undefined ? "" : String(c.replyDebounceSeconds),
   };
+}
+
+/** Texto del formulario -> segundos enteros de 0 a 30, o null si esta vacio. Un texto que no es un entero valido devuelve `NaN` (el servidor lo rechaza con su mensaje). */
+export function esperaDesdeTexto(texto: string): number | null {
+  const limpio = texto.trim();
+  if (limpio === "") return null;
+  return /^\d+$/.test(limpio) ? Number(limpio) : Number.NaN;
 }
 
 /** Cuerpo del PUT / vista previa. Los campos que solo existen en el perfil PM se omiten en el generico (el servidor los rechaza). */
@@ -120,6 +137,8 @@ export function cuerpoDesdeForm(form: ConfigAgenteForm, alcance: AlcanceAgente, 
     salsasText: pm ? t(form.salsasText) : null,
     promosText: pm ? t(form.promosText) : null,
     escalationReasonsOff: pm ? [...form.escalationReasonsOff] : [],
+    largeOrderText: pm ? t(form.largeOrderText) : null,
+    replyDebounceSeconds: pm ? esperaDesdeTexto(form.replyDebounceSeconds) : null,
     ...(versionEsperada === undefined || versionEsperada === null ? {} : { versionEsperada }),
   };
 }
@@ -167,6 +186,8 @@ const CAMPO_LABEL: Readonly<Record<string, string>> = {
   salsasText: "Salsas incluidas",
   promosText: "Promociones",
   escalationReasonsOff: "Motivos de escalación desactivados",
+  largeOrderText: "Umbral de pedido grande",
+  replyDebounceSeconds: "Espera de ráfagas (segundos)",
 };
 
 function comoTexto(v: unknown): string {
@@ -195,5 +216,7 @@ export function formDesdeFoto(foto: Readonly<Record<string, unknown>>): ConfigAg
     salsasText: t(foto.salsasText),
     promosText: t(foto.promosText),
     escalationReasonsOff: Array.isArray(foto.escalationReasonsOff) ? foto.escalationReasonsOff.map(String) : [],
+    largeOrderText: t(foto.largeOrderText),
+    replyDebounceSeconds: typeof foto.replyDebounceSeconds === "number" ? String(foto.replyDebounceSeconds) : "",
   };
 }

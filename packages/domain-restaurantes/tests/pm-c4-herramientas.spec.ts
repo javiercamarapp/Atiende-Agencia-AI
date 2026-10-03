@@ -1,7 +1,7 @@
 // PM-C4 -- herramientas del agente PM: alias de busqueda (search_keywords del seed), busqueda sin acentos, tortilla
 // obligatoria solo cuando el menu lo dice y salsa doble sin producto "Extra salsa" (sin regresion). El SQL real del seed
 // (union de alias al re-ejecutar) lo cubre scripts/verify-restaurantes-seed-pm/.
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { OrderValidationError } from "../src/errors.ts";
 import { buildOrderQuoteFromProducts } from "../src/order-quote.ts";
 import { quoteOrder, searchProducts } from "../src/orders.ts";
@@ -97,8 +97,10 @@ describe("tortilla obligatoria solo si el menu lo dice", () => {
   it("quesadilla sin tortilla queda como pregunta pendiente; con harina cotiza", async () => {
     const [quesadilla] = await searchProducts(world.repo, { propertyId, query: "quesadilla de rajas" });
     expect(quesadilla!.requiresTortilla).toBe(true);
-    expect(() => buildOrderQuoteFromProducts([{ productId: quesadilla!.id, requestedQuantity: 1 }], [quesadilla!])).toThrow(/maíz, harina o mixta/);
-    const quote = buildOrderQuoteFromProducts([{ productId: quesadilla!.id, requestedQuantity: 1, tortilla: "harina" }], [quesadilla!]);
+    // Desde el 2-oct-2026 la quesadilla se vende en orden de 3 (decision de Javier).
+    expect(quesadilla!.packSize).toBe(3);
+    expect(() => buildOrderQuoteFromProducts([{ productId: quesadilla!.id, requestedQuantity: 3 }], [quesadilla!])).toThrow(/maíz, harina o mixta/);
+    const quote = buildOrderQuoteFromProducts([{ productId: quesadilla!.id, requestedQuantity: 3, tortilla: "harina" }], [quesadilla!]);
     expect(quote.lines[0]!.tortilla).toBe("harina");
   });
   it("un producto cuyo menu no dice tortilla (gringa, chetaco) NO la exige", async () => {
@@ -116,12 +118,33 @@ describe("tortilla obligatoria solo si el menu lo dice", () => {
 });
 
 describe("salsa doble sin producto 'Extra salsa' (no regresion)", () => {
-  it("sigue rechazando la linea con el mensaje actual: no la ofrece ni la cobra", async () => {
-    const [pastor] = await searchProducts(world.repo, { propertyId, query: "tacos de pastor" });
+  it("con el producto en el catalogo (T1, T7: $19) la doble porcion se cobra a $19 por salsa, nunca otro precio", async () => {
+    // El horario de la sucursal se evalua con el reloj real: martes 14:00 en Merida (abierto, sin 2x1) para no depender de la hora de la corrida.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T20:00:00Z"));
+    try {
+      await cobraVeintePorSalsa();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  async function cobraVeintePorSalsa() {
+    for (const slug of ["prol-montejo", "garcia-lavin"]) {
+      const pid = world.propertyBySlug.get(slug)!;
+      const [pastor] = await searchProducts(world.repo, { propertyId: pid, query: "tacos de pastor" });
+      const sinDoble = await quoteOrder(world.repo, { organizationId: world.organizationId, branchSlug: slug, canal: "recoger", items: [{ productId: pastor!.id, requestedQuantity: 1, tortilla: "maiz" }] });
+      const conDoble = await quoteOrder(world.repo, { organizationId: world.organizationId, branchSlug: slug, canal: "recoger", items: [{ productId: pastor!.id, requestedQuantity: 1, tortilla: "maiz" }], doubleSalsas: ["salsa_verde", "salsa_roja"] });
+      expect(conDoble.total - sinDoble.total, slug).toBe(38);
+    }
+  }
+
+  it("sin el producto en el catalogo de la sucursal (T3 sigue en la lista 2025) sigue rechazando la linea con el mensaje actual: no la ofrece ni la cobra", async () => {
+    const [pastor] = await searchProducts(world.repo, { propertyId: world.propertyBySlug.get("pensiones")!, query: "tacos de pastor" });
     const organizationId = world.organizationId;
     const err = await quoteOrder(world.repo, {
       organizationId,
-      branchSlug: "prol-montejo",
+      branchSlug: "pensiones",
       items: [{ productId: pastor!.id, requestedQuantity: pastor!.packSize ?? 1, tortilla: "maiz" }],
       doubleSalsas: ["salsa_verde"],
     }).catch((e: unknown) => e);

@@ -6,10 +6,10 @@ const T0 = new Date("2026-10-01T12:00:00.000Z");
 const mas = (min: number) => new Date(T0.getTime() + min * 60_000);
 
 describe("calcularSlaCallback", () => {
-  it("objetivo: 60 min en general, 15 en motivos urgentes (queja, alergia, urgencia, cobro duplicado)", () => {
+  it("objetivo: 60 min en general, 15 en motivos urgentes (queja, alergia, urgencia, cobro duplicado, cambio de un pedido ya confirmado)", () => {
     expect(objetivoSlaCallbackMin(null)).toBe(SLA_CALLBACK_MIN_GENERAL);
     expect(objetivoSlaCallbackMin("facturacion")).toBe(SLA_CALLBACK_MIN_GENERAL);
-    for (const m of ["escalada:queja", "escalada:alergia_salud", "escalada:urgencia", "escalada:cobro_duplicado"]) expect(objetivoSlaCallbackMin(m)).toBe(SLA_CALLBACK_MIN_URGENTE);
+    for (const m of ["escalada:queja", "escalada:alergia_salud", "escalada:urgencia", "escalada:cobro_duplicado", "escalada:cancelacion_modificacion"]) expect(objetivoSlaCallbackMin(m)).toBe(SLA_CALLBACK_MIN_URGENTE);
     expect(objetivoSlaCallbackMin("escalada:otro")).toBe(SLA_CALLBACK_MIN_GENERAL);
   });
 

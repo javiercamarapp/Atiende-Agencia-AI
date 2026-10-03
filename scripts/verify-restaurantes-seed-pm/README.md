@@ -8,8 +8,8 @@ ejecuta (una y dos veces) dentro de cada escenario contra TODAS las migraciones 
 `node --experimental-strip-types scripts/verify-restaurantes-seed-pm/generar-assertions.ts`
 (un test de vitest falla si el archivo commiteado se desincroniza).
 
-Cubre: resultado (7 sucursales, solo T1 y T3 activas, 237 productos, 42 de alcohol `no_domicilio`, 669
-precios por sucursal con el precio de cada menu impreso, comida regional solo en T1, 0 fracciones de kilo), reglas del modelo (horario, minimo $200, propina solo tarjeta,
+Cubre: resultado (7 sucursales, T1, T3 y T7 activas, 279 productos, 42 de alcohol `no_domicilio`, 1610
+precios por sucursal con el precio de cada menu impreso, fracciones de kilo proporcionales y extras a $19), reglas del modelo (horario, minimo $200, propina solo tarjeta,
 2x1 del lunes solo recoger, voz deshabilitada, asignacion por colonia con la funcion SQL real), idempotencia
 (dos corridas, no pisa decisiones del dueño, repara precios), aislamiento (otra organizacion con nombres
 iguales intacta, slug de otra vertical aborta, staff ajeno y `anon` no leen lo sembrado).

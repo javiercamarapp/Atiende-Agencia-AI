@@ -7,6 +7,17 @@ export function fechaCortaEsMx(fecha: Date = new Date()): string {
   return fecha.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// Fecha y hora real de un timestamp (con hora), en la zona del negocio ("2 oct 2026, 8:15 p.m."). Compartida por la
+// cuenta de staff (sesiones, vinculos de Google) para no repetir un toLocaleString por pantalla.
+export function fechaHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
+  return new Date(iso).toLocaleString("es-MX", { timeZone: zonaHoraria, dateStyle: "medium", timeStyle: "short" });
+}
+
+// Solo la hora de un timestamp, en la zona del negocio ("8:15 p.m.").
+export function horaEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
+  return new Date(iso).toLocaleTimeString("es-MX", { timeZone: zonaHoraria, timeStyle: "short" });
+}
+
 // --- Fechas de "solo día" (columnas `date` de Postgres: "YYYY-MM-DD", sin ---
 // --- hora ni zona) -- vencimientos, fecha límite fiscal, check-in/check-out, ---
 // --- periodos de estado de cuenta, fechas de factura, etc. -----------------
