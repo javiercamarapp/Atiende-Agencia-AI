@@ -138,13 +138,13 @@ describe("Resumen de licitaciones (PanelPage)", () => {
     expect((t.match(/Sin corridas registradas\./g) ?? []).length).toBe(1 + 5); // alta manual + 5 agentes sin bitacora
   });
 
-  it("una lectura caída dice 'sin dato' (nunca cero) y 'Datos por aprobar' no suma parcial", async () => {
+  it("una lectura caída dice 'No se pudo leer' (nunca cero) y 'Datos por aprobar' no suma parcial", async () => {
     stubFetch({ ...COMPLETAS, "GET /tender-change-notifications": () => ({ ok: false, body: {} }), "GET /company/rates": () => ({ ok: false, body: {} }), "GET /sources/runs?limit=50": () => ({ ok: false, body: {} }) });
     mount();
     await settle();
-    expect(enlace("Cambios de convocatoria")?.textContent).toContain("sin dato");
+    expect(enlace("Cambios de convocatoria")?.textContent).toContain("No se pudo leer");
     expect(enlace("Cambios de convocatoria")?.textContent).not.toMatch(/\b0\b/);
-    expect(enlace("Datos por aprobar")?.textContent).toContain("sin dato");
+    expect(enlace("Datos por aprobar")?.textContent).toContain("No se pudo leer");
     expect(enlace("Alertas y recordatorios")?.textContent).toContain("No se pudo leer el seguimiento.");
     expect(rendered!.container.querySelector('[data-testid="corridas-sin-lectura"]')?.textContent).toContain("No se pudo leer el registro de corridas");
     // Lo que sí respondió se sigue pintando.
@@ -157,8 +157,8 @@ describe("Resumen de licitaciones (PanelPage)", () => {
     await settle();
     expect(texto()).toContain("convocatorias no disponibles");
     expect(rendered!.container.querySelector('[data-testid="odometro"]')?.textContent).toContain("—");
-    expect(enlace("Cierran en 7 días")?.textContent).toContain("sin dato");
-    expect(enlace("Propuestas en preparación")?.textContent).toContain("sin dato");
+    expect(enlace("Cierran en 7 días")?.textContent).toContain("No se pudo leer");
+    expect(enlace("Propuestas en preparación")?.textContent).toContain("No se pudo leer");
   });
 
   it("si fallan TODAS las lecturas muestra el error con reintento, y reintentar vuelve a leer", async () => {
