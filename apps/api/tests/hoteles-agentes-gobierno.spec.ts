@@ -49,6 +49,8 @@ describe("agente de recepcion (WhatsApp) gobernado por property", () => {
     expect(s.calls()).toBe(0);
     expect(result.reply).toMatch(/Alguien del hotel/);
     expect(result.fnbOrderId).toBeNull();
+    // H-20: sin agente, la conversacion pasa a atencion humana (inbound.ts la marca y notifica a recepcion/reservas).
+    expect(result.handoff).toEqual({ motivo: "agente_pausado" });
     // reanudar vuelve a correr el agente
     await s.agentes.updateAgentConfig(s.propertyId, "recepcion_whatsapp", { enabled: true });
     expect((await s.turn()).reply).toBe("Hola, con gusto te ayudo.");
@@ -60,14 +62,18 @@ describe("agente de recepcion (WhatsApp) gobernado por property", () => {
     await s.turn();
     await s.turn(); // gasto acumulado = 3000 = tope
     expect(s.calls()).toBe(2);
-    expect((await s.turn()).reply).toMatch(/Alguien del hotel/);
+    const sinPresupuesto = await s.turn();
+    expect(sinPresupuesto.reply).toMatch(/Alguien del hotel/);
+    expect(sinPresupuesto.handoff).toEqual({ motivo: "agente_presupuesto_agotado" });
     expect(s.calls()).toBe(2);
     expect((await s.agentes.gate(s.propertyId, "revenue", "2026-10"))?.enabled).toBe(true);
   });
 
   it("base SIN migrar 035: el agente corre como siempre (comportamiento previo) y no revienta al registrar costo", async () => {
     const s = setup({ migrated: false });
-    expect((await s.turn()).reply).toBe("Hola, con gusto te ayudo.");
+    const normal = await s.turn();
+    expect(normal.reply).toBe("Hola, con gusto te ayudo.");
+    expect(normal.handoff).toBeUndefined(); // un turno normal del agente NO deriva a una persona
     expect(s.calls()).toBe(1);
     expect(s.errors.length).toBeGreaterThan(0); // el registro de costo falla de forma recuperable y se reporta
   });
