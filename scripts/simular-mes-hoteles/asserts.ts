@@ -27,14 +27,15 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
   out.push(
     resultado(
       "cero-sobreventa-reservas",
-      "Las reservas activas mas las pre-reservas abiertas (holds) que cubren cada noche nunca exceden el inventario y coinciden con booked_rooms",
+      "Las reservas activas, las pre-reservas abiertas (holds) y los cuartos de grupo no liberados (confirmados sin reserva propia incluidos) que cubren cada noche nunca exceden el inventario y coinciden con booked_rooms",
       await contraejemplos(
         db,
-        `select a.room_type_id, a.date::text, a.total_rooms, a.booked_rooms, coalesce(r.n, 0) as reservas, coalesce(h.n, 0) as holds
+        `select a.room_type_id, a.date::text, a.total_rooms, a.booked_rooms, coalesce(r.n, 0) as reservas, coalesce(h.n, 0) as holds, coalesce(g.n, 0) as grupo
            from hoteles.availability a
            left join lateral (select count(*) as n from hoteles.reservation r where r.room_type_id = a.room_type_id and r.status in ${ESTADOS_ACTIVOS} and a.date >= r.check_in_date and a.date < r.check_out_date) r on true
+           left join lateral (select coalesce(sum(n.blocked_rooms - n.released_rooms), 0) as n from hoteles.group_block_night n where n.room_type_id = a.room_type_id and n.date = a.date) g on true
            left join lateral (select count(*) as n from hoteles.booking_hold h where h.room_type_id = a.room_type_id and h.status in ('pendiente_aprobacion','pendiente_pago','aprobado') and a.date >= h.check_in_date and a.date < h.check_out_date) h on true
-          where a.property_id = $1 and (coalesce(r.n, 0) + coalesce(h.n, 0) > a.total_rooms or coalesce(r.n, 0) + coalesce(h.n, 0) <> a.booked_rooms)`,
+          where a.property_id = $1 and (coalesce(r.n, 0) + coalesce(h.n, 0) + coalesce(g.n, 0) > a.total_rooms or coalesce(r.n, 0) + coalesce(h.n, 0) + coalesce(g.n, 0) <> a.booked_rooms)`,
         [propertyId],
       ),
     ),
@@ -83,6 +84,15 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
       ),
     );
   }
+  if (ultimaNocheCerrada) {
+    out.push(
+      resultado(
+        "no-show-procesado",
+        `Ninguna reserva confirmada con llegada anterior a ${ultimaNocheCerrada} sigue sin check-in: el night audit ya la paso a no-show`,
+        await contraejemplos(db, `select id, check_in_date::text from hoteles.reservation where property_id = $1 and status = 'confirmada' and check_in_date < $2::date`, [propertyId, ultimaNocheCerrada]),
+      ),
+    );
+  }
   out.push(
     resultado(
       "folios-en-cero-al-checkout",
@@ -110,13 +120,13 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
   out.push(
     resultado(
       "iva-ish-cuadran",
-      "El impuesto de cada cargo coincide con IVA 16% (+ ISH 3% solo en hospedaje) recalculado de forma independiente",
+      "El impuesto de cada cargo coincide con IVA 16% (+ ISH 3% solo en noches de hospedaje; las penalizaciones sin noche llevan solo IVA) recalculado de forma independiente",
       await contraejemplos(
         db,
         `select id, concept, amount, tax_amount from hoteles.charge
           where property_id = $1 and concept in ('hospedaje','ab','extras','ajuste','otro','propina') and reverses_charge_id is null and transferred_from_charge_id is null
             and tax_amount <> case concept
-                  when 'hospedaje' then round(amount * 0.16, 2) + round(amount * 0.03, 2)
+                  when 'hospedaje' then round(amount * 0.16, 2) + case when stay_date is null then 0 else round(amount * 0.03, 2) end
                   when 'propina' then 0
                   else round(amount * 0.16, 2) end`,
         [propertyId],
@@ -133,7 +143,7 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
            join hoteles.folio f on f.id = c.folio_id join hoteles.reservation r on r.id = f.reservation_id
            left join hoteles.rate_plan rp on rp.room_type_id = r.room_type_id and rp.date = c.stay_date
           where c.property_id = $1 and c.concept = 'hospedaje' and c.reverses_charge_id is null and c.reversed_by is null
-            and (rp.price is null or c.amount <> rp.price)`,
+            and c.stay_date is not null and (rp.price is null or c.amount <> rp.price)`,
         [propertyId],
       ),
     ),
@@ -148,6 +158,20 @@ export async function assertsDeDatos(db: Client, propertyId: string, ultimaNoche
           where property_id = $1 group by business_date having count(*) <> 1 or not bool_and(status = 'completado')`,
         [propertyId],
       ),
+    ),
+  );
+  out.push(
+    resultado(
+      "cfdi-un-vigente-por-folio",
+      "Ningun folio tiene mas de un CFDI de hospedaje vigente (no cancelado)",
+      await contraejemplos(db, `select folio_id, count(*) from hoteles.cfdi_emision where property_id = $1 and tipo = 'hospedaje' and status <> 'cancelado' group by folio_id having count(*) > 1`, [propertyId]),
+    ),
+  );
+  out.push(
+    resultado(
+      "cfdi-total-cuadra",
+      "En cada CFDI timbrado el total es subtotal + IVA + ISH + DSA y trae UUID fiscal",
+      await contraejemplos(db, `select id, subtotal, iva, ish_monto, dsa_monto, total, uuid_fiscal from hoteles.cfdi_emision where property_id = $1 and status in ('timbrado','cancelado') and (abs(total - (subtotal + iva + ish_monto + dsa_monto)) > 0.01 or uuid_fiscal is null)`, [propertyId]),
     ),
   );
   return out;

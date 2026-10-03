@@ -23,6 +23,8 @@ export interface OpcionesApi {
   readonly headers?: Record<string, string>;
   /** No registrar como evento del ledger (llamadas de apoyo, p. ej. login). */
   readonly silencioso?: boolean;
+  /** Sondeo contra OTRA instancia de la app (p. ej. la de produccion sin dobles): su respuesta no cuenta en el assert de cero 5xx ni en los rechazos inesperados. */
+  readonly sondeo?: Hono;
 }
 
 export class Simulador {
@@ -81,8 +83,8 @@ export class Simulador {
       headers["content-type"] = "application/json";
       headers["content-length"] = String(Buffer.byteLength(body));
     }
-    const res = await this.app.request(ruta, { method: metodo, headers, body });
-    this.#contar(res.status);
+    const res = await (op.sondeo ?? this.app).request(ruta, { method: metodo, headers, body });
+    if (!op.sondeo) this.#contar(res.status);
     const texto = await res.text();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let json: any = null;
@@ -93,7 +95,7 @@ export class Simulador {
     }
     const esperado = op.esperado ?? [200, 201, 202, 204];
     const ok = esperado.includes(res.status);
-    if (!ok) this.inesperados.push({ tipo: op.tipo ?? `${metodo} ${ruta}`, metodo, ruta, status: res.status, cuerpo: texto.slice(0, 300) });
+    if (!ok && !op.sondeo) this.inesperados.push({ tipo: op.tipo ?? `${metodo} ${ruta}`, metodo, ruta, status: res.status, cuerpo: texto.slice(0, 300) });
     if (!op.silencioso) this.evento(op.tipo ?? `${metodo} ${ruta}`, op.actor ?? "staff", ok, res.status, op.detalle ?? {});
     return { status: res.status, json, texto };
   }

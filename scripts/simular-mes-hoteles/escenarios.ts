@@ -39,6 +39,8 @@ export interface Reserva {
   roomId: string | null;
   creadaDia: number;
   cxc?: boolean;
+  cerradaDia?: number;
+  cfdiId?: string;
 }
 
 export interface Contexto {
@@ -50,6 +52,7 @@ export interface Contexto {
   /** Fechas de negocio ya cerradas por el night audit (para los asserts). */
   readonly cerradas: Set<string>;
   readonly secretoInterno: string;
+  readonly appSinCredenciales: import("hono").Hono;
   readonly secretoWhatsApp: string;
   readonly phoneNumberId: string;
   dia: number;
@@ -213,6 +216,7 @@ export async function salidas(ctx: Contexto): Promise<void> {
     if (out.status !== 200) continue;
     await sim.api("frontdesk", "POST", `${P(ctx)}/folios/${folioId}/cerrar`, { motivo: "saldo_cero" }, { tipo: "folio.cierre", detalle: { motivo: "saldo_cero" } });
     r.estado = "cerrada";
+    r.cerradaDia = ctx.dia;
     ctx.reloj.avanzarMinutos(5);
   }
 }

@@ -74,6 +74,8 @@ try {
   };
   const app = buildApp(deps);
   const sim = new Simulador(app, db);
+  // App de produccion SIN dobles (mismas dependencias reales y sin credenciales): solo para sondear que los bordes sin credencial responden 503 honesto.
+  const appSinCredenciales = buildApp(buildProductionDeps());
   const propertyId = base.propertyId;
   const P = `/hoteles/${propertyId}`;
 
@@ -102,7 +104,7 @@ try {
   const asertsMod = await import("./asserts.ts");
   const costos = await import("./costos.ts");
   const ledgerMod = await import("./ledger.ts");
-  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, rng: esc.prng(20261001), reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
+  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, rng: esc.prng(20261001), appSinCredenciales, reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
 
   await (await import("./escenarios-agente.ts")).configurarAgente(ctx);
   await esc.precarga(ctx, 36);
@@ -146,6 +148,7 @@ try {
     { id: "cero-llamadas-externas", descripcion: "Ninguna llamada saliente real (Meta, PAC, Stripe, OpenRouter, Resend)", ok: guarda.bloqueadas.length === 0, detalle: guarda.bloqueadas.length === 0 ? "0 intentos" : JSON.stringify(guarda.bloqueadas.slice(0, 5)) },
     { id: "sin-rechazos-inesperados", descripcion: "Todo rechazo 4xx de la API era el esperado por el escenario", ok: sim.inesperados.length === 0, detalle: sim.inesperados.length === 0 ? "0 rechazos inesperados" : JSON.stringify(sim.inesperados.slice(0, 5)) },
   ];
+  for (const f of finales.filter((x) => !x.ok)) console.log(`  FALLA ${f.id}: ${f.detalle}`);
   const ult = dias.at(-1)!;
   dias[dias.length - 1] = { ...ult, asserts: [...ult.asserts, ...finales] };
 
