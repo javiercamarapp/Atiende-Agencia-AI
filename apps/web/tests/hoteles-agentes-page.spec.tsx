@@ -139,6 +139,62 @@ describe("AgentesPage", () => {
   });
 });
 
+describe("AgentesPage -- dialogos de politica y plantilla", () => {
+  const abrirTab = async (nombre: string) => {
+    const tab = Array.from(rendered!.container.querySelectorAll("button, [role=tab]")).find((b) => b.textContent === nombre)!;
+    await act(async () => {
+      tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    await settle();
+  };
+
+  it("editar una politica abre un dialogo; Cancelar no escribe y Guardar manda PUT con la vigencia", async () => {
+    const { writes } = stub();
+    rendered = renderComponent(<AgentesPage {...ctx("owner")} />);
+    await settle();
+    await abrirTab("Políticas");
+    click(buttons("Editar")[0]!);
+    await settle();
+    expect(dialogo()!.textContent).toContain("Política: ");
+    const cerrar = dialogo()!.querySelector('button[aria-label="Cerrar"]') as HTMLButtonElement;
+    click(cerrar);
+    await settle();
+    expect(dialogo()).toBeNull();
+    expect(writes).toHaveLength(0);
+
+    click(buttons("Editar")[0]!);
+    await settle();
+    changeValue(dialogo()!.querySelector('input[type="number"]') as HTMLInputElement, "720");
+    await act(async () => {
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    await settle();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: "PUT", body: { modo: "siempre_humano", vigenciaMinutos: 720 } });
+    expect(toastMock.success).toHaveBeenCalledWith("Política guardada.", expect.anything());
+  });
+
+  it("nueva plantilla: el dialogo manda POST con nombre y texto recortados", async () => {
+    const { writes } = stub();
+    rendered = renderComponent(<AgentesPage {...ctx("gm")} />);
+    await settle();
+    await abrirTab("Plantillas WhatsApp");
+    click(buttons("Nueva plantilla")[0]!);
+    await settle();
+    changeValue(dialogo()!.querySelector("input")!, "bienvenida_huesped");
+    changeValue(dialogo()!.querySelector("textarea")!, "  Hola, bienvenido  ");
+    await act(async () => {
+      dialogo()!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    await settle();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: "POST", body: { agente: "recepcion_whatsapp", nombre: "bienvenida_huesped", cuerpo: "Hola, bienvenido" } });
+    expect(dialogo()).toBeNull();
+  });
+});
+
 describe("AprobacionesAgentesPage", () => {
   it("lista lo pendiente con origen, alcance y vigencia; un bloqueado muestra su motivo", async () => {
     stub({ aprobaciones: [aprobacion(), aprobacion({ id: "a2", estado: "bloqueada", motivoBloqueo: "tope_descuento", porcentaje: 50 })] });
