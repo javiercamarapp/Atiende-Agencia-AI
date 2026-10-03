@@ -47,6 +47,8 @@ import { SuperAdminInterruptoresPage } from "./superadmin/pages/Interruptores.ts
 import { SuperAdminPrivacidadPage } from "./superadmin/pages/Privacidad.tsx";
 import { SuperAdminSupresionPage } from "./superadmin/pages/Supresion.tsx";
 import { SuperAdminAgentesPage } from "./superadmin/pages/Agentes.tsx";
+import { SuperAdminAgenteConciliacionPage, SuperAdminAgenteExtractorPage, SuperAdminAgenteWhatsappPage } from "./superadmin/pages/AgenteFicha.tsx";
+import { SuperAdminModelOpsPage } from "./superadmin/pages/ModelOps.tsx";
 import { PrivacidadOrganizacionPage } from "./pages/PrivacidadOrganizacion.tsx";
 import { SuperAdminGestionOrganizacionesPage } from "./superadmin/pages/GestionOrganizaciones.tsx";
 import { SuperAdminCostosMargenPage } from "./superadmin/pages/CostosMargen.tsx";
@@ -482,6 +484,42 @@ function SuperAdminAgentesRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminAgentesPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminAgenteExtractorRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminAgenteExtractorPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminAgenteConciliacionRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminAgenteConciliacionPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminAgenteWhatsappRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminAgenteWhatsappPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminModelOpsRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminModelOpsPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1095,6 +1133,10 @@ export function App() {
         <Route path="/superadmin/privacidad" element={<SuperAdminPrivacidadRoute />} />
         <Route path="/superadmin/supresion" element={<SuperAdminSupresionRoute />} />
         <Route path="/superadmin/agentes" element={<SuperAdminAgentesRoute />} />
+        <Route path="/superadmin/agente-extractor" element={<SuperAdminAgenteExtractorRoute />} />
+        <Route path="/superadmin/agente-conciliacion" element={<SuperAdminAgenteConciliacionRoute />} />
+        <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
+        <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
         <Route path="/superadmin/gestion-organizaciones" element={<SuperAdminGestionOrganizacionesRoute />} />
         <Route path="/superadmin/cfo" element={<SuperAdminCfoDashboardRoute />} />
         <Route path="/superadmin/pyl" element={<SuperAdminPylVerticalRoute />} />
