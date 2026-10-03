@@ -163,7 +163,9 @@ export type ReservasAgenteErrorCode =
   | "no_encontrada"
   | "estado_no_valido"
   | "sin_permiso"
-  | "no_disponible_aun";
+  | "no_disponible_aun"
+  | "web_deshabilitado"
+  | "consentimiento_requerido";
 
 export class ReservasAgenteUnavailableError extends ReservasAgenteError {
   constructor(public readonly operation: string) {

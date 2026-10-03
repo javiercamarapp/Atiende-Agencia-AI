@@ -553,6 +553,8 @@ export * from "./privacy/index.ts";
 export { buildHotelesDataChatCatalog, buildHotelesDataChatTools, PostgresHotelesDataChatReader, ALL_HOTELES_DATA_CHAT_SQL } from "./data-chat/index.ts";
 export type { HotelesDataChatReader, HotelesDataChatWindow } from "./data-chat/index.ts";
 export * from "./reservas-agente/index.ts";
+// H-42: motor de reservas directo publico del hotel (web, sin login).
+export * from "./reservar-directo/index.ts";
 
 // Agente de VOZ de hoteles sobre @atiende/voice-core (perfil, registro de tools con maquina de reserva, transportes). El simulador y sus guiones salen por
 // `@atiende/domain-hoteles/voz/simulador` (solo pruebas y la prueba ciega manual).
