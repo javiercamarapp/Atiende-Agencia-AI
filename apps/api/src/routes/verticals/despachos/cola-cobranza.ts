@@ -66,6 +66,7 @@ import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { etapaSugeridaPorAtraso } from "./cobranza.ts";
 import { reporteAPdf } from "./reporte-pdf.ts";
+import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -235,6 +236,8 @@ export function despachosColaCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const reporte = construirReporteCartera({ cuentas, hoy, contribuyente: { nombre, rfc: emisores.size === 1 ? [...emisores][0]! : null } });
 
     if (formato === "json") return c.json(reporte);
+    // D-38: la cartera en PDF sale del sistema -> fila de bitacora (fecha de corte; sin clientes ni montos).
+    await auditarAccesoDespachos(deps, c, { recurso: "cola_cobranza.cartera", tipo: "export", metadata: { fechaCorte: hoy, formato } });
     return new Response(await reporteAPdf(reporte), {
       headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="cartera-antiguedad-${hoy}.pdf"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" },
     });

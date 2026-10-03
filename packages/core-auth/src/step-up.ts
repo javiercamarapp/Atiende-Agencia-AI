@@ -14,7 +14,7 @@ import { TokenExpiredError, TokenInvalidError } from "./jwt.ts";
 export const STEP_UP_TTL_SECONDS = 5 * 60;
 
 /** Alcances conocidos. Se agregan aqui, nunca como cadena libre en una ruta. */
-export type StepUpScope = "contract_sensitive" | "expediente_approval";
+export type StepUpScope = "contract_sensitive" | "expediente_approval" | "despachos_sensitive";
 
 export interface StepUpClaims {
   readonly sub: string;

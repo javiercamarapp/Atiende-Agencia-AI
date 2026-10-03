@@ -136,7 +136,8 @@ const rutasCierre: readonly Ruta[] = [
     patron: "/auth/step-up",
     manejador: (p) => {
       const c = (p.cuerpo ?? {}) as { scope?: string; code?: string };
-      if (c.scope !== "expediente_approval") return fallo(400, "scope desconocido.");
+      // `despachos_sensitive` (D-30): mismas reglas del segundo factor para las acciones sensibles del despacho.
+      if (c.scope !== "expediente_approval" && c.scope !== "despachos_sensitive") return fallo(400, "scope desconocido.");
       if (c.code !== CODIGO_TOTP_VALIDO) return fallo(422, "El código es incorrecto o ya se usó.");
       return { stepUpToken: `mock-step-up.${p.persona!.id}`, expiresInSeconds: 300 };
     },

@@ -44,8 +44,14 @@ export function despachosAuthContext(): AuthedFetchContext<LoginSession> {
   };
 }
 
-export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext()): Promise<T> {
-  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+export async function fetchJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}`, ...extraHeaders } }));
   if (!res.ok) {
     throw new DespachosAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
@@ -170,8 +176,14 @@ export async function postXml<T>(
  * de auditoría (severidad ALTA, "Alta de organización/staff imposible sin SQL"):
  * revocar una invitación de staff (admin-staff.ts) es la primera necesidad real de
  * este verbo en despachos. */
-export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext()): Promise<T> {
-  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
+export async function deleteJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  authCtx: AuthedFetchContext<LoginSession> = despachosAuthContext(),
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}`, ...extraHeaders } }));
   if (!res.ok) {
     throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
   }
