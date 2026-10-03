@@ -24,7 +24,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { ConversacionesRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository } from "@atiende/domain-restaurantes";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
@@ -168,6 +168,9 @@ export interface AppDeps {
   /** R-13 (migración 035): KPI de voz, costo y alertas. OPCIONAL: sin él las rutas de KPI responden 503 honesto. En producción es
    * `(db) => new PostgresVozKpiRepository(db)` (cada consulta degrada con SAVEPOINT contra la base sin migrar). */
   readonly vozKpiRepo?: (db: TenantDbSession) => VozKpiRepository;
+  /** R-31 (migración 040): KPI del agente de WhatsApp por día local. OPCIONAL: sin él la ruta responde 503 honesto. En producción es
+   * `(db) => new PostgresWhatsappKpiRepository(db)` (degrada con SAVEPOINT a "no disponible" contra la base sin migrar). */
+  readonly whatsappKpiRepo?: (db: TenantDbSession) => WhatsappKpiRepository;
   /** PM PR-9 -- privacidad de restaurantes (ARCO, aviso, retencion; migracion 030). OPCIONAL: ausente =
    * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
