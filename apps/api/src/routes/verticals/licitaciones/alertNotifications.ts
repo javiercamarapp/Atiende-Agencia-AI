@@ -38,7 +38,7 @@
 // email-dispatch (vercel.json los agenda por separado), así que sin esto una
 // alerta podía esperar hasta 24h a que corriera el OTRO cron.
 import { Hono } from "hono";
-import { WhatsAppNotAvailableError, dispatchPendingEmailJobs, enqueueDeadlineReminderWhatsApp } from "@atiende/domain-licitaciones";
+import { WhatsAppNotAvailableError, dispatchPendingEmailJobs, enqueueDeadlineReminderWhatsApp, mexicoCityDateKey } from "@atiende/domain-licitaciones";
 import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -49,7 +49,7 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { crearGuardCorreo } from "../../../supresion/index.ts";
-import { AvisoKycNoEmitidoError, avisarAlertasDelBarrido, retamizarCarteraYAvisar } from "./avisos-campana.ts";
+import { AvisoKycNoEmitidoError, avisarAlertasDelBarrido, avisarPostAdjudicacion, retamizarCarteraYAvisar } from "./avisos-campana.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
 export const INLINE_BATCH_SIZE = 5;
@@ -185,6 +185,8 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       // L-30: avisos in-app (campana) de renovacion por vencer, facturas vencidas y documentos de empresa por vencer.
       // Despues del barrido y en transacciones propias por organizacion: un aviso fallido nunca cambia el barrido.
       const avisos = await avisarAlertasDelBarrido(deps, sweep, new Date().toISOString().slice(0, 10));
+      // L-27: avisos de garantias por vencer/no entregadas e hitos vencidos (misma pasada, sin cron nuevo).
+      const avisosPostAdjudicacion = await avisarPostAdjudicacion(deps, sweep, mexicoCityDateKey(new Date()));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -200,6 +202,7 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         organizations_checked: sweep.length,
         ...totals,
         avisos_campana: avisos,
+        avisos_post_adjudicacion: avisosPostAdjudicacion,
         corridas: sweep.map((r) => ({
           organization_id: r.organizationId,
           error: r.error ?? null,
