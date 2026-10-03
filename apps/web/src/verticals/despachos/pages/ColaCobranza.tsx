@@ -10,6 +10,7 @@ import {
   Callout,
   Card,
   CardContent,
+  DataTable,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -19,15 +20,9 @@ import {
   NativeSelect,
   PageContainer,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Textarea,
 } from "@atiende/ui";
-import type { StatusTone } from "@atiende/ui";
+import type { DataTableColumna, StatusTone } from "@atiende/ui";
 import { fetchCuentasCobranza } from "../lib/cobranza-client.ts";
 import { formatMoney } from "../lib/format.ts";
 import type { CuentaCobranza } from "../lib/cobranza-client.ts";
@@ -210,6 +205,94 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   const colaNoDisponible = cola !== null && !cola.disponible;
 
+  const colaItems = cola?.disponible ? cola.items : [];
+  const outboxLista = outbox?.disponible ? outbox.lista : [];
+  const columnasCola: DataTableColumna<(typeof colaItems)[number]>[] = [
+    {
+      id: "urgencia",
+      encabezado: "Urgencia",
+      principal: true,
+      valorOrden: (item) => item.cuenta.diasVencido,
+      celda: (item) => <StatusBadge tone={URGENCIA_TONES[item.urgencia]}>{ETIQUETAS_URGENCIA[item.urgencia]}</StatusBadge>,
+    },
+    {
+      id: "cliente",
+      encabezado: "Cliente",
+      valorOrden: (item) => item.cuenta.clienteNombre ?? "",
+      celda: (item) => (
+        <div className="text-muted-foreground">
+          {item.cuenta.clienteNombre ?? "Sin nombre"}
+          <div className="font-mono text-xs">{item.cuenta.rfcReceptor ?? "—"}</div>
+        </div>
+      ),
+    },
+    {
+      id: "gestion",
+      encabezado: "Gestión",
+      celda: (item) => (
+        <div className="text-muted-foreground">
+          {ETIQUETAS_GESTION_TIPO[item.gestion.tipo]}
+          {item.gestion.tipo === "promesa_pago" && (
+            <div className="text-xs tabular-nums">
+              {formatearCentavos(item.gestion.montoPromesaCentavos)} el {item.gestion.fechaPromesa ? formatFechaSolo(item.gestion.fechaPromesa) : "—"}
+            </div>
+          )}
+          {item.gestion.fechaSeguimiento && <div className="text-xs">Seguimiento: {formatFechaSolo(item.gestion.fechaSeguimiento)}</div>}
+          {item.gestion.nota && <div className="max-w-xs whitespace-pre-wrap text-xs">{item.gestion.nota}</div>}
+        </div>
+      ),
+    },
+    {
+      id: "saldo",
+      encabezado: "Saldo",
+      alinear: "right",
+      valorOrden: (item) => item.cuenta.saldoCentavos,
+      celda: (item) => <span className="tabular-nums text-muted-foreground">{formatearCentavos(item.cuenta.saldoCentavos)}</span>,
+    },
+    {
+      id: "vence",
+      encabezado: "Vence",
+      valorOrden: (item) => item.cuenta.fechaVencimiento,
+      celda: (item) => (
+        <div className="text-muted-foreground">
+          {formatFechaSolo(item.cuenta.fechaVencimiento)}
+          <div className="text-xs">{item.cuenta.diasVencido > 0 ? `${item.cuenta.diasVencido} días de atraso` : item.cuenta.diasVencido < 0 ? `vence en ${-item.cuenta.diasVencido} días` : "vence hoy"}</div>
+        </div>
+      ),
+    },
+    ...(puedeGestionar
+      ? [
+          {
+            id: "acciones",
+            encabezado: "Acciones",
+            celda: (item: (typeof colaItems)[number]) => (
+              <div className="flex min-w-44 flex-col gap-1.5">
+                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "cumplida")}>
+                  Cumplida
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "incumplida")}>
+                  Incumplida
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "cancelada")}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEncolar(item)}>
+                  <MessageCircle />
+                  Encolar WhatsApp
+                </Button>
+              </div>
+            ),
+          } satisfies DataTableColumna<(typeof colaItems)[number]>,
+        ]
+      : []),
+  ];
+
+  const columnasOutbox: DataTableColumna<(typeof outboxLista)[number]>[] = [
+    { id: "cliente", encabezado: "Cliente", principal: true, valorOrden: (m) => m.rfcReceptor, celda: (m) => <span className="font-mono text-xs text-muted-foreground">{m.rfcReceptor}</span> },
+    { id: "mensaje", encabezado: "Mensaje", celda: (m) => <span className="max-w-md whitespace-pre-wrap text-sm text-muted-foreground">{m.cuerpo}</span> },
+    { id: "estado", encabezado: "Estado", valorOrden: (m) => m.estado, celda: (m) => <StatusBadge tone={OUTBOX_TONES[m.estado]}>{OUTBOX_ETIQUETAS[m.estado]}</StatusBadge> },
+  ];
+
   return (
     <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -248,69 +331,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
       {cola?.disponible && cola.items.length === 0 && !loading && <EstadoVacio mensaje="No hay gestiones pendientes. Registra una promesa de pago o una llamada con fecha de seguimiento para verla aquí." />}
 
       {cola?.disponible && cola.items.length > 0 && (
-        <Card>
-          <CardContent className="overflow-x-auto p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Urgencia</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Gestión</TableHead>
-                  <TableHead>Saldo</TableHead>
-                  <TableHead>Vence</TableHead>
-                  {puedeGestionar && <TableHead>Acciones</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cola.items.map((item) => (
-                  <TableRow key={item.gestion.id} className="align-top">
-                    <TableCell>
-                      <StatusBadge tone={URGENCIA_TONES[item.urgencia]}>{ETIQUETAS_URGENCIA[item.urgencia]}</StatusBadge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {item.cuenta.clienteNombre ?? "Sin nombre"}
-                      <div className="font-mono text-xs">{item.cuenta.rfcReceptor ?? "—"}</div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {ETIQUETAS_GESTION_TIPO[item.gestion.tipo]}
-                      {item.gestion.tipo === "promesa_pago" && (
-                        <div className="text-xs tabular-nums">
-                          {formatearCentavos(item.gestion.montoPromesaCentavos)} el {item.gestion.fechaPromesa ? formatFechaSolo(item.gestion.fechaPromesa) : "—"}
-                        </div>
-                      )}
-                      {item.gestion.fechaSeguimiento && <div className="text-xs">Seguimiento: {formatFechaSolo(item.gestion.fechaSeguimiento)}</div>}
-                      {item.gestion.nota && <div className="max-w-xs whitespace-pre-wrap text-xs">{item.gestion.nota}</div>}
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{formatearCentavos(item.cuenta.saldoCentavos)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatFechaSolo(item.cuenta.fechaVencimiento)}
-                      <div className="text-xs">{item.cuenta.diasVencido > 0 ? `${item.cuenta.diasVencido} días de atraso` : item.cuenta.diasVencido < 0 ? `vence en ${-item.cuenta.diasVencido} días` : "vence hoy"}</div>
-                    </TableCell>
-                    {puedeGestionar && (
-                      <TableCell>
-                        <div className="flex min-w-44 flex-col gap-1.5">
-                          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "cumplida")}>
-                            Cumplida
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "incumplida")}>
-                            Incumplida
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleResolver(item, "cancelada")}>
-                            Cancelar
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEncolar(item)}>
-                            <MessageCircle />
-                            Encolar WhatsApp
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable etiqueta="Cola de cobranza" columnas={columnasCola} filas={cola.items} obtenerId={(i) => i.gestion.id} atributosFila={(i) => ({ "data-gestion-id": i.gestion.id })} />
       )}
 
       {consentimientos?.disponible && (
@@ -372,30 +393,7 @@ export function ColaCobranzaPage({ apiBaseUrl, token, propertyId, role }: Despac
       )}
 
       {outbox?.disponible && outbox.lista.length > 0 && (
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Mensaje</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {outbox.lista.map((m) => (
-                  <TableRow key={m.id} className="align-top">
-                    <TableCell className="font-mono text-xs text-muted-foreground">{m.rfcReceptor}</TableCell>
-                    <TableCell className="max-w-md whitespace-pre-wrap text-sm text-muted-foreground">{m.cuerpo}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={OUTBOX_TONES[m.estado]}>{OUTBOX_ETIQUETAS[m.estado]}</StatusBadge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable etiqueta="Mensajes de WhatsApp en cola" columnas={columnasOutbox} filas={outbox.lista} obtenerId={(m) => m.id} />
       )}
 
       {mostrarGestion && (
