@@ -25,6 +25,7 @@ import {
 import type { TwoFactorSetup, TwoFactorStatus } from "../lib/two-factor-client.ts";
 import { SeguridadCuentaPagina } from "../../../shell/cuenta/SeguridadCuentaPagina.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
+import { horaEsMx } from "../../../lib/formato-fecha.ts";
 
 type Accion = "activar" | "confirmar" | "regenerar" | "desactivar";
 
@@ -184,7 +185,7 @@ function DosPasosCard({ apiBaseUrl, token, onAviso, onError }: DosPasosCardProps
           <>
             <p className="text-eyebrow text-muted-foreground">
               Te quedan {status.backupCodesRemaining} códigos de respaldo.
-              {status.lockedUntil && ` Verificación bloqueada por intentos fallidos hasta ${new Date(status.lockedUntil).toLocaleTimeString("es-MX")}.`}
+              {status.lockedUntil && ` Verificación bloqueada por intentos fallidos hasta ${horaEsMx(status.lockedUntil)}.`}
             </p>
             <form onSubmit={regenerar} className="flex flex-col gap-2" noValidate>
               <FormField label="Código de tu app o de respaldo">

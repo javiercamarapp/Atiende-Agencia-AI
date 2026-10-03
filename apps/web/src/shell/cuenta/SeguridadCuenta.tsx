@@ -9,6 +9,7 @@ import { Button, Card, EstadoCargando, FormField, Input, StatusBadge, useConfirm
 import { clienteCuenta, describirDispositivo, validarNuevaContrasena } from "./cuenta-client.ts";
 import type { CuentaEstado, SesionesEstado, VerticalCuenta } from "./cuenta-client.ts";
 import { solicitarRestablecerContrasena } from "./cuenta-client.ts";
+import { fechaHoraEsMx } from "../../lib/formato-fecha.ts";
 
 export interface CuentaCardProps {
   readonly apiBaseUrl: string;
@@ -17,10 +18,6 @@ export interface CuentaCardProps {
   /** Muestra un aviso/error global de la pantalla. */
   readonly onAviso: (mensaje: string | null) => void;
   readonly onError: (mensaje: string | null) => void;
-}
-
-function fechaHora(iso: string): string {
-  return new Date(iso).toLocaleString("es-MX", { timeZone: "America/Mexico_City", dateStyle: "medium", timeStyle: "short" });
 }
 
 function mensaje(err: unknown): string {
@@ -215,7 +212,7 @@ export function GoogleCard({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-ui font-medium text-foreground">{g.email}</p>
-                <p className="text-eyebrow text-muted-foreground">Vinculada el {fechaHora(g.linkedAt)}</p>
+                <p className="text-eyebrow text-muted-foreground">Vinculada el {fechaHoraEsMx(g.linkedAt)}</p>
               </div>
               {quitando !== g.id && (
                 <Button size="xs" variant="outline" onClick={() => setQuitando(g.id)} disabled={ocupado}>
@@ -305,7 +302,7 @@ export function SesionesCard({
                       {s.current && <StatusBadge tone="info">Este dispositivo</StatusBadge>}
                     </p>
                     <p className="text-eyebrow text-muted-foreground">
-                      Iniciada el {fechaHora(s.startedAt)} · actividad {fechaHora(s.issuedAt)}
+                      Iniciada el {fechaHoraEsMx(s.startedAt)} · actividad {fechaHoraEsMx(s.issuedAt)}
                     </p>
                   </div>
                   {!s.current && (
