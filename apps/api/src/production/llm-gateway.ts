@@ -151,6 +151,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   COMPUERTA_ESCALAMIENTO_ROLE,
   TITULOS_RESUMENES_ROLE,
   COMPACTACION_HISTORIAL_ROLE,
+  // CHAT-16: Copiloto de superadmin (plataforma). Su llamador real es routes/superadmin-copiloto.ts, con un gateway DEDICADO (ver `buildSuperadminCopilotoLlmGateway`).
+  SUPERADMIN_COPILOTO_ROLE,
 ];
 
 /** Reintento por guardia de cifras: un rol "<vertical>:data_chat_retry" por cada rol de data-chat. */
@@ -269,9 +271,8 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
     killSwitch,
   });
 
-  // El copiloto de superadmin/CFO (SA-33..35) todavia no tiene ruta que lo invoque, pero su escalera
-  // premium ya existe para que se enchufe sin tocar el gateway (su interruptor de plataforma llegara
-  // con ese trabajo: no esta en ALL_PRODUCTION_ROLES a proposito, un test lo ata a core.platform_switch).
+  // El Copiloto de superadmin (CHAT-16) NO usa este gateway (su gasto es de plataforma, no de una organizacion): tiene el suyo
+  // (`buildSuperadminCopilotoLlmGateway`). Su rol se mantiene registrado aqui para que la escalera exista tambien en este gateway.
   for (const role of new Set([...ALL_PRODUCTION_ROLES, SUPERADMIN_COPILOTO_ROLE, ...DATA_CHAT_RETRY_ROLES, ...NEW_PLATFORM_LLM_ROLES])) {
     gateway.registerLadder(role, buildRoleLadder(env, role, models)!);
   }
@@ -324,5 +325,31 @@ export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKi
     killSwitch,
   });
   gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, buildRoleLadder(env, RESUMEN_DIARIO_LLM_ROLE, loadLlmModelsConfig(env))!);
+  return gateway;
+}
+
+/** Topes de defensa en profundidad del gateway DEDICADO del Copiloto de superadmin: en memoria de proceso, por corrida y por dia. El tope MENSUAL propio
+ *  (que si es persistente) lo aplica la ruta contra la bitacora (`core.get_copiloto_plataforma_gasto_mes`). Deliberadamente bajos: un turno son 2
+ *  llamadas con un modelo premium y el uso es de un puñado de superadmins. */
+export const SUPERADMIN_COPILOTO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
+  maxRunUsd: 1,
+  maxTenantDailyUsd: 10,
+};
+
+/**
+ * Gateway DEDICADO al Copiloto de superadmin (CHAT-16) -- SEPARADO del de los tenants por la misma razon que `buildResumenDiarioLlmGateway`: el gateway
+ * compartido ata `usageRecorder`/`orgMonthlyBudgetStore` a `core.llm_usage_daily`/`core.llm_org_budget`, que EXIGEN una organizacion real, y este gasto es
+ * de PLATAFORMA. Tiene su PROPIO circuit breaker y presupuesto en memoria, el interruptor de plataforma (rol `superadmin:copiloto`) y sin registro de uso
+ * por organizacion: el costo real de cada turno lo guarda la bitacora del Copiloto (migracion 0048). `undefined` sin ningun proveedor (fail-closed).
+ */
+export function buildSuperadminCopilotoLlmGateway(env: ApiEnv, engine?: TenancyEngine, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
+  if (!hasAnyProvider(env)) return undefined;
+  const gateway = new LlmGateway({
+    breaker: buildCircuitBreaker(env, engine),
+    budgetStore: new InMemoryBudgetLedgerStore(),
+    budgetLimits: SUPERADMIN_COPILOTO_LLM_BUDGET_LIMITS,
+    killSwitch,
+  });
+  gateway.registerLadder(SUPERADMIN_COPILOTO_ROLE, buildRoleLadder(env, SUPERADMIN_COPILOTO_ROLE, loadLlmModelsConfig(env))!);
   return gateway;
 }

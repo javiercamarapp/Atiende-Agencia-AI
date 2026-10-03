@@ -220,11 +220,11 @@ rollback;
 
 -- ═══ core.get_agent_panel_for_superadmin ═══
 
-\echo '=== 25. panel: el superadmin ve las 14 filas del catalogo sembrado ==='
+\echo '=== 25. panel: el superadmin ve las 15 filas del catalogo sembrado (14 de la 0044 + superadmin:copiloto de la 0048) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000001a3', true);
-select count(*) as deberia_ser_14 from core.get_agent_panel_for_superadmin('00000000-0000-0000-0000-0000000001a3', current_date);
+select count(*) as deberia_ser_15 from core.get_agent_panel_for_superadmin('00000000-0000-0000-0000-0000000001a3', current_date);
 rollback;
 
 \echo '=== 26. panel: corridas de 30 dias del agente = 3 (la de 40 y la de 100 dias quedan fuera de la ventana) ==='
