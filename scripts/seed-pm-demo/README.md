@@ -15,7 +15,8 @@ SEED_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/atiende_demo \
 Con `--demo` la cuenta se carga como **demo**: slug `los-taquitos-de-pm-demo`, nombre "Los Taquitos de PM (demo)" y marca en
 `restaurantes.demo_organization` (migracion 037: la exige el preflight). Es la cuenta que atiende el widget publico `/demo/:orgSlug`
 y la que borra `limpiar-demo.ts`. Sin `--demo` el seed se comporta como siempre (la cuenta real de PM, sin marca). El runbook
-completo de carga y limpieza esta en `docs/DEMO-PM-CARGA.md`.
+completo de carga y limpieza esta en `docs/demo-pm/runbook.md`; el comando unico que encadena seed, volumen del perfil T7, limpieza de ensayos y
+verificacion es `npm run demo:pm` (`demo-pm.mjs`; la verificacion de solo lectura es `verificar-demo.ts`, `npm run demo:verificar`).
 
 Salvaguardas (`packages/domain-restaurantes/src/seed/target-safety.ts`, con tests):
 - Sin `--apply` nunca escribe. Solo lee `SEED_DATABASE_URL` (a proposito **no** `DATABASE_URL`).
