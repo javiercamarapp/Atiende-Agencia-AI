@@ -47,6 +47,7 @@ import {
 import type { PortalClienteRepository, PortalDisponible } from "@atiende/domain-despachos";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
+import { exigirStepUpDespachos } from "./step-up.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { ingestarXmlCfdiDespachos } from "./cfdi.ts";
@@ -213,6 +214,8 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/portal-cliente/enlaces", async (c) => {
     assertVerticalRole(c, GESTIONAR_PORTAL_CLIENTE_ROLES);
+    // D-30: un enlace nuevo da acceso a un tercero -> segundo factor reciente.
+    await exigirStepUpDespachos(deps, c);
     const raw = await readJsonCapped<{ etiqueta?: unknown; dias?: unknown }>(c.req.raw, 4 * 1024);
     const etiqueta = typeof raw.etiqueta === "string" ? raw.etiqueta.trim() : "";
     if (etiqueta.length < 1 || etiqueta.length > 80) throw Errors.validation("etiqueta: debe tener entre 1 y 80 caracteres.");
@@ -242,6 +245,8 @@ export function despachosPortalClienteRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/portal-cliente/enlaces/:enlaceId/revocar", async (c) => {
     assertVerticalRole(c, GESTIONAR_PORTAL_CLIENTE_ROLES);
+    // D-30: revocar un enlace tambien es una accion sensible del portal -> segundo factor reciente.
+    await exigirStepUpDespachos(deps, c);
     const enlaceId = requireUuid(c.req.param("enlaceId"), "enlaceId");
     const propertyId = c.req.param("propertyId");
     const revocado = exigirDisponible(await staff(() => repoDe(c.get("db")).revocarEnlace(propertyId, enlaceId)));

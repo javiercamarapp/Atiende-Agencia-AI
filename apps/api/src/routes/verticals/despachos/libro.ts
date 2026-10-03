@@ -45,6 +45,7 @@ import {
 } from "@atiende/domain-despachos";
 import type { CarteraRepository, LibroRepository } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
+import { exigirStepUpDespachos } from "./step-up.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
@@ -263,6 +264,8 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.get("/despachos/:propertyId/libro/contabilidad-electronica", async (c) => {
     assertVerticalRole(c, VER_LIBRO_ROLES);
+    // D-30: misma exportacion fiscal que `POST .../contabilidad-electronica/paquete` (desde el libro) -> mismo segundo factor.
+    await exigirStepUpDespachos(deps, c);
     const propertyId = c.req.param("propertyId");
     const db = c.get("db");
     const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(deps.despachosRepo(db), propertyId));

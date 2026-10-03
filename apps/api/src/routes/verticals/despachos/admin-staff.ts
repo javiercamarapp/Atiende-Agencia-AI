@@ -35,6 +35,7 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import { MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
+import { exigirStepUpDespachos } from "./step-up.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -135,6 +136,8 @@ export function despachosAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // D-30: invitar da acceso al despacho -> segundo factor reciente.
+    await exigirStepUpDespachos(deps, c);
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const staffId = c.get("userId");
@@ -228,6 +231,8 @@ export function despachosAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
 
   app.delete(itemPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // D-30: revocar una invitacion -> segundo factor reciente.
+    await exigirStepUpDespachos(deps, c);
     const organizationId = c.get("organizationId");
     const inviteId = c.req.param("inviteId");
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
@@ -249,6 +254,8 @@ export function despachosAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   // migración) — ver el comentario completo en restaurantes/admin-staff.ts.
   app.patch(miembroItemPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
+    // D-30: cambiar el rol de un miembro -> segundo factor reciente.
+    await exigirStepUpDespachos(deps, c);
     const organizationId = c.get("organizationId");
     const callerUserId = c.get("userId");
     const targetUserId = c.req.param("userId");

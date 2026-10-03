@@ -36,6 +36,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
+import { exigirStepUpDespachos } from "./step-up.ts";
 
 function optionalNumber(value: unknown, field: string, fallback: number): number {
   if (value === undefined || value === null) return fallback;
@@ -197,6 +198,8 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar", async (c) => {
     assertVerticalRole(c, CERRAR_PERIODO_ROLES);
+    // D-30: cerrar un periodo es irreversible -> segundo factor reciente (x-step-up-token, alcance despachos_sensitive).
+    await exigirStepUpDespachos(deps, c);
     // Cierre de período: acción IRREVERSIBLE sobre un período fiscal (sin
     // reapertura implementada, ver CierreMensualDetalle.tsx). El actor SIEMPRE
     // viene de la sesión autenticada, NUNCA de `raw.userId` -- ver comentario del
