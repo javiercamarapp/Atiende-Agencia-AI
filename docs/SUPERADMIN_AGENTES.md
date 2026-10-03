@@ -56,3 +56,27 @@ SQLSTATE) y base sin migrar omitida en silencio. Nunca tumba ni altera la corrid
 
 Aplicar `0044` (espejo `20240101000281`) antes o despues del codigo: sin ella, el panel responde `disponible: false`
 y las corridas no se escriben, sin ningun error en los flujos existentes.
+
+## Fichas de agente y Model Ops (SA-L-09, SA-L-10)
+
+Solo lectura. Rutas web: `/superadmin/agente-extractor`, `/superadmin/agente-conciliacion`, `/superadmin/agente-whatsapp` y `/superadmin/model-ops`
+(seccion Agentes de `apps/web/src/superadmin/rutas.ts`). Endpoints: `GET /superadmin/agentes/:ficha` (`extractor`, `conciliacion`, `whatsapp`; cualquier
+otro nombre es 404 y `/superadmin/agentes/corridas` sigue siendo la bitacora de corridas) y `GET /superadmin/model-ops`, en
+`apps/api/src/routes/superadmin-agentes-fichas.ts`, detras de la misma cadena de `routes/superadmin.ts`.
+
+Fuentes (migracion `0049_superadmin_fichas_agente`, mas `0042` para llamadas por rol y conversaciones de WhatsApp):
+
+| Cifra | Fuente |
+| --- | --- |
+| Gastado, llamadas, fallbacks (historico) | `core.get_consola_agentes_actividad_for_superadmin` (0042) sobre `core.llm_usage_daily` |
+| Costo por modelo (30 dias) y carril real | `core.get_fichas_modelos_por_rol_for_superadmin` |
+| Barras de 7 dias | `core.get_fichas_actividad_diaria_for_superadmin` |
+| Documentos extraidos | `core.get_fichas_documentos_extraidos_for_superadmin` (requisitos con `extracted_by = 'llm'` no invalidados) |
+| Movimientos conciliados | `core.get_fichas_conciliados_for_superadmin` (matches vigentes de `despachos.conciliacion_match`) |
+| Minutos y costo de voz | `core.get_fichas_voz_por_vertical_for_superadmin` (`core.usage_cost_event`, categoria `voz`) |
+| Conversaciones de WhatsApp | `core.get_consola_conversaciones_wa_for_superadmin` (0042) |
+| Modelo y proveedores por rol | `resolveRoleRoute` (defaults + `LLM_MODELS_JSON`), sin secretos |
+
+Reglas: un campo sin fuente es `{ valor: null, codigo, razon }` (la pagina pinta "—" con el motivo, nunca 0); base sin migrar es 200 con `disponible: false`.
+La precision del extractor no esta medida (no hay verdad de terreno) y el estado del circuit breaker se muestra "no legible" (vive en memoria de cada instancia o
+en Upstash; este endpoint no lo consulta). Model Ops no versiona prompts ni cambia modelos: el modelo de cada rol se cambia con `LLM_MODELS_JSON`.
