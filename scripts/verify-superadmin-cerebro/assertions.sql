@@ -1,4 +1,4 @@
--- SA-L-37/38/41 (migracion 0049) -- verificacion contra Postgres REAL del modelo de datos del Cerebro de ventas.
+-- SA-L-37/38/41 (migracion 0051) -- verificacion contra Postgres REAL del modelo de datos del Cerebro de ventas.
 -- Cada escenario corre en su propio `begin; ... rollback;`. Alias `should_fail` = debe terminar en ERROR;
 -- alias `..._deberia_ser_N` = el ultimo valor (entero) esperado (ver scripts/verify-real-postgres-ci/run-gate.mjs).
 -- Sesion de usuario real = rol authenticated con request.jwt.claim.sub = su id. Datos ficticios.

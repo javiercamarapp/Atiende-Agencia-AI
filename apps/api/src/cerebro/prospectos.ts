@@ -1,5 +1,5 @@
 // Prospectos del Cerebro de ventas (SA-L-37): lectura, validacion, guardado con scoring determinista (SA-L-41), personas
-// de contacto y linea de tiempo. Las funciones SQL (migracion 0049) exigen caller-binding y superadmin; aqui solo se valida
+// de contacto y linea de tiempo. Las funciones SQL (migracion 0051) exigen caller-binding y superadmin; aqui solo se valida
 // la forma, se calcula el score con el modulo determinista y se guarda junto con su version y su explicacion.
 //
 // El cerebro PROPONE y el humano envia: nada de este modulo contacta a nadie. Aislamiento: solo lee core.prospecto y sus

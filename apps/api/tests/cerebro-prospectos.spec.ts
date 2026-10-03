@@ -212,7 +212,7 @@ describe("GET /superadmin/cerebro/prospectos", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { disponible: boolean; mensaje: string; prospectos: Array<Record<string, unknown>>; taxonomias: unknown[] };
     expect(body.disponible).toBe(false);
-    expect(body.mensaje).toContain("migración 0049");
+    expect(body.mensaje).toContain("migración 0051");
     expect(body.prospectos[0]).toMatchObject({ id: PROSPECTO_ID, empresa: "Taquería Ficticia", scoreAjuste: null, baseLicitud: null });
     expect(body.taxonomias).toEqual([]);
     await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });

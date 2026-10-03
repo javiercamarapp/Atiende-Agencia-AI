@@ -9,7 +9,7 @@
 //   PUT  /superadmin/cerebro/taxonomia/:vertical    editar = version nueva; exige step-up MFA (SENSITIVE_ROUTES)
 //
 // Autenticacion, gateo de superadmin y step-up montados una vez en routes/superadmin.ts sobre `/superadmin/*`; la autoridad
-// real sigue en SQL (core.platform_superadmin + caller-binding). Ver docs/SUPERADMIN_CEREBRO.md y la migracion 0049.
+// real sigue en SQL (core.platform_superadmin + caller-binding). Ver docs/SUPERADMIN_CEREBRO.md y la migracion 0051.
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { ApiError } from "@atiende/core-auth";

@@ -1,4 +1,4 @@
-// Acceso al Cerebro de ventas (migracion 0049) desde el API: deteccion de "migracion pendiente" y aviso estructurado.
+// Acceso al Cerebro de ventas (migracion 0051) desde el API: deteccion de "migracion pendiente" y aviso estructurado.
 //
 // Contra la base SIN migrar (SQLSTATE 42883 funcion inexistente, 42P01 tabla inexistente, 42703 columna inexistente)
 // el Cerebro responde 200 con `disponible: false` y la lista de prospectos sigue funcionando por el camino anterior;
@@ -11,7 +11,7 @@ export function codigoPg(err: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-/** `true` si el error es "tabla/funcion/columna inexistente" (migracion 0049 pendiente). */
+/** `true` si el error es "tabla/funcion/columna inexistente" (migracion 0051 pendiente). */
 export function esCerebroNoMigrado(err: unknown): boolean {
   const code = codigoPg(err);
   return code !== undefined && SQLSTATE_NO_MIGRADO.has(code);
@@ -23,4 +23,4 @@ export function avisarCerebroNoMigrado(contexto: string): void {
 }
 
 export const CEREBRO_NO_DISPONIBLE =
-  "El Cerebro de ventas todavía no está disponible en este despliegue: requiere aplicar la migración 0049_cerebro_ventas_base.";
+  "El Cerebro de ventas todavía no está disponible en este despliegue: requiere aplicar la migración 0051_cerebro_ventas_base.";

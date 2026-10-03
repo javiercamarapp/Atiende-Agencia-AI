@@ -1,6 +1,6 @@
 # verify-superadmin-cerebro
 
-Verificación contra Postgres real de `packages/db/migrations/0049_cerebro_ventas_base.sql`
+Verificación contra Postgres real de `packages/db/migrations/0051_cerebro_ventas_base.sql`
 (SA-L-37 modelo de datos, SA-L-38 taxonomía por vertical, SA-L-41 persistencia del scoring).
 
 - `run.sh` -- manual, con `initdb`/`pg_ctl`/`psql` locales.

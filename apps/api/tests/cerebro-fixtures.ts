@@ -1,4 +1,4 @@
-// Doble de prueba del Cerebro de ventas: filas con la forma de las funciones SQL de la migracion 0049 y una app Hono minima con
+// Doble de prueba del Cerebro de ventas: filas con la forma de las funciones SQL de la migracion 0051 y una app Hono minima con
 // una sesion AbortAwareFakeSession (reproduce el estado abortado de Postgres: una sesion falsa plana NO sirve para el fallback).
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";

@@ -184,7 +184,7 @@ export function toScoringTaxonomia(t: TaxonomiaVersion | undefined): TaxonomiaSc
 // ---- Validacion del contenido editado (antes de tocar la base) ----
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_]{1,59}$/;
-// Promesas de cifras: porcentajes, montos y "garantiza". Espejo (mas estricto) del guard SQL de la migracion 0049.
+// Promesas de cifras: porcentajes, montos y "garantiza". Espejo (mas estricto) del guard SQL de la migracion 0051.
 const PROMESA_CIFRAS_RE = /([0-9][0-9.,]*\s*%|\$\s*[0-9]|[0-9]\s*(mxn|pesos)|garantiz)/iu;
 // Licitaciones: nunca prometer adjudicaciones ni insinuar influencia.
 const PROMESA_LICITACION_RE = /(adjudic|influenc|contactos? en (la )?(dependencia|gobierno))/iu;
