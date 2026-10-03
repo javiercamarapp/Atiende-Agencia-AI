@@ -189,7 +189,11 @@ grant execute on function public.verify_hid_of(text) to public;
 \echo '=== 1. sin fila de politica el canal web esta deshabilitado (fail-closed): web_booking_policy lo dice y crear un hold falla (55000) sin retener nada ==='
 begin;
 select public.verify_as('');
-select public.verify_assert((select not web_enabled and not holds_enabled and web_deposit_pct = 0 from hoteles.web_booking_policy('00000000-0000-0000-0000-0000000a1a01')), 'sin fila: web deshabilitado y sin anticipo');
+select public.verify_assert((select not web_enabled and not holds_enabled and web_deposit_pct = 0 and free_until_hours is null and penalty_pct is null from hoteles.web_booking_policy('00000000-0000-0000-0000-0000000a1a01')), 'sin fila: web deshabilitado, sin anticipo y sin terminos de cancelacion');
+select public.verify_su();
+insert into hoteles.cancellation_policy (property_id, organization_id, free_until_hours, penalty_pct) values ('00000000-0000-0000-0000-0000000a1a01', '00000000-0000-0000-0000-00000000a001', 48, 0.25);
+select public.verify_as('');
+select public.verify_assert((select free_until_hours = 48 and penalty_pct = 0.25 from hoteles.web_booking_policy('00000000-0000-0000-0000-0000000a1a01')), 'la politica publica trae los terminos de cancelacion vigentes');
 select public.verify_expect_error($q$select public.verify_web_hold('web-sin-politica-1')$q$, '55000');
 select public.verify_su();
 select count(*) as nada_retenido_deberia_ser_0 from hoteles.availability where booked_rooms > 0;

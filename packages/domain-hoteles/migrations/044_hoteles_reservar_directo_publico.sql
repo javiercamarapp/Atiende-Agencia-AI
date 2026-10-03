@@ -116,12 +116,15 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 2) Funciones del canal web (SOLO sesion de sistema: auth.uid() is null). Nunca confian en un precio, un rol ni un reloj del cliente.
 -- ---------------------------------------------------------------------------
--- Politica publica del hotel para el canal web: si esta habilitado y que anticipo pide. No expone topes internos.
+-- Politica publica del hotel para el canal web: si esta habilitado, que anticipo pide y los terminos de cancelacion vigentes (para mostrarlos ANTES
+-- de reservar). No expone topes internos (max_active_holds) ni datos de huespedes.
 create or replace function hoteles.web_booking_policy(p_property_id uuid)
-returns table (web_enabled boolean, holds_enabled boolean, web_deposit_pct numeric, hold_ttl_minutes integer, max_nights integer, max_guests integer, max_advance_days integer)
+returns table (web_enabled boolean, holds_enabled boolean, web_deposit_pct numeric, hold_ttl_minutes integer, max_nights integer, max_guests integer, max_advance_days integer,
+               free_until_hours integer, penalty_pct numeric)
 language plpgsql stable security definer set search_path = core, hoteles, pg_temp as $$
 declare
   pol hoteles.booking_agent_policy;
+  cp hoteles.cancellation_policy;
 begin
   if auth.uid() is not null then
     raise exception 'solo la sesion de sistema (reserva publica) consulta la politica' using errcode = '42501';
@@ -130,7 +133,9 @@ begin
     raise exception 'property no encontrada' using errcode = 'P0002';
   end if;
   pol := hoteles.booking_policy_of(p_property_id);
-  return query select pol.web_enabled, pol.holds_enabled, pol.web_deposit_pct, pol.hold_ttl_minutes, pol.max_nights, pol.max_guests, pol.max_advance_days;
+  select * into cp from hoteles.cancellation_policy where property_id = p_property_id;
+  return query select pol.web_enabled, pol.holds_enabled, pol.web_deposit_pct, pol.hold_ttl_minutes, pol.max_nights, pol.max_guests, pol.max_advance_days,
+                      cp.free_until_hours, cp.penalty_pct;
 end;
 $$;
 
