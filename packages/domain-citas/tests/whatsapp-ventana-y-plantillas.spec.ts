@@ -260,3 +260,59 @@ describe("PostgresCitasRepository: base sin la migracion 0048 (AbortAwareFakeSes
     expect(await new PostgresCitasRepository(session).lastInboundWhatsappAt("org-a", "5219981110001")).toBeNull();
   });
 });
+
+describe("PostgresCitasRepository: catalogo de plantillas (AbortAwareFakeSession)", () => {
+  const entrada = { nombre: "recordatorio_cita_24h", idioma: "es_MX", variables: ["nombre", "hora"], estado: "aprobada" as const };
+  const sinMigrar = (fn: string) => Object.assign(new Error(`relation "${fn}" does not exist`), { code: "42P01" });
+
+  it("lista, guarda y borra con las filas reales de la tabla y manda variables como arreglo, nunca como texto armado", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /select evento, nombre/, respond: () => [{ evento: "appointment.reminder_24h", nombre: "recordatorio_cita_24h", idioma: "es_MX", variables: ["nombre"], estado: "aprobada", aprobada_en: new Date("2026-09-01T00:00:00.000Z"), updated_at: "2026-09-02T00:00:00.000Z" }] },
+      { match: /insert into core\.whatsapp_plantilla/, respond: () => [] },
+      { match: /delete from core\.whatsapp_plantilla/, respond: () => [{ id: "x" }] },
+    ]);
+    const spy = vi.spyOn(session, "query");
+    const repo = new PostgresCitasRepository(session);
+    expect(await repo.listWhatsappTemplates("org-a")).toEqual({ disponible: true, items: [{ evento: "appointment.reminder_24h", nombre: "recordatorio_cita_24h", idioma: "es_MX", variables: ["nombre"], estado: "aprobada", aprobadaEn: "2026-09-01T00:00:00.000Z", actualizadaEn: "2026-09-02T00:00:00.000Z" }] });
+    expect(await repo.saveWhatsappTemplate("org-a", "appointment.reminder_24h", entrada)).toBe("saved");
+    expect(await repo.deleteWhatsappTemplate("org-a", "appointment.reminder_24h")).toBe("deleted");
+    const insert = spy.mock.calls.find((c) => String(c[0]).includes("insert into core.whatsapp_plantilla"))!;
+    expect(insert[1]).toEqual(["org-a", "appointment.reminder_24h", "recordatorio_cita_24h", "es_MX", ["nombre", "hora"], "aprobada"]);
+  });
+
+  it("sin la migracion 0048: list devuelve disponible:false, save/delete unavailable, y la sesion queda utilizable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const session = new AbortAwareFakeSession([
+      { match: /select evento, nombre/, respond: () => sinMigrar("core.whatsapp_plantilla") },
+      { match: /insert into core\.whatsapp_plantilla/, respond: () => sinMigrar("core.whatsapp_plantilla") },
+      { match: /delete from core\.whatsapp_plantilla/, respond: () => sinMigrar("core.whatsapp_plantilla") },
+      { match: /select 1/, respond: () => [{ ok: 1 }] },
+    ]);
+    const repo = new PostgresCitasRepository(session);
+    expect(await repo.listWhatsappTemplates("org-a")).toEqual({ disponible: false, items: [] });
+    expect(await repo.saveWhatsappTemplate("org-a", "appointment.reminder_24h", entrada)).toBe("unavailable");
+    expect(await repo.deleteWhatsappTemplate("org-a", "appointment.reminder_24h")).toBe("unavailable");
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [{ ok: 1 }] });
+    warn.mockRestore();
+  });
+
+  it("un staff que no es owner/admin de la organizacion (42501 de la RLS) recibe forbidden, no 500, y la sesion sigue utilizable", async () => {
+    const denegado = () => Object.assign(new Error('new row violates row-level security policy for table "whatsapp_plantilla"'), { code: "42501" });
+    const session = new AbortAwareFakeSession([
+      { match: /insert into core\.whatsapp_plantilla/, respond: denegado },
+      { match: /delete from core\.whatsapp_plantilla/, respond: denegado },
+      { match: /select 1/, respond: () => [{ ok: 1 }] },
+    ]);
+    const repo = new PostgresCitasRepository(session);
+    expect(await repo.saveWhatsappTemplate("org-a", "appointment.reminder_24h", entrada)).toBe("forbidden");
+    expect(await repo.deleteWhatsappTemplate("org-a", "appointment.reminder_24h")).toBe("forbidden");
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [{ ok: 1 }] });
+  });
+
+  it("un delete sin filas es not_found; otros errores de Postgres se propagan", async () => {
+    const vacio = new AbortAwareFakeSession([{ match: /delete from core\.whatsapp_plantilla/, respond: () => [] }]);
+    expect(await new PostgresCitasRepository(vacio).deleteWhatsappTemplate("org-a", "appointment.reminder_24h")).toBe("not_found");
+    const roto = new AbortAwareFakeSession([{ match: /insert into core\.whatsapp_plantilla/, respond: () => Object.assign(new Error("deadlock detected"), { code: "40P01" }) }]);
+    await expect(new PostgresCitasRepository(roto).saveWhatsappTemplate("org-a", "appointment.reminder_24h", entrada)).rejects.toMatchObject({ code: "40P01" });
+  });
+});
