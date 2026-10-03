@@ -34,6 +34,8 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "plataforma:compuerta_escalamiento",
   "plataforma:titulos_resumenes",
   "plataforma:compactacion_historial",
+  // CHAT-16: Copiloto de superadmin. Apagado: el turno responde sin llamar al modelo (consultas directas disponibles).
+  "superadmin:copiloto",
 ];
 
 /** Crons detenibles (path exacto de vercel.json / withHeartbeat). */
