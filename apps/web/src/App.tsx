@@ -31,6 +31,7 @@ import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
+import { SuperAdminTaxonomiaPage } from "./superadmin/pages/Taxonomia.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminGastoApiPage } from "./superadmin/pages/GastoApi.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
@@ -466,6 +467,15 @@ function SuperAdminPrivacidadRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminPrivacidadPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminTaxonomiaRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminTaxonomiaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1117,7 +1127,8 @@ export function App() {
         <Route path="/pedir/:orgSlug/:branchSlug" element={<StorefrontSucursalRoute />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
-        <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
+        <Route path="/superadmin/cerebro" element={<SuperAdminProspectosRoute />} />
+        <Route path="/superadmin/cerebro/taxonomia" element={<SuperAdminTaxonomiaRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
         <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
