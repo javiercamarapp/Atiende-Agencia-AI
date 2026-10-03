@@ -91,7 +91,7 @@ describe("SuperAdminShell — nav móvil", () => {
       expect(categoriasAbiertas(root)).toEqual([sec.title]);
       expect(linksSidebar(root)).toEqual(["Resumen", ...sec.items.map((i) => i.label)]);
     }
-    const pie = [...root.querySelectorAll<HTMLAnchorElement>("aside > div a")].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
+    const pie = [...root.querySelectorAll<HTMLAnchorElement>('aside[aria-label="Navegación principal"] > div a')].map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")]);
     expect(pie).toEqual(PIE_SUPERADMIN.map((p) => [p.label, p.to]));
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Root", rol: "Superadmin" });
   });
@@ -118,14 +118,14 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(hrefs).toContain("/superadmin/integraciones");
   });
 
-  it("campana y cerrar sesión son alcanzables en móvil, sin Chatea con tus datos (no aplica a plataforma)", async () => {
+  it("campana y cerrar sesión son alcanzables en móvil, y 'Chatea con tus datos' abre el Copiloto (CHAT-17)", async () => {
     const onRequireLogin = vi.fn();
     rendered = await renderShell(onRequireLogin);
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
     expect(mobileHeader.querySelector('a[aria-label^="Notificaciones"]')).not.toBeNull();
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
-    expect(hoja.textContent).not.toContain("Chatea con tus datos");
+    expect(hoja.textContent).toContain("Chatea con tus datos");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     await act(async () => {
