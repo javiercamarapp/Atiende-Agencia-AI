@@ -22,7 +22,7 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
       agentName: null,
       escalationReasonsOff: [],
     });
-    expect(plan.whatsappAgent.deliveryTimeText).toMatch(/^de 40 a 50 minutos/);
+    expect(plan.whatsappAgent.deliveryTimeText).toMatch(/^a domicilio de 60 a 75 min \(pico: 75 a 90\); para recoger de 25 a 35 min/);
     expect(plan.whatsappAgent.salsasText).toContain("guacamolera");
   });
 
@@ -66,7 +66,7 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(prompt).toMatch(/usted/i);
     expect(prompt).toContain("lunes 2x1 en tacos al pastor, solo para recoger");
     expect(prompt).toContain("Los Taquitos de PM");
-    expect(prompt).toContain("de 40 a 50 minutos");
+    expect(prompt).toContain("a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)");
   });
 
   it("la regla de '3 de bistec' queda documentada en los datos para que el guion y la prueba la usen", () => {
