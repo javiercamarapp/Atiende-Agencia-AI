@@ -4,13 +4,13 @@ import { detectarOptOut, normalizarTextoOptOut } from "../src/opt-out.ts";
 
 describe("detectarOptOut", () => {
   it("baja: palabra sola en cualquier formato (mayusculas, acentos, signos, emojis, cortesias)", () => {
-    for (const t of ["BAJA", "baja", " Stop ", "STOP.", "¡Alto!", "ALTO", "no más mensajes", "NO MAS MENSAJES", "No quiero más mensajes", "darme de baja", "Dar de baja", "unsubscribe", "BAJA 🙏", "hola, baja", "baja por favor", "stop gracias", "cancelar suscripción"]) {
+    for (const t of ["BAJA", "baja", " Stop ", "STOP.", "¡Alto!", "ALTO", "no más mensajes", "NO MAS MENSAJES", "No quiero más mensajes", "darme de baja", "Dar de baja", "unsubscribe", "BAJA 🙏", "cancelar suscripción"]) {
       expect(detectarOptOut(t), t).toBe("baja");
     }
   });
 
   it("alta: reactiva con ALTA/START y frases cortas", () => {
-    for (const t of ["ALTA", "alta", "Start", "START!", "quiero recibir mensajes", "reactivar avisos", "alta por favor"]) {
+    for (const t of ["ALTA", "alta", "Start", "START!", "quiero recibir mensajes", "reactivar avisos"]) {
       expect(detectarOptOut(t), t).toBe("alta");
     }
   });
@@ -28,6 +28,8 @@ describe("detectarOptOut", () => {
       "Confirmar",
       "alta de mi expediente",
       "quiero dar de alta a mi esposa en la clinica",
+      "stop por favor",
+      "hola, baja",
       "start the booking now please I need to talk about my appointment today",
     ]) {
       expect(detectarOptOut(t), t).toBeNull();

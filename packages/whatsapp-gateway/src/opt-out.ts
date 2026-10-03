@@ -50,14 +50,13 @@ const FRASES_ALTA: ReadonlySet<string> = new Set([
   "suscribirme",
 ]);
 
-/** Minusculas, sin acentos, sin signos ni emojis en los bordes, espacios colapsados y sin cortesias finales/iniciales. */
+/** Minusculas, sin acentos, sin signos ni emojis, espacios colapsados. NO quita cortesias: "stop por favor" ya es una frase, no la orden sola. */
 export function normalizarTextoOptOut(texto: string): string {
   if (typeof texto !== "string") return "";
   let t = texto.normalize("NFD").replace(/[̀-ͯ]/gu, "").toLowerCase();
   // Sustituye todo lo que no sea letra, numero o espacio por espacio: quita puntuacion, emojis y signos de apertura.
   t = t.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/gu, " ").trim();
-  t = t.replace(/^(hola|buenas|buenos dias|buenas tardes|buenas noches) /u, "").replace(/ (por favor|porfa|gracias|pls|please)$/u, "").replace(/^por favor /u, "");
-  return t.trim();
+  return t;
 }
 
 /** Clasifica un mensaje entrante: `"baja"`, `"alta"` o `null` (texto normal, sigue al agente). */

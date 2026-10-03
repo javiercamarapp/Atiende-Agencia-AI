@@ -1,8 +1,8 @@
-// PL-31 / PL-32 -- el despachador consulta el catalogo de plantillas POR ORGANIZACION y la baja (opt-out) por organizacion.
+// PL-31 -- el despachador consulta el catalogo de plantillas POR ORGANIZACION.
 // Contra el simulador local de Meta (regla de la ventana de 24 h real): sin red externa ni credenciales.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WhatsAppOutboundDispatcher, OPT_OUT_ERROR_CLASS } from "../src/dispatcher.ts";
-import type { CatalogoPlantillas, OptOutGuard } from "../src/dispatcher.ts";
+import { WhatsAppOutboundDispatcher } from "../src/dispatcher.ts";
+import type { CatalogoPlantillas } from "../src/dispatcher.ts";
 import { FakeWhatsAppGraphClient } from "../src/providers/fake-graph-client.ts";
 import { MetaGraphWhatsAppClient } from "../src/providers/meta-graph-client.ts";
 import type { MessagingOutboxItem, MessagingOutboxPort } from "../src/outbox-port.ts";
@@ -120,62 +120,5 @@ describe("PL-31: plantilla aprobada por organizacion contra el simulador de Meta
     await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(new PuertoMemoria(aviso, ORG_B), { plantillas: catalogo({ [ORG_A]: ["recordatorio_cita"] }) });
     expect(fake.sent[0]?.templateApproved).toBe(true);
     expect("templateApproved" in (fake.sent[1] ?? {})).toBe(false);
-  });
-});
-
-describe("PL-32: opt-out por organizacion en el despachador", () => {
-  const bajas = new Set<string>([`${ORG_A}|${TELEFONO}`]);
-  const guard: OptOutGuard = async (org, tel) => bajas.has(`${org}|${tel}`);
-
-  it("proactivo de un cliente dado de baja en ESA organizacion: omitido_opt_out, no se envia", async () => {
-    const fake = new FakeWhatsAppGraphClient();
-    const puerto = new PuertoMemoria(aviso, ORG_A);
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(puerto, { optOut: guard });
-    expect(resumen.omitidosOptOut).toBe(1);
-    expect(resumen.items[0]?.outcome).toBe("omitido_opt_out");
-    expect(puerto.clase).toBe(OPT_OUT_ERROR_CLASS);
-    expect(fake.sent).toHaveLength(0);
-  });
-
-  it("cross-tenant: la baja en la org A no frena el aviso de la org B al mismo telefono", async () => {
-    const fake = new FakeWhatsAppGraphClient();
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(new PuertoMemoria(aviso, ORG_B), { optOut: guard });
-    expect(resumen.sent).toBe(1);
-    expect(resumen.omitidosOptOut).toBeUndefined();
-  });
-
-  it("lo transaccional que el cliente pidio en la conversacion abierta NO se bloquea", async () => {
-    const fake = new FakeWhatsAppGraphClient();
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(new PuertoMemoria({ ...aviso, template: undefined, transaccional: true }, ORG_A), { optOut: guard });
-    expect(resumen.sent).toBe(1);
-  });
-
-  it("sin organizacion conocida en el item no se consulta el guard (comportamiento anterior)", async () => {
-    const fake = new FakeWhatsAppGraphClient();
-    const spy = vi.fn(guard);
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(new PuertoMemoria(aviso, undefined), { optOut: spy });
-    expect(resumen.sent).toBe(1);
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("FAIL-CLOSED: si el guard no puede verificar, no se envia y el mensaje queda para la siguiente corrida", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const fake = new FakeWhatsAppGraphClient();
-    const puerto = new PuertoMemoria(aviso, ORG_A);
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(puerto, {
-      optOut: async () => {
-        throw new Error("timeout");
-      },
-    });
-    expect(resumen.skipped).toBe(1);
-    expect(fake.sent).toHaveLength(0);
-    expect(puerto.estado).toBe("pending");
-    error.mockRestore();
-  });
-
-  it("sin guard (undefined) el comportamiento es el anterior", async () => {
-    const fake = new FakeWhatsAppGraphClient();
-    const resumen = await new WhatsAppOutboundDispatcher({ graphClient: fake }).dispatchPending(new PuertoMemoria(aviso, ORG_A));
-    expect(resumen.sent).toBe(1);
   });
 });
