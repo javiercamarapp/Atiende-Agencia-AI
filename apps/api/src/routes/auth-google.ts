@@ -51,10 +51,11 @@ function isVertical(v: unknown): v is Vertical {
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const VINCULAR_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
 
-/** Regreso del flujo "vincular Google" a Seguridad de la cuenta: ruta ARMADA aqui (vertical fija + slug
- *  validado por regex), nunca una URL recibida del navegador (sin redireccion abierta). */
-function vincularRetornoUrl(appBaseUrl: string, orgSlug: string | undefined, resultado: string): URL {
-  const url = new URL(orgSlug && SLUG_RE.test(orgSlug) ? `/licitaciones/${orgSlug}/seguridad` : "/licitaciones/login", appBaseUrl);
+/** Regreso del flujo "vincular Google" a Seguridad de la cuenta: ruta ARMADA aqui (vertical de la lista cerrada
+ *  que viaja firmada en el `state` + slug validado por regex), nunca una URL recibida del navegador (sin
+ *  redireccion abierta). */
+function vincularRetornoUrl(appBaseUrl: string, vertical: Vertical, orgSlug: string | undefined, resultado: string): URL {
+  const url = new URL(orgSlug && SLUG_RE.test(orgSlug) ? `/${vertical}/${orgSlug}/seguridad` : `/${vertical}/login`, appBaseUrl);
   url.searchParams.set("google_link", resultado);
   return url;
 }
@@ -110,23 +111,27 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Vincular Google a la cuenta YA autenticada (Seguridad de la cuenta). Con sesion: el `state` firmado
   // lleva la cuenta (`staffId`) y el slug de la organizacion (validado contra SUS membresias); el callback
   // no confia en nada que venga del navegador salvo `code`/`state`. Devuelve la URL (JSON) en vez de un 302
-  // porque el cliente llama con `Authorization: Bearer` por fetch. Solo licitaciones por ahora.
+  // porque el cliente llama con `Authorization: Bearer` por fetch. Cualquiera de las 6 verticales (`vertical` en el cuerpo; licitaciones si se omite).
   app.use("/auth/google/vincular/iniciar", authMiddleware(deps.env));
   app.post("/auth/google/vincular/iniciar", async (c) => {
     const google = deps.env.googleOAuth;
     if (!google) throw noConfigurado();
-    const body = await readJsonCapped<{ orgSlug?: unknown }>(c.req.raw, 1024);
+    const body = await readJsonCapped<{ orgSlug?: unknown; vertical?: unknown }>(c.req.raw, 1024);
     if (typeof body.orgSlug !== "string" || !SLUG_RE.test(body.orgSlug)) throw Errors.validation("orgSlug inválido o ausente.");
+    // PL-21: las 6 verticales vinculan desde su "Seguridad de la cuenta". Sin `vertical` se conserva el valor
+    // anterior (licitaciones), para que un cliente web viejo siga funcionando.
+    if (body.vertical !== undefined && !isVertical(body.vertical)) throw Errors.validation("vertical inválida.");
+    const vertical: Vertical = body.vertical ?? "licitaciones";
     const userId = c.get("userId");
     const allowed = await rateLimit(`auth:google-vincular:${requestActor(c.req.raw, userId)}`, VINCULAR_RATE_LIMIT.max, VINCULAR_RATE_LIMIT.windowMs, { category: "auth:token-issue" });
     if (!allowed) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
     const memberships = await deps.coreRepo.findMembershipsByUserId(userId);
-    if (!memberships.some((m) => m.vertical === "licitaciones" && m.organizationSlug === body.orgSlug)) throw Errors.forbidden("No perteneces a esa organización.");
+    if (!memberships.some((m) => m.vertical === vertical && m.organizationSlug === body.orgSlug)) throw Errors.forbidden("No perteneces a esa organización.");
 
     const codeVerifier = generateCodeVerifier();
     const nonce = generateNonce();
     const redirectUri = `${google.redirectBaseUrl}${CALLBACK_PATH}`;
-    const state = await signOAuthState({ purpose: "link", vertical: "licitaciones", nonce, codeVerifier, redirectUri, staffId: userId, orgSlug: body.orgSlug }, deps.env.jwtSecret);
+    const state = await signOAuthState({ purpose: "link", vertical, nonce, codeVerifier, redirectUri, staffId: userId, orgSlug: body.orgSlug }, deps.env.jwtSecret);
     const url = buildAuthorizationUrl({
       authBaseUrl: deps.env.googleStaffAuth.authBaseUrl,
       clientId: google.clientId,
@@ -166,6 +171,8 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
 
     const { vertical } = oauthState;
+    // El `state` va firmado por el servidor, pero el retorno de "vincular" solo arma rutas de la lista cerrada.
+    const verticalVinculo: Vertical = isVertical(vertical) ? vertical : "licitaciones";
 
     try {
       const { idToken } = await exchangeAuthorizationCode({
@@ -188,12 +195,12 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // identidad a la cuenta que fijo el `state` firmado y regresa a Seguridad de la cuenta.
       if (oauthState.purpose === "link") {
         const { staffId, orgSlug } = oauthState;
-        if (!staffId) return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, orgSlug, "state_invalido").toString(), 302);
+        if (!staffId) return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, orgSlug, "state_invalido").toString(), 302);
         const owner = await deps.coreRepo.findStaffByGoogleSub(claims.sub);
         // Ya vinculada a OTRA cuenta: no se reasigna ni se revela de quien es.
-        if (owner && owner.id !== staffId) return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, orgSlug, "google_ya_vinculada").toString(), 302);
+        if (owner && owner.id !== staffId) return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, orgSlug, "google_ya_vinculada").toString(), 302);
         if (!owner) await deps.coreRepo.linkGoogleIdentity({ staffId, sub: claims.sub, email: claims.email.toLowerCase() });
-        return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, orgSlug, "ok").toString(), 302);
+        return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, orgSlug, "ok").toString(), 302);
       }
 
       // 1) ¿Ya existe una identidad de Google vinculada a este `sub`? -- caso más
@@ -235,7 +242,7 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.redirect(url.toString(), 302);
     } catch (err) {
       const code_ = err instanceof GoogleOAuthError ? err.code : "error_desconocido";
-      if (oauthState.purpose === "link") return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, oauthState.orgSlug, code_).toString(), 302);
+      if (oauthState.purpose === "link") return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, oauthState.orgSlug, code_).toString(), 302);
       const url = loginUrl(deps.env.appBaseUrl, vertical);
       url.searchParams.set("google_error", code_);
       return c.redirect(url.toString(), 302);
