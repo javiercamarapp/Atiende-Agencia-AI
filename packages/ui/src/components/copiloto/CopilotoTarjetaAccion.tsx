@@ -77,7 +77,6 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
     );
     return () => ctl.abort();
     // `cliente` se recrea en cada render del shell; la tarjeta se consulta una vez por propuesta.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propuesta.propuesta]);
 
   const necesitaMotivo = propuesta.clase === "interruptor";

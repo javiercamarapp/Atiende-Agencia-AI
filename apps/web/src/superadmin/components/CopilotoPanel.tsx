@@ -1,4 +1,5 @@
-// Panel lateral del Copiloto (Cmd+J), gemelo del de Likida: un `aside` de 400 px que anima `width` y `margin` en 480 ms (var(--ease-out)), con cabecera
+// Panel lateral del Copiloto (Cmd+J), gemelo del de Likida: un `aside` de 400 px que anima `width` y `margin` en 480 ms (var(--ease-out); la clase
+// `.copiloto-panel-lateral` de packages/ui/src/index.css, sin estilos en linea), con cabecera
 // "Copiloto" + <kbd>Cmd J</kbd> + "Abrir en pagina completa" + cerrar. NO se desmonta al navegar (vive en el shell, que es un layout) ni al cerrarse: cerrado =
 // ancho 0 + `inert` (sin foco ni lectura de pantalla), asi la conversacion y un turno en curso sobreviven. El cuerpo se monta la primera vez que se abre
 // (sin pedir el estado del Copiloto en cada pagina que nadie usa) y desde entonces queda montado. Esc lo cierra. En movil (< md) abierto es una lamina a
@@ -11,7 +12,6 @@ import { CopilotoPlataforma } from "./CopilotoPlataforma.tsx";
 import { RUTA_COPILOTO } from "../lib/copiloto-cliente.ts";
 
 export const ANCHO_PANEL_COPILOTO = 400;
-export const DURACION_PANEL_COPILOTO_MS = 480;
 export const ID_PANEL_COPILOTO = "copiloto-panel";
 
 export interface CopilotoPanelProps {
@@ -61,16 +61,7 @@ export function CopilotoPanel({ abierto, onCerrar, apiBaseUrl, token }: Copiloto
       id={ID_PANEL_COPILOTO}
       aria-label="Copiloto"
       data-abierto={abierto ? "true" : "false"}
-      style={{
-        width: abierto ? ANCHO_PANEL_COPILOTO : 0,
-        marginLeft: 0,
-        marginRight: abierto ? 16 : 0,
-        transitionDuration: `${DURACION_PANEL_COPILOTO_MS}ms`,
-        transitionTimingFunction: "var(--ease-out)",
-      }}
-      className={`shrink-0 overflow-hidden transition-[width,margin] motion-reduce:transition-none md:sticky md:top-4 md:my-4 md:h-[calc(100dvh-2rem)] ${
-        abierto ? "max-md:fixed max-md:inset-0 max-md:z-40 max-md:!w-full max-md:!m-0" : "max-md:hidden"
-      }`}
+      className="copiloto-panel-lateral shrink-0 overflow-hidden md:sticky md:top-4 md:my-4 md:h-[calc(100dvh-2rem)]"
     >
       <div className="flex h-full w-full flex-col overflow-hidden border border-border bg-card md:w-[400px] md:rounded-2xl">
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
