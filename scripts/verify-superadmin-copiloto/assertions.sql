@@ -348,4 +348,9 @@ select count(*)::int as llm_usage_sin_plataforma_deberia_ser_0 from pg_constrain
 where conrelid = 'core.llm_usage_daily'::regclass and pg_get_constraintdef(oid) like '%plataforma%';
 rollback;
 
+\echo 'el Copiloto de superadmin queda en el catalogo del panel de agentes (una sola fila, estado vivo, vertical plataforma)'
+begin;
+select count(*)::int as agente_en_panel_deberia_ser_1 from core.agent_definition where id = 'superadmin:copiloto' and vertical = 'plataforma' and estado = 'vivo' and modelo_rol = 'superadmin:copiloto';
+rollback;
+
 \echo 'Fin: todos los escenarios *_deberia_ser_N deben devolver N y los should_fail deben terminar en ERROR.'

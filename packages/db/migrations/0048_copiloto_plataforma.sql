@@ -10,6 +10,7 @@
 --   3. core.get_copiloto_plataforma_gasto_mes: gasto del mes en curso del Copiloto de plataforma (micro-USD), para su tope mensual.
 --   4. core.get_copiloto_uso_for_superadmin: consultas, filas, duracion y costo del Copiloto por vertical, resultado y ruta
 --      (herramienta `uso_copiloto` del propio Copiloto de superadmin). Sin texto de preguntas ni respuestas: la bitacora no los guarda.
+--   5. core.agent_definition: el Copiloto de superadmin (`superadmin:copiloto`, ahora con interruptor de plataforma) entra al panel de agentes.
 --
 -- DECISION: como se mide el gasto del rol `superadmin:copiloto`.
 --   core.llm_usage_daily (0010) exige `organization_id uuid not null references core.organization` y su CHECK de vertical admite solo
@@ -26,8 +27,8 @@
 -- si falta la funcion o el CHECK nuevo (42883 / 42P01 / 42703 / 23514 / 42501), cae a un log estructurado sin resultados ni PII, mide el
 -- gasto en memoria de la instancia y responde "no disponible aun" en el reporte de uso. Nada de lo existente depende de este archivo.
 --
--- Requiere: 0001, 0012 (core.is_platform_superadmin), 0029, 0034 (core.cfo_zone_resolve_role), 0045 y 0047 (core.data_chat_query_log,
--- record_data_chat_query de 11 args).
+-- Requiere: 0001, 0012 (core.is_platform_superadmin), 0029, 0034 (core.cfo_zone_resolve_role), 0044 (core.agent_definition), 0045 y 0047
+-- (core.data_chat_query_log, record_data_chat_query de 11 args).
 --
 -- JUSTIFICACION DE SEGURIDAD (cada GRANT, policy y funcion nueva):
 --   * core.data_chat_query_log conserva RLS activa, `revoke all` a public/anon/authenticated/service_role y el grant de select de 0029. NO se
@@ -48,6 +49,8 @@
 --     auth.uid() = p_caller_id y superadmin vigente SIN rol restringido (core.cfo_zone_resolve_role = 'superadmin'); si no, cero filas. Solo
 --     agregados por vertical/resultado/ruta (conteos y costo): sin ids de usuario, sin parametros de consulta, sin texto. Acotada a 366 dias
 --     y 500 filas.
+--   * core.agent_definition: una fila de catalogo (`superadmin:copiloto`, estado `vivo`, sin datos de usuarios) sembrada con `on conflict do nothing`;
+--     la tabla conserva RLS sin policy y `revoke all` (0044): solo se lee por core.get_agent_panel_for_superadmin.
 
 -- ---------------------------------------------------------------------------
 -- 1) data_chat_query_log: alcance de plataforma
@@ -215,3 +218,10 @@ grant execute on function core.get_copiloto_uso_for_superadmin(uuid, date, date)
 
 comment on function core.get_copiloto_uso_for_superadmin(uuid, date, date) is
   'Uso agregado del Copiloto (todas las verticales y plataforma): consultas, filas, duracion y costo; sin texto ni usuarios. Solo superadmin completo.';
+
+-- ---------------------------------------------------------------------------
+-- 5) El Copiloto de superadmin en el panel de agentes
+-- ---------------------------------------------------------------------------
+insert into core.agent_definition (id, nombre, vertical, canal, disparador, modelo_rol, estado) values
+  ('superadmin:copiloto', 'Copiloto de superadmin', 'plataforma', 'panel', 'Pregunta del superadmin o del rol finanzas en el panel de plataforma', 'superadmin:copiloto', 'vivo')
+on conflict (id) do nothing;
