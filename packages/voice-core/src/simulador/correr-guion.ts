@@ -27,6 +27,8 @@ export interface ProveedorSimulable {
 export interface AdaptadorSimulador<R extends string, M extends MemoriaObservable, W extends MundoBase> {
   readonly reglas: ReglasCierreLlamada<R>;
   readonly registro: RegistroToolsVoz;
+  /** Si la vertical tiene maquina de estados por llamada (guardia/alResultado con estado), crea un registro NUEVO por llamada; `registro` queda para quien solo lee las definiciones. */
+  readonly crearRegistro?: () => RegistroToolsVoz;
   readonly construirEscalacion: (motivo: string, resumen: string) => { readonly nombre: string; readonly args: Readonly<Record<string, unknown>> };
   readonly canonicalizarTelefono: CanonicalizarTelefono;
   /** Cabecera SIP From del llamante del arnes (el guion puede poner otra o `null` = anonimo). */
@@ -99,7 +101,7 @@ export async function correrGuionConAdaptador<R extends string, E extends object
     propertyId: mundo.propertyId,
     organizationId: mundo.organizationId,
     abrirSesion: proveedor.abrirSesion,
-    ejecutor: crearEjecutorTools({ registro: adaptador.registro, transporte, timeoutMs: limites.toolTimeoutMs }),
+    ejecutor: crearEjecutorTools({ registro: adaptador.crearRegistro ? adaptador.crearRegistro() : adaptador.registro, transporte, timeoutMs: limites.toolTimeoutMs }),
     instruccion: opciones.instruccion ?? "",
     voiceId: opciones.voiceId ?? "Kore",
     limites,

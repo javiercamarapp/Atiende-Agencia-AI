@@ -95,7 +95,7 @@ describe("escalera de proveedores de una llamada", () => {
       reproducir: () => undefined,
       dormir: async () => undefined,
     });
-    await c.iniciar({ habilitado: true, topeMensualAlcanzado: false } as never);
+    await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
     gemini.decir("Hola, buenas tardes. Mi tarjeta es 4111 1111 1111 1111");
     await c.vacio();
     r.avanzar(30);
@@ -141,7 +141,7 @@ describe("escalera de proveedores de una llamada", () => {
       reproducir: (m) => void dichos.push(m),
       dormir: async () => undefined,
     });
-    await c.iniciar({ habilitado: true, topeMensualAlcanzado: false } as never);
+    await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
     const fin = await c.terminada;
     expect(fin.resultado).toBe("escalado");
     expect(dichos).toContain("proveedor_caido");
