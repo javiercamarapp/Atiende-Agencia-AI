@@ -31,14 +31,98 @@
 //     establecido en gateway.ts, nunca un catch silencioso que dejaría pasar
 //     gasto sin control real. `settle` (ajuste post-hoc al costo real) SÍ es
 //     best-effort — el gateway ya lo envuelve en `.catch(() => {})`.
-import { LlmMonthlyBudgetExceededError, PostgresLlmUsageRepository, emitirNotificacion } from "@atiende/db";
-import { MonthlyBudgetExceededError, type LlmUsageEvent, type OrgMonthlyBudgetStore, type UsageRecorder } from "@atiende/agent-core";
+import { LlmMonthlyBudgetExceededError, PostgresLlmUsageRepository, emitirNotificacion, isMigrationPendingError, type LlmMonthlyReservationTotals } from "@atiende/db";
+import { MonthlyBudgetExceededError, RoleDailyTurnLimitExceededError, type LlmUsageEvent, type OrgMonthlyBudgetStore, type RoleDailyTurnStore, type UsageRecorder } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
+import { defaultRoleDailyTurnLimit } from "./llm-role-limits.ts";
+
+/** Umbral de aviso del gasto de IA (porcentaje del tope mensual de una organizacion o de la plataforma). */
+export const UMBRAL_AVISO_GASTO_IA_PCT = 80;
+/** Respaldo alto: minimo de llamadas en la hora para evaluar el porcentaje (con pocas llamadas un solo respaldo ya pasaria el 5 %). */
+export const FALLBACK_VENTANA_MIN_LLAMADAS = 20;
+/** Porcentaje de llamadas de la hora que cayeron a un modelo de respaldo a partir del cual se avisa (estrictamente mayor). */
+export const FALLBACK_UMBRAL_PCT = 5;
+
+/** Cuanto dura la memoria de "la base aun no tiene la 0047". Pasado ese tiempo se vuelve a intentar: tras aplicar la migracion, las instancias
+ *  calientes recuperan subtope, tope diario y ventana sin esperar a reciclarse. */
+export const MIGRACION_PENDIENTE_TTL_MS = 60_000;
+
+/** Bandera "base sin migrar" que EXPIRA (en vez de quedar pegada por instancia). */
+export class BanderaConTtl {
+  private hasta = 0;
+  constructor(private readonly ttlMs: number = MIGRACION_PENDIENTE_TTL_MS, private readonly ahora: () => number = Date.now) {}
+  get activa(): boolean { return this.ahora() < this.hasta; }
+  marcar(): void { this.hasta = this.ahora() + this.ttlMs; }
+}
+
+/** Claves de dedupe de los avisos al 80 % tras una reserva exitosa (una por organizacion/mes y una de plataforma/mes). Funcion pura. */
+export function clavesAvisoUmbral(organizationId: string, totals: LlmMonthlyReservationTotals, ahora: Date): string[] {
+  const mes = ahora.toISOString().slice(0, 7);
+  const claves: string[] = [];
+  if (totals.orgCapMicroUsd > 0 && (totals.orgTotalMicroUsd * 100) / totals.orgCapMicroUsd >= UMBRAL_AVISO_GASTO_IA_PCT) claves.push(`org:${organizationId}:${UMBRAL_AVISO_GASTO_IA_PCT}:${mes}`);
+  if (totals.platformCapMicroUsd > 0 && (totals.platformTotalMicroUsd * 100) / totals.platformCapMicroUsd >= UMBRAL_AVISO_GASTO_IA_PCT) claves.push(`plataforma:${UMBRAL_AVISO_GASTO_IA_PCT}:${mes}`);
+  return claves;
+}
+
+/** Clave de dedupe del aviso de respaldo alto: una por hora calendario (UTC). */
+export function claveAvisoFallback(ahora: Date): string {
+  return ahora.toISOString().slice(0, 13);
+}
+
+/** true si la ventana de la hora justifica avisar: suficientes llamadas y mas del 5 % cayo a un modelo de respaldo. Funcion pura. */
+export function fallbackSuperaUmbral(calls: number, fallbacks: number): boolean {
+  return calls >= FALLBACK_VENTANA_MIN_LLAMADAS && fallbacks * 100 > calls * FALLBACK_UMBRAL_PCT;
+}
+
+/** Aviso in-app a los superadmins al llegar al 80 % de un tope mensual (de organizacion o de plataforma). Sin PII: solo el
+ *  porcentaje. Dedupe por organizacion/mes/umbral en la base; `emitidoEn` evita abrir una sesion por cada reserva de la misma
+ *  instancia. Best-effort: nunca lanza ni cambia el resultado de la reserva. */
+export async function notificarUmbralIaBestEffort(engine: TenancyEngine, emitidoEn: Set<string>, clave: string, porcentaje: number): Promise<void> {
+  if (emitidoEn.has(clave)) return;
+  try {
+    const res = await engine.withAppSession({ userId: null }, (session) =>
+      emitirNotificacion(session, { evento: "superadmin.costo.ia_umbral", organizationId: null, clave, parametros: { porcentaje } }),
+    );
+    if (res.estado === "emitida" || res.estado === "sin_nuevas") emitidoEn.add(clave);
+  } catch {
+    // best-effort
+  }
+}
+
+/** Aviso in-app cuando mas del 5 % de las llamadas de la hora cayeron a un modelo de respaldo (`superadmin.llm.fallback_alto`). */
+export async function notificarFallbackAltoBestEffort(engine: TenancyEngine, emitidoEn: Set<string>, ahora: Date, porcentaje: number): Promise<void> {
+  const clave = claveAvisoFallback(ahora);
+  if (emitidoEn.has(clave)) return;
+  try {
+    const res = await engine.withAppSession({ userId: null }, (session) =>
+      emitirNotificacion(session, { evento: "superadmin.llm.fallback_alto", organizationId: null, clave, parametros: { porcentaje: Math.round(porcentaje) } }),
+    );
+    if (res.estado === "emitida" || res.estado === "sin_nuevas") emitidoEn.add(clave);
+  } catch {
+    // best-effort
+  }
+}
 
 export class ProductionLlmUsageRecorder implements UsageRecorder {
+  private readonly ventanaNoDisponible = new BanderaConTtl();
+  private readonly fallbackAvisado = new Set<string>();
+
   constructor(private readonly engine: TenancyEngine) {}
 
+  /** Ventana horaria de respaldos (migracion 0047): cuenta la llamada y avisa si mas del 5 % de la hora cayo a un modelo de respaldo.
+   *  Corre en su PROPIA sesion de sistema y es best-effort: nunca lanza ni toca el registro de uso de arriba. */
+  private async registrarVentana(fallbackUsed: boolean): Promise<void> {
+    if (this.ventanaNoDisponible.activa) return;
+    try {
+      const w = await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).recordHourWindow(fallbackUsed));
+      if (fallbackSuperaUmbral(w.calls, w.fallbacks)) await notificarFallbackAltoBestEffort(this.engine, this.fallbackAvisado, new Date(), (w.fallbacks * 100) / w.calls);
+    } catch (err) {
+      if (isMigrationPendingError(err)) this.ventanaNoDisponible.marcar(); // base sin migrar (0047): sin ventana, nunca un error
+    }
+  }
+
   async record(event: LlmUsageEvent): Promise<void> {
+    await this.registrarVentana(event.fallbackUsed);
     try {
       await this.engine.withAppSession({ userId: null }, (session) =>
         new PostgresLlmUsageRepository(session).recordUsage({
@@ -92,15 +176,39 @@ export async function notificarTopeIaAgotadoBestEffort(engine: TenancyEngine, em
 
 export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
   private readonly topeNotificado = new Set<string>();
+  private readonly umbralNotificado = new Set<string>();
+  /** La base aun no tiene la reserva con rol (migracion 0047): se usa la de 3 argumentos sin reintentar la nueva en cada llamada. */
+  private readonly sinReservaConRol = new BanderaConTtl();
 
   constructor(private readonly engine: TenancyEngine) {}
 
-  async reserve(organizationId: string, reservationId: string, amountMicroUsd: number): Promise<void> {
+  private async reservarUnaVez(organizationId: string, reservationId: string, amountMicroUsd: number, role: string | undefined): Promise<LlmMonthlyReservationTotals | null> {
+    const conRol = role !== undefined && !this.sinReservaConRol.activa;
     try {
-      await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd));
+      return await this.engine.withAppSession({ userId: null }, (session) =>
+        new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd, conRol ? role : undefined),
+      );
+    } catch (err) {
+      // Base sin migrar: el error 42883 aborta ESA transaccion; el camino anterior corre en una sesion nueva.
+      if (conRol && isMigrationPendingError(err)) {
+        this.sinReservaConRol.marcar();
+        return this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).reserveMonthlyBudget(organizationId, reservationId, amountMicroUsd));
+      }
+      throw err;
+    }
+  }
+
+  async reserve(organizationId: string, reservationId: string, amountMicroUsd: number, role?: string): Promise<void> {
+    try {
+      const totals = await this.reservarUnaVez(organizationId, reservationId, amountMicroUsd, role);
+      if (totals) {
+        const ahora = new Date();
+        for (const clave of clavesAvisoUmbral(organizationId, totals, ahora)) await notificarUmbralIaBestEffort(this.engine, this.umbralNotificado, clave, UMBRAL_AVISO_GASTO_IA_PCT);
+      }
     } catch (err) {
       if (err instanceof LlmMonthlyBudgetExceededError) {
-        await notificarTopeIaAgotadoBestEffort(this.engine, this.topeNotificado);
+        // El subtope del Copiloto no agota el presupuesto de la organizacion: no es el aviso de "tope agotado".
+        if (err.scope !== "copilot") await notificarTopeIaAgotadoBestEffort(this.engine, this.topeNotificado);
         throw new MonthlyBudgetExceededError(err.scope, err.organizationId, err.requestedMicroUsd, err.limitMicroUsd);
       }
       // Cualquier otro error (Postgres caído, timeout) se propaga tal cual —
@@ -123,5 +231,31 @@ export class ProductionOrgMonthlyBudgetStore implements OrgMonthlyBudgetStore {
         }),
       );
     }
+  }
+}
+
+/**
+ * Tope DIARIO de turnos LLM por organizacion y rol sobre `core.consume_llm_role_turn` (migracion 0047, conteo atomico entre
+ * instancias). Cada llamada abre su PROPIA sesion de sistema. Los roles sin tope por defecto (`defaultRoleDailyTurnLimit`) ni
+ * siquiera tocan la base. Un fallo de infraestructura (base sin migrar o caida) es FAIL-OPEN a proposito: el tope diario es una
+ * proteccion de uso, y el dinero sigue protegido por el tope mensual (que si es fail-closed).
+ */
+export class ProductionRoleDailyTurnStore implements RoleDailyTurnStore {
+  private readonly noDisponible = new BanderaConTtl();
+
+  constructor(private readonly engine: TenancyEngine) {}
+
+  async consume(organizationId: string, role: string): Promise<void> {
+    const defaultLimit = defaultRoleDailyTurnLimit(role);
+    if (defaultLimit === undefined || this.noDisponible.activa) return;
+    let result;
+    try {
+      result = await this.engine.withAppSession({ userId: null }, (session) => new PostgresLlmUsageRepository(session).consumeRoleTurn(organizationId, role, defaultLimit));
+    } catch (err) {
+      if (isMigrationPendingError(err)) this.noDisponible.marcar();
+      else console.error(JSON.stringify({ level: "error", event: "llm_role_turn_store_failed", message: err instanceof Error ? err.message.slice(0, 200) : "error", role }));
+      return;
+    }
+    if (!result.allowed) throw new RoleDailyTurnLimitExceededError(role, organizationId, result.used, result.maxTurnos);
   }
 }

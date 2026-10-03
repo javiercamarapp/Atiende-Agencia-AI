@@ -47,12 +47,13 @@ const RESUMEN_VACIO = {
   platformBudget: { monthlyCapMicroUsd: 1_000_000_000, alertThresholdPct: 80, spendThisMonthMicroUsd: 0 },
 };
 
-function stubFetch(handlers: { resumen?: unknown; organizaciones?: unknown; desglose?: unknown; put?: (url: string, body: unknown) => void }) {
+function stubFetch(handlers: { resumen?: unknown; organizaciones?: unknown; desglose?: unknown; porRol?: unknown; put?: (url: string, body: unknown) => void }) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "PUT") {
       handlers.put?.(url, init.body ? JSON.parse(String(init.body)) : null);
       return jsonResponse({ ok: true });
     }
+    if (url.includes("/superadmin/gasto-api/por-rol")) return jsonResponse(handlers.porRol ?? { disponible: true, filas: [] });
     if (url.includes("/superadmin/gasto-api/resumen")) return jsonResponse(handlers.resumen ?? RESUMEN_VACIO);
     if (url.includes("/superadmin/gasto-api/organizaciones")) return jsonResponse(handlers.organizaciones ?? { organizaciones: [] });
     if (url.includes("/superadmin/gasto-api/desglose")) return jsonResponse(handlers.desglose ?? { desglose: [] });

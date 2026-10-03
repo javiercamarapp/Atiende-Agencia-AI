@@ -29,6 +29,11 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "reportes:analisis_general",
   "reportes:redaccion_financiero",
   "reportes:redaccion_general",
+  // MOD-12: roles auxiliares del Copiloto.
+  "plataforma:enrutador_turno",
+  "plataforma:compuerta_escalamiento",
+  "plataforma:titulos_resumenes",
+  "plataforma:compactacion_historial",
 ];
 
 /** Crons detenibles (path exacto de vercel.json / withHeartbeat). */
