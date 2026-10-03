@@ -29,6 +29,7 @@ import { extractRequirements, fetchRequirementItems, fileToBase64, MAX_UPLOAD_FI
 import { REQUISITO_STATUS_TONES } from "../lib/status-tones.ts";
 import type { ExtractDocumentInput, RequirementItemRecord, SkippedDocument } from "../lib/requirements-client.ts";
 import { formatDate, formatObligatoriedad, formatRequirementKind, formatRequirementStatus } from "../lib/format.ts";
+import { AvisoIa } from "../components/AvisoIa.tsx";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 // Mismo set literal que Convocatorias.tsx/ConvocatoriaDetalle.tsx (WRITE_ROLES
@@ -161,6 +162,8 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
   if (!tender) return null;
 
   const canUpload = WRITE_ROLES.has(role);
+  // L-33: solo se declara IA cuando la API devolvió requisitos extraídos por el modelo; los extraídos por reglas no la llevan.
+  const extraidosConIa = (items ?? []).filter((item) => item.extractedBy === "llm").length;
 
   return (
     <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
@@ -258,6 +261,10 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
             ))}
           </ul>
         </Callout>
+      )}
+
+      {extraidosConIa > 0 && (
+        <AvisoIa proposito={`${extraidosConIa === 1 ? "1 requisito fue extraído" : `${extraidosConIa} requisitos fueron extraídos`} de las bases con inteligencia artificial (columna Origen: LLM); el resto se extrajo con reglas.`} />
       )}
 
       <Card>

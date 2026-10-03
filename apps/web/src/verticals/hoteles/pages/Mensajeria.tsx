@@ -8,12 +8,14 @@ import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormFi
 import { MENSAJERIA_ROLES, cambiarVoz, fetchMensajeria, guardarWhatsApp, rotarSecretoVoz } from "../lib/mensajeria-client.ts";
 import type { MensajeriaEstado } from "../lib/mensajeria-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
+import { PruebaAgenteVoz } from "../voz/PruebaAgenteVoz.tsx";
+import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
 
 function mensaje(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-export function MensajeriaPage({ apiBaseUrl, token, propertyId, role }: HotelesShellContext) {
+export function MensajeriaPage({ apiBaseUrl, token, propertyId, role, entornoVoz }: HotelesShellContext & { readonly entornoVoz?: EntornoVoz }) {
   const [estado, setEstado] = useState<MensajeriaEstado | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -192,6 +194,8 @@ export function MensajeriaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
           )}
         </CardContent>
       </Card>
+
+      <PruebaAgenteVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} {...(entornoVoz ? { entorno: entornoVoz } : {})} />
       {dialogo}
     </div>
   );

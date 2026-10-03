@@ -113,6 +113,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Clientes",
       "Sucursales",
       "Agente de voz",
+      "Agente de WhatsApp",
       "Primeros pasos",
       "Configuración",
       "Staff",

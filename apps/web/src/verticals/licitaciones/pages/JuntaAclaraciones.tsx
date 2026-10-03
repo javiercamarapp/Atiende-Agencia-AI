@@ -20,6 +20,7 @@ import {
 } from "../lib/sala-guerra-client.ts";
 import type { CaptureResult, DraftResult, JuntaQuestion, JuntaQuestionPriority, JuntaQuestionStatus, JuntaQuestionTopic, JuntaResponse, TransitionInput } from "../lib/sala-guerra-client.ts";
 import { PREGUNTA_JUNTA_TONES } from "../lib/status-tones.ts";
+import { AvisoIa } from "../components/AvisoIa.tsx";
 import { textoDiasHabiles } from "../lib/dias-inhabiles-client.ts";
 import { DATE_TIME, semaphoreTone, WRITE_ROLES, isoToLocalInput, localToIso, semaphoreLabel } from "./SalaGuerra.tsx";
 
@@ -306,6 +307,10 @@ export function JuntaAclaracionesSection({ apiBaseUrl, token, propertyId, tender
         <p role="status" className="text-sm text-foreground">
           {notice}
         </p>
+      )}
+      {/* L-33: solo cuando la API devuelve preguntas redactadas por el asistente (origin "agente"). */}
+      {data.questions.some((q) => q.origin === "agente") && (
+        <AvisoIa proposito="Las preguntas marcadas «Borrador del asistente» fueron redactadas con inteligencia artificial a partir de los requisitos de las bases; las capturadas por una persona no lo son." />
       )}
 
       <Card>

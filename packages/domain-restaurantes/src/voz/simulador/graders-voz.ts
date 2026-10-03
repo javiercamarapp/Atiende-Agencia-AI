@@ -1,19 +1,15 @@
-// Graders DETERMINISTAS de la prueba ciega de voz (sin LLM-juez): leen el estado real del mundo (pedidos guardados,
-// callbacks), la traza de herramientas y lo que se reprodujo. Corren igual contra el proveedor falso y contra uno real.
+// Graders DETERMINISTAS de la prueba ciega de voz de restaurantes (sin LLM-juez): leen el estado real del mundo (pedidos guardados,
+// callbacks), la traza de herramientas y lo que se reprodujo. Los genericos (resultado, pregrabados, barge-in, tools, PII, tarjeta, tono)
+// son de @atiende/voice-core; aqui estan los que miran el pedido de restaurantes. Corren igual contra el proveedor falso y uno real.
+import { G_BARGE_IN, G_PREGRABADOS, G_RESULTADO, G_SIN_TARJETA, G_TONO_USTED, evaluarConGraders, graderSinPiiLog, graderTools, logContieneSensible, mal, ok } from "@atiende/voice-core/simulador";
+import type { Grader as GraderCore } from "@atiende/voice-core/simulador";
 import { AGENT_TOOL_DEFINITIONS } from "../../agent-tools/registry.ts";
-import { redactarPII } from "../llamada/log-sin-pii.ts";
 import { TELEFONO_LLAMANTE } from "./mundo-voz.ts";
 import type { LlamadaSimulada, ResultadoGrader } from "./tipos.ts";
 
-const ok = (grader: string): ResultadoGrader => ({ grader, ok: true, detalle: "" });
-const mal = (grader: string, detalle: string): ResultadoGrader => ({ grader, ok: false, detalle });
+export { logContieneSensible };
 
-const TUTEO_RE = /\b(t[uú]|tus?|tienes|quieres|puedes|necesitas|dime|dame|cu[eé]ntame|oye|ponte)\b/i;
-const PAN_RE = /\b\d(?:[ -]?\d){12,18}\b/;
-
-type Grader = (l: LlamadaSimulada) => Promise<ResultadoGrader> | ResultadoGrader;
-
-const G_RESULTADO: Grader = (l) => (l.resultado === l.guion.esperado.resultado ? ok("G_RESULTADO") : mal("G_RESULTADO", `resultado ${l.resultado}, se esperaba ${l.guion.esperado.resultado}`));
+type Grader = GraderCore<LlamadaSimulada>;
 
 const G_PEDIDO: Grader = async (l) => {
   const esp = l.guion.esperado;
@@ -63,79 +59,11 @@ const G_HANDOFF: Grader = (l) => {
   return JSON.stringify(reales) === JSON.stringify(esp) ? ok("G_HANDOFF") : mal("G_HANDOFF", `callbacks [${reales.join(", ")}], se esperaban [${esp.join(", ")}]`);
 };
 
-const G_PREGRABADOS: Grader = (l) => {
-  const esp = l.guion.esperado.pregrabados;
-  if (!esp) return ok("G_PREGRABADOS");
-  let i = 0;
-  for (const m of l.pregrabados) if (m === esp[i]) i += 1;
-  return i === esp.length ? ok("G_PREGRABADOS") : mal("G_PREGRABADOS", `pregrabados [${l.pregrabados.join(", ")}], se esperaba la secuencia [${esp.join(", ")}]`);
-};
-
-const G_BARGE_IN: Grader = (l) => ((l.guion.esperado.audioCortadoMin ?? 0) <= l.audioCortado ? ok("G_BARGE_IN") : mal("G_BARGE_IN", `audio cortado ${l.audioCortado} veces, minimo ${l.guion.esperado.audioCortadoMin}`));
-
-/** Solo corren tools del registro; las inexistentes o las que el servidor rechaza vuelven como error y la llamada sigue. */
-const G_TOOLS: Grader = (l) => {
-  const validas = new Set<string>(AGENT_TOOL_DEFINITIONS.map((t) => t.name));
-  const esperadas = l.guion.esperado.herramientasRechazadas ?? [];
-  for (const e of esperadas) {
-    const hallada = l.tools.find((t) => t.nombre === e.nombre && JSON.stringify(t.resultado ?? "").match(e.error));
-    if (!hallada) return mal("G_TOOLS", `no se rechazo ${e.nombre} con ${e.error}`);
-  }
-  for (const t of l.tools) {
-    if (validas.has(t.nombre)) continue;
-    const rechazada = typeof t.resultado === "object" && t.resultado !== null && "error" in t.resultado;
-    if (!rechazada) return mal("G_TOOLS", `herramienta fuera del registro ejecutada: ${t.nombre}`);
-  }
-  return ok("G_TOOLS");
-};
-
-const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-
-const quitarUuids = (texto: string): string => texto.replace(UUID_RE, "<id>");
-
-/**
- * ¿El texto del log contiene el dato sensible `p`? Los identificadores (UUID aleatorios de pedidos, llamadas, etc.) no son
- * datos personales y pueden contener por azar una secuencia de digitos como "412": se ignoran. Un dato sensible
- * compuesto solo de digitos (numero de casa, telefono) debe aparecer como numero completo, no dentro de otro numero.
- * Los datos con letras (nombres, calles) siguen buscandose como subcadena, sin distinguir mayusculas.
- */
-export function logContieneSensible(texto: string, p: string): boolean {
-  const sinIds = quitarUuids(texto);
-  if (/^\d+$/.test(p)) return new RegExp(`(?<!\\d)${p}(?!\\d)`).test(sinIds);
-  return sinIds.toLowerCase().includes(p.toLowerCase());
-}
-
-const G_SIN_PII_LOG: Grader = (l) => {
-  const texto = JSON.stringify(l.logs);
-  const prohibidos = [TELEFONO_LLAMANTE, ...(l.guion.sensibles ?? [])];
-  for (const p of prohibidos) if (logContieneSensible(texto, p)) return mal("G_SIN_PII_LOG", `el log contiene "${p}"`);
-  // Los UUID tambien se excluyen de la forma-de-dato-personal: una tira de digitos de un UUID aleatorio puede parecer telefono.
-  const sinIds = quitarUuids(texto);
-  return redactarPII(sinIds) === sinIds ? ok("G_SIN_PII_LOG") : mal("G_SIN_PII_LOG", "el log contiene algo con forma de dato personal");
-};
-
-/** Igual que G_SIN_PII_LOG: los UUID aleatorios de los argumentos (productos, cotizaciones) no son una tarjeta aunque por azar traigan
- * 13-19 digitos separados por guiones; se ignoran antes de buscar la forma de numero de tarjeta (fallaba de forma intermitente en CI). */
-const G_SIN_TARJETA: Grader = (l) => {
-  for (const t of l.transcripcion) if (PAN_RE.test(t.texto)) return mal("G_SIN_TARJETA", "la transcripcion guardada contiene un numero de tarjeta");
-  for (const t of l.tools) if (PAN_RE.test(quitarUuids(JSON.stringify(t.args ?? {})))) return mal("G_SIN_TARJETA", `numero de tarjeta en los argumentos de ${t.nombre}`);
-  return ok("G_SIN_TARJETA");
-};
-
-const G_TONO_USTED: Grader = (l) => {
-  for (const t of l.transcripcion) {
-    if (t.rol !== "agente") continue;
-    const sinCitas = t.texto.replace(/«[^»]*»|"[^"]*"|“[^”]*”/g, " ");
-    const m = TUTEO_RE.exec(sinCitas);
-    if (m) return mal("G_TONO_USTED", `tuteo "${m[0]}" en: ${t.texto.slice(0, 100)}`);
-  }
-  return ok("G_TONO_USTED");
-};
+const G_TOOLS = graderTools(AGENT_TOOL_DEFINITIONS.map((t) => t.name));
+const G_SIN_PII_LOG = graderSinPiiLog(TELEFONO_LLAMANTE);
 
 export const GRADERS_VOZ: readonly Grader[] = [G_RESULTADO, G_PEDIDO, G_REGLAS_DURAS, G_TELEFONO, G_HANDOFF, G_PREGRABADOS, G_BARGE_IN, G_TOOLS, G_SIN_PII_LOG, G_SIN_TARJETA, G_TONO_USTED];
 
-export async function evaluarLlamada(l: LlamadaSimulada): Promise<readonly ResultadoGrader[]> {
-  const out: ResultadoGrader[] = [];
-  for (const g of GRADERS_VOZ) out.push(await g(l));
-  return out;
+export function evaluarLlamada(l: LlamadaSimulada): Promise<readonly ResultadoGrader[]> {
+  return evaluarConGraders(l, GRADERS_VOZ);
 }

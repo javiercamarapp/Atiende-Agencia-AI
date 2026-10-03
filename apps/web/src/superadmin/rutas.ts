@@ -16,6 +16,7 @@ import {
   AlertOctagon,
   ArrowLeftRight,
   BellOff,
+  Brain,
   Building2,
   Coins,
   Cpu,
@@ -39,7 +40,6 @@ import {
   ShieldOff,
   Sparkles,
   Tags,
-  TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -74,7 +74,7 @@ export const AGENTES: readonly RutaSuperadmin[] = [
 
 export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
-  { to: "/superadmin/prospectos", label: "Prospectos", icon: TrendingUp },
+  { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
   { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
   { to: "/superadmin/gestion-organizaciones", label: "Gestión de organizaciones", icon: Building2 },
   { to: "/superadmin/costos-margen", label: "Costos y margen", icon: Coins },
@@ -136,11 +136,13 @@ export const MOVIL_SUPERADMIN: readonly RutaSuperadmin[] = [
 export const PARTE_DIARIO = "/superadmin/parte-diario";
 
 /** Rutas con pagina real que NO tienen item de menu (se llega por un enlace). Cuentan como existentes para las pildoras. */
-export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/notificaciones"];
+export const RUTAS_SIN_MENU: readonly string[] = [PARTE_DIARIO, "/superadmin/notificaciones", "/superadmin/cerebro/taxonomia"];
 
 /** Rutas web que cambiaron de lugar: la vieja redirige a la nueva (sin 404). */
 export const REDIRECCIONES_SUPERADMIN: Readonly<Record<string, string>> = {
   "/superadmin/resumen": "/superadmin",
+  // Prospectos pasa a "Cerebro de ventas" (SA-L-37): la ruta vieja redirige a la nueva.
+  "/superadmin/prospectos": "/superadmin/cerebro",
 };
 
 export interface PendienteSuperadmin {
