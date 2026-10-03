@@ -575,8 +575,9 @@ describe("PM-C3 -- el prompt conserva las reglas duras vigentes", () => {
     expect(prompt).toMatch(/H8\..*alergias/);
   });
 
-  it("T-PC05 [P19] el umbral de 40 piezas o $1,500 sigue presente, pero el agente no rechaza el pedido: lo pasa a la sucursal", () => {
-    expect(prompt).toMatch(/40 o más piezas, o total de \$1,500 o más/);
+  it("T-PC05 [P19] el umbral de pedido grande es el de Javier (2-oct: $4,000, 5 kg o $2,500 sin historial en efectivo) y el agente no rechaza el pedido: lo pasa a la sucursal", () => {
+    expect(prompt).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
+    expect(prompt).not.toMatch(/40 o más piezas/);
     expect(prompt).toMatch(/no lo rechace/);
   });
 

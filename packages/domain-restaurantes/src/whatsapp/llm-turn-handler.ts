@@ -186,7 +186,7 @@ export const PM_CONFIG_POR_OMISION: WhatsAppLlmAgentConfig = {
   businessName: "Los Taquitos de PM",
   toneStyle: "formal_directo",
   timezone: "America/Merida",
-  deliveryTimeText: "aproximadamente de 40 a 50 minutos; en horas de mucha demanda puede ser un poco más",
+  deliveryTimeText: "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)",
   perfil: "taqueria_pm",
   agentName: PM_AGENT_NAME_POR_OMISION,
 };
