@@ -14,7 +14,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { MailPlus, Trash2 } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, Label, NativeSelect, PageContainer } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
@@ -121,6 +122,59 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
     }
   }
 
+  const columnasInvitaciones: DataTableColumna<StaffInvite>[] = [
+    { id: "correo", encabezado: "Correo", principal: true, valorOrden: (inv) => inv.email, celda: (inv) => <span className="font-medium text-foreground">{inv.email}</span> },
+    { id: "rol", encabezado: "Rol", valorOrden: (inv) => ROLE_LABELS[inv.verticalRole], celda: (inv) => ROLE_LABELS[inv.verticalRole] },
+    { id: "estado", encabezado: "Estado", valorOrden: (inv) => inv.status, celda: (inv) => statusLabel(inv.status) },
+    {
+      id: "expira",
+      encabezado: "Expira",
+      valorOrden: (inv) => inv.expiresAt,
+      celda: (inv) => <span className="text-muted-foreground">{new Date(inv.expiresAt).toLocaleString("es-MX")}</span>,
+    },
+    {
+      id: "acciones",
+      encabezado: "Acciones",
+      alinear: "right",
+      celda: (inv) => (
+        <Button type="button" variant="outline" size="sm" className="h-9 shrink-0 border-destructive/40 text-destructive hover:border-destructive" onClick={() => void handleRevoke(inv.id)} disabled={revokingId === inv.id}>
+          <Trash2 />
+          {revokingId === inv.id ? "Revocando…" : "Revocar"}
+        </Button>
+      ),
+    },
+  ];
+
+  const columnasStaff: DataTableColumna<OrgMember>[] = [
+    { id: "nombre", encabezado: "Nombre", principal: true, valorOrden: (m) => m.fullName, celda: (m) => <span className="font-medium text-foreground">{m.fullName}</span> },
+    { id: "correo", encabezado: "Correo", valorOrden: (m) => m.email, celda: (m) => <span className="text-muted-foreground">{m.email}</span> },
+    {
+      id: "rol",
+      encabezado: "Rol",
+      valorOrden: (m) => ROLE_LABELS[m.verticalRole],
+      celda: (m) => (
+        <>
+          <Label htmlFor={`staff-rol-${m.id}`} className="sr-only">
+            Rol de {m.fullName}
+          </Label>
+          <NativeSelect
+            id={`staff-rol-${m.id}`}
+            value={m.verticalRole}
+            disabled={savingRoleId === m.id}
+            onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
+            wrapperClassName="w-auto min-w-44"
+          >
+            {ROLE_OPTIONS.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </NativeSelect>
+        </>
+      ),
+    },
+  ];
+
   return (
     <PageContainer padding="none" size="md" className="gap-5 [&>*]:min-w-0">
       <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
@@ -197,24 +251,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
           {!invites && !error && <EstadoCargando etiqueta="Cargando invitaciones…" lineas={2} />}
           {invites && invites.length === 0 && <EstadoVacio mensaje="No hay ninguna invitación pendiente." />}
           {invites && invites.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {invites.map((inv) => (
-                <Card key={inv.id}>
-                  <CardContent className="flex items-center justify-between gap-3 p-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{inv.email}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {new Date(inv.expiresAt).toLocaleString("es-MX")}
-                      </p>
-                    </div>
-                    <Button type="button" variant="outline" size="sm" className="h-9 shrink-0 border-destructive/40 text-destructive hover:border-destructive" onClick={() => void handleRevoke(inv.id)} disabled={revokingId === inv.id}>
-                      <Trash2 />
-                      {revokingId === inv.id ? "Revocando…" : "Revocar"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <DataTable etiqueta="Invitaciones pendientes" columnas={columnasInvitaciones} filas={invites} obtenerId={(inv) => inv.id} />
           )}
         </section>
       )}
@@ -229,34 +266,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShel
           {!members && !error && <EstadoCargando etiqueta="Cargando staff…" lineas={2} />}
           {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en este despacho." />}
           {members && members.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {members.map((m) => (
-                <Card key={m.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{m.fullName}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
-                    </div>
-                    <Label htmlFor={`staff-rol-${m.id}`} className="sr-only">
-                      Rol de {m.fullName}
-                    </Label>
-                    <NativeSelect
-                      id={`staff-rol-${m.id}`}
-                      value={m.verticalRole}
-                      disabled={savingRoleId === m.id}
-                      onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                      wrapperClassName="w-auto min-w-44"
-                    >
-                      {ROLE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <DataTable etiqueta="Staff activo" columnas={columnasStaff} filas={members} obtenerId={(m) => m.id} />
           )}
         </section>
       )}
