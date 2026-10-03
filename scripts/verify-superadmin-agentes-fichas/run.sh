@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # Verificacion manual, opt-in, contra un Postgres LOCAL real -- mismo patron que
-# scripts/verify-superadmin-costos-planes/run.sh. Acompana a
-# packages/db/migrations/0050_superadmin_organizaciones_ficha_onboarding.sql (SA-L-20 tabla de organizaciones, SA-07 ficha 360 y SA-18 onboarding medido:
-# conteos por organizacion, no_se_pudo_medir distinto de pendiente, aviso unico de organizacion lista)
-# y prueba, contra RLS/GRANT/auth.uid() reales: caller-binding, superadmin real, anon sin acceso, aislamiento
-# entre organizaciones, ventana de 30 dias, ficha sin datos personales y marcador del aviso (una sola vez).
-#
+# scripts/verify-superadmin-cfo/run.sh. Acompana a
+# packages/db/migrations/0049_superadmin_fichas_agente.sql (fichas de agente y Model Ops,
+# SA-L-09 y SA-L-10) y prueba, contra RLS/GRANT/auth.uid() reales y datos sembrados: que cada
+# funcion agrega bien (documentos y requisitos extraidos, movimientos conciliados, voz por vertical, serie
+# diaria por rol, costo por modelo y carril) y que rechaza (cero filas o error) a staff normal, otro
+# usuario, sesion de sistema y anon.
 # En CI lo ejecuta automaticamente scripts/verify-real-postgres-ci/run-gate.mjs
 # (descubre solo todo scripts/verify-*/ con bootstrap/post-migrations/assertions).
 #
 # Requiere `initdb`/`pg_ctl`/`psql` en PATH.
 #
-# Uso:  scripts/verify-superadmin-organizaciones-ficha/run.sh
+# Uso:  scripts/verify-superadmin-agentes-fichas/run.sh
 set -euo pipefail
 
 for bin in initdb pg_ctl psql; do
   if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "verify-superadmin-organizaciones-ficha: falta '$bin' en PATH — instala Postgres localmente para correr esta verificación (opcional, no bloquea npm test)." >&2
+    echo "verify-superadmin-agentes-fichas: falta '$bin' en PATH — instala Postgres localmente para correr esta verificación (opcional, no bloquea npm test)." >&2
     exit 1
   fi
 done
@@ -24,7 +24,7 @@ done
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 WORKDIR="$(mktemp -d)"
-PGPORT=55791
+PGPORT=55584
 PGDATA="$WORKDIR/pgdata"
 LOG="$WORKDIR/postgres.log"
 
@@ -48,7 +48,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0050_superadmin_organizaciones_ficha_onboarding.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0049_superadmin_fichas_agente.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

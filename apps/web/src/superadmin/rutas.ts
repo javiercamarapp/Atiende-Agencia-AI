@@ -18,18 +18,22 @@ import {
   BellOff,
   Building2,
   Coins,
+  Cpu,
   DollarSign,
+  FileSearch,
   FileSignature,
   KeyRound,
   LayoutGrid,
   LineChart,
   ListChecks,
   Lock,
+  MessageCircle,
   Newspaper,
   Plug,
   Power,
   Receipt,
   ReceiptText,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
@@ -55,10 +59,16 @@ export interface SeccionSuperadmin {
 export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
 
 /**
- * Agentes: hoy solo el Panel de agentes tiene pagina real (SA-L-08). El Copiloto y los agentes extractor, conciliacion
- * y WhatsApp estan en `PENDIENTES`. Las palancas por agente viven aqui y tambien en Interruptores (Sistema).
+ * Agentes: el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09) y Model Ops (SA-L-10). El Copiloto y los
+ * demas (Evals, Playground, QA) estan en `PENDIENTES`. Las palancas por agente viven en el Panel y tambien en Interruptores (Sistema).
  */
-export const AGENTES: readonly RutaSuperadmin[] = [{ to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot }];
+export const AGENTES: readonly RutaSuperadmin[] = [
+  { to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot },
+  { to: "/superadmin/agente-extractor", label: "Agente extractor", icon: FileSearch },
+  { to: "/superadmin/agente-conciliacion", label: "Agente de conciliación", icon: Scale },
+  { to: "/superadmin/agente-whatsapp", label: "Agente de WhatsApp y voz", icon: MessageCircle },
+  { to: "/superadmin/model-ops", label: "Model Ops", icon: Cpu },
+];
 
 export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
@@ -147,10 +157,6 @@ export interface PendienteSuperadmin {
  */
 export const PENDIENTES: readonly PendienteSuperadmin[] = [
   { seccion: "Agentes", label: "Copiloto", ruta: "/superadmin/copiloto", ticket: "SA-33/SA-34 (paridad2 §3)" },
-  { seccion: "Agentes", label: "Agente extractor de documentos", ruta: "/superadmin/agente-extractor", ticket: "paridad2 §2.2" },
-  { seccion: "Agentes", label: "Agente de conciliación", ruta: "/superadmin/agente-conciliacion", ticket: "paridad2 §2.2" },
-  { seccion: "Agentes", label: "Agente de WhatsApp y voz", ruta: "/superadmin/agente-whatsapp", ticket: "paridad2 §2.2" },
-  { seccion: "Agentes", label: "Model Ops", ruta: "/superadmin/model-ops", ticket: "paridad2 §4" },
   { seccion: "Agentes", label: "Evals", ruta: "/superadmin/evals", ticket: "paridad2 §4" },
   { seccion: "Agentes", label: "Playground", ruta: "/superadmin/playground", ticket: "paridad2 §4" },
   { seccion: "Agentes", label: "QA autónomo", ruta: "/superadmin/qa", ticket: "paridad2 §4" },

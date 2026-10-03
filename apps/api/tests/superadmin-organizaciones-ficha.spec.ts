@@ -109,7 +109,6 @@ describe("seguridad", () => {
     t.ficha!.seed({ fichas: new Map([[ORG_A, fichaDe(ORG_A, "Org A", "restaurantes")]]) });
     const sa = await t.superadmin();
     t.zona!.seedRole(sa.id);
-    t.deps.env.superadminMfaRequired = false;
     // finanzas exige step-up obligatorio en las rutas financieras: sin token de step-up responde 403 y lo deja denegado.
     const margen = await get(t.app, "/superadmin/organizaciones/margen", sa.token);
     expect(margen.status).toBe(403);
@@ -153,14 +152,14 @@ describe("GET /superadmin/organizaciones/resumen", () => {
     expect(sinPlan.operaciones30d).toEqual({ valor: 0, razon: null });
   });
 
-  it("base sin la 0049: 200 con disponible:false, la lista completa y las columnas nuevas en null con su razon (nunca un 500)", async () => {
+  it("base sin la 0050: 200 con disponible:false, la lista completa y las columnas nuevas en null con su razon (nunca un 500)", async () => {
     const t = await setup(); // sin sembrar: el repo responde no_migrado
     const sa = await t.superadmin();
     const res = await get(t.app, "/superadmin/organizaciones/resumen", sa.token);
     expect(res.status).toBe(200);
     const b = (await res.json()) as Json;
     expect(b.disponible).toBe(false);
-    expect(b.mensaje).toContain("0049");
+    expect(b.mensaje).toContain("0050");
     // La lista completa sale de la funcion que ya existe en produccion (incluye cualquier otra organizacion sembrada por la fixture).
     const ids = b.organizaciones.map((o: Json) => o.id) as string[];
     for (const id of [ORG_A, ORG_B, ORG_C]) expect(ids).toContain(id);
@@ -168,7 +167,7 @@ describe("GET /superadmin/organizaciones/resumen", () => {
       expect(o.operaciones30d.valor).toBeNull();
       expect(o.costoIa30dUsd.valor).toBeNull();
       expect(o.onboarding.valor).toBeNull();
-      expect(o.onboarding.razon).toContain("0049");
+      expect(o.onboarding.razon).toContain("0050");
     }
   });
 
@@ -299,14 +298,14 @@ describe("GET /superadmin/organizaciones/:id/ficha", () => {
     expect((await get(t.app, "/superadmin/organizaciones/no-es-un-uuid/ficha", sa.token)).status).toBe(404);
   });
 
-  it("base sin la 0049: organizacion existente -> 200 disponible:false con su cabecera; inexistente -> 404 (no se confunden)", async () => {
+  it("base sin la 0050: organizacion existente -> 200 disponible:false con su cabecera; inexistente -> 404 (no se confunden)", async () => {
     const t = await setup(); // sin sembrar -> no_migrado
     const sa = await t.superadmin();
     const ok = await get(t.app, `/superadmin/organizaciones/${ORG_A}/ficha`, sa.token);
     expect(ok.status).toBe(200);
     const b = (await ok.json()) as Json;
     expect(b.disponible).toBe(false);
-    expect(b.mensaje).toContain("0049");
+    expect(b.mensaje).toContain("0050");
     expect(b.organizacion).toMatchObject({ id: ORG_A, nombre: "Org A" });
     expect((await get(t.app, `/superadmin/organizaciones/${INEXISTENTE}/ficha`, sa.token)).status).toBe(404);
   });
@@ -380,7 +379,7 @@ describe("cron de mantenimiento: aviso 'organizacion lista' (nunca desde un GET)
     expect(b.organizacionesAvisadas).toBeNull();
   });
 
-  it("base sin la 0049: el cron sigue 200 ok y no inventa avisos", async () => {
+  it("base sin la 0050: el cron sigue 200 ok y no inventa avisos", async () => {
     const t = await setup(); // avisar = no_migrado
     const { deps, emisiones } = conEmisiones(t.deps);
     const res = await cron(buildApp(deps), deps.env.internalSecret);

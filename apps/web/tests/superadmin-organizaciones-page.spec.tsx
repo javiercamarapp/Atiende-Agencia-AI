@@ -134,16 +134,16 @@ describe("SuperAdminOrganizacionesPage", () => {
     expect(rendered.container.textContent).toContain("Margen no disponible");
   });
 
-  it("base sin la 0049: aviso honesto, lista completa y columnas nuevas en '—' (nunca ceros)", async () => {
+  it("base sin la 0050: aviso honesto, lista completa y columnas nuevas en '—' (nunca ceros)", async () => {
     const sin = (r: string) => sinDato(r);
     const resumen = {
-      disponible: false, mensaje: "No disponible aún: falta aplicar la migración 0049_superadmin_organizaciones_ficha_onboarding en este despliegue.", ventanaDias: 30,
-      organizaciones: FILAS.map((f) => ({ ...f, plan: sin("No disponible aún: 0049"), operaciones30d: sin("No disponible aún: 0049"), costoIa30dUsd: sin("No disponible aún: 0049"), onboarding: sin("No disponible aún: 0049") })),
+      disponible: false, mensaje: "No disponible aún: falta aplicar la migración 0050_superadmin_organizaciones_ficha_onboarding en este despliegue.", ventanaDias: 30,
+      organizaciones: FILAS.map((f) => ({ ...f, plan: sin("No disponible aún: 0050"), operaciones30d: sin("No disponible aún: 0050"), costoIa30dUsd: sin("No disponible aún: 0050"), onboarding: sin("No disponible aún: 0050") })),
     };
     stub({ resumen });
     rendered = render();
     await esperar();
-    expect(rendered.container.textContent).toContain("0049_superadmin_organizaciones_ficha_onboarding");
+    expect(rendered.container.textContent).toContain("0050_superadmin_organizaciones_ficha_onboarding");
     expect(rendered.container.querySelectorAll("tr[data-org-id]")).toHaveLength(3);
     expect(filaDe("o1").textContent).not.toContain("120");
     expect(rendered.container.textContent).toContain("las métricas por organización no están disponibles aún");

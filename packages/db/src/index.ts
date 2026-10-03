@@ -221,6 +221,15 @@ export type {
 } from "./superadmin-consola-repository.ts";
 export { InMemoryConsolaRepository, PostgresConsolaRepository } from "./superadmin-consola-repository.ts";
 export type {
+  FichaActividadDiariaRow,
+  FichaConciliadosRow,
+  FichaDocumentosExtraidosRow,
+  FichaModeloRolRow,
+  FichaVozVerticalRow,
+  FichasAgenteRepository,
+} from "./superadmin-fichas-agente-repository.ts";
+export { InMemoryFichasAgenteRepository, PostgresFichasAgenteRepository } from "./superadmin-fichas-agente-repository.ts";
+export type {
   AgentPanelRow,
   AgentRunRow,
   AgentRunRepository,

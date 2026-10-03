@@ -5,7 +5,7 @@
 //   * pestana "Gestion": el GestionOrganizaciones de siempre (alta, suspender, reactivar, plan; doble control y step-up intactos).
 // Cada cifra sale de un endpoint real (GET /superadmin/organizaciones/resumen y /margen; apps/api/src/routes/superadmin-organizaciones-ficha.ts).
 // Un dato que no se pudo medir se pinta "—" con su razon, nunca 0. El margen es de la zona CFO (step-up y bitacora): se pide APARTE y, si se
-// rechaza, solo esa columna queda en blanco. Base sin la migracion 0049: aviso honesto y las columnas nuevas en "—".
+// rechaza, solo esa columna queda en blanco. Base sin la migracion 0050: aviso honesto y las columnas nuevas en "—".
 // Un solo <h1> (PageHeader). La barra de pagina (icono + nombre) la pone el shell.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";

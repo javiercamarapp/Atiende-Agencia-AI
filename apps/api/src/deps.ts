@@ -12,6 +12,7 @@ import type {
   CfoZoneRepository,
   ConsolaRepository,
   OrgFichaRepository,
+  FichasAgenteRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
@@ -71,6 +72,7 @@ import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
+import type { LlmRouteConfig } from "./production/llm-models.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -648,6 +650,13 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** Fichas de agente y Model Ops de la consola (SA-L-09/SA-L-10; ver packages/db/migrations/0049_superadmin_fichas_agente.sql y
+   *  routes/superadmin-agentes-fichas.ts). Fabrica por sesion del caller; cada fuente corre bajo su propio SAVEPOINT. OPCIONAL:
+   *  ausente o migracion sin aplicar -> los campos salen `null` con su razon y `disponible: false` (200), nunca un 500. */
+  readonly fichasAgenteRepo?: (db: TenantDbSession) => FichasAgenteRepository;
+  /** Ruta vigente (defaults + LLM_MODELS_JSON) de un rol del gateway: escalera de modelos y proveedores. Solo lectura, sin secretos.
+   *  OPCIONAL: ausente -> Model Ops resuelve contra los defaults del repo. */
+  readonly rutaLlmDeRol?: (role: string) => LlmRouteConfig;
   /** Bitacora de corridas de agentes y panel de agentes (SA-L-07/SA-L-08; ver
    *  packages/db/migrations/0044_superadmin_corridas_y_panel_agentes.sql, routes/superadmin-agentes.ts y
    *  agentes/corridas.ts). Fabrica por sesion: la escritura y la purga son SOLO-SISTEMA (una transaccion PROPIA por
