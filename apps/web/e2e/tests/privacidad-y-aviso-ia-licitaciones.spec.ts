@@ -61,7 +61,7 @@ test.describe("licitaciones: aviso de uso de IA @humo @oscuro", () => {
     await expect(page.getByRole("note", AVISO)).toBeVisible();
     await expect(page.getByRole("note", AVISO)).toContainText("sin generar texto con IA");
     await page.goto(`${BASE}/convocatorias/tnd-2/propuesta-tecnica`);
-    await expect(page.getByRole("heading", { name: "Propuesta técnica" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Propuesta técnica", exact: true })).toBeVisible();
     await expect(page.getByRole("note", AVISO)).toHaveCount(0);
     vigilante.verificar();
   });
@@ -70,7 +70,7 @@ test.describe("licitaciones: aviso de uso de IA @humo @oscuro", () => {
     await iniciarSesion("licitaciones", "owner");
     await page.goto(`${BASE}/convocatorias/tnd-1/sala-guerra`);
     await page.getByRole("tab", { name: "Junta de aclaraciones" }).click();
-    await expect(page.getByText("Borrador del asistente")).toBeVisible();
+    await expect(page.getByText("Borrador del asistente", { exact: true })).toBeVisible();
     await expect(page.getByRole("note", AVISO)).toBeVisible();
 
     await page.goto(`${BASE}/convocatorias/tnd-2/sala-guerra`);
