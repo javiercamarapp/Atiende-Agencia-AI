@@ -32,7 +32,7 @@ import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
-import { SuperAdminGastoApiPage } from "./superadmin/pages/GastoApi.tsx";
+import { SuperAdminConsumoIaPage } from "./superadmin/pages/ConsumoIa.tsx";
 import { SuperAdminBreakGlassPage } from "./superadmin/pages/BreakGlass.tsx";
 import { SuperAdminImpersonacionPage } from "./superadmin/pages/Impersonacion.tsx";
 import { SuperAdminAuthzAuditoriaPage } from "./superadmin/pages/AuthzAuditoria.tsx";
@@ -395,11 +395,11 @@ function SuperAdminPanelesRoute() {
   );
 }
 
-function SuperAdminGastoApiRoute() {
+function SuperAdminConsumoIaRoute() {
   const navigate = useNavigate();
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
-      {(ctx) => <SuperAdminGastoApiPage {...ctx} />}
+      {(ctx) => <SuperAdminConsumoIaPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -1089,7 +1089,7 @@ export function App() {
         <Route path="/superadmin/parte-diario" element={<SuperAdminParteDiarioRoute />} />
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
-        <Route path="/superadmin/consumo-ia" element={<SuperAdminGastoApiRoute />} />
+        <Route path="/superadmin/consumo-ia" element={<SuperAdminConsumoIaRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
         {/* Rutas que cambiaron de lugar (SA-L-01): la vieja redirige a la nueva, sin 404. */}
