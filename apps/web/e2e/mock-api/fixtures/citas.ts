@@ -113,6 +113,159 @@ function slotsPublicos(fecha: string, proveedores: readonly string[], tomados: r
   return [...unicos.values()].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 }
 
+// C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano. Mismo formato que apps/api/src/routes/verticals/citas/conversaciones.ts:
+// el telefono sale enmascarado, tomar deja la conversacion "tomada" por quien la toma y un POST de responder/nota/devolver/cerrar se refleja en el GET
+// siguiente. Estado aislado por escenario. Solo existe en la API simulada de e2e (la respuesta humana NO sale hacia ningun WhatsApp real).
+interface ConversacionHilo {
+  id: string;
+  telefono: string;
+  mensajes: { rol: "cliente" | "agente" | "humano"; texto: string }[];
+  actividadEn: string;
+  cita: { id: string; iniciaEn: string; estado: string } | null;
+  handoff: { handoffId: string; estado: "pendiente" | "tomada" | "devuelta" | "cerrada"; crisis: boolean; motivo: string | null; tomadaPor: string | null; tomadaPorNombre: string | null; tomadaEn: string | null } | null;
+  notas: { id: string; autor: string | null; autorId: string | null; texto: string; creadoEn: string }[];
+}
+function conversacionesSemilla(): ConversacionHilo[] {
+  const ahora = Date.now();
+  return [
+    {
+      id: "cnv-1",
+      telefono: "***0201",
+      mensajes: [{ rol: "cliente", texto: "Hola, quiero mover mi cita de mañana" }, { rol: "agente", texto: "Claro, ¿para qué día te gustaría?" }],
+      actividadEn: new Date(ahora - 5 * 60_000).toISOString(),
+      cita: { id: "apt-1", iniciaEn: new Date(ahora + 3_600_000).toISOString(), estado: "confirmed" },
+      handoff: null,
+      notas: [],
+    },
+    {
+      id: "cnv-2",
+      telefono: "***0202",
+      mensajes: [{ rol: "cliente", texto: "Necesito hablar con alguien por favor" }],
+      actividadEn: new Date(ahora - 60_000).toISOString(),
+      cita: null,
+      handoff: { handoffId: "hnd-2", estado: "pendiente", crisis: true, motivo: "Escalación de crisis: un cliente necesita atención humana.", tomadaPor: null, tomadaPorNombre: null, tomadaEn: null },
+      notas: [],
+    },
+  ];
+}
+const hilos = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionHilo[]>("citas.conversaciones", conversacionesSemilla);
+const estadoDe = (h: ConversacionHilo) => h.handoff?.estado ?? "agente";
+function itemBandeja(h: ConversacionHilo, yo: string) {
+  const g = h.handoff;
+  return {
+    conversationId: h.id,
+    telefono: h.telefono,
+    vistaPrevia: h.mensajes.at(-1)?.texto ?? "",
+    actividadEn: h.actividadEn,
+    estado: estadoDe(h),
+    handoffId: g?.handoffId ?? null,
+    motivo: g?.motivo ?? null,
+    crisis: g?.crisis === true,
+    solicitadaEn: null,
+    ultimoClienteEn: null,
+    tomadaPor: g?.tomadaPor ?? null,
+    tomadaPorNombre: g?.tomadaPorNombre ?? null,
+    tomadaEn: g?.tomadaEn ?? null,
+    esMia: g?.estado === "tomada" && g.tomadaPor === yo,
+    cita: h.cita,
+  };
+}
+const gestor = (rol: string | undefined) => rol === "owner" || rol === "admin";
+const hiloDeHandoff = (lista: ConversacionHilo[], hid: string | undefined) => lista.find((h) => h.handoff?.handoffId === hid);
+
+const rutasConversaciones: readonly Ruta[] = [
+  {
+    metodo: "GET",
+    patron: `${P}/admin/conversaciones`,
+    manejador: (p) => {
+      const filtro = p.query.get("estado");
+      const items = hilos(p).filter((h) => !filtro || estadoDe(h) === filtro).map((h) => itemBandeja(h, p.persona?.id ?? ""));
+      items.sort((a, b) => Number(b.crisis) - Number(a.crisis) || b.actividadEn.localeCompare(a.actividadEn));
+      return { disponible: true, total: items.length, nextOffset: null, puedeGestionar: gestor(p.persona?.rol), items };
+    },
+  },
+  {
+    metodo: "GET",
+    patron: `${P}/admin/conversaciones/:cid`,
+    manejador: (p) => {
+      const h = hilos(p).find((x) => x.id === p.params["cid"]);
+      if (!h) return fallo(404, "Conversación no encontrada.");
+      const yo = p.persona?.id ?? "";
+      const g = h.handoff;
+      return {
+        conversationId: h.id,
+        telefono: h.telefono,
+        citaId: h.cita?.id ?? null,
+        puedeGestionar: gestor(p.persona?.rol),
+        mensajes: h.mensajes,
+        handoff: g ? { handoffId: g.handoffId, estado: g.estado, solicitadoPor: g.motivo ? "agente" : "staff", motivo: g.motivo, crisis: g.crisis, solicitadaEn: h.actividadEn, ultimoClienteEn: null, tomadaPor: g.tomadaPor, tomadaPorNombre: g.tomadaPorNombre, tomadaEn: g.tomadaEn, esMia: g.estado === "tomada" && g.tomadaPor === yo } : null,
+        notas: h.notas,
+      };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/conversaciones/:cid/tomar`,
+    manejador: (p) => {
+      const h = hilos(p).find((x) => x.id === p.params["cid"]);
+      if (!h) return fallo(404, "Conversación no encontrada.");
+      const yo = p.persona?.id ?? "";
+      if (h.handoff?.estado === "tomada" && h.handoff.tomadaPor !== yo) return fallo(409, "Esta conversación ya la tiene otra persona.");
+      const handoffId = h.handoff && (h.handoff.estado === "pendiente" || h.handoff.estado === "tomada") ? h.handoff.handoffId : `hnd-${h.id}-${Date.now()}`;
+      h.handoff = { handoffId, estado: "tomada", crisis: h.handoff?.crisis ?? false, motivo: h.handoff?.motivo ?? null, tomadaPor: yo, tomadaPorNombre: p.persona?.fullName ?? null, tomadaEn: new Date().toISOString() };
+      return conStatus(201, { handoffId, estado: "tomada" });
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/handoffs/:hid/devolver`,
+    manejador: (p) => {
+      const h = hiloDeHandoff(hilos(p), p.params["hid"]);
+      if (!h?.handoff) return fallo(404, "Handoff no encontrado.");
+      const cambio = h.handoff.estado === "pendiente" || h.handoff.estado === "tomada";
+      if (cambio) h.handoff.estado = "devuelta";
+      return { handoffId: h.handoff.handoffId, estado: "devuelta", cambio };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/handoffs/:hid/cerrar`,
+    manejador: (p) => {
+      const h = hiloDeHandoff(hilos(p), p.params["hid"]);
+      if (!h?.handoff) return fallo(404, "Handoff no encontrado.");
+      const cambio = h.handoff.estado === "pendiente" || h.handoff.estado === "tomada";
+      if (cambio) h.handoff.estado = "cerrada";
+      return { handoffId: h.handoff.handoffId, estado: "cerrada", cambio };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/handoffs/:hid/notas`,
+    manejador: (p) => {
+      const h = hiloDeHandoff(hilos(p), p.params["hid"]);
+      if (!h) return fallo(404, "Handoff no encontrado.");
+      const texto = String(((p.cuerpo ?? {}) as { texto?: string }).texto ?? "").trim();
+      if (!texto || texto.length > 2000) return fallo(400, "texto: texto de 1 a 2000 caracteres.");
+      const id = `nota-${h.notas.length + 1}`;
+      h.notas.push({ id, autor: p.persona?.fullName ?? null, autorId: p.persona?.id ?? null, texto, creadoEn: new Date().toISOString() });
+      return conStatus(201, { id });
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/handoffs/:hid/responder`,
+    manejador: (p) => {
+      const h = hiloDeHandoff(hilos(p), p.params["hid"]);
+      if (!h?.handoff) return fallo(404, "Handoff no encontrado.");
+      if (h.handoff.estado !== "tomada" || h.handoff.tomadaPor !== (p.persona?.id ?? "")) return fallo(403, "Solo quien tiene tomada la conversación puede responder.");
+      const texto = String(((p.cuerpo ?? {}) as { texto?: string }).texto ?? "").trim();
+      if (!texto || texto.length > 1000) return fallo(400, "texto: texto de 1 a 1000 caracteres.");
+      h.mensajes.push({ rol: "humano", texto });
+      return conStatus(201, { encolado: true, outboxId: `out-${h.mensajes.length}` });
+    },
+  },
+];
+
 export const rutasCitas: readonly Ruta[] = [
   { metodo: "GET", patron: `${C}/chat-datos/pins`, roles: MOCK_ROLES_COPILOTO, manejador: () => ({ disponible: true, pins: [] }) },
   {
@@ -231,6 +384,7 @@ export const rutasCitas: readonly Ruta[] = [
       return { appointment: cita };
     } },
   { metodo: "GET", patron: `${P}/waitlist`, manejador: () => ({ waitlist: [] }) },
+  ...rutasConversaciones,
 ];
 
 export const citas = { orgSlug: ORG.slug, propertyId: PROP.id, slugNoListo: SLUG_NO_LISTO };
