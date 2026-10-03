@@ -10,6 +10,8 @@ import { MENSAJES_CONFIG_POR_OMISION as MENSAJES_CONFIG_POR_OMISION_MEM, fotoCon
 import { AGENTE_CONFIG_POR_OMISION } from "./whatsapp/agent-config.ts";
 import type { AgenteConfigGuardado, ConectarNumeroResultado, DesconectarNumeroResultado, WhatsappAgentConfig, WhatsappAgentConfigRecord, WhatsappConnection } from "./whatsapp/agent-config.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
+import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
+import type { PlantillaWhatsappInput, PlantillaWhatsappRecord } from "./whatsapp/plantillas.ts";
 import type {
   ConfirmDataRightsOutcome,
   DataRightsEventRow,
@@ -1083,6 +1085,56 @@ export class InMemoryCitasRepository implements CitasRepository {
   async getWhatsappMessageConfigForSend(organizationId: string): Promise<WhatsappMessageConfig | null> {
     if (!this.whatsappMessageConfigDisponible) return null;
     return this.whatsappMessageConfigByOrg.get(organizationId)?.config ?? null;
+  }
+
+  // ---- PL-31 -- catalogo de plantillas y ventana de 24 h (migracion 0050). Por omision la base "no esta migrada" (undefined), igual que
+  // la base real sin la 0050: los avisos conservan el comportamiento anterior hasta que una prueba la habilita. ----
+  private plantillasDisponibles = false;
+  private readonly plantillasWhatsappPorEvento = new Map<string, PlantillaWhatsappAprobada>();
+  private readonly entradasWhatsapp = new Map<string, string>();
+
+  habilitarPlantillasYVentanaWhatsapp(): void {
+    this.plantillasDisponibles = true;
+  }
+
+  seedPlantillaWhatsappAprobada(organizationId: string, evento: string, plantilla: PlantillaWhatsappAprobada): void {
+    this.plantillasWhatsappPorEvento.set(`${organizationId}:${evento}`, plantilla);
+  }
+
+  seedEntradaWhatsapp(organizationId: string, phone: string, atIso: string): void {
+    this.entradasWhatsapp.set(`${organizationId}:${phone.replace(/\D/gu, "").slice(-10)}`, atIso);
+  }
+
+  private readonly catalogoPlantillas = new Map<string, PlantillaWhatsappRecord>();
+
+  async listWhatsappTemplates(organizationId: string): Promise<{ readonly disponible: boolean; readonly items: readonly PlantillaWhatsappRecord[] }> {
+    if (!this.plantillasDisponibles) return { disponible: false, items: [] };
+    return { disponible: true, items: [...this.catalogoPlantillas.entries()].filter(([k]) => k.startsWith(`${organizationId}:`)).map(([, v]) => v).sort((a, b) => a.evento.localeCompare(b.evento)) };
+  }
+
+  async saveWhatsappTemplate(organizationId: string, evento: string, valor: PlantillaWhatsappInput): Promise<"saved" | "forbidden" | "unavailable"> {
+    if (!this.plantillasDisponibles) return "unavailable";
+    const previa = this.catalogoPlantillas.get(`${organizationId}:${evento}`);
+    const ahora = new Date().toISOString();
+    this.catalogoPlantillas.set(`${organizationId}:${evento}`, { evento, ...valor, aprobadaEn: valor.estado === "aprobada" ? (previa?.estado === "aprobada" ? previa.aprobadaEn : ahora) : null, actualizadaEn: ahora });
+    return "saved";
+  }
+
+  async deleteWhatsappTemplate(organizationId: string, evento: string): Promise<"deleted" | "not_found" | "forbidden" | "unavailable"> {
+    if (!this.plantillasDisponibles) return "unavailable";
+    return this.catalogoPlantillas.delete(`${organizationId}:${evento}`) ? "deleted" : "not_found";
+  }
+
+  async resolveWhatsappTemplate(organizationId: string, evento: string): Promise<PlantillaWhatsappAprobada | null | undefined> {
+    if (!this.plantillasDisponibles) return undefined;
+    const guardada = this.catalogoPlantillas.get(`${organizationId}:${evento}`);
+    if (guardada?.estado === "aprobada") return { name: guardada.nombre, language: guardada.idioma, variables: guardada.variables };
+    return this.plantillasWhatsappPorEvento.get(`${organizationId}:${evento}`) ?? null;
+  }
+
+  async lastInboundWhatsappAt(organizationId: string, phone: string): Promise<string | null | undefined> {
+    if (!this.plantillasDisponibles) return undefined;
+    return this.entradasWhatsapp.get(`${organizationId}:${phone.replace(/\D/gu, "").slice(-10)}`) ?? null;
   }
 
   async saveWhatsappMessageConfig(organizationId: string, expectedVersion: number, accion: "actualizado" | "restablecido", config: WhatsappMessageConfig): Promise<MensajeConfigGuardado> {

@@ -20,7 +20,7 @@ import { rateLimit } from "@atiende/core-ratelimit";
 import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerHotelesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { BAJA_CONFIRMADA_TEXTO, procesarMensajeBaja } from "../../../supresion/index.ts";
+import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -101,16 +101,18 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
 
       let hadRetryableFailure = false;
       for (const message of incomingMessages) {
-        // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; no pasa al agente.
-        const baja = await procesarMensajeBaja(db, {
+        // SA-L-46: BAJA / STOP -> lista de supresion de plataforma + UNA confirmacion; PL-32: ALTA la reactiva. No pasa al agente.
+        const atendida = await procesarBajaOAlta(db, {
           telefono: `+${message.from}`,
           texto: message.text.body,
           origen: "whatsapp.hoteles",
           organizationId: route.organizationId,
-          confirmar: () =>
+          confirmarBaja: () =>
             repo.enqueueMessagingOutbox(route.propertyId, route.organizationId, "whatsapp", "whatsapp.baja_confirmada", `baja-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberId, body: BAJA_CONFIRMADA_TEXTO, transaccional: true }),
+          confirmarAlta: () =>
+            repo.enqueueMessagingOutbox(route.propertyId, route.organizationId, "whatsapp", "whatsapp.alta_confirmada", `alta-confirmada:${message.id}`, { to: `+${message.from}`, phone_number_id: phoneNumberId, body: ALTA_CONFIRMADA_TEXTO, transaccional: true }),
         });
-        if (baja.manejada) continue;
+        if (atendida) continue;
         const outcome = await handleInboundWhatsAppMessage(repo, deps.hotelesTurnHandler, {
           organizationId: route.organizationId,
           propertyId: route.propertyId,
