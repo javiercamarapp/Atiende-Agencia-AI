@@ -65,6 +65,15 @@ const SIN_AVISO = "sin_aviso_publicado";
 const NO_MIGRADA = "La reserva en linea aun no esta disponible: falta aplicar la migracion 044 en esta base.";
 
 const noStore = (c: Context) => c.header("Cache-Control", "no-store");
+/** La validacion del dominio lanza ReservarValidationError: aqui se vuelve un 400 con mensaje seguro (sin esto el manejador global lo contaria como 500). */
+function validar<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof ReservarValidationError) throw Errors.validation(err.message);
+    throw err;
+  }
+}
 const sha = (v: string): string => createHash("sha256").update(v).digest("hex");
 
 interface Hotel {
@@ -225,7 +234,7 @@ export function hotelesReservarPublicoRoutes(deps: AppDeps): Hono {
     noStore(c);
     await limitOrThrow("hoteles-reservar-disponibilidad", ipOf(c), 60, 60);
     const orgSlug = c.req.param("orgSlug");
-    const q = parseDisponibilidadQuery({ llegada: c.req.query("llegada"), salida: c.req.query("salida"), huespedes: c.req.query("huespedes"), property: c.req.query("property") });
+    const q = validar(() => parseDisponibilidadQuery({ llegada: c.req.query("llegada"), salida: c.req.query("salida"), huespedes: c.req.query("huespedes"), property: c.req.query("property") }));
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const hotel = await cargarHotel(db, orgSlug);
       if (!hotel) throw Errors.notFound("Hotel no encontrado.");
@@ -264,7 +273,8 @@ export function hotelesReservarPublicoRoutes(deps: AppDeps): Hono {
     assertOrigin(c);
     await limitOrThrow("hoteles-reservar-cotizacion", ipOf(c), 30, 60);
     const orgSlug = c.req.param("orgSlug");
-    const body = parseCotizacionBody(await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES));
+    const crudo = await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES);
+    const body = validar(() => parseCotizacionBody(crudo));
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const hotel = await cargarHotel(db, orgSlug);
       if (!hotel) throw Errors.notFound("Hotel no encontrado.");
@@ -323,8 +333,9 @@ export function hotelesReservarPublicoRoutes(deps: AppDeps): Hono {
     noStore(c);
     assertOrigin(c);
     const orgSlug = c.req.param("orgSlug");
-    const idempotencyKey = parseIdempotencyKey(c.req.header("idempotency-key"));
-    const body = parseConfirmarBody(await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES));
+    const idempotencyKey = validar(() => parseIdempotencyKey(c.req.header("idempotency-key")));
+    const crudo = await readJsonCapped<unknown>(c.req.raw, MAX_BODY_BYTES);
+    const body = validar(() => parseConfirmarBody(crudo));
     await limitOrThrow("hoteles-reservar-confirmar", ipOf(c), 8, 60);
     // Honeypot: un robot recibe una respuesta de exito SIN token y no se guarda nada.
     if (body.honeypot) return c.json({ ok: true, estado: "recibida" }, 202);
@@ -465,8 +476,9 @@ export function hotelesReservarPublicoRoutes(deps: AppDeps): Hono {
     noStore(c);
     assertOrigin(c);
     const orgSlug = c.req.param("orgSlug");
-    parseIdempotencyKey(c.req.header("idempotency-key"));
-    parseCancelarVacio(await readJsonCapped<unknown>(c.req.raw, 1024));
+    validar(() => parseIdempotencyKey(c.req.header("idempotency-key")));
+    const crudoCancelar = await readJsonCapped<unknown>(c.req.raw, 1024);
+    validar(() => parseCancelarVacio(crudoCancelar));
     await limitOrThrow("hoteles-reservar-cancelar", ipOf(c), 10, 60);
     const token = c.req.param("token");
     const claims = leerToken(token);
