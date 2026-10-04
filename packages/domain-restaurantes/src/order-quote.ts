@@ -104,6 +104,18 @@ export function buildComplementNotes(
   return lines.join("\n");
 }
 
+/** Piezas maximas por renglon. Antes 100 (120 tacos para una fiesta no se podian ni cotizar): un pedido grande se cotiza y, en los canales de
+ * agente, el servidor lo retiene para que la sucursal lo confirme (ver pedido-grande.ts). El checkout WEB conserva su tope de 100 (`MAX_PIEZAS_POR_RENGLON_WEB`). */
+export const MAX_PIEZAS_POR_RENGLON = 500;
+export const MAX_PIEZAS_POR_RENGLON_WEB = 100;
+
+/** Mensaje accionable para una cantidad fuera de rango: dice el maximo en vez de un error generico. */
+export function mensajeCantidadInvalida(value: unknown, max: number = MAX_PIEZAS_POR_RENGLON): string {
+  return typeof value === "number" && Number.isInteger(value) && value > max
+    ? `Productos o cantidades inválidos: el máximo es de ${max} piezas por renglón; un pedido más grande lo confirma directamente la sucursal.`
+    : "Productos o cantidades inválidos";
+}
+
 /**
  * Cotiza N renglones YA resueltos contra el catálogo real de la sucursal (ver
  * product-search.ts::resolveOrderItemsAgainstProducts para la guardia anti-precio).
@@ -133,9 +145,9 @@ export function buildOrderQuoteFromProducts(
       item.productId.length > 64 ||
       !Number.isInteger(item.requestedQuantity) ||
       item.requestedQuantity < 1 ||
-      item.requestedQuantity > 100
+      item.requestedQuantity > MAX_PIEZAS_POR_RENGLON
     ) {
-      throw new OrderValidationError("Productos o cantidades inválidos");
+      throw new OrderValidationError(mensajeCantidadInvalida(item?.requestedQuantity));
     }
     const product = products.find((candidate) => candidate.id === item.productId);
     if (!product) {

@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, assertOrderCanBeDispatched, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -200,6 +200,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), promovidos),
           );
           logEvent(c, "info", "restaurantes_programados_comanda_encolada", { organizationId, ...resumen });
+        });
+        // Aviso al staff (bandeja + campana) de que el programado entro a cocina, tambien tras el commit y en su propia
+        // sesion de sistema: un fallo aqui no afecta la respuesta ni la comanda (tarea aparte).
+        c.get("postCommitTasks").push(async () => {
+          const resumen = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, promovidos));
+          logEvent(c, "info", "restaurantes_programados_aviso_staff", { organizationId, ...resumen });
         });
       }
       return r.promovidos;

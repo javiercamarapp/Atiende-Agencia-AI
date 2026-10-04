@@ -11,7 +11,7 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { barrerAvisosOperativos, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, barrerAvisosOperativos, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
 import type { ResultadoBarridoAvisos } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -42,6 +42,17 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
           comandas = { ...comandas, errores: resultado.promovidos.length };
         }
       }
+      // Aviso al staff (bandeja + campana) de que el programado entro a cocina: tambien en su propia sesion, tras el commit
+      // de la promocion; idempotente por pedido y nunca revierte nada.
+      let avisosCocina = { intentados: 0, bandeja: 0, errores: 0 };
+      if (resultado.promovidos.length > 0) {
+        try {
+          avisosCocina = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, resultado.promovidos));
+        } catch (err) {
+          logEvent(c, "error", "restaurantes_programados_aviso_fallido", { error: err instanceof Error ? err.message : String(err) });
+          avisosCocina = { ...avisosCocina, errores: resultado.promovidos.length };
+        }
+      }
       let avisos: ResultadoBarridoAvisos = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
       try {
         avisos = await deps.engine.withAppSession({ userId: null }, (db) => barrerAvisosOperativos(db, { now: new Date() }));
@@ -56,6 +67,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         promoted: resultado.promovidos.length,
         orderIds: resultado.promovidos.map((o) => o.id),
         comandas,
+        avisosCocina,
         avisos,
       });
     })();

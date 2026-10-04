@@ -144,4 +144,24 @@ describe("ColaCobranzaPage (despachos)", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/cola-cobranza/reporte-cartera?formato=pdf"))).toBe(true);
     expect(crear).toHaveBeenCalledOnce();
   });
+
+  it("consentimientos de WhatsApp por cliente: tabla con RFC, telefono y estado opt-in/opt-out", async () => {
+    stub({
+      consentimientos: {
+        disponible: true,
+        consentimientos: [
+          { rfcReceptor: "XAXX010101000", telefono: "+5215512345678", estado: "opt_in" },
+          { rfcReceptor: "XEXX010101000", telefono: "+5215587654321", estado: "opt_out" },
+        ],
+      },
+    });
+    await cargar();
+    const tabla = rendered!.container.querySelector('table[aria-label="Consentimientos de WhatsApp por cliente"]');
+    expect(tabla).not.toBeNull();
+    const texto = tabla!.textContent!;
+    expect(texto).toContain("XAXX010101000");
+    expect(texto).toContain("+5215587654321");
+    expect(texto).toContain("Opt-in");
+    expect(texto).toContain("Opt-out");
+  });
 });

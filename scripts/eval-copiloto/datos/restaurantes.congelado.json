@@ -1853,7 +1853,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -1897,7 +1897,7 @@
     },
     "result": {
      "status": "empty",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "hoy (30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -1935,7 +1935,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2009,7 +2009,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2065,7 +2065,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "mes pasado (1 ago al 31 ago 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2111,7 +2111,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2176,7 +2176,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2250,7 +2250,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "últimos 7 días (24 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2312,7 +2312,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), hora local del negocio",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), hora local del negocio",
      "periodLabel": "últimos 30 días (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2376,7 +2376,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cliente = por identificador o teléfono, sin mostrar datos personales",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cliente = por identificador o teléfono, sin mostrar datos personales",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2477,7 +2477,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "sucursal Norte",
      "columns": [
@@ -2552,7 +2552,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "últimos 30 días (1 sep al 30 sep 2026)",
      "scopeLabel": "sucursal Centro",
      "columns": [
@@ -2597,7 +2597,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2643,7 +2643,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), hora local del negocio",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), hora local del negocio",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2697,7 +2697,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "mes pasado (1 ago al 31 ago 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2881,7 +2881,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -2944,7 +2944,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "sucursal Norte",
      "columns": [
@@ -2998,7 +2998,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "esta semana (lunes a hoy) (28 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3047,7 +3047,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3232,7 +3232,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "periodo indicado (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3307,7 +3307,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "periodo indicado (26 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3356,7 +3356,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3418,7 +3418,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "últimos 90 días (3 jul al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3474,7 +3474,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3520,7 +3520,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "periodo indicado (28 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3564,7 +3564,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cliente = por identificador o teléfono, sin mostrar datos personales",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cliente = por identificador o teléfono, sin mostrar datos personales",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3609,7 +3609,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3663,7 +3663,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3737,7 +3737,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -3919,7 +3919,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "mes pasado (1 ago al 31 ago 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4103,7 +4103,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4146,7 +4146,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4208,7 +4208,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), hora local del negocio",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), hora local del negocio",
      "periodLabel": "últimos 30 días (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4270,7 +4270,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cliente = por identificador o teléfono, sin mostrar datos personales",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cliente = por identificador o teléfono, sin mostrar datos personales",
      "periodLabel": "últimos 30 días (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4315,7 +4315,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4425,7 +4425,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "sucursal Centro",
      "columns": [
@@ -4469,7 +4469,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "sucursal Norte",
      "columns": [
@@ -4515,7 +4515,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4567,7 +4567,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), hora local del negocio",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), hora local del negocio",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4631,7 +4631,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4673,7 +4673,7 @@
     },
     "result": {
      "status": "empty",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "hoy (30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4711,7 +4711,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "mes pasado (1 ago al 31 ago 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4771,7 +4771,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "mes pasado (1 ago al 31 ago 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4828,7 +4828,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "periodo indicado (14 sep al 20 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -4903,7 +4903,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "sucursal Centro",
      "columns": [
@@ -4949,7 +4949,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5023,7 +5023,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "semana pasada (lunes a domingo) (21 sep al 27 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5086,7 +5086,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "sucursal Centro",
      "columns": [
@@ -5130,7 +5130,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), hora local del negocio",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), hora local del negocio",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5205,7 +5205,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5282,7 +5282,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados)",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados)",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5338,7 +5338,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados); cancelados contados aparte",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados); cancelados contados aparte",
      "periodLabel": "ayer (29 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
@@ -5384,7 +5384,7 @@
     },
     "result": {
      "status": "ok",
-     "source": "Pedidos de restaurantes (sin cancelados), desglosados por producto",
+     "source": "Pedidos de restaurantes (sin cancelados, no recogidos ni programados), desglosados por producto",
      "periodLabel": "este mes (1 sep al 30 sep 2026)",
      "scopeLabel": "todas tus sucursales",
      "columns": [
