@@ -56,6 +56,9 @@ export function extractMetaTextMessages(payload: unknown): MetaTextMessage[] {
  * en vez de ignorar al cliente en silencio. */
 export type MetaInboundMessage = { readonly id: string; readonly from: string; readonly body: string };
 
+/** Nota que antepone el servidor al texto de una edicion del cliente. */
+export const EDICION_NOTA = "(el cliente corrigió su mensaje anterior)";
+
 const UNSUPPORTED_KINDS = new Set(["audio", "voice", "image", "video", "document", "sticker", "location", "contacts"]);
 
 function unsupportedBody(type: string): string {
@@ -91,7 +94,15 @@ export function extractMetaInboundMessages(payload: unknown): MetaInboundMessage
           result.push({ id: text[0].id, from: text[0].from, body: text[0].text.body });
           continue;
         }
-        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
+        const message = candidate as { id?: unknown; from?: unknown; type?: unknown; location?: { latitude?: unknown; longitude?: unknown }; edit?: { original_message_id?: unknown; message?: { type?: unknown; text?: { body?: unknown } } } };
+        // Edicion de un mensaje de texto (webhook `messages` con `type: "edit"`, documentado por Meta; NO probado contra Meta real). Entra como mensaje
+        // nuevo con la nota de correccion: el historial no guarda el id de Meta de cada mensaje, asi que no se reemplaza el original.
+        if (message.type === "edit" && typeof message.id === "string" && message.id.length >= 1 && message.id.length <= 255 && typeof message.from === "string" && /^\d{7,20}$/.test(message.from)) {
+          const inner = message.edit?.message;
+          const body = inner?.type === "text" && typeof inner.text?.body === "string" ? inner.text.body : "";
+          if (body.trim().length >= 1 && body.length <= 4000) result.push({ id: message.id, from: message.from, body: `${EDICION_NOTA} ${body}` });
+          continue;
+        }
         if (typeof message.id !== "string" || message.id.length < 1 || message.id.length > 255 || typeof message.from !== "string" || !/^\d{7,20}$/.test(message.from)) continue;
         // Ubicacion valida: se guarda como marcador de texto estable (ver location.ts) que el turno relee para
         // asignar sucursal por km. Con coordenadas invalidas cae a la nota honesta de abajo (nunca se adivina).
