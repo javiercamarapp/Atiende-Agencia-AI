@@ -9,7 +9,7 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
-import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
 import { etiquetaHoraLocal } from "./horarios.ts";
@@ -174,8 +174,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     const hasRequested = item.requestedQuantity !== undefined;
     if (hasQuantity === hasRequested) throw new OrderValidationError("Productos o cantidades inválidos");
     const value = hasRequested ? item.requestedQuantity : item.quantity;
-    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 100) {
-      throw new OrderValidationError("Productos o cantidades inválidos");
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > MAX_PIEZAS_POR_RENGLON) {
+      throw new OrderValidationError(mensajeCantidadInvalida(value));
     }
   }
 

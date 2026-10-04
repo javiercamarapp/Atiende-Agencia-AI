@@ -20,7 +20,7 @@ import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
 import { createOrder, quoteOrder, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { assertWebOrderRules } from "../storefront.ts";
+import { assertCantidadesWeb, assertWebOrderRules } from "../storefront.ts";
 import { evaluarPedidoGrande, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
 import { normalizePhone } from "../phone.ts";
 import type { RestaurantesRepository } from "../repository.ts";
@@ -708,6 +708,7 @@ async function dispatchTool(
     case "cotizar_pedido": {
       const branchSlug = String(input.branch_slug ?? "");
       await assertBranchAllowed(repo, ctx, branchSlug);
+      if (ctx.channel === "web") assertCantidadesWeb(toRequestedItems(input.items, lenient).map((i) => i.requestedQuantity));
       const quote = await quoteOrder(repo, {
         organizationId,
         branchSlug,
