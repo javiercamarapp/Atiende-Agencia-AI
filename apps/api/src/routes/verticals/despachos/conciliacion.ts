@@ -119,7 +119,7 @@ function invoiceARegistroConciliable(inv: InvoiceRecord): RegistroConciliable {
 export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   // D-P3-12: lo asigna el registro de la conciliación persistida (al final); los handlers lo leen al atender cada request.
-  let piloto: PilotoConciliacion | undefined;
+  const pilotoRef: { actual?: PilotoConciliacion } = {};
 
   app.use("/despachos/:propertyId/conciliacion/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -248,8 +248,8 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     if (resultado === null) throw Errors.serviceUnavailable("Guardar estados de cuenta aún no está disponible en esta base de datos: falta aplicar la migración 015 (libro de movimientos importados).");
     // D-P3-12: piloto automático (sesión del periodo, propuestas guardadas, autoconfirmación de nivel 1 si el cliente la encendió, avisos). Nunca falla el guardado.
     const conciliacion =
-      piloto && resultado.insertados > 0
-        ? await piloto.trasImportar(c, { propertyId: c.req.param("propertyId"), cuenta: parseo.cuenta ?? null, periodos: parseo.movimientos.map((m) => m.fecha.slice(0, 7)) })
+      pilotoRef.actual && resultado.insertados > 0
+        ? await pilotoRef.actual.trasImportar(c, { propertyId: c.req.param("propertyId"), cuenta: parseo.cuenta ?? null, periodos: parseo.movimientos.map((m) => m.fecha.slice(0, 7)) })
         : null;
     return c.json({ ...resultado, totalMovimientos: parseo.movimientos.length, conciliacion }, resultado.insertados > 0 ? 201 : 200);
   });
@@ -307,7 +307,7 @@ export function despachosConciliacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   // D-35 + D-02: sesiones persistidas, confirmar/deshacer y nivel 4 (LLM) con aprobación humana. Comparten la cadena de middleware de arriba.
-  piloto = registrarConciliacionPersistida(app, deps, invoiceARegistroConciliable);
+  pilotoRef.actual = registrarConciliacionPersistida(app, deps, invoiceARegistroConciliable);
 
   return app;
 }

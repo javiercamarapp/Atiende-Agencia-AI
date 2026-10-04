@@ -33,9 +33,9 @@ describe("PostgresConciliacionPersistidaRepository -- base sin la migración 025
   });
   it.each([
     ["guardarPropuestas", /conciliacion_sesion_propuestas_guardar/, (r: PostgresConciliacionPersistidaRepository) => r.guardarPropuestas(UUID, UUID, { version: 1, calculadoEn: "x", propuestas: [], multiLinea: [], ambiguas: [], sinConciliar: [] })],
-    ["asegurarSesion", /conciliacion_sesion_asegurar/, (r: PostgresConciliacionPersistidaRepository) => r.asegurarSesion(UUID, "2026-07", null, UUID)],
-    ["confirmarAutopiloto", /conciliacion_autopiloto_confirmar/, (r: PostgresConciliacionPersistidaRepository) => r.confirmarAutopiloto(UUID, UUID, [{ movimientoId: UUID, invoiceId: UUID, confianza: 100 }], UUID)],
-    ["configurarAutoconfirmarNivel1", /insert into despachos\.property_config/, (r: PostgresConciliacionPersistidaRepository) => r.configurarAutoconfirmarNivel1(UUID, UUID, true, UUID)],
+    ["asegurarSesion", /conciliacion_sesion_asegurar/, (r: PostgresConciliacionPersistidaRepository) => r.asegurarSesion(UUID, "2026-07", null)],
+    ["confirmarAutopiloto", /conciliacion_autopiloto_confirmar/, (r: PostgresConciliacionPersistidaRepository) => r.confirmarAutopiloto(UUID, UUID, [{ movimientoId: UUID, invoiceId: UUID, confianza: 100 }])],
+    ["configurarAutoconfirmarNivel1", /insert into despachos\.property_config/, (r: PostgresConciliacionPersistidaRepository) => r.configurarAutoconfirmarNivel1(UUID, UUID, true)],
   ])("%s -> ConciliacionNoDisponibleError y la transacción sigue utilizable (sin 25P02)", async (_n, match, llamar) => {
     const s = new AbortAwareFakeSession([{ match, respond: () => pgError("42883", "function despachos.conciliacion_x(uuid) does not exist") }, SIGUIENTE]);
     await expect(llamar(new PostgresConciliacionPersistidaRepository(s))).rejects.toBeInstanceOf(ConciliacionNoDisponibleError);
@@ -45,7 +45,7 @@ describe("PostgresConciliacionPersistidaRepository -- base sin la migración 025
   it("un error que NO es 'migración pendiente' se propaga (no se enmascara)", async () => {
     const real = pgError("40P01", "deadlock detected");
     const s = new AbortAwareFakeSession([{ match: /conciliacion_sesion_asegurar/, respond: () => real }, SIGUIENTE]);
-    await expect(new PostgresConciliacionPersistidaRepository(s).asegurarSesion(UUID, "2026-07", null, UUID)).rejects.toBe(real);
+    await expect(new PostgresConciliacionPersistidaRepository(s).asegurarSesion(UUID, "2026-07", null)).rejects.toBe(real);
     await usable(s);
   });
 });

@@ -44,7 +44,7 @@ import {
   sugerirMatchesLLM,
   vigentesDe,
 } from "@atiende/domain-despachos";
-import type { ConciliacionPersistidaRepository, DespachosRole, InvoiceRecord, MovimientoGuardado, ParSolicitado, PropuestasGuardadas, RegistroConciliable, ResultadoPropuestas, SesionConciliacion } from "@atiende/domain-despachos";
+import type { ConciliacionPersistidaRepository, DespachosRole, InvoiceRecord, MovimientoGuardado, ParSolicitado, PropuestasGuardadas, RegistroConciliable, SesionConciliacion } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
