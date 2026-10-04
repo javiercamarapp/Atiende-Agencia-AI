@@ -13,7 +13,7 @@ import { buildRestaurantFixture } from "./fixtures.ts";
 
 const texto = (text: string): LlmCompletionResult => ({ text, model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 });
 
-function handlerGuionado(repo: InMemoryRestaurantesRepository, script: (r: LlmCompletionRequest) => LlmCompletionResult, perfilPm = false) {
+function handlerGuionado(repo: InMemoryRestaurantesRepository, script: (r: LlmCompletionRequest) => LlmCompletionResult) {
   const provider = new FakeLlmProvider({ id: "guion", script });
   const gateway = new LlmGateway({
     breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
@@ -22,7 +22,6 @@ function handlerGuionado(repo: InMemoryRestaurantesRepository, script: (r: LlmCo
   });
   gateway.registerLadder("default", [provider]);
   gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "sin-uso" })]);
-  void perfilPm;
   return { handler: createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated", now: () => new Date("2026-03-10T19:00:00Z") }), provider };
 }
 
@@ -44,7 +43,7 @@ describe("R-44 motivos de alto riesgo en ingles: se avisan al equipo ANTES del m
     ["cancelacion", "I want to cancel my order", "cancelacion_modificacion", "Only someone at the restaurant can confirm"],
     ["cobro duplicado", "You charged me twice for the same order", "cobro_duplicado", "review your case"],
     ["urgencia", "It's urgent, I need it now", "urgencia", "it's urgent"],
-    ["ARCO", "Please delete my personal data", "privacidad_arco", "ARCO"],
+    ["ARCO", "Please delete my personal data", "privacidad_arco", "exercise your data rights"],
     ["persona", "I want to speak to a manager", "cliente_lo_pide", "a person can contact you"],
     ["alergia", "I'm allergic to peanuts, does it have any?", "alergia_salud", "can't guarantee the ingredients"],
     ["transferencia", "Can I pay by bank transfer?", "transferencia", "cash or card"],
