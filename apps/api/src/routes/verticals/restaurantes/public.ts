@@ -182,6 +182,12 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
           // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
           // El correo NO se drena en linea por voz: la tool de voz tiene ~4 s de presupuesto y Resend lento no debe hacer expirar un pedido ya
           // creado. Queda en el outbox y lo envia el cron de correo (red de seguridad).
+          // Pedido grande (decision de PM): el servidor NO lo creo, dejo el aviso `pedido_grande` para que la sucursal lo
+          // confirme. No hay pedido que correo-notificar ni comanda que encolar; el agente de voz recibe el resultado tal cual.
+          if (outcome.orderId === null) {
+            await auditVoice(repo, org, caller, "crear_pedido", "ok", "pedido_grande_retenido");
+            return c.json(outcome.result);
+          }
           await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
           // SoftRestaurant (POS): los pedidos de voz tambien encolan su comanda (igual que antes de
           // fusionar el registro unico de tools). Bandera apagada o sin migracion 024: respuesta identica.

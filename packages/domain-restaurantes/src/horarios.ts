@@ -206,7 +206,7 @@ export function fechaAnterior(fecha: string): string {
   return t.toISOString().slice(0, 10);
 }
 
-/** Valida los datos de una excepcion de horario (fechas reales, rango <= 31 dias, horario valido). */
+/** Valida los datos de una excepcion de horario (fechas reales, rango <= 31 dias, horario valido; `[]` = cerrado todo el rango). */
 export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; readonly fechaHasta: unknown; readonly horario: unknown; readonly motivo?: unknown }): {
   readonly fechaDesde: string;
   readonly fechaHasta: string;
@@ -222,7 +222,8 @@ export function validarExcepcionHorario(raw: { readonly fechaDesde: unknown; rea
     throw new OrderValidationError(`Una excepción de horario cubre como máximo ${MAX_DIAS_EXCEPCION} días (un puente, no un cambio permanente).`);
   }
   const horario = validarHorario(raw.horario);
-  if (horario.length === 0) throw new OrderValidationError("La excepción necesita al menos un turno (para cerrar todo el puente, no la registre).");
+  // QA-restaurantes-R1-caos-16: un horario vacio es un cierre COMPLETO del rango (feriado, corte de luz): la sucursal no abre
+  // esas fechas para storefront, WhatsApp ni voz (aplicarReglasDeSucursal ya trata una excepcion que cubre hoy como horario vigente).
   let motivo: string | null = null;
   if (raw.motivo !== undefined && raw.motivo !== null) {
     if (typeof raw.motivo !== "string" || raw.motivo.trim().length === 0 || raw.motivo.length > 200) {
