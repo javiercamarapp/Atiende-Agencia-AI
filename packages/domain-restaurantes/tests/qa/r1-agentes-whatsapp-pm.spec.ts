@@ -646,7 +646,7 @@ describe("buscar_producto con jerga, abreviaturas y errores de dedo (catalogo de
 
   // QA-restaurantes-R1-agentes-23 (P3): escrituras comunes devuelven lista VACIA, que el prompt obliga a leer como "no existe
   // en el menu" (X10): "cocacola" junto, "bisteck", "kgs".
-  it.fails("23 'cocacola', 'bisteck' y '2 kgs de pastor' encuentran el producto (hoy: lista vacia = 'no tenemos eso')", async () => {
+  it("23 'cocacola', 'bisteck' y '2 kgs de pastor' encuentran el producto (hoy: lista vacia = 'no tenemos eso')", async () => {
     const b = await banco();
     expect((await top(b, "cocacola")).length).toBeGreaterThan(0);
     expect((await top(b, "bisteck")).length).toBeGreaterThan(0);
@@ -655,7 +655,7 @@ describe("buscar_producto con jerga, abreviaturas y errores de dedo (catalogo de
 
   // QA-restaurantes-R1-agentes-24 (P3): un peso que el producto no maneja borra TODO resultado: "un cuarto de cochinita" no
   // devuelve los Tacos de Cochinita (orden de 4) que si existen en T7, y el agente dira que no hay cochinita.
-  it.fails("24 'un cuarto de cochinita' debe devolver la cochinita que si existe (aunque no se venda por peso)", async () => {
+  it("24 'un cuarto de cochinita' debe devolver la cochinita que si existe (aunque no se venda por peso)", async () => {
     const b = await banco();
     expect((await top(b, "un cuarto de cochinita")).some((n) => /Cochinita/i.test(n))).toBe(true);
   });
