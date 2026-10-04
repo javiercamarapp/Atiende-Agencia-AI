@@ -106,6 +106,10 @@ export interface ReservationPage {
 export interface HotelesRepository {
   // ---- Folios/cargos (flujo 1) ----
   findFolio(propertyId: string, folioId: string): Promise<FolioRecord | null>;
+  /** Toma el candado de fila del folio (select ... for update) dentro de la transaccion actual y devuelve su estado, o
+   *  null si no existe. Un cierre concurrente espera a que esta transaccion termine, asi que quien lo llame ANTES de un
+   *  efecto externo irreversible (cobro con tarjeta) sabe que el folio no se cerrara hasta registrar el pago. */
+  lockFolioStatus(propertyId: string, folioId: string): Promise<FolioRecord["status"] | null>;
   listFoliosByReservation(propertyId: string, reservationId: string): Promise<readonly FolioRecord[]>;
   loadFolioGuestIdentity(reservationId: string): Promise<GuestIdentity>;
   /** true si `userId` pertenece al staff de `propertyId` con un rol administrativo

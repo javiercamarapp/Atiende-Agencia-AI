@@ -580,6 +580,11 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return this.toFolioRecord(stored);
   }
 
+  async lockFolioStatus(propertyId: string, folioId: string): Promise<FolioRecord["status"] | null> {
+    const stored = this.folios.get(folioId);
+    return stored && stored.propertyId === propertyId ? stored.status : null;
+  }
+
   async listFoliosByReservation(propertyId: string, reservationId: string): Promise<readonly FolioRecord[]> {
     return [...this.folios.values()]
       .filter((f) => f.propertyId === propertyId && f.reservationId === reservationId)

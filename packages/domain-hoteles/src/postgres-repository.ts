@@ -726,6 +726,14 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return row ? this.toFolioRecord(row) : null;
   }
 
+  async lockFolioStatus(propertyId: string, folioId: string): Promise<FolioRecord["status"] | null> {
+    const { rows } = await this.db.query<{ status: FolioRecord["status"] }>(
+      `select status from hoteles.folio where id = $1 and property_id = $2 for update;`,
+      [folioId, propertyId],
+    );
+    return rows[0]?.status ?? null;
+  }
+
   async listFoliosByReservation(propertyId: string, reservationId: string): Promise<readonly FolioRecord[]> {
     const { rows } = await this.db.query<FolioRawRow>(
       `select id, organization_id, property_id, reservation_id, status, label, is_primary,

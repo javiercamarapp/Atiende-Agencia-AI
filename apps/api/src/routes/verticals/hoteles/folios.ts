@@ -528,6 +528,13 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         let tokenRef: string | null = null;
 
         if (metodo === "tarjeta") {
+          // H-P3-01: candado de fila del folio ANTES del cobro real. La guarda de arriba es una lectura sin candado; si
+          // un cierre ganara la carrera, el trigger rechazaria el INSERT DESPUES de cobrar en Stripe y el ROLLBACK dejaria
+          // un cobro sin fila en hoteles.payment. Con el candado, un cierre concurrente espera a que este pago quede
+          // registrado, y si el cierre ya ocurrio se rechaza aqui, sin llamar al puerto.
+          const lockedStatus = await repo.lockFolioStatus(propertyId, folioId);
+          if (lockedStatus === null) throw Errors.notFound("Folio no encontrado.");
+          if (lockedStatus !== "abierto") throw Errors.conflict("El folio está cerrado: no admite nuevos pagos.");
           const paymentResult = await deps.hotelesPaymentsPort.charge({
             amount: monto,
             currency: "MXN",
