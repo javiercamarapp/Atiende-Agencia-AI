@@ -632,7 +632,7 @@ export interface PromotionPatch {
 // en el schema base para ninguno de los dos — ver el comentario de cabecera de
 // esa migración).
 // ---------------------------------------------------------------------------
-export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;
