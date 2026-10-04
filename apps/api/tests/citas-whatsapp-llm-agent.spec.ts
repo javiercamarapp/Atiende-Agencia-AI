@@ -431,7 +431,7 @@ describe("Agente de WhatsApp de citas con LLM real — end-to-end vía el webhoo
     const escalations = citasRepo.getEmergencyEscalations();
     expect(escalations).toHaveLength(1);
     expect(escalations[0]!.organizationId).toBe(organizationId);
-    expect(escalations[0]!.keywordMatched).toBe("ya no aguanto");
+    expect(escalations[0]!.keywordMatched).toBe("ideación suicida");
 
     // La respuesta de crisis quedó persistida tal cual en la conversación (nunca
     // reformulada por el LLM, que ni siquiera se llamó).

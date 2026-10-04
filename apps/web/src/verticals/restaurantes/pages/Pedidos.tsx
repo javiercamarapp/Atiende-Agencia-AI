@@ -36,6 +36,7 @@ import {
 } from "@atiende/ui";
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
+import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
 import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
@@ -73,6 +74,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [programados, setProgramados] = useState<readonly OrderSummary[] | null>(null);
   const [programadosDisponible, setProgramadosDisponible] = useState(true);
   const [sonido, setSonido] = useState<boolean>(() => leerSonido(storageLocal(), orgSlug, propertyId));
+  // R-16: la preferencia de la persona (Avisos) manda sobre la casilla local: con el aviso de pedido nuevo o su sonido apagados no suena.
+  // Sin respuesta (base sin migrar, error de red) conserva el comportamiento de siempre.
+  const [sonidoPermitido, setSonidoPermitido] = useState<boolean>(true);
   const [nuevosAviso, setNuevosAviso] = useState<number>(0);
   const [ahoraMs, setAhoraMs] = useState<number>(() => Date.now());
   const pendientesVistos = useRef<ReadonlySet<string> | null>(null);
@@ -282,6 +286,30 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     setNuevosAviso(0);
   }, [orgSlug, propertyId]);
 
+  // La preferencia se lee al montar y de nuevo cuando la pestana vuelve a estar visible: si owner/admin cambia el sonido de
+  // esta persona desde Avisos, la pantalla de Pedidos lo recoge al volver a ella (sin recargar).
+  useEffect(() => {
+    let cancelado = false;
+    const cargar = () => {
+      fetchAvisos(fetch, apiBaseUrl, token, propertyId)
+        .then((a) => {
+          if (!cancelado) setSonidoPermitido(sonidoPedidoNuevoPermitido(a));
+        })
+        .catch(() => {
+          if (!cancelado) setSonidoPermitido(true);
+        });
+    };
+    const alVolver = () => {
+      if (document.visibilityState === "visible") cargar();
+    };
+    cargar();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      cancelado = true;
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [apiBaseUrl, token, propertyId]);
+
   // R-11 -- tiempo real por sondeo con backoff y pausa con la pestana oculta (ver lib/sondeo-pedidos.ts). Cada
   // consulta pide SOLO los pendientes (una peticion liviana; el servidor ademas promueve los programados
   // vencidos); la lista completa se recarga unicamente si aparecio un pedido nuevo o cambio el conjunto.
@@ -299,7 +327,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
       setAhoraMs(Date.now());
       if (nuevos.length > 0) {
         setNuevosAviso((n) => n + nuevos.length);
-        if (sonido) reproducirAviso();
+        if (sonido && sonidoPermitido) reproducirAviso();
       }
       if (cambio || status === "programados") await loadRef.current();
     },
@@ -410,13 +438,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
         )}
         <Checkbox
           id="sonido-pedidos"
-          checked={sonido}
+          checked={sonido && sonidoPermitido}
+          disabled={!sonidoPermitido}
           onChange={(e) => {
             setSonido(e.target.checked);
             guardarSonido(storageLocal(), orgSlug, propertyId, e.target.checked);
             if (e.target.checked) reproducirAviso();
           }}
-          label="Sonido al llegar un pedido nuevo"
+          label={sonidoPermitido ? "Sonido al llegar un pedido nuevo" : "Sonido al llegar un pedido nuevo (apagado en tus Avisos)"}
           wrapperClassName="text-xs text-foreground"
         />
       </div>

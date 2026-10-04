@@ -2129,6 +2129,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows.map(mapOrder);
   }
 
+  async listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]> {
+    // `delivered_at` es de la migracion 001: no hace falta fallback contra la base sin migrar. El dia local se convierte a un rango de
+    // instantes en la zona de la sucursal: [00:00 local del dia, 00:00 local del dia siguiente).
+    const { rows } = await this.db.query<OrderRow & { delivered_at: string | Date | null }>(
+      `select ${ORDER_COLUMNS}, delivered_at
+       from restaurantes.orders
+       where organization_id = $1 and assigned_repartidor_id = $2 and delivered_at is not null
+         and delivered_at >= ($3::date)::timestamp at time zone $4
+         and delivered_at < (($3::date + 1))::timestamp at time zone $4
+       order by delivered_at desc
+       limit 200;`,
+      [organizationId, repartidorId, fechaLocal, zonaHoraria],
+    );
+    return rows.map((r) => ({ ...mapOrder(r), deliveredAt: r.delivered_at === null ? null : r.delivered_at instanceof Date ? r.delivered_at.toISOString() : String(r.delivered_at) }));
+  }
+
   async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
       `select ${ORDER_COLUMNS}
