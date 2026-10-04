@@ -6,6 +6,10 @@ import type { AccionLlamada as AccionCore, EstadoLlamada, EventoLlamada as Event
 import type { MotivoEscalacion } from "../../agent-tools/registry.ts";
 
 export { LIMITES_POR_DEFECTO };
+
+/** Limites de la llamada de PM: los de la plataforma salvo `silenciosMax: 1` (el agente vivo hace UN solo "¿sigue ahi?" y se despide;
+ * el valor por omision de voice-core, 2, queda igual para las otras verticales). */
+export const LIMITES_VOZ_PM: LimitesLlamada = Object.freeze({ ...LIMITES_POR_DEFECTO, silenciosMax: 1 });
 export type { EstadoLlamada, LimitesLlamada };
 
 /** Reglas de cierre de restaurantes: un pedido creado logra la llamada; el agente pasa a una persona con `escalar_a_humano`. */
