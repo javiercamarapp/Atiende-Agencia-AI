@@ -56,37 +56,77 @@ export const SYNTHETIC_PATTERNS: readonly PatronSintetico[] = [
 export interface PrediccionCategoria {
   readonly categoria: string;
   readonly confidence: number;
+  /** Cuántos patrones rivales empataron con el mejor (0 = ganador único). Con empate la confianza siempre cae bajo el piso. */
+  readonly rivales: number;
+  /** Palabras clave (del catálogo propio, nunca texto del CFDI) que sostienen la categoría ganadora. */
+  readonly coincidencias: readonly string[];
 }
 
-/** `_rule_based_predict` — conteo de keywords (substring, case-insensitive)
- * por patrón del MISMO `tipoCfdi`; gana el patrón con más matches, empate →
- * gana el primero visto (`matches > best_score`, estrictamente mayor).
- * `confidence = min(0.5 + best_score*0.15, 0.95)` si hubo al menos un match,
- * si no `0.3` (sin match → categoría "otros"). */
+/** Normaliza para comparar por palabra completa: minúsculas, sin acentos y solo letras/dígitos separados por un espacio. */
+export function normalizarTexto(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const cacheKeyword = new Map<string, RegExp>();
+
+/** `kw` aparece como palabra o frase COMPLETA en `textoNormalizado` (límites de palabra; admite plural `s`/`es` al final).
+ * Corrige el `includes()` por subcadena del origen: «material» ya no empata dentro de «materialización» ni «oficina» dentro de «oficinas»
+ * por accidente de prefijo, y «disco» no dispara equipo_computo dentro de «discoteca». */
+export function contienePalabra(textoNormalizado: string, kw: string): boolean {
+  const norm = normalizarTexto(kw);
+  if (norm === "") return false;
+  let re = cacheKeyword.get(norm);
+  if (!re) {
+    // `norm` solo contiene [a-z0-9 ]: no hay metacaracteres de regex que escapar.
+    re = new RegExp(`(?:^| )${norm}(?:es|s)?(?: |$)`);
+    cacheKeyword.set(norm, re);
+  }
+  return re.test(textoNormalizado);
+}
+
+/** Confianza de un empate: `0.55 - 0.10 x rivales` (piso 0.30), el mismo criterio del suelto (`services/classify.py`, commit e302c60).
+ * Con 1 rival da 0.45, SIEMPRE bajo el piso 0.5 y bajo cualquier umbral >= piso: un empate nunca se aplica sin revisión humana. */
+export function confianzaDeEmpate(rivales: number): number {
+  return Math.round(Math.max(0.3, 0.55 - 0.1 * rivales) * 100) / 100;
+}
+
+/** `_rule_based_predict` CORREGIDO — conteo de keywords por PALABRA COMPLETA (sin acentos, ver `contienePalabra`) entre los patrones del
+ * MISMO `tipoCfdi`. Gana el patrón con más coincidencias; si dos o más empatan en el máximo NO se elige "el primero": se devuelve el primero
+ * por orden estable pero con `rivales > 0` y confianza `confianzaDeEmpate(rivales)` (< 0.5), para que la compuerta lo mande a revisión.
+ * `confidence = min(0.5 + best_score*0.15, 0.95)` con un ganador único (igual que el origen), `0.3` sin ninguna coincidencia ("otros").
+ *
+ * DEFECTO HEREDADO (ver e302c60 del suelto): el origen resolvía el empate con `matches > best_score` -> gana el primer patrón de la lista con
+ * 0.65 >= 0.6, y por eso «renta de laptop» salía como renta_oficina sin revisión. */
 export function clasificarPorReglas(descripcion: string, tipoCfdi: TipoCfdiBookkeeping): PrediccionCategoria {
-  const desc = descripcion.toLowerCase();
-  let bestCat = "otros";
-  let bestScore = 0;
+  const desc = normalizarTexto(descripcion);
+  const puntajes: { categoria: string; score: number; palabras: string[] }[] = [];
 
   for (const pattern of SYNTHETIC_PATTERNS) {
     if (pattern.tipoCfdi !== tipoCfdi) continue;
-    const matches = pattern.keywords.reduce((acc, kw) => acc + (desc.includes(kw.toLowerCase()) ? 1 : 0), 0);
-    if (matches > bestScore) {
-      bestScore = matches;
-      bestCat = pattern.category;
-    }
+    const palabras = pattern.keywords.filter((kw) => contienePalabra(desc, kw));
+    if (palabras.length > 0) puntajes.push({ categoria: pattern.category, score: palabras.length, palabras });
   }
+  if (puntajes.length === 0) return { categoria: "otros", confidence: 0.3, rivales: 0, coincidencias: [] };
 
-  const confidence = bestScore > 0 ? Math.min(0.5 + bestScore * 0.15, 0.95) : 0.3;
-  return { categoria: bestCat, confidence };
+  const mejor = Math.max(...puntajes.map((p) => p.score));
+  const empatados = puntajes.filter((p) => p.score === mejor);
+  const ganador = empatados[0]!;
+  const rivales = empatados.length - 1;
+  if (rivales > 0) return { categoria: ganador.categoria, confidence: confianzaDeEmpate(rivales), rivales, coincidencias: [...new Set(empatados.flatMap((p) => p.palabras))] };
+  return { categoria: ganador.categoria, confidence: Math.min(0.5 + mejor * 0.15, 0.95), rivales: 0, coincidencias: ganador.palabras };
 }
 
 /** `get_suggestions` (ruta de fallback, `top_n` ignorado igual que el
  * origen cuando no hay modelo ML entrenado — devuelve una sola sugerencia,
  * redondeada a 4 decimales). */
 export function sugerirCategoria(descripcion: string, tipoCfdi: TipoCfdiBookkeeping): readonly PrediccionCategoria[] {
-  const { categoria, confidence } = clasificarPorReglas(descripcion, tipoCfdi);
-  return [{ categoria, confidence: Math.round((confidence + Number.EPSILON) * 10000) / 10000 }];
+  const prediccion = clasificarPorReglas(descripcion, tipoCfdi);
+  return [{ ...prediccion, confidence: Math.round((prediccion.confidence + Number.EPSILON) * 10000) / 10000 }];
 }
 
 /** Tier 1 — override humano exacto por RFC (`predict`, primeras líneas):
@@ -96,7 +136,7 @@ export function sugerirCategoria(descripcion: string, tipoCfdi: TipoCfdiBookkeep
  * `overrides.ts` para la agregación desde el historial de correcciones). */
 export function predecirCategoria(descripcion: string, tipoCfdi: TipoCfdiBookkeeping, rfcEmisor: string, overrides: ReadonlyMap<string, string> = new Map()): PrediccionCategoria {
   const override = overrides.get(rfcEmisor);
-  if (override !== undefined) return { categoria: override, confidence: 1.0 };
+  if (override !== undefined) return { categoria: override, confidence: 1.0, rivales: 0, coincidencias: [] };
   return clasificarPorReglas(descripcion, tipoCfdi);
 }
 
