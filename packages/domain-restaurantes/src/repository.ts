@@ -445,6 +445,9 @@ export interface RestaurantesRepository {
    * lo asignado a una sola persona); un límite fijo generoso evita igual un fetch
    * accidentalmente ilimitado. */
   listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]>;
+  /** R-15: pedidos de ESTE repartidor entregados el dia local `fechaLocal` (YYYY-MM-DD) en `zonaHoraria` (IANA), por `delivered_at` (columna de la
+   * 001, existe en cualquier base), mas recientes primero, con `deliveredAt` poblado. Tope 200. Nunca los de otro repartidor. */
+  listDeliveredOrdersForRepartidor(organizationId: string, repartidorId: string, fechaLocal: string, zonaHoraria: string): Promise<readonly Order[]>;
   /** Ficha de un pedido — null si no existe, no es de esta organización, O no está
    * asignado a ESTE repartidor (un repartidor NUNCA puede leer el pedido de otro,
    * a diferencia de `findOrderById`, que solo acota por organización/property). */

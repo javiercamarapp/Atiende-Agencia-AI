@@ -1,5 +1,5 @@
 // QA-restaurantes-R1-automatizacion-08: cron /internal/restaurantes/voz-huerfanas. Cierra como abandonadas las llamadas de voz sin cierre; sin
-// secreto 401; sin la migracion 042 (sesion ABORTABLE que reproduce 25P02) responde not_available y la MISMA sesion sigue viva.
+// secreto 401; sin la migracion 060 (sesion ABORTABLE que reproduce 25P02) responde not_available y la MISMA sesion sigue viva.
 import { describe, expect, it } from "vitest";
 import { InMemoryVozRepository, PostgresVozRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
@@ -70,7 +70,7 @@ describe("cron voz-huerfanas", () => {
     expect(await r.json()).toEqual({ ok: true, status: "not_available", closed: 0 });
   });
 
-  it("Postgres SIN la migracion 042 (42883 con la transaccion abortada): not_available y la MISMA sesion sigue viva por SAVEPOINT", async () => {
+  it("Postgres SIN la migracion 060 (42883 con la transaccion abortada): not_available y la MISMA sesion sigue viva por SAVEPOINT", async () => {
     const session = new AbortAwareFakeSession([
       { match: /voz_cerrar_huerfanas/i, respond: () => Object.assign(new Error("function restaurantes.voz_cerrar_huerfanas(integer, integer) does not exist"), { code: "42883" }) },
       SIGUIENTE,
@@ -83,7 +83,7 @@ describe("cron voz-huerfanas", () => {
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
   });
 
-  it("Postgres con la 042: llama a la funcion con 120 min y lote de 200 y devuelve lo que cerro", async () => {
+  it("Postgres con la 060: llama a la funcion con 120 min y lote de 200 y devuelve lo que cerro", async () => {
     const session = new AbortAwareFakeSession([{ match: /voz_cerrar_huerfanas/i, respond: () => [{ cerradas: 3 }] }, SIGUIENTE]);
     const t = await construir(() => new PostgresVozRepository(session));
     const r = await t.llamar("GET", t.secreto);

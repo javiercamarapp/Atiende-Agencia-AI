@@ -1,5 +1,5 @@
 -- Fixtures + escenarios contra Postgres REAL (GRANT + auth.uid() reales, nunca el repositorio en memoria) de
--- packages/domain-restaurantes/migrations/042_voz_cerrar_huerfanas.sql: barrido de llamadas de voz huerfanas
+-- packages/domain-restaurantes/migrations/060_voz_cerrar_huerfanas.sql: barrido de llamadas de voz huerfanas
 -- (QA-restaurantes-R1-automatizacion-08).
 --
 --   A. Cierre: una llamada abierta hace 3 h con turnos se cierra como 'abandonado' con duracion (ultimo turno - inicio), costo (suma de los

@@ -8,15 +8,15 @@
 // `CitasRepository` en vez de un cliente supabase-js crudo (mismo cambio de firma
 // que el resto de este paquete).
 //
-// Solo aplica a rubros de salud (ver vertical-config.ts::requiresCrisisGuardrail).
+// Aplica a rubros de salud y también sin rubro o con "otro" (ver vertical-config.ts::crisisGuardActivaPara).
 // Aplica a WhatsApp (whatsapp/inbound.ts) y a la VOZ: el agente de voz corre sobre
 // @atiende/voice-core, cuyo controlador evalúa lo que dice el cliente con
-// `voz/guardia-crisis.ts` (misma lista de palabras y mismo rubro), dice el mensaje de crisis
+// `voz/guardia-crisis.ts` (mismo detector y misma regla de rubro), dice la versión de voz del mensaje de crisis
 // tal cual y escala con la herramienta `derivar_a_humano`, que registra la escalación
 // con `registrarEscalacionCrisis` (canal 'voice').
 import type { HandoffAgentGate } from "./conversaciones/repository.ts";
 import type { CitasRepository } from "./repository.ts";
-import { CRISIS_ESCALATION_MESSAGE, detectCrisisKeyword, requiresCrisisGuardrail } from "./vertical-config.ts";
+import { CRISIS_ESCALATION_MESSAGE, crisisGuardActivaPara, detectCrisisKeyword } from "./vertical-config.ts";
 
 export interface CrisisGuardrailResult {
   readonly triggered: boolean;
@@ -68,7 +68,7 @@ export interface EntradaEscalacionCrisis {
   readonly customerPhone: string;
   readonly channel: "whatsapp" | "voice";
   readonly keyword: string;
-  /** Fragmento del mensaje (WhatsApp). En voz va vacío: no se guarda la transcripción. */
+  /** Siempre vacío en ambos canales: no se guarda texto del paciente (dato de salud); la columna admite cadena vacía. */
   readonly excerpt: string;
 }
 
@@ -109,7 +109,8 @@ export async function registrarEscalacionCrisis(
  */
 export async function runCrisisGuardrail(repo: CitasRepository, organizationId: string, customerPhone: string, customerMessage: string, handoffGate?: HandoffAgentGate): Promise<CrisisGuardrailResult> {
   const tenantConfig = await repo.findTenantConfig(organizationId);
-  if (!tenantConfig || !requiresCrisisGuardrail(tenantConfig.rubro)) return { triggered: false };
+  // Sin configuración o con el rubro por defecto ('otro') la guardia SIGUE activa: un negocio de salud que no eligió su rubro no queda sin ella.
+  if (!crisisGuardActivaPara(tenantConfig?.rubro)) return { triggered: false };
 
   const keyword = detectCrisisKeyword(customerMessage);
   if (!keyword) return { triggered: false };
@@ -117,8 +118,8 @@ export async function runCrisisGuardrail(repo: CitasRepository, organizationId: 
   const { escalationId } = await registrarEscalacionCrisis(
     repo,
     organizationId,
-    tenantConfig.ownerNotificationPhone,
-    { customerPhone, channel: "whatsapp", keyword, excerpt: (customerMessage ?? "").slice(0, 300) },
+    tenantConfig?.ownerNotificationPhone ?? null,
+    { customerPhone, channel: "whatsapp", keyword, excerpt: "" },
     handoffGate,
   );
 

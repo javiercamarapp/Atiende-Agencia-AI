@@ -1,5 +1,5 @@
 -- QA-restaurantes-R1-automatizacion-08: barrido de llamadas de voz HUERFANAS (sin cierre).
--- Prefijo de supabase/migrations: 20240101000319 (interno restaurantes 042).
+-- Prefijo de supabase/migrations: 20240101000319 (interno restaurantes 060).
 -- Requiere: 025 (voice_conversation / voice_turn / voz_cerrar_conversacion), 035 (KPI de voz).
 --
 -- Problema: una llamada cuyo worker murio (o perdio la red) antes de llamar a `voz_cerrar_conversacion` queda con ended_at y resultado

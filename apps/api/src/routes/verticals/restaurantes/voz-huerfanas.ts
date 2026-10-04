@@ -4,7 +4,7 @@
 //
 // Cron de `vercel.json` (cada 30 minutos, ver docs/CRONS.md), envuelto en `withHeartbeat` (latido en /superadmin/salud + kill switch por cron). Mismo guard que
 // el resto de rutas internas: `x-atiende-internal-secret` o `Authorization: Bearer <CRON_SECRET>`. Idempotente: una segunda corrida no encuentra nada.
-// Compatibilidad con la base sin migrar: sin la migracion 042 responde 200 con `status: "not_available"` y no cierra nada (nunca un 500).
+// Compatibilidad con la base sin migrar: sin la migracion 060 responde 200 con `status: "not_available"` y no cierra nada (nunca un 500).
 import { Hono } from "hono";
 import { cerrarLlamadasHuerfanas } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
