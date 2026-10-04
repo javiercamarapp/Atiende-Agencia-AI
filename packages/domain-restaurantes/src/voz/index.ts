@@ -21,6 +21,7 @@ export { CallStateMachine, LIMITES_POR_DEFECTO } from "./llamada/maquina.ts";
 export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada } from "./llamada/maquina.ts";
 export { MENSAJES_PREGRABADOS, MENSAJE_IDS, mensajeSaludoRespaldo } from "./llamada/mensajes.ts";
 export type { MensajeId } from "./llamada/mensajes.ts";
+export { MARCADOR_SALUDO, resolverMarcadorSaludo } from "./saludo-marcador.ts";
 export { evaluarInicioLlamada } from "./llamada/inicio.ts";
 export type { DecisionInicio, EntradaInicioLlamada } from "./llamada/inicio.ts";
 export { extraerTelefonoSipFrom } from "./llamada/sip.ts";

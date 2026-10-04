@@ -13,8 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, Mic, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge } from "@atiende/ui";
-import { VozNoDisponibleError, crearSesionPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
-import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
+import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
+import { pedidoSimuladoDe } from "../lib/voz-client.ts";
+import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
+import { TarjetaPedidoSimulado } from "../preview/TarjetaPedidoSimulado.tsx";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
 import { crearFabricaGeminiLive } from "../../../lib/voz/adaptador-gemini-live.ts";
 import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
@@ -465,8 +467,25 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
     };
   }, [apiBaseUrl, token, propertyId, servicioListo]);
 
+  // Pedido simulado de la ultima llamada: lo devuelve `crear_pedido` en modo preview (no existe en la base).
+  const [pedidoSimulado, setPedidoSimulado] = useState<PedidoSimulado | null>(null);
   const fabrica = useMemo(
-    () => crearFabricaGeminiLive({ entorno, crearSesion: () => crearSesionPreviewVoz(fetch, apiBaseUrl, token, propertyId, vozId ? { voiceId: vozId } : {}) }),
+    () =>
+      crearFabricaGeminiLive({
+        entorno,
+        crearSesion: () => {
+          setPedidoSimulado(null);
+          return crearSesionPreviewVoz(fetch, apiBaseUrl, token, propertyId, vozId ? { voiceId: vozId } : {});
+        },
+        ejecutarHerramienta: async (sesion, llamada) => {
+          const r = await ejecutarHerramientaPreviewVoz(fetch, apiBaseUrl, token, propertyId, sesion, llamada.nombre, llamada.argumentos);
+          if (llamada.nombre === "crear_pedido") {
+            const pedido = pedidoSimuladoDe(r.resultado);
+            if (pedido) setPedidoSimulado(pedido);
+          }
+          return r.resultado;
+        },
+      }),
     [entorno, apiBaseUrl, token, propertyId, vozId],
   );
   const controller = useSesionVoz(fabrica);
@@ -479,9 +498,16 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, vozId, servicioListo, e
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
-        <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
-          Es una llamada real de prueba con la voz y el comportamiento guardados. No consulta el menú ni registra pedidos, y usa su micrófono: el navegador le pedirá permiso.
-        </Callout>
+        <>
+          <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
+            Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie. Usa su micrófono: el navegador le pedirá permiso.
+          </Callout>
+          {pedidoSimulado ? (
+            <div className="mx-4 mb-3">
+              <TarjetaPedidoSimulado pedido={pedidoSimulado} />
+            </div>
+          ) : null}
+        </>
       }
     />
   );

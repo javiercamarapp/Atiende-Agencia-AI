@@ -440,7 +440,7 @@ describe("llamada de prueba (vista previa real)", () => {
     click(boton("Vista previa")!);
     await settle();
     expect(texto()).not.toContain("No disponible");
-    expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("No consulta el menú ni registra pedidos");
+    expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie");
     click(boton("Iniciar llamada de prueba")!);
     await settle();
     const llamada = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/preview/sesion"))!;
