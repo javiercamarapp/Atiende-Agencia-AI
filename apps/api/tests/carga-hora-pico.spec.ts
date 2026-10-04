@@ -19,7 +19,7 @@ const reportar = (nombre: string, r: ReturnType<typeof resumir>) => {
   if (process.env.CARGA_REPORTE) console.log(`${nombre.padEnd(28)} n=${r.total} ok=${r.ok} 429=${r.limitadas429} 5xx=${r.errores5xx} p50=${r.p50.toFixed(0)}ms p95=${r.p95.toFixed(0)}ms p99=${r.p99.toFixed(0)}ms max=${r.max.toFixed(0)}ms rss=${(process.memoryUsage().rss / 1048576).toFixed(0)}MiB`);
 };
 
-async function medido(f: () => Promise<Response>) {
+async function medido(f: () => Response | Promise<Response>) {
   const t = performance.now();
   const res = await f();
   return { muestra: { ms: performance.now() - t, status: res.status } as Muestra, res };
