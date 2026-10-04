@@ -90,6 +90,62 @@ function citasSemilla(): Cita[] {
 
 const conteo = (pending: number, confirmed: number) => ({ pending, confirmed, completed: 0, cancelled: 0, no_show: 0 });
 
+// QA citas R1 (viaje) -- ciclo de vida de la agenda del panel: alta manual y las 3 transiciones (confirmar/completar/no-show), con las
+// mismas reglas de estado que domain-citas (solo pending/confirmed admiten transicion; confirmar solo desde pending) y el mismo cuerpo
+// `{ appointment }` que appointments-lifecycle.ts. El estado vive en el escenario: un POST se refleja en el GET siguiente.
+type EstadoMock = { estado: { obtener<T>(k: string, s: () => T): T } };
+const listaCitas = (p: EstadoMock) => p.estado.obtener("citas.lista", citasSemilla);
+const TRANSICIONES: Readonly<Record<string, { readonly desde: readonly string[]; readonly a: string }>> = {
+  confirm: { desde: ["pending"], a: "confirmed" },
+  complete: { desde: ["pending", "confirmed"], a: "completed" },
+  "no-show": { desde: ["pending", "confirmed"], a: "no_show" },
+};
+const rutasCicloDeVidaAgenda: readonly Ruta[] = [
+  {
+    metodo: "POST",
+    patron: `${P}/appointments`,
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { provider_id?: string; service_id?: string; customer_name?: string; customer_phone?: string; customer_email?: string; starts_at?: string; notes?: string };
+      if (!c.provider_id || !c.service_id || !c.customer_name?.trim() || !c.customer_phone?.trim() || !c.starts_at) return fallo(400, "provider_id, service_id, customer_name, customer_phone y starts_at son requeridos.");
+      if (Number.isNaN(Date.parse(c.starts_at))) return fallo(400, "starts_at: se esperaba una fecha ISO 8601 válida.");
+      const prv = PROVEEDORES.find((x) => x.id === c.provider_id);
+      const srv = SERVICIOS.find((x) => x.id === c.service_id);
+      if (!prv || !srv) return fallo(404, "Proveedor o servicio no encontrado.");
+      const inicio = new Date(c.starts_at);
+      const fin = new Date(inicio.getTime() + srv.duration_minutes * 60_000);
+      const lista = listaCitas(p);
+      // Anti-traslape del mismo profesional (el EXCLUDE gist de la base real): 409 honesto.
+      const choca = lista.some((x) => x.provider_id === prv.id && (x.status === "pending" || x.status === "confirmed") && Date.parse(x.starts_at) < fin.getTime() && Date.parse(x.ends_at) > inicio.getTime());
+      if (choca) return fallo(409, "Ese horario ya está ocupado para este profesional.");
+      const cli = CLIENTES.find((x) => x.phone === c.customer_phone) ?? { id: `cli-qa-${lista.length + 1}`, full_name: c.customer_name, phone: c.customer_phone, email: c.customer_email ?? null };
+      const cita: Cita = { id: `apt-qa-${lista.length + 1}`, property_id: PROP.id, provider_id: prv.id, service_id: srv.id, customer_id: cli.id, starts_at: inicio.toISOString(), ends_at: fin.toISOString(), status: "pending", source: "manual", notes: c.notes ?? null, provider_name: prv.display_name, service_name: srv.name, customer_name: c.customer_name.trim(), customer_phone: c.customer_phone.trim() };
+      lista.push(cita);
+      return conStatus(201, { appointment: cita });
+    },
+  },
+  ...(Object.keys(TRANSICIONES) as (keyof typeof TRANSICIONES)[]).map(
+    (accion): Ruta => ({
+      metodo: "POST",
+      patron: `${P}/appointments/:aptId/${accion}`,
+      manejador: (p) => {
+        const cita = listaCitas(p).find((x) => x.id === p.params["aptId"]);
+        if (!cita) return fallo(404, "Esa cita no existe");
+        const t = TRANSICIONES[accion]!;
+        if (!t.desde.includes(cita.status)) return fallo(409, `No se puede cambiar una cita en estado '${cita.status}'.`);
+        cita.status = t.a;
+        return { appointment: cita };
+      },
+    }),
+  ),
+];
+
+/** Lista de espera viva del escenario (mismo formato que admin.ts::GET .../waitlist). */
+function listaDeEspera(p: EstadoMock) {
+  return p.estado.obtener("citas.espera", () => [
+    { id: "wl-1", position: 1, customer_name: "Mario Chan", customer_phone: "+529995550202", provider_id: "prv-1", service_id: "srv-1", preferred_date_from: null, preferred_date_to: null, preferred_time_window: "any", notified_count: 0, created_at: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+  ]);
+}
+
 // C-19 -- API PUBLICA de la pagina de reservas (sin sesion): catalogo, disponibilidad y el POST publico de la cita. Mismo formato que
 // apps/api/src/routes/verticals/citas/publico.ts. Los horarios son siempre 10:00/10:30/11:00 hora de Merida (UTC-6) del dia pedido;
 // un horario ya reservado devuelve 409 igual que el servidor y deja de ofrecerse. Estas rutas no llevan sesion, asi que caen en el
@@ -399,7 +455,39 @@ export const rutasCitas: readonly Ruta[] = [
       cita.status = "cancelled";
       return { appointment: cita };
     } },
-  { metodo: "GET", patron: `${P}/waitlist`, manejador: () => ({ waitlist: [] }) },
+  ...rutasCicloDeVidaAgenda,
+  { metodo: "GET", patron: `${P}/waitlist`, manejador: (p) => ({ waitlist: listaDeEspera(p) }) },
+  {
+    metodo: "POST",
+    patron: `${P}/waitlist/broadcast`,
+    manejador: (p) => {
+      // Mismo cuerpo que admin.ts::POST .../waitlist/broadcast: solo confirma que la tarea quedo encolada (nada sale a WhatsApp).
+      const vivos = listaDeEspera(p);
+      return { queued: true, candidates_considered: vivos.length, skipped_no_whatsapp_config: false };
+    },
+  },
+  {
+    metodo: "GET",
+    patron: `${P}/onboarding`,
+    manejador: (p) => {
+      // Mismo formato que GET .../onboarding (domain-citas/onboarding.ts). El estado de "cita de prueba" sale de la agenda del escenario.
+      const hayCitas = p.estado.obtener("citas.lista", citasSemilla).length > 0;
+      const paso = (id: string, titulo: string, estado: string, requerido: boolean, ruta: string) => ({ id, titulo, descripcion: titulo, estado, requeridoParaPublicar: requerido, detalle: null, ruta });
+      const pasos = [
+        paso("proveedor", "Crea al menos un profesional", "completo", true, "proveedores"),
+        paso("servicio", "Crea un servicio con su duración", "completo", true, "servicios"),
+        paso("asignacion", "Asigna un servicio a un profesional", "completo", true, "proveedores"),
+        paso("horario", "Define el horario semanal", "completo", true, "disponibilidad"),
+        paso("precio", "Ponle precio a tus servicios", "completo", false, "servicios"),
+        paso("whatsapp", "Conecta tu número de WhatsApp", "completo", false, "agente-whatsapp"),
+        paso("recordatorios", "Activa los recordatorios de cita", "pendiente", false, "mensajes-whatsapp"),
+        paso("cancelacion", "Avisa al cliente cuando se cancela una cita", "pendiente", false, "mensajes-whatsapp"),
+        paso("cita_prueba", "Registra una primera cita de prueba", hayCitas ? "completo" : "pendiente", false, "agenda"),
+      ];
+      const completados = pasos.filter((x) => x.estado === "completo").length;
+      return { propertyId: PROP.id, pasos, completados, total: pasos.length, progresoPct: Math.round((completados / pasos.length) * 100), faltanParaPublicar: [], listoParaRecibirCitas: true };
+    },
+  },
   ...rutasConversaciones,
 ];
 
