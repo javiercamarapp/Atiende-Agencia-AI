@@ -192,6 +192,14 @@ export interface CreateOrderInput {
   /** Destino de entrega que dio el cliente (pin de WhatsApp o link de Maps). Viaja en las notas del pedido (sin columna nueva)
    * y la vista del repartidor lo abre en Maps. Solo a domicilio. */
   readonly ubicacionEntrega?: UbicacionEntrega;
+  /** Monto con el que paga en efectivo (>= total); la comanda imprime «Paga con» y el cambio que lleva el repartidor. */
+  readonly efectivoCon?: number;
+  /** El repartidor debe llevar terminal (pago con tarjeta a domicilio). */
+  readonly llevarTerminal?: boolean;
+  /** Indicaciones de acceso o aviso al llegar ("timbre del depto 6", "avísenme al llegar"); una sola línea, hasta 200 caracteres. */
+  readonly indicacionesAcceso?: string;
+  /** Segundo teléfono de contacto (10 dígitos). */
+  readonly telefonoAlterno?: string;
   /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
    * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
   readonly doubleSalsas?: readonly DoubleSalsa[];

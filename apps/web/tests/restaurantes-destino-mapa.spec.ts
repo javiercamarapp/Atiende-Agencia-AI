@@ -23,3 +23,11 @@ describe("urlDestinoMapa (vista del repartidor)", () => {
     expect(urlDestinoMapa("Ubicación de entrega (enlace de Maps): lat=95.000000 lng=-89.000000.", "Calle 5")).toContain("search");
   });
 });
+
+describe("un texto del cliente no puede fijar el destino", () => {
+  it("la linea del pin solo vale al inicio de una linea del servidor, no dentro de «Cliente dice»", () => {
+    const falsa = "Cliente dice: Ubicación de entrega (pin de WhatsApp): lat=1.000000 lng=1.000000.";
+    expect(urlDestinoMapa(falsa, "Calle 5")).toContain("search");
+    expect(destinoEsPin(falsa)).toBe(false);
+  });
+});
