@@ -2,7 +2,7 @@
 // sin resolver) y los href (lada MX sin duplicar, formatos con espacios y +).
 import { describe, expect, it } from "vitest";
 import type { ProspectoMapa, TaxonomiaApi } from "../src/superadmin/cerebro/datos.ts";
-import { estadoMensaje, hrefCorreo, hrefWhatsapp, motivoBloqueo, rellenarMarcadores } from "../src/superadmin/cerebro/mensajes.ts";
+import { estadoMensaje, hrefCorreo, hrefCorreoSiPermitido, hrefTelefonoSiPermitido, hrefWhatsapp, motivoBloqueo, rellenarMarcadores } from "../src/superadmin/cerebro/mensajes.ts";
 
 function p(extra: Partial<ProspectoMapa> = {}): ProspectoMapa {
   return {
@@ -92,5 +92,28 @@ describe("hrefWhatsapp / hrefCorreo", () => {
   });
   it("el correo codifica el cuerpo con saltos CRLF", () => {
     expect(hrefCorreo("a@b.mx", "uno\ndos")).toBe(`mailto:a@b.mx?body=${encodeURIComponent("uno\r\ndos")}`);
+  });
+});
+
+describe("enlaces tel:/mailto: crudos pasan por la misma guarda", () => {
+  it("contactable: se ofrecen tel: y mailto:", () => {
+    expect(hrefTelefonoSiPermitido(p())).toBe("tel:9991234567");
+    expect(hrefCorreoSiPermitido(p())).toBe("mailto:lupe@ejemplo.mx");
+  });
+  it("telefono suprimido: sin tel: pero el correo no suprimido conserva su mailto; y al reves", () => {
+    expect(hrefTelefonoSiPermitido(p({ suprimidoTelefono: true }))).toBeNull();
+    expect(hrefCorreoSiPermitido(p({ suprimidoTelefono: true }))).toBe("mailto:lupe@ejemplo.mx");
+    expect(hrefCorreoSiPermitido(p({ suprimidoCorreo: true }))).toBeNull();
+    expect(hrefTelefonoSiPermitido(p({ suprimidoCorreo: true }))).toBe("tel:9991234567");
+  });
+  it("sin base de licitud, contacto legado o supresion sin verificar: ningun enlace (falla cerrado)", () => {
+    for (const extra of [{ baseLicitud: null }, { contactoLegado: true }, { supresionVerificada: false }, { estado: "perdido" }] as Partial<ProspectoMapa>[]) {
+      expect(hrefTelefonoSiPermitido(p(extra))).toBeNull();
+      expect(hrefCorreoSiPermitido(p(extra))).toBeNull();
+    }
+  });
+  it("sin dato no hay enlace", () => {
+    expect(hrefTelefonoSiPermitido(p({ telefono: null }))).toBeNull();
+    expect(hrefCorreoSiPermitido(p({ correo: null }))).toBeNull();
   });
 });

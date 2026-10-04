@@ -13,7 +13,7 @@ import type { ProspectoMapa, TaxonomiaApi } from "./datos.ts";
 import { tieneCoordenadas } from "./datos.ts";
 import { nombreEtapa } from "./embudo.ts";
 import { claseAnilloEtapa } from "./embudo.ts";
-import { estadoMensaje } from "./mensajes.ts";
+import { estadoMensaje, hrefTelefonoSiPermitido } from "./mensajes.ts";
 import type { Canal } from "./mensajes.ts";
 import { claseVertical, esVerticalCerebro, nombreVertical } from "./verticales.ts";
 import { nombreSubtipo } from "./cartera.ts";
@@ -33,6 +33,7 @@ export function htmlPopup(p: ProspectoMapa, tax: ReadonlyMap<string, TaxonomiaAp
     }
     return `<span class="cerebro-popup-boton cerebro-popup-boton-apagado" title="${escapar(e.motivo)}">${etiqueta}: ${e.tipo === "bloqueado" ? "no contactar" : "incompleto"}</span>`;
   };
+  const telHref = hrefTelefonoSiPermitido(p);
   const subtipo = nombreSubtipo(p, tax);
   const como = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
   const puntos = [
@@ -44,7 +45,7 @@ export function htmlPopup(p: ProspectoMapa, tax: ReadonlyMap<string, TaxonomiaAp
       <strong>${escapar(p.empresa)}</strong><br/>
       <span class="cerebro-popup-etapa"><span class="cerebro-popup-punto"></span>${escapar(nombreVertical(p.vertical))}${subtipo ? ` · ${escapar(subtipo)}` : ""} · ${escapar(nombreEtapa(p.estado))}</span><br/>
       ${p.contacto ? `${escapar(p.contacto)}<br/>` : ""}
-      ${p.telefono ? `<a href="tel:${escapar(p.telefono)}">${escapar(p.telefono)}</a><br/>` : ""}
+      ${p.telefono ? `${telHref ? `<a href="${escapar(telHref)}">${escapar(p.telefono)}</a>` : escapar(p.telefono)}<br/>` : ""}
       ${p.correo ? `${escapar(p.correo)}<br/>` : ""}
       ${puntos}
       <div class="cerebro-popup-tenue">${escapar(p.municipio ?? p.ciudad ?? "")}</div>

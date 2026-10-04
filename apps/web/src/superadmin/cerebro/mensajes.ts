@@ -4,7 +4,8 @@
 // correo de quien opera con el texto cargado y editable; esta pantalla no manda nada por si sola.
 //
 // REGLAS (todas de seguridad, cada una con su prueba):
-//  - Un destino en la lista de supresion de plataforma (SA-L-46) no se abre: el boton no existe, se explica por que.
+//  - Un destino en la lista de supresion de plataforma (SA-L-46) no se abre: ni el boton ni el enlace tel:/mailto: existen (el dato se
+//    muestra como texto plano), y se explica por que.
 //  - Un contacto legado (sin base de licitud registrada) no se abre.
 //  - Si el texto base trae un marcador que el prospecto no puede llenar ({destino} sin ciudad, {giro} sin subtipo), NO se abre
 //    con el marcador sin resolver ni con un dato inventado: se dice que falta.
@@ -72,6 +73,18 @@ export function hrefWhatsapp(telefono: string, texto: string): string | null {
 
 export function hrefCorreo(correo: string, texto: string): string {
   return `mailto:${correo}?body=${encodeURIComponent(texto.replace(/\n/gu, "\r\n"))}`;
+}
+
+/** Enlace tel: del telefono, o null si la guarda de contacto lo niega (supresion, sin base de licitud, supresion sin verificar). */
+export function hrefTelefonoSiPermitido(p: ProspectoMapa): string | null {
+  if (!p.telefono || motivoBloqueo(p, "whatsapp") !== null) return null;
+  return `tel:${p.telefono}`;
+}
+
+/** Enlace mailto: del correo (sin texto), o null si la guarda de contacto lo niega. */
+export function hrefCorreoSiPermitido(p: ProspectoMapa): string | null {
+  if (!p.correo || motivoBloqueo(p, "correo") !== null) return null;
+  return `mailto:${p.correo}`;
 }
 
 /** Lo que muestra y abre el boton de un canal para un prospecto. */

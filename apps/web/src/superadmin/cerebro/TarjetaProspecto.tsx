@@ -10,12 +10,18 @@ import { BarraScore } from "./BarraScore.tsx";
 import type { ProspectoMapa, TaxonomiaApi } from "./datos.ts";
 import { tieneCoordenadas } from "./datos.ts";
 import { nombreEtapa } from "./embudo.ts";
-import { estadoMensaje } from "./mensajes.ts";
+import { estadoMensaje, hrefCorreoSiPermitido, hrefTelefonoSiPermitido } from "./mensajes.ts";
 import type { Canal } from "./mensajes.ts";
 import { etiquetaTamano, nombreSubtipo } from "./cartera.ts";
 import { claseVertical, nombreVertical } from "./verticales.ts";
 
 const BOTON = "inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-eyebrow font-medium text-foreground hover:bg-canvas";
+
+/** Un telefono o correo: enlace solo si la guarda de contacto lo permite; si no, texto plano con el motivo. */
+export function EnlaceDato({ href, dato }: { readonly href: string | null; readonly dato: string }) {
+  if (href === null) return <span data-testid="cerebro-dato-sin-enlace" title="Contacto no permitido: supresión, sin base de licitud o supresión sin verificar">{dato}</span>;
+  return <a className="hover:underline" href={href}>{dato}</a>;
+}
 
 function BotonCanal({ p, canal, tax }: { readonly p: ProspectoMapa; readonly canal: Canal; readonly tax: ReadonlyMap<string, TaxonomiaApi> }) {
   const e = estadoMensaje(p, canal, tax.get(p.vertical));
@@ -78,13 +84,13 @@ export function TarjetaProspecto({ p, tax, nuevo, plana }: {
           {p.telefono && (
             <p className="flex items-center gap-1.5">
               <Phone className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-              <a className="hover:underline" href={`tel:${p.telefono}`}>{p.telefono}</a>
+              <EnlaceDato href={hrefTelefonoSiPermitido(p)} dato={p.telefono} />
             </p>
           )}
           {p.correo && (
             <p className="flex items-center gap-1.5 truncate">
               <Mail className="size-3 shrink-0 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-              <a className="hover:underline" href={`mailto:${p.correo}`}>{p.correo}</a>
+              <EnlaceDato href={hrefCorreoSiPermitido(p)} dato={p.correo} />
             </p>
           )}
         </div>

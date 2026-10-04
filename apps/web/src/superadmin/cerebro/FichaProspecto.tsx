@@ -19,7 +19,8 @@ import { aProspectoMapa } from "./datos.ts";
 import type { EventoApi, PersonaApi, ProspectoApi, ProspectoMapa, TaxonomiaApi } from "./datos.ts";
 import { esEtapaTerminal, nombreEtapa } from "./embudo.ts";
 import { NOMBRE_BASE_LICITUD, NOMBRE_CANAL_PERSONA, NOMBRE_DIMENSION, NOMBRE_EVENTO, NOMBRE_ORIGEN_PERSONA, esUrlHttp } from "./etiquetas.ts";
-import { estadoMensaje } from "./mensajes.ts";
+import { EnlaceDato } from "./TarjetaProspecto.tsx";
+import { estadoMensaje, hrefCorreoSiPermitido, hrefTelefonoSiPermitido } from "./mensajes.ts";
 import type { Canal } from "./mensajes.ts";
 import { claseVertical, nombreVertical } from "./verticales.ts";
 import "./cerebro.css";
@@ -260,7 +261,7 @@ function Ficha({ fila, personas, eventos, taxonomias, volver }: {
                 {per.cargo && <p className="text-xs text-muted-foreground">{per.cargo}</p>}
                 {per.dato && (
                   <p className="text-xs text-foreground">
-                    {NOMBRE_CANAL_PERSONA[per.canal] ?? per.canal}: {per.canal === "correo" ? <a className="hover:underline" href={`mailto:${per.dato}`}>{per.dato}</a> : per.dato}
+                    {NOMBRE_CANAL_PERSONA[per.canal] ?? per.canal}: {per.dato}
                   </p>
                 )}
                 <p className="text-2xs text-muted-foreground">
@@ -282,8 +283,8 @@ function Ficha({ fila, personas, eventos, taxonomias, volver }: {
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">Ficha</h2>
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Campo etiqueta="Teléfono" mono>{p.telefono ? <a className="hover:underline" href={`tel:${p.telefono}`}>{p.telefono}</a> : null}</Campo>
-          <Campo etiqueta="Correo" mono>{p.correo ? <a className="hover:underline" href={`mailto:${p.correo}`}>{p.correo}</a> : null}</Campo>
+          <Campo etiqueta="Teléfono" mono>{p.telefono ? <EnlaceDato href={hrefTelefonoSiPermitido(p)} dato={p.telefono} /> : null}</Campo>
+          <Campo etiqueta="Correo" mono>{p.correo ? <EnlaceDato href={hrefCorreoSiPermitido(p)} dato={p.correo} /> : null}</Campo>
           <Campo etiqueta="Sitio web">
             {sitio ? (
               <span className="inline-flex flex-wrap items-center gap-1.5">
