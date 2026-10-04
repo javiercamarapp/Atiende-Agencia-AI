@@ -64,6 +64,15 @@ export interface HighRiskMatch {
   readonly reply: string;
 }
 
+/** El cliente pide a una persona: infinitivo, imperativo con o sin acento ("comuníqueme", "pásame", "páseme") y "quiero una persona". Sirve a WhatsApp y a voz. */
+export const PIDE_UNA_PERSONA_RE =
+  /\b(?:hablar|comunicar(?:me)?|comun[ií]que(?:me|se)?|comun[ií]came|pasar(?:me)?|p[aá]sa(?:me)?|p[aá]se(?:me)?|conectar(?:me)?|con[eé]cta(?:me)?|con[eé]cte(?:me)?|transferir(?:me)?|transf[ií]er[ea]?(?:me)?)\s+(?:con|a)\s+(?:una?\s+|el\s+|la\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/i;
+
+/** Pura: ¿el cliente pide hablar con una persona? (independiente de otros motivos de riesgo del mismo texto). */
+export function pideUnaPersona(text: string): boolean {
+  return PIDE_UNA_PERSONA_RE.test(text);
+}
+
 // El orden importa: lo mas delicado primero (alergia / cobro / privacidad) para que un mensaje que
 // mezcla varios motivos se atienda por el de mayor riesgo.
 const HIGH_RISK_PATTERNS: ReadonlyArray<{ intent: HighRiskIntent; pattern: RegExp; reply: string }> = [
@@ -100,7 +109,7 @@ const HIGH_RISK_PATTERNS: ReadonlyArray<{ intent: HighRiskIntent; pattern: RegEx
   },
   {
     intent: "queja",
-    pattern: /\bqueja\b|\blleg[oó]\s+(?:fr[ií]o|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falt[oó]\b|\bmal\s+armado\b/i,
+    pattern: /\bqueja\b|\blleg[oó]\s+(?:todo\s+|muy\s+)?(?:fr[ií]o|incompleto|mal|tarde)\b|\bpedido\s+(?:incompleto|mal\s+armado)\b|\bme\s+falt[oó]\b|\bmal\s+armado\b/i,
     reply: "Lamento mucho lo ocurrido. Ya avisé al gerente para que revise su caso y lo contacte directamente; yo no puedo prometerle una reposición ni un descuento.",
   },
   {
@@ -110,7 +119,7 @@ const HIGH_RISK_PATTERNS: ReadonlyArray<{ intent: HighRiskIntent; pattern: RegEx
   },
   {
     intent: "cliente_lo_pide",
-    pattern: /\b(?:hablar|comunicar(?:me)?|pasar(?:me)?|conectar(?:me)?)\s+con\s+(?:una\s+|un\s+)?(?:persona|humano|gerente|encargad[oa]|alguien|asesor|agente)\b|\bquiero\s+(?:una\s+|un\s+)?(?:persona|humano)\b/i,
+    pattern: PIDE_UNA_PERSONA_RE,
     reply: "Con gusto. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.",
   },
 ];

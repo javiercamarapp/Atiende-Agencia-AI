@@ -62,7 +62,7 @@ const G_HANDOFF: Grader = (l) => {
 const G_TOOLS = graderTools(AGENT_TOOL_DEFINITIONS.map((t) => t.name));
 const G_SIN_PII_LOG = graderSinPiiLog(TELEFONO_LLAMANTE);
 
-export const GRADERS_VOZ: readonly Grader[] = [G_RESULTADO, G_PEDIDO, G_REGLAS_DURAS, G_TELEFONO, G_HANDOFF, G_PREGRABADOS, G_BARGE_IN, G_TOOLS, G_SIN_PII_LOG, G_SIN_TARJETA, G_TONO_USTED];
+export const GRADERS_VOZ: readonly Grader[] = [G_RESULTADO, G_PEDIDO, G_REGLAS_DURAS, G_TELEFONO, G_HANDOFF, G_PREGRABADOS, G_BARGE_IN, G_TOOLS, G_SIN_PII_LOG, G_SIN_TARJETA, G_TONO_USTED, G_PRECIO_HABLADO];
 
 export function evaluarLlamada(l: LlamadaSimulada): Promise<readonly ResultadoGrader[]> {
   return evaluarConGraders(l, GRADERS_VOZ);
