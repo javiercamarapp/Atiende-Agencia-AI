@@ -1,6 +1,7 @@
 // Repositorio en memoria del autopiloto para pruebas unitarias y la API simulada de e2e. Reproduce los contratos de la base (idempotencia por
 // pedido, compare-and-set de estados, "doble clic = un efecto", zona horaria de la sucursal); la SEMANTICA REAL de SQL (RLS, bloqueos,
 // concurrencia) la prueba scripts/verify-restaurantes-autopiloto contra Postgres. No es produccion.
+import { randomUUID } from "node:crypto";
 import { diaLocalSucursal } from "../voz/kpi.ts";
 import type { CanalPedido, OrderStatus } from "../types.ts";
 import { MOTIVOS_CANCELACION } from "./taxonomia.ts";
@@ -124,7 +125,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
 
   private nueva(org: string, prop: string, tipo: SolicitudTipo, orderId: string | null, detalle: Record<string, unknown>): SolicitudMemoria {
     const s: SolicitudMemoria = {
-      id: `sol-${++this.n}`, organizationId: org, propertyId: prop, tipo, estado: "pendiente", orderId, detalle, decision: null, motivoResolucion: null,
+      id: (this.n++, randomUUID()), organizationId: org, propertyId: prop, tipo, estado: "pendiente", orderId, detalle, decision: null, motivoResolucion: null,
       codigoDescuento: null, reposicionOrderId: null, solicitadaAt: this.ahora(), escaladaAt: null, resueltaAt: null,
     };
     this.solicitudes.push(s);
@@ -209,7 +210,7 @@ export class InMemoryAutopilotoRepository implements AutopilotoRepository {
       const idx = o.indices ?? [];
       const elegidos = idx.filter((i) => i >= 0 && i < p.renglones.length);
       if (elegidos.length === 0 || elegidos.length !== idx.length) throw new AutopilotoValidacionError("renglones a reponer invalidos");
-      const id = `repo-${s.id}`;
+      const id = randomUUID();
       if (!this.pedidos.has(id)) {
         const r: PedidoMemoria = { ...p, id, status: "pending", total: 0, numero: p.numero + 1000, renglones: elegidos.map((i) => p.renglones[i]!), comanda: null };
         this.pedidos.set(id, r);
