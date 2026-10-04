@@ -46,6 +46,11 @@ export const ENRUTADOR_TURNO_ROLE = "plataforma:enrutador_turno";
 export const COMPUERTA_ESCALAMIENTO_ROLE = "plataforma:compuerta_escalamiento";
 export const TITULOS_RESUMENES_ROLE = "plataforma:titulos_resumenes";
 export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
+/** R-32: transcripcion de notas de voz de WhatsApp de restaurantes (entrada de audio). Ruta propia para que el eval cambie el modelo
+ *  sin tocar codigo. Hoy: Gemini 2.5 Flash-Lite (acepta audio, el mas barato) -> Gemini 3.5 Flash-Lite; ambos alojados por Google AI
+ *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
+ *  "pedir al cliente que escriba". */
+export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
 export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   REPORTE_ANALISIS_FINANCIERO_ROLE,
   REPORTE_ANALISIS_GENERAL_ROLE,
@@ -242,6 +247,16 @@ const REDACCION: LlmRouteConfig = { models: [GEMINI_38_FLASH, { ...LUNA_LOW, min
  *  compactacion de historial). */
 const TAREAS_CORTAS: LlmRouteConfig = { models: [LUNA_LOW, DEEPSEEK_FLASH], routing: { allowFallbacks: true } };
 
+/** Transcripcion de audio (R-32): solo modelos con entrada de audio verificada en `architecture.input_modalities` de OpenRouter
+ *  (2026-10-03). Salida corta (una nota de voz de <= 60 s son ~200 palabras): piso de tokens bajo. */
+const TRANSCRIPCION: LlmRouteConfig = {
+  models: [
+    { model: "google/gemini-2.5-flash-lite", reasoningEffort: "minimal", temperature: "omit", minMaxTokens: 800 },
+    { model: "google/gemini-3.5-flash-lite", temperature: "omit", minMaxTokens: 1000 },
+  ],
+  routing: { allowFallbacks: true },
+};
+
 /** Perfil por rol. Clave exacta ("superadmin:copiloto") o "*:sufijo" (ej. "*:data_chat_retry"). Todo
  *  rol no listado usa ECONOMICO. */
 export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = {
@@ -252,6 +267,7 @@ export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = {
   [REPORTE_ANALISIS_GENERAL_ROLE]: ANALISIS_GENERAL,
   [REPORTE_REDACCION_FINANCIERO_ROLE]: REDACCION,
   [REPORTE_REDACCION_GENERAL_ROLE]: REDACCION,
+  [RESTAURANTES_TRANSCRIPCION_ROLE]: TRANSCRIPCION,
   [ENRUTADOR_TURNO_ROLE]: TAREAS_CORTAS,
   [COMPUERTA_ESCALAMIENTO_ROLE]: TAREAS_CORTAS,
   [TITULOS_RESUMENES_ROLE]: TAREAS_CORTAS,
