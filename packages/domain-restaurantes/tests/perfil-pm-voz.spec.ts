@@ -90,8 +90,9 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
   it("conserva lo que PM-C3 pide en voz: H2/H8 sin aflojar, combo del martes, horario prudente, hora_recogida y el umbral de pedido grande", () => {
     expect(voz).toContain("puede adquirirlo directamente en la sucursal al recoger");
     expect(voz).toMatch(/H8\. Escale.*alergias/);
-    expect(voz).toContain("la confirma la sucursal al recoger");
-    expect(voz).not.toMatch(/2 aguas de cortes[ií]a|elige dos aguas/i);
+    // CR09: el combo del martes esta cargado: la voz dice que lo aplica cotizar_pedido y ya no que lo confirma la sucursal.
+    expect(voz).toContain("H13. Combo del martes (nachos de pastor + 2 aguas, recoger): lo aplica cotizar_pedido; diga lo que devuelve.");
+    expect(voz).not.toContain("la confirma la sucursal al recoger");
     expect(voz).toContain("Francisco de Montejo: lunes a viernes de 6 pm a 12 am");
     expect(voz).toContain("hora_recogida");
     expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
