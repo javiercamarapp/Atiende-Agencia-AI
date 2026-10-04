@@ -26,11 +26,11 @@ import {
   redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { AgentToolContext, CanalPedido, Order, RestaurantesRepository } from "@atiende/domain-restaurantes";
-import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
+import { encolarComandaParaPedido, type ResultadoEncolarPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { issueStorefrontTrackingToken, storefrontTrackingKey, verifyStorefrontTrackingToken } from "../../../storefront-tracking-token.ts";
-import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { efectosPostCommitDePedido } from "./efectos-post-commit.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -265,7 +265,10 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       promo: strOrReject(body.promo_code, 40, "El código de promoción"),
       propina: propinaDe(body.propina),
     };
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    // La transaccion SOLO crea el pedido y ENCOLA sus efectos (correo en el outbox, comanda del POS con envio diferido).
+    // Los efectos externos corren DESPUES del COMMIT (ver efectos-post-commit.ts): un COMMIT que no llega ya no deja
+    // un correo ni una comanda de un pedido inexistente.
+    const transaccion = await deps.engine.withAppSession({ userId: null }, async (db): Promise<{ readonly respuesta: Response } | { readonly order: Order; readonly orgId: string; readonly encolada: ResultadoEncolarPedido }> => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
       await limitOrThrow(repo, c, "storefront-order", 10, org.id, sessionId);
@@ -292,34 +295,37 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
           }),
         );
         const order = outcome.raw as Order;
-        // Correo de confirmacion (si el cliente dejo correo) y comanda al POS: best-effort, nunca cambian el pedido.
-        await triggerRestaurantesEmailDispatchInline(deps, db, repo);
-        const comanda = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
+        const encolada = await encolarComandaParaPedido(softRestaurantComandaDeps(deps, db, repo), {
           order,
           tipo: canal === "recoger" ? "recoger" : "domicilio",
           colonia: cliente.colonia,
           propina: cliente.propina,
+          envioEnLinea: false,
         });
-        return c.json({
-          rastreo_token: issueStorefrontTrackingToken(trackingKey, org.id, order.id),
-          estado: order.status,
-          total: order.total,
-          canal: canal === "recoger" ? "recoger" : "domicilio",
-          sucursal: order.branch,
-          comanda: comanda.modo === "activo" ? { estado: comanda.agente.estado, folio: comanda.agente.folio, mensaje: comanda.agente.mensaje } : null,
-        });
+        return { order, orgId: org.id, encolada };
       } catch (err) {
         if (err instanceof OrderFlowViolationError && err.code === "pedido_ya_creado") {
           // Doble envio (reintento de red, doble clic): el pedido ya existe; se devuelve su rastreo en vez de un error.
           const orderId = err.orderId ?? (await repo.readOrderFlow(org.id, ctx.flow!.key))?.context?.orderId;
-          if (orderId) return c.json({ ya_registrado: true, rastreo_token: issueStorefrontTrackingToken(trackingKey, org.id, orderId) });
+          if (orderId) return { respuesta: c.json({ ya_registrado: true, rastreo_token: issueStorefrontTrackingToken(trackingKey, org.id, orderId) }) };
         }
         // La llave de idempotencia ya se uso con otro contenido (p. ej. se corrigio la direccion tras perder la
         // respuesta): el pedido original SI existe. Mensaje para el cliente en espanol, no el texto interno del motor.
         if (err instanceof OrderConflictError) throw Errors.conflict(PEDIDO_YA_REGISTRADO);
-        if (err instanceof OrderValidationError) return c.json({ code: "validation_error", message: err.message, ...(err instanceof OrderFlowViolationError ? { motivo: err.code } : {}) }, 400);
+        if (err instanceof OrderValidationError) return { respuesta: c.json({ code: "validation_error", message: err.message, ...(err instanceof OrderFlowViolationError ? { motivo: err.code } : {}) }, 400) };
         throw err;
       }
+    });
+    if ("respuesta" in transaccion) return transaccion.respuesta;
+    const { order, orgId, encolada } = transaccion;
+    const comanda = await efectosPostCommitDePedido(deps, encolada);
+    return c.json({
+      rastreo_token: issueStorefrontTrackingToken(trackingKey, orgId, order.id),
+      estado: order.status,
+      total: order.total,
+      canal: body.canal === "recoger" ? "recoger" : "domicilio",
+      sucursal: order.branch,
+      comanda,
     });
   });
 
