@@ -296,6 +296,7 @@ describe("GET .../admin/voz/kpi-desborde", () => {
     const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/voz/kpi-desborde`;
     expect((await app.request(base, authedGet(ctx.staff.owner.token))).status).toBe(200);
     expect((await app.request(base, authedGet(ctx.staff.admin.token))).status).toBe(200);
+    expect((await app.request(base, authedGet(ctx.staff.staffSucursalA.token))).status).toBe(403);
     expect((await app.request(base, authedGet(ctx.staff.repartidor.token))).status).toBe(403);
     expect((await app.request(base, authedGet(ctx.staff.otroOrgOwner.token))).status).toBeGreaterThanOrEqual(403);
     expect((await app.request(base, { method: "GET" })).status).toBe(401);
