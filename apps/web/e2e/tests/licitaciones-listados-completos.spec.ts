@@ -41,7 +41,7 @@ test.describe("licitaciones: listados completos @humo", () => {
     expect((await mock.buscar({ metodo: "GET", ruta: /\/tenders\?.*offset=25/ })).length).toBeGreaterThan(0);
 
     await page.getByLabel("Buscar").fill("GEN-24");
-    await expect(page.getByRole("status").filter({ hasText: "Mostrando" })).toContainText("de 11"); // GEN-24 y GEN-240..GEN-248
+    await expect(page.getByRole("status").filter({ hasText: "Mostrando" })).toContainText("de 10"); // GEN-24 y GEN-240..GEN-248 (ids sembrados 0..248)
     expect((await mock.buscar({ metodo: "GET", ruta: /\/tenders\?.*q=GEN-24/ })).length).toBeGreaterThan(0);
 
     await page.goto(`${BASE}/panel`);
