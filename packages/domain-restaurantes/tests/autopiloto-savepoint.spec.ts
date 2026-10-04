@@ -2,7 +2,7 @@
 // base vieja (42883/42P01/42703) cae a "no disponible" SIN abortar la transaccion (AbortAwareFakeSession reproduce el 25P02 y el COMMIT que
 // devolveria ROLLBACK). 42501/22023 se traducen a errores tipados (403/422) y tampoco dejan la transaccion abortada.
 import { describe, expect, it } from "vitest";
-import { AutopilotoAccesoError, AutopilotoValidacionError, PostgresAutopilotoRepository } from "../src/autopiloto/index.ts";
+import { AutopilotoAccesoError, AutopilotoValidacionError, PostgresAutopilotoRepository, estimarTiempoSucursal } from "../src/autopiloto/index.ts";
 import { AbortAwareFakeSession, type FakeSessionHandler } from "./support/aborting-fake-session.ts";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -121,5 +121,18 @@ describe("PostgresAutopilotoRepository contra la base sin migrar", () => {
     const r = await new PostgresAutopilotoRepository(s).listarSolicitudes(ORG, { propertyIds: [PROP], estado: "pendiente", limite: 20 });
     expect(r.disponible).toBe(true);
     expect(r.valor[0]).toMatchObject({ id: "s1", tipo: "pedido_grande", pedido: { numero: 88, total: 4500, status: "por_aprobar", renglones: [{ indice: 0, nombre: "Coca-Cola", cantidad: 2 }] } });
+  });
+
+  it("estimarTiempoSucursal (GET /tiempo) contra la base SIN migrar: config y muestras fallan con 42883 en la MISMA sesion y cae al texto fijo del dueno, sin 25P02 ni 3B001", async () => {
+    const s = new AbortAwareFakeSession([
+      { match: /autopiloto_config_leer/, respond: () => pgError("42883", "function does not exist") },
+      { match: /tiempo_entrega_muestras/, respond: () => pgError("42883", "function does not exist") },
+      SIGUIENTE,
+    ]);
+    const repo = { findWhatsAppAgentConfig: async () => ({ deliveryTimeText: "35-45 min" }) } as unknown as Parameters<typeof estimarTiempoSucursal>[0]["repo"];
+    const r = await estimarTiempoSucursal({ auto: new PostgresAutopilotoRepository(s), repo }, { organizationId: ORG, propertyId: PROP, canal: "domicilio", ahora: new Date("2026-10-04T18:00:00Z") });
+    expect(JSON.stringify(r)).toContain("35-45");
+    await sesionViva(s);
+    expect(s.calls.filter((c) => c.startsWith("rollback to savepoint"))).toHaveLength(2);
   });
 });
