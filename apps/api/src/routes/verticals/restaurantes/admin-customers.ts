@@ -51,7 +51,7 @@ function optionalText(value: unknown, field: string, maxLength: number): string 
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "string" || value.length > maxLength) throw Errors.validation(`${field}: se esperaba un texto de hasta ${maxLength} caracteres.`);
-  const limpio = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const limpio = value.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim();
   return limpio === "" ? null : limpio;
 }
 
