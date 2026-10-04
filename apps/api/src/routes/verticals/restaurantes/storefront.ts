@@ -182,18 +182,26 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
         // (reintentos y doble clic incluidos; rotar de IP no da cupo nuevo).
         const porTelefono = await consumeRateLimit(repo, "storefront-evento-telefono", `${org.id}:${solicitud.telefono}`, 3, 3600);
         if (!porTelefono.allowed) throw Errors.tooManyRequests();
-        const creada = await registerCallbackRequest(repo, {
-          organizationId: org.id,
-          propertyId: branch.propertyId,
-          customerName: solicitud.nombre,
-          customerPhone: solicitud.telefono,
-          reason: "evento",
-          message: solicitud.mensaje,
-          source: "web",
-        });
+        // SAVEPOINT propio: contra una base sin la migracion 042 el registro falla (sin la funcion de sistema, el INSERT directo no tiene
+        // permiso, SQLSTATE 42501) y esa transaccion unica del request quedaria abortada: con el savepoint el 503 honesto se entrega.
+        const creada = await repo.runWithRowSavepoint(() =>
+          registerCallbackRequest(repo, {
+            organizationId: org.id,
+            propertyId: branch.propertyId,
+            customerName: solicitud.nombre,
+            customerPhone: solicitud.telefono,
+            reason: "evento",
+            message: solicitud.mensaje,
+            source: "web",
+          }),
+        );
         return c.json({ recibido: true, solicitud: creada.id });
       } catch (err) {
         if (err instanceof StorefrontValidationError) return c.json({ code: "validation_error", message: err.message }, 400);
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "42501" || code === "42883" || code === "42P01" || code === "42703") {
+          return c.json({ code: "service_unavailable", message: "Las solicitudes de evento todavía no están disponibles en línea. Llama a la sucursal para cotizar tu evento." }, 503);
+        }
         throw err;
       }
     });

@@ -138,6 +138,27 @@ describe("POST storefront/eventos (R-43)", () => {
     expect((await s.post(EVENTO(), ORIGIN, "no-existe")).status).toBe(404);
   });
 
+  it("base sin migrar (el registro falla con 42501/42883): 503 honesto con el motivo, nunca 500, y no queda nada a medias", async () => {
+    for (const code of ["42501", "42883"]) {
+      const s = await setup();
+      s.restaurantesRepo.createCallbackRequest = async () => {
+        throw Object.assign(new Error("permission denied for table callback_requests"), { code });
+      };
+      const res = await s.post(EVENTO());
+      expect(res.status).toBe(503);
+      expect((await s.json(res)).message).toMatch(/todavía no están disponibles/);
+      expect(s.restaurantesRepo.peekCallbackRequests()).toHaveLength(0);
+    }
+  });
+
+  it("un error inesperado (no de compatibilidad) NO se disfraza de 503: se propaga como 500", async () => {
+    const s = await setup();
+    s.restaurantesRepo.createCallbackRequest = async () => {
+      throw new Error("boom");
+    };
+    expect((await s.post(EVENTO())).status).toBe(500);
+  });
+
   it("cuerpo gigante: se rechaza antes de procesar", async () => {
     const s = await setup();
     const res = await s.post({ ...EVENTO(), comentario: "x".repeat(10_000) });
