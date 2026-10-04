@@ -580,8 +580,96 @@ const rutasPostAdjudicacion: readonly Ruta[] = [
   },
 ];
 
+// paridad3 L-P3-14/16 -- Versiones y fuentes de la convocatoria, bandeja de Expedientes y Staff (quitar miembro). Mismas formas que la API real.
+type EstadoMock = { estado: { obtener<T>(k: string, s: () => T): T } };
+const ESTADOS_EXPEDIENTE = ["go", "in_progress", "submitted"];
+const miembrosMock = (p: EstadoMock) =>
+  p.estado.obtener("lic.staff.miembros", () => [
+    ...(["owner", "admin", "staff"] as const).map((r) => {
+      const x = personaDe("licitaciones", r);
+      return { id: x.id, email: x.email, fullName: x.fullName, verticalRole: r === "staff" ? "analyst" : r, propertyIds: null as string[] | null };
+    }),
+  ]);
+
+const rutasVersionesExpedientesStaff: readonly Ruta[] = [
+  {
+    metodo: "GET",
+    patron: `${L}/tenders/:tid/versions`,
+    manejador: () => ({
+      versions: [
+        { version: 1, hash: "h1", createdAt: "2026-09-29T15:00:00.000Z", diff: { fields: [], requirements: [], changedFieldNames: [], affectedSectionKeys: [], hasChanges: false } },
+        {
+          version: 2,
+          hash: "h2",
+          createdAt: "2026-09-30T15:00:00.000Z",
+          diff: {
+            fields: [{ field: "submissionDeadline", status: "modificado", previous: "2026-10-13T17:00:00.000Z", current: "2026-10-20T17:00:00.000Z" }],
+            requirements: [{ key: "legal:text:acta", status: "nuevo", requirementKind: "legal", previous: null, current: { text: "Presentar acta constitutiva vigente" } }],
+            changedFieldNames: ["submissionDeadline"],
+            affectedSectionKeys: ["legal"],
+            hasChanges: true,
+          },
+        },
+      ],
+    }),
+  },
+  {
+    metodo: "GET",
+    patron: `${L}/tenders/:tid/sources`,
+    manejador: () => ({
+      sources: [
+        { source: "compranet", externalId: "LA-931037999-E12-2026", primary: true, firstSeenAt: null, lastSeenAt: "2026-09-30T15:00:00.000Z", conflicts: [] },
+        { source: "cdmx_ocds", externalId: "CDMX-77", primary: false, firstSeenAt: "2026-09-30T16:00:00.000Z", lastSeenAt: "2026-09-30T16:00:00.000Z", conflicts: [{ field: "budget_amount", current: 18500000, alternative: 19000000 }] },
+      ],
+    }),
+  },
+  {
+    metodo: "GET",
+    patron: `${L}/expedientes`,
+    manejador: (p) => {
+      const q = p.query;
+      const status = q.get("status");
+      const filtradas = convocatoriasDe(p).filter((t) => (status ? t.status === status : ESTADOS_EXPEDIENTE.includes(t.status)));
+      const { items, cabeceras } = paginaConvocatorias(filtradas.slice().sort((a, b) => (a.id < b.id ? -1 : 1)), q);
+      return conCabeceras(
+        {
+          expedientes: items.map((t, i) => ({
+            tenderId: t.id,
+            title: t.title,
+            status: t.status,
+            submissionDeadline: t.submissionDeadline,
+            requisitos: { total: 10, cumplidos: i % 10 },
+            redaccion: "hecho",
+            checklist: "ambar",
+            aprobacion: { modo: "doble", tecnicaLegal: true, economica: false, completa: false },
+            paquete: false,
+            presentada: t.status === "submitted",
+          })),
+        },
+        cabeceras,
+      );
+    },
+  },
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/staff/miembros", roles: ["owner", "admin"], manejador: (p) => ({ miembros: miembrosMock(p) }) },
+  { metodo: "GET", patron: "/v1/licitaciones/:org/admin/staff/invitaciones", roles: ["owner", "admin"], manejador: () => ({ invitations: [] }) },
+  {
+    metodo: "DELETE",
+    patron: "/v1/licitaciones/:org/admin/staff/miembros/:uid",
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const lista = miembrosMock(p);
+      const i = lista.findIndex((m) => m.id === p.params["uid"]);
+      if (i < 0) return fallo(404, "Ese staff no pertenece a esta organización.");
+      if (p.params["uid"] === p.persona!.id) return fallo(400, "No puedes darte de baja a ti mismo.");
+      lista.splice(i, 1);
+      return { ok: true };
+    },
+  },
+];
+
 export const rutasLicitaciones: readonly Ruta[] = [
   ...rutasListadoConvocatorias,
+  ...rutasVersionesExpedientesStaff,
   ...rutasCopiloto,
   ...rutasCierre,
   ...rutasPostAdjudicacion,
