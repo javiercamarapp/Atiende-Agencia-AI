@@ -32,6 +32,19 @@ export interface ContextoLlamada {
   readonly horaLocal: number;
 }
 
+/** Guion de apertura de la llamada (asistente virtual + aviso de privacidad + pregunta de grabacion) de `privacidad/apertura`. */
+export interface AperturaPrivacidad {
+  readonly guion: string;
+  /** El titular debe responder si autoriza la grabacion: sin un "si" claro la llamada se atiende sin guardar la transcripcion. */
+  readonly pideConsentimientoGrabacion: boolean;
+}
+
+export interface RespuestaConsentimiento {
+  readonly consentimiento: "otorgado" | "negado" | "pendiente" | "no_disponible";
+  /** Frase que el agente dice al cliente (repite la pregunta si la respuesta fue ambigua). */
+  readonly respuestaSugerida: string;
+}
+
 export interface EntradaIniciarConversacion {
   readonly organizationId: string;
   readonly propertyId: string;
@@ -138,6 +151,27 @@ export class ClienteApi {
     return r.conversationId;
   }
 
+  /** Guion de apertura + evidencia de entrega del aviso (por hash del telefono). `callerPhone` null = llamante anonimo (sin evidencia). */
+  async privacidadApertura(e: { organizationId: string; callerPhone: string | null }): Promise<AperturaPrivacidad> {
+    const r = await this.post<{ guion?: unknown; pideConsentimientoGrabacion?: unknown }>("apertura", "/internal/restaurantes/voz/privacidad/apertura", { organizationId: e.organizationId, ...(e.callerPhone ? { callerPhone: e.callerPhone } : {}) }, this.servicio(), 2);
+    if (typeof r.guion !== "string" || r.guion.length === 0) throw new ErrorApi("apertura", 502);
+    return { guion: r.guion, pideConsentimientoGrabacion: r.pideConsentimientoGrabacion === true };
+  }
+
+  /** Respuesta del titular a la pregunta de grabacion (la interpreta el servidor, no el worker ni el modelo). */
+  async consentimientoGrabacion(e: { organizationId: string; conversationId: string; respuesta: string }): Promise<RespuestaConsentimiento> {
+    const r = await this.post<{ consentimiento?: unknown; respuestaSugerida?: unknown }>(
+      "consentimiento",
+      `/internal/restaurantes/voz/conversaciones/${e.conversationId}/consentimiento-grabacion`,
+      { organizationId: e.organizationId, respuesta: e.respuesta.slice(0, 500) },
+      this.servicio(),
+      2,
+    );
+    const c = r.consentimiento;
+    if (c !== "otorgado" && c !== "negado" && c !== "pendiente" && c !== "no_disponible") throw new ErrorApi("consentimiento", 502);
+    return { consentimiento: c, respuestaSugerida: typeof r.respuestaSugerida === "string" ? r.respuestaSugerida : "" };
+  }
+
   async marcarModoEntrada(e: { organizationId: string; conversationId: string; modo: string; franja: string }): Promise<void> {
     await this.post("modo_entrada", `/internal/restaurantes/voz/conversaciones/${e.conversationId}/modo-entrada`, { organizationId: e.organizationId, modo: e.modo, franja: e.franja }, this.servicio(), 2);
   }
@@ -152,7 +186,7 @@ export class ClienteApi {
     );
   }
 
-  async registrarEvento(e: { organizationId: string; propertyId: string; conversationId: string | null; tipo: "tool_call"; herramienta: string; latenciaMs: number } | { organizationId: string; propertyId: string; conversationId: string | null; tipo: "error_proveedor"; proveedor: VozProveedorFallo; codigo: string }): Promise<void> {
+  async registrarEvento(e: { organizationId: string; propertyId: string; conversationId: string | null; tipo: "tool_call"; herramienta: string; latenciaMs: number } | { organizationId: string; propertyId: string; conversationId: string | null; tipo: "latencia_voz"; latenciaMs: number } | { organizationId: string; propertyId: string; conversationId: string | null; tipo: "error_proveedor"; proveedor: VozProveedorFallo; codigo: string }): Promise<void> {
     await this.post("evento", "/internal/restaurantes/voz/eventos", e, this.servicio(), 1);
   }
 

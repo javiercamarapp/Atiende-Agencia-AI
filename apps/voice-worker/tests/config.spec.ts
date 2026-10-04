@@ -1,0 +1,145 @@
+// Configuracion del worker: tabla DNIS -> sucursal, modo "no configurado" (nunca atiende a medias), tope mensual y modo de entrada.
+import { describe, expect, it } from "vitest";
+import { cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd } from "../src/config.ts";
+
+const ORG = "00000000-0000-4000-8000-000000000001";
+const SUC_A = "00000000-0000-4000-8000-0000000000a1";
+const SUC_B = "00000000-0000-4000-8000-0000000000b1";
+
+const entrada = (extra: Record<string, unknown> = {}) => ({ orgSlug: "los-taquitos-de-pm", organizationId: ORG, propertyId: SUC_A, branchSlug: "fco-montejo", secretoEnv: "VOICE_SECRET_FCO", ...extra });
+const ENV_BASE = {
+  LIVEKIT_URL: "wss://ejemplo.livekit.invalid",
+  LIVEKIT_API_KEY: "llave-livekit",
+  LIVEKIT_API_SECRET: "secreto-livekit",
+  ATIENDE_API_URL: "https://api.ejemplo.invalid/",
+  INTERNAL_SECRET: "secreto-interno",
+  GEMINI_API_KEY: "llave-gemini",
+  VOICE_DNIS_MAP: JSON.stringify({ "+52 999 111 0001": entrada() }),
+  VOICE_SECRET_FCO: "secreto-sucursal",
+};
+
+describe("normalizarNumero", () => {
+  it("canoniza a los ultimos 10 digitos (misma llave sin importar +52, 521, espacios o guiones)", () => {
+    expect(normalizarNumero("+52 999 111 0001")).toBe("9991110001");
+    expect(normalizarNumero("+5219991110001")).toBe("9991110001");
+    expect(normalizarNumero("(999) 111-0001")).toBe("9991110001");
+    expect(normalizarNumero("9991110001")).toBe("9991110001");
+  });
+  it("un valor sin 10 digitos o ausente no es un numero", () => {
+    expect(normalizarNumero("12345")).toBeNull();
+    expect(normalizarNumero("anonymous")).toBeNull();
+    expect(normalizarNumero(null)).toBeNull();
+    expect(normalizarNumero(undefined)).toBeNull();
+  });
+});
+
+describe("parsearTablaDnis (VOICE_DNIS_MAP)", () => {
+  it("mapea el numero marcado a la sucursal y lee el secreto de la variable nombrada, no del JSON", () => {
+    const { tabla, problemas } = parsearTablaDnis(JSON.stringify({ "+52 999 111 0001": entrada({ topeMensualUsd: 25, modoEntrada: "desborde" }) }), { VOICE_SECRET_FCO: "s3creto" });
+    expect(problemas).toEqual([]);
+    expect(tabla.get("9991110001")).toMatchObject({ orgSlug: "los-taquitos-de-pm", organizationId: ORG, propertyId: SUC_A, branchSlug: "fco-montejo", secreto: "s3creto", topeMensualUsd: 25, modoEntrada: "desborde" });
+  });
+
+  it("dos numeros son dos sucursales distintas (DNIS -> sucursal, nunca al reves)", () => {
+    const json = JSON.stringify({ "+5299911100001": entrada(), "9992220002": entrada({ propertyId: SUC_B, branchSlug: "altabrisa", secretoEnv: "VOICE_SECRET_ALT" }) });
+    const { tabla } = parsearTablaDnis(json.replace("+5299911100001", "+52 999 111 0001"), { VOICE_SECRET_FCO: "a", VOICE_SECRET_ALT: "b" });
+    expect(tabla.get("9991110001")?.propertyId).toBe(SUC_A);
+    expect(tabla.get("9992220002")?.propertyId).toBe(SUC_B);
+    expect(tabla.get("9993330003")).toBeUndefined();
+  });
+
+  it.each([
+    ["sin la variable", undefined],
+    ["vacia", "  "],
+    ["no es JSON", "{no"],
+    ["es un arreglo", "[]"],
+  ])("tabla %s: problema explicito y ninguna entrada", (_n, json) => {
+    const { tabla, problemas } = parsearTablaDnis(json, {});
+    expect(tabla.size).toBe(0);
+    expect(problemas.length).toBeGreaterThan(0);
+  });
+
+  it("rechaza entradas invalidas sin filtrar valores: uuid malo, secreto sin valor, tope no positivo, modo desconocido, numero repetido", () => {
+    const casos: Array<[string, Record<string, unknown>]> = [
+      ["uuid malo", entrada({ organizationId: "no-es-uuid" })],
+      ["sin secretoEnv", { ...entrada(), secretoEnv: undefined }],
+      ["secreto sin valor", entrada({ secretoEnv: "VOICE_SECRET_VACIO" })],
+      ["tope cero", entrada({ topeMensualUsd: 0 })],
+      ["modo desconocido", entrada({ modoEntrada: "otro" })],
+    ];
+    for (const [nombre, e] of casos) {
+      const { tabla, problemas } = parsearTablaDnis(JSON.stringify({ "9991110001": e }), { VOICE_SECRET_FCO: "x", VOICE_SECRET_VACIO: "" });
+      expect(tabla.size, nombre).toBe(0);
+      expect(problemas.join(" "), nombre).not.toContain("secreto-real");
+    }
+    const repetido = parsearTablaDnis(JSON.stringify({ "+52 999 111 0001": entrada(), "9991110001": entrada() }), { VOICE_SECRET_FCO: "x" });
+    expect(repetido.problemas.join(" ")).toMatch(/repetido/);
+  });
+});
+
+describe("cargarConfig: modo NO CONFIGURADO", () => {
+  it("con todo presente queda configurado, sin motivos, y normaliza la URL de la API", () => {
+    const c = cargarConfig(ENV_BASE);
+    expect(c.estado).toBe("configurado");
+    expect(c.motivos).toEqual([]);
+    expect(c.apiBaseUrl).toBe("https://api.ejemplo.invalid");
+    expect(c.livekit).toMatchObject({ url: "wss://ejemplo.livekit.invalid", prefijoSala: "llamada-" });
+    expect(c.dnis.size).toBe(1);
+  });
+
+  it.each(["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "ATIENDE_API_URL", "INTERNAL_SECRET", "VOICE_DNIS_MAP"] as const)("sin %s: no configurado y el motivo nombra la variable", (variable) => {
+    const { [variable]: _quitada, ...resto } = ENV_BASE;
+    const c = cargarConfig(resto);
+    expect(c.estado).toBe("no_configurado");
+    expect(c.motivos.join(" ")).toContain(variable);
+  });
+
+  it("sin GEMINI_API_KEY ni OPENROUTER_API_KEY ninguna escalera puede abrir: no configurado", () => {
+    const { GEMINI_API_KEY: _g, ...resto } = ENV_BASE;
+    expect(cargarConfig(resto).estado).toBe("no_configurado");
+    expect(cargarConfig({ ...resto, OPENROUTER_API_KEY: "or" }).estado).toBe("configurado");
+  });
+
+  it("faltan audios pregrabados: no configurado (el worker no contesta sin poder decir los avisos locales)", () => {
+    const c = cargarConfig(ENV_BASE, { pregrabadosFaltantes: ["handoff", "despedida"] });
+    expect(c.estado).toBe("no_configurado");
+    expect(c.motivos.join(" ")).toMatch(/pregrabados/);
+  });
+
+  it("los motivos jamas contienen el valor de un secreto", () => {
+    const c = cargarConfig({ ...ENV_BASE, LIVEKIT_URL: "", VOICE_SECRET_FCO: "" });
+    const todo = c.motivos.join(" ");
+    for (const secreto of ["secreto-livekit", "llave-livekit", "secreto-interno", "llave-gemini", "secreto-sucursal"]) expect(todo).not.toContain(secreto);
+  });
+
+  it("VOICE_TOPE_MENSUAL_USD invalido es un motivo; valido se guarda en micro-USD", () => {
+    expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "abc" }).motivos.join(" ")).toContain("VOICE_TOPE_MENSUAL_USD");
+    expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "12.5" }).topeMensualPlataformaMicroUsd).toBe(12_500_000);
+    expect(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd).toBeNull();
+  });
+});
+
+describe("tope mensual por organizacion", () => {
+  it("la sobreescritura de la organizacion gana; sin ella el de plataforma; sin ninguno, sin tope", () => {
+    expect(resolverTopeMensualMicroUsd(50_000_000, 10)).toBe(10_000_000);
+    expect(resolverTopeMensualMicroUsd(50_000_000, null)).toBe(50_000_000);
+    expect(resolverTopeMensualMicroUsd(null, null)).toBeNull();
+    expect(resolverTopeMensualMicroUsd(null, 7.25)).toBe(7_250_000);
+  });
+  it("un tope no positivo no cuenta como tope", () => {
+    expect(resolverTopeMensualMicroUsd(0, 0)).toBeNull();
+  });
+});
+
+describe("modo de entrada de la llamada", () => {
+  it("un encabezado de desvio la vuelve desborde; sin el se respeta lo configurado; prueba siempre manda", () => {
+    expect(modoEntradaDeLlamada("total", "<sip:+529991110000@conmutador>")).toBe("desborde");
+    expect(modoEntradaDeLlamada("total", null)).toBe("total");
+    expect(modoEntradaDeLlamada("desborde", null)).toBe("desborde");
+    expect(modoEntradaDeLlamada("prueba", "<sip:+529991110000@conmutador>")).toBe("prueba");
+    expect(modoEntradaDeLlamada("total", "  ")).toBe("total");
+  });
+  it("franja del dia segun la hora local", () => {
+    expect([4, 5, 11, 12, 18, 19, 23].map(franjaDeHora)).toEqual(["noche", "manana", "manana", "tarde", "tarde", "noche", "noche"]);
+  });
+});

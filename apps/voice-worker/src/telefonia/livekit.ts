@@ -11,36 +11,14 @@ import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, ParticipantKind, Room, RoomEvent, TrackKind, TrackPublishOptions, TrackSource } from "@livekit/rtc-node";
 import type { RemoteParticipant, Track } from "@livekit/rtc-node";
 import { remuestrearPcm16 } from "../audio/remuestreo.ts";
+import { infoDeParticipanteSip } from "./sip-atributos.ts";
+import type { InfoParticipanteSip } from "./sip-atributos.ts";
 import type { LlamadaTelefonica, TelefoniaPort } from "./puerto.ts";
 
 export const HZ_ENTRADA_LIVEKIT = 16_000;
 export const HZ_SALIDA_LIVEKIT = 24_000;
 const FRAME_MS = 20;
 const ESPERA_SIP_MS = 15_000;
-
-export interface InfoParticipanteSip {
-  readonly dnis: string | null;
-  readonly sipFrom: string | null;
-  readonly desviadaDesde: string | null;
-}
-
-/** Lee del participante SIP lo que la telefonia reporta de la llamada. Pura: la prueban los tests sin LiveKit. */
-export function infoDeParticipanteSip(atributos: Readonly<Record<string, string>>): InfoParticipanteSip {
-  const limpio = (v: string | undefined): string | null => (typeof v === "string" && v.trim() !== "" && v.length <= 256 ? v.trim() : null);
-  const origen = limpio(atributos["sip.phoneNumber"]);
-  // La URI sintetica permite reutilizar `extraerTelefonoSipFrom` (que ya trata "anonymous", "unavailable", etc. como llamante sin telefono).
-  const sipFrom = origen === null ? null : `<sip:${origen.replace(/[<>;\s@]/g, "")}@sip.livekit.invalid;user=phone>`;
-  let desviada: string | null = null;
-  for (const [clave, valor] of Object.entries(atributos)) {
-    const k = clave.toLowerCase();
-    if (!k.startsWith("sip.h.")) continue;
-    if (k.includes("diversion") || k.includes("history-info") || k.includes("forwarded") || k.includes("p-called-party")) {
-      desviada = limpio(valor);
-      if (desviada) break;
-    }
-  }
-  return { dnis: limpio(atributos["sip.trunkPhoneNumber"]), sipFrom, desviadaDesde: desviada };
-}
 
 export interface OpcionesLiveKit {
   readonly url: string;
