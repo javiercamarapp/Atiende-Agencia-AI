@@ -9,6 +9,7 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
+import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
 import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice } from "./order-quote.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { assertProgramacionDisponible, mensajeCerradoProgramado, parsearProgramadoPara, validarVentanaProgramacion } from "./pedidos-programados.ts";
@@ -501,6 +502,11 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // `notifyCustomerOrderConfirmationEmailCore` simplemente no encola nada — ver
   // order-notifications.ts.
   await tryNotifyCustomerOrderConfirmationEmail(repo, order);
+
+  // Cliente 360 (migracion 044): cierre automatico del ciclo con el cliente. Domicilio (alta o "usado otra vez") y gustos
+  // se actualizan a partir de lo que el cliente CONFIRMO en este pedido; idempotente por pedido (un reintento que devuelve
+  // el mismo pedido no cuenta dos veces) y best-effort con SAVEPOINT: nunca revierte un pedido ya creado.
+  await cerrarCicloDelCliente(repo, order, payload);
 
   // Fase 11 — registra el uso real de la promoción DESPUÉS de persistir el pedido
   // (nunca antes: un pedido que falla al crearse no debe consumir un uso). Igual

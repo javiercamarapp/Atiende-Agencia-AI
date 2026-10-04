@@ -8,11 +8,14 @@
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
-import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { ClienteMemoriaNoDisponibleError, OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
+import { Cliente360Store, newMemAddress, type MemAddress } from "./cliente-360/in-memory.ts";
+import type { ClosureObservation, CustomerAddressChanges, CustomerAddressDetail, CustomerFicha, CustomerMemory, CustomerPolicy, CustomerPreference, CustomerProfilePatch, OrderClosureInput, PastOrder, PreferenceAction } from "./cliente-360/types.ts";
+import { isPreferenceKind, POLITICA_POR_OMISION } from "./cliente-360/types.ts";
 import type {
   CanalPedido,
   Branch,
@@ -281,7 +284,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly promotions = new Map<string, StoredPromotion>();
   private readonly customers = new Map<string, Customer>();
   private readonly customerIdByOrgPhone = new Map<string, string>();
-  private readonly addresses = new Map<string, CustomerAddress[]>();
+  private readonly addresses = new Map<string, MemAddress[]>();
+  // Cliente 360 (migracion 044): espejo en memoria de las columnas/tablas nuevas.
+  private readonly cliente360 = new Cliente360Store();
   private readonly orders: StoredOrder[] = [];
   private readonly knownZones: StoredKnownZone[] = [];
   private readonly callbackRequests: CallbackRequest[] = [];
@@ -598,13 +603,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   async addCustomerAddressIfNew(customerId: string, address: string): Promise<void> {
     const list = this.addresses.get(customerId) ?? [];
     if (list.some((a) => a.address === address)) return; // onConflict ignoreDuplicates
-    list.push({ address, label: null, isDefault: list.length === 0 });
+    list.push(newMemAddress(address, list.length === 0));
     this.addresses.set(customerId, list);
   }
 
   async listCustomerAddresses(customerId: string): Promise<readonly CustomerAddress[]> {
     const list = this.addresses.get(customerId) ?? [];
-    return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    return [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((a) => ({ address: a.address, label: a.label, isDefault: a.isDefault }));
   }
 
   async listEligibleOrderHistory(customerId: string): Promise<ReadonlyArray<{ items: readonly PersistedOrderItem[]; createdAt: string }>> {
@@ -613,6 +618,336 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .filter((o) => o.customerId === customerId && eligibleStatuses.has(o.status))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .map((o) => ({ items: o.items, createdAt: o.createdAt }));
+  }
+
+  // ---- Cliente 360 (migracion 044): espejo en memoria de las funciones SQL (cliente_memoria, cliente_registrar_pedido, ...) ----
+
+  /** Pruebas: `false` simula la base SIN la migracion 044 (el agente cae al camino anterior; el staff ve "no disponible"). */
+  setCliente360Supported(supported: boolean): void {
+    this.cliente360.supported = supported;
+  }
+
+  /** Pruebas: pedido de un cliente con el estado y la fecha que se indiquen (p. ej. `no_recogido` hace 10 dias). */
+  seedOrderForCustomer(order: Order): void {
+    this.orders.push(order);
+    const pickup = { canal: order.canal ?? null, propina: order.propina ?? null, horaRecogida: order.horaRecogida ?? null };
+    this.orderPickupInfo.set(order.id, pickup);
+  }
+
+  private policyFor(organizationId: string): CustomerPolicy {
+    return this.cliente360.policies.get(organizationId) ?? POLITICA_POR_OMISION;
+  }
+
+  private addressDetails(customerId: string): CustomerAddressDetail[] {
+    const list = [...(this.addresses.get(customerId) ?? [])];
+    list.sort((a, b) => {
+      const la = a.lastUsedAt ? Date.parse(a.lastUsedAt) : -Infinity;
+      const lb = b.lastUsedAt ? Date.parse(b.lastUsedAt) : -Infinity;
+      return lb - la || Number(b.isDefault) - Number(a.isDefault) || Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    });
+    return list.map((a) => ({
+      id: a.id,
+      address: a.address,
+      label: a.label,
+      isDefault: a.isDefault,
+      accessNotes: a.accessNotes,
+      mapsUrl: a.mapsUrl,
+      colonia: a.colonia,
+      branchSlug: a.propertyId ? ([...this.branches.values()].find((b) => b.propertyId === a.propertyId)?.slug ?? null) : null,
+      lastUsedAt: a.lastUsedAt,
+      timesUsed: a.timesUsed,
+    }));
+  }
+
+  private reliabilityFor(organizationId: string, customerId: string): { noRecogidos90d: number; pedidosFalsos: number; umbral: number; ventanaDias: number } {
+    const policy = this.policyFor(organizationId);
+    const desde = Date.now() - policy.ventanaDias * 86_400_000;
+    const delCliente = this.orders.filter((o) => o.customerId === customerId && o.organizationId === organizationId && Date.parse(o.createdAt) >= desde);
+    return {
+      noRecogidos90d: delCliente.filter((o) => o.status === "no_recogido").length,
+      pedidosFalsos: delCliente.filter((o) => this.cliente360.fakeOrders.has(o.id)).length,
+      umbral: policy.umbralNoRecogidos,
+      ventanaDias: policy.ventanaDias,
+    };
+  }
+
+  private orderNumberOf(order: Order): number {
+    return this.orders.indexOf(order) + 1;
+  }
+
+  async getCustomerMemory(organizationId: string, phone: string): Promise<CustomerMemory | null | undefined> {
+    if (!this.cliente360.supported) return undefined;
+    const customer = await this.findCustomerByPhone(organizationId, phone);
+    if (!customer) return null;
+    const eligible = new Set(["pending", "preparando", "en_camino", "entregado", "completado", "listo_para_recoger"]);
+    const orders: PastOrder[] = this.orders
+      .filter((o) => o.customerId === customer.id && o.organizationId === organizationId && eligible.has(o.status))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 30)
+      .map((o) => {
+        const pickup = this.orderPickupInfo.get(o.id);
+        return {
+          id: o.id,
+          orderNumber: this.orderNumberOf(o),
+          createdAt: o.createdAt,
+          status: o.status,
+          total: o.total,
+          items: o.items,
+          branch: o.branch,
+          propertyId: o.propertyId,
+          paymentMethod: o.paymentMethod,
+          canal: pickup?.canal ?? null,
+          propina: pickup?.propina ?? null,
+          source: o.source,
+        };
+      });
+    return {
+      customer,
+      addresses: this.addressDetails(customer.id),
+      orders,
+      preferences: [...(this.cliente360.preferences.get(customer.id) ?? [])],
+      reliability: this.reliabilityFor(organizationId, customer.id),
+    };
+  }
+
+  async registerOrderClosure(input: OrderClosureInput): Promise<{ readonly applied: boolean } | undefined> {
+    if (!this.cliente360.supported) return undefined;
+    const order = this.orders.find((o) => o.id === input.orderId && o.organizationId === input.organizationId);
+    if (!order || !order.customerId) throw Object.assign(new Error("el pedido no existe en la organizacion o no tiene cliente"), { code: "42501" });
+    if (this.cliente360.closures.has(order.id)) return { applied: false };
+    this.cliente360.closures.add(order.id);
+    const customerId = order.customerId;
+
+    if (input.address) {
+      const list = this.addresses.get(customerId) ?? [];
+      const now = new Date().toISOString();
+      const validProperty = input.address.propertyId && [...this.branches.values()].some((b) => b.propertyId === input.address!.propertyId && b.organizationId === input.organizationId) ? input.address.propertyId : null;
+      const existing = list.find((a) => a.address === input.address!.address);
+      if (existing) {
+        existing.lastUsedAt = now;
+        existing.timesUsed += 1;
+        existing.accessNotes = input.address.accessNotes ?? existing.accessNotes;
+        existing.mapsUrl = input.address.mapsUrl ?? existing.mapsUrl;
+        existing.colonia = input.address.colonia ?? existing.colonia;
+        existing.propertyId = validProperty ?? existing.propertyId;
+        if (input.address.label) this.setAddressLabel(customerId, existing.id, input.address.label);
+      } else {
+        const created = newMemAddress(input.address.address, list.length === 0);
+        created.lastUsedAt = now;
+        created.timesUsed = 1;
+        created.accessNotes = input.address.accessNotes ?? null;
+        created.mapsUrl = input.address.mapsUrl ?? null;
+        created.colonia = input.address.colonia ?? null;
+        created.propertyId = validProperty;
+        list.push({ ...created, label: input.address.label ?? null });
+        this.addresses.set(customerId, list);
+      }
+    }
+
+    const prefs = this.cliente360.preferences.get(customerId) ?? [];
+    const now = new Date().toISOString();
+    for (const obs of input.observations.slice(0, 20) as readonly ClosureObservation[]) {
+      const value = obs.value.trim().slice(0, 120);
+      if (!value || !isPreferenceKind(obs.kind)) continue;
+      const found = prefs.find((p) => p.kind === obs.kind && p.value === value);
+      if (found) {
+        const idx = prefs.indexOf(found);
+        prefs[idx] = { ...found, timesSeen: found.timesSeen + 1, lastSeenAt: now };
+      } else if (prefs.length < 80) {
+        prefs.push({ id: randomUUID(), kind: obs.kind, value, source: "pedido", timesSeen: 1, firstSeenAt: now, lastSeenAt: now, status: "activa" });
+      }
+    }
+    this.cliente360.preferences.set(customerId, prefs);
+    return { applied: true };
+  }
+
+  private setAddressLabel(customerId: string, addressId: string, label: string | null): void {
+    const list = this.addresses.get(customerId) ?? [];
+    const idx = list.findIndex((a) => a.id === addressId);
+    if (idx >= 0) list[idx] = { ...list[idx]!, label };
+  }
+
+  private requireCliente360(): void {
+    if (!this.cliente360.supported) throw new ClienteMemoriaNoDisponibleError();
+  }
+
+  private requireCustomer(organizationId: string, customerId: string): Customer {
+    const customer = this.customers.get(customerId);
+    if (!customer || customer.organizationId !== organizationId) throw Object.assign(new Error("cliente inexistente en la organizacion"), { code: "42501" });
+    return customer;
+  }
+
+  async getCustomerFicha(organizationId: string, customerId: string): Promise<Omit<CustomerFicha, "tier"> | null> {
+    this.requireCliente360();
+    const customer = this.customers.get(customerId);
+    if (!customer || customer.organizationId !== organizationId) return null;
+    const profile = this.cliente360.profiles.get(customerId);
+    const orders = this.orders
+      .filter((o) => o.customerId === customerId && o.organizationId === organizationId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, 20);
+    const conversation = this.whatsappConversations.get(`${organizationId}:${customer.phone}`);
+    return {
+      customer: {
+        ...customer,
+        lastOrderAt: orders[0]?.createdAt ?? null,
+        createdAt: orders.length > 0 ? orders[orders.length - 1]!.createdAt : new Date(0).toISOString(),
+        fechaNacimientoDia: profile?.dia ?? null,
+        fechaNacimientoMes: profile?.mes ?? null,
+        staffNotes: profile?.staffNotes ?? null,
+      },
+      addresses: this.addressDetails(customerId),
+      preferences: [...(this.cliente360.preferences.get(customerId) ?? [])],
+      reliability: this.reliabilityFor(organizationId, customerId),
+      orders: orders.map((o) => ({
+        id: o.id,
+        orderNumber: this.orderNumberOf(o),
+        createdAt: o.createdAt,
+        status: o.status,
+        total: o.total,
+        items: o.items,
+        branch: o.branch,
+        source: o.source,
+        paymentMethod: o.paymentMethod,
+        pedidoFalso: this.cliente360.fakeOrders.has(o.id),
+      })),
+      whatsapp: { conversaciones: conversation ? 1 : 0, ultimaActividad: null, mensajes: conversation?.messages.length ?? 0 },
+      llamadas: [],
+    };
+  }
+
+  async updateCustomerProfile(organizationId: string, customerId: string, patch: CustomerProfilePatch): Promise<void> {
+    this.requireCliente360();
+    const customer = this.requireCustomer(organizationId, customerId);
+    if (patch.name !== undefined) this.customers.set(customerId, { ...customer, name: patch.name });
+    const prev = this.cliente360.profiles.get(customerId) ?? { dia: null, mes: null, staffNotes: null };
+    const dia = patch.fechaNacimientoDia !== undefined || patch.fechaNacimientoMes !== undefined ? (patch.fechaNacimientoDia ?? null) : prev.dia;
+    const mes = patch.fechaNacimientoDia !== undefined || patch.fechaNacimientoMes !== undefined ? (patch.fechaNacimientoMes ?? null) : prev.mes;
+    if ((dia === null) !== (mes === null)) throw Object.assign(new Error("fecha de nacimiento incompleta"), { code: "23514" });
+    const diasPorMes = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (dia !== null && mes !== null && (mes < 1 || mes > 12 || dia < 1 || dia > diasPorMes[mes - 1]!)) throw Object.assign(new Error("fecha de nacimiento invalida"), { code: "23514" });
+    this.cliente360.profiles.set(customerId, { dia, mes, staffNotes: patch.staffNotes !== undefined ? patch.staffNotes : prev.staffNotes });
+  }
+
+  async saveCustomerAddress(organizationId: string, customerId: string, addressId: string | null, changes: CustomerAddressChanges): Promise<string> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    if (changes.mapsUrl && !/^https:\/\/\S+$/.test(changes.mapsUrl)) throw Object.assign(new Error("el link de Maps debe empezar con https://"), { code: "22023" });
+    if (changes.propertyId && ![...this.branches.values()].some((b) => b.propertyId === changes.propertyId && b.organizationId === organizationId)) {
+      throw Object.assign(new Error("sucursal inexistente en la organizacion"), { code: "42501" });
+    }
+    const list = this.addresses.get(customerId) ?? [];
+    let id = addressId;
+    if (id === null) {
+      if (!changes.address?.trim()) throw Object.assign(new Error("la direccion es requerida"), { code: "22023" });
+      const created = newMemAddress(changes.address.trim(), list.length === 0);
+      list.push({ ...created, label: changes.label ?? null, accessNotes: changes.accessNotes ?? null, mapsUrl: changes.mapsUrl ?? null, colonia: changes.colonia ?? null, propertyId: changes.propertyId ?? null });
+      id = created.id;
+    } else {
+      const idx = list.findIndex((a) => a.id === id);
+      if (idx < 0) throw Object.assign(new Error("direccion inexistente para el cliente"), { code: "42501" });
+      const cur = list[idx]!;
+      list[idx] = {
+        ...cur,
+        address: changes.address?.trim() ? changes.address.trim() : cur.address,
+        label: changes.label !== undefined ? changes.label : cur.label,
+        accessNotes: changes.accessNotes !== undefined ? changes.accessNotes : cur.accessNotes,
+        mapsUrl: changes.mapsUrl !== undefined ? changes.mapsUrl : cur.mapsUrl,
+        colonia: changes.colonia !== undefined ? changes.colonia : cur.colonia,
+        propertyId: changes.propertyId !== undefined ? changes.propertyId : cur.propertyId,
+      };
+    }
+    if (changes.isDefault) for (let i = 0; i < list.length; i++) list[i] = { ...list[i]!, isDefault: list[i]!.id === id };
+    this.addresses.set(customerId, list);
+    return id!;
+  }
+
+  async deleteCustomerAddress(organizationId: string, customerId: string, addressId: string): Promise<boolean> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    const list = this.addresses.get(customerId) ?? [];
+    const idx = list.findIndex((a) => a.id === addressId);
+    if (idx < 0) return false;
+    const wasDefault = list[idx]!.isDefault;
+    list.splice(idx, 1);
+    if (wasDefault && list.length > 0) {
+      const next = [...list].sort((a, b) => (b.lastUsedAt ? Date.parse(b.lastUsedAt) : -Infinity) - (a.lastUsedAt ? Date.parse(a.lastUsedAt) : -Infinity))[0]!;
+      const i = list.indexOf(next);
+      list[i] = { ...next, isDefault: true };
+    }
+    this.addresses.set(customerId, list);
+    return true;
+  }
+
+  async applyCustomerPreferenceAction(organizationId: string, customerId: string, action: PreferenceAction, args: { readonly prefId?: string | null; readonly kind?: string | null; readonly value?: string | null }): Promise<string> {
+    this.requireCliente360();
+    this.requireCustomer(organizationId, customerId);
+    const prefs = this.cliente360.preferences.get(customerId) ?? [];
+    const now = new Date().toISOString();
+    if (action === "agregar") {
+      const value = args.value?.trim().slice(0, 120);
+      if (!value || !isPreferenceKind(args.kind)) throw Object.assign(new Error("categoria o valor invalido"), { code: "22023" });
+      const idx = prefs.findIndex((p) => p.kind === args.kind && p.value === value);
+      const base: CustomerPreference = { id: idx >= 0 ? prefs[idx]!.id : randomUUID(), kind: args.kind, value, source: "staff", timesSeen: idx >= 0 ? prefs[idx]!.timesSeen : 1, firstSeenAt: idx >= 0 ? prefs[idx]!.firstSeenAt : now, lastSeenAt: idx >= 0 ? prefs[idx]!.lastSeenAt : now, status: "activa" };
+      if (idx >= 0) prefs[idx] = base;
+      else prefs.push(base);
+      this.cliente360.preferences.set(customerId, prefs);
+      return base.id;
+    }
+    const idx = prefs.findIndex((p) => p.id === args.prefId);
+    if (idx < 0) throw Object.assign(new Error("gusto inexistente para el cliente"), { code: "42501" });
+    const found = prefs[idx]!;
+    if (action === "eliminar") prefs.splice(idx, 1);
+    else prefs[idx] = { ...found, status: action === "descartar" ? "descartada" : "activa" };
+    this.cliente360.preferences.set(customerId, prefs);
+    return found.id;
+  }
+
+  async markOrderFake(organizationId: string, orderId: string, falso: boolean): Promise<boolean> {
+    this.requireCliente360();
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
+    if (!order) throw Object.assign(new Error("pedido inexistente en la organizacion"), { code: "42501" });
+    if (falso) this.cliente360.fakeOrders.add(orderId);
+    else this.cliente360.fakeOrders.delete(orderId);
+    return falso;
+  }
+
+  async exportCustomerData(organizationId: string, customerId: string): Promise<Record<string, unknown> | null> {
+    const ficha = await this.getCustomerFicha(organizationId, customerId);
+    if (!ficha) return null;
+    return {
+      nombre: ficha.customer.name,
+      telefono: ficha.customer.phone,
+      fecha_nacimiento_dia: ficha.customer.fechaNacimientoDia,
+      fecha_nacimiento_mes: ficha.customer.fechaNacimientoMes,
+      notas_del_restaurante: ficha.customer.staffNotes,
+      domicilios: ficha.addresses,
+      gustos: ficha.preferences,
+      pedidos: ficha.orders.map((o) => ({ numero: o.orderNumber, fecha: o.createdAt, estado: o.status, total: o.total, productos: o.items, sucursal: o.branch })),
+    };
+  }
+
+  async deleteCustomerMemory(organizationId: string, customerId: string): Promise<{ readonly domiciliosBorrados: number; readonly gustosBorrados: number }> {
+    this.requireCliente360();
+    const customer = this.requireCustomer(organizationId, customerId);
+    const domicilios = (this.addresses.get(customerId) ?? []).length;
+    const gustos = (this.cliente360.preferences.get(customerId) ?? []).length;
+    this.addresses.delete(customerId);
+    this.cliente360.preferences.delete(customerId);
+    this.cliente360.profiles.delete(customerId);
+    this.customers.set(customerId, { ...customer, name: null });
+    return { domiciliosBorrados: domicilios, gustosBorrados: gustos };
+  }
+
+  async getCustomerPolicy(organizationId: string): Promise<CustomerPolicy> {
+    return this.cliente360.supported ? this.policyFor(organizationId) : POLITICA_POR_OMISION;
+  }
+
+  async saveCustomerPolicy(organizationId: string, policy: CustomerPolicy): Promise<CustomerPolicy> {
+    this.requireCliente360();
+    if (policy.umbralNoRecogidos < 0 || policy.umbralNoRecogidos > 20 || policy.ventanaDias < 7 || policy.ventanaDias > 365) throw Object.assign(new Error("fuera de rango"), { code: "22023" });
+    this.cliente360.policies.set(organizationId, policy);
+    return policy;
   }
 
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
