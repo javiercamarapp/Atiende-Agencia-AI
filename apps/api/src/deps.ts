@@ -44,7 +44,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { AvisosSistemaRepository, DiasInhabilesRepository, Kyc69bRepository, LicitacionesRepository, PostAdjudicacionRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, ConciliacionPersistidaRepository, ConsultaCfdiSatPort, CronSatRepository, DespachosRepository, HonorariosRepository, LibroRepository, PagosProvisionalesRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type { Efos69bSource } from "@atiende/worker";
 import type {
   BreakGlassAuditRepository,
@@ -67,7 +67,7 @@ import type {
 } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
-import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@atiende/billing";
+import type { CustomerLookup, PacClient, StripeBillingPortalClient, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
@@ -360,6 +360,10 @@ export interface AppDeps {
   readonly conciliacionRepo?: (db: TenantDbSession) => ConciliacionPersistidaRepository;
   /** D-25 -- pagos provisionales ISR/IVA (migraciones 018 y 020). OPCIONAL a proposito: las rutas caen a `PostgresPagosProvisionalesRepository`; los tests inyectan el doble en memoria. */
   readonly pagosProvisionalesRepo?: (db: TenantDbSession) => PagosProvisionalesRepository;
+  /** D-32 -- igualas y prefacturas de honorarios (migracion 023). OPCIONAL a proposito: las rutas caen a `PostgresHonorariosRepository`; los tests inyectan el doble en memoria. */
+  readonly honorariosRepo?: (db: TenantDbSession) => HonorariosRepository;
+  /** D-32 -- PAC para timbrar y cancelar CFDI de honorarios (puerto de `@atiende/billing`). OPCIONAL a proposito: en produccion NO hay credencial (D-20) y las rutas responden 503 "timbrado pendiente"; los tests inyectan un PAC falso. */
+  readonly pacClient?: PacClient;
   /** D-27 -- consulta publica del estatus de un CFDI ante el SAT (puerto). OPCIONAL a proposito: sin el, las rutas usan el adaptador SOAP real (`ConsultaCfdiSatSoap`); los tests inyectan un doble (jamas se llama al SAT en pruebas). */
   readonly consultaCfdiSat?: ConsultaCfdiSatPort;
   /** D-26/D-27/D-28 -- repositorio de SOLO SISTEMA de los crons de despachos (migracion 022). OPCIONAL a proposito: los crons caen a `PostgresCronSatRepository` sobre la sesion de sistema y los tests inyectan el doble en memoria. */
