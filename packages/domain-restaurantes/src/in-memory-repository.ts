@@ -1688,7 +1688,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         if (completaNombre || completaNota) actualizados += 1;
         else sinCambios += 1;
       }
-      if (f.address) await this.addCustomerAddressIfNew(id, f.address);
+      if (f.address) await this.addCustomerAddressIfNew(id, f.address, organizationId);
     }
     const resultado = { disponible: true as const, yaImportado: false, total: filas.length, creados, actualizados, sinCambios, rechazados };
     this.importacionesClientes.set(clave, resultado);
