@@ -32,6 +32,12 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
       for (const seccion of secciones) {
         await irASeccion(page, seccion);
         await afirmarPantallaSana(page, `${seccion.texto} (${seccion.href})`);
+        // La URL cambia antes de que React pinte la pagina nueva (la barra conserva <100 ms el nombre de la anterior): se espera
+        // a que la barra muestre el nombre de ESTA seccion o el titulo de la consola, en vez de leerla al instante.
+        await expect.poll(async () => {
+          const t = ((await barra.textContent()) ?? "").trim();
+          return t === seccion.texto || titulo.test(t);
+        }, { message: `${objetivo}: la barra de ${seccion.href} no llego a mostrar su nombre` }).toBe(true);
         const texto = ((await barra.textContent()) ?? "").trim();
         if (titulo.test(texto)) {
           // Solo el Resumen (la raiz del panel) conserva el titulo de la consola.
