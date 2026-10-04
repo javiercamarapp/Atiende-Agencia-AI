@@ -113,6 +113,8 @@ export interface ApprovalWorkflowSnapshot {
   readonly approvals?: readonly Approval[];
   /** `scopeRef` -> conjunto de `actorId` que han redactado/editado contenido de ese alcance (AE-11). */
   readonly sectionAuthors?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** `scopeRef` -> actorId que envio ese alcance a revision (ultima solicitud persistida): no puede aprobarlo. */
+  readonly submitters?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -142,6 +144,9 @@ export class ApprovalWorkflow {
 
   constructor(snapshot: ApprovalWorkflowSnapshot = {}) {
     this.approvals = snapshot.approvals ? [...snapshot.approvals] : [];
+    if (snapshot.submitters) {
+      for (const [scopeRef, actorId] of snapshot.submitters) this.submitters.set(scopeRef, actorId);
+    }
     if (snapshot.sectionAuthors) {
       for (const [scopeRef, authors] of snapshot.sectionAuthors) {
         this.sectionAuthors.set(scopeRef, new Set(authors));

@@ -605,3 +605,24 @@ export type {
 } from "./post-adjudicacion.ts";
 export { InMemoryPostAdjudicacionRepository, PostgresPostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
 export type { GarantiaCreate, InMemoryPostAdjudicacionOptions, PostAdjudicacionActor, PostAdjudicacionRepository } from "./post-adjudicacion-repository.ts";
+
+// ---- paridad3 (L-P3-05/06/07): boveda de bases, matriz estable, conflictos persistidos y revision ----
+export { TENDER_DOCUMENT_TYPES, TENDER_DOCUMENT_TYPE_LABELS, isTenderDocumentType, validateDocumentUpload, sha256OfBytes, requirementStableKey, conflictStableKey } from "./document-vault.ts";
+export type { TenderDocumentType, DocumentExtractionStatus, TenderDocumentRecord, TenderDocumentWithPages, UploadRejectionReason, UploadValidation } from "./document-vault.ts";
+export { BovedaRevisionNoDisponibleError, RequirementAssigneeNotFoundError } from "./errors.ts";
+export type {
+  DetectedRequirementConflict,
+  ProposalCommentKind,
+  ProposalCommentRecord,
+  ProposalCommentScope,
+  ProposalSectionRecord,
+  RequirementConflictRecord,
+  RequirementConflictStatus,
+  RequirementItemDetail,
+  RequirementItemPatch,
+  RequirementUpsertItem,
+  RequirementUpsertResult,
+  SectionEditResult,
+  TenderAuditAction,
+  TenderDocumentUploadInput,
+} from "./repository.ts";
