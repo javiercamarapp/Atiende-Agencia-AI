@@ -108,7 +108,7 @@ try {
   const asertsMod = await import("./asserts.ts");
   const costos = await import("./costos.ts");
   const ledgerMod = await import("./ledger.ts");
-  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, hoyReal, rng: esc.prng(20261001), appSinCredenciales, reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, dia: 0, fecha: sumarDias(INICIO, -1) };
+  const ctx: import("./escenarios.ts").Contexto = { sim, reloj, mundo, hoyReal, rng: esc.prng(20261001), appSinCredenciales, reservas: new Map(), cerradas: new Set(), secretoInterno: process.env.INTERNAL_SECRET!, secretoWhatsApp: process.env.WHATSAPP_APP_SECRET!, phoneNumberId: mundoMod.PHONE_NUMBER_ID, ultimoBarridoSlaMs: null, dia: 0, fecha: sumarDias(INICIO, -1) };
 
   await (await import("./escenarios-agente.ts")).configurarAgente(ctx);
   await esc.precarga(ctx, 36);
@@ -146,7 +146,7 @@ try {
     ultimaCerrada = [...ctx.cerradas].sort().at(-1) ?? null;
     const asserts = [
       { id: "cero-5xx", descripcion: "Ninguna respuesta 5xx del dia", ok: http.cincoXX === 0, detalle: `${http.cincoXX} de ${http.total}` },
-      ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada, new Date(reloj.ahoraMs()))),
+      ...(await asertsMod.assertsDeDatos(db, propertyId, ultimaCerrada, ctx.ultimoBarridoSlaMs === null ? null : new Date(ctx.ultimoBarridoSlaMs))),
     ];
     totalLlm.costoUsd += lineas.find((l) => l.concepto === "llm")?.costoUsd ?? 0;
     dias.push({ dia: n, fecha: ctx.fecha, eventos, filasCreadas, costos: lineas, costoTotalUsd: costos.totalDeLineas(lineas), http, asserts });

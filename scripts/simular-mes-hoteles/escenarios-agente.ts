@@ -114,6 +114,7 @@ export async function ticketsDeHuesped(ctx: Contexto): Promise<void> {
     }
   }
   const sweep = await cron(ctx, "/internal/hoteles/tickets-sla", "POST", "cron.tickets_sla");
+  ctx.ultimoBarridoSlaMs = ctx.reloj.ahoraMs();
   if (process.env.SIM_DEBUG) console.log("tickets-sla:", sweep.status, JSON.stringify(sweep.json).slice(0, 300));
 }
 

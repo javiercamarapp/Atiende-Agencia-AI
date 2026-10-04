@@ -59,6 +59,8 @@ export interface Contexto {
   readonly appSinCredenciales: import("hono").Hono;
   readonly secretoWhatsApp: string;
   readonly phoneNumberId: string;
+  /** Reloj simulado (ms) en que corrio el ultimo barrido de SLA: el assert de SLA se evalua a esa hora, no al cierre del dia. */
+  ultimoBarridoSlaMs: number | null;
   dia: number;
   fecha: string;
 }
