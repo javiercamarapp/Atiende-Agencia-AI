@@ -949,4 +949,66 @@ set local role authenticated;
 select public.t_esperar_error($q$select * from restaurantes.pedido_cancelar_cliente('00000000-0000-0000-0000-0000000e5001', '00000000-0000-0000-0000-0000000e50e1', 'otro')$q$, '42501');
 rollback;
 
+\echo '=== K1. la bandera de cancelacion del agente esta APAGADA por omision (sistema) ==='
+begin;
+set local role authenticated;
+select restaurantes.autopiloto_org_config_leer('00000000-0000-0000-0000-0000000e5001')::int as bandera_por_omision_deberia_ser_0;
+rollback;
+
+\echo '=== K2. owner de toda la organizacion la enciende y se lee de vuelta ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
+select restaurantes.autopiloto_org_config_guardar('00000000-0000-0000-0000-0000000e5001', true);
+select restaurantes.autopiloto_org_config_leer('00000000-0000-0000-0000-0000000e5001')::int as bandera_encendida_deberia_ser_1;
+rollback;
+
+\echo '=== K3. la sesion de sistema lee la bandera encendida ==='
+begin;
+insert into restaurantes.autopiloto_org_config (organization_id, cancelacion_agente) values ('00000000-0000-0000-0000-0000000e5001', true) on conflict (organization_id) do update set cancelacion_agente = true;
+set local role authenticated;
+select restaurantes.autopiloto_org_config_leer('00000000-0000-0000-0000-0000000e5001')::int as sistema_lee_deberia_ser_1;
+rollback;
+
+\echo '=== K4. RECHAZADO: el admin acotado a una sucursal no cambia una regla de toda la organizacion -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5012', true);
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_guardar('00000000-0000-0000-0000-0000000e5001', true)$q$, '42501');
+rollback;
+
+\echo '=== K5. RECHAZADO: staff de piso no la cambia -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5013', true);
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_guardar('00000000-0000-0000-0000-0000000e5001', true)$q$, '42501');
+rollback;
+
+\echo '=== K6. RECHAZADO: la sesion de sistema no la cambia -> 42501 ==='
+begin;
+set local role authenticated;
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_guardar('00000000-0000-0000-0000-0000000e5001', true)$q$, '42501');
+rollback;
+
+\echo '=== K7. RECHAZADO: el owner de otra organizacion no la lee ni la cambia (cross-tenant) -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5015', true);
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_leer('00000000-0000-0000-0000-0000000e5001')$q$, '42501');
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_guardar('00000000-0000-0000-0000-0000000e5001', true)$q$, '42501');
+rollback;
+
+\echo '=== K8. RECHAZADO: anon no la lee -> 42501 ==='
+begin;
+set local role anon;
+select public.t_esperar_error($q$select restaurantes.autopiloto_org_config_leer('00000000-0000-0000-0000-0000000e5001')$q$, '42501');
+rollback;
+
+\echo '=== K9. RECHAZADO: la tabla no es legible por authenticated -> 42501 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e5011', true);
+select public.t_esperar_error($q$select * from restaurantes.autopiloto_org_config$q$, '42501');
+rollback;
+
 \echo 'Todos los escenarios terminan con la expectativa del propio archivo: RECHAZADO = sin ERROR dentro de t_esperar_error (el helper exige el SQLSTATE exacto); alias deberia_ser_N = valor exacto.'

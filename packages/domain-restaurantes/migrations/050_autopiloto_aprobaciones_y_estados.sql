@@ -18,6 +18,7 @@
 --   F) Regreso automatico del handoff (solo sistema) tras N minutos sin respuesta humana.
 --   G) Agotado "solo por hoy": branch_products.agotado_hasta + marcar + reponer al cambiar el dia de negocio de la sucursal.
 --   H) Muestras de tiempo de entrega y carga de cola para el tiempo prometido aprendido y la saturacion.
+--   I) Bandera POR ORGANIZACION para que el agente de WhatsApp gestione las cancelaciones (apagada por omision).
 --
 -- Compatibilidad con la base sin migrar: TODO el TypeScript que llama estas funciones/tablas captura SQLSTATE 42883/42P01/42703 en un
 -- SAVEPOINT (runWithSavepointFallback) y degrada a "no disponible aun" / comportamiento anterior. No se cambia ninguna firma existente.
@@ -52,6 +53,8 @@
 --    con un pedido por aprobar; el texto fijo solo sale si el cliente escribio dentro de las ultimas 24 h.
 --  * pedido_cancelar_cliente -- SOLO sistema; cancela un pedido pending/programado SOLO si la bandera de la sucursal esta encendida (por omision apagada) y
 --    no hay comanda en el outbox del POS; compare-and-set con bloqueo de fila; motivo de lista cerrada; actor `agente` en el historial.
+--  * autopiloto_org_config -- RLS activa, sin grants ni policies para authenticated (solo funciones). autopiloto_org_config_leer: sistema con organizacion existente o miembro de
+--    ESA organizacion (42501 si no). autopiloto_org_config_guardar: solo owner/admin de alcance organizacional (membresia sin restriccion de sucursales); sistema => 42501.
 --  * agotado_marcar -- definer; staff con alcance a la sucursal. agotados_reponer -- SOLO sistema, usa la zona horaria de la sucursal.
 --  * tiempo_entrega_muestras -- lectura sin PII (solo minutos y conteos); sistema con sucursal de su organizacion, o staff con alcance.
 --  Todas: `revoke ... from public, anon`; `grant execute ... to authenticated` (la sesion de sistema corre con ese rol sin usuario);
@@ -870,6 +873,64 @@ end;
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- I) Bandera por organizacion: el agente gestiona las cancelaciones (apagada por omision)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Seguridad: tabla con RLS y SIN grants ni policies (solo funciones). `autopiloto_org_config_leer`: sistema (auth.uid() nulo) con la organizacion
+-- existente, o usuario miembro de ESA organizacion. `autopiloto_org_config_guardar`: solo owner/admin de alcance organizacional (membresia sin
+-- restriccion de sucursales: es una regla de TODA la organizacion, un admin acotado a una sucursal no la cambia); sistema => 42501.
+create table restaurantes.autopiloto_org_config (
+  organization_id uuid primary key references core.organization(id) on delete cascade,
+  cancelacion_agente boolean not null default false,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references core.staff_user(id) on delete set null
+);
+alter table restaurantes.autopiloto_org_config enable row level security;
+revoke all on restaurantes.autopiloto_org_config from public, anon, authenticated;
+grant select, insert, update, delete on restaurantes.autopiloto_org_config to service_role;
+
+create or replace function restaurantes.autopiloto_org_config_leer(p_organization_id uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+declare
+  v boolean;
+begin
+  if auth.uid() is null then
+    if not exists (select 1 from core.organization o where o.id = p_organization_id) then
+      raise exception 'autopiloto_org_config_leer: organizacion inexistente' using errcode = '42501';
+    end if;
+  elsif not exists (
+    select 1 from core.membership m
+     where m.user_id = auth.uid() and m.organization_id = p_organization_id and m.vertical_role in ('owner', 'admin', 'staff')
+  ) then
+    raise exception 'autopiloto_org_config_leer: sin acceso a la organizacion' using errcode = '42501';
+  end if;
+  select c.cancelacion_agente into v from restaurantes.autopiloto_org_config c where c.organization_id = p_organization_id;
+  return coalesce(v, false);
+end;
+$$;
+
+create or replace function restaurantes.autopiloto_org_config_guardar(p_organization_id uuid, p_cancelacion_agente boolean)
+returns boolean
+language plpgsql
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, null, true) then
+    raise exception 'autopiloto_org_config_guardar: requiere owner/admin de toda la organizacion' using errcode = '42501';
+  end if;
+  insert into restaurantes.autopiloto_org_config as c (organization_id, cancelacion_agente, updated_by)
+  values (p_organization_id, coalesce(p_cancelacion_agente, false), auth.uid())
+  on conflict (organization_id) do update set cancelacion_agente = excluded.cancelacion_agente, updated_at = now(), updated_by = auth.uid();
+  return true;
+end;
+$$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- Permisos de ejecucion de todas las funciones publicas de esta migracion
 -- ═══════════════════════════════════════════════════════════════════════════
 revoke all on function restaurantes.autopiloto_config_leer(uuid, uuid) from public, anon;
@@ -882,6 +943,8 @@ revoke all on function restaurantes.autopiloto_candidatos_estados(timestamptz, i
 revoke all on function restaurantes.autopiloto_aplicar_transicion(uuid, uuid, text, text, text, text) from public, anon;
 revoke all on function restaurantes.autopiloto_comandas_para_avance(integer) from public, anon;
 revoke all on function restaurantes.handoffs_devolver_vencidos(timestamptz, integer) from public, anon;
+revoke all on function restaurantes.autopiloto_org_config_leer(uuid) from public, anon;
+revoke all on function restaurantes.autopiloto_org_config_guardar(uuid, boolean) from public, anon;
 revoke all on function restaurantes.pedido_cancelar_cliente(uuid, uuid, text) from public, anon;
 revoke all on function restaurantes.agotado_marcar(uuid, uuid, uuid, date) from public, anon;
 revoke all on function restaurantes.agotados_reponer(timestamptz) from public, anon;
@@ -897,6 +960,8 @@ grant execute on function restaurantes.autopiloto_candidatos_estados(timestamptz
 grant execute on function restaurantes.autopiloto_aplicar_transicion(uuid, uuid, text, text, text, text) to authenticated;
 grant execute on function restaurantes.autopiloto_comandas_para_avance(integer) to authenticated;
 grant execute on function restaurantes.handoffs_devolver_vencidos(timestamptz, integer) to authenticated;
+grant execute on function restaurantes.autopiloto_org_config_leer(uuid) to authenticated;
+grant execute on function restaurantes.autopiloto_org_config_guardar(uuid, boolean) to authenticated;
 grant execute on function restaurantes.pedido_cancelar_cliente(uuid, uuid, text) to authenticated;
 grant execute on function restaurantes.agotado_marcar(uuid, uuid, uuid, date) to authenticated;
 grant execute on function restaurantes.agotados_reponer(timestamptz) to authenticated;
