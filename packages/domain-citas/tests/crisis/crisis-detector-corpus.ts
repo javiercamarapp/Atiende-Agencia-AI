@@ -4,6 +4,16 @@ import { CRISIS_SENALES } from "../../src/crisis-detector.ts";
 
 export const POSITIVAS: Readonly<Record<string, readonly string[]>> = {
   [CRISIS_SENALES.ideacion]: [
+    // Segunda ronda (revision independiente)
+    "ya me quiero ir de este mundo",
+    "quiero irme de este mundo",
+    "no quiero estar aquí",
+    "quiero que todo se acabe",
+    "quiero que todo termine",
+    "me qiero morir",
+    "me quiero mori",
+    "quiero morime",
+    "qiero morirme",
     // Directas (QA R1)
     "me quiero morir",
     "Me quiero morir, ya no sé qué hacer",
@@ -129,6 +139,13 @@ export const POSITIVAS: Readonly<Record<string, readonly string[]>> = {
     "suicide",
   ],
   [CRISIS_SENALES.plan]: [
+    // Segunda ronda (revision independiente)
+    "me voy a dar un tiro",
+    "darme un tiro",
+    "me quiero dar un balazo",
+    "me quiero aventar",
+    "me voy a aventar",
+    "me voy a colgar de una viga",
     "me voy a ahorcar",
     "quiero ahorcarme",
     "me voy a colgar",
@@ -233,6 +250,9 @@ export const POSITIVAS: Readonly<Record<string, readonly string[]>> = {
     "soy una carga",
   ],
   [CRISIS_SENALES.desesperanza]: [
+    // Segunda ronda (revision independiente)
+    "no aguanto más la vida",
+    "ya no aguanto la vida",
     "no le veo sentido",
     "ya no le veo sentido a nada",
     "no le veo sentido a la vida",
@@ -389,6 +409,19 @@ export const NEGATIVAS: readonly string[] = [
   "no le encuentro sentido a este formulario",
   "me rindo, no encuentro estacionamiento",
   "me rindo, no logro abrir el enlace de la cita",
+  // Falsos positivos de salud (segunda ronda, revision independiente)
+  "¿me tomo todas las pastillas del antibiótico?",
+  "me tomé todas las pastillas que me recetaron, ¿ahora qué sigo?",
+  "la endodoncia me mató",
+  "el dolor me mató",
+  "quiero desaparecer el sarro",
+  "quiero desaparecer las manchas de los dientes",
+  "no quiero despertar temprano",
+  "no quiero despertar tarde mañana",
+  "ultimo mensaje: confirmo la cita",
+  "no me busquen el lunes, estaré de viaje",
+  "me quiero colgar el gafete",
+  "me voy a colgar el cuadro del consultorio",
   // Inglés benigno
   "I want to book an appointment for Monday",
   "i want to die laughing, that joke was so good",
