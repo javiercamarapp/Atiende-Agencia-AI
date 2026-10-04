@@ -212,6 +212,7 @@ export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export type { HotelesWhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export { handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
+export { anteponerPrimerContacto, encabezadoPrimerContacto, LINEA_IA_PRIMER_CONTACTO } from "./whatsapp/primer-contacto.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createHotelesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
