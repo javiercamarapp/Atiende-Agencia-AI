@@ -106,7 +106,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
-import { withHeartbeat } from "../../salud/with-heartbeat.ts";
+import { CRON_NO_CONFIGURADO_HEADERS, withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 import { crearGuardTelefono } from "../../supresion/index.ts";
 import { crearMedidorMensajes } from "../../plan-topes/medidor.ts";
@@ -325,7 +325,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
       // el outbox marcándolo como procesado.
       const dispatcher = deps.whatsAppDispatcher;
       if (!dispatcher) {
-        return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503);
+        return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503, CRON_NO_CONFIGURADO_HEADERS);
       }
 
       const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);

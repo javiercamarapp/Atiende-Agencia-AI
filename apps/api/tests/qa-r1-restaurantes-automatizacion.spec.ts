@@ -5,6 +5,7 @@
 // y fijan comportamiento que hoy es correcto (kill switch, solapamiento, idempotencia).
 // Todo con dobles: FakeWhatsAppGraphClient, repos en memoria, motor fake; nunca red ni base real.
 import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryRestaurantesRepository } from "@atiende/domain-restaurantes";
@@ -16,6 +17,7 @@ import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { createPlatformSwitchGuard } from "../src/platform-switches.ts";
 import { dispatchWhatsAppVertical } from "../src/routes/internal/whatsapp-dispatch.ts";
+import { withHeartbeat } from "../src/salud/with-heartbeat.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import { buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
 
@@ -296,5 +298,17 @@ describe("cobertura (pasa hoy): kill switch, solapamiento e idempotencia del cro
     const app = buildApp(ctx.deps);
     expect((await app.request("/internal/restaurantes/promover-programados", { method: "POST" })).status).toBe(401);
     expect((await ctx.restaurantesRepo.findOrderById(ctx.organizationId, p.id))?.status).toBe("programado");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+describe("withHeartbeat: solo un 503 con la marca explicita cuenta como 'no configurado'", () => {
+  it("un 503 sin la marca no se registra como latido ok sin nota ni como corrida sana: se trata como cualquier otra respuesta", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = new Hono();
+    app.post("/x", async () => withHeartbeat(ctx.deps, "/internal/x-sin-marca", async () => Response.json({ ok: false }, { status: 503 }))());
+    const res = await app.request("/x", { method: "POST" });
+    expect(res.status).toBe(503);
+    expect((await latido(ctx.deps, "/internal/x-sin-marca"))?.lastError ?? null).toBeNull();
   });
 });
