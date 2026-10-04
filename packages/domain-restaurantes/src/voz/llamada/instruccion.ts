@@ -1,7 +1,9 @@
 // Instruccion del agente de VOZ para UNA llamada real (la arma el servidor, no el worker): el MISMO perfil de PM que WhatsApp y que la vista
-// previa (`buildPmSystemPrompt` con canal `voz`), con la hora local, la sucursal MARCADA y la memoria real del cliente (el telefono sale del
-// SIP From: "lo de siempre", direcciones parciales). Si el dueno edito el comportamiento de la sucursal (`branch_voice_config.comportamiento`),
-// ese texto manda como base y el contexto de la llamada se anexa despues.
+// previa (`buildPmSystemPrompt` con canal `voz`), con la hora local y la sucursal MARCADA de la llamada. La memoria del cliente ("lo de
+// siempre") la trae el agente con la herramienta `buscar_cliente`, cuyo telefono sale del token de la llamada (el SIP From), nunca del modelo:
+// la version compacta del perfil de voz no lleva el historial en el prompt, asi que aqui NO se consulta al cliente salvo que el dueno haya
+// editado el comportamiento (`branch_voice_config.comportamiento`): ese texto manda como base y se le anexa el contexto de la llamada, con
+// el cliente.
 //
 // PUNTO DE INYECCION de las reglas duras H1-H18 no borrables (brief rescate-orig-restaurantes-1 §1, PR #411): cuando `instruccionVozConReglas`
 // llegue a main, `armarInstruccionLlamada` debe delegar en ella; la prueba `voz-instruccion-llamada.spec.ts` lo deja marcado con `test.fail`.
@@ -37,17 +39,15 @@ function horaLocalEn(timezone: string, ahora: Date): number {
 export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: EntradaInstruccionLlamada): Promise<InstruccionLlamada> {
   const config = await resolveAgentConfig(repo, e.organizationId, e.propertyId);
   const zonaHoraria = config.timezone || PM_CONFIG_POR_OMISION.timezone;
-  const [branches, entrada, cliente] = await Promise.all([
-    repo.listBranchesForOrganization(e.organizationId),
-    repo.findBranchById(e.organizationId, e.propertyId),
-    e.telefono ? lookupCustomerConPedidoReciente(repo, e.organizationId, e.telefono, e.ahora) : Promise.resolve<CustomerLookupResult>({ isNew: true }),
-  ]);
+  const editable = e.config.configurada ? e.config.comportamiento.trim() : "";
+  const [branches, entrada] = await Promise.all([repo.listBranchesForOrganization(e.organizationId), repo.findBranchById(e.organizationId, e.propertyId)]);
+  // Solo el comportamiento editado necesita al cliente en el texto: sin el, no se hace una consulta de historial que el prompt no usa.
+  const cliente: CustomerLookupResult = editable !== "" && e.telefono ? await lookupCustomerConPedidoReciente(repo, e.organizationId, e.telefono, e.ahora) : { isNew: true };
   const fechaHora = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, dateStyle: "long", timeStyle: "short", hourCycle: "h23" }).format(e.ahora);
   const dia = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, weekday: "long" }).format(e.ahora);
   const saludo = saludoSegunHora(zonaHoraria, e.ahora);
   const marcada = entrada ? { name: entrada.name, slug: entrada.slug } : null;
 
-  const editable = e.config.configurada ? e.config.comportamiento.trim() : "";
   let instruccion: string;
   if (editable === "") {
     instruccion =
