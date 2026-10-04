@@ -120,7 +120,7 @@ export function calcularImpuestosNomina(opts: OpcionesImpuestosNomina = {}): Pay
  * Se porta el guard tal cual — es un control inerte por diseño de la fórmula,
  * no un bug de este puerto ni algo que corregir aquí (recalibrar el umbral es
  * una decisión de producto, no de puerto). */
-export function procesarNomina(period: PayrollPeriodInput, employees: readonly EmployeePayrollInput[], tenantId: number | null = null): PayrollPeriod {
+export function procesarNomina(period: PayrollPeriodInput, employees: readonly EmployeePayrollInput[], tenantId: number | null = null, propertyId: string | null = null): PayrollPeriod {
   const month = period.month ?? 1;
   const year = period.year ?? 2026;
   const diasPagados = period.diasPagados ?? 30;
@@ -203,7 +203,10 @@ export function procesarNomina(period: PayrollPeriodInput, employees: readonly E
     humanReviewReason,
     referenciaLegal: "CFF Art. 105, LISR Art. 96",
     supuesto: "Procesamiento de nómina con deducciones ISR/IMSS/INFONAVIT",
-    idempotencyKey: `nomina-${year}-${String(month).padStart(2, "0")}-${tenantId === null || tenantId === undefined ? "None" : tenantId}`,
+    // D-P3-50 (regresión REQ-IVA-018 del suelto, 04eadfa): la clave incluye la PROPERTY de la ruta. Antes dependía de un `tenantId` numérico del
+    // cuerpo (nulo en la práctica -> "None"), de modo que dos clientes distintos del mismo despacho producían la MISMA clave para el mismo mes y
+    // un reintento idempotente de uno podía confundirse con el otro. Sin `propertyId` (llamadores de dominio/golden) se conserva la clave original.
+    idempotencyKey: `nomina-${year}-${String(month).padStart(2, "0")}-${propertyId ?? (tenantId === null || tenantId === undefined ? "None" : tenantId)}`,
   };
 }
 
