@@ -52,6 +52,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/hoteles/aprobaciones-expiracion",
   "/internal/hoteles/email-dispatch",
   "/internal/hoteles/grupos-liberacion",
+  "/internal/hoteles/holds-vencidos",
   "/internal/hoteles/identidad-purga",
   "/internal/hoteles/night-audit",
   "/internal/hoteles/revenue-recommendations",
