@@ -51,6 +51,8 @@ const CHECKLIST = {
   ],
   resumen: { hechos: 2, total: 4, obligatoriosPendientes: 1 },
   listoParaOperar: false,
+  // R-33: fetchOnboarding exige `gate` (fuente unica de la puerta); sin pedidos y con 1 obligatorio pendiente el servidor real lo calcula igual.
+  gate: { bloquea: false, obligatoriosPendientes: 1, operaConPedidos: true },
 };
 
 const COBERTURA = { sinCobertura: false, turnosVigentes: [{ id: "turno-1", nombre: "Comida", inicia: "12:00", termina: "01:00" }], guardia: [{ userId: "usr-1", nombre: "Lucia Xool", turno: "Comida", orden: 1 }] };
@@ -75,6 +77,9 @@ function ordenes(p: { estado: { obtener<T>(k: string, s: () => T): T } }): Orden
 }
 function entregas(p: { estado: { obtener<T>(k: string, s: () => T): T } }): Entrega[] {
   return p.estado.obtener<Entrega[]>("rest.entregas", () => structuredClone(ENTREGAS_SEMILLA));
+}
+function gateActual(p: { estado: { obtener<T2>(k: string, s: () => T2): T2 } }): typeof CHECKLIST.gate {
+  return { ...CHECKLIST.gate, bloquea: p.estado.obtener<boolean[]>("rest.gate.bloqueo", () => []).length > 0 };
 }
 function lista<T>(p: { estado: { obtener<T2>(k: string, s: () => T2): T2 } }, clave: string, semilla: readonly T[]): T[] {
   return p.estado.obtener<T[]>(clave, () => structuredClone([...semilla]));
@@ -278,7 +283,15 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
   },
 
   // ---------- Onboarding, auditoria, privacidad ----------
-  { metodo: "GET", patron: `${B}/onboarding`, roles: ["owner", "admin"], manejador: () => CHECKLIST },
+  { metodo: "GET", patron: `${B}/onboarding`, roles: ["owner", "admin"], manejador: (p) => ({ ...CHECKLIST, gate: gateActual(p) }) },
+  {
+    // R-33: la puerta del Resumen. Por defecto NO bloquea (para no desviar el recorrido); una prueba la enciende agregando un
+    // elemento a `rest.gate.bloqueo` (mock.agregarAEstado) tras haber visitado el Resumen una vez, que es quien crea la lista.
+    metodo: "GET",
+    patron: `${B}/onboarding/gate`,
+    roles: ["owner", "admin"],
+    manejador: (p) => ({ ...gateActual(p), listoParaOperar: false }),
+  },
   {
     metodo: "GET",
     patron: `${B}/auditoria`,

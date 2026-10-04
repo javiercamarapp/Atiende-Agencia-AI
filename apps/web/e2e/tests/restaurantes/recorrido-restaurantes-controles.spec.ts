@@ -273,3 +273,30 @@ test.describe("restaurantes: controles, camino feliz @recorrido", () => {
     vigilante.verificar();
   });
 });
+
+test.describe("restaurantes: puerta de onboarding R-33 @recorrido", () => {
+  test.beforeEach(async ({ iniciarSesion }) => {
+    await iniciarSesion("restaurantes", "owner");
+  });
+
+  test("Resumen: con obligatorios pendientes pero sin bloqueo muestra el banner y no redirige", async ({ page, mock, vigilante }) => {
+    await ir(page, "");
+    await expect(main(page).getByText("Faltan puntos obligatorios de configuración")).toBeVisible();
+    await expect(main(page).getByRole("link", { name: "Ver primeros pasos" })).toBeVisible();
+    expect((await mock.buscar({ metodo: "GET", ruta: "/onboarding/gate" })).length).toBeGreaterThan(0);
+    vigilante.verificar();
+  });
+
+  test("Resumen: si la puerta bloquea redirige a Primeros pasos y 'Ir al panel de todos modos' la omite en la sesion", async ({ page, mock, vigilante }) => {
+    await ir(page, ""); // crea la lista de bloqueo en el escenario (gate sin bloquear)
+    await expect(main(page).getByText("Faltan puntos obligatorios de configuración")).toBeVisible();
+    await mock.agregarAEstado("rest.gate.bloqueo", true);
+    await ir(page, "");
+    await expect(page).toHaveURL(/\/primeros-pasos$/);
+    await expect(main(page).getByText("Faltan puntos obligatorios", { exact: true })).toBeVisible();
+    await main(page).getByRole("button", { name: "Ir al panel de todos modos" }).click();
+    await expect(page).toHaveURL(/\/restaurantes\/[^/]+$/);
+    await expect(main(page).getByText("Faltan puntos obligatorios de configuración")).toBeVisible();
+    vigilante.verificar();
+  });
+});
