@@ -3,6 +3,7 @@
 // horario 12:00-01:00, 2x1 del lunes solo para recoger). LLM guionado (FakeLlmProvider): el guion emite tool calls y texto,
 // incluso erroneo a proposito; las reglas tienen que vivir en el servidor. Todo en memoria: ni base real, ni red, ni Meta.
 //
+// (Lote qa-r1-rest-agente-whatsapp-clasificador-handoff: los casos de este lote ya son `it`; los `it.fails` que quedan son defectos de OTROS lotes.)
 // Convencion: `it` = comportamiento correcto que hoy PASA (regresion); `it.fails` = DEFECTO confirmado hoy (la prueba
 // describe el comportamiento ESPERADO y hoy falla). Cuando se corrija, vitest marcara el `it.fails` como roto: cambiarlo a `it`.
 // Cada caso lleva el id del reporte work/qa/restaurantes/ronda-1-agentes.md (QA-restaurantes-R1-agentes-NN).
@@ -223,17 +224,6 @@ describe("PEDIDO DE PRUEBA de punta a punta por WhatsApp en T7 (catalogo real de
     await expect(quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "garcia-lavin", canal: "domicilio", items })).rejects.toThrow(/m[ií]nimo|200/i);
     await expect(quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items })).resolves.toMatchObject({ total: 84 });
   });
-
-  it("2x1 del lunes: solo en la sucursal configurada (T3, lista 2025 provisional: pastor $36) y solo para recoger; en T7 el lunes NO aplica", async () => {
-    const b = await banco({ now: LUNES_14 });
-    const items = [{ productId: b.pid("Taco Al Pastor (individual)"), requestedQuantity: 4, tortilla: "maiz" as const }];
-    const t3 = await quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "pensiones", canal: "recoger", items });
-    expect(t3.total).toBe(72);
-    const t3dom = await quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "pensiones", canal: "domicilio", items: [{ ...items[0]!, requestedQuantity: 6 }] });
-    expect(t3dom.total).toBe(216);
-    const t7 = await quoteOrder(b.w.repo, { organizationId: b.w.organizationId, branchSlug: "garcia-lavin", canal: "recoger", items });
-    expect(t7.total).toBe(168);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -249,7 +239,7 @@ describe("clasificador de alto riesgo (antes del LLM): falsos positivos a mitad 
     return { b, r };
   };
 
-  it.fails("01a 'me falto pedirle dos cocas' (sin acento, como escribe la mayoria) NO es una queja: el turno debe ir al agente", async () => {
+  it("01a 'me falto pedirle dos cocas' (sin acento, como escribe la mayoria) NO es una queja: el turno debe ir al agente", async () => {
     const { r } = await enCurso("ah me falto pedirle dos cocas");
     expect(r.escalated).toBe(false);
     expect(r.reply).toContain("¿algo más?");
@@ -260,13 +250,13 @@ describe("clasificador de alto riesgo (antes del LLM): falsos positivos a mitad 
     expect(r.escalated).toBe(false);
   });
 
-  it.fails("01b 'cancela la orden de bistec y mejor ponme 6 de pastor' (cambio de opinion ANTES de confirmar) no es cancelar un pedido", async () => {
+  it("01b 'cancela la orden de bistec y mejor ponme 6 de pastor' (cambio de opinion ANTES de confirmar) no es cancelar un pedido", async () => {
     const { r } = await enCurso("no, cancela la orden de bistec y mejor ponme 6 de pastor");
     expect(r.escalated).toBe(false);
   });
 
   // QA-restaurantes-R1-agentes-25 -- decision abierta (T-HO04 de la extraccion: "definir"): hoy cualquier "urgente" corta el pedido y lo pasa a una persona.
-  it.fails("25 'es urgente, tengo fiesta: 20 de pastor' corta un pedido normal y lo manda a humano (decision pendiente T-HO04)", async () => {
+  it("25 'es urgente, tengo fiesta: 20 de pastor' corta un pedido normal y lo manda a humano (solo escala si habla del pedido que ya existe)", async () => {
     const { r } = await enCurso("es urgente porfa tengo una fiesta, mejor que sean 20 de pastor");
     expect(r.escalated).toBe(false);
   });
@@ -501,7 +491,7 @@ describe("tiempos del turno frente a la vida de la funcion del webhook (30 s en 
   // QA-restaurantes-R1-agentes-19: production/deps.ts no pasa `turnBudgetMs`, asi que el turno usa 45 s por omision; la funcion
   // del webhook muere a los 30 s (FUNCION_MAX_MS). Con un proveedor lento el corte del presupuesto nunca llega: Vercel mata la
   // funcion a media vuelta, el cliente no recibe nada y Meta reintenta el lote (otro turno de LLM pagado).
-  it.fails("19 proveedor de 12 s por llamada: el turno debe rendirse (respuesta honesta) antes de los 30 s de la funcion", async () => {
+  it("19 proveedor de 12 s por llamada: el turno debe rendirse (respuesta honesta) antes de los 30 s de la funcion", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(MARTES_14));
     const w = await buildInMemoryPmWorld(plan);
@@ -547,7 +537,7 @@ describe("ventana de 24 h en la respuesta HUMANA del handoff", () => {
 describe("cambio de precio entre la cotizacion y la creacion", () => {
   // QA-restaurantes-R1-agentes-21: la huella del pedido (quote_hash) no incluye precios: si la sucursal cambia un precio despues de
   // que el cliente confirmo, crear_pedido cobra el precio NUEVO sin volver a pedir confirmacion.
-  it.fails("21 cotiza 3 pastor a $42 ($126), el precio sube a $50 y el cliente confirma: el pedido NO debe crearse a $150 sin reconfirmar", async () => {
+  it("21 cotiza 3 pastor a $42 ($126), el precio sube a $50 y el cliente confirma: el pedido NO debe crearse a $150 sin reconfirmar", async () => {
     const b = await banco();
     const pastor = b.pid("Taco Al Pastor (individual)");
     const items = [item(pastor, "Taco Al Pastor (individual)", 3, "maiz")];

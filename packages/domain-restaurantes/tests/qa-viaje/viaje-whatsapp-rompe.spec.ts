@@ -32,7 +32,7 @@ describe("viaje WhatsApp PM: frases comunes que NO son motivo de escalar", () =>
   // "Me faltó" en el habla de Merida es "se me olvido" (agregar algo), no una queja. El clasificador de alto riesgo lo toma
   // como QUEJA: responde "Lamento mucho lo ocurrido... ya avise al gerente", abre handoff y el agente CALLA el resto del pedido.
   // (Asi se escribe en WhatsApp: sin acento. Con acento la regex no coincide -- ver viaje-07.)
-  it.fails("QA-restaurantes-R1-viaje-01: 'me falto pedir otra coca' a mitad del pedido no abre una queja ni silencia al agente", async () => {
+  it("QA-restaurantes-R1-viaje-01: 'me falto pedir otra coca' a mitad del pedido no abre una queja ni silencia al agente", async () => {
     const v = await nuevoViaje();
     await cotizado(v, itemsBase(v));
     v.guion([{ texto: "Claro, le agrego otra Coca-Cola. ¿Algo más?" }]);
@@ -45,7 +45,7 @@ describe("viaje WhatsApp PM: frases comunes que NO son motivo de escalar", () =>
     expect(r2.reply).toBeTruthy();
   });
 
-  it.fails("QA-restaurantes-R1-viaje-02: 'lo necesito urgente' dentro de un pedido normal no detiene el pedido", async () => {
+  it("QA-restaurantes-R1-viaje-02: 'lo necesito urgente' dentro de un pedido normal no detiene el pedido", async () => {
     const v = await nuevoViaje();
     v.guion([{ texto: "Con gusto. ¿Para recoger o a domicilio?" }]);
     const r = await v.escribe("Hola, quiero medio kilo de pastor, lo necesito urgente porfa");
@@ -55,7 +55,7 @@ describe("viaje WhatsApp PM: frases comunes que NO son motivo de escalar", () =>
     expect(r2.reply).toBeTruthy();
   });
 
-  it.fails("QA-restaurantes-R1-viaje-03: corregir un renglon antes de confirmar ('cancela la orden de gringas, mejor nachos') no es cancelar un pedido", async () => {
+  it("QA-restaurantes-R1-viaje-03: corregir un renglon antes de confirmar ('cancela la orden de gringas, mejor nachos') no es cancelar un pedido", async () => {
     const v = await nuevoViaje();
     await cotizado(v, itemsBase(v));
     v.guion([{ texto: "Listo, quito las gringas y le agrego nachos. ¿Algo más?" }]);
@@ -66,7 +66,7 @@ describe("viaje WhatsApp PM: frases comunes que NO son motivo de escalar", () =>
 
   // El patron `\bme\s+falt[oó]\b` no coincide con "faltó" (la `ó` no es caracter de palabra para `\b` sin la bandera `u`):
   // la queja REAL escrita con acento no toma el camino determinista (aviso al gerente) y queda al criterio del modelo.
-  it.fails("QA-restaurantes-R1-viaje-07: una queja real con acento ('me faltó la bebida de mi pedido') avisa al gerente de forma determinista", async () => {
+  it("QA-restaurantes-R1-viaje-07: una queja real con acento ('me faltó la bebida de mi pedido') avisa al gerente de forma determinista", async () => {
     const v = await nuevoViaje();
     v.guion([{ texto: "Disculpe, ¿me puede repetir?" }]);
     const r = await v.escribe("Oiga me faltó la bebida de mi pedido de hace rato");

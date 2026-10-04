@@ -117,7 +117,7 @@ describe("E.3 post-guards del texto del LLM (el modelo se equivoca a proposito)"
   it("T-PG06 / P26 [P1] ninguna cadena fija que lee el cliente tutea (verificador de 'usted')", async () => {
     const f = dosSucursales();
     const respuestas: string[] = [providerFailureReply(null), providerFailureReply("orden-1"), FALLBACK_CONFIG.deliveryTimeText];
-    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
+    for (const frase of ["quiero cancelar mi pedido", "me cobraron dos veces", "es urgente, necesito mi pedido", "quiero borrar mis datos", "soy alérgico al cacahuate", "pagaré por transferencia", "llegó frío mi pedido", "quiero hablar con una persona"]) {
       respuestas.push(classifyHighRiskIntent(frase)!.reply);
     }
     respuestas.push(enforcePendingQuestion("Hola", false, null), enforcePendingQuestion("Hola", true, null));
