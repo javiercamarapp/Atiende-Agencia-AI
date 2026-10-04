@@ -41,6 +41,10 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/aprobar$/, label: "aprobar (doble control) la gestion de una organizacion" },
+  // Alta del equipo inicial (SA-L-26): invitar, reenviar (token nuevo) y revocar dan o quitan acceso al panel de una organizacion.
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones$/, label: "invitar a una persona al equipo de una organizacion" },
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+\/reenviar$/, label: "reenviar una invitacion de equipo (token nuevo)" },
+  { method: "DELETE", pattern: /^\/superadmin\/organizaciones\/[^/]+\/invitaciones\/[^/]+$/, label: "revocar una invitacion de equipo" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
   { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
