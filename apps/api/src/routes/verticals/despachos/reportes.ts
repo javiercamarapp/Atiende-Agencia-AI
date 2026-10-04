@@ -18,6 +18,7 @@ import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 import { reporteAPdf } from "./reporte-pdf.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
+import { rfcContribuyenteDeFicha } from "./ficha-rfc.ts";
 
 const PERIODO_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FORMATOS = ["json", "pdf", "xlsx"] as const;
@@ -67,7 +68,7 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       tipo === "balanza"
         ? (await (deps.libroRepo ? deps.libroRepo(c.get("db")) : new PostgresLibroRepository(c.get("db"))).balanza(propertyId, Number(periodo.slice(0, 4)), Number(periodo.slice(5, 7)))).datos
         : undefined;
-    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
+    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre }, rfcContribuyente: await rfcContribuyenteDeFicha(deps, c.get("db"), propertyId) }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
 
     if (formato === "json") return c.json(reporte);
 

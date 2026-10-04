@@ -24,6 +24,8 @@ export interface EntradaReporte {
   readonly periodo: string; // "YYYY-MM"
   readonly generadoEn: string; // "YYYY-MM-DD"
   readonly contribuyente: { readonly nombre: string };
+  /** RFC de la ficha de cartera del cliente (D-P3-01): es el UNICO origen del RFC del contribuyente; `null`/ausente = sin ficha. */
+  readonly rfcContribuyente?: string | null;
 }
 
 const r2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -34,9 +36,9 @@ const TIPO_OPERACION_DIOT: Readonly<Record<string, string>> = {
   "85": "85 - Otros",
 };
 
-/** RFC del contribuyente según los CFDI ingeridos (receptor del primero); `null` sin CFDI. */
-function rfcDesdeInvoices(invoices: readonly InvoiceRecord[]): string | null {
-  return invoices[0]?.rfcReceptor ?? null;
+/** RFC del contribuyente: el de la ficha de cartera. Nunca se deriva de un CFDI (el receptor del primero puede ser un empleado o un tercero). */
+function rfcDeFicha(entrada: EntradaReporte): string | null {
+  return entrada.rfcContribuyente ?? null;
 }
 
 function seccionSinDatos(titulo: string, columnas: readonly ColumnaReporte[], motivo: string): SeccionReporte {
@@ -61,8 +63,14 @@ const COLUMNAS_SIN_DATOS_UNICA: readonly ColumnaReporte[] = [{ clave: "concepto"
 // ---------------------------------------------------------------------------
 // DIOT
 // ---------------------------------------------------------------------------
+function diotSinDatosMotivo(excluidos: number, rfc: string | null): string {
+  if (rfc === null) return "El cliente no tiene ficha de cartera con RFC: sin el RFC del contribuyente no se puede armar la DIOT. Captura la ficha en Cartera.";
+  if (excluidos > 0) return `No hay compras (CFDI recibidos, vigentes y válidos) reportables en el período; ${excluidos} CFDI quedaron fuera por ser emitidos por el cliente, cancelados o con hallazgos de validación.`;
+  return "No hay CFDI 4.0 tipo Ingreso recibidos y reportables ingeridos en el período para este contribuyente.";
+}
+
 export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo: readonly InvoiceRecord[]): ReporteCliente {
-  const diot = construirDiotDesdeInvoices(invoicesDelPeriodo, entrada.periodo);
+  const diot = construirDiotDesdeInvoices(invoicesDelPeriodo, entrada.periodo, rfcDeFicha(entrada));
   const columnas: readonly ColumnaReporte[] = [
     { clave: "rfc", titulo: "RFC del tercero", tipo: "texto" },
     { clave: "nombre", titulo: "Nombre o razón social", tipo: "texto" },
@@ -76,7 +84,7 @@ export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo
 
   const seccion: SeccionReporte =
     diot.registros.length === 0
-      ? seccionSinDatos("Operaciones con terceros", columnas, "No hay CFDI 4.0 tipo Ingreso reportables ingeridos en el período para este contribuyente.")
+      ? seccionSinDatos("Operaciones con terceros", columnas, diotSinDatosMotivo(diot.excluidos, rfcDeFicha(entrada)))
       : {
           titulo: "Operaciones con terceros",
           columnas,
@@ -103,10 +111,12 @@ export function construirReporteDiot(entrada: EntradaReporte, invoicesDelPeriodo
           sinDatosMotivo: null,
         };
 
-  return ensamblar("diot", entrada, diot.rfcContribuyente ?? rfcDesdeInvoices(invoicesDelPeriodo), [seccion], [
+  return ensamblar("diot", entrada, rfcDeFicha(entrada), [seccion], [
     "Reporte informativo para el cliente, calculado desde los CFDI 4.0 ya ingeridos; no es el archivo de carga por lotes del SAT ni sustituye la presentación de la DIOT.",
     "El tipo de operación es 85 (Otros) salvo que el proveedor tenga una naturaleza capturada explícitamente (03 servicios profesionales, 06 arrendamiento).",
     "Los RFC genéricos (XAXX010101000, XEXX010101000) se excluyen, conforme a la regla de DIOT.",
+    "Solo cuentan las compras del cliente: los CFDI que el propio cliente emitió (sus ventas), los cancelados o no encontrados ante el SAT y los que no pasan la validación no se reportan como proveedores.",
+    ...(diot.excluidos > 0 && diot.registros.length > 0 ? [`${diot.excluidos} CFDI se dejaron fuera por no ser compras vigentes y válidas del cliente.`] : []),
   ]);
 }
 
@@ -173,7 +183,7 @@ export function construirReporteImpuestos(entrada: EntradaReporte, invoicesDelPe
     "Los vencimientos corresponden al período fiscal indicado y se presentan hasta el día 17 del mes siguiente.",
   ];
   if (excluidos > 0) notas.push(`${excluidos} CFDI tipo Ingreso con hallazgos de validación se excluyeron del IVA acreditable.`);
-  return ensamblar("impuestos", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionIva, seccionFaltante, seccionObl], notas);
+  return ensamblar("impuestos", entrada, rfcDeFicha(entrada), [seccionIva, seccionFaltante, seccionObl], notas);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +218,7 @@ export function construirReporteNomina(entrada: EntradaReporte, invoicesDelPerio
     "La nómina procesada (percepciones, ISR retenido, cuotas IMSS/INFONAVIT por empleado) no se persiste en el modelo; solo se conservan los recibos CFDI ingeridos. Use la calculadora de Nómina para un cálculo puntual.",
   );
 
-  return ensamblar("nomina", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionCfdi, seccionDesglose], [
+  return ensamblar("nomina", entrada, rfcDeFicha(entrada), [seccionCfdi, seccionDesglose], [
     "El total del recibo es el importe del CFDI tipo N ingerido; no equivale al sueldo bruto ni al neto sin el desglose de percepciones y deducciones del complemento de nómina 1.2.",
   ]);
 }
@@ -294,7 +304,7 @@ export function construirReporteBalanza(entrada: EntradaReporte, invoicesDelPeri
           sinDatosMotivo: null,
         };
 
-  return ensamblar("balanza", entrada, rfcDesdeInvoices(invoicesDelPeriodo), [seccionBalanza, seccionResumen], [
+  return ensamblar("balanza", entrada, rfcDeFicha(entrada), [seccionBalanza, seccionResumen], [
     "La clasificación por categoría proviene de la clasificación contable guardada en cada CFDI; los CFDI 'Sin clasificar' aún no tienen cuenta asignada.",
     "Mezcla CFDI de todos los tipos (I, E, T, P, N) de la fecha de emisión del período; el resumen no netea notas de crédito.",
   ]);

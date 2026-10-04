@@ -30,6 +30,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, candidatosDiotDesdeInvoices, construirDiotDesdeInvoices, construirDiotLayout, DECLARACIONES_ROLES, DiotLayoutError, LAYOUT_DIOT_VERSION, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
+import { rfcContribuyenteDeFicha } from "./ficha-rfc.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -111,11 +112,12 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (!/^\d{4}-\d{2}$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
 
     // La reconstrucción DIOT desde los invoices persistidos (reglas de `proveedoresReportables`,
-    // ivaTrasladado = ivaAcreditable = invoice.iva, fecha real de emisión, RFC del contribuyente
-    // = receptor del primer invoice reportable) vive en `construirDiotDesdeInvoices`, compartida
+    // ivaTrasladado = ivaAcreditable = invoice.iva, fecha real de emisión; D-P3-01: solo compras
+    // recibidas, vigentes y válidas, y RFC del contribuyente = el de la FICHA de cartera, nunca un CFDI) vive en `construirDiotDesdeInvoices`, compartida
     // con los reportes de cliente (`reportes/`) para que ambas superficies no puedan divergir.
     const invoices = await repo.listInvoices(propertyId, { periodo });
-    return c.json(construirDiotDesdeInvoices(invoices, periodo));
+    const rfcFicha = await rfcContribuyenteDeFicha(deps, c.get("db"), propertyId);
+    return c.json(construirDiotDesdeInvoices(invoices, periodo, rfcFicha));
   });
 
   // D-05: layout DIOT (TXT "|" y XML) del periodo, SIN firma ni envío (el envío con e.firma
@@ -129,8 +131,9 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const periodo = c.req.param("periodo");
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
 
-    const invoices = await repo.listInvoices(c.req.param("propertyId"), { periodo });
-    const { candidatos, rfcContribuyente } = candidatosDiotDesdeInvoices(invoices);
+    const propertyId = c.req.param("propertyId");
+    const invoices = await repo.listInvoices(propertyId, { periodo });
+    const { candidatos, rfcContribuyente } = candidatosDiotDesdeInvoices(invoices, await rfcContribuyenteDeFicha(deps, c.get("db"), propertyId));
     // D-38: el layout DIOT (TXT/XML) es un archivo que sale del sistema -> fila de bitacora (periodo y numero de terceros; sin RFC).
     await auditarAccesoDespachos(deps, c, { recurso: "declaraciones.diot_layout", tipo: "export", metadata: { periodo, terceros: candidatos.length } });
     if (candidatos.length === 0 || rfcContribuyente === null) {
@@ -140,7 +143,11 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         rfcContribuyente: null,
         renglones: [],
         omitidos: [],
-        advertencias: ["No hay terceros reportables en el periodo: el archivo no contiene renglones."],
+        advertencias: [
+          rfcContribuyente === null
+            ? "El cliente no tiene ficha de cartera con RFC: no se puede armar la DIOT. Captura la ficha en Cartera."
+            : "No hay terceros reportables en el periodo (solo cuentan compras recibidas, vigentes y válidas): el archivo no contiene renglones.",
+        ],
         txt: "",
         xml: "",
       });

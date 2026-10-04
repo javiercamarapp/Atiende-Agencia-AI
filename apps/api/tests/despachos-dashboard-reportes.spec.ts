@@ -8,7 +8,7 @@ import { hashPassword } from "@atiende/db";
 import type { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
-import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
+import { authedJson, buildDespachosTestContext, sembrarFichaCliente } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
@@ -165,6 +165,25 @@ describe("GET /v1/despachos/:orgSlug/dashboard", () => {
 });
 
 describe("GET /despachos/:propertyId/reportes/:tipo", () => {
+  beforeEach(async () => {
+    // D-P3-01: el RFC del contribuyente de los reportes sale de la ficha de cartera, no de un CFDI.
+    await sembrarFichaCliente(ctx, "CLI010101CL1");
+  });
+
+  it("D-P3-01: el reporte DIOT excluye la venta del cliente y sin ficha el RFC sale vacio", async () => {
+    const app = buildApp(ctx.deps);
+    await ingestar();
+    await ingestar({ direccion: "emitido", rfcEmisor: "CLI010101CL1", rfcReceptor: "ZZZ010101ZZ1", subtotal: 9000, total: 10440, iva: 1440 });
+    const reporte = (await (await app.request(`/despachos/${ctx.propertyId}/reportes/diot?periodo=2026-08`, authedJson(ctx.staff.auditor.token))).json()) as { secciones: { filas: { operaciones: number; montoNeto: number }[] }[]; contribuyente: { rfc: string | null } };
+    expect(reporte.secciones[0]!.filas).toHaveLength(1);
+    expect(reporte.secciones[0]!.filas[0]).toMatchObject({ operaciones: 1, montoNeto: 1000 });
+    expect(reporte.contribuyente.rfc).toBe("CLI010101CL1");
+
+    const sinFicha = await buildDespachosTestContext(buildApp);
+    const r2 = (await (await buildApp(sinFicha.deps).request(`/despachos/${sinFicha.propertyId}/reportes/diot?periodo=2026-08`, authedJson(sinFicha.staff.auditor.token))).json()) as { contribuyente: { rfc: string | null }; sinDatos: boolean };
+    expect(r2).toMatchObject({ sinDatos: true, contribuyente: { rfc: null } });
+  });
+
   it("DIOT en JSON coincide con GET .../declaraciones/diot/:periodo (misma regla, una sola fuente)", async () => {
     const app = buildApp(ctx.deps);
     await ingestar();

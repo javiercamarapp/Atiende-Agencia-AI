@@ -553,7 +553,7 @@ export type {
   NivelAtencion,
   SeveridadAnomalia,
 } from "./dashboard/kpis.ts";
-export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices, esCompraReportableDiot } from "./declaraciones/diot-desde-invoices.ts";
 export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
 export type { CeldaReporte, ColumnaReporte, ReporteCliente, ReporteTabular, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";

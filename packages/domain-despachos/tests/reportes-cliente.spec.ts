@@ -5,7 +5,7 @@ import { construirReporteBalanza, construirReporteCliente, construirReporteDiot,
 import type { EntradaReporte } from "../src/reportes/builders.ts";
 import type { FiscalDeadlineRecord, InvoiceRecord } from "../src/types.ts";
 
-const ENTRADA: EntradaReporte = { periodo: "2026-08", generadoEn: "2026-09-30", contribuyente: { nombre: "Cliente Uno SA de CV" } };
+const ENTRADA: EntradaReporte = { periodo: "2026-08", generadoEn: "2026-09-30", contribuyente: { nombre: "Cliente Uno SA de CV" }, rfcContribuyente: "CLI010101CL1" };
 
 function invoice(id: string, extra: Partial<InvoiceRecord> = {}): InvoiceRecord {
   return {
@@ -42,7 +42,7 @@ function vencimiento(id: string, extra: Partial<FiscalDeadlineRecord> = {}): Fis
 }
 
 describe("reporte DIOT", () => {
-  it("agrega por proveedor con IVA acreditable 16% y totales, RFC del contribuyente de los CFDI", () => {
+  it("agrega por proveedor con IVA acreditable 16% y totales, RFC del contribuyente de la ficha", () => {
     const r = construirReporteDiot(ENTRADA, [invoice("1"), invoice("2", { subtotal: 500, total: 580, iva: 80 })]);
     expect(r.sinDatos).toBe(false);
     expect(r.contribuyente).toEqual({ nombre: "Cliente Uno SA de CV", rfc: "CLI010101CL1" });
@@ -58,6 +58,32 @@ describe("reporte DIOT", () => {
     expect(r.contribuyente.rfc).toBe("CLI010101CL1");
     expect(r.secciones[0]).toMatchObject({ filas: [], totales: null });
     expect(r.secciones[0]!.sinDatosMotivo).toContain("No hay CFDI");
+  });
+
+  it("D-P3-01: excluye emitidos, cancelados, no encontrados e inválidos; el RFC sale de la ficha, no del CFDI", () => {
+    const r = construirReporteDiot(ENTRADA, [
+      invoice("ok", { direccion: "recibido", estadoSat: "vigente" }),
+      invoice("venta", { direccion: "emitido", rfcEmisor: "CLI010101CL1", rfcReceptor: "CLIENTE0001X9" }),
+      invoice("cancelado", { direccion: "recibido", estadoSat: "cancelado" }),
+      invoice("noenc", { direccion: "recibido", estadoSat: "no_encontrado" }),
+      invoice("invalido", { direccion: "recibido", valido: false }),
+    ]);
+    expect(r.secciones[0]!.filas).toHaveLength(1);
+    expect(r.secciones[0]!.filas[0]).toMatchObject({ operaciones: 1, montoNeto: 1000 });
+    expect(r.contribuyente.rfc).toBe("CLI010101CL1");
+  });
+
+  it("D-P3-01: sin ficha (sin RFC) la DIOT queda sin datos con motivo verdadero, aunque haya CFDI", () => {
+    const r = construirReporteDiot({ ...ENTRADA, rfcContribuyente: null }, [invoice("1", { direccion: "recibido" })]);
+    expect(r.sinDatos).toBe(true);
+    expect(r.contribuyente.rfc).toBeNull();
+    expect(r.secciones[0]!.sinDatosMotivo).toContain("ficha");
+  });
+
+  it("D-P3-01: todo emitido -> sin datos y el motivo cuenta lo excluido", () => {
+    const r = construirReporteDiot(ENTRADA, [invoice("v", { direccion: "emitido" })]);
+    expect(r.sinDatos).toBe(true);
+    expect(r.secciones[0]!.sinDatosMotivo).toContain("1 CFDI quedaron fuera");
   });
 
   it("excluye RFC genérico del público en general", () => {
@@ -79,7 +105,7 @@ describe("reporte de impuestos", () => {
   });
 
   it("sin nada en el período: todo el reporte es sin datos", () => {
-    const r = construirReporteImpuestos(ENTRADA, [], []);
+    const r = construirReporteImpuestos({ ...ENTRADA, rfcContribuyente: null }, [], []);
     expect(r.sinDatos).toBe(true);
     expect(r.contribuyente.rfc).toBeNull();
   });

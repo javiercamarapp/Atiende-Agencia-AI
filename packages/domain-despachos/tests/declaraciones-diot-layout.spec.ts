@@ -141,6 +141,6 @@ describe("construirDiotLayout — XML", () => {
 
 describe("candidatosDiotDesdeInvoices", () => {
   it("sin invoices reportables: sin candidatos ni RFC de contribuyente", () => {
-    expect(candidatosDiotDesdeInvoices([])).toEqual({ candidatos: [], rfcContribuyente: null });
+    expect(candidatosDiotDesdeInvoices([], null)).toEqual({ candidatos: [], rfcContribuyente: null, excluidos: 0 });
   });
 });
