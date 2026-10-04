@@ -680,6 +680,7 @@ rollback;
 
 \echo '=== B12. RECHAZADO (debe fallar): lat sin lng viola el check ambas-o-ninguna de la migracion 056 ==='
 begin;
+-- as should_fail (el insert de abajo viola el check y termina el escenario con ERROR)
 select public.seed_pm_demo();
 insert into restaurantes.known_zone (organization_id, name, lat, lng) select o.id, 'Solo lat', 21.0, null from core.organization o where o.slug = 'los-taquitos-de-pm';
 rollback;
@@ -849,8 +850,10 @@ begin;
 select public.seed_pm_demo();
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
-select (select count(*) from restaurantes.known_zone z where z.organization_id <> '00000000-0000-0000-0000-0000000e0002') as zonas_ajenas_visibles_deberia_ser_0,
-       (select count(*) from restaurantes.branch_delivery_zone bz where bz.organization_id <> '00000000-0000-0000-0000-0000000e0002') as cobertura_ajena_visible_deberia_ser_0;
+select (
+  (select count(*) from restaurantes.known_zone z where z.organization_id <> '00000000-0000-0000-0000-0000000e0002')
+  + (select count(*) from restaurantes.branch_delivery_zone bz where bz.organization_id <> '00000000-0000-0000-0000-0000000e0002')
+)::int as zonas_y_cobertura_ajenas_visibles_deberia_ser_0;
 rollback;
 
 \echo '=== D6. RECHAZADO (debe fallar): anon no lee las colonias ==='
@@ -862,6 +865,7 @@ rollback;
 
 \echo '=== D7. RECHAZADO (debe fallar): el owner de otra organizacion no puede escribir las columnas de procedencia (GRANT por columna de la 056) ==='
 begin;
+-- as should_fail (sin GRANT de insert sobre la columna fuente, el insert de abajo termina con ERROR)
 select public.seed_pm_demo();
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
