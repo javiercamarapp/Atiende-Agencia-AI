@@ -12,6 +12,8 @@ export interface TenderListFilter {
   /** Texto libre: coincide (sin distinguir mayusculas) con titulo, folio (externalId) o convocante. */
   readonly q?: string;
   readonly status?: string;
+  /** Solo convocatorias en alguno de estos estados (bandeja de Expedientes). Se combina con `status` (ambos deben cumplirse). */
+  readonly inStatuses?: readonly string[];
   readonly source?: string;
   /** Plazo de presentacion >= este instante (ISO con offset). Excluye convocatorias sin plazo. */
   readonly deadlineFrom?: string;
@@ -48,6 +50,7 @@ export function escapeLikePattern(raw: string): string {
 
 export function matchesTenderFilter(tender: TenderRecord, filter: TenderListFilter): boolean {
   if (filter.status !== undefined && tender.status !== filter.status) return false;
+  if (filter.inStatuses !== undefined && !filter.inStatuses.includes(tender.status ?? "discovered")) return false;
   if (filter.source !== undefined && tender.source !== filter.source) return false;
   if (filter.openOnly && tender.status !== undefined && tender.status !== null && TENDER_CLOSED_STATUSES.includes(tender.status)) return false;
   if (filter.ids !== undefined && !filter.ids.includes(tender.id)) return false;

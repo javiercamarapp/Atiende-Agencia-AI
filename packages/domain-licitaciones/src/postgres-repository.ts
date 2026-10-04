@@ -886,6 +886,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       return `$${params.length}`;
     };
     if (opts.status !== undefined) where.push(`status = ${bind(opts.status)}`);
+    if (opts.inStatuses !== undefined) where.push(`status = any (${bind(opts.inStatuses)}::text[])`);
     if (opts.source !== undefined) where.push(`source = ${bind(opts.source)}`);
     if (opts.openOnly) where.push(`status <> all (${bind(TENDER_CLOSED_STATUSES)}::text[])`);
     if (opts.ids !== undefined) where.push(`id = any (${bind(opts.ids)}::uuid[])`);
