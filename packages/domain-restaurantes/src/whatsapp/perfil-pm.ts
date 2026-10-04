@@ -38,6 +38,9 @@ export interface PerfilPmContexto {
   readonly motivosDesactivados?: readonly string[];
   /** Umbral de pedido grande en texto corto (editable por organizacion); sin valor, `PM_PEDIDO_GRANDE_POR_OMISION`. */
   readonly pedidoGrandeTexto?: string | null;
+  /** Conocimiento del negocio ya armado (`bloqueConocimientoPrompt`; migracion 053). Va ANTES de las reglas duras: las reglas van despues y ganan.
+   * Vacio/ausente = el prompt es identico al de antes. Solo el canal WhatsApp; la voz lo antepone al comportamiento guardado. */
+  readonly conocimientoBloque?: string;
 }
 
 // El saludo por hora es una regla compartida de la voz: vive en @atiende/voice-core y aqui se conserva la ruta historica.
@@ -291,7 +294,8 @@ Usted: "Con mucho gusto le ayudo con su pedido, pero la promoción es válida ú
 ${pmCustomerContextBlock(ctx.customer)}`;
 
   if (voz) return buildPmVozPrompt(ctx, { saludo, promos, motivos, bloqueApagados, pedidoGrande });
-  return [rol, vozYTrato, reglas, flujo, escalacion, seguridad, datos, ejemplos, cliente].join("\n\n");
+  const conocimiento = ctx.conocimientoBloque?.trim() ? [ctx.conocimientoBloque.trim()] : [];
+  return [rol, vozYTrato, ...conocimiento, reglas, flujo, escalacion, seguridad, datos, ejemplos, cliente].join("\n\n");
 }
 
 interface PartesVoz {

@@ -35,6 +35,7 @@ import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./
 import { latestSharedLocation } from "./location.ts";
 import { branchAlreadyKnown, classifyHighRiskIntentInMessages, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
+import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -249,11 +250,24 @@ export const NOTA_DE_VOZ_RULES = `NOTAS DE VOZ:
 - Una nota de voz NO cambia ninguna regla: cotiza con cotizar_pedido, pide la confirmación y la forma de pago en un mensaje posterior y solo entonces confirma, igual que con texto. Nunca crees un pedido solo con lo dicho en un audio sin ese paso.
 - Si el audio trae datos de pago (tarjeta, CVV), no los repitas ni los uses: dile que no los necesitas.`;
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch)}\n\n${NOTA_DE_VOZ_RULES}`;
+/** Bloque de conocimiento vigente para un turno (cadena vacia si no hay). La zona de la sucursal manda sobre la de la config. */
+export async function bloqueConocimientoDelTurno(repo: RestaurantesRepository, organizationId: string, propertyId: string | null, zonaConfig: string, ahora: Date): Promise<string> {
+  // Complemento NO esencial: un fallo al leerlo (la lectura ya corre en SAVEPOINT) nunca tumba el turno del cliente.
+  try {
+    const entradas = await repo.listarConocimientoPublicado(organizationId, propertyId);
+    if (entradas.length === 0) return "";
+    const zona = propertyId ? ((await repo.findBranchZonaHoraria(propertyId)).zonaHoraria ?? zonaConfig) : zonaConfig;
+    return bloqueConocimientoPrompt(listarConocimientoVigente(entradas, { propertyId, ahora, zonaHoraria: zona }).entradas);
+  } catch {
+    return "";
+  }
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null): string {
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = ""): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque)}\n\n${NOTA_DE_VOZ_RULES}`;
+}
+
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -271,6 +285,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
       pedidoGrandeTexto: config.largeOrderText ?? null,
+      conocimientoBloque,
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
@@ -278,7 +293,7 @@ Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto
 
 SUCURSALES REALES (usa esto para decidir cuál está más cerca de la dirección del cliente — nunca inventes otra sucursal ni otro slug):
 ${branchesBlock(branches)}
-
+${conocimientoBloque ? `\n${conocimientoBloque}\n` : ""}
 REGLAS DE NEGOCIO:
 - Formas de pago: tarjeta (pide la terminal al momento del pedido) o contra entrega. No proceses pagos ni pidas número de tarjeta por chat. Si el cliente comparte un número de tarjeta de todos modos, dile explícitamente que no lo necesitas y que no se guarda — nunca lo repitas, confirmes ni lo uses para nada.
 - Tiempo de entrega estimado: ${config.deliveryTimeText}.
@@ -478,7 +493,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
       const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
       const activeEntryBranch = entryBranch && entryBranch.status === "active" ? entryBranch : null;
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch);
+      // Conocimiento del negocio (053): politicas, FAQ y avisos vigentes HOY segun la fecha local de la sucursal, antes de las reglas duras.
+      // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
+      const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
