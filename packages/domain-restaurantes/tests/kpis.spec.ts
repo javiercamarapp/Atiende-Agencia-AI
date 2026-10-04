@@ -57,9 +57,12 @@ function makeOrder(overrides: Partial<Order> & { organizationId: string; propert
 // tests frágiles según el TZ de quien los corra — con el constructor local, la
 // comparación es consistente sin importar el TZ del proceso.
 describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
-  it("'today' da 13 tramos de 1 hora, de 11:00 a 23:00", () => {
+  it("'today' sin horario da los 24 tramos de 1 hora del dia local; con las horas de la sucursal, solo esas (QA-03)", () => {
     const now = new Date(2026, 8, 10, 18, 0, 0);
-    const tramos = buildTrendBuckets("today", now, null);
+    const completo = buildTrendBuckets("today", now, null);
+    expect(completo).toHaveLength(24);
+    expect(completo[0]!.label).toBe("00:00");
+    const tramos = buildTrendBuckets("today", now, null, { horasHoy: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] });
     expect(tramos).toHaveLength(13);
     expect(tramos[0]!.label).toBe("11:00");
     expect(tramos.at(-1)!.label).toBe("23:00");
@@ -74,10 +77,10 @@ describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
     expect(ultimo.end.getTime() - ultimo.start.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
-  it("'historico' con <=12 meses de antigüedad da un punto por mes", () => {
-    const now = new Date(2026, 8, 10); // 10-sep-2026
-    const firstOrderAt = new Date(2026, 2, 1); // 1-mar-2026, ~6 meses atrás
-    const tramos = buildTrendBuckets("historico", now, firstOrderAt);
+  it("'historico' con <=12 meses de antigüedad da un punto por mes (zona explicita: no depende del TZ del proceso)", () => {
+    const now = new Date("2026-09-10T18:00:00Z"); // 10-sep-2026
+    const firstOrderAt = new Date("2026-03-01T18:00:00Z"); // 1-mar-2026, ~6 meses atrás
+    const tramos = buildTrendBuckets("historico", now, firstOrderAt, { zonaHoraria: "America/Merida" });
     expect(tramos.length).toBe(7); // marzo..septiembre inclusive
   });
 
@@ -89,12 +92,12 @@ describe("buildTrendBuckets — puerto de construirTramosTendencia", () => {
 });
 
 describe("buildComparisonPeriods / periodLabel", () => {
-  it("'today': actual=[hoy,MUY_FUTURO), previo=[ayer,hoy)", () => {
-    const now = new Date(2026, 8, 10, 18, 0, 0);
-    const { current, previous } = buildComparisonPeriods("today", now);
-    expect(current.start.getTime()).toBe(new Date(2026, 8, 10, 0, 0, 0, 0).getTime());
-    expect(previous!.start.getTime()).toBe(new Date(2026, 8, 9, 0, 0, 0, 0).getTime());
-    expect(previous!.end.getTime()).toBe(new Date(2026, 8, 10, 0, 0, 0, 0).getTime());
+  it("'today': actual=[hoy,MUY_FUTURO), previo=[ayer,hoy) en la zona del negocio (QA-03)", () => {
+    const now = new Date("2026-09-10T18:00:00Z"); // 12:00 en Merida
+    const { current, previous } = buildComparisonPeriods("today", now, "America/Merida");
+    expect(current.start.toISOString()).toBe("2026-09-10T06:00:00.000Z");
+    expect(previous!.start.toISOString()).toBe("2026-09-09T06:00:00.000Z");
+    expect(previous!.end.toISOString()).toBe("2026-09-10T06:00:00.000Z");
   });
 
   it("'historico' no tiene periodo previo (es un total, no una ventana con antes/después)", () => {

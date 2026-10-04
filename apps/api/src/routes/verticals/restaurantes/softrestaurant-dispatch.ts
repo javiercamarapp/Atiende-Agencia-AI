@@ -13,7 +13,7 @@ import { crearAlertaCapturaManual, crearResolverSucursalPos, drenarComandas, RES
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CRON_NO_CONFIGURADO_HEADERS, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { softRestaurantPortFor, softRestaurantStoreFor } from "./softrestaurant-wiring.ts";
 
@@ -29,7 +29,7 @@ export function restaurantesSoftRestauranteDispatchRoutes(deps: AppDeps): Hono {
     return withHeartbeat(deps, "/internal/restaurantes/softrestaurant-dispatch", async () => {
       const port = softRestaurantPortFor(deps);
       if (!port.esReal) {
-        return c.json({ ok: false, error: "adaptador real de SoftRestaurant no configurado" }, 503);
+        return c.json({ ok: false, error: "adaptador real de SoftRestaurant no configurado" }, 503, CRON_NO_CONFIGURADO_HEADERS);
       }
       const solicitado = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
       const limite = Number.isFinite(solicitado) && solicitado > 0 ? Math.min(Math.trunc(solicitado), MAX_LIMIT) : DEFAULT_LIMIT;
