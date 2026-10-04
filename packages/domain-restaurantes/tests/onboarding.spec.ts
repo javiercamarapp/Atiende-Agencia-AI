@@ -29,6 +29,23 @@ const COMPLETO: OnboardingSnapshot = { sucursales: [rama()], whatsappGeneral: tr
 const item = (c: ReturnType<typeof buildOnboardingChecklist>, id: string) => c.items.find((i) => i.id === id)!;
 
 describe("buildOnboardingChecklist (funcion pura)", () => {
+  // QA-restaurantes-R1-viaje-13: el texto de cada punto debe coincidir con su estado.
+  it("whatsapp parcial con una sucursal conectada y sin numero general: NO dice 'Ningun numero conectado'", () => {
+    const c = buildOnboardingChecklist({ ...COMPLETO, whatsappGeneral: false, sucursales: [rama({ nombre: "T7", conWhatsappPropio: true }), rama({ nombre: "T8", conWhatsappPropio: false })] });
+    const w = item(c, "whatsapp");
+    expect(w.estado).toBe("parcial");
+    expect(w.detalle).not.toContain("Ningún número");
+    expect(w.detalle).toContain("1 de 2");
+    expect(w.detalle).toContain("T8");
+  });
+
+  it("sucursales en 'hecho' menciona las inactivas en el detalle", () => {
+    const c = buildOnboardingChecklist({ ...COMPLETO, sucursales: [rama({ nombre: "T7" }), rama({ nombre: "Vieja", activa: false })] });
+    const i = item(c, "sucursales");
+    expect(i.estado).toBe("hecho");
+    expect(i.detalle).toContain("inactivas: Vieja");
+  });
+
   it("todo configurado: todos los puntos verificables en 'hecho', solo el catalogo del POS queda externo; listo para operar", () => {
     const c = buildOnboardingChecklist(COMPLETO);
     expect(c.items.filter((i) => i.estado !== "hecho").map((i) => i.id)).toEqual(["catalogo_pos"]);
