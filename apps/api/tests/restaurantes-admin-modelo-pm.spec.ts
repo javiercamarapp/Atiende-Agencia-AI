@@ -18,6 +18,9 @@ const POLITICA_PM = {
   propinaPolitica: "solo_tarjeta",
 };
 
+/** Valores por omision de la migracion 070 que el API siempre devuelve. */
+const DEFAULTS_070 = { visibleEnDirectorio: null, aceptaDomicilio: true, diasDomicilio: null, deTemporada: false };
+
 describe("politica por sucursal — GET/PUT .../admin/config/sucursales/:branchId/politica", () => {
   it("sin configurar: politica vacia; owner guarda y se lee de vuelta; queda en la bitacora", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
@@ -26,16 +29,16 @@ describe("politica por sucursal — GET/PUT .../admin/config/sucursales/:branchI
 
     const vacia = await app.request(url, authedGet(ctx.staff.owner.token));
     expect(vacia.status).toBe(200);
-    expect(await vacia.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null });
+    expect(await vacia.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_070 });
 
     const put = await app.request(url, authedJson(ctx.staff.owner.token, POLITICA_PM, "PUT"));
     expect(put.status).toBe(200);
-    expect(await put.json()).toEqual(POLITICA_PM);
-    expect(await (await app.request(url, authedGet(ctx.staff.owner.token))).json()).toEqual(POLITICA_PM);
+    expect(await put.json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_070 });
+    expect(await (await app.request(url, authedGet(ctx.staff.owner.token))).json()).toEqual({ ...POLITICA_PM, ...DEFAULTS_070 });
 
     // La sucursal A no se toca: la politica es POR sucursal.
     const otra = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/sucursales/${ctx.propertyIdA}/politica`, authedGet(ctx.staff.owner.token));
-    expect(await otra.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null });
+    expect(await otra.json()).toEqual({ horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null, ...DEFAULTS_070 });
 
     const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "configuracion.politica_sucursal_actualizada");
     expect(entrada?.entityId).toBe(ctx.propertyIdB);
@@ -214,5 +217,42 @@ describe("marcas no_domicilio — .../admin/config/no-domicilio", () => {
     expect((await app.request(`${base}/productos/${ajeno}`, authedJson(token, { noDomicilio: "si" }, "PUT"))).status).toBe(400);
     expect((await app.request(base, authedGet(ctx.staff.repartidor.token))).status).toBe(403);
     expect((await ctx.restaurantesRepo.listNoDomicilioMarks(ctx.otherOrganizationId)).productIds).toEqual([]);
+  });
+});
+
+describe("domicilio y directorio por sucursal (migracion 070) — PUT .../politica y GET storefront/directorio", () => {
+  it("guarda dias de domicilio, solo recoger, directorio y temporada; PUT sin esos campos los conserva", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/v1/restaurantes/${ctx.propertyIdA}/admin/config/sucursales/${ctx.propertyIdB}/politica`;
+    const put = await app.request(url, authedJson(ctx.staff.owner.token, { ...POLITICA_PM, diasDomicilio: [6, 0, 5, 5], visibleEnDirectorio: true, deTemporada: true }, "PUT"));
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ diasDomicilio: [0, 5, 6], visibleEnDirectorio: true, deTemporada: true, aceptaDomicilio: true });
+    // Un PUT que solo cambia el minimo no borra la restriccion de domicilio.
+    const put2 = await app.request(url, authedJson(ctx.staff.owner.token, { ...POLITICA_PM, pedidoMinimoDomicilio: 250 }, "PUT"));
+    expect(await put2.json()).toMatchObject({ pedidoMinimoDomicilio: 250, diasDomicilio: [0, 5, 6], visibleEnDirectorio: true, deTemporada: true });
+    // null explicito = todos los dias.
+    const put3 = await app.request(url, authedJson(ctx.staff.owner.token, { ...POLITICA_PM, diasDomicilio: null, aceptaDomicilio: false }, "PUT"));
+    expect(await put3.json()).toMatchObject({ diasDomicilio: null, aceptaDomicilio: false });
+  });
+
+  it.each([
+    ["dia fuera de rango", { diasDomicilio: [7] }],
+    ["lista vacia", { diasDomicilio: [] }],
+    ["dia no entero", { diasDomicilio: [1.5] }],
+    ["aceptaDomicilio no booleano", { aceptaDomicilio: "si" }],
+    ["deTemporada no booleano", { deTemporada: 1 }],
+  ])("400: %s", async (_n, extra) => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/sucursales/${ctx.propertyIdA}/politica`, authedJson(ctx.staff.owner.token, { ...POLITICA_PM, ...extra }, "PUT"));
+    expect(res.status).toBe(400);
+  });
+
+  it("staff (no owner/admin) no puede cambiar el domicilio: 403", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/config/sucursales/${ctx.propertyIdA}/politica`, authedJson(ctx.staff.staffSucursalA.token, { ...POLITICA_PM, aceptaDomicilio: false }, "PUT"));
+    expect(res.status).toBe(403);
   });
 });

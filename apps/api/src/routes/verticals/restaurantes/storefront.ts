@@ -19,6 +19,7 @@ import {
   OrderFlowViolationError,
   OrderValidationError,
   buildStorefrontBranches,
+  buildStorefrontDirectorio,
   buildStorefrontMenu,
   consumeRateLimit,
   invokeAgentTool,
@@ -154,6 +155,18 @@ export function restaurantesStorefrontRoutes(deps: AppDeps): Hono {
       const org = await resolveOrg(repo, c.req.param("orgSlug"));
       await limitOrThrow(repo, c, "storefront-read", 120, org.id);
       return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontBranches(repo, org.id) });
+    });
+  });
+
+  // GET /v1/restaurantes/:orgSlug/storefront/directorio -- directorio publico: TODAS las sucursales visibles
+  // (activas o solo informativas) con direccion, telefono, horario e insignias. Solo campos publicos.
+  app.get("/v1/restaurantes/:orgSlug/storefront/directorio", async (c) => {
+    noStore(c);
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrg(repo, c.req.param("orgSlug"));
+      await limitOrThrow(repo, c, "storefront-read", 120, org.id);
+      return c.json({ restaurante: { slug: org.slug, nombre: org.name }, sucursales: await buildStorefrontDirectorio(repo, org.id) });
     });
   });
 
