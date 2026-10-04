@@ -6,7 +6,7 @@ export interface ApiEnv {
   readonly accessTokenTtlSeconds: number;
   readonly refreshTokenTtlSeconds: number;
   /** Secreto compartido de plataforma para las Server Tools de voz (header `x-atiende-tool-secret`): las de citas
-   * (ElevenLabs, aún sin migrar) y, en restaurantes, solo el camino de compatibilidad y la emisión del token por llamada (docs/VOZ-PM.md). */
+   * (worker de `voice-core`, ya sin ElevenLabs) y, en restaurantes, solo el camino de compatibilidad y la emisión del token por llamada (docs/VOZ-PM.md). */
   readonly voiceToolSecret: string;
   /** Endurecimiento de voz (restaurantes): `true` = las herramientas de voz SOLO aceptan el token por
    * llamada; los secretos (global legado o por sucursal) quedan limitados a emitir ese token. Opcional:

@@ -125,7 +125,7 @@ const columnasCogs = <T extends { readonly cogs: Cogs | null; readonly cogsDirec
   { id: "bruto", encabezado: "Margen bruto", alinear: "right", celda: (f) => (f.margenBrutoMxn === null ? "—" : `${mxn(f.margenBrutoMxn)} (${pct(f.margenBrutoPct)})`), valorOrden: (f) => f.margenBrutoMxn },
 ];
 
-export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+export function SuperAdminPylVerticalPage({ apiBaseUrl, token, incrustada = false }: { readonly apiBaseUrl: string; readonly token: string; /** Dentro de Costos y facturación: sin h1 propio (el titulo lo pone la pagina contenedora). */ readonly incrustada?: boolean }) {
   const [mes, setMes] = useState(mesActual());
   const [datos, setDatos] = useState<Respuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -240,11 +240,13 @@ export function SuperAdminPylVerticalPage({ apiBaseUrl, token }: { readonly apiB
     <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <ReceiptText className="w-5 h-5" strokeWidth={1.75} />
-            P&amp;L por vertical y cliente
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Ingreso reconocido, COGS (LLM, voz, WhatsApp, telefonía e infraestructura prorrateada), margen de contribución y margen bruto. Lo que no tiene fuente se muestra como «—», nunca como cero.</p>
+          {!incrustada && (
+            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+              <ReceiptText className="w-5 h-5" strokeWidth={1.75} />
+              P&amp;L por vertical y cliente
+            </h1>
+          )}
+          <p className={incrustada ? "text-sm text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>Ingreso reconocido, COGS (LLM, voz, WhatsApp, telefonía e infraestructura prorrateada), margen de contribución y margen bruto. Lo que no tiene fuente se muestra como «—», nunca como cero.</p>
         </div>
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex flex-col gap-1.5">

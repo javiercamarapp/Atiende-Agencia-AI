@@ -110,11 +110,10 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(hrefs).toContain("/superadmin/interruptores");
     expect(hrefs).toContain("/superadmin/seguridad");
     expect(hrefs).toContain("/superadmin/zona-cfo");
-    expect(hrefs).toContain("/superadmin/cfo");
-    expect(hrefs).toContain("/superadmin/pyl");
-    expect(hrefs).toContain("/superadmin/costos-margen");
+    expect(hrefs).toContain("/superadmin/ejecutivo");
+    expect(hrefs).toContain("/superadmin/costos-facturacion");
+    expect(hrefs).toContain("/superadmin/consumo-ia");
     expect(hrefs).toContain("/superadmin/planes");
-    expect(hrefs).toContain("/superadmin/contratos");
     expect(hrefs).toContain("/superadmin/break-glass");
     expect(hrefs).toContain("/superadmin/integraciones");
   });

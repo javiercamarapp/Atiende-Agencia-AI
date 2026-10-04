@@ -12,6 +12,8 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
+  BellRing,
+  CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   History,
@@ -45,6 +47,7 @@ import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
 import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponible, preguntarDatos } from "./data-chat-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -119,6 +122,10 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
+        // R-16: "Mis avisos" para quien no ve la categoria Configuración (el staff de piso); owner/admin lo tienen allí.
+        ...(canSeeStaff ? [] : [{ to: `${base}/avisos`, label: "Avisos", icon: BellRing }]),
+        // R-42: cierre del día y resumen semanal (solo owner/admin: el servidor exige el mismo umbral).
+        ...(canSeeStaff ? [{ to: `${base}/cierres`, label: "Cierre del día", icon: CalendarCheck }] : []),
       ],
     },
     {
@@ -158,6 +165,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas.
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: UserCog },
+        // R-16: avisos por persona (matriz del equipo) y tiempo de gracia de la entrega tardía por sucursal.
+        { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
         // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
         { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
@@ -254,7 +263,10 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       mobileSelector={branches.length > 1 ? sucursalSelector : null}
       contentKey={propertyId}
     >
-      {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
+      <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
+      </PuertaOnboarding>
     </VerticalShellConectado>
   );
 }

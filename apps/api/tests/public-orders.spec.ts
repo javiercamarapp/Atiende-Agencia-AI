@@ -15,6 +15,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
           customer_phone: "9991234567",
           items: [{ product_id: products.cocaCola, requested_quantity: 2 }],
           source: "web",
+          canal: "recoger",
+          payment_method: "efectivo",
         },
         { origin: "http://localhost:5173" },
       ),
@@ -87,6 +89,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
         customer_phone: "9991234567",
         items: [{ product_id: "00000000-0000-4000-8000-000000000000", requested_quantity: 1 }],
         source: "web",
+        canal: "recoger",
+        payment_method: "efectivo",
       }),
     );
     expect(res.status).toBe(400);
@@ -103,6 +107,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
       customer_phone: "9991110000",
       items: [{ product_id: products.cocaCola, requested_quantity: 1 }],
       source: "web",
+      canal: "recoger",
+      payment_method: "efectivo",
       idempotency_key: "checkout-abc-123",
     };
     const first = await app.request("/v1/restaurantes/los-taquitos-de-pm/orders", jsonRequestInit(payload));
@@ -127,6 +133,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
           customer_phone: "9991230099",
           items: [{ product_id: products.cocaCola, requested_quantity: 2 }],
           source: "web",
+          canal: "recoger",
+          payment_method: "efectivo",
           promo_code: "web10",
         },
         { origin: "http://localhost:5173" },
@@ -150,6 +158,8 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
           customer_phone: "9991230098",
           items: [{ product_id: products.cocaCola, requested_quantity: 1 }],
           source: "web",
+          canal: "recoger",
+          payment_method: "efectivo",
           promo_code: "NO-EXISTE",
         },
         { origin: "http://localhost:5173" },
