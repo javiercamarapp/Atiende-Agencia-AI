@@ -5,7 +5,7 @@
 // teléfono corrompan el historial), append atómico (whatsapp_append_turn), y
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
 import { redactarDatosDePago } from "@atiende/core-pii";
-import { actorHash } from "../rate-limit.ts";
+import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import { runArcoFastPath } from "../privacidad/arco-intent.ts";
@@ -44,6 +44,25 @@ export interface InboundMessageOutcome {
  * liberar el lease. Cualquier fallo se marca explícitamente como reintentable o no,
  * nunca se pierde en silencio — mismo contrato que el origen.
  */
+/** Turnos del agente que un mismo telefono puede consumir por ventana antes de que se le deje de contestar con el modelo. Un pedido normal usa unos 6-12. */
+export const REMITENTE_MAX_TURNOS = 20;
+export const REMITENTE_VENTANA_SEGUNDOS = 600;
+export const REMITENTE_EXCEDIDO_TEXTO = "Hemos recibido muchos mensajes seguidos suyos. Para atenderle bien, espere unos minutos y escríbanos de nuevo, o llame directamente a la sucursal.";
+
+/** `null` = dentro del tope; `avisar` = primer mensaje fuera del tope de la ventana (se le avisa con un texto fijo, sin modelo); `callar` = los siguientes. Si el
+ * contador no esta disponible (base sin migrar, error) NO se limita: nunca se deja sin respuesta a un cliente por un fallo del limitador. */
+async function limiteDeRemitente(repo: RestaurantesRepository, organizationId: string, phone: string): Promise<"avisar" | "callar" | null> {
+  try {
+    const actor = `${organizationId}:${phone}`;
+    const dentro = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente", actor, REMITENTE_MAX_TURNOS, REMITENTE_VENTANA_SEGUNDOS));
+    if (dentro.allowed) return null;
+    const primeraVez = await repo.runWithRowSavepoint(() => consumeRateLimit(repo, "whatsapp-turno-remitente-aviso", actor, 1, REMITENTE_VENTANA_SEGUNDOS));
+    return primeraVez.allowed ? "avisar" : "callar";
+  } catch {
+    return null;
+  }
+}
+
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
@@ -123,15 +142,26 @@ export async function handleInboundWhatsAppMessage(
         }
       }
 
+      // Tope por REMITENTE antes del LLM: cada mensaje de un mismo telefono es un turno pagado, y el unico tope del webhook es por NUMERO de la
+      // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
+      // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
+      const limite = arco ? null : await limiteDeRemitente(repo, organizationId, phone);
+      if (limite === "callar") {
+        await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+        return { ok: true, retryable: false };
+      }
+
       const turn = arco
         ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
-        : await turnHandler.handleInboundMessage({
-            organizationId,
-            phone,
-            messages: messagesAfterUser,
-            customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
-            propertyId: propertyId ?? null,
-          });
+        : limite === "avisar"
+          ? { reply: REMITENTE_EXCEDIDO_TEXTO, orderId: null, propertyId: propertyId ?? null }
+          : await turnHandler.handleInboundMessage({
+              organizationId,
+              phone,
+              messages: messagesAfterUser,
+              customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
+              propertyId: propertyId ?? null,
+            });
 
       // PM PR-9 -- aviso de privacidad simplificado + "asistente virtual" en el PRIMER mensaje de
       // cada telefono (y de nuevo cuando se sube la version del aviso). La entrega queda registrada
