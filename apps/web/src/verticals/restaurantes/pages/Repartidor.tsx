@@ -41,6 +41,10 @@ import {
   EstadoVacio,
   PageContainer,
   StatusBadge,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   formatMoney,
   statusTone,
   useConfirm,
@@ -52,6 +56,7 @@ import { fetchBranches } from "../dashboard-client.ts";
 import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
 import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
+import { HistorialDiaTab, MiPerfilTab } from "../components/RepartidorPestanas.tsx";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 
@@ -141,6 +146,15 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
       <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
       <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
 
+      {/* R-15: tres pestanas. "Mis pedidos" es la vista de siempre; las otras dos cargan solo al abrirse (Radix monta su contenido al activarlas). */}
+      <Tabs defaultValue="pedidos" className="flex flex-col gap-3">
+      <TabsList>
+        <TabsTrigger value="pedidos">Mis pedidos</TabsTrigger>
+        <TabsTrigger value="historial">Historial del día</TabsTrigger>
+        <TabsTrigger value="perfil">Mi perfil</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="pedidos" className="mt-0 flex flex-col gap-4">
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {!orders && !error && <EstadoCargando etiqueta="Cargando tus entregas…" />}
       {orders && orders.length === 0 && <EstadoVacio mensaje="No tienes ningún pedido asignado por ahora." />}
@@ -218,6 +232,15 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
           </Card>
         );
       })}
+      </TabsContent>
+
+      <TabsContent value="historial" className="mt-0">
+        <HistorialDiaTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+      </TabsContent>
+      <TabsContent value="perfil" className="mt-0">
+        <MiPerfilTab apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+      </TabsContent>
+      </Tabs>
 
       {dialogo}
       </PageContainer>

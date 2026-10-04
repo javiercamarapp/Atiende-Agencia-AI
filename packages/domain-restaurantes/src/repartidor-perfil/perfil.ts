@@ -42,7 +42,7 @@ function texto(raw: unknown, campo: string, max: number): { ok: true; valor: str
   if (t === "") return { ok: true, valor: null };
   if (t.length > max) return { ok: false, error: `${campo}: máximo ${max} caracteres.` };
   // Sin caracteres de control (saltos de linea, tabuladores): estos campos son de una sola linea.
-  if (/[\u0000-\u001f\u007f]/.test(t)) return { ok: false, error: `${campo}: contiene caracteres no permitidos.` };
+  if ([...t].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) return { ok: false, error: `${campo}: contiene caracteres no permitidos.` };
   return { ok: true, valor: t };
 }
 
