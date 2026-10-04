@@ -1,12 +1,12 @@
 // Almacen en memoria del conocimiento del negocio y del interruptor del agente de WhatsApp: mismo contrato que `postgres.ts`
 // (incluido el aislamiento por organizacion y la sustitucion `reemplazaId` solo hacia una entrada general de la misma organizacion).
+import { randomUUID } from "node:crypto";
 import { RestaurantesConfigUnavailableError } from "../repository.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./types.ts";
 
 export class InMemoryConocimientoStore {
   private readonly entradas = new Map<string, ConocimientoEntrada>();
   private readonly agentesApagados = new Map<string, string>(); // propertyId -> organizationId
-  private seq = 0;
   /** Simula la base SIN migrar: lecturas vacias y escrituras `RestaurantesConfigUnavailableError`. */
   noDisponible = false;
 
@@ -27,9 +27,8 @@ export class InMemoryConocimientoStore {
     if (input.propertyId && !this.propiedadDeOrganizacion(organizationId, input.propertyId)) throw new Error("conocimiento: la sucursal no pertenece a la organizacion.");
     this.validarReemplazo(organizationId, input.propertyId ?? null, input.reemplazaId ?? null);
     const ahora = this.ahora().toISOString();
-    this.seq += 1;
     const entrada: ConocimientoEntrada = {
-      id: `cono-${this.seq}`,
+      id: randomUUID(),
       organizationId,
       propertyId: input.propertyId ?? null,
       reemplazaId: input.reemplazaId ?? null,
