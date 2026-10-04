@@ -32,7 +32,10 @@ export function formatearMontoCentavos(centavos: number): string {
 }
 
 export function urlAvisoPrivacidad(appBaseUrl: string, orgSlug: string): string {
-  return `${appBaseUrl.replace(/\/+$/u, "")}/hoteles/${encodeURIComponent(orgSlug)}/aviso`;
+  // Sin expresion regular (CodeQL js/polynomial-redos): se recortan las diagonales finales con un recorrido lineal.
+  let fin = appBaseUrl.length;
+  while (fin > 0 && appBaseUrl.charCodeAt(fin - 1) === 47) fin -= 1;
+  return `${appBaseUrl.slice(0, fin)}/hoteles/${encodeURIComponent(orgSlug)}/aviso`;
 }
 
 /** Valores que ESTE candidato sabe calcular. Una variable que no se pueda llenar no aparece (la plantilla que la pida se descarta). */
