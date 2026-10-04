@@ -3,8 +3,8 @@
 
 export type Vertical = "restaurantes" | "hoteles" | "rentas" | "despachos" | "licitaciones" | "citas";
 
-/** Roles de organizacion que usan las fixtures. `finanzas` aplica a despachos/hoteles/rentas. */
-export type Rol = "owner" | "admin" | "staff" | "finanzas";
+/** Roles de organizacion que usan las fixtures. `finanzas` aplica a despachos/hoteles/rentas; `repartidor` solo a restaurantes. */
+export type Rol = "owner" | "admin" | "staff" | "finanzas" | "repartidor";
 
 export interface Persona {
   readonly id: string;
