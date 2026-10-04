@@ -46,6 +46,19 @@ sequenceDiagram
 - **Replay / carrera**: Meta entrega al menos una vez; el mismo `message.id` no genera segundo turno ni segunda
   respuesta. Un payload solo de estados se acusa 200 sin turno.
 
+- **Nota de voz (R-32)**: un mensaje `audio` se descarga de Meta (`GET /{media-id}` y luego la URL firmada, ambas con el
+  token), se transcribe con el rol `restaurantes:transcripcion` del gateway LLM (modelos con entrada de audio y proveedor
+  de EE.UU., ver `docs/LLM-GATEWAY.md`) y el agente recibe el texto marcado `[Nota de voz transcrita] ...`. La
+  transcripción es un mensaje más: **no salta cotizar ni confirmar** (el pedido solo se crea con la confirmación en un
+  mensaje posterior) y pasa por la redacción de datos de pago. Topes: 90 s y 3 MiB por nota, 5 notas por conversación y
+  hora, 300 por organización y día, más el interruptor de plataforma `restaurantes:transcripcion` y el presupuesto
+  mensual de la organización. El replay de Meta (mismo `message.id`) no se transcribe dos veces: la transcripción corre
+  después de reclamar el mensaje en el ledger. **Sin `WHATSAPP_ACCESS_TOKEN`, sin gateway LLM, sin modelo que acepte
+  audio, con un tope alcanzado o ante cualquier error se conserva el comportamiento anterior** (el agente le pide al
+  cliente que escriba) y el motivo queda en un log sin PII (`nota_de_voz_sin_transcribir`: nunca la URL firmada, el id
+  de media, el audio ni el teléfono). Formatos aceptados: ogg/opus, mp3, m4a y aac (amr se rechaza). En producción
+  requiere el token de WhatsApp Cloud API (R-25); mientras no exista, el estado es el de antes.
+
 ## 2. Comensal por llamada (voz)
 
 ```mermaid
