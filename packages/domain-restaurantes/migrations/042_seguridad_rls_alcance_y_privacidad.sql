@@ -793,7 +793,8 @@ grant execute on function restaurantes.system_purge_expired_privacy_data(integer
 --     abierta de la organizacion; (c) la firma de 4 argumentos queda como envoltorio (p_protected_hashes nulo), asi un
 --     llamador viejo sigue funcionando. Justificacion de seguridad: solo sistema (auth.uid() is null, 42501 si no),
 --     security definer con search_path fijo, revoke de public/anon, sin GRANT nuevo a anon; la lista de hashes solo AMPLIA lo
---     protegido (nunca borra mas). Se aplica solo si la 0036 ya esta en la base (si no, no hay nada que reemplazar).
+--     protegido (nunca borra mas). Se parte de la definicion vigente (0036 + la rama de rentas de la 028: rentas_huesped_pii y rentas_acceso_instrucciones se conservan
+--     tal cual); se aplica solo si la 0036 ya esta en la base (si no, no hay nada que reemplazar).
 do $arco_plataforma$
 begin
   if to_regprocedure('core.system_run_retention_purge(uuid,text,boolean,integer)') is null then
@@ -917,6 +918,12 @@ begin
       )
       select (select count(*) from del_turns), (select count(*) from anon) into v_affected, v_anon;
     end if;
+    v_status := case when v_dry then 'simulacion' else 'ok' end;
+  elsif v_class.vertical = 'rentas' and p_data_class in ('rentas_huesped_pii', 'rentas_acceso_instrucciones') then
+    -- Rn-30: la purga la implementa el vertical (rentas.system_purge_retencion); aqui solo se decide
+    -- el bloqueo, los dias efectivos y el registro, igual que para las clases de restaurantes.
+    select r.out_afectadas, r.out_anonimizadas, r.out_protegidas into v_affected, v_anon, v_protected
+      from rentas.system_purge_retencion(p_org, p_data_class, v_cutoff, v_dry, v_limit) r;
     v_status := case when v_dry then 'simulacion' else 'ok' end;
   else
     v_status := 'sin_ejecutor';
