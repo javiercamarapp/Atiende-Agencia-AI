@@ -172,6 +172,8 @@ export interface DatosCliente {
   readonly direccion?: string;
   readonly notas?: string;
   readonly propina?: number;
+  /** Casilla del aviso de privacidad: el servidor la exige y guarda la evidencia (version del aviso, fecha, canal `web`). */
+  readonly aceptaAviso: boolean;
 }
 
 function enc(v: string): string {
@@ -265,6 +267,7 @@ export function crearClienteStorefront(apiBaseUrl: string, orgSlug: string, fetc
           customer_address: datos.canal === "domicilio" ? cliente.direccion : undefined,
           notes: cliente.notas?.trim() || undefined,
           propina: cliente.propina !== undefined && cliente.propina > 0 ? cliente.propina : undefined,
+          acepta_aviso_privacidad: cliente.aceptaAviso === true,
         }),
         "No pudimos registrar tu pedido.",
       );

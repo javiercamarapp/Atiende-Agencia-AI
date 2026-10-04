@@ -33,13 +33,22 @@ describe("e2e storefront web", () => {
     const quote = (await (await post("/fco-montejo/quote", { session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo" })).json()) as Json;
     expect(quote.quote.total).toBe(284);
     // Crear sin confirmar: rechazado por la maquina de estados.
-    const orderBody = { session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo", customer_name: "Marta Web", customer_phone: "999 123 0050", customer_email: "marta@example.test", customer_address: "Calle 21 #310, Francisco de Montejo", payment_method: "efectivo", quote_hash: quote.quote_hash };
+    const orderBody = { acepta_aviso_privacidad: true, session_id: SESSION, items, canal: "domicilio", colonia_entrega: "Francisco de Montejo", customer_name: "Marta Web", customer_phone: "999 123 0050", customer_email: "marta@example.test", customer_address: "Calle 21 #310, Francisco de Montejo", payment_method: "efectivo", quote_hash: quote.quote_hash };
     expect((await post("/fco-montejo/orders", orderBody)).status).toBe(400);
     expect((await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: quote.quote_hash })).status).toBe(200);
+    // El servidor exige el aviso de privacidad: sin la casilla marcada no hay pedido (400 claro, motivo estable).
+    const sinAviso = await post("/fco-montejo/orders", { ...orderBody, acepta_aviso_privacidad: false });
+    expect(sinAviso.status).toBe(400);
+    expect(await sinAviso.json()).toMatchObject({ motivo: "aviso_privacidad_requerido" });
+    expect(stack.privacidad.pedidoConsents.size).toBe(0);
     const created = await post("/fco-montejo/orders", orderBody);
     expect(created.status).toBe(200);
     const body = (await created.json()) as Json;
     expect(body).toMatchObject({ total: 284, estado: "pending", canal: "domicilio", comanda: { estado: "confirmada" } });
+    // Evidencia del consentimiento: una fila para ESTE pedido, canal web, sin datos personales.
+    const [pedido] = (await stack.ctx.restaurantesRepo.listOrders(stack.ctx.organizationId, { propertyIds: null, limit: 10 } as never)).orders;
+    expect(stack.privacidad.pedidoConsents.get(pedido!.id)).toMatchObject({ organizationId: stack.ctx.organizationId, channel: "web", noticeVersion: "v1" });
+    expect(JSON.stringify([...stack.privacidad.pedidoConsents.values()])).not.toMatch(/Marta|9991230050|marta@/);
     // Doble clic: el mismo envio no duplica pedido ni comanda.
     const dup = (await (await post("/fco-montejo/orders", orderBody)).json()) as Json;
     expect(dup.ya_registrado === true || dup.rastreo_token).toBeTruthy();
@@ -93,7 +102,7 @@ describe("e2e storefront web", () => {
     const base = { session_id: SESSION, items: [{ product_id: stack.products.coca, requested_quantity: 5 }], canal: "recoger" };
     const q = (await (await post("/fco-montejo/quote", base)).json()) as Json;
     await post("/fco-montejo/confirm", { session_id: SESSION, quote_hash: q.quote_hash });
-    const created = await post("/fco-montejo/orders", { ...base, customer_name: "Correo Reintento", customer_phone: "9991230070", customer_email: "reintento@example.test", payment_method: "efectivo", quote_hash: q.quote_hash });
+    const created = await post("/fco-montejo/orders", { ...base, acepta_aviso_privacidad: true, customer_name: "Correo Reintento", customer_phone: "9991230070", customer_email: "reintento@example.test", payment_method: "efectivo", quote_hash: q.quote_hash });
     expect(created.status).toBe(200); // un fallo del proveedor de correo nunca tumba el pedido
     expect(stack.sink.emailsTo("reintento@example.test")).toHaveLength(0);
     expect(stack.sink.rejectedCount.value).toBe(1);
