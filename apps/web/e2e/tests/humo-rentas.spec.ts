@@ -43,7 +43,7 @@ test.describe("rentas @humo", () => {
   });
 
   test("aprobaciones: la bandeja muestra lo escalado, abre el hilo con el texto del huesped y Cancelar en Rechazar no escribe", async ({ page, iniciarSesion, mock, vigilante }) => {
-    await iniciarSesion("rentas", "owner");
+    await iniciarSesion("rentas", "admin");
     await page.goto(`/rentas/${rentas.orgSlug}/aprobaciones`);
     await expect(page.getByText("Requiere atención humana").first()).toBeVisible();
     await expect(page.getByText("Emergencia", { exact: true }).first()).toBeVisible();

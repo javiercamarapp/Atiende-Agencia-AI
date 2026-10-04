@@ -160,7 +160,7 @@ export async function fetchPoliticas(fetchImpl: typeof fetch, apiBaseUrl: string
 
 /** Aviso honesto de lo que el canal hace con el mensaje, derivado de su política (sin texto inventado: solo lo que la política declara). */
 export function avisoPoliticaCanal(p: PoliticaCanal): string {
-  const partes = [`${CANAL_LABELS[p.canal]}: límite de ${p.maxCaracteres.toLocaleString("es-MX")} caracteres por mensaje.`];
+  const partes = [`${CANAL_LABELS[p.canal]}: límite de ${new Intl.NumberFormat("es-MX").format(p.maxCaracteres)} caracteres por mensaje.`];
   if (!p.permiteContactoDirectoPreReserva) {
     partes.push(
       p.accionAntePreReservaProhibida === "bloquear"

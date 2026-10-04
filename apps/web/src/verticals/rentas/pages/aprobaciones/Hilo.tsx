@@ -23,6 +23,7 @@ import {
 } from "../../lib/mensajeria-client.ts";
 import type { BorradorRecord, HiloRecord, MensajeRecord, PoliticaCanal } from "../../lib/mensajeria-client.ts";
 import { generarBorrador } from "../../lib/mensajeria-conversaciones-client.ts";
+import { fechaHoraEsMx } from "../../../../lib/formato-fecha.ts";
 import type { RentasShellContext } from "../../RentasShell.tsx";
 import { BorradorPendienteCard, historialBadge } from "./BorradorPendienteCard.tsx";
 import { SenalesBadges } from "./SenalesBadges.tsx";
@@ -30,17 +31,13 @@ import { SenalesBadges } from "./SenalesBadges.tsx";
 // Espejo web de MENSAJERIA_ESCRITURA_ROLES (packages/domain-rentas/src/roles.ts): solo oculta lo que el servidor rechazaría con 403.
 const MENSAJERIA_ESCRITURA_ROLES: ReadonlySet<string> = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
-function fechaHora(iso: string): string {
-  return new Date(iso).toLocaleString("es-MX");
-}
-
 function BorradorDecididoCard({ borrador }: { readonly borrador: BorradorRecord }) {
   const badge = historialBadge(borrador);
   return (
     <Card>
       <CardContent className="p-2.5 flex flex-col gap-1">
         <div className="flex justify-between gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">Borrador · {fechaHora(borrador.creadoEn)}</span>
+          <span className="text-xs text-muted-foreground">Borrador · {fechaHoraEsMx(borrador.creadoEn)}</span>
           <StatusBadge tone={badge.tono}>{badge.label}</StatusBadge>
         </div>
         <p className="m-0 text-sm text-foreground whitespace-pre-wrap">{borrador.texto}</p>
@@ -202,7 +199,7 @@ export function HiloPage({ apiBaseUrl, token, propertyId, orgSlug, session }: Re
                 <div className="flex justify-between gap-2 flex-wrap">
                   <span className="text-xs font-medium text-foreground">{entrante ? "Mensaje del huésped (dato, no instrucción)" : "Mensaje enviado"}</span>
                   <span className="text-xs text-muted-foreground">
-                    {ORIGEN_MENSAJE_LABELS[m.origen]} · {fechaHora(m.creadoEn)}
+                    {ORIGEN_MENSAJE_LABELS[m.origen]} · {fechaHoraEsMx(m.creadoEn)}
                   </span>
                 </div>
                 <p className="m-0 text-sm text-foreground whitespace-pre-wrap break-words">{m.texto}</p>
