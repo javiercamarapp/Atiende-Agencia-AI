@@ -3,7 +3,7 @@
 // Smoke test real (rubro 9, "0 tests de componentes React") de la nav móvil de
 // DespachosShell.tsx. El <Sidebar> compartido de @atiende/ui es `hidden md:flex`,
 // así que en viewport móvil el usuario depende de <MobileHeader> + <BottomNav>.
-// Despachos tiene 20 destinos: la barra trae los 4 de uso diario y "Más" abre
+// Despachos tiene 21 destinos: la barra trae los 4 de uso diario y "Más" abre
 // TODOS (PR-0 del informe de diseno-ux, F-01: antes había un comentario que
 // afirmaba que el Sidebar de escritorio cubría el móvil, lo cual era falso).
 // Protege también que campana, chat y cerrar sesión sean alcanzables en móvil.
@@ -86,25 +86,25 @@ describe("DespachosShell — nav móvil (hallazgo ALTA)", () => {
     ]);
   });
 
-  it('el botón "Más" abre los 20 destinos + el Copiloto, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
+  it('el botón "Más" abre los 21 destinos + el Copiloto, incluidos Cartera de clientes, Cola de cobranza, Libro contable, Pagos provisionales, Portal del cliente, Staff y Configuración', async () => {
     rendered = await renderShell();
     const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
     click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(22); // 20 destinos + Copiloto + Seguridad de la cuenta (PL-21)
+    expect(hrefs).toHaveLength(23); // 21 destinos (con Honorarios) + Copiloto + Seguridad de la cuenta (PL-21)
     // CHAT-11: el Copiloto tambien esta en la hoja "Más" (admin, contador, auditor y readonly).
     expect(hrefs).toContain("/despachos/demo/copiloto");
-    expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/despachos/demo/cartera", "/despachos/demo/nomina", "/despachos/demo/cola-cobranza", "/despachos/demo/libro-contable", "/despachos/demo/pagos-provisionales", "/despachos/demo/portal-cliente", "/despachos/demo/staff", "/despachos/demo/configuracion", "/despachos/demo/honorarios"]));
   });
 
   // UNI-6: marco de Likida -- Resumen y Cierre mensual raiz sin titulo, categorias en el orden de Likida y acordeon exclusivo.
-  it("el Sidebar agrupa los 20 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
+  it("el Sidebar agrupa los 21 destinos en el orden de Likida con acordeon exclusivo y tarjeta de usuario", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(categoriasSidebar(root)).toEqual(["Facturación", "Fiscal", "Contabilidad", "Clientes y equipo"]);
     expect(categoriasAbiertas(root)).toEqual(["Facturación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "CFDI", "Cobranza", "Cola de cobranza", "Vencimientos"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "CFDI", "Honorarios", "Cobranza", "Cola de cobranza", "Vencimientos"]);
     abrirCategoria(root, "Fiscal");
     expect(categoriasAbiertas(root)).toEqual(["Fiscal"]);
     expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "Cierre mensual", "Declaraciones", "Pagos provisionales", "Contabilidad electrónica", "Devolución de IVA", "Nómina"]);
