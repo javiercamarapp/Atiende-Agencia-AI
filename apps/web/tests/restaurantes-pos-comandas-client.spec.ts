@@ -107,39 +107,42 @@ describe("funciones puras", () => {
 
 describe("cliente HTTP", () => {
   it("fetchComandas arma la consulta con estados, sucursal y limite", async () => {
-    const f = vi.fn(async () => respuesta({ disponible: true, comandas: [], resumen: {}, requierenAtencion: 0 }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => respuesta({ disponible: true, comandas: [], resumen: {}, requierenAtencion: 0 }));
     await fetchComandas(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", { estados: ["captura_manual", "fallida"], branchId: "b1", limit: 50 });
     expect(f.mock.calls[0]![0]).toBe("https://api.test/v1/restaurantes/prop-1/admin/softrestaurant/comandas?estado=captura_manual%2Cfallida&branchId=b1&limit=50");
   });
 
   it("marcarComandaCapturada manda POST con la nota solo si hay", async () => {
-    const f = vi.fn(async () => respuesta({ comanda: COMANDA }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => respuesta({ comanda: COMANDA }));
     await marcarComandaCapturada(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", "c1", "T2-000123");
     await marcarComandaCapturada(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", "c1", null);
-    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init0] = f.mock.calls[0]!;
+    const init = init0 as RequestInit;
     expect(url).toBe("https://api.test/v1/restaurantes/prop-1/admin/softrestaurant/comandas/c1/capturada");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ nota: "T2-000123" });
-    expect(JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toEqual({});
+    expect(JSON.parse(String((f.mock.calls[1]![1] as RequestInit).body))).toEqual({});
   });
 
   it("fijarModoPos y fijarUmbralCapturaManual usan PUT con su cuerpo", async () => {
-    const f = vi.fn(async () => respuesta({ ok: true }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => respuesta({ ok: true }));
     await fijarModoPos(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", "apagado");
     await fijarUmbralCapturaManual(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", "b1", 8);
-    const [u1, i1] = f.mock.calls[0] as unknown as [string, RequestInit];
-    const [u2, i2] = f.mock.calls[1] as unknown as [string, RequestInit];
+    const [u1, i1x] = f.mock.calls[0]!;
+    const [u2, i2x] = f.mock.calls[1]!;
+    const i1 = i1x as RequestInit;
+    const i2 = i2x as RequestInit;
     expect([u1.endsWith("/softrestaurant/config"), i1.method, JSON.parse(String(i1.body))]).toEqual([true, "PUT", { modo: "apagado" }]);
     expect([u2.endsWith("/softrestaurant/umbral-captura-manual"), i2.method, JSON.parse(String(i2.body))]).toEqual([true, "PUT", { branchId: "b1", minutos: 8 }]);
   });
 
   it("fetchEstadosComandaPorPedido: sin ids no llama; con ids manda hasta 100", async () => {
-    const f = vi.fn(async () => respuesta({ disponible: true, estados: { o1: "captura_manual" } }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => respuesta({ disponible: true, estados: { o1: "captura_manual" } }));
     expect(await fetchEstadosComandaPorPedido(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", [])).toEqual({ disponible: true, estados: {} });
     expect(f).not.toHaveBeenCalled();
     const ids = Array.from({ length: 120 }, (_, i) => `id${i}`);
     await fetchEstadosComandaPorPedido(f as unknown as typeof fetch, "https://api.test", "tok", "prop-1", ids);
-    const url = String((f.mock.calls[0] as unknown as [string])[0]);
+    const url = String(f.mock.calls[0]![0]);
     expect(url.split("orderIds=")[1]!.split(",")).toHaveLength(100);
   });
 });
