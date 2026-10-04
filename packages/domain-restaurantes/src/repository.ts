@@ -682,9 +682,9 @@ export interface EmailOutboxJobRow {
   readonly payload: Record<string, unknown>;
 }
 
-/** Los 3 eventos reales que dispara `order-notifications.ts` — mismo CHECK que
+/** Los 4 eventos reales que dispara `order-notifications.ts` — mismo CHECK que
  * `restaurantes.staff_order_notification.event_type` (migrations/009). */
-export type StaffOrderNotificationEventType = "order.created" | "order.problema" | "order.assigned_repartidor";
+export type StaffOrderNotificationEventType = "order.created" | "order.problema" | "order.assigned_repartidor" | "order.programado_promovido";
 
 /** Fila de `restaurantes.staff_order_notification` — bandeja interna consultable
  * por polling (ver comentario de `createStaffOrderNotification` arriba). Mismo
