@@ -102,7 +102,8 @@ si una organización fija en la plataforma MÁS días que en esa configuración 
   payload de la cola de mensajes (30 días) y de las comandas del POS ya terminadas, borra notas internas de conversación y la bitácora de voz
   vencida, y avisa con `pendiente` cuando un lote se llenó para que el cron siga. Un titular con solicitud ARCO abierta queda protegido en todos los canales.
 - **Seudónimos de teléfono.** HMAC con `ACTOR_HASH_KEY` (ver `docs/CREDENCIALES.md`); la base no conoce la llave, así que el servidor le pasa los seudónimos
-  del titular a la purga y a la cancelación.
+  del titular a la purga de restaurantes, a la purga programada de plataforma (`core.system_run_retention_purge`, clase `restaurantes_voz_transcripciones`;
+  hasta 5000 teléfonos con solicitud abierta por organización) y a la cancelación. La purga de plataforma de WhatsApp compara por `telefono_clave`.
 - **Límites conocidos.** `restaurantes.data_rights_requests` conserva el teléfono del titular como evidencia de cumplimiento; las comandas del POS
   todavía en `pendiente`/`captura_manual` conservan el cliente hasta terminar su ciclo; con más de 2000 solicitudes ARCO abiertas la purga protege por
   seudónimo HMAC solo a las primeras 2000 (los sha256 planos los calcula la base para todas).
