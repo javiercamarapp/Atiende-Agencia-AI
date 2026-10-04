@@ -118,6 +118,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
       "Primeros pasos",
       "Configuración",
       "Staff",
+      "Avisos",
       "Auditoría",
       "Privacidad",
       "Privacidad de la organización",
@@ -157,6 +158,8 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(tarjetaUsuario(rendered.container).rol).toBe("Equipo");
     // CHAT-08: el staff (MANAGER_ROLES del servidor) SÍ tiene Copiloto, justo debajo de Resumen.
     expect(linksSidebar(rendered.container).slice(0, 2)).toEqual(["Resumen", "Copiloto"]);
+    // R-16: sin la categoria Configuración, el staff alcanza "Mis avisos" desde Operación (la misma pagina que owner/admin ven en Configuración).
+    expect(linksSidebar(rendered.container)).toContain("Avisos");
   });
 
   // CHAT-08: el Copiloto es una PÁGINA. Con el asistente activo, el botón del header y la píldora "Pregunta a tus datos" del pie son

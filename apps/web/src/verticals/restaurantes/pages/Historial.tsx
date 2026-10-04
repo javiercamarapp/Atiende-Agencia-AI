@@ -28,12 +28,14 @@ import { ChevronDown } from "lucide-react";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { ORDER_STATUS_TONES } from "../lib/status-tones.ts";
+import { BotonExportar } from "../components/BotonExportar.tsx";
+import { urlExportarHistorial } from "../lib/exportar-client.ts";
 import { medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
 
-export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+export function HistorialPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -102,6 +104,20 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         <FormField label="Hasta">
           <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
         </FormField>
+        {/* R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin. */}
+        <div className="ml-auto">
+          <BotonExportar
+            role={role}
+            token={token}
+            urlPara={(formato) =>
+              urlExportarHistorial(apiBaseUrl, propertyId, formato, {
+                status: statusFilter || undefined,
+                dateFrom: dateFrom ? medianocheLocalUTC(dateFrom).toISOString() : undefined,
+                dateTo: dateTo ? medianocheLocalUTC(sumarDiasFechaSolo(dateTo, 1)).toISOString() : undefined,
+              })
+            }
+          />
+        </div>
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load(true)} />}
