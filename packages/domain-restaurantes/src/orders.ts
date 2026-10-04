@@ -441,7 +441,7 @@ export async function createOrder(
   if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
+  const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort(), payload.basicComplements);
   const notesWithAlcohol = containsAlcohol ? [complementNotes, "Recepción de alcohol: mayoría de edad confirmada por el cliente."].join("\n") : complementNotes;
   // Fase 11 — el descuento real ya está restado de `total` (ver prepareCreateOrder);
   // esta nota es solo auditoría legible por el staff en el panel de pedidos, nunca
@@ -473,6 +473,7 @@ export async function createOrder(
       items: itemsOrdenados.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, tortilla: item.tortilla ?? null })),
       requested_complements: [...(payload.requestedComplements ?? [])].sort(),
       omit_default_complements: [...(payload.omitDefaultComplements ?? [])].sort(),
+      ...(payload.basicComplements ? { basic_complements: [...payload.basicComplements].sort() } : {}),
       // Solo entra al hash cuando hay doble porcion: el hash de pedidos sin ella no cambia.
       ...(payload.doubleSalsas && payload.doubleSalsas.length > 0 ? { double_salsas: [...new Set(payload.doubleSalsas)].sort() } : {}),
       // Solo entra al hash cuando el pedido es programado: el hash de pedidos normales no cambia.

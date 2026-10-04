@@ -99,7 +99,16 @@ export interface OrderQuote {
   readonly containsAlcohol: boolean;
 }
 
-export type RequestedComplement = "salsa_habanero" | "crema_ajo";
+/** Complementos que el cliente puede PEDIR (sin costo). `pina` es la piña picada que acompaña los tacos (gratis si se pide; la doble
+ * es el producto "Extra Piña" del catálogo, no un complemento); `salsa_habanero_soasado` es el habanero soasado ("sauceada"). */
+export type RequestedComplement =
+  | "salsa_habanero"
+  | "crema_ajo"
+  | "salsa_guacamolera"
+  | "salsa_mexicana"
+  | "salsa_pina"
+  | "pina"
+  | "salsa_habanero_soasado";
 /** Las 9 salsas/guarniciones incluidas sin costo (PM): roja, verde, mexicana, guacamolera, limones,
  * crema de ajo, cebolla con cilantro, pina y habanero (soasado o picado con limon). `cebolla` es el
  * nombre historico de `cebolla_cilantro` y se sigue aceptando al omitir. */
@@ -176,6 +185,9 @@ export interface CreateOrderInput {
   readonly adultConfirmed?: boolean;
   readonly requestedComplements?: readonly RequestedComplement[];
   readonly omitDefaultComplements?: readonly DefaultComplement[];
+  /** Perfil de básicas por omisión del negocio (PM: roja, verde, cebolla con cilantro y limones). Con valor, la comanda separa
+   * «Básicas» de «Pedidas»; sin valor (web/checkout histórico) imprime las 9 como incluidas, igual que antes. */
+  readonly basicComplements?: readonly DefaultComplement[];
   /** Doble porcion de salsas (extra cobrado: una pieza del producto "Extra salsa" del catalogo por
    * cada salsa; si la sucursal no lo tiene en catalogo el pedido se rechaza con un mensaje claro). */
   readonly doubleSalsas?: readonly DoubleSalsa[];

@@ -22,6 +22,10 @@ export const DEFAULT_COMPLEMENTS: readonly DefaultComplement[] = [
   "salsa_habanero",
 ];
 
+/** Básicas por omisión de Los Taquitos de PM (chats reales de T7): van en TODO pedido de tacos; las demás salsas van sin costo solo si el
+ * cliente las pide. Es dato del PERFIL (lo pasa el agente en `basicComplements`), no una regla global del dominio. */
+export const PM_BASIC_COMPLEMENTS: readonly DefaultComplement[] = ["salsa_roja", "salsa_verde", "cebolla_cilantro", "limones"];
+
 const COMPLEMENT_LABELS: Record<DefaultComplement | RequestedComplement, string> = {
   salsa_roja: "salsa roja",
   salsa_verde: "salsa verde",
@@ -33,6 +37,8 @@ const COMPLEMENT_LABELS: Record<DefaultComplement | RequestedComplement, string>
   salsa_pina: "salsa de piña",
   salsa_habanero: "salsa habanero (soasada o picada con limón)",
   cebolla: "cebolla con cilantro",
+  pina: "piña picada",
+  salsa_habanero_soasado: "salsa habanero soasada",
 };
 
 /** Tortillas validas de un renglon de tacos (`mixta` = mitad maiz, mitad harina). */
@@ -88,12 +94,14 @@ export function buildComplementNotes(
   notes?: string,
   requested: readonly RequestedComplement[] = [],
   omitted: readonly DefaultComplement[] = [],
+  basics?: readonly DefaultComplement[],
 ): string {
   // Las 9 salsas (incluidas habanero y crema de ajo) ya van incluidas sin costo por omision, asi que pedir
   // habanero/crema de ajo NO agrega una linea "solicitados" aparte (apareceria a la vez como incluido y
   // solicitado). Si el cliente la pide expresamente, esa peticion gana sobre una omision contradictoria.
-  const requestedSet = new Set<DefaultComplement>(requested);
   const omittedSet = new Set(omitted.map(canonicalComplement));
+  if (basics) return buildComplementNotesConBasicas(notes, requested, omittedSet, basics);
+  const requestedSet = new Set<DefaultComplement>(requested.filter((r): r is DefaultComplement => (DEFAULT_COMPLEMENTS as readonly string[]).includes(r)));
   const included = DEFAULT_COMPLEMENTS.filter((item) => requestedSet.has(item) || !omittedSet.has(item));
   const lines = [notes?.trim()].filter(Boolean) as string[];
   lines.push(
@@ -101,6 +109,29 @@ export function buildComplementNotes(
       ? `Complementos incluidos: ${included.map((item) => COMPLEMENT_LABELS[item]).join(", ")}.`
       : "No enviar complementos de cortesía.",
   );
+  return lines.join("\n");
+}
+
+/** Comanda con perfil de básicas: «Básicas» (las del perfil menos las omitidas) y «Pedidas» (lo que el cliente pidió además; sin costo).
+ * Lo pedido gana sobre una omisión contradictoria; una básica pedida no se repite en «Pedidas». */
+function buildComplementNotesConBasicas(
+  notes: string | undefined,
+  requested: readonly RequestedComplement[],
+  omittedSet: ReadonlySet<DefaultComplement>,
+  basics: readonly DefaultComplement[],
+): string {
+  const basicas = [...new Set(basics.map(canonicalComplement))];
+  // Lista cerrada: un valor desconocido del modelo se descarta (nunca se imprime tal cual en la comanda).
+  const requestedUnique = [...new Set(requested.filter((r) => Object.hasOwn(COMPLEMENT_LABELS, r)).map((r) => canonicalComplement(r as DefaultComplement)))] as (DefaultComplement | RequestedComplement)[];
+  const basicasQueVan = basicas.filter((item) => requestedUnique.includes(item) || !omittedSet.has(item));
+  const pedidas = requestedUnique.filter((item) => !basicas.includes(item as DefaultComplement));
+  const lines = [notes?.trim()].filter(Boolean) as string[];
+  if (basicasQueVan.length === 0 && pedidas.length === 0) {
+    lines.push("No enviar complementos de cortesía.");
+    return lines.join("\n");
+  }
+  if (basicasQueVan.length > 0) lines.push(`Básicas: ${basicasQueVan.map((item) => COMPLEMENT_LABELS[item]).join(", ")}.`);
+  if (pedidas.length > 0) lines.push(`Pedidas (sin costo): ${pedidas.map((item) => COMPLEMENT_LABELS[item]).join(", ")}.`);
   return lines.join("\n");
 }
 

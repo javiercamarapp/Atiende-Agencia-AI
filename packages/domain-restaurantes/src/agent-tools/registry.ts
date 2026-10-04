@@ -15,7 +15,7 @@
 import { registerCallbackRequest } from "../callback-requests.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
-import { DEFAULT_COMPLEMENTS, isTortillaChoice } from "../order-quote.ts";
+import { DEFAULT_COMPLEMENTS, isTortillaChoice, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { estaAbiertoAhora } from "../horarios.ts";
 import { assignBranch } from "../branch-assignment.ts";
 import { knownAmountsOfQuote } from "../whatsapp/guards.ts";
@@ -77,6 +77,9 @@ export interface AgentToolDefinition {
   readonly parameters: AgentToolJsonSchema;
   readonly channels: readonly AgentChannel[];
 }
+
+/** Lista cerrada de lo que el cliente puede pedir como complemento (sin costo). */
+const REQUESTED_COMPLEMENTS: readonly RequestedComplement[] = ["salsa_guacamolera", "salsa_mexicana", "salsa_pina", "pina", "salsa_habanero", "salsa_habanero_soasado", "crema_ajo"];
 
 export interface AgentToolContext {
   readonly organizationId: string;
@@ -251,7 +254,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
         customer_address: { type: "string", description: "Dirección completa de entrega; obligatoria salvo canal 'recoger'." },
         items: { type: "array", items: ITEM_SCHEMA },
         notes: { type: "string" },
-        requested_complements: { type: "array", items: { type: "string", enum: ["salsa_habanero", "crema_ajo"] } },
+        requested_complements: { type: "array", items: { type: "string", enum: [...REQUESTED_COMPLEMENTS] }, description: "Complementos que el cliente PIDIÓ además de las básicas (sin costo): salsa_guacamolera, salsa_mexicana (pico de gallo, xnipec), salsa_pina, pina (piña picada, gratis si se pide), salsa_habanero, salsa_habanero_soasado (sauceada), crema_ajo. La doble porción de una salsa va en doble_salsas, no aquí." },
         omit_default_complements: { type: "array", items: { type: "string", enum: [...DEFAULT_COMPLEMENTS, "cebolla"] } },
         doble_salsas: DOBLE_SALSAS_SCHEMA,
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"] },
@@ -476,6 +479,8 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
     adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
     requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
+    // Los agentes (WhatsApp/voz) trabajan con el perfil de PM: comanda con «Básicas» y «Pedidas». El checkout web conserva las 9 incluidas.
+    basicComplements: ctx.channel === "web" ? undefined : PM_BASIC_COMPLEMENTS,
     doubleSalsas: toDoubleSalsas(input.doble_salsas),
     canal: toCanal(input.canal),
     colonia: str(input.colonia_entrega),
