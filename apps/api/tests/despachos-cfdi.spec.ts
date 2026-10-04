@@ -54,16 +54,21 @@ describe("POST /despachos/:propertyId/cfdi — ingesta y validación (end-to-end
     expect(pendientes[0]!.invoiceId).toBe(body.id);
   });
 
-  it("REQ: reingestar el mismo folio fiscal (mismo UUID de timbre) nunca duplica el CFDI -- 409 conflict", async () => {
+  it("REQ (D-P3-18): reingestar el mismo folio fiscal en el MISMO cliente nunca duplica el CFDI -- 200 con la fila existente y duplicado: true (ya no es un 409 que bloquee)", async () => {
     const app = buildApp(ctx.deps);
     const first = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()));
     expect(first.status).toBe(201);
+    const primero = (await first.json()) as { id: string; duplicado: boolean };
+    expect(primero.duplicado).toBe(false);
 
     const second = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()));
-    expect(second.status).toBe(409);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toMatchObject({ id: primero.id, duplicado: true });
 
     const invoices = await ctx.despachosRepo.listInvoices(ctx.propertyId);
     expect(invoices).toHaveLength(1);
+    // Ni una segunda revision ni una segunda clasificacion por reingestar lo mismo.
+    expect(await ctx.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(1);
   });
 
   it("un CFDI limpio de tipo Traslado (T), sin DIOT ni nómina, NO exige revisión humana", async () => {

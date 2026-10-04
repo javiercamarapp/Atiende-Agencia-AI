@@ -9,7 +9,8 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
+import { InMemoryCarteraRepository, InMemoryClasificacionRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository, polizasPeriodoDesdeRepositorios } from "@atiende/domain-despachos";
+import type { InMemoryPolizasPeriodoRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -45,6 +46,10 @@ export interface DespachosTestContext {
   readonly carteraRepo: InMemoryCarteraRepository;
   /** D-24 -- doble en memoria del libro contable (misma instancia que resuelve `deps.libroRepo(...)`). */
   readonly libroRepo: InMemoryLibroRepository;
+  /** D-P3-13 -- doble en memoria de la clasificacion contable (misma instancia que resuelve `deps.clasificacionRepo(...)`). */
+  readonly clasificacionRepo: InMemoryClasificacionRepository;
+  /** D-P3-14 -- doble en memoria del cron de polizas del periodo (misma instancia que resuelve `deps.polizasPeriodoRepo(...)`; sobre los repos en memoria de este contexto). */
+  readonly polizasPeriodoRepo: InMemoryPolizasPeriodoRepository;
   /** D-35 -- doble en memoria de la conciliacion persistida (misma instancia que resuelve `deps.conciliacionRepo(...)`). */
   readonly conciliacionRepo: InMemoryConciliacionPersistidaRepository;
   /** D-25 -- doble en memoria de pagos provisionales (misma instancia que resuelve `deps.pagosProvisionalesRepo(...)`). */
@@ -78,12 +83,18 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const despachosRepo = new InMemoryDespachosRepository();
   const carteraRepo = new InMemoryCarteraRepository();
   const libroRepo = new InMemoryLibroRepository();
+  const clasificacionRepo = new InMemoryClasificacionRepository({
+    rfcEmisorDe: async (propertyId, invoiceId) => (await despachosRepo.findInvoice(propertyId, invoiceId))?.rfcEmisor ?? null,
+    recalcularDireccion: async (propertyId) => despachosRepo.recalcularDireccionIndeterminados(propertyId, (await carteraRepo.obtenerFicha(propertyId))?.rfc),
+  });
   const conciliacionRepo = new InMemoryConciliacionPersistidaRepository(despachosRepo);
+
   const pagosRepo = new InMemoryPagosProvisionalesRepository();
   const auditSink = new InMemoryAuditSink();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
+  const polizasPeriodoRepo = polizasPeriodoDesdeRepositorios({ propiedades: () => [{ organizationId, propertyId }], despachos: despachosRepo, libro: libroRepo, clasificacion: clasificacionRepo });
   coreRepo.addOrganization({ id: organizationId, slug: "despacho-de-prueba", name: "Despacho de Prueba SC", vertical: "despachos" });
   engine.seedProperty({ id: propertyId, organizationId });
   // Fase 9 — mismo doble-seed que licitaciones-fixtures.ts/citas-fixtures.ts:
@@ -123,6 +134,8 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     despachosRepo: (_db) => despachosRepo,
     carteraRepo: (_db) => carteraRepo,
     libroRepo: (_db) => libroRepo,
+    clasificacionRepo: (_db) => clasificacionRepo,
+    polizasPeriodoRepo: (_db) => polizasPeriodoRepo,
     conciliacionRepo: (_db) => conciliacionRepo,
     pagosProvisionalesRepo: (_db) => pagosRepo,
     despachosAuditSink: auditSink,
@@ -183,6 +196,8 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     despachosRepo,
     carteraRepo,
     libroRepo,
+    clasificacionRepo,
+    polizasPeriodoRepo,
     conciliacionRepo,
     pagosRepo,
     auditSink,

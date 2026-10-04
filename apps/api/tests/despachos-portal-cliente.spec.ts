@@ -294,15 +294,19 @@ describe("gestion del staff", () => {
     expect(otra.status).toBe(409);
   });
 
-  it("aceptar un CFDI cuyo folio ya existe -> 409 y el documento queda 'recibido' (se puede rechazar)", async () => {
+  it("D-P3-22: aceptar un CFDI cuyo UUID ya existe en este cliente lo acepta como 'ya existia' (sin duplicar ni bloquear el documento)", async () => {
     const token = await nuevoToken();
     const xml = cfdiXmlPortal();
-    expect((await app().request(`/despachos/${ctx.propertyId}/cfdi/importar-xml`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}`, "content-type": "application/xml", "content-length": String(enc(xml).byteLength) }, body: xml })).status).toBe(201);
+    const ingesta = await app().request(`/despachos/${ctx.propertyId}/cfdi/importar-xml`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}`, "content-type": "application/xml", "content-length": String(enc(xml).byteLength) }, body: xml });
+    expect(ingesta.status).toBe(201);
+    const existente = (await ingesta.json()) as { id: string };
     await subir(token, xml, "application/xml", "factura.xml");
     const id = repo.documentos[0]!.id;
     const res = await app().request(`${base()}/documentos/${id}/aceptar`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.contador.token}` } });
-    expect(res.status).toBe(409);
-    expect(repo.documentos[0]!.estado).toBe("recibido");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ estado: "aceptado", invoiceId: existente.id, cfdi: { duplicado: true } });
+    expect(repo.documentos[0]!.estado).toBe("aceptado");
+    expect(await ctx.despachosRepo.listInvoices(ctx.propertyId)).toHaveLength(1);
   });
 
   it("aceptar un PDF no crea invoice; rechazar con motivo lo deja visible para el cliente; auditor NO puede resolver", async () => {

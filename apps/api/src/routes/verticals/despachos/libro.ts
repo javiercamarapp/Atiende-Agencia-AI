@@ -10,6 +10,7 @@
 //  POST /despachos/:propertyId/libro/polizas/desde-cfdi            póliza de un CFDI persistido
 //  POST /despachos/:propertyId/libro/polizas/:polizaId/reversar    póliza de reversa
 //  GET  /despachos/:propertyId/libro/cfdi?periodo=YYYY-MM         CFDI del periodo con su poliza (o por que no se puede armar sola)
+//  POST /despachos/:propertyId/libro/polizas/generar-periodo      D-P3-14: registra la poliza de cada CFDI del periodo que ya se puede contabilizar (mismas reglas del cron diario)
 //  GET  /despachos/:propertyId/libro/balanza?periodo=YYYY-MM       balanza derivada
 //  GET  /despachos/:propertyId/libro/contabilidad-electronica?periodo=YYYY-MM   catálogo + balanza XML con SHA-1
 //
@@ -21,6 +22,7 @@ import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import {
   GESTIONAR_LIBRO_ROLES,
@@ -36,6 +38,8 @@ import {
   VER_LIBRO_ROLES,
   construirCatalogoBase,
   construirPolizaDesdeCfdi,
+  estaPeriodoCerrado,
+  evaluarCompuertaClasificacion,
   esFechaValida,
   generarPaqueteDesdeLibro,
   leerFuenteOpcional,
@@ -43,13 +47,14 @@ import {
   totalesBalanza,
   validarPolizaEntrada,
 } from "@atiende/domain-despachos";
-import type { CarteraRepository, LibroRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, LibroRepository, PolizaInput } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
+import { clasificacionDe } from "./clasificacion-deps.ts";
 
 const MAX_BODY_BYTES = 128 * 1024;
 const PERIODO_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -187,7 +192,8 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const factura = await deps.despachosRepo(c.get("db")).findInvoice(propertyId, raw.invoiceId);
     if (!factura) throw Errors.notFound("CFDI no encontrado.");
-    const armada = construirPolizaDesdeCfdi(factura);
+    const cls = (await clasificacionDe(deps, c.get("db")).vigentes(propertyId, [factura.id])).datos.get(factura.id);
+    const armada = construirPolizaDesdeCfdi(factura, cls ? { categoria: cls.categoria, cuenta: cls.cuenta } : null);
     if (!armada.ok) throw Errors.conflict(armada.motivo);
     const repo = libroDe(c.get("db"));
     try {
@@ -198,6 +204,101 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     } catch (err) {
       return traducirLibro(err);
     }
+  });
+
+  /**
+   * D-P3-14 -- «Generar pólizas del periodo»: registra la póliza de cada CFDI del periodo que ya se puede contabilizar solo. MISMAS reglas que el cron diario
+   * (`/internal/despachos/polizas-periodo`): clasificado con confianza suficiente (o por una persona), sin revisión pendiente, no cancelado ni excluido, sentido
+   * conocido, periodo abierto, sin póliza vigente y armable sin inventar (`construirPolizaDesdeCfdi`). Idempotente: lo que ya tiene póliza no se repite. El resto
+   * se devuelve con su motivo, para que el staff lo registre a mano. Cada póliza corre en su SAVEPOINT: una que falla no tumba las demás ni la transacción.
+   */
+  app.post("/despachos/:propertyId/libro/polizas/generar-periodo", async (c) => {
+    assertVerticalRole(c, GESTIONAR_LIBRO_ROLES);
+    const raw = await readJsonCapped<{ periodo?: unknown }>(c.req.raw, 4 * 1024);
+    if (typeof raw.periodo !== "string") throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
+    const { periodo, ejercicio, mes } = periodoDe(raw.periodo, raw.periodo);
+    const propertyId = c.req.param("propertyId");
+    const db = c.get("db");
+    const despachos = deps.despachosRepo(db);
+    const repo = libroDe(db);
+    const clasificacion = clasificacionDe(deps, db);
+
+    if (estaPeriodoCerrado(await despachos.findPeriodoCierrePorAnioMes(propertyId, ejercicio, mes))) throw Errors.despachosPeriodoCerrado(periodo);
+    // `invoice.fecha` (migracion 006): sin ella 503 honesto, igual que `GET .../libro/cfdi`.
+    const facturas = await leerFuenteOpcional(despachos, () => despachos.listInvoices(propertyId, { periodo }));
+    if (facturas === null) throw Errors.serviceUnavailable("Los CFDI por periodo aún no están disponibles en esta base de datos: falta aplicar la migración 006.");
+
+    const ids = facturas.map((f) => f.id);
+    const vigentes = (await clasificacion.vigentes(propertyId, ids)).datos;
+    const config = await clasificacion.leerConfig(propertyId);
+    const conPoliza = await repo.polizasDeCfdi(propertyId, ids);
+    const pendientes = new Set((await despachos.listPendingReviews(propertyId)).map((r) => r.invoiceId));
+
+    let yaTenian = 0;
+    let porRevision = 0;
+    let porClasificacion = 0;
+    const noArmables: { readonly folioFiscal: string; readonly motivo: string }[] = [];
+    const aRegistrar: { readonly factura: (typeof facturas)[number]; readonly poliza: PolizaInput }[] = [];
+    for (const f of facturas) {
+      if (conPoliza.has(f.id)) {
+        yaTenian += 1;
+        continue;
+      }
+      if (f.tipo !== "I" || f.estadoSat === "cancelado") continue;
+      if (pendientes.has(f.id)) {
+        porRevision += 1;
+        continue;
+      }
+      const cls = vigentes.get(f.id) ?? null;
+      // Con clasificacion vigente debe pasar la misma compuerta de la ingesta; sin ella (base sin la 026) manda la categoria gruesa, como siempre.
+      if (cls) {
+        const porPersona = cls.metodo === "manual" || cls.metodo === "correccion";
+        if (!porPersona && (cls.empate || evaluarCompuertaClasificacion(cls.confianza ?? 0, { umbral: config.umbral }).requiereRevision)) {
+          porClasificacion += 1;
+          continue;
+        }
+      }
+      const armada = construirPolizaDesdeCfdi(f, cls ? { categoria: cls.categoria, cuenta: cls.cuenta } : null);
+      if (!armada.ok) {
+        if (noArmables.length < 50) noArmables.push({ folioFiscal: f.folioFiscal, motivo: armada.motivo });
+        continue;
+      }
+      aRegistrar.push({ factura: f, poliza: armada.poliza });
+    }
+
+    let generadas = 0;
+    const fallidas: { readonly folioFiscal: string; readonly motivo: string }[] = [];
+    try {
+      if (aRegistrar.length > 0) await asegurarCatalogo(repo, propertyId);
+      for (const { factura, poliza } of aRegistrar) {
+        try {
+          await runWithSavepointFallback({
+            session: db,
+            primary: () => repo.registrarPoliza(propertyId, poliza, factura.id),
+            isRecoverable: () => true,
+            fallback: (e) => Promise.reject(e),
+          });
+          generadas += 1;
+        } catch (err) {
+          if (err instanceof PolizaDuplicadaError) {
+            yaTenian += 1;
+          } else if (err instanceof LibroDatosInvalidosError || err instanceof PeriodoLibroCerradoError || err instanceof LibroSinPermisoError) {
+            fallidas.push({ folioFiscal: factura.folioFiscal, motivo: err.message });
+          } else {
+            throw err;
+          }
+        }
+      }
+    } catch (err) {
+      return traducirLibro(err);
+    }
+
+    if (generadas > 0) {
+      const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(despachos, propertyId));
+      await emitirNotificacion(db, { evento: "despachos.libro.polizas_generadas", organizationId: c.get("organizationId"), propertyId, clave: `${propertyId}:${hoy}`, parametros: { cantidad: generadas }, entidadTipo: "property", entidadId: propertyId });
+    }
+    await auditar(c, "despachos.libro:polizas-periodo", { propertyId, periodo, generadas, yaTenian, noArmables: noArmables.length, fallidas: fallidas.length });
+    return c.json({ periodo, candidatos: facturas.length, generadas, yaTenian, porRevision, porClasificacion, noArmables, fallidas });
   });
 
   app.post("/despachos/:propertyId/libro/polizas/:polizaId/reversar", async (c) => {
@@ -232,12 +333,15 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (facturas === null) throw Errors.serviceUnavailable("Los CFDI por periodo aún no están disponibles en esta base de datos: falta aplicar la migración 006.");
     const visibles = facturas.slice(0, MAX_CFDI_LISTADO);
     const polizas = await libroDe(db).polizasDeCfdi(propertyId, visibles.map((f) => f.id));
+    // D-P3-14: la clasificacion vigente de cada CFDI manda sobre la categoria gruesa al armar la poliza (sin la migracion 026 no hay: se usa la gruesa de siempre).
+    const clasificaciones = (await clasificacionDe(deps, db).vigentes(propertyId, visibles.map((f) => f.id))).datos;
     return c.json({
       periodo,
       truncado: facturas.length > MAX_CFDI_LISTADO,
       cfdi: visibles.map((f) => {
         const poliza = polizas.get(f.id) ?? null;
-        const armada = construirPolizaDesdeCfdi(f);
+        const cls = clasificaciones.get(f.id);
+        const armada = construirPolizaDesdeCfdi(f, cls ? { categoria: cls.categoria, cuenta: cls.cuenta } : null);
         return {
           id: f.id,
           folioFiscal: f.folioFiscal,
@@ -247,6 +351,8 @@ export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           totalCentavos: f.totalCentavos ?? Math.round(f.total * 100),
           estadoSat: f.estadoSat ?? "pendiente",
           poliza: poliza ? { id: poliza.id, folio: poliza.folio, tipo: poliza.tipo } : null,
+          categoriaContable: cls?.categoria ?? null,
+          confianzaClasificacion: cls?.confianza ?? null,
           armable: poliza === null && armada.ok,
           motivo: poliza === null && !armada.ok ? armada.motivo : null,
         };

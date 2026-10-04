@@ -92,17 +92,18 @@ describe("POST /despachos/:propertyId/cfdi/importar-xml — ingesta desde un CFD
     expect(pendientes[0]!.invoiceId).toBe(body.id);
   });
 
-  it("REQ: reingestar el mismo UUID de timbre (folio fiscal) vía XML nunca duplica el CFDI -- 409 conflict, mismo candado que POST /cfdi", async () => {
+  it("REQ (D-P3-18): reingestar el mismo UUID de timbre (folio fiscal) vía XML en el MISMO cliente nunca duplica el CFDI -- 200 con la fila existente (duplicado: true)", async () => {
     const app = buildApp(ctx.deps);
     const primero = await app.request(`/despachos/${ctx.propertyId}/cfdi/importar-xml`, xmlRequest(ctx.staff.contador.token, cfdiXml()));
     expect(primero.status).toBe(201);
 
     const segundo = await app.request(`/despachos/${ctx.propertyId}/cfdi/importar-xml`, xmlRequest(ctx.staff.contador.token, cfdiXml()));
-    expect(segundo.status).toBe(409);
+    expect(segundo.status).toBe(200);
+    expect(await segundo.json()).toMatchObject({ id: ((await primero.clone().json()) as { id: string }).id, duplicado: true });
     expect(await ctx.despachosRepo.listInvoices(ctx.propertyId)).toHaveLength(1);
   });
 
-  it("REQ: el mismo folio fiscal ingestado primero por JSON (POST /cfdi) y luego por XML también choca en 409 -- es UNA sola tabla de invoices", async () => {
+  it("REQ (D-P3-18): el mismo folio fiscal ingestado primero por JSON (POST /cfdi) y luego por XML en el mismo cliente tambien devuelve la fila existente (200) -- es UNA sola tabla de invoices", async () => {
     const app = buildApp(ctx.deps);
     const viaJson = await app.request(
       `/despachos/${ctx.propertyId}/cfdi`,
@@ -134,7 +135,9 @@ describe("POST /despachos/:propertyId/cfdi/importar-xml — ingesta desde un CFD
     expect(viaJson.status).toBe(201);
 
     const viaXml = await app.request(`/despachos/${ctx.propertyId}/cfdi/importar-xml`, xmlRequest(ctx.staff.contador.token, cfdiXml()));
-    expect(viaXml.status).toBe(409);
+    expect(viaXml.status).toBe(200);
+    expect(await viaXml.json()).toMatchObject({ duplicado: true });
+    expect(await ctx.despachosRepo.listInvoices(ctx.propertyId)).toHaveLength(1);
   });
 
   it("un CFDI limpio de tipo Traslado (T) vía XML no exige revisión humana", async () => {
