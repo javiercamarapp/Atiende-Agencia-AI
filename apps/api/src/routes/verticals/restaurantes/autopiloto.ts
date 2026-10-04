@@ -119,13 +119,11 @@ export function restaurantesAutopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     }
     const repo = deps.restaurantesRepo(c.get("db"));
     const auto = repoAuto(c);
-    // Alcance: la solicitud debe pertenecer a una sucursal que el actor puede ver (la base lo vuelve a exigir con 42501).
+    // Estado previo (solo para la bitacora). El alcance real lo exige la base (42501 -> 403): una solicitud ajena o ya resuelta no aparece aqui y la
+    // base decide (ajena = 403, ya resuelta = respuesta idempotente `aplicado: false`).
     const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
     const visibles = await auto.listarSolicitudes(organizationId, { propertyIds: scope, estado: "pendiente", limite: 200 });
     const previa = visibles.valor.find((s) => s.id === solicitudId);
-    if (!previa && visibles.disponible) {
-      // O ya estaba resuelta (doble clic: la base responde idempotente) o es ajena: la base decide con 42501.
-    }
     try {
       const r = await resolverSolicitudAprobacion(
         {
