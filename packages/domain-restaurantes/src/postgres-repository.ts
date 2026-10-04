@@ -14,6 +14,17 @@ import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import * as cliente360 from "./cliente-360/postgres.ts";
 import type { CustomerAddressChanges, CustomerPolicy, CustomerProfilePatch, OrderClosureInput, PreferenceAction } from "./cliente-360/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
+import {
+  pgActualizarConocimiento,
+  pgAgenteWhatsappActivo,
+  pgBorrarConocimiento,
+  pgCrearConocimiento,
+  pgFijarAgenteWhatsappActivo,
+  pgListarAgentesApagados,
+  pgListarConocimiento,
+  pgListarConocimientoPublicado,
+} from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
@@ -3054,6 +3065,38 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return pgListarConocimiento(this.db, organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return pgListarConocimientoPublicado(this.db, organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return pgCrearConocimiento(this.db, organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return pgActualizarConocimiento(this.db, organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return pgBorrarConocimiento(this.db, organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return pgAgenteWhatsappActivo(this.db, propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return pgListarAgentesApagados(this.db, organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, actorId: string, activo: boolean): Promise<void> {
+    return pgFijarAgenteWhatsappActivo(this.db, organizationId, propertyId, actorId, activo);
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return runWithSavepointFallback<BranchPolicy>({
       session: this.db,
@@ -3248,6 +3291,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
       isRecoverable: esErrorBaseSinMigrarProgramados,
       fallback: async () => ({ disponible: false, promoted: [] }),
+    });
+  }
+
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    return runWithSavepointFallback<readonly Order[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promovidos_sin_comanda",
+      primary: async () => {
+        const { rows } = await this.db.query<OrderRow>(`select * from restaurantes.pos_comanda_promovidos_sin_comanda($1::int, $2::int);`, [options.hours, options.limit]);
+        return rows.map(mapOrder);
+      },
+      // Base sin la 046 (funcion 42883) o sin la 024/034 (tabla 42P01, columna 42703): no hay nada que reconciliar.
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => [],
     });
   }
 

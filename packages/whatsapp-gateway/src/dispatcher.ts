@@ -211,7 +211,18 @@ export class WhatsAppOutboundDispatcher {
   async dispatchPending(port: MessagingOutboxPort, opts: DispatchPendingOptions = {}): Promise<DispatchSummary> {
     const limit = opts.limit ?? DEFAULT_BATCH_LIMIT;
     const claimed = await port.claimBatch(limit, this.leaseSeconds);
+    return this.dispatchClaimed(port, claimed, opts);
+  }
 
+  /** Lease (segundos) con que se reclama cada mensaje; el cron lo usa al reclamar de a uno. */
+  get claimLeaseSeconds(): number {
+    return this.leaseSeconds;
+  }
+
+  /** Envia mensajes YA reclamados (por `claimBatch`). Separado de `dispatchPending` para que el cron pueda reclamar de a
+   *  UNO en una sesion corta y enviar + cerrar ese mensaje en otra: el envio por Graph API no tiene llave de idempotencia,
+   *  asi que un ROLLBACK que deshaga un `markSent` ya entregado lo reenviaria (QA-restaurantes-R1-automatizacion-01). */
+  async dispatchClaimed(port: MessagingOutboxPort, claimed: readonly MessagingOutboxItem[], opts: DispatchPendingOptions = {}): Promise<DispatchSummary> {
     const items: DispatchItemResult[] = [];
     let sent = 0;
     let retried = 0;

@@ -143,6 +143,9 @@ export interface AgentToolOutcome {
   readonly raw?: unknown;
   readonly orderId: string | null;
   readonly propertyId: string | null;
+  /** true solo cuando `executeAgentToolSafely` atrapo una excepcion que NO es una regla de negocio
+   * (p. ej. un error de base de datos). Sirve a la observabilidad para separar `error_sistema` de `error_regla`. */
+  readonly fallaSistema?: boolean;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
   /** crear_pedido de VOZ repetido tras un intento incierto (timeout del worker): devuelve el pedido ya registrado, sin crear otro. */
@@ -266,7 +269,7 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
   {
     name: "buscar_producto",
     description:
-      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú.",
+      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú. Si ningún resultado coincide exactamente con lo que pidió el cliente (o hay varios parecidos), no elijas ni sustituyas por él: pregúntale cuál prefiere entre 2 o 3 opciones de la lista.",
     parameters: {
       type: "object",
       properties: {
@@ -1079,10 +1082,12 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input));
   } catch (err) {
+    const esRegla = err instanceof OrderValidationError;
     return {
-      result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" },
+      result: { error: esRegla ? err.message : "Error interno al ejecutar la herramienta" },
       orderId: null,
       propertyId: null,
+      ...(esRegla ? {} : { fallaSistema: true }),
       ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
     };
   }

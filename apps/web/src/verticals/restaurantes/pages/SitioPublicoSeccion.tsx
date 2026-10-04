@@ -133,7 +133,7 @@ export function SitioPublicoSeccion({ apiBaseUrl, token, propertyId, nombreResta
             </form>
             <div>
               <p className="mb-2 text-xs font-medium text-muted-foreground">Vista previa</p>
-              <PortadaMarca nombre={nombreRestaurante} marca={marcaDesdeForm(form)} vistaPrevia />
+              <PortadaMarca nombre={nombreRestaurante} marca={marcaDesdeForm(form)} nivelTitulo="h2" />
             </div>
           </div>
         )}

@@ -27,9 +27,9 @@ export function redesDe(marca: MarcaPublica | null | undefined): Array<{ nombre:
   return redes;
 }
 
-/** `vistaPrevia`: dentro del panel la portada es una muestra, no el titulo de la pagina (el panel ya tiene su <h1>): usa <h2>. */
-export function PortadaMarca({ nombre, marca, vistaPrevia = false }: { nombre: string | undefined; marca: MarcaPublica | null | undefined; vistaPrevia?: boolean }) {
-  const Titulo = vistaPrevia ? "h2" : "h1";
+/** `nivelTitulo`: en el storefront el titular es el h1 de la pagina; embebida como vista previa dentro del panel (que ya tiene su h1 en la barra superior) debe ser h2. */
+export function PortadaMarca({ nombre, marca, nivelTitulo = "h1" }: { nombre: string | undefined; marca: MarcaPublica | null | undefined; nivelTitulo?: "h1" | "h2" }) {
+  const Titulo = nivelTitulo;
   const portada = urlHttps(marca?.portadaUrl);
   const logo = urlHttps(marca?.logoUrl);
   const titular = marca?.titular ?? (nombre ? `Pide en ${nombre}` : "Pedir en línea");
