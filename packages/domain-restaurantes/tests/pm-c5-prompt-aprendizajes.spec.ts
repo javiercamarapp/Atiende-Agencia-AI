@@ -88,8 +88,9 @@ describe("5. pin a reparto", () => {
   it("se pide una sola vez, antes de confirmar, con privada o edificio, casa o depto y referencia, y se anota en el pedido", () => {
     expect(p).toMatch(/PIN A REPARTO: pida el pin .* UNA SOLA VEZ y ANTES de confirmar el pedido/);
     expect(p).toMatch(/privada o edificio, casa o depto y una referencia visible/);
-    expect(p).toMatch(/Anótelo en las notas del pedido/);
-    expect(p).toMatch(/"avisar al llegar" o "tocar en \[depto\]"/);
+    expect(p).toMatch(/El pin o el link se guardan solos en el pedido y le llegan al repartidor: no los repita ni los anote en notes/);
+    expect(p).toMatch(/van en indicaciones_acceso de crear_pedido/);
+    expect(p).toMatch(/"timbre del depto 6", "avisar al llegar"/);
   });
 });
 
@@ -161,7 +162,7 @@ describe("13 y 14. queja por faltante y factura", () => {
     expect(p).toMatch(/no prometa reposición, cambio ni descuento/);
   });
   it("factura: enlace en linea y QR del ticket, sin pedir RFC", () => {
-    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. Dé el enlace de facturación en línea .* código QR/);
+    expect(p).toMatch(/FACTURA: no pida ni guarde RFC\. No tiene el enlace de facturación: NO lo invente .* código QR/);
   });
 });
 

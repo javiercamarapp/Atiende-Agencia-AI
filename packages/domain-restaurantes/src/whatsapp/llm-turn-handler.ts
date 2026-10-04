@@ -162,6 +162,8 @@ export interface WhatsAppLlmAgentConfig {
   /** PM-C5 (solo perfil PM): umbral de pedido grande en texto corto y espera de rafagas en segundos (0/ausente = apagada). */
   readonly largeOrderText?: string;
   readonly replyDebounceSeconds?: number;
+  /** Enlace de facturación en línea (https) del negocio; viene de la configuración del despliegue, no de la base. Sin valor el agente no lo inventa. */
+  readonly invoiceUrl?: string;
 }
 
 /** Mismo valor que corría hardcodeado en el origen antes de que existiera
@@ -271,6 +273,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       promosTexto: config.promosText ?? null,
       motivosDesactivados: config.motivosDesactivados ?? [],
       pedidoGrandeTexto: config.largeOrderText ?? null,
+      urlFacturacion: config.invoiceUrl ?? null,
     });
   }
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
@@ -399,6 +402,8 @@ export interface WhatsAppLlmAgentOptions {
    * web: `encolarComandaParaPedido`). Ausente = comportamiento anterior. La comanda va ANTES de cobrar
    * y el agente solo puede decir lo que devuelve esta funcion (nunca un folio inventado). */
   readonly encolarComanda?: (pedido: PedidoParaComanda) => Promise<ResultadoEncolarPedido>;
+  /** Enlace de facturación en línea (https) para el perfil PM. Ausente = el agente dice que una persona se lo confirma. */
+  readonly urlFacturacion?: string | null;
 }
 
 /** Encola la comanda del pedido recien creado. Nunca lanza: un fallo aqui no puede tumbar el turno ni
@@ -467,7 +472,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
       const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
-      const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const configBase = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const config = options.urlFacturacion ? { ...configBase, invoiceUrl: options.urlFacturacion } : configBase;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
