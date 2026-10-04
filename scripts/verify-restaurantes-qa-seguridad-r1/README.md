@@ -4,7 +4,7 @@ QA restaurantes ronda 1, lente seguridad y datos: escenarios contra Postgres **r
 `packages/domain-restaurantes/migrations/064_seguridad_rls_alcance_y_privacidad.sql`. Entra al gate de CI
 (`scripts/verify-real-postgres-ci/run-gate.mjs` descubre todo `scripts/verify-*/`).
 
-Qué demuestra (62 escenarios; `S*` eran los defectos abiertos y fallaban antes de la 042, `R*` regresión, `P*` positivos):
+Qué demuestra (69 escenarios; `S*` eran los defectos abiertos y fallaban antes de la 064, `R*` regresión, `P*` positivos):
 
 1. **Escritura por rol y sucursal** (QA-R1-seguridad-01): pedidos (GRANT por columna, nunca total/items; staff acotado a A1 no toca A2;
    el repartidor solo su pedido asignado y no lo reasigna), catálogo (solo roles gestores), `branch_products`/`branch_detail`

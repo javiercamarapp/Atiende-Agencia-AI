@@ -1,7 +1,7 @@
 -- QA restaurantes ronda 1 -- lente SEGURIDAD Y DATOS. Escenarios contra Postgres REAL (RLS + GRANT
 -- reales) de packages/domain-restaurantes/migrations/064_seguridad_rls_alcance_y_privacidad.sql: alcance por
 -- rol y sucursal (QA-restaurantes-R1-seguridad-01/02/03), higiene de permisos (11) y privacidad (06/07/10/14).
--- Los escenarios S* eran los defectos abiertos (fallaban antes de la 042); los R* son regresion y los P* son
+-- Los escenarios S* eran los defectos abiertos (fallaban antes de la 064); los R* son regresion y los P* son
 -- escenarios positivos de lo que SI debe seguir funcionando. Cada escenario corre en su propio begin; ... rollback;.
 \set ON_ERROR_STOP off
 \pset pager off
@@ -125,7 +125,7 @@ select * from restaurantes.storefront_order_tracking('00000000-0000-0000-0000-00
 rollback;
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Fixtures adicionales (042): pedidos, catalogo y datos personales para los positivos, cross-sucursal y privacidad.
+-- Fixtures adicionales (064): pedidos, catalogo y datos personales para los positivos, cross-sucursal y privacidad.
 -- ---------------------------------------------------------------------------------------------------------------
 insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, items, source, status, assigned_repartidor_id) values
   ('00000000-0000-0000-0000-0000000f0a11', '00000000-0000-0000-0000-0000000f0001', '00000000-0000-0000-0000-0000000f00a1', 'Cliente A1', '+520000000002', 200, '[]'::jsonb, 'web', 'pending', null),

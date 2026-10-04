@@ -13,7 +13,7 @@
 --     por esta tabla para phone/address -- ver el comentario de cabecera de la
 --     migración 022 para por qué NO se angosta aquí), cross-tenant (staff de otra
 --     organización es RECHAZADO), anon ya NO lee la tabla
---     (migración 042, QA R1 seguridad-11: la lectura pública entra por la
+--     (migración 064, QA R1 seguridad-11: la lectura pública entra por la
 --     sesión de sistema), anon NUNCA puede escribir.
 --
 -- Cada escenario corre en su propio `begin; ... rollback;` -- nada de esto
@@ -186,7 +186,7 @@ with actualizado as (
 select count(*)::int as filas_actualizadas_cross_tenant_deberia_ser_0 from actualizado;
 rollback;
 
-\echo '=== 11. RECHAZADO (debe fallar): anon ya NO tiene GRANT de lectura sobre branch_detail (migración 042, QA R1 seguridad-11: la lectura pública entra por la sesión de sistema, nadie conecta como anon) ==='
+\echo '=== 11. RECHAZADO (debe fallar): anon ya NO tiene GRANT de lectura sobre branch_detail (migración 064, QA R1 seguridad-11: la lectura pública entra por la sesión de sistema, nadie conecta como anon) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f5', true);

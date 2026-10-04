@@ -798,7 +798,7 @@ grant execute on function restaurantes.system_purge_expired_privacy_data(integer
 do $arco_plataforma$
 begin
   if to_regprocedure('core.system_run_retention_purge(uuid,text,boolean,integer)') is null then
-    raise notice '042 5f: core.system_run_retention_purge no existe (0036 sin aplicar); se omite';
+    raise notice '064 5f: core.system_run_retention_purge no existe (0036 sin aplicar); se omite';
     return;
   end if;
   execute $fn$
