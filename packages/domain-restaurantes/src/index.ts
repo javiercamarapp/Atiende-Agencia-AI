@@ -129,6 +129,7 @@ export {
   REPARTIDOR_ALLOWED_STATUSES,
   assertValidRepartidorStatusTransition,
   changeAssignedOrderStatus,
+  assertOrderCanBeDispatched,
 } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, redondearACentavos, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
@@ -217,6 +218,8 @@ export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTr
 export * from "./voz/index.ts";
 export * from "./whatsapp-kpi/index.ts";
 export * from "./cierres/index.ts";
+export * from "./repartidor-perfil/index.ts";
+export * from "./exportar/index.ts";
 export { PM_COPY, buildPmSystemPrompt, pmCustomerContextBlock, saludoPorHora } from "./whatsapp/perfil-pm.ts";
 export type { PerfilPmContexto, SaludoPorHora } from "./whatsapp/perfil-pm.ts";
 export { MOTIVOS_ESCALACION_DESACTIVABLES, PERFILES_AGENTE_WHATSAPP, TONOS_AGENTE_WHATSAPP } from "./types.ts";
