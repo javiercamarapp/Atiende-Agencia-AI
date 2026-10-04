@@ -225,8 +225,8 @@ describe("X51 / X52 -- voz: silencio y precios", () => {
     expect((await evaluarLlamada(l)).filter((r) => !r.ok)).toEqual([]);
   });
 
-  // QA agentes-13 (lote C): sin guardia ni grader de precios en voz; el unico freno es la regla H6 del prompt.
-  it.fails("X52 / [lote C, agentes-13]: un grader falla si el agente dice un precio que NINGUNA herramienta devolvio en esta llamada", async () => {
+  // QA agentes-13 (lote C): el grader G_PRECIO_HABLADO ya existe en main (antes solo frenaba la regla H6 del prompt).
+  it("X52 / [lote C, agentes-13]: un grader falla si el agente dice un precio que NINGUNA herramienta devolvio en esta llamada", async () => {
     const l = await correrGuion(GUIONES_ES_MX.find((g) => g.id.startsWith("V01"))!);
     const inventado = { ...l, transcripcion: [...l.transcripcion, { rol: "agente" as const, texto: "Con mucho gusto, el taco al pastor cuesta $999 pesos." }] };
     expect((await evaluarLlamada(inventado)).some((r) => !r.ok)).toBe(true);

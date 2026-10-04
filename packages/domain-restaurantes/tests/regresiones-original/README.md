@@ -104,7 +104,7 @@ Este PR no arregla nada de producción salvo los eventos de observabilidad por t
 | X49 | "Lo de siempre" sin cancelados | `R/casos-b1.spec.ts::X49: 'lo de siempre'` | verde |
 | X50 | Tier VIP usado | `R/casos-b1.spec.ts::X50: el prompt GENERICO`; `R/casos-b1.spec.ts::X50 / [lote R1]` | verde (genérico); perfil PM: it.fails (R1) |
 | X51 | Un solo "¿sigue ahí?" y colgar | `R/casos-b1.spec.ts::X51 / [lote R1]` | it.fails (R1) |
-| X52 | Precios solo de la tool en esta llamada | `R/casos-b1.spec.ts::X52 / [lote C, agentes-13]` | it.fails (C) |
+| X52 | Precios solo de la tool en esta llamada | `R/casos-b1.spec.ts::X52 / [lote C, agentes-13]` | verde |
 | X53 | Releer el prompt tras cada cambio | `R/historial-turno-y-pedidos.spec.ts::X53 / 609c3d6: tras guardar` | verde (runbook: `docs/runbooks/RESTAURANTES-AGENTE.md`) |
 | X54 | Widget: misma forma de respuesta | `R/casos-b1.spec.ts::X54 / 5d164ee` | verde |
 | X55 | Tiempo solo después de crear | `T/pm-bateria-agente-whatsapp.spec.ts::T-PG07 / X55` | verde (falta el grader de voz: ver la fila `0c0bebf`) |
