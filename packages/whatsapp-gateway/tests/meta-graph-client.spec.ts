@@ -114,4 +114,24 @@ describe("MetaGraphWhatsAppClient", () => {
     await expect(client.sendMessage({ to: "", phoneNumberId: "p1", body: "x" })).rejects.toThrow(WhatsAppInvalidPayloadError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+  it("una falla del proveedor lleva diagnostico estructurado: error 190 de Graph API (token invalido) y 5xx sin codigo; la config no es del proveedor", async () => {
+    const send = (response: () => Response | Promise<Response>) =>
+      new MetaGraphWhatsAppClient({ accessToken: FAKE_TOKEN, fetchImpl: (async () => response()) as unknown as typeof fetch }).sendMessage({ to: "+5219991112233", phoneNumberId: "phone-123", body: "hola" });
+
+    const token = await send(() => jsonResponse({ error: { message: "token vencido", type: "OAuthException", code: 190 } }, 401)).catch((e: unknown) => e);
+    expect(token).toBeInstanceOf(WhatsAppSendError);
+    expect((token as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 401, graphCode: 190 });
+    expect((token as WhatsAppSendError).retryable).toBe(false);
+
+    const caido = await send(() => jsonResponse({}, 503)).catch((e: unknown) => e);
+    expect((caido as WhatsAppSendError).info).toEqual({ proveedor: true, httpStatus: 503 });
+
+    const red = await send(() => {
+      throw new Error("ECONNRESET");
+    }).catch((e: unknown) => e);
+    expect((red as WhatsAppSendError).info).toEqual({ proveedor: true });
+
+    expect(() => new MetaGraphWhatsAppClient({ accessToken: "" })).toThrow(WhatsAppConfigError);
+    expect(new WhatsAppConfigError("falta algo").info).toBeUndefined();
+  });
 });
