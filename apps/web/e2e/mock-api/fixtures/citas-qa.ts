@@ -257,4 +257,688 @@ export const rutasCitasQa: readonly Ruta[] = [
   { metodo: "GET", patron: `${P}/services`, manejador: (p) => ({ services: servicios(p) }) },
 ];
 
+
+// ---------------------------------------------------------------- catalogo, clientes y disponibilidad (paginas de Negocio)
+interface Regla {
+  id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+}
+interface Excepcion {
+  override_date: string;
+  is_closed: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  reason: string | null;
+}
+interface Calendarios {
+  google: { connected: boolean; sync_status: "disconnected" | "connected" | "error"; sync_error: string | null };
+  calcom: { connected: boolean; sync_status: "disconnected" | "connected" | "error"; sync_error: string | null; calcom_event_type_id: string | null; calcom_base_url: string | null };
+  caldav: { connected: boolean; sync_status: "disconnected" | "connected" | "error"; sync_error: string | null; calendar_collection_url: string | null; username: string | null };
+  ofrecidos: string[];
+}
+const reglas = (p: Peticion, prv: string) =>
+  p.estado.obtener<Regla[]>(`citas.qa.reglas:${prv}`, () =>
+    prv === "prv-1"
+      ? [1, 2, 3, 4, 5].map((d) => ({ id: `rg-${prv}-${d}`, day_of_week: d, start_time: "09:00:00", end_time: "18:00:00", is_active: true }))
+      : [{ id: `rg-${prv}-6`, day_of_week: 6, start_time: "10:00:00", end_time: "14:00:00", is_active: true }],
+  );
+const excepciones = (p: Peticion, prv: string) =>
+  p.estado.obtener<Excepcion[]>(`citas.qa.excepciones:${prv}`, () => (prv === "prv-1" ? [{ override_date: "2026-12-25", is_closed: true, start_time: null, end_time: null, reason: "Navidad" }] : []));
+const calendarios = (p: Peticion, prv: string) =>
+  p.estado.obtener<Calendarios>(`citas.qa.calendarios:${prv}`, () => ({
+    google: prv === "prv-2" ? { connected: true, sync_status: "connected", sync_error: null } : { connected: false, sync_status: "disconnected", sync_error: null },
+    calcom: prv === "prv-2" ? { connected: true, sync_status: "connected", sync_error: null, calcom_event_type_id: "4455", calcom_base_url: null } : { connected: false, sync_status: "disconnected", sync_error: null, calcom_event_type_id: null, calcom_base_url: null },
+    caldav: { connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null },
+    ofrecidos: servicios(p).map((x) => x.id),
+  }));
+function proveedorDe(p: Peticion): Proveedor | undefined {
+  return proveedores(p).find((x) => x.id === p.params["prvId"]);
+}
+const sinProveedor = () => fallo(404, "Proveedor no encontrado.");
+const HHMM = /^\d{2}:\d{2}(:\d{2})?$/;
+
+// ---------------------------------------------------------------- administracion
+interface Invitacion {
+  id: string;
+  email: string;
+  vertical_role: string;
+  property_ids: string[] | null;
+  status: string;
+  expires_at: string;
+  created_at: string;
+}
+interface Miembro {
+  id: string;
+  email: string;
+  full_name: string;
+  vertical_role: string;
+  property_ids: string[] | null;
+}
+const invitaciones = (p: Peticion) =>
+  p.estado.obtener<Invitacion[]>(clave("citas.qa.invitaciones", p), () => [
+    { id: "inv-1", email: "recepcion@example.test", vertical_role: "staff", property_ids: null, status: "pending", expires_at: new Date(Date.now() + 5 * 86_400_000).toISOString(), created_at: new Date(Date.now() - 86_400_000).toISOString() },
+  ]);
+const miembros = (p: Peticion) =>
+  p.estado.obtener<Miembro[]>(clave("citas.qa.miembros", p), () => [
+    { id: p.persona?.id ?? "yo", email: p.persona?.email ?? "owner@example.test", full_name: p.persona?.fullName ?? "Owner", vertical_role: p.persona?.rol ?? "owner", property_ids: null },
+    { id: "usr-asistente", email: "asistente@example.test", full_name: "Asistente Dental", vertical_role: "staff", property_ids: null },
+  ]);
+const RANGO_ROL: Readonly<Record<string, number>> = { staff: 1, admin: 2, owner: 3 };
+
+interface SolicitudArco {
+  id: string;
+  folio: string;
+  telefono: string;
+  derecho: string;
+  estado: string;
+  plazo: string | null;
+  solicitadaEn: string;
+  respuestaVenceEn: string | null;
+  ejecucionVenceEn: string | null;
+  notaResolucion: string | null;
+}
+const solicitudes = (p: Peticion) =>
+  p.estado.obtener<SolicitudArco[]>(clave("citas.qa.arco", p), () => [
+    { id: "arco-1", folio: "ARCO-0001", telefono: "***0201", derecho: "acceso", estado: "recibida", plazo: "en_plazo", solicitadaEn: new Date(Date.now() - 3 * 86_400_000).toISOString(), respuestaVenceEn: new Date(Date.now() + 17 * 86_400_000).toISOString(), ejecucionVenceEn: null, notaResolucion: null },
+    { id: "arco-2", folio: "ARCO-0002", telefono: "***0202", derecho: "cancelacion", estado: "en_proceso", plazo: "por_vencer", solicitadaEn: new Date(Date.now() - 16 * 86_400_000).toISOString(), respuestaVenceEn: new Date(Date.now() + 4 * 86_400_000).toISOString(), ejecucionVenceEn: null, notaResolucion: null },
+  ]);
+const TRANSICIONES_ARCO: Readonly<Record<string, readonly string[]>> = { recibida: ["en_proceso", "bloqueada", "resuelta", "rechazada"], en_proceso: ["bloqueada", "resuelta", "rechazada"], bloqueada: ["resuelta", "rechazada"] };
+
+interface EntradaAuditoria {
+  id: string;
+  actorUserId: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  campo: string | null;
+  antes: string | null;
+  despues: string | null;
+  creadoEn: string;
+}
+function auditoriaSemilla(): EntradaAuditoria[] {
+  const tipos = ["servicio", "cita", "staff", "configuracion", "lista_espera"];
+  return Array.from({ length: 30 }, (_, i) => ({
+    id: `aud-${i + 1}`,
+    actorUserId: "usr-asistente",
+    action: i % 2 === 0 ? "actualizar" : "crear",
+    entityType: tipos[i % tipos.length]!,
+    entityId: `ent-${i + 1}`,
+    campo: i % 2 === 0 ? "precio" : null,
+    antes: i % 2 === 0 ? "650.00" : null,
+    despues: i % 2 === 0 ? "700.00" : null,
+    creadoEn: new Date(Date.now() - i * 3_600_000).toISOString(),
+  }));
+}
+
+const CONFIG_MENSAJES = {
+  reminderEnabled: true,
+  reminderText: null,
+  reminderLeadHours: 24,
+  confirmationEnabled: true,
+  confirmationText: null,
+  cancellationEnabled: true,
+  cancellationText: null,
+  rescheduleEnabled: false,
+  rescheduleText: null,
+  sendWindowStart: 8,
+  sendWindowEnd: 21,
+};
+const TEXTOS_MENSAJES: Readonly<Record<string, string>> = {
+  recordatorio: "Hola {{nombre}}, te recordamos tu cita de {{servicio}} el {{fecha}} a las {{hora}}.",
+  confirmacion: "Tu cita de {{servicio}} quedo confirmada para el {{fecha}} a las {{hora}}.",
+  cancelacion: "Tu cita de {{servicio}} del {{fecha}} fue cancelada.",
+  reagendado: "Tu cita de {{servicio}} se movio al {{fecha}} a las {{hora}}.",
+};
+const CAMPO_DE: Readonly<Record<string, [string, string]>> = {
+  recordatorio: ["reminderText", "reminderEnabled"],
+  confirmacion: ["confirmationText", "confirmationEnabled"],
+  cancelacion: ["cancellationText", "cancellationEnabled"],
+  reagendado: ["rescheduleText", "rescheduleEnabled"],
+};
+interface EstadoMensajes {
+  version: number;
+  config: Record<string, unknown>;
+  actualizadoEn: string | null;
+  historial: { version: number; accion: "actualizado" | "restablecido"; nuevo: Record<string, unknown>; diferencias: { campo: string; antes: string; despues: string }[]; actorNombre: string | null; creadoEn: string }[];
+}
+const mensajes = (p: Peticion) => p.estado.obtener<EstadoMensajes>(clave("citas.qa.mensajes", p), () => ({ version: 1, config: { ...CONFIG_MENSAJES }, actualizadoEn: null, historial: [] }));
+function vistaPrevia(config: Record<string, unknown>) {
+  return Object.keys(TEXTOS_MENSAJES).map((kind) => {
+    const [texto, activo] = CAMPO_DE[kind]!;
+    const propio = config[texto] as string | null;
+    return { kind, activo: config[activo] === true, texto: (propio ?? TEXTOS_MENSAJES[kind]!).replace("{{nombre}}", "Ana").replace("{{servicio}}", "Limpieza dental").replace("{{fecha}}", "lunes 5 de octubre").replace("{{hora}}", "10:00"), esPorDefecto: propio === null };
+  });
+}
+function diferencias(antes: Record<string, unknown>, despues: Record<string, unknown>) {
+  return Object.keys(despues)
+    .filter((k) => k !== "versionEsperada" && JSON.stringify(antes[k]) !== JSON.stringify(despues[k]))
+    .map((campo) => ({ campo, antes: String(antes[campo] ?? ""), despues: String(despues[campo] ?? "") }));
+}
+const vistaMensajes = (m: EstadoMensajes) => ({ disponible: true, version: m.version, config: m.config, actualizadoEn: m.actualizadoEn, vistaPrevia: vistaPrevia(m.config) });
+
+interface EventoPlantilla {
+  evento: string;
+  etiqueta: string;
+  variables: string[];
+  plantilla: { evento: string; nombre: string; idioma: string; variables: string[]; estado: string; aprobadaEn: string | null; actualizadaEn: string } | null;
+}
+const plantillas = (p: Peticion) =>
+  p.estado.obtener<EventoPlantilla[]>(clave("citas.qa.plantillas", p), () => [
+    { evento: "recordatorio", etiqueta: "Recordatorio de cita", variables: ["nombre", "fecha", "hora"], plantilla: { evento: "recordatorio", nombre: "citas_recordatorio_v1", idioma: "es_MX", variables: ["nombre", "fecha", "hora"], estado: "aprobada", aprobadaEn: new Date(Date.now() - 10 * 86_400_000).toISOString(), actualizadaEn: new Date(Date.now() - 10 * 86_400_000).toISOString() } },
+    { evento: "lista_espera", etiqueta: "Aviso de lista de espera", variables: ["nombre", "fecha"], plantilla: null },
+  ]);
+
+interface Escalacion {
+  id: string;
+  canal: string;
+  palabraClave: string;
+  telefono: string;
+  creadaEn: string;
+  seguimiento: "pending" | "in_progress" | "resolved" | null;
+  seguimientoEn: string | null;
+  nota: string | null;
+}
+const escalaciones = (p: Peticion) =>
+  p.estado.obtener<Escalacion[]>(clave("citas.qa.escalaciones", p), () => (esNorte(p) ? [] : [{ id: "esc-1", canal: "whatsapp", palabraClave: "emergencia", telefono: "***0202", creadaEn: new Date(Date.now() - 20 * 60_000).toISOString(), seguimiento: null, seguimientoEn: null, nota: null }]));
+
+export const rutasCitasQaAdmin: readonly Ruta[] = [
+  // Clientes
+  {
+    metodo: "GET",
+    patron: `${P}/customers`,
+    manejador: (p) => {
+      const q = (p.query.get("search") ?? "").toLowerCase();
+      const limite = Number(p.query.get("limit") ?? "50");
+      const desde = Number(p.query.get("offset") ?? "0");
+      const todos = clientes(p).filter((c) => !q || c.full_name.toLowerCase().includes(q) || c.phone.includes(q));
+      const pagina = todos.slice(desde, desde + limite);
+      return { customers: pagina, total: todos.length, next_offset: desde + limite < todos.length ? desde + limite : null };
+    },
+  },
+  {
+    metodo: "GET",
+    patron: `${P}/customers/:cliId`,
+    manejador: (p) => {
+      const c = clientes(p).find((x) => x.id === p.params["cliId"]);
+      if (!c) return fallo(404, "Cliente no encontrado.");
+      const ahora = new Date().toISOString();
+      return { customer: c, upcoming_appointments: citas(p).filter((x) => x.customer_id === c.id && x.starts_at >= ahora && VIVAS.has(x.status)) };
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/customers/:cliId`,
+    manejador: (p) => {
+      const c = clientes(p).find((x) => x.id === p.params["cliId"]);
+      if (!c) return fallo(404, "Cliente no encontrado.");
+      const email = ((p.cuerpo ?? {}) as { email?: string | null }).email ?? null;
+      if (email !== null && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fallo(400, "email: correo invalido");
+      c.email = email;
+      return { customer: c };
+    },
+  },
+  // Proveedores
+  {
+    metodo: "POST",
+    patron: `${P}/providers`,
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { display_name?: string; role_label?: string };
+      if (!c.display_name?.trim()) return fallo(400, "display_name: requerido");
+      const nuevo: Proveedor = { id: `prv-nuevo-${proveedores(p).length + 1}`, property_id: p.params["id"]!, display_name: c.display_name.trim(), role_label: c.role_label ?? "", is_active: true };
+      proveedores(p).push(nuevo);
+      return conStatus(201, { provider: nuevo });
+    },
+  },
+  {
+    metodo: "GET",
+    patron: `${P}/providers/:prvId`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const cal = calendarios(p, prv.id);
+      return {
+        provider: prv,
+        availability_rules: reglas(p, prv.id),
+        google_calendar: cal.google,
+        calcom: { ...cal.calcom, sync_issues: { count: 0, last_reason: null } },
+        caldav: { ...cal.caldav, sync_issues: { count: 0, last_reason: null } },
+        calendar_sync_issues: prv.id === "prv-2" ? { count: 1, last_reason: "Cal.com exige el correo del cliente" } : { count: 0, last_reason: null },
+        offered_service_ids: cal.ofrecidos,
+      };
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/providers/:prvId`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const c = (p.cuerpo ?? {}) as { display_name?: string; role_label?: string; is_active?: boolean };
+      if (c.display_name !== undefined && !c.display_name.trim()) return fallo(400, "display_name: requerido");
+      if (c.display_name !== undefined) prv.display_name = c.display_name;
+      if (c.role_label !== undefined) prv.role_label = c.role_label;
+      if (c.is_active !== undefined) prv.is_active = c.is_active;
+      return { provider: prv };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${P}/providers/:prvId/services/:srvId`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const cal = calendarios(p, prv.id);
+      const ofrecido = ((p.cuerpo ?? {}) as { offered?: boolean }).offered === true;
+      cal.ofrecidos = ofrecido ? [...new Set([...cal.ofrecidos, p.params["srvId"]!])] : cal.ofrecidos.filter((x) => x !== p.params["srvId"]);
+      return { ok: true };
+    },
+  },
+  {
+    metodo: "GET",
+    patron: `${P}/providers/:prvId/google-calendar/connect`,
+    manejador: (p) => (proveedorDe(p) ? { authorize_url: "about:blank#google-oauth-simulado" } : sinProveedor()),
+  },
+  ...(["calcom", "caldav"] as const).flatMap((tipo): Ruta[] => [
+    {
+      metodo: "POST",
+      patron: `${P}/providers/:prvId/${tipo}/connect`,
+      manejador: (p) => {
+        const prv = proveedorDe(p);
+        if (!prv) return sinProveedor();
+        const c = (p.cuerpo ?? {}) as Record<string, string>;
+        const cal = calendarios(p, prv.id);
+        if (tipo === "calcom") {
+          if (!c["api_key"] || !c["event_type_id"]) return fallo(400, "api_key y event_type_id son requeridos");
+          cal.calcom = { connected: true, sync_status: "connected", sync_error: null, calcom_event_type_id: c["event_type_id"]!, calcom_base_url: c["base_url"] ?? null };
+          return { connected: true, provider_id: prv.id, calcom_event_type_id: c["event_type_id"], calcom_base_url: c["base_url"] ?? null, sync_status: "connected" };
+        }
+        if (!c["calendar_collection_url"] || !c["username"] || !c["password"]) return fallo(400, "Faltan datos de CalDAV");
+        cal.caldav = { connected: true, sync_status: "connected", sync_error: null, calendar_collection_url: c["calendar_collection_url"]!, username: c["username"]! };
+        return { connected: true, provider_id: prv.id, calendar_collection_url: c["calendar_collection_url"], username: c["username"], sync_status: "connected" };
+      },
+    },
+    {
+      metodo: "POST",
+      patron: `${P}/providers/:prvId/${tipo}/disconnect`,
+      manejador: (p) => {
+        const prv = proveedorDe(p);
+        if (!prv) return sinProveedor();
+        const cal = calendarios(p, prv.id);
+        if (tipo === "calcom") cal.calcom = { connected: false, sync_status: "disconnected", sync_error: null, calcom_event_type_id: null, calcom_base_url: null };
+        else cal.caldav = { connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null };
+        return { ok: true };
+      },
+    },
+    { metodo: "POST", patron: `${P}/providers/:prvId/${tipo}/test-connection`, manejador: (p) => (proveedorDe(p) ? { ok: true, checked_at: new Date().toISOString() } : sinProveedor()) },
+  ]),
+  {
+    metodo: "POST",
+    patron: `${P}/providers/:prvId/availability-rules`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const c = (p.cuerpo ?? {}) as { day_of_week?: number; start_time?: string; end_time?: string; is_active?: boolean };
+      if (c.day_of_week === undefined || !HHMM.test(c.start_time ?? "") || !HHMM.test(c.end_time ?? "")) return fallo(400, "Horario invalido");
+      if (c.start_time! >= c.end_time!) return fallo(400, "start_time debe ser menor que end_time");
+      const r: Regla = { id: `rg-${prv.id}-n${reglas(p, prv.id).length + 1}`, day_of_week: c.day_of_week, start_time: `${c.start_time!.slice(0, 5)}:00`, end_time: `${c.end_time!.slice(0, 5)}:00`, is_active: c.is_active ?? true };
+      reglas(p, prv.id).push(r);
+      return conStatus(201, { availability_rule: r });
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/providers/:prvId/availability-rules/:rgId`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const r = reglas(p, prv.id).find((x) => x.id === p.params["rgId"]);
+      if (!r) return fallo(404, "Horario no encontrado.");
+      const c = (p.cuerpo ?? {}) as { start_time?: string; end_time?: string; is_active?: boolean };
+      const ini = c.start_time ?? r.start_time;
+      const fin = c.end_time ?? r.end_time;
+      if (ini.slice(0, 5) >= fin.slice(0, 5)) return fallo(400, "start_time debe ser menor que end_time");
+      r.start_time = `${ini.slice(0, 5)}:00`;
+      r.end_time = `${fin.slice(0, 5)}:00`;
+      if (c.is_active !== undefined) r.is_active = c.is_active;
+      return { availability_rule: r };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${P}/providers/:prvId/availability-rules/:rgId`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const lista = reglas(p, prv.id);
+      const i = lista.findIndex((x) => x.id === p.params["rgId"]);
+      if (i < 0) return fallo(404, "Horario no encontrado.");
+      lista.splice(i, 1);
+      return { ok: true };
+    },
+  },
+  { metodo: "GET", patron: `${P}/providers/:prvId/availability-overrides`, manejador: (p) => (proveedorDe(p) ? { availability_overrides: excepciones(p, p.params["prvId"]!) } : sinProveedor()) },
+  {
+    metodo: "PUT",
+    patron: `${P}/providers/:prvId/availability-overrides/:fecha`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const c = (p.cuerpo ?? {}) as { is_closed?: boolean; start_time?: string | null; end_time?: string | null; reason?: string | null };
+      if (!c.is_closed && (!c.start_time || !c.end_time || c.start_time >= c.end_time)) return fallo(400, "Horario de la excepcion invalido");
+      const lista = excepciones(p, prv.id).filter((x) => x.override_date !== p.params["fecha"]);
+      const o: Excepcion = { override_date: p.params["fecha"]!, is_closed: c.is_closed === true, start_time: c.is_closed ? null : c.start_time!, end_time: c.is_closed ? null : c.end_time!, reason: c.reason ?? null };
+      lista.push(o);
+      excepciones(p, prv.id).splice(0, Infinity, ...lista.sort((a, b) => a.override_date.localeCompare(b.override_date)));
+      return { availability_override: o };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${P}/providers/:prvId/availability-overrides/:fecha`,
+    manejador: (p) => {
+      const prv = proveedorDe(p);
+      if (!prv) return sinProveedor();
+      const lista = excepciones(p, prv.id);
+      const i = lista.findIndex((x) => x.override_date === p.params["fecha"]);
+      if (i < 0) return fallo(404, "Excepcion no encontrada.");
+      lista.splice(i, 1);
+      return { ok: true };
+    },
+  },
+  // Servicios
+  {
+    metodo: "GET",
+    patron: `${P}/services/:srvId`,
+    manejador: (p) => {
+      const srv = servicios(p).find((x) => x.id === p.params["srvId"]);
+      return srv ? { service: srv } : fallo(404, "Servicio no encontrado.");
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/services`,
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { name?: string; duration_minutes?: number; price_cents?: number | null };
+      if (!c.name?.trim() || !Number.isInteger(c.duration_minutes) || (c.duration_minutes ?? 0) <= 0) return fallo(400, "Servicio invalido");
+      const nuevo: Servicio = { id: `srv-nuevo-${servicios(p).length + 1}`, name: c.name.trim(), duration_minutes: c.duration_minutes!, buffer_minutes_before: 0, buffer_minutes_after: 0, price_cents: c.price_cents ?? null, is_active: true };
+      servicios(p).push(nuevo);
+      return conStatus(201, { service: nuevo });
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/services/:srvId`,
+    manejador: (p) => {
+      const srv = servicios(p).find((x) => x.id === p.params["srvId"]);
+      if (!srv) return fallo(404, "Servicio no encontrado.");
+      const c = (p.cuerpo ?? {}) as Partial<Servicio>;
+      if (c.name !== undefined && !c.name.trim()) return fallo(400, "name: requerido");
+      if (c.price_cents !== undefined && c.price_cents !== null && (!Number.isInteger(c.price_cents) || c.price_cents < 0)) return fallo(400, "price_cents invalido");
+      Object.assign(srv, Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined)));
+      return { service: srv };
+    },
+  },
+  // Configuracion del negocio
+  {
+    metodo: "GET",
+    patron: `${P}/tenant-config`,
+    manejador: (p) => ({ tenant_config: p.estado.obtener(clave("citas.qa.config", p), () => ({ organization_id: ORG.id, rubro: "dental", default_timezone: "America/Merida", owner_notification_phone: "+529995550200" })) }),
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/tenant-config`,
+    manejador: (p) => {
+      const actual = p.estado.obtener<Record<string, unknown>>(clave("citas.qa.config", p), () => ({ organization_id: ORG.id, rubro: "dental", default_timezone: "America/Merida", owner_notification_phone: "+529995550200" }));
+      const c = (p.cuerpo ?? {}) as { rubro?: string; default_timezone?: string; owner_notification_phone?: string | null };
+      if (c.default_timezone !== undefined) {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: c.default_timezone });
+        } catch {
+          return fallo(400, "default_timezone: zona horaria IANA invalida");
+        }
+      }
+      Object.assign(actual, Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined)));
+      return { tenant_config: actual };
+    },
+  },
+  // Primeros pasos
+  {
+    metodo: "GET",
+    patron: `${P}/onboarding`,
+    manejador: (p) => {
+      const paso = (id: string, titulo: string, estado: string, req: boolean, ruta: string) => ({ id, titulo, descripcion: `Paso ${titulo.toLowerCase()}.`, estado, requeridoParaPublicar: req, detalle: null, ruta });
+      const pasos = [
+        paso("proveedor", "Agrega un proveedor", "completo", true, "proveedores"),
+        paso("servicio", "Agrega un servicio", "completo", true, "servicios"),
+        paso("asignacion", "Asigna servicios a proveedores", "completo", true, "proveedores"),
+        paso("horario", "Define horarios", "completo", true, "disponibilidad"),
+        paso("precio", "Pon precio a tus servicios", "completo", false, "servicios"),
+        paso("whatsapp", "Conecta WhatsApp", "pendiente", true, "agente-whatsapp"),
+        paso("recordatorios", "Revisa los recordatorios", "pendiente", false, "mensajes-whatsapp"),
+        paso("cancelacion", "Politica de cancelacion", "pendiente", false, "configuracion"),
+        paso("cita_prueba", "Haz una cita de prueba", "no_disponible", false, "agenda"),
+      ];
+      const completados = pasos.filter((x) => x.estado === "completo").length;
+      return { propertyId: p.params["id"], pasos, completados, total: pasos.length, progresoPct: Math.round((completados / pasos.length) * 100), faltanParaPublicar: ["whatsapp"], listoParaRecibirCitas: false };
+    },
+  },
+  // Staff
+  { metodo: "GET", patron: `${P}/admin/staff/invitaciones`, roles: ["owner", "admin"], manejador: (p) => ({ invitations: invitaciones(p).map(invVista) }) },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/staff/invitaciones`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const c = (p.cuerpo ?? {}) as { email?: string; verticalRole?: string };
+      if (!c.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return fallo(400, "email: correo invalido");
+      if (invitaciones(p).some((x) => x.email === c.email && x.status === "pending")) return fallo(409, "Ya hay una invitacion pendiente para ese correo.");
+      const inv: Invitacion = { id: `inv-${invitaciones(p).length + 1}`, email: c.email, vertical_role: c.verticalRole ?? "staff", property_ids: null, status: "pending", expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: new Date().toISOString() };
+      invitaciones(p).push(inv);
+      return conStatus(201, { ...invVista(inv), inviteToken: "tkn-simulado-no-es-credencial" });
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${P}/admin/staff/invitaciones/:invId`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const inv = invitaciones(p).find((x) => x.id === p.params["invId"]);
+      if (!inv) return fallo(404, "Invitacion no encontrada.");
+      inv.status = "revoked";
+      return { ok: true };
+    },
+  },
+  { metodo: "GET", patron: `${P}/admin/staff/miembros`, roles: ["owner", "admin"], manejador: (p) => ({ miembros: miembros(p).map(miembroVista) }) },
+  {
+    metodo: "PATCH",
+    patron: `${P}/admin/staff/miembros/:usrId`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const m = miembros(p).find((x) => x.id === p.params["usrId"]);
+      if (!m) return fallo(404, "Miembro no encontrado.");
+      const rol = ((p.cuerpo ?? {}) as { verticalRole?: string }).verticalRole ?? "";
+      const mio = RANGO_ROL[p.persona?.rol ?? "staff"] ?? 0;
+      if (m.id === p.persona?.id) return fallo(403, "No puedes cambiar tu propio rol.");
+      if ((RANGO_ROL[rol] ?? 99) > mio || (RANGO_ROL[m.vertical_role] ?? 0) > mio) return fallo(403, "No puedes asignar un rol por encima del tuyo.");
+      m.vertical_role = rol;
+      return miembroVista(m);
+    },
+  },
+  // Auditoria
+  {
+    metodo: "GET",
+    patron: `${P}/admin/auditoria`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const tipo = p.query.get("tipo");
+      const limite = Number(p.query.get("limit") ?? "50");
+      const desde = Number(p.query.get("offset") ?? "0");
+      const todos = p.estado.obtener(clave("citas.qa.auditoria", p), auditoriaSemilla).filter((x) => !tipo || x.entityType === tipo);
+      return { disponible: true, total: todos.length, nextOffset: desde + limite < todos.length ? desde + limite : null, items: todos.slice(desde, desde + limite) };
+    },
+  },
+  // Privacidad (ARCO)
+  {
+    metodo: "GET",
+    patron: `${P}/admin/privacidad/solicitudes`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const estado = p.query.get("estado");
+      const derecho = p.query.get("derecho");
+      const items = solicitudes(p).filter((x) => (!estado || x.estado === estado) && (!derecho || x.derecho === derecho));
+      return { disponible: true, total: items.length, nextOffset: null, plazos: { respuestaDias: 20, ejecucionDias: 15 }, items };
+    },
+  },
+  {
+    metodo: "PATCH",
+    patron: `${P}/admin/privacidad/solicitudes/:sid/estado`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const s = solicitudes(p).find((x) => x.id === p.params["sid"]);
+      if (!s) return fallo(404, "Solicitud no encontrada.");
+      const c = (p.cuerpo ?? {}) as { estado?: string; nota?: string };
+      if (!(TRANSICIONES_ARCO[s.estado] ?? []).includes(c.estado ?? "")) return fallo(409, "Esa transicion no esta permitida.");
+      if (c.estado === "rechazada" && !c.nota) return fallo(400, "nota: obligatoria al rechazar");
+      s.estado = c.estado!;
+      s.notaResolucion = c.nota ?? null;
+      return { id: s.id, estado: s.estado };
+    },
+  },
+  // Avisos (con escalacion de crisis y seguimiento)
+  {
+    metodo: "GET",
+    patron: `${P}/admin/avisos`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const pendientes = citas(p).filter((c) => c.status === "pending");
+      return {
+        generadoEn: new Date().toISOString(),
+        porConfirmar: { horas: 72, total: pendientes.length, items: pendientes.map((c) => ({ id: c.id, iniciaEn: c.starts_at, proveedor: c.provider_name, servicio: c.service_name, origen: c.source })) },
+        recordatorios: { visible: true, disponible: true, ventanaDias: 7, filas: [{ canal: "whatsapp", estado: "sent", total: 11 }, { canal: "email", estado: "sent", total: 2 }, { canal: "whatsapp", estado: "failed", total: 1 }, { canal: "whatsapp", estado: "dead", total: 2 }] },
+        escalaciones: { visible: true, disponible: true, seguimientoDisponible: true, items: escalaciones(p) },
+      };
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/escalaciones/:escId/seguimiento`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const e = escalaciones(p).find((x) => x.id === p.params["escId"]);
+      if (!e) return fallo(404, "Escalacion no encontrada.");
+      const c = (p.cuerpo ?? {}) as { estado?: "in_progress" | "resolved"; nota?: string };
+      if (c.estado !== "in_progress" && c.estado !== "resolved") return fallo(400, "estado invalido");
+      if (e.seguimiento === "resolved") return fallo(409, "La escalacion ya esta resuelta.");
+      e.seguimiento = c.estado;
+      e.seguimientoEn = new Date().toISOString();
+      e.nota = c.nota ?? e.nota;
+      return { id: e.id, estado: e.seguimiento, en: e.seguimientoEn };
+    },
+  },
+  // Voz (estado honesto de la escalera; la vista previa no se abre en e2e)
+  {
+    metodo: "GET",
+    patron: `${P}/admin/voz/estado`,
+    roles: ["owner", "admin"],
+    manejador: () => ({
+      escalera: { operativa: false, escalones: [{ escalon: "gemini-3.8-live", configurado: false, detalle: "Falta la llave del proveedor de voz." }, { escalon: "cascada-openrouter", configurado: false, detalle: "Falta la llave de OpenRouter." }] },
+      precioMicroUsdPorMinuto: { "gemini-3.8-live": 23_000, "cascada-openrouter": 9_000 },
+      preview: { disponible: false, motivo: "Requiere las llaves de voz del negocio." },
+    }),
+  },
+  // Mensajes de WhatsApp
+  { metodo: "GET", patron: `${P}/admin/whatsapp-mensajes`, roles: ["owner", "admin"], manejador: (p) => vistaMensajes(mensajes(p)) },
+  {
+    metodo: "GET",
+    patron: `${P}/admin/whatsapp-mensajes/opciones`,
+    roles: ["owner", "admin"],
+    manejador: () => ({
+      mensajes: Object.keys(TEXTOS_MENSAJES).map((kind) => ({ kind, etiqueta: kind[0]!.toUpperCase() + kind.slice(1), variables: ["nombre", "servicio", "fecha", "hora"], textoPorOmision: TEXTOS_MENSAJES[kind] })),
+      porOmision: CONFIG_MENSAJES,
+      limites: { texto: 600, anticipacionMin: 1, anticipacionMax: 72 },
+    }),
+  },
+  { metodo: "GET", patron: `${P}/admin/whatsapp-mensajes/historial`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, entradas: mensajes(p).historial }) },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/whatsapp-mensajes/vista-previa`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const m = mensajes(p);
+      const nuevo = { ...m.config, ...((p.cuerpo ?? {}) as Record<string, unknown>) };
+      return { vistaPrevia: vistaPrevia(nuevo), diferencias: diferencias(m.config, nuevo), version: m.version };
+    },
+  },
+  {
+    metodo: "PUT",
+    patron: `${P}/admin/whatsapp-mensajes`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const m = mensajes(p);
+      const c = { ...((p.cuerpo ?? {}) as Record<string, unknown>) };
+      if (c["versionEsperada"] !== m.version) return fallo(409, "Otra persona guardo cambios: recarga para ver la version nueva.");
+      delete c["versionEsperada"];
+      const lead = Number(c["reminderLeadHours"]);
+      if (!Number.isInteger(lead) || lead < 1 || lead > 72) return fallo(400, "reminderLeadHours: entre 1 y 72");
+      const dif = diferencias(m.config, c);
+      m.config = { ...m.config, ...c };
+      m.version += 1;
+      m.actualizadoEn = new Date().toISOString();
+      m.historial.unshift({ version: m.version, accion: "actualizado", nuevo: m.config, diferencias: dif, actorNombre: p.persona?.fullName ?? null, creadoEn: m.actualizadoEn });
+      return vistaMensajes(m);
+    },
+  },
+  {
+    metodo: "POST",
+    patron: `${P}/admin/whatsapp-mensajes/restablecer`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const m = mensajes(p);
+      if (((p.cuerpo ?? {}) as { versionEsperada?: number }).versionEsperada !== m.version) return fallo(409, "Otra persona guardo cambios: recarga para ver la version nueva.");
+      const dif = diferencias(m.config, CONFIG_MENSAJES);
+      m.config = { ...CONFIG_MENSAJES };
+      m.version += 1;
+      m.actualizadoEn = new Date().toISOString();
+      m.historial.unshift({ version: m.version, accion: "restablecido", nuevo: m.config, diferencias: dif, actorNombre: p.persona?.fullName ?? null, creadoEn: m.actualizadoEn });
+      return vistaMensajes(m);
+    },
+  },
+  // Plantillas HSM
+  { metodo: "GET", patron: `${P}/admin/whatsapp-plantillas`, roles: ["owner", "admin"], manejador: (p) => ({ disponible: true, estados: ["borrador", "enviada", "aprobada", "rechazada"], eventos: plantillas(p) }) },
+  {
+    metodo: "PUT",
+    patron: `${P}/admin/whatsapp-plantillas/:evento`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const ev = plantillas(p).find((x) => x.evento === p.params["evento"]);
+      if (!ev) return fallo(404, "Evento desconocido.");
+      const c = (p.cuerpo ?? {}) as { nombre?: string; idioma?: string; variables?: string[]; estado?: string };
+      if (!c.nombre || !/^[a-z0-9_]+$/.test(c.nombre)) return fallo(400, "nombre: solo minusculas, numeros y guion bajo");
+      ev.plantilla = { evento: ev.evento, nombre: c.nombre, idioma: c.idioma ?? "es_MX", variables: c.variables ?? [], estado: c.estado ?? "borrador", aprobadaEn: c.estado === "aprobada" ? new Date().toISOString() : null, actualizadaEn: new Date().toISOString() };
+      return { disponible: true, plantilla: ev.plantilla };
+    },
+  },
+  {
+    metodo: "DELETE",
+    patron: `${P}/admin/whatsapp-plantillas/:evento`,
+    roles: ["owner", "admin"],
+    manejador: (p) => {
+      const ev = plantillas(p).find((x) => x.evento === p.params["evento"]);
+      if (!ev?.plantilla) return fallo(404, "Plantilla no encontrada.");
+      ev.plantilla = null;
+      return { ok: true };
+    },
+  },
+];
+
+function invVista(i: Invitacion) {
+  return { id: i.id, email: i.email, verticalRole: i.vertical_role, propertyIds: i.property_ids, status: i.status, expiresAt: i.expires_at, createdAt: i.created_at };
+}
+function miembroVista(m: Miembro) {
+  return { id: m.id, email: m.email, fullName: m.full_name, verticalRole: m.vertical_role, propertyIds: m.property_ids };
+}
+
 export const citasQa = { orgSlug: ORG.slug, propertyId: PROP.id, sucursalNorte: SUCURSAL_NORTE };

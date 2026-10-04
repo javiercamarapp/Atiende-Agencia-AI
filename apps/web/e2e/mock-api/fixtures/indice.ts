@@ -2,7 +2,7 @@
 // marcada `sinFixture` en el registro de peticiones: es el listado de pendientes de cobertura, no un error de la SPA.
 import type { Ruta } from "../tipos.ts";
 import { rutasCitas } from "./citas.ts";
-import { rutasCitasQa } from "./citas-qa.ts";
+import { rutasCitasQa, rutasCitasQaAdmin } from "./citas-qa.ts";
 import { rutasComunes } from "./comun.ts";
 import { rutasCuenta } from "./cuenta.ts";
 import { rutasDespachos } from "./despachos.ts";
@@ -12,4 +12,4 @@ import { rutasRentas } from "./rentas.ts";
 import { rutasRestaurantes } from "./restaurantes.ts";
 import { rutasSuperadmin } from "./superadmin.ts";
 
-export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasLicitaciones, ...rutasCitasQa, ...rutasCitas, ...rutasSuperadmin];
+export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasLicitaciones, ...rutasCitasQa, ...rutasCitasQaAdmin, ...rutasCitas, ...rutasSuperadmin];
