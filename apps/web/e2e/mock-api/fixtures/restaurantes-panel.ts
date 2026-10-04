@@ -302,6 +302,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
     manejador: (p) => ({ customer: p.params["customerId"] === "cli-1" ? { isNew: false, name: "Marisol Pech", orderCount: 9, addresses: [{ address: "Calle 60 #412, Centro", label: "Casa", isDefault: true }], lastOrderItems: [{ name: "Tacos al pastor (orden)", quantity: 2 }], frequentItems: [{ name: "Horchata", quantity: 7 }], tier: "GOLD", agentNotes: ["Prefiere sin cebolla"] } : { isNew: true } }),
   },
 
+  // ---------- Sitio publico (R-38): la pantalla de Configuracion lo pide al abrir ----------
+  { metodo: "GET", patron: `${B}/config/sitio-publico`, roles: ["owner", "admin"], manejador: () => ({ marca: { titular: null, eslogan: null, about: null, portadaUrl: null, logoUrl: null, instagramUrl: null, facebookUrl: null, tiktokUrl: null }, guardada: false }) },
+
   // ---------- Sucursales ----------
   { metodo: "GET", patron: `${B}/sucursales`, manejador: (p) => ({ branches: [sucursal(p)] }) },
   { metodo: "PATCH", patron: `${B}/sucursales/:branchId`, manejador: (p) => { Object.assign(sucursal(p), p.cuerpo ?? {}); return { branch: sucursal(p) }; } },
