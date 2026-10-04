@@ -15,6 +15,8 @@ import {
   OrderConflictError,
   OrderValidationError,
   RestaurantesConfigUnavailableError,
+  assertWebOrderRules,
+  redondearACentavos,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -99,7 +101,7 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     promoCode: typeof body.promo_code === "string" ? body.promo_code : undefined,
     canal: typeof body.canal === "string" ? (body.canal as CreateOrderInput["canal"]) : undefined,
     colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
-    propina: typeof body.propina === "number" ? body.propina : undefined,
+    propina: typeof body.propina === "number" && Number.isFinite(body.propina) ? redondearACentavos(body.propina) : typeof body.propina === "number" ? body.propina : undefined,
     horaRecogida: typeof body.hora_recogida === "string" ? body.hora_recogida : undefined,
     doubleSalsas: Array.isArray(body.doble_salsas) ? (body.doble_salsas as CreateOrderInput["doubleSalsas"]) : undefined,
     // Un valor no-string se manda tal cual: `createOrder` lo rechaza con un 400 claro (nunca se ignora en silencio).
@@ -197,7 +199,10 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
-        const order = await createOrder(repo, input);
+        // Mismas reglas duras que el storefront (direccion a domicilio, telefono de 10 digitos, forma de pago,
+        // promociones solo al recoger): este checkout legado seguia aceptando por Origin ausente (clientes que no
+        // son navegador) pedidos que cocina no puede atender. El precio sigue saliendo siempre del catalogo.
+        const order = await createOrder(repo, assertWebOrderRules(input));
         await triggerRestaurantesEmailDispatchInline(deps, db, repo);
         // SoftRestaurant (POS): punto de enganche. Con la bandera APAGADA (default) o sin la
         // migracion 024 no hace nada y la respuesta es EXACTAMENTE la de antes. Nunca lanza
