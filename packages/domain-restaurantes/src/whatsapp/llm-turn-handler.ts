@@ -33,7 +33,7 @@ import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
 import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS } from "./inbound.ts";
 import { latestSharedLocation } from "./location.ts";
-import { branchAlreadyKnown, classifyHighRiskIntent, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
+import { branchAlreadyKnown, classifyHighRiskIntent, contextoDeCliente, enforcePendingQuestion, enforceQuotedTotal } from "./guards.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
@@ -474,7 +474,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
       const latestUserMessage = [...messages].reverse().find((m) => m.role === "user");
-      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content) : null;
+      const riesgo = latestUserMessage ? classifyHighRiskIntent(latestUserMessage.content, contextoDeCliente(customer)) : null;
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
