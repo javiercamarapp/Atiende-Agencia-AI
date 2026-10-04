@@ -261,7 +261,7 @@ describe("AjustesAgentePage — voz y saludo por sucursal", () => {
     });
     const put = llamadas("PUT", "/admin/voz/config");
     expect(put).toHaveLength(1);
-    expect(JSON.parse(String((put[0]![1] as RequestInit).body))).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "REGLAS DE LA SUCURSAL", mensajeInicial: "Bienvenido, le atiende el asistente virtual de Los Taquitos de PM." });
+    expect(JSON.parse(String((put[0]![1] as RequestInit).body))).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "REGLAS DE LA SUCURSAL", mensajeInicialInterrumpible: true, mensajeInicial: "Bienvenido, le atiende el asistente virtual de Los Taquitos de PM." });
     expect(txt()).toContain("Voz y saludo guardados");
   });
 

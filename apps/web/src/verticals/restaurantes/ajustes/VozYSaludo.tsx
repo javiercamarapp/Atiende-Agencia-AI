@@ -67,6 +67,7 @@ export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSa
       const c = await updateVozConfig(fetch, apiBaseUrl, token, propertyId, {
         vozId,
         mensajeInicial: saludo,
+        mensajeInicialInterrumpible: vigente?.mensajeInicialInterrumpible ?? true,
         promptSistema: vigente?.promptSistema ?? "",
         habilitado: vigente?.habilitado ?? false,
       });
