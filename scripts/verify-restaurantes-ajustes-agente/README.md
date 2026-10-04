@@ -1,8 +1,8 @@
 # verify-restaurantes-ajustes-agente
 
 Verificación, contra un Postgres **real**, de
-`packages/domain-restaurantes/migrations/046_ajustes_agente_modelo_voz_fondo.sql`
-(espejo: `supabase/migrations/20240101000330_046_ajustes_agente_modelo_voz_fondo.sql`): ajustes del agente por
+`packages/domain-restaurantes/migrations/047_ajustes_agente_modelo_voz_fondo.sql`
+(espejo: `supabase/migrations/20240101000330_047_ajustes_agente_modelo_voz_fondo.sql`): ajustes del agente por
 organización (modelo y temperatura de WhatsApp, modelo de la cascada de voz, temperatura, ritmo y estilo de habla y
 sonido de fondo opcional). El repositorio en memoria nunca aplica RLS, GRANT ni `auth.uid()`, así que no podría detectar
 un hueco de este tipo.

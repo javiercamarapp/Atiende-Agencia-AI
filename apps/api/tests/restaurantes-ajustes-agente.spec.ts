@@ -1,4 +1,4 @@
-// Ajustes del agente por organizacion (migracion 046) + conocimiento automatico + lado sistema del servicio de llamadas. Cada caso afirma el EFECTO
+// Ajustes del agente por organizacion (migracion 047) + conocimiento automatico + lado sistema del servicio de llamadas. Cada caso afirma el EFECTO
 // (que se guardo, que NO se escribio, que se audito), no solo el status.
 import { describe, expect, it } from "vitest";
 import { AJUSTES_AGENTE_POR_DEFECTO, InMemoryAjustesAgenteRepository, MODELOS_AGENTE } from "@atiende/domain-restaurantes";

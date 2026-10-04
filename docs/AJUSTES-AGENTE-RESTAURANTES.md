@@ -45,7 +45,7 @@ de `cotizar_pedido`.
 ## Despliegue
 
 1. Mergear el código (compatible con la base sin migrar: GET devuelve los valores de siempre con `disponible: false`; PUT responde 503; el agente se comporta igual).
-2. Aplicar `packages/domain-restaurantes/migrations/046_ajustes_agente_modelo_voz_fondo.sql` (espejo `supabase/migrations/20240101000330_...`). Después de aplicarla se pueden guardar ajustes.
+2. Aplicar `packages/domain-restaurantes/migrations/047_ajustes_agente_modelo_voz_fondo.sql` (espejo `supabase/migrations/20240101000330_...`). Después de aplicarla se pueden guardar ajustes.
 3. Sin variables nuevas ni crons nuevos. Cambiar el modelo de WhatsApp requiere `OPENROUTER_API_KEY` (sin ella, el gateway real no existe y la elección no tiene efecto).
 
 ## Dependencia: servicio de llamadas (PR #418, `apps/voice-worker`)

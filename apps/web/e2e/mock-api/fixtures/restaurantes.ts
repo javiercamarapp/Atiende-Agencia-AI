@@ -205,7 +205,7 @@ export const rutasRestaurantes: readonly Ruta[] = [
     } },
 ];
 
-// ---- Ajustes del agente (migracion 046) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de
+// ---- Ajustes del agente (migracion 047) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de
 // apps/api/src/routes/verticals/restaurantes/ajustes-agente.ts (PUT completo, lista permitida, temperatura solo donde el modelo la admite). ----
 const MODELOS_AJUSTES = [
   { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },

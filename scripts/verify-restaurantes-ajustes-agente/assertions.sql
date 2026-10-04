@@ -1,5 +1,5 @@
 -- Fixtures + assertions contra Postgres REAL para
--- packages/domain-restaurantes/migrations/046_ajustes_agente_modelo_voz_fondo.sql
+-- packages/domain-restaurantes/migrations/047_ajustes_agente_modelo_voz_fondo.sql
 -- (ajustes del agente por organizacion: modelo y temperatura de WhatsApp, cascada y habla de voz, sonido de fondo).
 --
 --   A. Lectura: owner/admin de la organizacion y la sesion de SISTEMA (auth.uid() NULL: webhook y servicio de llamadas) ven la fila; staff y repartidor no;

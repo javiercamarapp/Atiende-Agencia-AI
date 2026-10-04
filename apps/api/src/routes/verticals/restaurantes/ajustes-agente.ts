@@ -1,4 +1,4 @@
-// Ajustes del agente de restaurantes por ORGANIZACION (migracion 046) y base de conocimiento automatica: el equivalente en la arquitectura vigente de lo
+// Ajustes del agente de restaurantes por ORGANIZACION (migracion 047) y base de conocimiento automatica: el equivalente en la arquitectura vigente de lo
 // que el original hacia con ElevenLabs (modelo y temperatura, estilo de habla, sonido de fondo, documentos `[Auto]`).
 //   GET  /v1/restaurantes/:propertyId/admin/agente/ajustes        ajustes vigentes + lista permitida de modelos con costo estimado + estados honestos
 //   PUT  /v1/restaurantes/:propertyId/admin/agente/ajustes        reemplaza los ajustes completos (owner/admin; bitacora)

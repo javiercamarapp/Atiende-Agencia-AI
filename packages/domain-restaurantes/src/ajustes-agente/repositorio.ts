@@ -1,4 +1,4 @@
-// Puerto de lectura/escritura de los ajustes del agente por organizacion (migracion 046) y su adaptador Postgres.
+// Puerto de lectura/escritura de los ajustes del agente por organizacion (migracion 047) y su adaptador Postgres.
 // REGLA DURA de compatibilidad con la base SIN migrar: mergear despliega el codigo y la migracion no se aplica sola. Toda operacion corre en la
 // transaccion UNICA del request (o del turno de WhatsApp), donde un error de Postgres la deja abortada (25P02): por eso va con SAVEPOINT
 // (`runWithSavepointFallback`). Lecturas -> `disponible: false` con los valores por omision (el agente se comporta exactamente como antes);
@@ -10,7 +10,7 @@ import type { AjustesAgente } from "./ajustes.ts";
 import { esEstiloHabla, esRitmoHabla } from "@atiende/voice-core";
 
 export interface LecturaAjustes {
-  /** false = la base todavia no tiene la migracion 046 (se devuelven los valores por omision). */
+  /** false = la base todavia no tiene la migracion 047 (se devuelven los valores por omision). */
   readonly disponible: boolean;
   /** true = la organizacion ya guardo ajustes propios. */
   readonly configurados: boolean;
@@ -43,7 +43,7 @@ export const LECTURA_AJUSTES_POR_OMISION: LecturaAjustes = Object.freeze({ dispo
 function code(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
-/** Tabla, columna o funcion de la migracion 046 inexistente. */
+/** Tabla, columna o funcion de la migracion 047 inexistente. */
 const esBaseSinMigrar = (err: unknown): boolean => ["42P01", "42703", "42883"].includes(code(err) ?? "");
 /** Ademas de "sin migrar": 42501 (RLS/permiso denegado) es un rechazo conocido. */
 const esErrorEscrituraConocido = (err: unknown): boolean => esBaseSinMigrar(err) || code(err) === "42501";
@@ -86,7 +86,7 @@ function advertirNoDisponible(err: unknown): void {
   advertido = true;
   console.warn(
     "PostgresAjustesAgenteRepository: la tabla de ajustes del agente todavia no existe en esta base (SQLSTATE 42P01/42703/42883) -- " +
-      "aplica packages/domain-restaurantes/migrations/046_ajustes_agente_modelo_voz_fondo.sql (o su espejo en supabase/migrations/). El agente sigue con los valores de siempre.",
+      "aplica packages/domain-restaurantes/migrations/047_ajustes_agente_modelo_voz_fondo.sql (o su espejo en supabase/migrations/). El agente sigue con los valores de siempre.",
     err,
   );
 }
@@ -149,7 +149,7 @@ export class PostgresAjustesAgenteRepository implements AjustesAgenteRepository 
   }
 }
 
-/** Adaptador en memoria para pruebas de rutas. `migrada = false` simula la base sin la migracion 046; `rechazar` simula que RLS niega la escritura. */
+/** Adaptador en memoria para pruebas de rutas. `migrada = false` simula la base sin la migracion 047; `rechazar` simula que RLS niega la escritura. */
 export class InMemoryAjustesAgenteRepository implements AjustesAgenteRepository {
   migrada = true;
   rechazar = false;

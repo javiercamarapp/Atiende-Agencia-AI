@@ -87,7 +87,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));
-  // Ajustes del agente por organizacion (migración 046: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
+  // Ajustes del agente por organizacion (migración 047: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
   app.route("/", restaurantesAjustesAgenteRoutes(deps));
   app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
   // R-13 (migración 035): KPI de voz, costo por día y alertas operativas internas (panel + bitácora).

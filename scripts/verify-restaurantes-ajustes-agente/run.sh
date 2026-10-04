@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-audit-log/run.sh. Acompaña a
-# packages/domain-restaurantes/migrations/046_ajustes_agente_modelo_voz_fondo.sql:
+# packages/domain-restaurantes/migrations/047_ajustes_agente_modelo_voz_fondo.sql:
 # prueba, contra RLS/GRANT/auth.uid() reales, los secretos de voz por sucursal, el estado
 # del pedido en el servidor y la bitácora de voz (el repositorio en memoria nunca aplica
 # ninguno de los tres).
@@ -47,7 +47,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 046_ajustes_agente_modelo_voz_fondo.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 047_ajustes_agente_modelo_voz_fondo.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done
