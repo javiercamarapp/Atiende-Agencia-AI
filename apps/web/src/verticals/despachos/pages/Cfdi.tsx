@@ -8,7 +8,7 @@
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, FileUp, ShieldAlert, Upload, X } from "lucide-react";
+import { Check, FileStack, FileUp, ShieldAlert, Upload, X } from "lucide-react";
 import {
   Button,
   Card,
@@ -34,6 +34,7 @@ import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "..
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
+import { ImportarLoteDialog } from "../components/ImportarLoteDialog.tsx";
 
 const TIPO_LABELS: Record<InvoiceSummary["tipo"], string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
 
@@ -75,6 +76,8 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [importError, setImportError] = useState<string | null>(null);
   const [importOk, setImportOk] = useState<string | null>(null);
   const xmlInputRef = useRef<HTMLInputElement | null>(null);
+  // D-13: carga masiva (ZIP o varios XML).
+  const [loteAbierto, setLoteAbierto] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -199,10 +202,23 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
                 <Upload />
                 {importando ? "Importando…" : "Cargar XML de CFDI"}
               </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setLoteAbierto(true)}>
+                <FileStack />
+                Importar ZIP o varios XML
+              </Button>
             </>
           )}
         </div>
       </header>
+
+      <ImportarLoteDialog
+        open={loteAbierto}
+        onOpenChange={setLoteAbierto}
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        onTerminado={() => void Promise.all([load(), loadRevisiones()])}
+      />
 
       {/* Avisos de la importación: banderas inline (persisten hasta la siguiente importación; un toast se iría solo). */}
       {importError && (
