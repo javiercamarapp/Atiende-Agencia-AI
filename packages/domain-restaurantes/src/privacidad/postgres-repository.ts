@@ -203,8 +203,8 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
   }
 
   async purgeExpiredPrivacyData(limit: number): Promise<PurgeOutcome> {
-    // Camino de la migracion 041: la purga cubre mas tablas y recibe los seudonimos de voz de los titulares con solicitud ARCO
-    // abierta (la base no conoce la llave del servidor). Contra una base con la 030 pero sin la 041 (42883) cae al camino anterior.
+    // Camino de la migracion 042: la purga cubre mas tablas y recibe los seudonimos de voz de los titulares con solicitud ARCO
+    // abierta (la base no conoce la llave del servidor). Contra una base con la 030 pero sin la 042 (42883) cae al camino anterior.
     return runWithSavepointFallback<PurgeOutcome>({
       session: this.db,
       savepointName: "sp_privacy_purge_041",
@@ -246,7 +246,7 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
     });
   }
 
-  /** Camino de la migracion 030 (sin la 041): solo conversaciones de WhatsApp y llamadas de voz. */
+  /** Camino de la migracion 030 (sin la 042): solo conversaciones de WhatsApp y llamadas de voz. */
   private async purgeExpiredPrivacyDataLegacy(limit: number): Promise<PurgeOutcome> {
     const sinNuevos = { callbacksAnonymized: 0, outboxScrubbed: 0, notesDeleted: 0, auditDeleted: 0 };
     return runWithSavepointFallback<PurgeOutcome>({
@@ -359,7 +359,7 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
 
   async updateDataRightsRequestStatus(organizationId: string, requestId: string, status: DataRightStaffTargetStatus, note: string | null): Promise<UpdateDataRightsStatusResult> {
     // Una cancelacion que pasa a `bloqueada`/`resuelta` EJECUTA el bloqueo o la supresion de los datos del titular en la misma
-    // transaccion (migracion 041, QA R1 seguridad-06). Los demas casos siguen el camino de la 030.
+    // transaccion (migracion 042, QA R1 seguridad-06). Los demas casos siguen el camino de la 030.
     if (status !== "bloqueada" && status !== "resuelta") return this.updateDataRightsRequestStatusLegacy(organizationId, requestId, status, note);
     let esCancelacion = false;
     return runWithSavepointFallback<UpdateDataRightsStatusResult>({
@@ -393,7 +393,7 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
           case "42501":
             return Promise.resolve({ outcome: "forbidden" });
           default:
-            // Falta la 041 (o la 030). Una cancelacion NO se cierra sin ejecutar el bloqueo/supresion: seria prometer al titular
+            // Falta la 042 (o la 030). Una cancelacion NO se cierra sin ejecutar el bloqueo/supresion: seria prometer al titular
             // algo que no ocurre. Los demas derechos no ejecutan nada y siguen por el camino de la 030.
             if (esCancelacion) {
               advertirNoDisponible("updateDataRightsRequestStatus", err);

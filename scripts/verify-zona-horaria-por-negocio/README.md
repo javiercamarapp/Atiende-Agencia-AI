@@ -50,7 +50,7 @@ cabecera de la migración 022 para por qué no se angosta aquí):
     filtra en silencio, nunca lanza una excepción — así se comporta un
     `UPDATE` real cuyo `USING` no matchea ninguna fila, a diferencia del
     `INSERT` de `despachos.property_config`, que sí lanza).
-11. `anon` ya NO puede leer `branch_detail` (migración 041, QA R1
+11. `anon` ya NO puede leer `branch_detail` (migración 042, QA R1
     seguridad-11: sin GRANT a `anon`; el checkout público lee por la sesión de
     sistema, rol `authenticated` con `auth.uid()` nulo).
 12. `anon` NUNCA puede ESCRIBIR `zona_horaria` (`permission denied`, ni

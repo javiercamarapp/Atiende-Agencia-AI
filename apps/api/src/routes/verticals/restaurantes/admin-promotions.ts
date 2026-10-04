@@ -200,7 +200,7 @@ async function conCompatibilidad<T>(fn: () => Promise<T>): Promise<T> {
  * Alcance por sucursal de la promocion (migracion 038) frente a la membresia de quien la escribe (QA R1 seguridad-04). Una membresia
  * acotada a ciertas sucursales (`scope` distinto de null) solo puede crear o cambiar promociones que valgan EXCLUSIVAMENTE en
  * sucursales de ese alcance; una promocion de toda la organizacion (`propertyIds` null) es de una membresia sin acotar. La base
- * aplica la misma regla en RLS (migracion 041): esta validacion devuelve un 403 claro antes de llegar al error de la policy.
+ * aplica la misma regla en RLS (migracion 042): esta validacion devuelve un 403 claro antes de llegar al error de la policy.
  */
 async function optionalNullablePropertyIds(
   value: unknown,

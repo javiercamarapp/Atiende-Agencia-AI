@@ -181,7 +181,7 @@ describe("purga de plataforma de voz -- seudonimos del servidor (QA R1 seguridad
     expect(purga?.[1]).toEqual([ORG, VOZ, false, 500, ["hmac:+5215512345678", "plano:+5215512345678", "hmac:+525512345678", "plano:+525512345678"]]);
   });
 
-  it("base con la 0036 y sin la 041 (42883): cae a la purga de 4 argumentos con savepoint, sin 25P02", async () => {
+  it("base con la 0036 y sin la 042 (42883): cae a la purga de 4 argumentos con savepoint, sin 25P02", async () => {
     const s = new AbortAwareFakeSession([
       { match: /system_list_open_arco_phones/, respond: () => pgError("42883", "function restaurantes.system_list_open_arco_phones(integer, uuid) does not exist") },
       { match: /system_run_retention_purge\(\$1, \$2, \$3, \$4::int\);/, respond: () => [FILA] },

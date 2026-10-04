@@ -558,8 +558,8 @@ export class PostgresPlataformaPrivacidadRepository implements PlataformaPrivaci
       out_rows_protected: number;
     };
     const cols = "select * from core.system_run_retention_purge";
-    // Camino de la migracion 041: recibe los seudonimos HMAC de los titulares con ARCO abierta. Si esa firma no existe aun
-    // (base con la 0036 y sin la 041: 42883) o no existe la lista de telefonos (42883), cae a la de 4 argumentos DENTRO de un
+    // Camino de la migracion 042: recibe los seudonimos HMAC de los titulares con ARCO abierta. Si esa firma no existe aun
+    // (base con la 0036 y sin la 042: 42883) o no existe la lista de telefonos (42883), cae a la de 4 argumentos DENTRO de un
     // savepoint (la transaccion de la unidad no queda abortada).
     const corre4 = () => this.db.query<Fila>(`${cols}($1, $2, $3, $4::int);`, [orgId, dataClass, dryRun, limit]);
     const corre = async (): Promise<readonly Fila[]> => {

@@ -154,7 +154,7 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
 
   /** Cancelaciones ARCO cuya ejecucion real (bloqueo o supresion de datos) se pidio al llegar a `bloqueada`/`resuelta`. */
   readonly cancelacionesEjecutadas: { readonly requestId: string; readonly modo: "bloqueo" | "supresion" }[] = [];
-  /** `false` simula una base con la 030 pero SIN la 041: la cancelacion no se puede ejecutar. */
+  /** `false` simula una base con la 030 pero SIN la 042: la cancelacion no se puede ejecutar. */
   migrada041 = true;
 
   async listDataRightsRequests(organizationId: string, filtro: DataRightsRequestsFiltro, paginacion: DataRightsPaginacion): Promise<DataRightsRequestsPage> {

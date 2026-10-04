@@ -151,7 +151,7 @@ describe("PATCH .../solicitudes/:id/estado y GET .../:id/eventos", () => {
     ]);
   });
 
-  it("QA R1 seguridad-06: sin la migracion 041 una cancelacion NO se cierra (503 honesto), pero otros derechos si", async () => {
+  it("QA R1 seguridad-06: sin la migracion 042 una cancelacion NO se cierra (503 honesto), pero otros derechos si", async () => {
     const { app, base, ctx, seedConfirmed, privacy } = await construir();
     const cancel = await seedConfirmed("cancelacion", "+5219990000005");
     const acceso = await seedConfirmed("acceso", "+5219990000006");
