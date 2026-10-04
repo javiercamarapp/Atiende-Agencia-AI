@@ -31,7 +31,7 @@ function stubFetch(routes: Record<string, Handler>) {
     const handler = routes[key];
     if (!handler) return { ok: false, status: 500, json: async () => ({ error: { message: `sin ruta ${key}` } }) } as unknown as Response;
     const r = handler(init);
-    return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), json: async () => r.body } as unknown as Response;
+    return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), headers: new Headers(), json: async () => r.body } as unknown as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
 }
@@ -74,7 +74,7 @@ const TENDERS = [{ id: "t1", organizationId: "o", title: "Suministro de papeleri
 
 describe("pantalla de dias inhabiles de licitaciones", () => {
   it("muestra oficiales por anio como verificados y los sugeridos como 'validar con fiscalista/abogado'", async () => {
-    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN() }), "GET /tenders": () => ({ body: { tenders: TENDERS } }) });
+    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN() }), "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }) });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
     await settle();
     expect(text()).toContain("Días inhábiles");
@@ -88,7 +88,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   });
 
   it("base sin migrar: lo dice, los oficiales siguen y no ofrece declarar ni quitar", async () => {
-    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN({ available: false }) }), "GET /tenders": () => ({ body: { tenders: TENDERS } }) });
+    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN({ available: false }) }), "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }) });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
     await settle();
     expect(text()).toContain("aún no disponibles");
@@ -102,7 +102,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
     let declarados: unknown[] = [];
     stubFetch({
       "GET /dias-inhabiles": () => ({ body: RESUMEN({ declarados }) }),
-      "GET /tenders": () => ({ body: { tenders: TENDERS } }),
+      "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }),
       "POST /dias-inhabiles": () => {
         declarados = [DECLARADO];
         return { status: 201, body: DECLARADO };
@@ -125,7 +125,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   it("formulario: declara un dia de UNA convocatoria con publicador y fuente", async () => {
     stubFetch({
       "GET /dias-inhabiles": () => ({ body: RESUMEN() }),
-      "GET /tenders": () => ({ body: { tenders: TENDERS } }),
+      "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }),
       "POST /dias-inhabiles": () => ({ status: 201, body: { ...DECLARADO, tenderId: "t1", alcance: "convocatoria" } }),
     });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
@@ -147,7 +147,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   it("un error del servidor (409 duplicado) se muestra tal cual", async () => {
     stubFetch({
       "GET /dias-inhabiles": () => ({ body: RESUMEN() }),
-      "GET /tenders": () => ({ body: { tenders: [] } }),
+      "GET /tenders?limit=200&open=true": () => ({ body: { tenders: [] } }),
       "POST /dias-inhabiles": () => ({ ok: false, status: 409, body: { message: "Ya hay un día inhábil vigente para esa fecha en ese alcance." } }),
     });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
@@ -167,7 +167,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   it("quitar un dia pide confirmacion y manda DELETE al id real", async () => {
     stubFetch({
       "GET /dias-inhabiles": () => ({ body: RESUMEN({ declarados: [DECLARADO] }) }),
-      "GET /tenders": () => ({ body: { tenders: TENDERS } }),
+      "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }),
       "DELETE /dias-inhabiles/d1": () => ({ body: { ok: true } }),
     });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
@@ -186,7 +186,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   });
 
   it("rol de solo lectura: ve el calendario pero no declara ni quita", async () => {
-    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN({ puedeEditar: false, declarados: [DECLARADO] }) }), "GET /tenders": () => ({ body: { tenders: TENDERS } }) });
+    stubFetch({ "GET /dias-inhabiles": () => ({ body: RESUMEN({ puedeEditar: false, declarados: [DECLARADO] }) }), "GET /tenders?limit=200&open=true": () => ({ body: { tenders: TENDERS } }) });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} role="viewer" />);
     await settle();
     expect(text()).toContain("Viernes Santo");
@@ -197,7 +197,7 @@ describe("pantalla de dias inhabiles de licitaciones", () => {
   });
 
   it("falla la carga: muestra el error en vez de una pantalla vacia", async () => {
-    stubFetch({ "GET /dias-inhabiles": () => ({ ok: false, status: 500, body: { message: "boom" } }), "GET /tenders": () => ({ body: { tenders: [] } }) });
+    stubFetch({ "GET /dias-inhabiles": () => ({ ok: false, status: 500, body: { message: "boom" } }), "GET /tenders?limit=200&open=true": () => ({ body: { tenders: [] } }) });
     rendered = renderComponent(<DiasInhabilesPage {...CTX} />);
     await settle();
     expect(text()).toContain("boom");

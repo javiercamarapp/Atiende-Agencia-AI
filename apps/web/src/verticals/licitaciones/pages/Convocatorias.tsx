@@ -12,21 +12,28 @@
 // `DataTable` de @atiende/ui, el pill de elegibilidad a `StatusBadge`, el alta manual al
 // `FormDialog` (mismo estado `showForm`, misma llamada a
 // createOrUpdateTender) y el botón ad-hoc a `Button`. Cero cambios de lógica.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { Button, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
+import { Button, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, statusTone } from "@atiende/ui";
 import { saludoConNombre } from "../../../lib/greeting.ts";
-import { createOrUpdateTender, fetchTenders } from "../lib/tenders-client.ts";
+import { createOrUpdateTender, fetchTendersPage } from "../lib/tenders-client.ts";
 import { ELEGIBILIDAD_TONES } from "../lib/status-tones.ts";
-import type { TenderSummary } from "../lib/tenders-client.ts";
+import type { TenderStatus, TenderSummary } from "../lib/tenders-client.ts";
+import { fetchSourceConnectors } from "../lib/sources-client.ts";
+import type { SourceConnectorInfo } from "../lib/sources-client.ts";
 import { fetchMatchingList } from "../lib/matching-client.ts";
 import type { MatchResult } from "../lib/matching-client.ts";
-import { formatDeadline, formatEligibility, formatTenderStatus } from "../lib/format.ts";
+import { formatDeadline, formatEligibility, formatTenderStatus, TENDER_STATUS_LABELS } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
+
+/** Filas por pagina del listado (el servidor admite hasta 200). */
+const PAGE_SIZE = 25;
+/** Espera tras la ultima tecla antes de buscar en el servidor. */
+const BUSQUEDA_DEBOUNCE_MS = 300;
 
 function ScoreBadge({ match }: { match: MatchResult | undefined }) {
   if (!match) return <span className="text-xs text-muted-foreground">Sin score</span>;
@@ -64,6 +71,13 @@ function toIsoWithOffset(localValue: string): string {
 
 export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffFullName, staffEmail }: LicitacionesShellContext) {
   const [tenders, setTenders] = useState<readonly TenderSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [pagina, setPagina] = useState(1);
+  const [texto, setTexto] = useState("");
+  const [q, setQ] = useState("");
+  const [estado, setEstado] = useState<TenderStatus | "">("");
+  const [fuente, setFuente] = useState("");
+  const [fuentes, setFuentes] = useState<readonly SourceConnectorInfo[]>([]);
   const [matching, setMatching] = useState<readonly MatchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,18 +85,34 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
   const [form, setForm] = useState<NewTenderFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  /** Descarta la respuesta de una consulta vieja si el usuario ya pidio otra pagina o filtro. */
+  const consulta = useRef(0);
 
   async function load() {
+    const mia = ++consulta.current;
     setLoading(true);
     setError(null);
     try {
-      const [tenderList, matchList] = await Promise.all([fetchTenders(fetch, apiBaseUrl, token, propertyId), fetchMatchingList(fetch, apiBaseUrl, token, propertyId)]);
-      setTenders(tenderList);
-      setMatching(matchList);
+      const page = await fetchTendersPage(fetch, apiBaseUrl, token, propertyId, {
+        limit: PAGE_SIZE,
+        offset: (pagina - 1) * PAGE_SIZE,
+        q,
+        status: estado || undefined,
+        source: fuente || undefined,
+      });
+      if (mia !== consulta.current) return;
+      setTenders(page.items);
+      setTotal(page.total);
+      // El score es opcional: si falla, la tabla se pinta igual (sin score) en vez de fallar toda la pantalla.
+      const ids = page.items.map((t) => t.id);
+      const scores = ids.length > 0 ? await fetchMatchingList(fetch, apiBaseUrl, token, propertyId, { ids, limit: ids.length }).catch(() => []) : [];
+      if (mia !== consulta.current) return;
+      setMatching(scores);
     } catch (err) {
+      if (mia !== consulta.current) return;
       setError(err instanceof Error ? err.message : "No se pudieron cargar las convocatorias.");
     } finally {
-      setLoading(false);
+      if (mia === consulta.current) setLoading(false);
     }
   }
 
@@ -90,10 +120,34 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
     void load();
     // eslint: mismo criterio que el resto del panel (Agenda.tsx de citas) -- este
     // proyecto no tiene eslint-plugin-react-hooks configurado.
+  }, [apiBaseUrl, token, propertyId, pagina, q, estado, fuente]);
+
+  // Buscar al dejar de escribir; una busqueda nueva vuelve a la primera pagina.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (texto.trim() !== q) {
+        setQ(texto.trim());
+        setPagina(1);
+      }
+    }, BUSQUEDA_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [texto, q]);
+
+  // Fuentes del filtro: las del registro real de conectores; si no se pueden leer, el filtro de fuente se oculta.
+  useEffect(() => {
+    let vivo = true;
+    fetchSourceConnectors(fetch, apiBaseUrl, token, propertyId)
+      .then((list) => {
+        if (vivo) setFuentes(list);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
   }, [apiBaseUrl, token, propertyId]);
 
   const matchByTenderId = new Map(matching.map((m) => [m.tenderId, m]));
-  const sorted = tenders ? [...tenders].sort((a, b) => (matchByTenderId.get(b.id)?.score ?? -1) - (matchByTenderId.get(a.id)?.score ?? -1)) : [];
+  const filtrado = q !== "" || estado !== "" || fuente !== "";
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -183,20 +237,66 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
         </form>
       </FormDialog>
 
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-56 flex-1 space-y-1">
+          <Label htmlFor="conv-buscar">Buscar</Label>
+          <Input id="conv-buscar" type="search" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Título, folio o entidad" maxLength={200} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="conv-estado">Estatus</Label>
+          <NativeSelect
+            id="conv-estado"
+            value={estado}
+            onChange={(e) => {
+              setEstado(e.target.value as TenderStatus | "");
+              setPagina(1);
+            }}
+          >
+            <option value="">Todos</option>
+            {Object.entries(TENDER_STATUS_LABELS).map(([valor, etiqueta]) => (
+              <option key={valor} value={valor}>
+                {etiqueta}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        {fuentes.length > 0 && (
+          <div className="space-y-1">
+            <Label htmlFor="conv-fuente">Fuente</Label>
+            <NativeSelect
+              id="conv-fuente"
+              value={fuente}
+              onChange={(e) => {
+                setFuente(e.target.value);
+                setPagina(1);
+              }}
+            >
+              <option value="">Todas</option>
+              {fuentes.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
+      </div>
+
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {loading && !tenders && <EstadoCargando etiqueta="Cargando convocatorias…" />}
 
-      {tenders && tenders.length === 0 && !loading && (
-        <EstadoVacio mensaje="Todavía no hay ninguna convocatoria dada de alta." />
+      {tenders && total === 0 && !loading && !error && (
+        <EstadoVacio mensaje={filtrado ? "Ninguna convocatoria coincide con la búsqueda." : "Todavía no hay ninguna convocatoria dada de alta."} />
       )}
 
-      {sorted.length > 0 && (
+      {tenders && tenders.length > 0 && (
         <DataTable
           etiqueta="Convocatorias"
           obtenerId={(t) => t.id}
-          filas={sorted}
-          paginacion={{ tamano: 25 }}
+          filas={tenders}
+          paginacion={{ tamano: PAGE_SIZE, pagina, total, onPaginaChange: setPagina }}
+          estado={loading ? "loading" : undefined}
           columnas={[
             {
               id: "titulo",

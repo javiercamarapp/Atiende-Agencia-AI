@@ -44,8 +44,8 @@ import {
 } from "@atiende/ui";
 import { primerNombreOCorreo } from "../../../lib/greeting.ts";
 import { LicitacionesFijadosCopiloto } from "./Copiloto.tsx";
-import { fetchTenders } from "../lib/tenders-client.ts";
-import type { TenderSummary } from "../lib/tenders-client.ts";
+import { fetchTendersSummary } from "../lib/tenders-client.ts";
+import type { TendersSummary } from "../lib/tenders-client.ts";
 import { fetchSourceConnectors, fetchSourceFreshness, fetchSourceRuns } from "../lib/sources-client.ts";
 import type { SourceConnectorInfo, SourceFreshness, SourceRun } from "../lib/sources-client.ts";
 import { fetchDeadlineReminders, fetchTenderChangeNotifications } from "../lib/seguimiento-client.ts";
@@ -55,14 +55,15 @@ import type { KycResumen } from "../lib/kyc-69b-client.ts";
 import { fetchRenewalAlerts } from "../lib/renewal-radar-client.ts";
 import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience, fetchCompanySigners } from "../lib/company-data-client.ts";
 import type { CorridaSimple } from "../lib/resumen.ts";
-import { convocatoriasAbiertas, cierranEnVentana, corridaKyc, corridaSeguimiento, fechaLargaEnZona, plural, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS, zonaEfectiva } from "../lib/resumen.ts";
+import { corridaKyc, corridaSeguimiento, fechaLargaEnZona, plural, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS, zonaEfectiva } from "../lib/resumen.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 /** Resultado de una lectura: valor, o null cuando fallo (la tarjeta lo muestra como "No se pudo leer"). */
 type Medida<T> = T | null;
 
 interface Resumen {
-  tenders: Medida<readonly TenderSummary[]>;
+  /** Conteos de TODA la organizacion (GET .../tenders/summary), no de la primera pagina del listado. */
+  tenders: Medida<TendersSummary>;
   fuentes: Medida<readonly SourceFreshness[]>;
   conectores: Medida<readonly SourceConnectorInfo[]>;
   corridas: Medida<readonly SourceRun[]>;
@@ -104,7 +105,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
       // Lecturas auxiliares (no cuentan para el error total): si fallan, zona = Mexico y la tarjeta de KYC queda sin corrida.
       const auxiliares = Promise.allSettled([fetchTenantConfig(fetch, apiBaseUrl, token, orgSlug), fetchKycResumen(fetch, apiBaseUrl, token, propertyId)]);
       const lecturas = await Promise.allSettled([
-        fetchTenders(fetch, apiBaseUrl, token, propertyId),
+        fetchTendersSummary(fetch, apiBaseUrl, token, propertyId, VENTANA_PLAZO_DIAS),
         fetchSourceFreshness(fetch, apiBaseUrl, token, propertyId),
         fetchDeadlineReminders(fetch, apiBaseUrl, token, propertyId),
         fetchTenderChangeNotifications(fetch, apiBaseUrl, token, propertyId),
@@ -168,9 +169,8 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   }
 
   const ahora = new Date();
-  const abiertas = resumen.tenders ? convocatoriasAbiertas(resumen.tenders) : null;
-  const proximas = abiertas ? cierranEnVentana(abiertas, ahora.getTime()) : null;
-  const enPreparacion = resumen.tenders ? propuestasEnPreparacion(resumen.tenders) : null;
+  const cierran = resumen.tenders ? resumen.tenders.closingSoon : null;
+  const enPreparacion = resumen.tenders ? (resumen.tenders.byStatus.in_progress ?? 0) : null;
   const obsoletas = resumen.fuentes ? resumen.fuentes.filter((f) => f.stale).length : null;
 
   /** KPI de dos capas: con dato = cifra; sin dato = "—" y "No se pudo leer" (nunca un cero). */
@@ -181,7 +181,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   );
 
   const kpis = [
-    kpi("cierran", `${base}/convocatorias`, CalendarClock, `Cierran en ${VENTANA_PLAZO_DIAS} días`, proximas?.length ?? null, "plazo de presentación de propuestas"),
+    kpi("cierran", `${base}/convocatorias`, CalendarClock, `Cierran en ${VENTANA_PLAZO_DIAS} días`, cierran, "plazo de presentación de propuestas"),
     kpi("preparacion", `${base}/convocatorias`, FilePen, "Propuestas en preparación", enPreparacion, "convocatorias en preparación"),
     kpi("recordatorios", `${base}/seguimiento`, BellRing, "Recordatorios de plazo", resumen.recordatoriosPendientes, "pendientes de reconocer"),
     kpi("cambios", `${base}/seguimiento`, FileEdit, "Cambios de convocatoria", resumen.cambiosPendientes, "bases o anexos por revisar"),
@@ -198,7 +198,7 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
     kpi("fuentes", `${base}/fuentes`, Database, "Fuentes obsoletas", obsoletas === null || !resumen.fuentes ? null : `${obsoletas} de ${resumen.fuentes.length}`, "sin corrida exitosa dentro de su umbral"),
   ];
 
-  const abiertasN = abiertas?.length ?? null;
+  const abiertasN = resumen.tenders ? resumen.tenders.open : null;
   const subtitulo =
     abiertasN === null
       ? `${fechaLargaEnZona(ahora, resumen.zona)} · convocatorias no disponibles`
