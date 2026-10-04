@@ -2,6 +2,7 @@
 // y los logs. Corren igual contra el proveedor falso y contra uno real. Los que dependen del mundo de la vertical (el pedido
 // guardado, la reserva apartada, los callbacks) los pone la vertical con los mismos tipos (`Grader`).
 import { redactarPII } from "../llamada/log-sin-pii.ts";
+import { importesHablados, numerosDe } from "./importes-hablados.ts";
 import type { LlamadaSimulada, ResultadoGrader } from "./tipos.ts";
 
 export const ok = (grader: string): ResultadoGrader => ({ grader, ok: true, detalle: "" });
@@ -112,6 +113,23 @@ export const G_TONO_USTED: Grader = (l) => {
     if (m) return mal("G_TONO_USTED", `tuteo "${m[0]}" en: ${t.texto.slice(0, 100)}`);
   }
   return ok("G_TONO_USTED");
+};
+
+/**
+ * Ningun importe que el agente DICE ("trescientos veintiocho pesos", "$328") puede ser distinto de los que devolvieron las herramientas en
+ * ESTA llamada (cotizacion, pedido, minimos, precios del catalogo). En audio nativo el texto ya sono cuando se transcribe, asi que esta es una
+ * red de deteccion (simulador y evals reales), no una guardia previa al TTS; el servidor sigue cobrando el precio cotizado.
+ */
+export const G_PRECIO_HABLADO: Grader = (l) => {
+  const permitidos = l.tools.flatMap((t) => numerosDe(t.resultado));
+  const coincide = (dicho: number): boolean => permitidos.some((p) => Math.abs(p - dicho) < 0.005 || Math.floor(p + 1e-9) === dicho);
+  for (const t of l.transcripcion) {
+    if (t.rol !== "agente") continue;
+    for (const dicho of importesHablados(t.texto)) {
+      if (!coincide(dicho)) return mal("G_PRECIO_HABLADO", `el agente dijo $${dicho} y ninguna herramienta devolvio ese importe en la llamada`);
+    }
+  }
+  return ok("G_PRECIO_HABLADO");
 };
 
 /** Corre una lista de graders (los genericos del core mas los de la vertical) sobre una llamada simulada. */

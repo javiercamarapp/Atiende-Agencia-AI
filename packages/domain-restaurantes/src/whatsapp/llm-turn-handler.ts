@@ -480,13 +480,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   }
 
   async function ejecutarTurno(
-    { organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs }: Entrada,
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
     tele: Telemetria,
   ): Promise<Salida> {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
       const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
-      const config = await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
+      const preview = modo === "preview";
+      const config = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -509,11 +512,17 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let lastQuoteTotal: number | null = null;
       let lastQuoteAmounts: readonly number[] | undefined;
       let anyToolCalled = false;
+      // Preview: el pedido SIMULADO de `crear_pedido` (para la tarjeta del panel).
+      let pedidoSimulado: unknown;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string } } => (escalarMotivo ? { ...r, escalacion: { motivo: escalarMotivo } } : r);
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedidoSimulado?: unknown } => ({
+        ...r,
+        ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
+        ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
+      });
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
@@ -526,7 +535,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
         );
@@ -560,7 +569,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const ultimo = [...messages].reverse().find((m) => m.role === "user");
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null },
+          { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: "falla_sistema", resumen: `El asistente no pudo responder (falla del sistema). Ultimo mensaje del cliente: ${(ultimo?.content ?? "").slice(0, 400)}` },
         );
@@ -629,7 +638,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;
@@ -646,6 +655,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 lines: (quoted.order.items ?? []).map((i) => ({ price: i.price, line_total: typeof i.price === "number" && typeof i.quantity === "number" ? Math.round(i.price * i.quantity * 100) / 100 : undefined })),
               });
             }
+            if (executed.simulated && call.name === "crear_pedido" && !isToolErrorResult(result)) pedidoSimulado = executed.raw;
             if (executed.orderId) {
               orderId = executed.orderId;
               propertyId = executed.propertyId;
@@ -680,7 +690,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const ultimoCliente = [...messages].reverse().find((m) => m.role === "user");
       const aviso = await executeAgentToolSafely(
         repo,
-        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null },
+        { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
         "escalar_a_humano",
         { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", motivo: "no_puedo_resolver", resumen: `El agente agoto sus vueltas sin completar el pedido. Ultimo mensaje del cliente: ${ultimoCliente?.content.slice(0, 400) ?? ""}` },
       );

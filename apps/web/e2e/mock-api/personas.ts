@@ -3,7 +3,7 @@
 import type { Persona, Rol, Vertical } from "./tipos.ts";
 
 export const VERTICALES: readonly Vertical[] = ["restaurantes", "hoteles", "rentas", "despachos", "licitaciones", "citas"];
-export const ROLES: readonly Rol[] = ["owner", "admin", "staff", "finanzas"];
+export const ROLES: readonly Rol[] = ["owner", "admin", "staff", "finanzas", "repartidor"];
 
 const ORGS: Readonly<Record<Vertical, { readonly slug: string; readonly nombre: string }>> = {
   restaurantes: { slug: "taqueria-el-faro", nombre: "Taqueria El Faro" },
