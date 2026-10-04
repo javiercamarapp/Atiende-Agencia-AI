@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL real -- mismo patrón que
 # scripts/verify-restaurantes-audit-log/run.sh. Acompaña a
-# packages/domain-restaurantes/migrations/043_sistema_escritura_clientes_avisos_y_eventos.sql:
+# packages/domain-restaurantes/migrations/045_sistema_escritura_clientes_avisos_y_eventos.sql:
 # prueba, contra RLS/GRANT/auth.uid() reales y con el rol/sesión exactos de producción
 # (authenticated, auth.uid() NULL), que la sesión de sistema crea clientes, direcciones, avisos
 # y pedidos por cada canal (el repositorio en memoria nunca aplica RLS ni GRANT).
@@ -47,7 +47,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 043_sistema_escritura_clientes_avisos_y_eventos.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 045_sistema_escritura_clientes_avisos_y_eventos.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

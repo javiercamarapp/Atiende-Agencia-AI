@@ -34,7 +34,7 @@ class AbortAwareFakeSession implements TenantDbSession {
       err.code = "25P02";
       throw err;
     }
-    // Migracion 043: el camino primario (funcion solo-sistema) no existe en esta base -> 42883, que aborta la transaccion como en
+    // Migracion 045: el camino primario (funcion solo-sistema) no existe en esta base -> 42883, que aborta la transaccion como en
     // Postgres real; el repositorio debe recuperarla con ROLLBACK TO SAVEPOINT y caer al camino directo que este doble modela.
     if (normalized.startsWith("select restaurantes.upsert_customer")) {
       this.aborted = true;

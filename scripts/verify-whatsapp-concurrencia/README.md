@@ -26,7 +26,7 @@ También imprime el pico de conexiones activas del pool.
 crea por HTTP un pedido **web** con cliente nuevo y domicilio, un segundo pedido del mismo cliente con otra dirección
 (un solo cliente, 2 direcciones, `order_count` correcto), un pedido por **voz** (secreto de herramienta) y un aviso de
 contacto (`registerCallbackRequest`, lo que usan `escalar_a_humano` y `registrar_contacto`). Contra una base **sin** la
-migración 043 estos pasos fallan con `permission denied for table customers` / `callback_requests`. No cubre el turno
+migración 045 estos pasos fallan con `permission denied for table customers` / `callback_requests`. No cubre el turno
 de WhatsApp con tool-calls reales del LLM (el LLM simulado responde solo texto): ese camino usa el mismo `createOrder`
 del pedido web/voz.
 

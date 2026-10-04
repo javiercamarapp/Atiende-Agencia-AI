@@ -1,4 +1,4 @@
-// P0 (PM, cuenta real; migracion 043): las escrituras de la sesion de sistema (cliente, direccion, aviso, evento de WhatsApp
+// P0 (PM, cuenta real; migracion 045): las escrituras de la sesion de sistema (cliente, direccion, aviso, evento de WhatsApp
 // fallido) van por funciones `security definer` solo-sistema. Contra una base SIN esa migracion la funcion no existe (42883) y el
 // repositorio cae al camino directo anterior. Todo corre dentro de la transaccion unica del request: sin SAVEPOINT el 42883 la
 // dejaria abortada (25P02) y el COMMIT seria un ROLLBACK. `AbortAwareFakeSession` reproduce ese estado.
@@ -19,7 +19,7 @@ function pgError(code: string, message: string): Error & { code: string } {
 const sinFuncion = (nombre: string) => pgError("42883", `function restaurantes.${nombre} does not exist`);
 const FILA_CLIENTE = { id: CLIENTE, organization_id: ORG, phone: "9991234567", name: "Ana", order_count: 0 };
 
-describe("upsertCustomer (043)", () => {
+describe("upsertCustomer (045)", () => {
   it("con la funcion: un solo SELECT, devuelve el cliente y libera el SAVEPOINT", async () => {
     const session = new AbortAwareFakeSession([{ match: /select restaurantes\.upsert_customer/i, respond: () => [{ customer: FILA_CLIENTE }] }]);
     const cliente = await new PostgresRestaurantesRepository(session).upsertCustomer(ORG, "9991234567", "Ana");
@@ -46,7 +46,7 @@ describe("upsertCustomer (043)", () => {
   });
 });
 
-describe("addCustomerAddressIfNew (043)", () => {
+describe("addCustomerAddressIfNew (045)", () => {
   it("con la funcion: pasa organizacion, cliente y direccion", async () => {
     const session = new AbortAwareFakeSession([{ match: /select restaurantes\.add_customer_address_if_new/i, respond: () => [{ add_customer_address_if_new: null }] }]);
     await new PostgresRestaurantesRepository(session).addCustomerAddressIfNew(CLIENTE, "Calle 1 #2", ORG);
@@ -71,7 +71,7 @@ describe("addCustomerAddressIfNew (043)", () => {
   });
 });
 
-describe("createCallbackRequest (043)", () => {
+describe("createCallbackRequest (045)", () => {
   const ENTRADA = { organizationId: ORG, propertyId: PROP, customerName: "Ana", customerPhone: "+529991234567", reason: "queja", message: undefined, source: "whatsapp" as const };
   const CREADO = { id: "00000000-0000-4000-8000-0000000000d1", resolved: false, created_at: "2026-10-03T12:00:00.000Z" };
   // La notificacion in-app (best-effort, con su propio SAVEPOINT) se absorbe con un handler generico.
@@ -96,7 +96,7 @@ describe("createCallbackRequest (043)", () => {
   });
 });
 
-describe("markInboundEventFailed (043)", () => {
+describe("markInboundEventFailed (045)", () => {
   it("con la funcion: una sola llamada", async () => {
     const session = new AbortAwareFakeSession([{ match: /select restaurantes\.mark_whatsapp_inbound_failed/i, respond: () => [{ mark_whatsapp_inbound_failed: null }] }]);
     await new PostgresRestaurantesRepository(session).markInboundEventFailed(ORG, "wamid.1", "ConversationBusy");
