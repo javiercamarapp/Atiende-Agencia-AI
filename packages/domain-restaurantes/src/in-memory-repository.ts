@@ -235,8 +235,8 @@ interface StoredKnownZone {
   readonly id?: string;
   readonly organizationId: string;
   readonly name: string;
-  readonly lat: number;
-  readonly lng: number;
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly createdAt?: string;
 }
 
@@ -479,6 +479,8 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     let bestZone: StoredKnownZone | null = null;
     for (const zone of this.knownZones) {
       if (zone.organizationId !== organizationId) continue;
+      // Una colonia sin coordenadas (migracion 056) no sirve de punto para medir distancias: la funcion SQL tampoco la considera.
+      if (zone.lat === null || zone.lng === null) continue;
       const zoneNorm = normalizeZoneText(zone.name);
       if (!zoneNorm) continue;
       if (inputNorm.includes(zoneNorm) || zoneNorm.includes(inputNorm)) {
@@ -492,7 +494,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     for (const branch of this.branches.values()) {
       if (branch.organizationId !== organizationId || branch.status !== "active") continue;
       if (branch.lat === null || branch.lng === null) continue;
-      const distance = haversineKm(bestZone.lat, bestZone.lng, branch.lat, branch.lng);
+      const distance = haversineKm(bestZone.lat as number, bestZone.lng as number, branch.lat, branch.lng);
       if (distance < nearestDistance) {
         nearestDistance = distance;
         nearestBranch = branch;

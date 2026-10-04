@@ -529,8 +529,8 @@ interface KnownZoneRowSql {
   id: string;
   organization_id: string;
   name: string;
-  lat: string | number;
-  lng: string | number;
+  lat: string | number | null;
+  lng: string | number | null;
   created_at: string;
 }
 
@@ -539,8 +539,8 @@ function mapKnownZoneRow(row: KnownZoneRowSql): KnownZone {
     id: row.id,
     organizationId: row.organization_id,
     name: row.name,
-    lat: Number(row.lat),
-    lng: Number(row.lng),
+    lat: row.lat === null ? null : Number(row.lat),
+    lng: row.lng === null ? null : Number(row.lng),
     createdAt: row.created_at,
   };
 }
