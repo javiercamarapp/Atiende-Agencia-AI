@@ -152,6 +152,6 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
       responseDueAt: null,
     });
     await expect(repo.resolveDataRightsConfirmationAsSystem(ORG, "+5219981234567", true)).resolves.toMatchObject({ available: true, found: true, id: "req-1", rightType: "acceso", status: "recibida" });
-    await expect(repo.purgeExpiredPrivacyData(100)).resolves.toEqual({ disponible: true, conversationsCleared: 3, voiceTurnsDeleted: 7, voiceCallsAnonymized: 2 });
+    await expect(repo.purgeExpiredPrivacyData(100)).resolves.toMatchObject({ disponible: true, conversationsCleared: 3, voiceTurnsDeleted: 7, voiceCallsAnonymized: 2, ordersVoiceCleared: 0, outboxPayloadsErased: 0, staffNotificationsErased: 0 });
   });
 });
