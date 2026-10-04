@@ -108,6 +108,8 @@ export interface AgentToolOutcome {
   readonly propertyId: string | null;
   /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
   readonly quoteHash?: string;
+  /** crear_pedido de VOZ repetido tras un intento incierto (timeout del worker): devuelve el pedido ya registrado, sin crear otro. */
+  readonly yaRegistrado?: boolean;
   /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
   readonly rechazoDelFlujo?: OrderFlowViolationCode;
 }
@@ -621,6 +623,12 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
   for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
     const snap = await readFlow(repo, ctx, flow);
     if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    // Voz: un reintento del MISMO pedido ya creado (el worker corto la espera y el servidor si lo registro) devuelve el pedido
+    // existente con su id, para que la llamada cuente el objetivo y el agente no le diga al cliente que fallo.
+    if (ctx.channel === "voz" && snap.state === "creado" && snap.context?.orderId && snap.context.quoteHash === fingerprint) {
+      const existente = await repo.findOrderById(ctx.organizationId, snap.context.orderId);
+      if (existente) return { result: { order: orderToWire(existente), ya_registrado: true }, raw: existente, orderId: existente.id, propertyId: existente.propertyId, yaRegistrado: true };
+    }
     const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
     const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
     const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);

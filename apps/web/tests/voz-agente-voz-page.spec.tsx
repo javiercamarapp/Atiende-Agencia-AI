@@ -11,7 +11,7 @@ import type { EntornoVoz } from "../src/lib/voz/adaptador-gemini-live.ts";
 import type { MuestraAudio } from "../src/verticals/restaurantes/voz/SelectorVoz.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { contarEjecuciones } from "../src/verticals/restaurantes/voz/herramientas-agente.ts";
-import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, keydown, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -101,6 +101,32 @@ async function irA(nombre: string) {
 }
 
 describe("<AgenteVozPage /> pestañas", () => {
+  it("QA-restaurantes-R1-botones-10: las flechas, Inicio y Fin recorren las pestañas (con vuelta), mueven el foco y solo la activa entra por Tab", async () => {
+    await pintar();
+    document.body.appendChild(rendered!.container); // el foco real exige el nodo en el documento (renderComponent ya lo agrega)
+    const nombre = () => document.activeElement?.textContent;
+    pestana("Resumen").focus();
+    expect(pestana("Resumen").tabIndex).toBe(0);
+    expect(pestana("Voz").tabIndex).toBe(-1);
+    keydown(pestana("Resumen"), "ArrowRight");
+    expect(nombre()).toBe("Voz");
+    expect(pestana("Voz").getAttribute("aria-selected")).toBe("true");
+    expect(pestana("Voz").tabIndex).toBe(0);
+    expect(pestana("Resumen").tabIndex).toBe(-1);
+    keydown(pestana("Voz"), "ArrowLeft");
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "ArrowLeft"); // vuelta al final
+    expect(nombre()).toBe("Indicadores");
+    keydown(pestana("Indicadores"), "ArrowRight"); // vuelta al inicio
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "End");
+    expect(nombre()).toBe("Indicadores");
+    keydown(pestana("Indicadores"), "Home");
+    expect(nombre()).toBe("Resumen");
+    keydown(pestana("Resumen"), "a"); // otra tecla no mueve nada
+    expect(nombre()).toBe("Resumen");
+  });
+
   it("tiene las 8 pestañas en orden y abre en Resumen", async () => {
     await pintar();
     const nombres = Array.from(rendered!.container.querySelectorAll('[role="tab"]')).map((t) => t.textContent);
