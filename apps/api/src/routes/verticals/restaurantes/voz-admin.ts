@@ -34,6 +34,8 @@ import {
   consumeRateLimit,
   esVozDeGemini,
   firmarPreviewToken,
+  instruccionVozConReglas,
+  resolveAgentConfig,
 } from "@atiende/domain-restaurantes";
 import type { VoiceAgentProvider, VozConfig, VozConfigEntrada, VozProveedorId, VozRepository, VozResultado } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -202,6 +204,25 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const voiceId = raw.voiceId ?? lectura.valor.voiceId;
     if (!provider.catalogoVoces().some((v) => v.id === voiceId)) throw Errors.validation("voiceId: no está en el catálogo de voces del proveedor.");
 
+    // 2b) Instruccion de la sesion (antes de crear la fila: un fallo aqui no deja una sesion huerfana).
+    // Perfil PM: las reglas duras van ANEXADAS al final del texto editable (el dueno no puede borrarlas); el saludo inicial ya
+    // viaja dentro de la instruccion, antes del bloque. Otros perfiles conservan el comportamiento editable tal cual.
+    const agente = await resolveAgentConfig(restaurantes, organizationId, propertyId);
+    const comportamiento =
+      agente.perfil === "taqueria_pm"
+        ? instruccionVozConReglas({
+            comportamiento: lectura.valor.comportamiento,
+            mensajeInicial: lectura.valor.mensajeInicial,
+            businessName: agente.businessName,
+            ...(agente.agentName ? { agentName: agente.agentName } : {}),
+            deliveryTimeText: agente.deliveryTimeText,
+            promosTexto: agente.promosText ?? null,
+            salsasTexto: agente.salsasText ?? null,
+            pedidoGrandeTexto: agente.largeOrderText ?? null,
+            motivosDesactivados: agente.motivosDesactivados ?? [],
+          })
+        : lectura.valor.comportamiento;
+
     // 3) Fila de sesión (la base valida organización, sucursal, vigencia y created_by = staff).
     const ttlSegundos = PREVIEW_TOKEN_TTL_POR_DEFECTO_SEGUNDOS;
     let sesion;
@@ -214,7 +235,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     // 4) Sesión con el proveedor + token propio firmado.
     let emitida;
     try {
-      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento: lectura.valor.comportamiento, mensajeInicial: lectura.valor.mensajeInicial, ttlSegundos });
+      emitida = await provider.emitirSesionPreview({ organizationId, propertyId, sessionId: sesion.id, voiceId, comportamiento, mensajeInicial: agente.perfil === "taqueria_pm" ? "" : lectura.valor.mensajeInicial, ttlSegundos });
     } catch (err) {
       if (err instanceof VozNoConfiguradaError) throw Errors.serviceUnavailable(err.message);
       if (err instanceof VozProveedorError) {

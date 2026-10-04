@@ -17,7 +17,7 @@ export * from "./kpi.ts";
 export type { VozKpiRepository } from "./kpi-repository.ts";
 export { PostgresVozKpiRepository } from "./postgres-kpi-repository.ts";
 export { InMemoryVozKpiRepository, diaVacio, siguienteDia } from "./in-memory-kpi-repository.ts";
-export { CallStateMachine, LIMITES_POR_DEFECTO } from "./llamada/maquina.ts";
+export { CallStateMachine, LIMITES_POR_DEFECTO, LIMITES_VOZ_PM } from "./llamada/maquina.ts";
 export type { AccionLlamada, EstadoLlamada, EventoLlamada, LimitesLlamada } from "./llamada/maquina.ts";
 export { MENSAJES_PREGRABADOS, MENSAJE_IDS, mensajeSaludoRespaldo } from "./llamada/mensajes.ts";
 export type { MensajeId } from "./llamada/mensajes.ts";
@@ -31,3 +31,5 @@ export type { EjecutorTools, ResultadoTool, TransporteTools } from "./llamada/ej
 export { ControladorLlamada } from "./llamada/controlador.ts";
 export type { DepsControlador, EventoKpiLlamada, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";
 export type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
+export { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, REGLAS_VIVAS_VOZ, bloqueReglasVozPm, comportamientoVozPm, instruccionVozConReglas } from "./perfil-voz-pm.ts";
+export type { EntradaBloqueReglasVoz, EntradaComportamientoVoz, EntradaInstruccionVoz } from "./perfil-voz-pm.ts";
