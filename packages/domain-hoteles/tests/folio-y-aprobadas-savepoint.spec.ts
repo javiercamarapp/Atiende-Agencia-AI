@@ -76,6 +76,7 @@ describe("folio cerrado (H-P3-01): el rechazo de los triggers de la 045 se tradu
   it("translateFolioTriggerError ignora errores ajenos (otro SQLSTATE, mensaje distinto, valores raros)", () => {
     expect(translateFolioTriggerError(pgError("23505", "folio_cerrado: x"))).toBeNull();
     expect(translateFolioTriggerError(pgError("P0001", "otra_cosa: x"))).toBeNull();
+    expect(translateFolioTriggerError(new Error("folio_cerrado: sin SQLSTATE"))).toBeNull();
     expect(translateFolioTriggerError(null)).toBeNull();
     expect(translateFolioTriggerError("folio_cerrado")).toBeNull();
   });

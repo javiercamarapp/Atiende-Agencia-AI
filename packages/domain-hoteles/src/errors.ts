@@ -81,7 +81,7 @@ export class FolioCierreSaldoError extends Error {
 export function translateFolioTriggerError(err: unknown): FolioCerradoError | FolioCierreSaldoError | null {
   const e = err as { code?: unknown; message?: unknown } | null;
   if (!e || typeof e.message !== "string") return null;
-  if (e.code !== undefined && e.code !== "P0001") return null;
+  if (e.code !== "P0001") return null;
   if (e.message.startsWith("folio_cerrado")) return new FolioCerradoError("El folio está cerrado: no admite nuevos movimientos.");
   if (e.message.startsWith("cierre_saldo_distinto_de_cero")) return new FolioCierreSaldoError();
   return null;
