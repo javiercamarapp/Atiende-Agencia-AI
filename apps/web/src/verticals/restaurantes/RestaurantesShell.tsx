@@ -12,6 +12,7 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
+  CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   History,
@@ -120,6 +121,8 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
         { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
         { to: `${base}/turnos`, label: "Turnos", icon: Clock },
         { to: `${base}/historial`, label: "Historial", icon: History },
+        // R-42: cierre del día y resumen semanal (solo owner/admin: el servidor exige el mismo umbral).
+        ...(canSeeStaff ? [{ to: `${base}/cierres`, label: "Cierre del día", icon: CalendarCheck }] : []),
       ],
     },
     {

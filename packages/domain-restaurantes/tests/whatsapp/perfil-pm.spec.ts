@@ -228,13 +228,16 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/maíz, harina o mixta \(mitad y mitad\)/);
   });
 
-  it("no promete el combo del martes: dice que la confirma la sucursal y cotiza los nachos a precio de lista", () => {
-    expect(p).not.toMatch(/2 aguas de cortes[ií]a/i);
-    expect(p).not.toMatch(/nachos de pastor con 2 aguas/i);
-    expect(p).toContain("la confirma la sucursal al recoger");
-    expect(p).toMatch(/cotice los nachos a precio de lista/);
-    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías");
-    expect(PM_PROMOS_POR_OMISION).not.toMatch(/martes|nachos/i);
+  it("el combo del martes lo aplica cotizar_pedido (CR09): el agente dice lo que devuelve y no lo promete si la cotizacion no lo muestra", () => {
+    expect(p).not.toContain("la confirma la sucursal al recoger");
+    expect(p).not.toMatch(/no lo prometa ni lo aplique|cotice los nachos a precio de lista/);
+    expect(p).toMatch(/H13\. Combo del martes \(nachos de pastor con 2 aguas de cortesía, solo para recoger\): lo aplica cotizar_pedido; diga lo que devuelve\./);
+    expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
+  });
+
+  it("las promociones por omision valen en TODAS las sucursales: lunes 2x1 y martes nachos con 2 aguas, solo recoger (CR07/CR08)", () => {
+    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
+    expect(PM_PROMOS_POR_OMISION).not.toMatch(/Francisco de Montejo|Pensiones|Galerías/);
   });
 
   it("ya no afirma 'Precios iguales' ni prohibe dar horarios por sucursal: el horario y el precio los da la herramienta", () => {
