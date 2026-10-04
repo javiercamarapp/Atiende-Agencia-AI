@@ -260,8 +260,9 @@ export async function solicitarCancelacion(
   const motivo = input.motivo && esMotivoCancelacion(input.motivo) ? input.motivo : "cliente_desistio";
   const cfg = (await deps.auto.leerConfig(input.organizationId, order.propertyId)).valor;
   if (order.status === "por_aprobar") {
-    // Aun no esta en cocina ni confirmado: la sucursal lo resuelve en su aprobacion; se avisa sin prometer.
-    return { resultado: "solicitud_creada", solicitudId: null, mensaje: "Su pedido aún lo está confirmando la sucursal; avisamos que desea cancelarlo y le confirmamos por aquí." };
+    // Ya hay una solicitud de aprobacion abierta para este pedido: no se crea otra ni se promete nada. `no_disponible` hace que el turno SIGA por el
+    // camino de siempre (aviso a una persona de la sucursal), para que el staff no apruebe y mande a cocina un pedido que el cliente ya cancelo.
+    return { resultado: "no_disponible", mensaje: "Su pedido aún lo está confirmando la sucursal; le paso el caso a una persona para que lo vea." };
   }
   if ((order.status === "pending" || order.status === "programado") && cfg.cancelacionAuto) {
     const r = await deps.auto.cancelarPorCliente(input.organizationId, order.id, motivo);

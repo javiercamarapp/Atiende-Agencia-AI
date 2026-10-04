@@ -224,6 +224,14 @@ describe("cancelacion pedida por el cliente", () => {
     expect(r.mensaje).not.toMatch(/cancelado\./);
   });
 
+  it("pedido por_aprobar: no promete ni crea solicitud; devuelve no_disponible para que el turno escale a una persona", async () => {
+    const t = await montar();
+    const { order, mem } = await t.pedido({ status: "por_aprobar" });
+    const r = await solicitarCancelacion(t.deps, { organizationId: order.organizationId, customerPhone: order.customerPhone, desdeIso: desde });
+    expect(r.resultado).toBe("no_disponible");
+    expect(mem.status).toBe("por_aprobar");
+  });
+
   it("pedido pending con comanda ya en el POS: solicitud, no cancelacion automatica", async () => {
     const t = await montar();
     const { order, mem } = await t.pedido();
