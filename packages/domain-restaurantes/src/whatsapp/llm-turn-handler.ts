@@ -28,6 +28,7 @@ import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@at
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
 import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
@@ -497,7 +498,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   }
 
   async function ejecutarTurno(
-    { organizationId, phone, messages, customer, propertyId: entryPropertyId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
     tele: Telemetria,
   ): Promise<Salida> {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
@@ -506,6 +507,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
       const preview = modo === "preview";
       const config = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
+      // Preview sin efectos: los contadores del agente viven en la conversacion real de la base, asi que en preview no se leen ni se escriben
+      // (devuelven `null` = "no hay donde contar" y se usa la cuenta local del turno).
+      const contar: typeof contarAgente = async (...a) => (preview ? null : contarAgente(...a));
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
@@ -538,11 +542,35 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const safeReply = (reply: string) => enforceQuotedTotal(enforceBistecPackNotice(reply, working), lastQuoteTotal, lastQuoteAmounts);
       // R-21: si el agente pidio un humano (`escalar_a_humano` sin error), el webhook abre la toma de handoff.
       let escalarMotivo: string | null = null;
-      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedidoSimulado?: unknown } => ({
+      // §5: pin con el boton nativo de WhatsApp. Se pide una sola vez por pedido (contador `ubicacion_solicitada`, se reinicia al crear el pedido)
+      // y solo si el cliente aun no compartio su ubicacion y el turno no termino en una escalacion.
+      let pedirUbicacionEnTurno = false;
+      const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedidoSimulado?: unknown } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
         ...(pedidoSimulado !== undefined ? { pedidoSimulado } : {}),
+        ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
       });
+      // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 047); sin donde
+      // contar (base sin migrar) se cuenta solo dentro del turno. Al llegar al umbral escala por su cuenta con un texto fijo.
+      let coloniaFallosEnTurno = 0;
+      let noEntiendeEnTurno = 0;
+      const escalarPorContador = async (motivo: "zona_no_reconocida" | "no_entiende", resumen: string) => {
+        const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
+        const aviso = await executeAgentToolSafely(
+          repo,
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+          "escalar_a_humano",
+          { customer_name: nombre, motivo, resumen },
+        );
+        if (isToolErrorResult(aviso.result)) {
+          return done({ reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId, propertyId });
+        }
+        escalarMotivo = motivo;
+        await contar(repo, organizationId, phone, motivo === "zona_no_reconocida" ? "colonia_no_reconocida" : "no_entiende", "reiniciar");
+        return done({ reply: COPY_ESCALACION_CONTADOR[motivo], orderId, propertyId });
+      };
+      const noEntiendeActivo = perfil === "taqueria_pm" && !(config.motivosDesactivados ?? []).includes("no_entiende");
 
       // Motivos de alto riesgo (cancelacion, cobro, ARCO, alergia, transferencia, queja, "quiero una
       // persona"): no se dejan al criterio del modelo. Se avisa al equipo ANTES del LLM y se responde fijo.
@@ -555,7 +583,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         const aviso = await executeAgentToolSafely(
           repo,
-          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx },
+          { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
           "escalar_a_humano",
           { customer_name: nombre, motivo: riesgo.motivo, resumen: riesgo.text.slice(0, 500) },
         );
@@ -629,6 +657,15 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           const base = completion.text || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
+          if (noEntiendeActivo) {
+            // Solo el texto del modelo cuenta: el respaldo por respuesta vacia (PM_COPY.repetirPedido) no es un 'no entiendo' del agente.
+            if (completion.text && pideRepetir(completion.text)) {
+              const n = (await contar(repo, organizationId, phone, "no_entiende", "incrementar")) ?? (noEntiendeEnTurno += 1);
+              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("no_entiende", `El agente no logró entender al cliente ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
+            } else {
+              await contar(repo, organizationId, phone, "no_entiende", "reiniciar");
+            }
+          }
           // Un turno sin herramienta ni pregunta deja al cliente esperando: se anexa la pregunta del paso pendiente.
           const conPregunta = anyToolCalled
             ? base
@@ -658,7 +695,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puede repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, ...modoCtx }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             rechazoDelFlujo = executed.rechazoDelFlujo;
@@ -692,6 +729,22 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           // Pedido grande retenido por el servidor: el aviso ya quedo registrado; solo se abre la toma de handoff (R-21).
           if (call.name === "crear_pedido" && (result as { pedido_grande?: unknown } | null)?.pedido_grande === true) escalarMotivo = "pedido_grande";
           tele.tools.push({ tool: call.name, latenciaMs: Date.now() - toolInicio, resultado: isToolErrorResult(result) ? (fallaSistema ? "error_sistema" : "error_regla") : "ok", vuelta: tele.vueltas });
+          const esDomicilio = call.name === "buscar_sucursal_cercana" || (call.name === "cotizar_pedido" && input.canal === "domicilio");
+          if (perfil === "taqueria_pm" && esDomicilio && !isToolErrorResult(result) && !sharedLocation && !pedirUbicacionEnTurno) {
+            if ((await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
+          }
+          if (perfil === "taqueria_pm" && call.name === "crear_pedido" && !isToolErrorResult(result)) {
+            await contar(repo, organizationId, phone, "ubicacion_solicitada", "reiniciar");
+          }
+          if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
+            const estado = (result as { estado?: unknown } | null)?.estado;
+            if (estado === "no_reconocida") {
+              const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
+              if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
+            } else if (estado === "asignada" || estado === "fuera_de_zona") {
+              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+            }
+          }
           // El rechazo de un duplicado (`pedido_ya_creado`) o de un reintento simultaneo (`pedido_en_proceso`) es el servidor haciendo su trabajo,
           // no un fallo del modelo barato: no justifica pagar el escalon caro.
           if (call.name === "crear_pedido" && isToolErrorResult(result) && rechazoDelFlujo !== "pedido_ya_creado" && rechazoDelFlujo !== "pedido_en_proceso") {

@@ -20,6 +20,8 @@ export interface WhatsAppTurnHandler {
     /** Sucursal dueña del número de WhatsApp que recibió el mensaje (modelo PM: un número
      * por sucursal). `null`/ausente = número por defecto de la organización. */
     readonly propertyId?: string | null;
+    /** Id del mensaje de Meta que dispara este turno: hace idempotente el aviso al equipo ante reenvios y reintentos. */
+    readonly messageId?: string;
     /** Instante absoluto (ms, mismo reloj que `Date.now`) antes del cual el turno debe TERMINAR para que la funcion del
      * webhook alcance a confirmar la transaccion y encolar la respuesta. Ausente = solo manda el presupuesto propio del handler. */
     readonly finTurnoMs?: number;
@@ -36,6 +38,9 @@ export interface WhatsAppTurnHandler {
     readonly propertyId: string | null;
     /** R-21: el agente pidio un humano (`escalar_a_humano`); el webhook abre la toma de handoff. */
     readonly escalacion?: { readonly motivo: string };
+    /** El agente pide la ubicacion del cliente con el boton nativo de WhatsApp (una sola vez por pedido): el webhook encola, ademas del
+     * texto, un mensaje interactivo `location_request_message` (dentro de la ventana de 24 h del cliente). */
+    readonly pedirUbicacion?: true;
     /** Solo `preview`: el pedido SIMULADO que devolvio `crear_pedido` (no existe en la base). */
     readonly pedidoSimulado?: unknown;
   }>;

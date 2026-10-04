@@ -31,6 +31,8 @@ export interface PeticionLlmVoz {
   readonly mensajes: readonly MensajeLlmVoz[];
   readonly herramientas: readonly ToolDefinicion[];
   readonly senal?: AbortSignal;
+  /** Temperatura que debe usar el puerto (`VOZ_PLATAFORMA.cascada.temperatura`). */
+  readonly temperatura?: number;
 }
 export interface RespuestaLlmVoz {
   readonly texto: string;
@@ -89,6 +91,17 @@ export function pcm16AWav(pcm16: Uint8Array, hz: number): Uint8Array {
   v.setUint32(40, pcm16.byteLength, true);
   wav.set(pcm16, 44);
   return wav;
+}
+
+/** Pista de vocabulario para el STT (nombres y apodos del menu): terminos unicos, sin vacios, hasta `max`. Sin terminos no agrega nada. */
+export function pistaVocabulario(vocabulario: readonly string[] | undefined, max: number): { prompt?: string } {
+  const terminos = new Map<string, string>();
+  for (const t of vocabulario ?? []) {
+    if (terminos.size >= max) break;
+    const limpio = t.replace(/\s+/g, " ").trim();
+    if (limpio !== "" && !terminos.has(limpio.toLowerCase())) terminos.set(limpio.toLowerCase(), limpio);
+  }
+  return terminos.size === 0 ? {} : { prompt: `Vocabulario del menu: ${[...terminos.values()].join(", ")}.` };
 }
 
 function base64(bytes: Uint8Array): string {
@@ -257,7 +270,7 @@ class SesionCascada implements VozSesionLlamada {
 
   private async completar(senal: AbortSignal): Promise<RespuestaLlmVoz> {
     try {
-      return await this.o.llm.completar({ system: this.apertura.instruccion, mensajes: this.mensajes, herramientas: this.apertura.herramientas, senal });
+      return await this.o.llm.completar({ system: this.apertura.instruccion, mensajes: this.mensajes, herramientas: this.apertura.herramientas, senal, temperatura: this.o.config.cascada.temperatura });
     } catch {
       throw new ErrorEtapa("llm");
     }
@@ -270,7 +283,7 @@ class SesionCascada implements VozSesionLlamada {
       res = await this.o.fetchFn(`${config.cascada.baseUrl}/audio/transcriptions`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${this.o.apiKey}` },
-        body: JSON.stringify({ model: config.cascada.modeloStt, language: "es", input_audio: { data: base64(pcm16AWav(pcm16, HZ_ENTRADA)), format: "wav" } }),
+        body: JSON.stringify({ model: config.cascada.modeloStt, language: "es", ...pistaVocabulario(this.apertura.vocabulario, config.cascada.vocabularioMax), input_audio: { data: base64(pcm16AWav(pcm16, HZ_ENTRADA)), format: "wav" } }),
         signal: senal,
       });
     } catch {
