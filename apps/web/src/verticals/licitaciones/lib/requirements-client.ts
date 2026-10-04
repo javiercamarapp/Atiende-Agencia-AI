@@ -15,7 +15,7 @@
 // de cumplimiento (`PUT .../requirement-mappings/:topicKey`), aprobaciones y
 // el ZIP de cierre -- eso es alcance de rondas futuras, esto es solo carga +
 // visualización de requisitos.
-import { fetchJson, postJson } from "./admin-client.ts";
+import { fetchJson, patchJson, postJson } from "./admin-client.ts";
 
 export type RequirementKind = "tecnico" | "economico" | "legal" | "administrativo" | "anexo";
 export type Obligatoriedad = "obligatorio" | "opcional" | "condicional";
@@ -37,6 +37,81 @@ export interface RequirementItemRecord {
   readonly deadline: string | null;
   readonly status: RequirementStatus;
   readonly confidence: number | null;
+}
+
+/** Requisito con los campos de la matriz estable (paridad3): asignado, causa de desechamiento (REQ-101) y retiro. */
+export interface RequirementMatrixItem extends RequirementItemRecord {
+  readonly assignedTo?: string | null;
+  readonly disqualifying?: boolean;
+  readonly manuallyEditedAt?: string | null;
+  /** Retirado: ya no está en las bases vigentes (nunca se borra). */
+  readonly retiredAt?: string | null;
+  readonly retiredInVersion?: number | null;
+}
+
+export interface RequirementMatrixResult {
+  /** `false` = base sin la migración 037: sin asignación ni causa de desechamiento. */
+  readonly migrated: boolean;
+  readonly items: readonly RequirementMatrixItem[];
+}
+
+export async function fetchRequirementMatrix(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string, includeRetired: boolean): Promise<RequirementMatrixResult> {
+  const body = await fetchJson<{ items: readonly RequirementMatrixItem[]; migrated?: boolean }>(
+    fetchImpl,
+    `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/requirements${includeRetired ? "?includeRetired=1" : ""}`,
+    token,
+  );
+  return { migrated: body.migrated ?? false, items: body.items };
+}
+
+export interface RequirementPatch {
+  readonly responsibleRole?: string;
+  readonly status?: "pendiente" | "en_progreso" | "cumplido" | "no_evaluable";
+  readonly assignedTo?: string | null;
+  readonly disqualifying?: boolean;
+}
+
+/** `PATCH .../requirements/:itemId` -- edición humana (WRITE_ROLES en el servidor, con bitácora). */
+export async function updateRequirement(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string, itemId: string, patch: RequirementPatch): Promise<RequirementMatrixItem> {
+  const body = await patchJson<{ item: RequirementMatrixItem }>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/requirements/${itemId}`, token, patch);
+  return body.item;
+}
+
+export interface RequirementAssignee {
+  readonly userId: string;
+  readonly nombre: string;
+  readonly rol: string;
+}
+
+export async function fetchRequirementAssignees(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<readonly RequirementAssignee[]> {
+  const body = await fetchJson<{ assignees: readonly RequirementAssignee[] }>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/requirement-assignees`, token);
+  return body.assignees;
+}
+
+export interface PersistedRequirementConflict {
+  readonly id: string;
+  readonly kind: "deadline_mismatch" | "obligatoriedad_mismatch" | "duplicate_ambiguous";
+  readonly topicKey: string | null;
+  readonly description: string;
+  readonly itemIds: readonly string[];
+  readonly status: "abierto" | "resuelto";
+  readonly resolutionNotes: string | null;
+  readonly resolvedAt: string | null;
+}
+
+export interface ConflictsResult {
+  readonly disponible: boolean;
+  readonly conflicts: readonly PersistedRequirementConflict[];
+}
+
+export async function fetchRequirementConflicts(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<ConflictsResult> {
+  return fetchJson<ConflictsResult>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/requirements/conflicts`, token);
+}
+
+/** `POST .../requirements/conflicts/:id/resolve` -- las notas son obligatorias (el servidor las exige). */
+export async function resolveRequirementConflict(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string, conflictId: string, notes: string): Promise<PersistedRequirementConflict> {
+  const body = await postJson<{ conflict: PersistedRequirementConflict }>(fetchImpl, `${apiBaseUrl}/licitaciones/${propertyId}/tenders/${tenderId}/requirements/conflicts/${conflictId}/resolve`, token, { notes });
+  return body.conflict;
 }
 
 export async function fetchRequirementItems(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, tenderId: string): Promise<readonly RequirementItemRecord[]> {

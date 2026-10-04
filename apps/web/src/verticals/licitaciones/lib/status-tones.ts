@@ -75,3 +75,9 @@ export const GARANTIA_ESTADO_TONES: Tabla = { pendiente_entrega: "warning", entr
 
 /** Estado EFECTIVO de un hito de contrato (L-27): `vencido` es un estado derivado de la fecha comprometida. */
 export const HITO_ESTADO_TONES: Tabla = { pendiente: "info", vencido: "danger", cumplido: "success", cancelado: "neutral" };
+
+/** Estado de extracción de texto de un documento de la bóveda (paridad3): sin texto nunca se inventa contenido. */
+export const EXTRACCION_DOCUMENTO_TONES: Tabla = { extracted: "success", requires_ocr: "warning", failed: "danger" };
+
+/** Estado de un conflicto entre requisitos. */
+export const CONFLICTO_REQUISITO_TONES: Tabla = { abierto: "danger", resuelto: "success" };
