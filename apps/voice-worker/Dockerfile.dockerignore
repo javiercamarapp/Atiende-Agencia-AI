@@ -9,5 +9,5 @@ supabase
 scripts/verify-*
 scripts/seed-pm-demo
 **/*.log
-.env
-.env.*
+**/.env
+**/.env.*
