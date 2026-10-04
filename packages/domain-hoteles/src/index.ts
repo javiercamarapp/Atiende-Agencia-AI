@@ -547,6 +547,7 @@ export * from "./fechas/index.ts";
 export * from "./lista-espera/index.ts";
 export * from "./huespedes/index.ts";
 export * from "./conversaciones/index.ts";
+export * from "./mensajes-huesped/index.ts";
 export * from "./privacy/index.ts";
 
 // "Chatea con tus datos" -- catalogo de hoteles (ver docs/DATA-CHAT.md). Nombres explicitos: el index NO reexporta el resto del modulo.
