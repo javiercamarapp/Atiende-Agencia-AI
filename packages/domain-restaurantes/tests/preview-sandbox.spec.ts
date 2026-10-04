@@ -142,3 +142,78 @@ describe("modo preview del registro de tools", () => {
     expect(esTelefonoPreview("9991234567")).toBe(false);
   });
 });
+
+// ── Turno completo del agente de WhatsApp en modo preview (el chat «Probar agente» del panel) ──────────────────────────
+import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
+import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
+import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
+import type { ConversationMessage } from "../src/repository.ts";
+
+function agente(repo: RestaurantesRepository, script: (r: LlmCompletionRequest) => LlmCompletionResult) {
+  const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+  gateway.registerLadder("default", [new FakeLlmProvider({ id: "scripted", script })]);
+  gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "unused" })]);
+  return createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+}
+
+describe("turno del agente de WhatsApp en modo preview", () => {
+  const ok = (text: string, toolCalls?: { id: string; name: string; argumentsJson: string }[]): LlmCompletionResult => ({ text, model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0, ...(toolCalls ? { toolCalls } : {}) });
+
+  it("cotizar, confirmar y crear a lo largo de tres mensajes devuelve pedidoSimulado y no escribe nada; con modo real el mismo guion SI crea el pedido", async () => {
+    for (const modo of ["preview", "real"] as const) {
+      const f = buildRestaurantFixture();
+      const contado = conContadorDeEscrituras(f.repo);
+      const items = [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }];
+      const base = { branch_slug: "fco-montejo", items, canal: "recoger" };
+      const handler = agente(contado.repo, (req) => {
+        const ultimo = req.messages.at(-1)!;
+        if (ultimo.role === "tool") return ok("Listo.");
+        const texto = String((ultimo as { content: string }).content);
+        if (texto.includes("cotiza")) return ok("", [{ id: "t1", name: "cotizar_pedido", argumentsJson: JSON.stringify(base) }]);
+        if (texto.includes("confirmo")) return ok("", [{ id: "t2", name: "confirmar_resumen", argumentsJson: "{}" }]);
+        return ok("", [{ id: "t3", name: "crear_pedido", argumentsJson: JSON.stringify({ ...base, customer_name: "Dueno", payment_method: "efectivo" }) }]);
+      });
+      const historial: ConversationMessage[] = [];
+      const phone = telefonoFicticioPreview("s");
+      let ultimaRespuesta: Awaited<ReturnType<typeof handler.handleInboundMessage>> | undefined;
+      for (const texto of ["cotiza dos cocas", "confirmo", "crea el pedido"]) {
+        historial.push({ role: "user", content: texto });
+        ultimaRespuesta = await handler.handleInboundMessage({ organizationId: f.organizationId, phone, messages: [...historial], customer: { isNew: true }, ...(modo === "preview" ? { modo } : {}) });
+        historial.push({ role: "assistant", content: ultimaRespuesta.reply });
+      }
+      const pedidos = (await f.repo.listOrders(f.organizationId, { propertyIds: null, limit: 50 })).orders.length;
+      if (modo === "preview") {
+        expect(ultimaRespuesta!.orderId).toBeNull();
+        expect((ultimaRespuesta!.pedidoSimulado as { id: string; total: number }).id.startsWith(FOLIO_PREVIEW_PREFIJO)).toBe(true);
+        expect((ultimaRespuesta!.pedidoSimulado as { total: number }).total).toBe(90);
+        expect(pedidos).toBe(0);
+        expect(contado.escrituras).toEqual([]);
+      } else {
+        expect(ultimaRespuesta!.orderId).not.toBeNull();
+        expect(ultimaRespuesta!.pedidoSimulado).toBeUndefined();
+        expect(pedidos).toBe(1);
+      }
+    }
+  });
+
+  it("un mensaje de alto riesgo (queja) en preview NO crea aviso real al equipo", async () => {
+    const f = buildRestaurantFixture();
+    const contado = conContadorDeEscrituras(f.repo);
+    const handler = agente(contado.repo, () => ok("hola"));
+    const r = await handler.handleInboundMessage({ organizationId: f.organizationId, phone: telefonoFicticioPreview("s"), messages: [{ role: "user", content: "Quiero hablar con una persona, tengo una queja grave" }], customer: { isNew: true }, modo: "preview" });
+    expect(r.reply.length).toBeGreaterThan(0);
+    expect(contado.escrituras).toEqual([]);
+  });
+
+  it("la configuracion en borrador se usa solo en preview: el nombre del negocio aparece en el prompt", async () => {
+    const f = buildRestaurantFixture();
+    const prompts: string[] = [];
+    const handler = agente(f.repo, (req) => (prompts.push(req.system ?? ""), ok("hola")));
+    const borrador = { perfil: "generico" as const, agentName: null, businessName: "Taqueria Borrador", toneStyle: null, deliveryTimeText: null, greetingText: null, salsasText: null, promosText: null, escalationReasonsOff: [], largeOrderText: null, replyDebounceSeconds: null };
+    const msg = [{ role: "user" as const, content: "hola" }];
+    await handler.handleInboundMessage({ organizationId: f.organizationId, phone: "9991111111", messages: msg, customer: { isNew: true }, modo: "preview", configBorrador: borrador });
+    await handler.handleInboundMessage({ organizationId: f.organizationId, phone: "9991111111", messages: msg, customer: { isNew: true }, configBorrador: borrador });
+    expect(prompts[0]).toContain("Taqueria Borrador");
+    expect(prompts[1]).not.toContain("Taqueria Borrador");
+  });
+});
