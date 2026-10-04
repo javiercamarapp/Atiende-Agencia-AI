@@ -13,6 +13,8 @@ import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { diaLocalSucursal } from "./voz/kpi.ts";
+import { InMemoryConocimientoStore } from "./conocimiento/in-memory.ts";
+import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   CanalPedido,
@@ -305,6 +307,11 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
   // whatsapp_branch_channel / no_domicilio.
   private readonly branchPolicies = new Map<string, BranchPolicy>();
+  /** Conocimiento del negocio e interruptor del agente de WhatsApp (migracion 053); `conocimiento.noDisponible = true` simula la base sin migrar. */
+  readonly conocimiento = new InMemoryConocimientoStore(
+    () => new Date(),
+    (organizationId, propertyId) => this.branches.get(propertyId)?.organizationId === organizationId,
+  );
   private readonly branchHoursExceptions: BranchHoursException[] = [];
   private readonly orderPickupInfo = new Map<string, { canal: CanalPedido | null; propina: number | null; horaRecogida: string | null }>();
   // R-11 (migracion 034): `false` simula la base SIN migrar (los pedidos programados no estan disponibles).
@@ -1780,6 +1787,38 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   // ---- Modelo PM (migracion 023) ----
+  async listarConocimiento(organizationId: string): Promise<ConocimientoLectura> {
+    return this.conocimiento.listar(organizationId);
+  }
+
+  async listarConocimientoPublicado(organizationId: string, propertyId: string | null): Promise<readonly ConocimientoEntrada[]> {
+    return this.conocimiento.listarPublicado(organizationId, propertyId);
+  }
+
+  async crearConocimiento(organizationId: string, actorId: string, input: NuevaConocimientoEntrada): Promise<ConocimientoEntrada> {
+    return this.conocimiento.crear(organizationId, actorId, input);
+  }
+
+  async actualizarConocimiento(organizationId: string, actorId: string, id: string, patch: ConocimientoPatch): Promise<ConocimientoEntrada | null> {
+    return this.conocimiento.actualizar(organizationId, actorId, id, patch);
+  }
+
+  async borrarConocimiento(organizationId: string, id: string): Promise<boolean> {
+    return this.conocimiento.borrar(organizationId, id);
+  }
+
+  async findAgenteWhatsappActivo(propertyId: string): Promise<boolean> {
+    return this.conocimiento.agenteActivo(propertyId);
+  }
+
+  async listarAgentesWhatsappApagados(organizationId: string): Promise<{ readonly disponible: boolean; readonly propertyIdsApagados: readonly string[] }> {
+    return this.conocimiento.agentesApagadosDe(organizationId);
+  }
+
+  async fijarAgenteWhatsappActivo(organizationId: string, propertyId: string, _actorId: string, activo: boolean): Promise<void> {
+    this.conocimiento.fijarAgenteActivo(organizationId, propertyId, activo);
+  }
+
   async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
     return this.branchPolicies.get(propertyId) ?? EMPTY_BRANCH_POLICY;
   }
