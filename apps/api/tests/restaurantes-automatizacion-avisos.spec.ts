@@ -3,12 +3,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { InMemoryRestaurantesRepository } from "@atiende/domain-restaurantes";
+import { InMemoryRestaurantesRepository, avisarProgramadosPromovidos, esPromocionAtrasada } from "@atiende/domain-restaurantes";
 import { FakeSoftRestaurantAdapter, InMemoryComandaOutboxStore, type SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import { FakeWhatsAppGraphClient, WhatsAppConfigError, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
-import { avisarPromovidosEnCocinaBestEffort, esPromocionAtrasada } from "../src/routes/verticals/restaurantes/programados-avisos.ts";
 import { dispatchWhatsAppVertical } from "../src/routes/internal/whatsapp-dispatch.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import { buildRestaurantesKpiTestContext, makeOrder } from "./restaurantes-admin-kpis-fixtures.ts";
@@ -41,9 +40,9 @@ describe("QA-restaurantes-R1-automatizacion-07: un programado vencido hace horas
     ctx.restaurantesRepo.seedOrder(aTiempo);
     emitidas.length = 0;
     const app = buildApp({ ...ctx.deps, softRestaurantStore: () => store, softRestaurantPort: port });
-    const r = (await (await app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: SECRET })).json()) as { promoted: number; avisosCocina: { atrasados: number } };
+    const r = (await (await app.request("/internal/restaurantes/promover-programados", { method: "POST", headers: SECRET })).json()) as { promoted: number; atrasadosCocina: number };
     expect(r.promoted).toBe(2);
-    expect(r.avisosCocina.atrasados).toBe(1);
+    expect(r.atrasadosCocina).toBe(1);
     expect(emitidas.filter((e) => e.entidadId === tarde.id).map((e) => e.evento)).toEqual(["restaurantes.pedido.programado_atrasado"]);
     expect(emitidas.filter((e) => e.entidadId === aTiempo.id).map((e) => e.evento)).toEqual(["restaurantes.pedido.programado_en_cocina"]);
   });
@@ -61,8 +60,8 @@ describe("QA-restaurantes-R1-automatizacion-07: un programado vencido hace horas
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const o = (status: "programado" | "cancelado") => makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status, programadoPara: haceMin(5), promovidoAt: null });
     emitidas.length = 0;
-    const r = await avisarPromovidosEnCocinaBestEffort(ctx.deps, [o("programado"), o("cancelado")]);
-    expect(r).toEqual({ emitidas: 0, atrasados: 0, fallidas: 0 });
+    const r = await ctx.deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(ctx.deps.restaurantesRepo(db), db, [o("programado"), o("cancelado")]));
+    expect(r).toEqual({ intentados: 0, bandeja: 0, errores: 0 });
     expect(emitidas).toHaveLength(0);
   });
 });

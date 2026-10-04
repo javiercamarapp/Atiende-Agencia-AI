@@ -71,6 +71,7 @@ export const SWITCHABLE_CRONS: readonly string[] = [
   "/internal/restaurantes/privacidad-retencion",
   "/internal/restaurantes/promover-programados",
   "/internal/restaurantes/softrestaurant-dispatch",
+  "/internal/restaurantes/voz-huerfanas",
   "/internal/superadmin/alertas-cfo",
   "/internal/superadmin/mantenimiento",
   "/internal/superadmin/resumen-diario",

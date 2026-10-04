@@ -11,13 +11,13 @@
 // las ultimas 24 h cuya comanda nunca llego al outbox del POS (un fallo transitorio al encolar la dejaba perdida para
 // siempre, porque ninguna corrida volvia a tomar pedidos ya promovidos). Y una corrida con comandas que fallaron deja
 // el latido y la bitacora en error/parcial (`CronPartialFailureError`), no en 'ok'. Avisos in-app (campana) de entrada
-// a cocina y de pedido atrasado: ver programados-avisos.ts.
+// a cocina y de pedido atrasado: ver packages/domain-restaurantes/src/pedidos-programados-avisos.ts.
 //
 // Idempotente: una segunda llamada (o dos simultaneas) no promueve dos veces el mismo pedido ni toca uno
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { barrerAvisosOperativos, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, barrerAvisosOperativos, esPromocionAtrasada, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
 import type { ResultadoBarridoAvisos } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -25,7 +25,6 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { avisarPromovidosEnCocinaBestEffort } from "./programados-avisos.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 
 /** Ventana (horas) y tope por corrida de la reconciliacion de comandas perdidas. */
@@ -42,8 +41,6 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
     return withHeartbeat(deps, "/internal/restaurantes/promover-programados", async () => {
       const resultado = await deps.engine.withAppSession({ userId: null }, (db) => promoverProgramadosTodasLasOrganizaciones(deps.restaurantesRepo(db)));
       logEvent(c, "info", "restaurantes_programados_promovidos", { promovidos: resultado.promovidos.length, disponible: resultado.disponible });
-      // Aviso in-app (campana): entran a cocina (o entran atrasados). Best-effort, en su propia sesion.
-      const avisosCocina = await avisarPromovidosEnCocinaBestEffort(deps, resultado.promovidos);
       // R-29: encola la comanda al POS de lo recien promovido, en OTRA sesion de sistema (la promocion ya quedo
       // confirmada; un fallo aqui nunca la revierte). Idempotente: reintentar el endpoint no duplica filas.
       let comandas = SIN_COMANDAS;
@@ -75,6 +72,17 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "error", "restaurantes_programados_reconciliacion_fallida", { error: err instanceof Error ? err.message : String(err) });
         reconciliacion = { ...SIN_COMANDAS, errores: 1 };
       }
+      // Aviso al staff (bandeja + campana) de que el programado entro a cocina: tambien en su propia sesion, tras el commit
+      // de la promocion; idempotente por pedido y nunca revierte nada.
+      let avisosCocina = { intentados: 0, bandeja: 0, errores: 0 };
+      if (resultado.promovidos.length > 0) {
+        try {
+          avisosCocina = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, resultado.promovidos));
+        } catch (err) {
+          logEvent(c, "error", "restaurantes_programados_aviso_fallido", { error: err instanceof Error ? err.message : String(err) });
+          avisosCocina = { ...avisosCocina, errores: resultado.promovidos.length };
+        }
+      }
       let avisos: ResultadoBarridoAvisos = { disponible: false, candidatos: 0, emitidas: 0, sinNuevas: 0, errores: 0 };
       try {
         avisos = await deps.engine.withAppSession({ userId: null }, (db) => barrerAvisosOperativos(db, { now: new Date() }));
@@ -91,6 +99,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         comandas,
         reconciliacion,
         avisosCocina,
+        atrasadosCocina: resultado.promovidos.filter((o) => esPromocionAtrasada(o)).length,
         avisos,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no

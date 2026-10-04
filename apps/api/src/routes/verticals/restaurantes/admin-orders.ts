@@ -12,10 +12,9 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, assertOrderCanBeDispatched, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, assertOrderCanBeDispatched, avisarProgramadosPromovidos, changeOrderStatus, emitirAvisoProgramadoEnCocina, isOrderStatus, OrderStatusTransitionError, promoverProgramadosVencidos, RestaurantesConfigUnavailableError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, OrderPickupInfo, OrderScheduleInfo, RestaurantesRepository, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
-import { avisarPromovidosEnCocinaBestEffort } from "./programados-avisos.ts";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -197,11 +196,16 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
         // en su propia sesion de sistema. Idempotente; nunca afecta la respuesta (best-effort).
         const promovidos = r.promovidos;
         c.get("postCommitTasks").push(async () => {
-          await avisarPromovidosEnCocinaBestEffort(deps, promovidos);
           const resumen = await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), promovidos),
           );
           logEvent(c, "info", "restaurantes_programados_comanda_encolada", { organizationId, ...resumen });
+        });
+        // Aviso al staff (bandeja + campana) de que el programado entro a cocina, tambien tras el commit y en su propia
+        // sesion de sistema: un fallo aqui no afecta la respuesta ni la comanda (tarea aparte).
+        c.get("postCommitTasks").push(async () => {
+          const resumen = await deps.engine.withAppSession({ userId: null }, (db) => avisarProgramadosPromovidos(deps.restaurantesRepo(db), db, promovidos));
+          logEvent(c, "info", "restaurantes_programados_aviso_staff", { organizationId, ...resumen });
         });
       }
       return r.promovidos;
@@ -290,7 +294,12 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (order.status === "programado" && updated.status === "pending") {
         const adelantado: Order = { ...updated, programadoPara: updated.programadoPara ?? order.programadoPara };
         c.get("postCommitTasks").push(async () => {
-          await avisarPromovidosEnCocinaBestEffort(deps, [adelantado]);
+          // Campana (entra a cocina, o atrasado): el adelanto manual solo emite la campana (la bandeja del staff es de la promocion automatica).
+          try {
+            await deps.engine.withAppSession({ userId: null }, (db) => emitirAvisoProgramadoEnCocina(db, adelantado));
+          } catch (err) {
+            logEvent(c, "warn", "restaurantes_programados_aviso_adelanto_fallido", { organizationId, error: err instanceof Error ? err.message : String(err) });
+          }
           await deps.engine.withAppSession({ userId: null }, (db) =>
             encolarComandasDePromovidos(softRestaurantComandaDeps(deps, db, deps.restaurantesRepo(db)), [adelantado]),
           );

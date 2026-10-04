@@ -220,3 +220,32 @@ export function formDesdeFoto(foto: Readonly<Record<string, unknown>>): ConfigAg
     replyDebounceSeconds: typeof foto.replyDebounceSeconds === "number" ? String(foto.replyDebounceSeconds) : "",
   };
 }
+
+/** Un mensaje de la prueba del agente (el historial de la prueba vive en el navegador; el servidor no lo guarda). */
+export interface MensajePrueba {
+  readonly rol: "usuario" | "agente";
+  readonly texto: string;
+}
+
+export interface RespuestaPruebaAgente {
+  readonly respuesta: string;
+  readonly escalado: boolean;
+  /** Pedido SIMULADO de `crear_pedido` (folio PRUEBA-xxxx); null si en este turno no se creo ninguno. */
+  readonly pedidoSimulado: unknown;
+}
+
+/** Un turno de la prueba: la API corre el agente real en modo preview (sin efectos). `borrador` = configuracion sin guardar. */
+export function enviarMensajePrueba(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  args: { readonly sesionId: string; readonly mensajes: readonly MensajePrueba[]; readonly clienteSimuladoId: string | null; readonly borrador: ConfigAgenteForm | null },
+): Promise<RespuestaPruebaAgente> {
+  return sendJson<RespuestaPruebaAgente>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/agente-whatsapp/preview/mensaje`, token, "POST", {
+    sesionId: args.sesionId,
+    mensajes: args.mensajes,
+    ...(args.clienteSimuladoId ? { clienteSimuladoId: args.clienteSimuladoId } : {}),
+    ...(args.borrador ? { borrador: cuerpoDesdeForm(args.borrador, "organizacion") } : {}),
+  });
+}
