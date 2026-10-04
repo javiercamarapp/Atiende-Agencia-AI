@@ -100,7 +100,7 @@ describe("R-PM-15 observabilidad por turno de WhatsApp", () => {
     expect(t.rolModelo).toBeNull();
   });
 
-  it("un fallo real de crear_pedido sube el rol y el evento lo reporta como fallo_crear_pedido", async () => {
+  it("tras un error de crear_pedido el turno sube de rol y el evento lo reporta como fallo_crear_pedido", async () => {
     const { eventos, correr } = armar(
       [
         { calls: [{ name: "crear_pedido", args: { branch_slug: "fco-montejo", canal: "recoger", items: [] } }] },

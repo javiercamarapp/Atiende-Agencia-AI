@@ -55,7 +55,7 @@ export function pmFixture() {
     arrachera1500: producto(catCarnes, "Arrachera 1.5 kg", 500),
     pizza: producto(randomUUID(), "Quesobich de Queso", 120, { description: "Pizza estilo Quesobich", keywords: ["pizza"] }),
   };
-  return { repo, organizationId, t1, t3, t8, p };
+  return { repo, organizationId, t1, t3, t8, p, categorias: { cervezas: catCervezas } };
 }
 export type F = ReturnType<typeof pmFixture>;
 
