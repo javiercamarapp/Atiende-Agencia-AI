@@ -37,8 +37,8 @@ import {
 import type { TicketCocina } from "@atiende/ui";
 import { AlertTriangle, Clock, Printer, RefreshCw } from "lucide-react";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
-import { assignRepartidor, fetchOrders, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
-import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { assignRepartidor, fetchOrders, fetchRepartidorSugerido, fetchScheduledOrders, nextStatusesForCanal, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../lib/orders-client.ts";
 import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAviso, SONDEO_BASE_MS } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel } from "./ProgramadosPanel.tsx";
@@ -89,6 +89,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // Autopiloto (semiautomatico): repartidor SUGERIDO por el servidor para los pedidos a domicilio en preparando sin repartidor.
+  // Solo sugiere: asignar es un clic del gerente (el mismo PATCH assign-repartidor). Si el fetch falla no se muestra nada.
+  const [sugeridos, setSugeridos] = useState<Readonly<Record<string, RepartidorSugerido>>>({});
   // Confirmación de cancelación (ver `handleChangeStatus`): el diálogo lo monta `dialogo` al final del JSX.
   const { confirmar, dialogo } = useConfirm();
   // Aviso OPCIONAL por WhatsApp al marcar "listo para recoger" (por defecto sí avisa; el staff puede apagarlo
@@ -347,6 +350,26 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
     void loadRepartidores();
   }, [apiBaseUrl, token, propertyId]);
 
+  // Pide las sugerencias de los pedidos visibles que las admiten (a domicilio, preparando, sin repartidor) cada vez que cambia la lista.
+  useEffect(() => {
+    const ids = (orders ?? []).filter((o) => o.status === "preparando" && o.canal !== "recoger" && !o.assignedRepartidorId).map((o) => o.id);
+    if (ids.length === 0) {
+      setSugeridos({});
+      return;
+    }
+    let cancelado = false;
+    fetchRepartidorSugerido(fetch, apiBaseUrl, token, propertyId, ids.slice(0, 30))
+      .then((r) => {
+        if (!cancelado) setSugeridos(r);
+      })
+      .catch(() => {
+        if (!cancelado) setSugeridos({});
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [orders, apiBaseUrl, token, propertyId]);
+
   async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus) {
     setChangingId(order.id);
     setError(null);
@@ -548,6 +571,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug }: Restaura
                     </option>
                   ))}
                 </NativeSelect>
+                {!o.assignedRepartidorId && sugeridos[o.id] && (
+                  <Button type="button" size="sm" variant="outline" disabled={assigningId === o.id} onClick={() => void handleAssignRepartidor(o, sugeridos[o.id]!.repartidorId)} data-testid={`asignar-sugerido-${o.id}`}>
+                    Asignar a {sugeridos[o.id]!.nombre}
+                  </Button>
+                )}
                 {assigningId === o.id && <span className="text-xs text-muted-foreground">Asignando…</span>}
                 {o.estimatedDeliveryAt && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
