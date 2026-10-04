@@ -51,7 +51,6 @@ import {
   type ReservarDirectoRepository,
   type WebHoldContext,
   type WebHoldRecord,
-  type WebPolicyRecord,
 } from "@atiende/domain-hoteles";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";

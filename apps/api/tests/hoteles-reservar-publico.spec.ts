@@ -3,11 +3,14 @@
 // scripts/verify-hoteles-reservar-publico contra Postgres real; aqui se cubre el contrato HTTP, la validacion, los tokens y el manejo del cobro.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryPaymentsPort, InMemoryReservarDirectoRepository, type PaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryReservarDirectoRepository, type PaymentsPort } from "@atiende/domain-hoteles";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
 import { conEmisiones } from "./support/emisiones.ts";
 
+// Cuerpos JSON de respuesta: el contrato lo fija el servidor, aqui solo se leen campos.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = Record<string, any>;
 const ORG = "hotel-de-prueba";
 const BASE = `/v1/hoteles/${ORG}/reservar`;
 const ORIGIN = "http://localhost:5173";
@@ -40,7 +43,7 @@ const idem = () => ({ "idempotency-key": `idem-${Date.now()}-${(keySeq += 1)}` }
 
 async function cotizar(app: App, roomTypeId: string, llegada = addDays(10), salida = addDays(12), huespedes = 2) {
   const res = await app.request(...post(`${BASE}/cotizacion`, { llegada, salida, huespedes, tipoHabitacionId: roomTypeId }));
-  return { res, body: (await res.json()) as Record<string, any> };
+  return { res, body: (await res.json()) as Json };
 }
 const HUESPED = { nombre: "Ana Torres", telefono: "+52 999 123 4567", correo: "ana.torres@example.com" };
 async function confirmar(app: App, quoteToken: string, extra: Record<string, unknown> = {}, headers: Record<string, string> = idem(), huesped = HUESPED) {
@@ -107,7 +110,7 @@ describe("POST /reservar/cotizacion", () => {
   it("ignora cualquier precio mandado por el navegador y rechaza origenes no permitidos y tipos ajenos", async () => {
     const { app, roomTypeId } = await setup();
     const res = await app.request(...post(`${BASE}/cotizacion`, { llegada: addDays(10), salida: addDays(12), huespedes: 2, tipoHabitacionId: roomTypeId, totalCentavos: 1 }));
-    expect(((await res.json()) as any).cotizacion.totalCentavos).toBe(238_000);
+    expect(((await res.json()) as Json).cotizacion.totalCentavos).toBe(238_000);
     expect((await app.request(...post(`${BASE}/cotizacion`, { llegada: addDays(10), salida: addDays(12), huespedes: 2, tipoHabitacionId: roomTypeId }, { origin: "https://evil.example" }))).status).toBe(403);
     expect((await cotizar(app, randomUUID())).res.status).toBe(404);
     expect((await cotizar(app, roomTypeId, addDays(10), addDays(12), 5)).res.status).toBe(400); // la Doble no cabe 5
@@ -129,7 +132,7 @@ describe("POST /reservar/confirmar", () => {
     const { body: q } = await cotizar(app, roomTypeId);
     const res = await confirmar(app, q.quoteToken, { metodoPagoToken: PM });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, any>;
+    const body = (await res.json()) as Json;
     expect(body).toMatchObject({ estado: "confirmada", totalCentavos: 238_000, anticipoCentavos: 71_400, pago: { estado: "capturado" } });
     expect(body.rastreoToken).toMatch(/^e1\./);
     expect(repo.allReservations().map((r) => r.channel)).toEqual(["directo_web"]);
@@ -167,7 +170,7 @@ describe("POST /reservar/confirmar", () => {
     const { app, roomTypeId, repo } = await setup({ payments: sinLlave });
     const res = await confirmar(app, (await cotizar(app, roomTypeId)).body.quoteToken, { metodoPagoToken: PM });
     expect(res.status).toBe(503);
-    const body = (await res.json()) as Record<string, any>;
+    const body = (await res.json()) as Json;
     expect(body.code).toBe("pago_no_disponible");
     expect(JSON.stringify(body)).not.toMatch(/STRIPE|llave/i);
     expect(body.estado).toBe("pago_pendiente");
@@ -243,7 +246,7 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
   async function reservada(s: Awaited<ReturnType<typeof setup>>, llegada = addDays(10), salida = addDays(12)) {
     const { body: q } = await cotizar(s.app, s.roomTypeId, llegada, salida);
     const res = await confirmar(s.app, q.quoteToken, { metodoPagoToken: PM });
-    return (await res.json()) as Record<string, any>;
+    return (await res.json()) as Json;
   }
   const estado = (app: App, token: string, org = ORG) => app.request(`/v1/hoteles/${org}/reservar/estado/${token}`, { headers: { "x-forwarded-for": "198.51.100.9" } });
   const cancelar = (app: App, token: string, body: unknown = {}, headers: Record<string, string> = idem()) => app.request(...post(`${BASE}/estado/${token}/cancelar`, body, headers));
@@ -253,7 +256,7 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
     const r = await reservada(s);
     const res = await estado(s.app, r.rastreoToken);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, any>;
+    const body = (await res.json()) as Json;
     expect(body).toMatchObject({ estado: "confirmada", hotel: "Hotel de Prueba — Matriz", tipoHabitacion: "Doble", cancelable: true });
     expect(JSON.stringify(body)).not.toMatch(/ana\.torres|999|test_|paymentRef|pi_/i);
   });
@@ -277,7 +280,7 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
     expect(r.cancelacion.siCancelasAhora).toMatchObject({ penalidadCents: 29_750 });
     const res = await cancelar(s.app, r.rastreoToken);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, any>;
+    const body = (await res.json()) as Json;
     expect(body.estado).toBe("cancelada");
     // total 119000 (100000 + IVA 16% + ISH 3%); penalidad 25% = 29750; anticipo 30% = 35700 -> reembolso 5950
     expect(body.cancelacion.resultado).toEqual({ penalidadCentavos: 29_750, reembolsoCentavos: 5_950 });
@@ -286,19 +289,19 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
     // idempotente: cancelar de nuevo no vuelve a reembolsar ni falla
     const otra = await cancelar(s.app, r.rastreoToken);
     expect(otra.status).toBe(200);
-    expect(((await otra.json()) as any).estado).toBe("cancelada");
+    expect(((await otra.json()) as Json).estado).toBe("cancelada");
   });
   it("cancelar fuera de la ventana no tiene penalidad: reembolsa todo el anticipo", async () => {
     const s = await setup();
     const r = await reservada(s, addDays(15), addDays(17));
-    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Record<string, any>;
+    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Json;
     expect(body.cancelacion.resultado).toEqual({ penalidadCentavos: 0, reembolsoCentavos: 71_400 });
   });
   it("sin llave de la pasarela el reembolso queda como solicitud para el staff y se notifica", async () => {
     const sinRefund: PaymentsPort = { charge: async (i) => ({ status: "capturado", externalPaymentId: `pi_${i.idempotencyKey}` }) };
     const s = await setup({ payments: sinRefund });
     const r = await reservada(s, addDays(15), addDays(17));
-    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Record<string, any>;
+    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Json;
     expect(body.estado).toBe("cancelada");
     expect(body.pago.reembolso).toBe("solicitado");
     expect(s.emisiones.map((e) => e.evento)).toContain("hoteles.reserva_directa.reembolso_pendiente");
@@ -310,14 +313,14 @@ describe("GET /reservar/estado/:token y cancelacion", () => {
     expect((await cancelar(s.app, r.rastreoToken, { total: 0 })).status).toBe(400);
     expect((await cancelar(s.app, r.rastreoToken, {}, { ...idem(), origin: "https://evil.example" })).status).toBe(403);
     expect((await cancelar(s.app, `${r.rastreoToken}x`)).status).toBe(404);
-    expect(((await (await estado(s.app, r.rastreoToken)).json()) as any).estado).toBe("confirmada");
+    expect(((await (await estado(s.app, r.rastreoToken)).json()) as Json).estado).toBe("confirmada");
   });
   it("cancelar un hold pendiente de pago libera el inventario sin cobro ni reembolso", async () => {
     const s = await setup();
     const { body: q } = await cotizar(s.app, s.roomTypeId);
-    const r = (await (await confirmar(s.app, q.quoteToken)).json()) as Record<string, any>;
+    const r = (await (await confirmar(s.app, q.quoteToken)).json()) as Json;
     expect(s.repo.booked(s.ctx.propertyId, s.roomTypeId, addDays(10))).toBe(1);
-    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Record<string, any>;
+    const body = (await (await cancelar(s.app, r.rastreoToken)).json()) as Json;
     expect(body.estado).toBe("cancelada");
     expect(s.repo.booked(s.ctx.propertyId, s.roomTypeId, addDays(10))).toBe(0);
   });
