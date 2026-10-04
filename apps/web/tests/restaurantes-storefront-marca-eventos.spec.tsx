@@ -282,7 +282,8 @@ describe("formulario publico de eventos (R-43)", () => {
     fetchMock.mockRejectedValue(new Error("sin red"));
     rendered = renderEn("/pedir/demo/eventos");
     await esperar();
-    expect(texto()).toContain("sin red");
+    expect(texto()).toContain("No pudimos conectar con el restaurante");
+    expect(texto()).toContain("Reintentar");
   });
 });
 
