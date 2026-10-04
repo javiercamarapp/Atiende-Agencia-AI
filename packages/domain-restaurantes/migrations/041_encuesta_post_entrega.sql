@@ -7,7 +7,7 @@
 --   1. El negocio activa la encuesta POR SUCURSAL (encuesta_config.activa, apagada por defecto) y, si quiere, pega la liga de
 --      resenas de la sucursal (https) y el umbral a partir del cual se invita a dejar resena.
 --   2. Un barrido idempotente (endpoint interno + boton del panel; sin cron) pide `encuesta_candidatas`: pedidos entregados hace
---      mas de `espera_min` minutos (y menos de 48 h), de sucursales con la encuesta activa, sin encuesta registrada. Por cada uno
+--      mas de `espera_min` minutos (y menos de 48 h), de sucursales con la encuesta activa y con numero de WhatsApp, sin encuesta registrada. Por cada uno
 --      el backend llama `encuesta_registrar_envio` (reserva la fila, una sola vez por pedido) y encola el WhatsApp con la liga
 --      firmada en la MISMA transaccion (si el encolado falla, la reserva se revierte con su savepoint).
 --   3. El cliente abre la liga (pagina publica sin login), califica y comenta: `encuesta_responder` guarda la PRIMERA respuesta
@@ -300,6 +300,9 @@ begin
         and o.delivered_at > v_ahora - interval '48 hours'
         and length(regexp_replace(o.customer_phone, '\D', '', 'g')) >= 10
         and right(regexp_replace(o.customer_phone, '\D', '', 'g'), 10) not like '0009%'
+        -- Solo organizaciones que SI pueden enviar el WhatsApp (numero de la sucursal o de la organizacion): una sin canal no ocupa lugares del lote.
+        and (exists (select 1 from restaurantes.whatsapp_branch_channel b where b.organization_id = o.organization_id and b.property_id = o.property_id)
+             or exists (select 1 from restaurantes.whatsapp_channel_config w where w.organization_id = o.organization_id))
         and not exists (select 1 from restaurantes.encuesta_entrega e where e.order_id = o.id)
       order by o.delivered_at
       limit v_limite
