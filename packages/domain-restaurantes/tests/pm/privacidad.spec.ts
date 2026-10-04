@@ -12,7 +12,7 @@ const DIRECCION = "Calle 21 #345 por 30 y 32, Col. Itzimná, Mérida";
 
 async function clienteConocido(f: ReturnType<typeof buildRestaurantFixture>, nombre = "Ana López") {
   const c = await f.repo.upsertCustomer(f.organizationId, "9990000000", nombre);
-  await f.repo.addCustomerAddressIfNew(c.id, DIRECCION);
+  await f.repo.addCustomerAddressIfNew(c.id, DIRECCION, f.organizationId);
   return lookupCustomer(f.repo, f.organizationId, PHONE);
 }
 
