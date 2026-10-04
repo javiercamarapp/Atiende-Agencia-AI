@@ -157,4 +157,60 @@ describe("AuditoriaPage", () => {
     expect(rendered.container.textContent).not.toContain("DESPUES_VIEJO_NO_DEBE_APARECER");
     expect(rendered.container.textContent).toContain("DESPUES_FILTRO_NUEVO");
   });
+
+  it("muestra la fecha con el formateador unico y deja un solo h1", async () => {
+    fetchMock = vi.fn(async () => jsonResponse({ disponible: true, total: 1, nextOffset: null, items: [ENTRY] }));
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    // Zona del negocio (America/Mexico_City, UTC-6): 12:00Z -> 6:00. El abreviado de "sep" varia segun la version de ICU.
+    expect(rendered.container.textContent).toMatch(/1 sep\w*\.? 2026, 6:00/);
+    expect(rendered.container.querySelectorAll("h1")).toHaveLength(1);
+  });
+
+  it("sin acciones registradas muestra el estado vacio y con la bitacora sin habilitar dice 'no disponible aun'", async () => {
+    fetchMock = vi.fn(async () => jsonResponse({ disponible: true, total: 0, nextOffset: null, items: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("Todavía no hay ninguna acción del staff registrada");
+    expect(rendered.container.querySelector("table")).toBeNull();
+    rendered.unmount();
+
+    fetchMock = vi.fn(async () => jsonResponse({ disponible: false, total: 0, nextOffset: null, items: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("Bitácora no disponible aún");
+  });
+
+  it("mientras carga no hay tabla; un rol distinto de admin_gestora no pide nada y lo explica", async () => {
+    let soltar!: () => void;
+    const pausa = new Promise<void>((r) => (soltar = r));
+    fetchMock = vi.fn(async () => {
+      await pausa;
+      return jsonResponse({ disponible: true, total: 1, nextOffset: null, items: [ENTRY] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.querySelector("table")).toBeNull();
+    expect(rendered.container.querySelector('[aria-busy="true"], [role="status"]')).not.toBeNull();
+    await act(async () => {
+      soltar();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(rendered.container.querySelector("table")).not.toBeNull();
+    rendered.unmount();
+
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderComponent(
+      <AuditoriaPage apiBaseUrl="http://api.local" token="tok-123" propertyId="prop-1" setPropertyId={() => {}} properties={[]} orgSlug="gestora-demo" session={{ ...SESSION, organizations: [{ ...SESSION.organizations[0]!, rol: "contador" }] }} />,
+    );
+    await esperarCarga();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(rendered.container.textContent).toContain("Solo el rol admin_gestora puede leer la bitácora de auditoría");
+  });
 });

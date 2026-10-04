@@ -5,7 +5,8 @@
 // El gate de rol es solo UX (`puedeEscribir` = FINANZAS_ESCRITURA_ROLES): el servidor y la función SQL vuelven a exigirlo.
 import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, Sparkles } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, FormDialog, FormField, Input, NativeSelect, notify, StatusBadge } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { basisPointsAPorcentaje, cargarReglasSugeridas, crearReglaComision, editarReglaComision, fetchReglasComision, porcentajeABasisPoints } from "../lib/reglas-comision-client.ts";
 import type { ReglaComision, ReglasComisionRespuesta } from "../lib/reglas-comision-client.ts";
 
@@ -24,8 +25,6 @@ interface Borrador {
   readonly porcentaje: string;
   readonly fuente: string;
 }
-
-const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function borradorVacio(canalCodigo: string): Borrador {
   return { id: null, canalCodigo, alcance: "organizacion", yaNeto: false, porcentaje: "", fuente: "" };
@@ -75,7 +74,7 @@ export function ReglasComisionSection({ apiBaseUrl, token, propertyId, puedeEscr
         await crearReglaComision(fetch, apiBaseUrl, token, propertyId, { canalCodigo: borrador.canalCodigo, alcance: borrador.alcance, yaNetoDeComision: borrador.yaNeto, comisionBasisPoints: bps, fuente: borrador.fuente.trim() });
       }
       setBorrador(null);
-      setAviso("Regla guardada.");
+      notify.success("Regla guardada.");
       setRecarga((n) => n + 1);
     } catch (err) {
       // El formulario queda abierto con el mensaje real del servidor (duplicado, sin permiso, base sin migrar...).
@@ -104,28 +103,54 @@ export function ReglasComisionSection({ apiBaseUrl, token, propertyId, puedeEscr
   const sinRegla = datos?.canalesSinRegla ?? [];
   const nombreCanal = (codigo: string) => datos?.canales.find((c) => c.codigo === codigo)?.nombre ?? codigo;
 
+  const columnas: readonly DataTableColumna<ReglaComision>[] = [
+    { id: "canal", encabezado: "Canal", principal: true, valorOrden: (r) => r.canalNombre, celda: (r) => <span className="font-medium text-foreground">{r.canalNombre}</span> },
+    { id: "alcance", encabezado: "Alcance", celda: (r) => (r.alcance === "organizacion" ? "Todas las propiedades" : "Solo esta propiedad") },
+    {
+      id: "comision",
+      encabezado: "Comisión",
+      celda: (r) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          {r.yaNetoDeComision ? <StatusBadge tone="info">Ya viene neta del canal</StatusBadge> : <span className="tabular-nums">{basisPointsAPorcentaje(r.comisionBasisPoints)}</span>}
+          {r.sugerida && <StatusBadge tone="warning">Sugerida</StatusBadge>}
+        </span>
+      ),
+    },
+    { id: "fuente", encabezado: "Fuente", celda: (r) => <span className="block max-w-[28ch] truncate text-muted-foreground" title={r.fuente}>{r.fuente}</span> },
+    ...(puedeEscribir
+      ? [
+          {
+            id: "acciones",
+            encabezado: "Acciones",
+            alinear: "right" as const,
+            celda: (r: ReglaComision) => (
+              <Button type="button" size="sm" variant="outline" aria-label={`Editar la comisión de ${r.canalNombre}`} onClick={() => { setErrorForm(null); setBorrador(desdeRegla(r)); }}>
+                <Pencil /> Editar
+              </Button>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Card>
-      <CardHeader className="gap-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">Comisiones de canal</CardTitle>
-          {puedeEscribir && datos && (
-            <Button type="button" size="sm" onClick={() => { setErrorForm(null); setBorrador(borradorVacio(sinRegla[0] ?? canalesParaAlta[0]?.codigo ?? "booking")); }}>
-              <Plus /> Agregar regla
-            </Button>
-          )}
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div className="flex flex-col gap-1">
+          <CardTitle>Comisiones de canal</CardTitle>
+          <CardDescription>
+            Cuánto cobra cada canal. Se usa al registrar el movimiento financiero de una reserva: sin regla para su canal, no se puede registrar. Las reservas directas no cobran comisión de canal.
+          </CardDescription>
         </div>
-        <CardDescription>
-          Cuánto cobra cada canal. Se usa al registrar el movimiento financiero de una reserva: sin regla para su canal, no se puede registrar. Las reservas directas no cobran comisión de canal.
-        </CardDescription>
+        {puedeEscribir && datos && (
+          <Button type="button" size="sm" onClick={() => { setErrorForm(null); setBorrador(borradorVacio(sinRegla[0] ?? canalesParaAlta[0]?.codigo ?? "booking")); }}>
+            <Plus /> Agregar regla
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
-        {aviso && (
-          <p role="status" className="m-0 text-sm text-success">
-            {aviso}
-          </p>
-        )}
+        {error && <EstadoError compacto mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
+        {aviso && <Callout tone="success" onDismiss={() => setAviso(null)}>{aviso}</Callout>}
         {!datos && !error && <EstadoCargando etiqueta="Cargando comisiones…" />}
 
         {datos && sinRegla.length > 0 && (
@@ -150,48 +175,22 @@ export function ReglasComisionSection({ apiBaseUrl, token, propertyId, puedeEscr
           </Callout>
         )}
 
-        {datos && datos.reglas.length === 0 && sinRegla.length === 0 && <EstadoVacio mensaje="Todavía no hay reglas de comisión." />}
-        {datos && datos.reglas.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Canal</TableHead>
-                <TableHead>Alcance</TableHead>
-                <TableHead>Comisión</TableHead>
-                <TableHead>Fuente</TableHead>
-                {puedeEscribir && <TableHead className="text-right">Acciones</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {datos.reglas.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.canalNombre}</TableCell>
-                  <TableCell>{r.alcance === "organizacion" ? "Todas las propiedades" : "Solo esta propiedad"}</TableCell>
-                  <TableCell>
-                    {r.yaNetoDeComision ? <StatusBadge tone="info">Ya viene neta del canal</StatusBadge> : basisPointsAPorcentaje(r.comisionBasisPoints)}{" "}
-                    {r.sugerida && <StatusBadge tone="warning">Sugerida</StatusBadge>}
-                  </TableCell>
-                  <TableCell className="max-w-[28ch] truncate text-muted-foreground" title={r.fuente}>
-                    {r.fuente}
-                  </TableCell>
-                  {puedeEscribir && (
-                    <TableCell className="text-right">
-                      <Button type="button" size="sm" variant="outline" aria-label={`Editar la comisión de ${r.canalNombre}`} onClick={() => { setErrorForm(null); setBorrador(desdeRegla(r)); }}>
-                        <Pencil /> Editar
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {datos && (datos.reglas.length > 0 || sinRegla.length === 0) && (
+          <DataTable
+            etiqueta="Comisiones de canal"
+            columnas={columnas}
+            filas={datos.reglas}
+            obtenerId={(r) => r.id}
+            paginacion={false}
+            vacio={{ titulo: "Sin reglas de comisión", mensaje: "Todavía no hay reglas de comisión." }}
+          />
         )}
       </CardContent>
 
       <FormDialog
         open={borrador !== null}
         onOpenChange={(abierto) => {
-          if (!abierto) setBorrador(null);
+          if (!abierto && !guardando) setBorrador(null);
         }}
         titulo={borrador?.id ? `Editar la comisión de ${nombreCanal(borrador.canalCodigo)}` : "Agregar una comisión de canal"}
         subtitulo="Cada canal puede tener una regla para toda la organización y otra específica de una propiedad; la de la propiedad gana."
@@ -199,11 +198,12 @@ export function ReglasComisionSection({ apiBaseUrl, token, propertyId, puedeEscr
         onGuardar={() => void guardar()}
         guardando={guardando}
         textoBotonGuardar="Guardar regla"
+        bloquearCierre={guardando}
       >
         {borrador && (
           <div className="flex flex-col gap-3">
-            <Label className={LABEL_CLASES}>
-              Canal
+            {errorForm && <EstadoError compacto titulo="No se pudo guardar" mensaje={errorForm} />}
+            <FormField label="Canal">
               <NativeSelect value={borrador.canalCodigo} disabled={borrador.id !== null} onChange={(e) => setBorrador({ ...borrador, canalCodigo: e.target.value })}>
                 {canalesParaAlta.map((c) => (
                   <option key={c.codigo} value={c.codigo}>
@@ -211,32 +211,24 @@ export function ReglasComisionSection({ apiBaseUrl, token, propertyId, puedeEscr
                   </option>
                 ))}
               </NativeSelect>
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Alcance
+            </FormField>
+            <FormField label="Alcance">
               <NativeSelect value={borrador.alcance} disabled={borrador.id !== null} onChange={(e) => setBorrador({ ...borrador, alcance: e.target.value as Borrador["alcance"] })}>
                 <option value="organizacion">Todas las propiedades de la organización</option>
                 <option value="propiedad">Solo la propiedad activa</option>
               </NativeSelect>
-            </Label>
+            </FormField>
             <Checkbox
               label="El canal ya me entrega el monto neto de su comisión (como Airbnb)"
               checked={borrador.yaNeto}
               onChange={(e) => setBorrador({ ...borrador, yaNeto: e.target.checked, porcentaje: e.target.checked ? "" : borrador.porcentaje })}
             />
-            <Label className={LABEL_CLASES}>
-              Comisión del canal (%)
+            <FormField label="Comisión del canal (%)">
               <Input inputMode="decimal" placeholder="15" value={borrador.porcentaje} disabled={borrador.yaNeto} onChange={(e) => setBorrador({ ...borrador, porcentaje: e.target.value })} />
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Fuente
+            </FormField>
+            <FormField label="Fuente" hint="Contrato o página oficial del canal.">
               <Input value={borrador.fuente} maxLength={200} placeholder="Contrato con Booking.com, vigente 2027" onChange={(e) => setBorrador({ ...borrador, fuente: e.target.value })} />
-            </Label>
-            {errorForm && (
-              <p role="alert" className="m-0 text-sm text-destructive">
-                {errorForm}
-              </p>
-            )}
+            </FormField>
           </div>
         )}
       </FormDialog>

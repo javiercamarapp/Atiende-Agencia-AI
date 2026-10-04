@@ -47,7 +47,9 @@ Alcance: `apps/web/src/verticals/rentas/**` (shell, login, registro, portal de p
 | Monitor de conflictos | resolver, ignorar con motivo (inline), historial, atender alerta | monitor-sync-page |
 | Acceso al huesped | politica, instrucciones por unidad, marcar pagada/revocar | acceso-huesped-page |
 | Precios | cotizador y 5 formularios de configuracion | no |
-| Finanzas | movimiento por reserva, owner statements, payouts | no |
-| Reportes | filtros, exportar CSV/PDF | reportes-page |
+| Finanzas (partida en `pages/finanzas/`) | movimiento por reserva (consultar, registrar con `FormDialog` y confirmacion de dos pasos), owner statements (generar, detalle, invitar al portal) y payouts (importar, consultar), comisiones de canal (alta/edicion con `FormDialog`, sembrar con confirmacion) | rentas-finanzas-page, reglas-comision-section |
+| Reportes | filtros, recargar, exportar CSV/PDF; importes sin sufijo MXN (formateador unico) | reportes-page |
+| Catalogo | propiedades, unidades y propietarios: alta/edicion con `FormDialog`, tablas `DataTable` | catalogo-page |
+| Equipo | invitar (formulario), revocar invitacion, cambiar rol y dar de baja (cada una con `useConfirm` de dos pasos) | equipo-page |
 | Auditoria | filtros, tabla (`DataTable`), cargar mas | auditoria-page |
 | Registro / portal de propietario | formularios | registro-page, owner-portal-dashboard-page |

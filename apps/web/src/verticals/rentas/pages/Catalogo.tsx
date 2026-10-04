@@ -4,14 +4,15 @@
 //
 // Validación: zona horaria IANA y moneda MXN/USD. Cambiar la moneda de una propiedad con movimientos financieros se
 // rechaza en el servidor (mezclaría monedas en sus reportes); el formulario avisa y muestra el mensaje real si ocurre.
+// UNI-C-rentas: PageHeader (único h1), tarjetas con CardTitle limpio, FormDialog con FormField, DataTable y notify.
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Pencil, Plus, UserRound } from "lucide-react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, NativeSelect, notify, PageContainer, PageHeader } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import { crearPropiedad, crearPropietario, crearUnidad, editarPropiedad, editarPropietario, editarUnidad, fetchCatalogo, MONEDAS } from "../lib/catalogo-client.ts";
 import type { Catalogo, Moneda, Propietario, UnidadCatalogo } from "../lib/catalogo-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
-const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 const ZONAS_COMUNES = ["America/Mexico_City", "America/Cancun", "America/Merida", "America/Monterrey", "America/Chihuahua", "America/Mazatlan", "America/Hermosillo", "America/Tijuana", "America/Bogota", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"];
 const ROLES_LECTURA = new Set(["admin_gestora", "operador:acceso_total", "contador"]);
 
@@ -31,7 +32,6 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [form, setForm] = useState<Formulario | null>(null);
   const [errorForm, setErrorForm] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
         else await crearPropietario(fetch, apiBaseUrl, token, propertyId, { nombre: form.nombre.trim(), email });
       }
       setForm(null);
-      setAviso("Cambios guardados.");
+      notify.success("Cambios guardados.");
       setRecarga((n) => n + 1);
     } catch (err) {
       // El formulario queda abierto con el mensaje real del servidor (nombre duplicado, moneda inmutable, sin permiso...).
@@ -95,9 +95,11 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeVer) {
     return (
-      <PageContainer padding="none" size="sm" className="gap-4 [&>*]:min-w-0">
-        <h1 className="font-display text-xl font-semibold text-foreground m-0">Catálogo</h1>
-        <p className="m-0 text-sm text-muted-foreground">Tu rol actual{org ? ` (${org.rol})` : ""} no tiene acceso al catálogo de propiedades, unidades y propietarios.</p>
+      <PageContainer>
+        <PageHeader titulo="Catálogo" />
+        <Callout tone="info" titulo="Sin acceso al catálogo">
+          Tu rol actual{org ? ` (${org.rol})` : ""} no tiene acceso al catálogo de propiedades, unidades y propietarios.
+        </Callout>
       </PageContainer>
     );
   }
@@ -107,12 +109,40 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   const propietarios = catalogo?.propietarios ?? [];
   const unidades = catalogo?.unidades ?? [];
 
-  function editarUnidadForm(u: UnidadCatalogo) {
-    abrir({ tipo: "unidad", id: u.id, nombre: u.nombre, propietarioId: u.propietarioId ?? "", noches: String(u.duracionMinimaNoches) });
-  }
-  function editarPropietarioForm(p: Propietario) {
-    abrir({ tipo: "propietario", id: p.id, nombre: p.nombre, email: p.email ?? "" });
-  }
+  const columnaEditar = <T,>(etiquetaAria: (fila: T) => string, alEditar: (fila: T) => void): readonly DataTableColumna<T>[] =>
+    puedeEditar
+      ? [
+          {
+            id: "acciones",
+            encabezado: "Acciones",
+            alinear: "right",
+            celda: (fila: T) => (
+              <Button type="button" size="sm" variant="outline" aria-label={etiquetaAria(fila)} onClick={() => alEditar(fila)}>
+                <Pencil /> Editar
+              </Button>
+            ),
+          },
+        ]
+      : [];
+
+  const columnasUnidad: readonly DataTableColumna<UnidadCatalogo>[] = [
+    { id: "nombre", encabezado: "Nombre", principal: true, valorOrden: (u) => u.nombre, celda: (u) => <span className="font-medium text-foreground">{u.nombre}</span> },
+    { id: "propietario", encabezado: "Propietario", valorOrden: (u) => u.propietarioNombre, celda: (u) => u.propietarioNombre ?? <span className="text-muted-foreground">Sin propietario</span> },
+    { id: "noches", encabezado: "Estancia mínima", valorOrden: (u) => u.duracionMinimaNoches, celda: (u) => `${u.duracionMinimaNoches} ${u.duracionMinimaNoches === 1 ? "noche" : "noches"}` },
+    ...columnaEditar<UnidadCatalogo>(
+      (u) => `Editar la unidad ${u.nombre}`,
+      (u) => abrir({ tipo: "unidad", id: u.id, nombre: u.nombre, propietarioId: u.propietarioId ?? "", noches: String(u.duracionMinimaNoches) }),
+    ),
+  ];
+
+  const columnasPropietario: readonly DataTableColumna<Propietario>[] = [
+    { id: "nombre", encabezado: "Nombre", principal: true, valorOrden: (p) => p.nombre, celda: (p) => <span className="font-medium text-foreground">{p.nombre}</span> },
+    { id: "correo", encabezado: "Correo", valorOrden: (p) => p.email, celda: (p) => p.email ?? <span className="text-muted-foreground">Sin correo</span> },
+    ...columnaEditar<Propietario>(
+      (p) => `Editar al propietario ${p.nombre}`,
+      (p) => abrir({ tipo: "propietario", id: p.id, nombre: p.nombre, email: p.email ?? "" }),
+    ),
+  ];
 
   const titulos: Record<Formulario["tipo"], string> = {
     "propiedad-editar": "Editar la propiedad",
@@ -122,45 +152,37 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
   };
 
   return (
-    <PageContainer padding="none" size="md" className="gap-6 [&>*]:min-w-0">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Catálogo</h1>
-        <p className="m-0 text-sm text-muted-foreground">
-          Propiedades, unidades y propietarios de tu gestora.
-          {catalogo && !puedeEditar && " Tu rol es de solo lectura: solo la administradora de la gestora puede crear o editar."}
-        </p>
-      </header>
+    <PageContainer>
+      <PageHeader
+        titulo="Catálogo"
+        descripcion={`Propiedades, unidades y propietarios de tu gestora.${catalogo && !puedeEditar ? " Tu rol es de solo lectura: solo la administradora de la gestora puede crear o editar." : ""}`}
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
-      {aviso && (
-        <p role="status" className="m-0 text-sm text-success">
-          {aviso}
-        </p>
-      )}
       {!catalogo && !error && <EstadoCargando etiqueta="Cargando catálogo…" />}
 
       {catalogo && (
         <>
           <Card>
-            <CardHeader className="gap-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Building2 className="h-4 w-4" strokeWidth={1.75} /> Propiedad
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="size-4" strokeWidth={1.75} /> Propiedad
                 </CardTitle>
-                {puedeEditar && (
-                  <div className="flex flex-wrap gap-2">
-                    {propiedad && (
-                      <Button type="button" size="sm" variant="outline" onClick={() => abrir({ tipo: "propiedad-editar", nombre: propiedad.nombre, zonaHoraria: propiedad.zonaHoraria ?? "America/Mexico_City", moneda: aMoneda(propiedad.moneda) })}>
-                        <Pencil /> Editar
-                      </Button>
-                    )}
-                    <Button type="button" size="sm" onClick={() => abrir({ tipo: "propiedad-nueva", nombre: "", zonaHoraria: "America/Mexico_City", moneda: "MXN" })}>
-                      <Plus /> Nueva propiedad
-                    </Button>
-                  </div>
-                )}
+                <CardDescription>La zona horaria define el "hoy" del calendario y la moneda es la de sus reportes.</CardDescription>
               </div>
-              <CardDescription>La zona horaria define el "hoy" del calendario y la moneda es la de sus reportes.</CardDescription>
+              {puedeEditar && (
+                <div className="flex flex-wrap gap-2">
+                  {propiedad && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => abrir({ tipo: "propiedad-editar", nombre: propiedad.nombre, zonaHoraria: propiedad.zonaHoraria ?? "America/Mexico_City", moneda: aMoneda(propiedad.moneda) })}>
+                      <Pencil /> Editar
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" onClick={() => abrir({ tipo: "propiedad-nueva", nombre: "", zonaHoraria: "America/Mexico_City", moneda: "MXN" })}>
+                    <Plus /> Nueva propiedad
+                  </Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {propiedad ? (
@@ -190,94 +212,38 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
           </Card>
 
           <Card>
-            <CardHeader className="gap-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="text-base">Unidades de esta propiedad</CardTitle>
-                {puedeEditar && (
-                  <Button type="button" size="sm" onClick={() => abrir({ tipo: "unidad", id: null, nombre: "", propietarioId: "", noches: "1" })}>
-                    <Plus /> Nueva unidad
-                  </Button>
-                )}
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Unidades de esta propiedad</CardTitle>
+                <CardDescription>Cada unidad es lo que se renta: el calendario, los precios y la limpieza cuelgan de ella.</CardDescription>
               </div>
-              <CardDescription>Cada unidad es lo que se renta: el calendario, los precios y la limpieza cuelgan de ella.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {unidades.length === 0 ? (
-                <EstadoVacio mensaje="Esta propiedad todavía no tiene unidades." />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Propietario</TableHead>
-                      <TableHead>Estancia mínima</TableHead>
-                      {puedeEditar && <TableHead className="text-right">Acciones</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {unidades.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell className="font-medium">{u.nombre}</TableCell>
-                        <TableCell>{u.propietarioNombre ?? <span className="text-muted-foreground">Sin propietario</span>}</TableCell>
-                        <TableCell>{u.duracionMinimaNoches} {u.duracionMinimaNoches === 1 ? "noche" : "noches"}</TableCell>
-                        {puedeEditar && (
-                          <TableCell className="text-right">
-                            <Button type="button" size="sm" variant="outline" aria-label={`Editar la unidad ${u.nombre}`} onClick={() => editarUnidadForm(u)}>
-                              <Pencil /> Editar
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              {puedeEditar && (
+                <Button type="button" size="sm" onClick={() => abrir({ tipo: "unidad", id: null, nombre: "", propietarioId: "", noches: "1" })}>
+                  <Plus /> Nueva unidad
+                </Button>
               )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTable etiqueta="Unidades de la propiedad" columnas={columnasUnidad} filas={unidades} obtenerId={(u) => u.id} vacio={{ titulo: "Sin unidades", mensaje: "Esta propiedad todavía no tiene unidades." }} />
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="gap-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <UserRound className="h-4 w-4" strokeWidth={1.75} /> Propietarios
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="flex items-center gap-2">
+                  <UserRound className="size-4" strokeWidth={1.75} /> Propietarios
                 </CardTitle>
-                {puedeEditar && (
-                  <Button type="button" size="sm" onClick={() => abrir({ tipo: "propietario", id: null, nombre: "", email: "" })}>
-                    <Plus /> Nuevo propietario
-                  </Button>
-                )}
+                <CardDescription>Los dueños de los inmuebles que administras. Reciben sus statements y acceden a su portal con el correo que registres.</CardDescription>
               </div>
-              <CardDescription>Los dueños de los inmuebles que administras. Reciben sus statements y acceden a su portal con el correo que registres.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {propietarios.length === 0 ? (
-                <EstadoVacio mensaje="Todavía no hay propietarios registrados." />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Correo</TableHead>
-                      {puedeEditar && <TableHead className="text-right">Acciones</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {propietarios.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.nombre}</TableCell>
-                        <TableCell>{p.email ?? <span className="text-muted-foreground">Sin correo</span>}</TableCell>
-                        {puedeEditar && (
-                          <TableCell className="text-right">
-                            <Button type="button" size="sm" variant="outline" aria-label={`Editar al propietario ${p.nombre}`} onClick={() => editarPropietarioForm(p)}>
-                              <Pencil /> Editar
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              {puedeEditar && (
+                <Button type="button" size="sm" onClick={() => abrir({ tipo: "propietario", id: null, nombre: "", email: "" })}>
+                  <Plus /> Nuevo propietario
+                </Button>
               )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTable etiqueta="Propietarios" columnas={columnasPropietario} filas={propietarios} obtenerId={(p) => p.id} vacio={{ titulo: "Sin propietarios", mensaje: "Todavía no hay propietarios registrados." }} />
             </CardContent>
           </Card>
         </>
@@ -286,89 +252,71 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId, orgSlug, session }
       <FormDialog
         open={form !== null}
         onOpenChange={(abierto) => {
-          if (!abierto) setForm(null);
+          if (!abierto && !guardando) setForm(null);
         }}
         titulo={form ? titulos[form.tipo] : ""}
         anchoClase="max-w-2xl"
         onGuardar={() => void guardar()}
         guardando={guardando}
         textoBotonGuardar="Guardar"
+        bloquearCierre={guardando}
       >
-        {form && (form.tipo === "propiedad-editar" || form.tipo === "propiedad-nueva") && (
+        {form && (
           <div className="flex flex-col gap-3">
-            <Label className={LABEL_CLASES}>
-              Nombre
-              <Input value={form.nombre} maxLength={120} required onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Zona horaria (IANA)
-              <Input list="rentas-zonas-horarias" value={form.zonaHoraria} placeholder="America/Mexico_City" required onChange={(e) => setForm({ ...form, zonaHoraria: e.target.value })} />
-              <datalist id="rentas-zonas-horarias">
-                {ZONAS_COMUNES.map((z) => (
-                  <option key={z} value={z} />
-                ))}
-              </datalist>
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Moneda
-              <NativeSelect value={form.moneda} onChange={(e) => setForm({ ...form, moneda: aMoneda(e.target.value) })}>
-                {MONEDAS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Label>
-            {form.tipo === "propiedad-editar" && <p className="m-0 text-xs text-muted-foreground">Una propiedad con movimientos financieros ya registrados no puede cambiar de moneda.</p>}
-            {errorForm && (
-              <p role="alert" className="m-0 text-sm text-destructive">
-                {errorForm}
-              </p>
+            {errorForm && <EstadoError compacto titulo="No se pudo guardar" mensaje={errorForm} />}
+            {(form.tipo === "propiedad-editar" || form.tipo === "propiedad-nueva") && (
+              <>
+                <FormField label="Nombre" required>
+                  <Input value={form.nombre} maxLength={120} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                </FormField>
+                <FormField label="Zona horaria (IANA)" required>
+                  <Input list="rentas-zonas-horarias" value={form.zonaHoraria} placeholder="America/Mexico_City" onChange={(e) => setForm({ ...form, zonaHoraria: e.target.value })} />
+                </FormField>
+                <datalist id="rentas-zonas-horarias">
+                  {ZONAS_COMUNES.map((z) => (
+                    <option key={z} value={z} />
+                  ))}
+                </datalist>
+                <FormField label="Moneda" hint={form.tipo === "propiedad-editar" ? "Una propiedad con movimientos financieros ya registrados no puede cambiar de moneda." : undefined}>
+                  <NativeSelect value={form.moneda} onChange={(e) => setForm({ ...form, moneda: aMoneda(e.target.value) })}>
+                    {MONEDAS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormField>
+              </>
             )}
-          </div>
-        )}
-        {form && form.tipo === "unidad" && (
-          <div className="flex flex-col gap-3">
-            <Label className={LABEL_CLASES}>
-              Nombre de la unidad
-              <Input value={form.nombre} maxLength={120} required onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Propietario
-              <NativeSelect value={form.propietarioId} onChange={(e) => setForm({ ...form, propietarioId: e.target.value })}>
-                <option value="">Sin propietario</option>
-                {propietarios.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Estancia mínima (noches)
-              <Input type="number" inputMode="numeric" value={form.noches} onChange={(e) => setForm({ ...form, noches: e.target.value })} />
-            </Label>
-            {errorForm && (
-              <p role="alert" className="m-0 text-sm text-destructive">
-                {errorForm}
-              </p>
+            {form.tipo === "unidad" && (
+              <>
+                <FormField label="Nombre de la unidad" required>
+                  <Input value={form.nombre} maxLength={120} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                </FormField>
+                <FormField label="Propietario">
+                  <NativeSelect value={form.propietarioId} onChange={(e) => setForm({ ...form, propietarioId: e.target.value })}>
+                    <option value="">Sin propietario</option>
+                    {propietarios.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormField>
+                <FormField label="Estancia mínima (noches)">
+                  <Input type="number" inputMode="numeric" value={form.noches} onChange={(e) => setForm({ ...form, noches: e.target.value })} />
+                </FormField>
+              </>
             )}
-          </div>
-        )}
-        {form && form.tipo === "propietario" && (
-          <div className="flex flex-col gap-3">
-            <Label className={LABEL_CLASES}>
-              Nombre
-              <Input value={form.nombre} maxLength={120} required onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-            </Label>
-            <Label className={LABEL_CLASES}>
-              Correo (opcional)
-              <Input type="email" value={form.email} maxLength={200} placeholder="propietario@ejemplo.com" onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </Label>
-            {errorForm && (
-              <p role="alert" className="m-0 text-sm text-destructive">
-                {errorForm}
-              </p>
+            {form.tipo === "propietario" && (
+              <>
+                <FormField label="Nombre" required>
+                  <Input value={form.nombre} maxLength={120} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                </FormField>
+                <FormField label="Correo (opcional)">
+                  <Input type="email" value={form.email} maxLength={200} placeholder="propietario@ejemplo.com" onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                </FormField>
+              </>
             )}
           </div>
         )}
