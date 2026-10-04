@@ -60,7 +60,8 @@ describe("checklist de onboarding", () => {
 });
 
 describe("checklist de onboarding: voz, aviso de privacidad y gate", () => {
-  const porId = (body: { items: { id: string }[] }, id: string) => body.items.find((i) => i.id === id);
+  type ItemJson = { id: string; estado: string };
+  const porId = (body: Record<string, unknown>, id: string): ItemJson => (body.items as ItemJson[]).find((i) => i.id === id)!;
   const gateUrl = (propertyId: string) => `${urlDe(propertyId)}/gate`;
 
   it("sin repositorios de voz ni privacidad en el despliegue: voz queda pendiente y el aviso externo (no bloquea); nunca 500", async () => {
