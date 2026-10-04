@@ -118,8 +118,20 @@ export async function handleInboundWhatsAppMessage(
       if (handoffGate && !arco) {
         const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
         if (handoff) {
+          const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+          if (acuse) {
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+          }
           await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
-          return { ok: true, retryable: false };
+          return acuse ? { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false } : { ok: true, retryable: false };
         }
       }
 
@@ -198,6 +210,14 @@ export const MAX_PASADAS_RAFAGA = 3;
  * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. Pasados
+ * `ACUSE_PENDIENTE_ESPERA_MIN` minutos sin que nadie la tome, el siguiente mensaje del cliente recibe UN acuse honesto (sin prometer una hora) y luego otro
+ * cada `ACUSE_PENDIENTE_REPETIR_MIN`. El tiempo y la unicidad los decide la base (migracion 045); sin ella el agente sigue callando como antes. */
+export const ACUSE_PENDIENTE_ESPERA_MIN = 15;
+export const ACUSE_PENDIENTE_REPETIR_MIN = 60;
+export const ACUSE_HANDOFF_PENDIENTE =
+  "Seguimos esperando a que una persona del equipo tome su conversación; su aviso ya está registrado y no se perdió. Si lo prefiere, puede dejar aquí los detalles de su pedido para que los vean en cuanto la atiendan.";
+
 /** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
 export const FUNCION_MAX_MS = 30_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
@@ -355,7 +375,20 @@ export async function responderTrasEspera(
         const arco = privacy && !matchesHighRiskOtherThan(textoPendiente, "privacidad_arco") ? await runArcoFastPath(privacy, organizationId, phone, textoPendiente, "whatsapp") : null;
         if (handoffGate && !arco) {
           const handoff = await handoffGate.estadoParaAgente(organizationId, phone);
-          if (handoff) return { salida: { ok: true, retryable: false }, silencio: true };
+          if (handoff) {
+            const acuse = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
+            if (!acuse) return { salida: { ok: true, retryable: false }, silencio: true };
+            await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE }], null, null, null);
+            if (deliverReply) {
+              await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", pasada === 1 ? `inbound-reply:${messageId}` : `inbound-reply:${messageId}:p${pasada}`, {
+                to: phone,
+                phone_number_id: phoneNumberId,
+                body: ACUSE_HANDOFF_PENDIENTE,
+                transaccional: true,
+              });
+            }
+            return { salida: { ok: true, retryable: false, reply: ACUSE_HANDOFF_PENDIENTE, orderId: null, escalated: false }, silencio: true };
+          }
         }
         const turn = arco
           ? { reply: arco.reply, orderId: null, propertyId: propertyId ?? null }
