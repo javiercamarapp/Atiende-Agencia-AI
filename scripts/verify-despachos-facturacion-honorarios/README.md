@@ -3,7 +3,7 @@
 Prueba contra Postgres REAL de `packages/domain-despachos/migrations/023_despachos_facturacion_honorarios_igualas.sql`
 (D-32: igualas y prefacturas de honorarios del despacho a sus clientes).
 
-- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 135 escenarios):
+- `assertions.sql` (juzgado por `scripts/verify-real-postgres-ci/run-gate.mjs` en CI, 137 escenarios):
   - igualas: alta, edición, validaciones (monto, tasa, día, concepto, claves SAT, uso CFDI, tope de retención), tope de 50 por cliente
     (borde exacto), eliminación solo sin prefacturas;
   - prefacturas: generación con desglose recalculado por la base (simple y con retenciones de ISR y de IVA 2/3), receptor tomado de la ficha,

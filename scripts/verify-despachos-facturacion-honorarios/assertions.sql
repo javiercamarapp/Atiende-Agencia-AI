@@ -406,42 +406,59 @@ select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '000
 select retencion_iva_centavos as iva_ret_deberia_ser_10667 from despachos.prefactura where iguala_id = '00000000-0000-0000-0000-000000f32d02';
 rollback;
 
-\echo '49. un IVA que no es el de la iguala (15999) se rechaza'
+\echo '49. vector de redondeo compartido con el dominio TypeScript (12345 -> IVA 1975, ISR 1235, ret. IVA 1317, total 11768)'
+begin;
+insert into despachos.iguala (id, organization_id, property_id, concepto, monto_base_centavos, tasa_iva_bp, retencion_isr_bp, retiene_iva_dos_tercios) values ('00000000-0000-0000-0000-000000f32d06', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', 'Vector de redondeo', 12345, 1600, 1000, true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
+select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d06', '2026-07', 12345, 1975, 1235, 1317, 11768);
+select count(*) as vector_redondeo_deberia_ser_1 from despachos.prefactura where iguala_id = '00000000-0000-0000-0000-000000f32d06' and total_centavos = 11768;
+rollback;
+
+\echo '50. el vector de redondeo con un IVA redondeado hacia abajo (1974) se rechaza'
+begin;
+insert into despachos.iguala (id, organization_id, property_id, concepto, monto_base_centavos, tasa_iva_bp, retencion_isr_bp, retiene_iva_dos_tercios) values ('00000000-0000-0000-0000-000000f32d06', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', 'Vector de redondeo', 12345, 1600, 1000, true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
+select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d06', '2026-07', 12345, 1974, 1235, 1317, 11767) as should_fail;
+rollback;
+
+\echo '51. un IVA que no es el de la iguala (15999) se rechaza'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 15999, 0, 0, 115999) as should_fail;
 rollback;
 
-\echo '50. una base distinta al monto de la iguala se rechaza'
+\echo '52. una base distinta al monto de la iguala se rechaza'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 90000, 14400, 0, 0, 104400) as should_fail;
 rollback;
 
-\echo '51. un total que no cuadra con el desglose se rechaza'
+\echo '53. un total que no cuadra con el desglose se rechaza'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116001) as should_fail;
 rollback;
 
-\echo '52. retenciones omitidas cuando la iguala las lleva se rechazan'
+\echo '54. retenciones omitidas cuando la iguala las lleva se rechazan'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d02', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '53. una iguala inactiva no genera prefactura'
+\echo '55. una iguala inactiva no genera prefactura'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d05', '2026-07', 10000, 1600, 0, 0, 11600) as should_fail;
 rollback;
 
-\echo '54. un cliente sin ficha fiscal no genera prefactura'
+\echo '56. un cliente sin ficha fiscal no genera prefactura'
 begin;
 delete from despachos.cliente_ficha where property_id = '00000000-0000-0000-0000-000000f32b01';
 set local role authenticated;
@@ -449,56 +466,56 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '55. la iguala de A2 no se genera diciendo que es de A1'
+\echo '57. la iguala de A2 no se genera diciendo que es de A1'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d03', '2026-07', 50000, 8000, 0, 0, 58000) as should_fail;
 rollback;
 
-\echo '56. periodo invalido 2026-13 se rechaza'
+\echo '58. periodo invalido 2026-13 se rechaza'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-13', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '57. el contador NO genera prefacturas'
+\echo '59. el contador NO genera prefacturas'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '58. readonly NO genera prefacturas'
+\echo '60. readonly NO genera prefacturas'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c03', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '59. cross-tenant: admin de B NO genera prefacturas de un cliente de A'
+\echo '61. cross-tenant: admin de B NO genera prefacturas de un cliente de A'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '60. usuario sin membresia NO genera prefacturas'
+\echo '62. usuario sin membresia NO genera prefacturas'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c05', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '61. anon NO tiene EXECUTE sobre prefactura_generar'
+\echo '63. anon NO tiene EXECUTE sobre prefactura_generar'
 begin;
 set local role anon;
 select set_config('request.jwt.claim.sub', '', true);
 select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 100000, 16000, 0, 0, 116000) as should_fail;
 rollback;
 
-\echo '62. sesion sin sub NO genera prefacturas'
+\echo '64. sesion sin sub NO genera prefacturas'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
@@ -506,7 +523,7 @@ select despachos.prefactura_generar('00000000-0000-0000-0000-000000f32b01', '000
 rollback;
 
 \echo '=== APROBAR ==='
-\echo '63. admin aprueba un borrador'
+\echo '65. admin aprueba un borrador'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -515,7 +532,7 @@ select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '000
 select count(*) as aprobada_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'aprobada' and aprobada_en is not null and aprobada_por = '00000000-0000-0000-0000-000000f32c01';
 rollback;
 
-\echo '64. aprobar dos veces se rechaza (55000)'
+\echo '66. aprobar dos veces se rechaza (55000)'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -523,7 +540,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '65. no se aprueba una prefactura cancelada'
+\echo '67. no se aprueba una prefactura cancelada'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, motivo_cancelacion, cancelada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'cancelada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '02', now());
 set local role authenticated;
@@ -531,7 +548,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '66. el contador NO aprueba'
+\echo '68. el contador NO aprueba'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -539,7 +556,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '67. readonly NO aprueba'
+\echo '69. readonly NO aprueba'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -547,7 +564,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c03
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '68. cross-tenant: admin de B NO aprueba'
+\echo '70. cross-tenant: admin de B NO aprueba'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -555,7 +572,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '69. aprobar una prefactura de A2 diciendo que es de A1 da P0002'
+\echo '71. aprobar una prefactura de A2 diciendo que es de A1 da P0002'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b02', '00000000-0000-0000-0000-000000f32d03', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -563,7 +580,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01') as should_fail;
 rollback;
 
-\echo '70. anon NO tiene EXECUTE sobre aprobar'
+\echo '72. anon NO tiene EXECUTE sobre aprobar'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role anon;
@@ -572,7 +589,7 @@ select despachos.prefactura_aprobar('00000000-0000-0000-0000-000000f32b01', '000
 rollback;
 
 \echo '=== RESERVA DE TIMBRADO (compare-and-set) ==='
-\echo '71. reservar una aprobada gana la reserva'
+\echo '73. reservar una aprobada gana la reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -581,7 +598,7 @@ select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32
 select count(*) as estado_timbrando_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'timbrando' and timbrando_en is not null;
 rollback;
 
-\echo '72. la segunda reserva de la misma prefactura NO gana (solo una llama al PAC)'
+\echo '74. la segunda reserva de la misma prefactura NO gana (solo una llama al PAC)'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -590,7 +607,7 @@ select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as segunda_deberia_ser_0;
 rollback;
 
-\echo '73. un borrador no se reserva'
+\echo '75. un borrador no se reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -598,7 +615,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as borrador_deberia_ser_0;
 rollback;
 
-\echo '74. una timbrada no se reserva de nuevo'
+\echo '76. una timbrada no se reserva de nuevo'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -606,7 +623,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as timbrada_deberia_ser_0;
 rollback;
 
-\echo '75. una cancelada no se reserva'
+\echo '77. una cancelada no se reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, motivo_cancelacion, cancelada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'cancelada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '02', now());
 set local role authenticated;
@@ -614,7 +631,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as cancelada_deberia_ser_0;
 rollback;
 
-\echo '76. una reserva vieja (1 hora) se puede reclamar'
+\echo '78. una reserva vieja (1 hora) se puede reclamar'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now() - interval '1 hour');
 set local role authenticated;
@@ -622,7 +639,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as reserva_vieja_deberia_ser_1;
 rollback;
 
-\echo '77. una reserva reciente NO se reclama'
+\echo '79. una reserva reciente NO se reclama'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now() - interval '1 minute');
 set local role authenticated;
@@ -630,7 +647,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as reserva_reciente_deberia_ser_0;
 rollback;
 
-\echo '78. una fallida se puede reintentar'
+\echo '80. una fallida se puede reintentar'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'fallida', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -638,7 +655,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as fallida_deberia_ser_1;
 rollback;
 
-\echo '79. la reserva expira en 300 segundos o mas (60 se rechaza)'
+\echo '81. la reserva expira en 300 segundos o mas (60 se rechaza)'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -646,7 +663,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 60)::int as should_fail;
 rollback;
 
-\echo '80. el contador NO reserva'
+\echo '82. el contador NO reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -654,7 +671,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as should_fail;
 rollback;
 
-\echo '81. readonly NO reserva'
+\echo '83. readonly NO reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -662,7 +679,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c03
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as should_fail;
 rollback;
 
-\echo '82. cross-tenant: admin de B NO reserva'
+\echo '84. cross-tenant: admin de B NO reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -670,7 +687,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04
 select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 900)::int as should_fail;
 rollback;
 
-\echo '83. anon NO tiene EXECUTE sobre reservar'
+\echo '85. anon NO tiene EXECUTE sobre reservar'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role anon;
@@ -679,7 +696,7 @@ select despachos.prefactura_reservar_timbrado('00000000-0000-0000-0000-000000f32
 rollback;
 
 \echo '=== REGISTRAR TIMBRE Y FALLO ==='
-\echo '84. registrar timbre de una prefactura timbrando la deja timbrada con su UUID'
+\echo '86. registrar timbre de una prefactura timbrando la deja timbrada con su UUID'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -688,7 +705,7 @@ select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b
 select count(*) as timbrada_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'timbrada' and uuid_cfdi = '11111111-1111-4111-8111-111111111111' and pac_id = 'pac_123' and timbrando_en is null and timbrada_en is not null;
 rollback;
 
-\echo '85. sin reserva vigente (aprobada) NO se registra un timbre'
+\echo '87. sin reserva vigente (aprobada) NO se registra un timbre'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -696,7 +713,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '11111111-1111-4111-8111-111111111111', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '86. un UUID fiscal mal formado se rechaza'
+\echo '88. un UUID fiscal mal formado se rechaza'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -704,7 +721,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 'no-es-uuid', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '87. el mismo UUID fiscal no se liga a dos prefacturas de la organizacion'
+\echo '89. el mismo UUID fiscal no se liga a dos prefacturas de la organizacion'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-06', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-06-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f02', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d02', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
@@ -713,7 +730,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f02', '11111111-1111-4111-8111-111111111111', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '88. control: un UUID distinto si se registra'
+\echo '90. control: un UUID distinto si se registra'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-06', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-06-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f02', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d02', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
@@ -723,7 +740,7 @@ select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b
 select count(*) as control_uuid_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f02' and estado = 'timbrada';
 rollback;
 
-\echo '89. el contador NO registra timbre'
+\echo '91. el contador NO registra timbre'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -731,7 +748,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '11111111-1111-4111-8111-111111111111', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '90. cross-tenant: admin de B NO registra timbre'
+\echo '92. cross-tenant: admin de B NO registra timbre'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -739,7 +756,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '11111111-1111-4111-8111-111111111111', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '91. anon NO tiene EXECUTE sobre registrar timbre'
+\echo '93. anon NO tiene EXECUTE sobre registrar timbre'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role anon;
@@ -747,7 +764,7 @@ select set_config('request.jwt.claim.sub', '', true);
 select despachos.prefactura_registrar_timbre('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '11111111-1111-4111-8111-111111111111', 'pac_123', 'https://pac.example/f.pdf', 'https://pac.example/f.xml') as should_fail;
 rollback;
 
-\echo '92. registrar fallo deja la prefactura fallida y libera la reserva'
+\echo '94. registrar fallo deja la prefactura fallida y libera la reserva'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -756,7 +773,7 @@ select despachos.prefactura_registrar_fallo('00000000-0000-0000-0000-000000f32b0
 select count(*) as fallida_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'fallida' and timbrando_en is null and error_timbrado = 'pac_no_disponible';
 rollback;
 
-\echo '93. el texto del fallo se trunca a 200 caracteres'
+\echo '95. el texto del fallo se trunca a 200 caracteres'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -765,7 +782,7 @@ select despachos.prefactura_registrar_fallo('00000000-0000-0000-0000-000000f32b0
 select char_length(error_timbrado) as error_largo_deberia_ser_200 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01';
 rollback;
 
-\echo '94. sin reserva vigente NO se registra un fallo'
+\echo '96. sin reserva vigente NO se registra un fallo'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -773,7 +790,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_registrar_fallo('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 'pac_no_disponible') as should_fail;
 rollback;
 
-\echo '95. el contador NO registra fallo'
+\echo '97. el contador NO registra fallo'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -781,7 +798,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02
 select despachos.prefactura_registrar_fallo('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 'pac_no_disponible') as should_fail;
 rollback;
 
-\echo '96. cross-tenant: admin de B NO registra fallo'
+\echo '98. cross-tenant: admin de B NO registra fallo'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -789,7 +806,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04
 select despachos.prefactura_registrar_fallo('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', 'pac_no_disponible') as should_fail;
 rollback;
 
-\echo '97. ciclo completo: aprobada -> reserva -> fallo -> reserva -> timbre'
+\echo '99. ciclo completo: aprobada -> reserva -> fallo -> reserva -> timbre'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -802,7 +819,7 @@ select count(*) as ciclo_timbrada_deberia_ser_1 from despachos.prefactura where 
 rollback;
 
 \echo '=== CANCELAR (guardas) ==='
-\echo '98. cancelar un borrador con motivo 02 no necesita PAC'
+\echo '100. cancelar un borrador con motivo 02 no necesita PAC'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -811,7 +828,7 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 select count(*) as borrador_cancelado_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'cancelada' and motivo_cancelacion = '02' and cancelada_en is not null;
 rollback;
 
-\echo '99. cancelar una aprobada con motivo 03'
+\echo '101. cancelar una aprobada con motivo 03'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -820,7 +837,7 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 select count(*) as aprobada_cancelada_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'cancelada';
 rollback;
 
-\echo '100. cancelar una fallida'
+\echo '102. cancelar una fallida'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'fallida', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -829,7 +846,7 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 select count(*) as fallida_cancelada_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'cancelada';
 rollback;
 
-\echo '101. una timbrada NO se cancela sin acuse del PAC'
+\echo '103. una timbrada NO se cancela sin acuse del PAC'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -837,7 +854,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, false) as should_fail;
 rollback;
 
-\echo '102. control: la misma timbrada con acuse del PAC si se cancela y conserva su UUID'
+\echo '104. control: la misma timbrada con acuse del PAC si se cancela y conserva su UUID'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -846,7 +863,7 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 select count(*) as timbrada_cancelada_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'cancelada' and uuid_cfdi = '11111111-1111-4111-8111-111111111111';
 rollback;
 
-\echo '103. motivo 05 se rechaza'
+\echo '105. motivo 05 se rechaza'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -854,7 +871,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '05', null, false) as should_fail;
 rollback;
 
-\echo '104. motivo nulo se rechaza'
+\echo '106. motivo nulo se rechaza'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -862,7 +879,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', null, null, false) as should_fail;
 rollback;
 
-\echo '105. el motivo 01 exige folio de sustitucion'
+\echo '107. el motivo 01 exige folio de sustitucion'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -870,7 +887,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '01', null, false) as should_fail;
 rollback;
 
-\echo '106. el motivo 01 con folio de sustitucion valido se cancela'
+\echo '108. el motivo 01 con folio de sustitucion valido se cancela'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -879,7 +896,7 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 select count(*) as sustitucion_deberia_ser_1 from despachos.prefactura where id = '00000000-0000-0000-0000-000000f32f01' and estado = 'cancelada' and folio_sustitucion = '22222222-2222-4222-8222-222222222222';
 rollback;
 
-\echo '107. el folio de sustitucion no puede ser el del propio CFDI'
+\echo '109. el folio de sustitucion no puede ser el del propio CFDI'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -887,7 +904,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '01', '11111111-1111-4111-8111-111111111111', true) as should_fail;
 rollback;
 
-\echo '108. el motivo 02 no admite folio de sustitucion'
+\echo '110. el motivo 02 no admite folio de sustitucion'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -895,7 +912,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', '22222222-2222-4222-8222-222222222222', false) as should_fail;
 rollback;
 
-\echo '109. el folio de sustitucion mal formado se rechaza'
+\echo '111. el folio de sustitucion mal formado se rechaza'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 set local role authenticated;
@@ -903,7 +920,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '01', 'no-uuid', true) as should_fail;
 rollback;
 
-\echo '110. cancelar dos veces se rechaza'
+\echo '112. cancelar dos veces se rechaza'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, motivo_cancelacion, cancelada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'cancelada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '02', now());
 set local role authenticated;
@@ -911,7 +928,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, false) as should_fail;
 rollback;
 
-\echo '111. una prefactura con timbrado en curso NO se cancela'
+\echo '113. una prefactura con timbrado en curso NO se cancela'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrando_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now());
 set local role authenticated;
@@ -919,7 +936,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c01
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, true) as should_fail;
 rollback;
 
-\echo '112. el contador NO cancela'
+\echo '114. el contador NO cancela'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -927,7 +944,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c02
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, false) as should_fail;
 rollback;
 
-\echo '113. readonly NO cancela'
+\echo '115. readonly NO cancela'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -935,7 +952,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c03
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, false) as should_fail;
 rollback;
 
-\echo '114. cross-tenant: admin de B NO cancela'
+\echo '116. cross-tenant: admin de B NO cancela'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role authenticated;
@@ -943,7 +960,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000f32c04
 select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32f01', '02', null, false) as should_fail;
 rollback;
 
-\echo '115. anon NO tiene EXECUTE sobre cancelar'
+\echo '117. anon NO tiene EXECUTE sobre cancelar'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'borrador', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 set local role anon;
@@ -952,74 +969,74 @@ select despachos.prefactura_cancelar('00000000-0000-0000-0000-000000f32b01', '00
 rollback;
 
 \echo '=== INTEGRIDAD (CHECK / UNIQUE / FK, como dueno de las tablas) ==='
-\echo '116. UNIQUE (iguala, periodo): una segunda fila del mismo periodo falla'
+\echo '118. UNIQUE (iguala, periodo): una segunda fila del mismo periodo falla'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f02', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000) returning id as should_fail;
 rollback;
 
-\echo '117. control del UNIQUE: otro periodo de la misma iguala si entra'
+\echo '119. control del UNIQUE: otro periodo de la misma iguala si entra'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f02', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-08', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-08-05', 100000, 16000, 116000);
 select count(*) as control_unique_deberia_ser_2 from despachos.prefactura where iguala_id = '00000000-0000-0000-0000-000000f32d01';
 rollback;
 
-\echo '118. CHECK: un total que no cuadra con base + IVA - retenciones falla'
+\echo '120. CHECK: un total que no cuadra con base + IVA - retenciones falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116001) returning id as should_fail;
 rollback;
 
-\echo '119. CHECK: estado timbrada sin UUID fiscal falla'
+\echo '121. CHECK: estado timbrada sin UUID fiscal falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, now()) returning id as should_fail;
 rollback;
 
-\echo '120. CHECK: estado timbrando sin timbrando_en falla'
+\echo '122. CHECK: estado timbrando sin timbrando_en falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'timbrando', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000) returning id as should_fail;
 rollback;
 
-\echo '121. CHECK: estado cancelada sin motivo falla'
+\echo '123. CHECK: estado cancelada sin motivo falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'cancelada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000) returning id as should_fail;
 rollback;
 
-\echo '122. CHECK: un motivo de cancelacion 09 falla'
+\echo '124. CHECK: un motivo de cancelacion 09 falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, motivo_cancelacion, cancelada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'cancelada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '09', now()) returning id as should_fail;
 rollback;
 
-\echo '123. FK compuesta: una prefactura de la iguala de A1 con tenant de B falla'
+\echo '125. FK compuesta: una prefactura de la iguala de A1 con tenant de B falla'
 begin;
 
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a02', '00000000-0000-0000-0000-000000f32b03', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000) returning id as should_fail;
 rollback;
 
-\echo '124. UNIQUE parcial del UUID fiscal por organizacion'
+\echo '126. UNIQUE parcial del UUID fiscal por organizacion'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-06', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-06-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now());
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos, uuid_cfdi, timbrada_en) values ('00000000-0000-0000-0000-000000f32f02', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d02', '2026-07', 'timbrada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000, '11111111-1111-4111-8111-111111111111', now()) returning id as should_fail;
 rollback;
 
-\echo '125. CHECK de iguala: tasa de IVA 1000 falla'
+\echo '127. CHECK de iguala: tasa de IVA 1000 falla'
 begin;
 
 insert into despachos.iguala (organization_id, property_id, concepto, monto_base_centavos, tasa_iva_bp) values ('00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', 'Mala tasa', 100, 1000) returning id as should_fail;
 rollback;
 
-\echo '126. CHECK de iguala: periodicidad distinta de mensual falla'
+\echo '128. CHECK de iguala: periodicidad distinta de mensual falla'
 begin;
 
 insert into despachos.iguala (organization_id, property_id, concepto, monto_base_centavos, periodicidad) values ('00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', 'Bimestral', 100, 'bimestral') returning id as should_fail;
 rollback;
 
-\echo '127. borrar la property borra en cascada igualas y prefacturas'
+\echo '129. borrar la property borra en cascada igualas y prefacturas'
 begin;
 insert into despachos.prefactura (id, organization_id, property_id, iguala_id, periodo, estado, concepto, clave_prod_serv, clave_unidad, receptor_rfc, receptor_razon_social, receptor_regimen, receptor_cp, uso_cfdi, fecha_emision, base_centavos, iva_centavos, total_centavos) values ('00000000-0000-0000-0000-000000f32f01', '00000000-0000-0000-0000-000000f32a01', '00000000-0000-0000-0000-000000f32b01', '00000000-0000-0000-0000-000000f32d01', '2026-07', 'aprobada', 'Iguala', '84111500', 'E48', 'RRR010101RR1', 'Receptor Uno SA de CV', '601', '64000', 'G03', '2026-07-05', 100000, 16000, 116000);
 delete from despachos.prefactura where property_id = '00000000-0000-0000-0000-000000f32b01';
@@ -1028,49 +1045,49 @@ select count(*) as cascada_deberia_ser_0 from despachos.iguala where property_id
 rollback;
 
 \echo '=== POSTURA DE CATALOGO ==='
-\echo '128. RLS habilitado en las 2 tablas'
+\echo '130. RLS habilitado en las 2 tablas'
 begin;
 
 select (count(*) filter (where c.relrowsecurity))::int as rls_deberia_ser_2 from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'despachos' and c.relname in ('iguala', 'prefactura');
 rollback;
 
-\echo '129. ninguna policy de las 2 tablas es permisiva (using true) y todas son select'
+\echo '131. ninguna policy de las 2 tablas es permisiva (using true) y todas son select'
 begin;
 
 select count(*)::int as policies_permisivas_deberia_ser_0 from pg_policies where schemaname = 'despachos' and tablename in ('iguala', 'prefactura') and (qual = 'true' or cmd <> 'SELECT');
 rollback;
 
-\echo '130. anon y public no tienen privilegios sobre las 2 tablas'
+\echo '132. anon y public no tienen privilegios sobre las 2 tablas'
 begin;
 
 select count(*)::int as privilegios_anon_deberia_ser_0 from (select unnest(array['select','insert','update','delete']) p) x, (select unnest(array['despachos.iguala','despachos.prefactura']) t) y where has_table_privilege('anon', y.t, x.p);
 rollback;
 
-\echo '131. authenticated solo tiene select (ni insert, update ni delete)'
+\echo '133. authenticated solo tiene select (ni insert, update ni delete)'
 begin;
 
 select count(*)::int as escritura_authenticated_deberia_ser_0 from (select unnest(array['insert','update','delete']) p) x, (select unnest(array['despachos.iguala','despachos.prefactura']) t) y where has_table_privilege('authenticated', y.t, x.p);
 rollback;
 
-\echo '132. ninguna funcion de la migracion es ejecutable por public ni anon'
+\echo '134. ninguna funcion de la migracion es ejecutable por public ni anon'
 begin;
 
 select count(*)::int as funciones_expuestas_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'despachos' and (p.proname like 'prefactura\_%' or p.proname like 'iguala\_%' or p.proname like 'honorarios\_%') and (has_function_privilege('anon'::name, p.oid, 'execute') or has_function_privilege('public'::name, p.oid, 'execute'));
 rollback;
 
-\echo '133. las funciones de escritura son definer con search_path fijo'
+\echo '135. las funciones de escritura son definer con search_path fijo'
 begin;
 
 select count(*)::int as definer_sin_search_path_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'despachos' and p.prosecdef and (p.proname like 'prefactura\_%' or p.proname like 'iguala\_%' or p.proname like 'honorarios\_%') and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%');
 rollback;
 
-\echo '134. las 8 funciones de escritura de authenticated existen (iguala_guardar, iguala_eliminar y 6 de prefactura)'
+\echo '136. las 8 funciones de escritura de authenticated existen (iguala_guardar, iguala_eliminar y 6 de prefactura)'
 begin;
 
 select count(*)::int as funciones_authenticated_deberia_ser_8 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'despachos' and (p.proname like 'prefactura\_%' or p.proname like 'iguala\_%') and has_function_privilege('authenticated'::name, p.oid, 'execute');
 rollback;
 
-\echo '135. el guard honorarios_puede_escribir no es ejecutable por authenticated'
+\echo '137. el guard honorarios_puede_escribir no es ejecutable por authenticated'
 begin;
 
 select count(*)::int as guard_expuesto_deberia_ser_0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'despachos' and p.proname in ('honorarios_puede_escribir', 'honorarios_porcentaje') and has_function_privilege('authenticated'::name, p.oid, 'execute');
