@@ -159,13 +159,14 @@ export function superadminCerebroRoutes(deps: AppDeps, opciones: { readonly ahor
       return c.json({ disponible: false, mensaje: CEREBRO_NO_DISPONIBLE, prospectos: legado.map(desdeLegado), taxonomias: [] });
     }
     // Supresion por prospecto: funcion SOLO DE SISTEMA, en su propia sesion (si falla, el mapa sigue y NO ofrece contactar: nunca un 500).
+    const lista = r.lista.prospectos;
     const suprimidos = await deps.engine
-      .withAppSession({ userId: null }, (db) => suprimidosPorProspecto(db, r.lista.prospectos))
+      .withAppSession({ userId: null }, (db) => suprimidosPorProspecto(db, lista))
       .catch((err: unknown) => {
         console.warn(JSON.stringify({ ts: new Date().toISOString(), level: "warn", evento: "cerebro_supresion_no_verificada", error: err instanceof Error ? err.message : String(err) }));
         return null;
       });
-    const prospectos = suprimidos === null ? r.lista.prospectos : r.lista.prospectos.map((p) => ({ ...p, suprimido: suprimidos.get(p.id) ?? { telefono: false, correo: false } }));
+    const prospectos = suprimidos === null ? lista : lista.map((p) => ({ ...p, suprimido: suprimidos.get(p.id) ?? { telefono: false, correo: false } }));
     return c.json({ disponible: true, prospectos, taxonomias: r.taxonomias.map(serializarTaxonomia) });
   });
 
