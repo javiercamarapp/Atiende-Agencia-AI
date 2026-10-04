@@ -379,10 +379,10 @@ describe("PM busqueda y ambiguedad (X10-X15, X26, X56)", () => {
     expect((await nombres(f, "una orden de frijoles charros")).sort()).toEqual(["Frijoles Charros", "Frijoles Charros (1/2 orden)"]);
   });
 
-  it("T-AM16 [P1] 101 renglones, cantidad 101 y nombre de 300 caracteres se rechazan con error de validacion limpio (nunca un 500)", async () => {
+  it("T-AM16 [P1] 101 renglones, cantidad 501 (tope por renglon: QA R1 agentes-10) y nombre de 300 caracteres se rechazan con error de validacion limpio (nunca un 500)", async () => {
     const f = pmFixture();
     await expect(cotizar(f, Array.from({ length: 101 }, () => item(f.p.cocaCola, 1)))).rejects.toBeInstanceOf(OrderValidationError);
-    await expect(cotizar(f, [item(f.p.cocaCola, 101)])).rejects.toThrow(/inválidos/);
+    await expect(cotizar(f, [item(f.p.cocaCola, 501)])).rejects.toThrow(/inválidos/);
     await expect(cotizar(f, [{ productName: "x".repeat(300), requestedQuantity: 1 }])).rejects.toBeInstanceOf(OrderValidationError);
     await expect(createOrder(f.repo, pedido(f, [{ productId: f.p.cocaCola, requestedQuantity: 1 }], { customerName: "N".repeat(300) }))).rejects.toThrow(/exceden/);
   });
