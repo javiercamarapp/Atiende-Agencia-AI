@@ -147,6 +147,7 @@ import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx"
 import { LicitacionesShell, puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { LicitacionesCopilotoPage } from "./verticals/licitaciones/pages/Copiloto.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
+import { ExpedientesPage as LicitacionesExpedientesPage } from "./verticals/licitaciones/pages/Expedientes.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
 import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
@@ -1040,6 +1041,7 @@ const LicitacionesPrivacidadRoute = shellRoute(LicitacionesShell, "/licitaciones
 const LicitacionesWhatsappRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesWhatsappPage {...ctx} />);
 // L-08: KYC negativo contra la lista 69-B del SAT (proveedores y competidores).
 const LicitacionesKyc69bRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesKyc69bPage {...ctx} />);
+const LicitacionesExpedientesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesExpedientesPage {...ctx} />);
 const LicitacionesDiasInhabilesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <LicitacionesDiasInhabilesPage {...ctx} />);
 
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
@@ -1316,6 +1318,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/seguridad" element={<LicitacionesSeguridadRoute />} />
         <Route path="/licitaciones/:orgSlug/whatsapp" element={<LicitacionesWhatsappRoute />} />
         <Route path="/licitaciones/:orgSlug/kyc-69b" element={<LicitacionesKyc69bRoute />} />
+        <Route path="/licitaciones/:orgSlug/expedientes" element={<LicitacionesExpedientesRoute />} />
         <Route path="/licitaciones/:orgSlug/dias-inhabiles" element={<LicitacionesDiasInhabilesRoute />} />
         <Route path="/licitaciones/:orgSlug/panel" element={<LicitacionesPanelRoute />} />
         <Route path="/licitaciones/:orgSlug/copiloto" element={<LicitacionesCopilotoRoute />} />
