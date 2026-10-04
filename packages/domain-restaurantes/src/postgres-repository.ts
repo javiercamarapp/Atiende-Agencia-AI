@@ -1256,7 +1256,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }));
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const { rows } = await this.db.query<{
       property_id: string;
       order_id: string;
@@ -1267,9 +1267,9 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       acknowledged_by: string | null;
     }>(
       `update restaurantes.staff_order_notification set acknowledged_at = now(), acknowledged_by = $1
-       where organization_id = $2 and id = $3
+       where organization_id = $2 and id = $3${propertyIds ? " and property_id = any($4::uuid[])" : ""}
        returning property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
-      [actorId, organizationId, notificationId],
+      propertyIds ? [actorId, organizationId, notificationId, [...propertyIds]] : [actorId, organizationId, notificationId],
     );
     const row = rows[0];
     if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);

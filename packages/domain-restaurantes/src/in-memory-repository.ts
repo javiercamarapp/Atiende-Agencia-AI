@@ -1195,9 +1195,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       .slice(0, limit);
   }
 
-  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord> {
     const existing = this.staffOrderNotifications.get(notificationId);
-    if (!existing || existing.organizationId !== organizationId) {
+    if (!existing || existing.organizationId !== organizationId || (propertyIds && !propertyIds.includes(existing.propertyId))) {
       throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
     }
     const updated: StaffOrderNotificationRecord = { ...existing, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };

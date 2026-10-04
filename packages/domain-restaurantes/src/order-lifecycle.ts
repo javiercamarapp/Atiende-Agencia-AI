@@ -149,6 +149,20 @@ async function assertCanalAllowsStatus(repo: RestaurantesRepository, organizatio
   }
 }
 
+/** Estados en los que ya no tiene sentido despachar a un repartidor (cerrados o exclusivos de recoger). */
+const NO_DESPACHABLES: readonly OrderStatus[] = ["cancelado", "completado", "entregado", "no_recogido", "listo_para_recoger"];
+
+/** QA-restaurantes-R1-features-05a/05b: un pedido cerrado o para recoger en sucursal no se asigna a repartidor. */
+export async function assertOrderCanBeDispatched(repo: RestaurantesRepository, organizationId: string, order: Order): Promise<void> {
+  if (NO_DESPACHABLES.includes(order.status)) {
+    throw new OrderStatusTransitionError(`No se puede asignar repartidor a un pedido en estado "${order.status}".`);
+  }
+  const [info] = await repo.listOrderPickupInfo(organizationId, [order.id]);
+  if (esPedidoParaRecoger(order, info ?? null) === true) {
+    throw new OrderStatusTransitionError("Un pedido para recoger en sucursal no se asigna a un repartidor.");
+  }
+}
+
 // ---- Fase 8 — transiciones que un REPARTIDOR (nunca MANAGER_ROLES) puede disparar
 // sobre SU PROPIO pedido asignado (ver roles.ts, repartidor-orders.ts). ----
 
@@ -206,6 +220,8 @@ export async function changeAssignedOrderStatus(
   db?: TenantDbSession,
 ): Promise<Order> {
   assertValidRepartidorStatusTransition(order.status, nextStatus);
+  // QA-restaurantes-R1-features-05c: misma regla de canal que la ruta del gerente (un pedido para recoger no sale en_camino).
+  await assertCanalAllowsStatus(repo, organizationId, order, nextStatus);
   if (nextStatus === "problema") {
     if (!incidentNote || incidentNote.trim().length < 1 || incidentNote.trim().length > 2000) {
       throw new OrderStatusTransitionError('Para reportar una incidencia ("problema") debes escribir qué pasó (1-2000 caracteres).');

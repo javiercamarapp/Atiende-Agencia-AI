@@ -354,7 +354,9 @@ export interface RestaurantesRepository {
   /** Más reciente primero. `propertyIds` null = organización completa (mismo
    * contrato que el resto de rutas admin de este vertical, ver admin-scope.ts). */
   listStaffOrderNotifications(organizationId: string, propertyIds: readonly string[] | null, options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number }): Promise<readonly StaffOrderNotificationRecord[]>;
-  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord>;
+  /** `propertyIds` (opcional) acota el reconocimiento a las sucursales visibles del staff DENTRO de la propia escritura
+   * (QA-restaurantes-R1-features-08: antes se verificaba con un listado de 500 filas, que dejaba fuera las viejas). */
+  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string, propertyIds?: readonly string[] | null): Promise<StaffOrderNotificationRecord>;
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
