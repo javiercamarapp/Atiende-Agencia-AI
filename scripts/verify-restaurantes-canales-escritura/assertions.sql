@@ -527,3 +527,54 @@ drop function restaurantes.upsert_customer(uuid, text, text);
 select restaurantes.upsert_customer('00000000-0000-0000-0000-0000000d0a01', '9993330002', 'Sin Migrar');
 select 1 as should_fail;
 rollback;
+
+\echo '--- 39. los rechazos de staff y cross-tenant son EXACTAMENTE 42501 (no un 42883 u otro error que `should_fail` daria por bueno) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+do $$
+declare v_state text;
+begin
+  begin
+    perform restaurantes.upsert_customer('00000000-0000-0000-0000-0000000d0a01', '9991110090', 'Staff');
+    raise exception 'upsert_customer no rechazo al staff';
+  exception when others then get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42501' then raise exception 'upsert_customer staff: se esperaba 42501, se obtuvo %', v_state; end if;
+  end;
+  begin
+    perform restaurantes.add_customer_address_if_new('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0d01', 'Calle Staff 2');
+    raise exception 'add_customer_address_if_new no rechazo al staff';
+  exception when others then get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42501' then raise exception 'add_customer_address_if_new staff: se esperaba 42501, se obtuvo %', v_state; end if;
+  end;
+  begin
+    perform restaurantes.create_callback_request('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b01', 'Ana', '+529991110091', null, null, 'voice');
+    raise exception 'create_callback_request no rechazo al staff';
+  exception when others then get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42501' then raise exception 'create_callback_request staff: se esperaba 42501, se obtuvo %', v_state; end if;
+  end;
+end $$;
+select 1 as staff_rechazado_con_42501_deberia_ser_1;
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+do $$
+declare v_state text;
+begin
+  begin
+    perform restaurantes.add_customer_address_if_new('00000000-0000-0000-0000-0000000d0a02', '00000000-0000-0000-0000-0000000d0d01', 'Calle Intrusa 10');
+    raise exception 'add_customer_address_if_new no rechazo el cliente de otra organizacion';
+  exception when others then get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42501' then raise exception 'add_customer_address_if_new cross-tenant: se esperaba 42501, se obtuvo %', v_state; end if;
+  end;
+  begin
+    perform restaurantes.create_callback_request('00000000-0000-0000-0000-0000000d0a01', '00000000-0000-0000-0000-0000000d0b02', 'Ana', '+529991110092', null, null, 'voice');
+    raise exception 'create_callback_request no rechazo la sucursal de otra organizacion';
+  exception when others then get stacked diagnostics v_state = returned_sqlstate;
+    if v_state <> '42501' then raise exception 'create_callback_request cross-tenant: se esperaba 42501, se obtuvo %', v_state; end if;
+  end;
+end $$;
+select 1 as cross_tenant_rechazado_con_42501_deberia_ser_1;
+rollback;
