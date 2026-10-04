@@ -3254,6 +3254,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     });
   }
 
+  async listPromotedOrdersWithoutComanda(options: { readonly hours: number; readonly limit: number }): Promise<readonly Order[]> {
+    return runWithSavepointFallback<readonly Order[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_promovidos_sin_comanda",
+      primary: async () => {
+        const { rows } = await this.db.query<OrderRow>(`select * from restaurantes.pos_comanda_promovidos_sin_comanda($1::int, $2::int);`, [options.hours, options.limit]);
+        return rows.map(mapOrder);
+      },
+      // Base sin la 046 (funcion 42883) o sin la 024/034 (tabla 42P01, columna 42703): no hay nada que reconciliar.
+      isRecoverable: esErrorBaseSinMigrarProgramados,
+      fallback: async () => [],
+    });
+  }
+
   async upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy> {
     return runWithSavepointFallback<BranchPolicy>({
       session: this.db,
