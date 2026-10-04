@@ -277,3 +277,22 @@ export type { PromocionProgramados } from "./pedidos-programados.ts";
 export { etiquetaHoraLocal } from "./horarios.ts";
 export type { OrderScheduleInfo } from "./types.ts";
 export type { PromotedScheduledOrdersResult, ScheduledOrdersResult } from "./repository.ts";
+
+// R-16 -- avisos del staff (migracion 041): preferencias por usuario, umbral de entrega tardia y alertas operativas.
+export {
+  AvisosNoDisponiblesError,
+  AvisosPermisoError,
+  AvisosValidacionError,
+  EVENTOS_AVISO,
+  TIPOS_AVISO,
+  UMBRAL_ENTREGA_TARDIA_DEFECTO_MIN,
+  UMBRAL_ENTREGA_TARDIA_MAX,
+  UMBRAL_ENTREGA_TARDIA_MIN,
+  guardarPreferenciaAviso,
+  guardarUmbralEntrega,
+  listarPreferenciasAvisos,
+  listarUmbralesEntrega,
+} from "./avisos-preferencias.ts";
+export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
+export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
+export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
