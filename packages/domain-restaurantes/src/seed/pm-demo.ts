@@ -9,17 +9,20 @@
 //
 // Reglas del modelo PM que el plan garantiza (y `buildPmSeedPlan` verifica antes de emitir SQL):
 //   * 7 sucursales (T1, T2, T3, T4 Galerias, T5 Playa/Chicxulub, T7, T8). El catalogo y el precio de cada una
-//     salen de `precios_por_sucursal` de cada producto, ligados a los menus impresos T1-2026, T5-2026 y T3-2025
-//     (scripts/seed-pm-demo/data/menus-impresos/): una sucursal sin llave de precio NO vende ese producto.
-//     T2, T7 y T8 no se cargan mientras Javier no conteste P5 (quedan inactivas y sin catalogo); T4 se registra
-//     inactiva y sin catalogo (sin pedidos, P9); T5 queda inactiva (fuera de temporada) pero con su catalogo.
+//     salen de `precios_por_sucursal` de cada producto, ligados a los menus impresos T1-2026 y T5-2026
+//     (scripts/seed-pm-demo/data/menus-impresos/): una sucursal sin llave de precio NO vende ese producto. La lista
+//     vigente de TODAS las sucursales es la T1-2026 (cuestionario: "precios iguales en todas"); T3-2025 es la lista VIEJA
+//     y solo queda como referencia de nombres. T2, T7 y T8 no se cargan mientras Javier no conteste P5 (quedan inactivas y
+//     sin catalogo); T4 se registra inactiva y sin catalogo (sin pedidos, P9); T5 queda inactiva (fuera de temporada)
+//     pero con su catalogo.
+//   * Re-ejecutar RECONCILIA: lo que el seed ya no vende en una sucursal queda `is_available = false` (nunca se borra).
 //   * Todo producto de alcohol queda `no_domicilio = true` (el cuestionario prohibe alcohol a domicilio).
 //   * `products.price` es solo el precio de REFERENCIA (T1-2026, o el primero disponible); la cotizacion usa el
 //     `branch_products.price` de cada sucursal. Nunca hay centavos ni fracciones de kilo (P11).
 //   * Horario 12:00-01:00 todos los dias (una franja: la hora de cambio de turno no esta definida y no
 //     se inventa), pedido minimo a domicilio $200, propina solo con tarjeta.
-//   * Promociones: solo el 2x1 del lunes (solo recoger). El combo del martes no se modela (ver
-//     `promociones_no_modeladas` en los datos).
+//   * Promociones (solo recoger, todas las sucursales): el 2x1 del lunes y el combo de cortesia del martes (nachos de pastor
+//     con 2 aguas); las que aun no se modelen se listan en `promociones_no_modeladas` de los datos.
 //   * Sin gasto de proveedores: la voz se carga DESHABILITADA (`habilitado = false`).
 //   * Sin secretos ni usuarios: nunca crea credenciales; la membresia del dueño es opcional y solo
 //     enlaza a un usuario de staff que YA existe.
@@ -40,6 +43,9 @@ export interface PmSeedBranch {
   /** Una sucursal activa necesita su catalogo (>= `MIN_PRODUCTOS_SUCURSAL_ACTIVA` productos). */
   readonly activa: boolean;
   readonly zona_cliente?: string;
+  /** Direccion (del dueño) cuyas coordenadas aun NO se verificaron en una fuente citable: `lat`/`lng` siguen en null y la sucursal no
+   * participa en la asignacion por distancia (no se inventan coordenadas). */
+  readonly coordenadas_pendientes_de_verificar?: string;
   /** Slugs con los que esta sucursal se sembro en versiones ANTERIORES del seed (p. ej. "t4-pendiente" antes de llamarse
    * "galerias"): el seed re-ejecutado sobre una base vieja la reconoce por slug (estable), la RENOMBRA y no crea una segunda
    * fila que choque con `unique (organization_id, slug)`. */
@@ -50,12 +56,14 @@ export interface PmSeedBranch {
 /** Procedencia de un precio:
  *  - `impreso`: precio del menu impreso de la sucursal.
  *  - `provisional_P5`: lista 2026 de T1 cargada como propuesta mientras no se confirma el catalogo exacto (solo T2, T7 y T8).
+ *  - `lista_t1_2026_cuestionario`: T3 (Pensiones) usa la lista T1-2026 porque el cuestionario dice "precios iguales en todas" (l.104-105) y
+ *    los chats reales prueban que esa es la lista vigente; solo T3 y el precio debe ser IGUAL al de T1.
  *  - `lista_t1_2026`: T7 usa la lista T1-2026 (decision de Javier, 2-oct-2026, confirmada con los totales de los chats reales de T7);
  *    solo T7 y el precio debe ser IGUAL al de T1.
  *  - `proporcional_kilo`: fraccion de kilo (1/4, 1/2, 3/4, 1.5 y 2 kg) = precio del kilo de la MISMA sucursal x fraccion, redondeado a $0.50.
  *  - `decision_2oct`: precio fijado por Javier el 2-oct-2026 (extras de salsa y piña a $19). */
-export type PmFuentePrecio = "impreso" | "provisional_P5" | "lista_t1_2026" | "proporcional_kilo" | "decision_2oct";
-const FUENTES_PRECIO: readonly string[] = ["impreso", "provisional_P5", "lista_t1_2026", "proporcional_kilo", "decision_2oct"];
+export type PmFuentePrecio = "impreso" | "provisional_P5" | "lista_t1_2026" | "lista_t1_2026_cuestionario" | "proporcional_kilo" | "decision_2oct";
+const FUENTES_PRECIO: readonly string[] = ["impreso", "provisional_P5", "lista_t1_2026", "lista_t1_2026_cuestionario", "proporcional_kilo", "decision_2oct"];
 
 /** Redondeo de caja de una fraccion de kilo: al $0.50 mas cercano (mitades hacia arriba). */
 export function precioFraccionDeKilo(precioKilo: number, gramos: number): number {
@@ -86,12 +94,16 @@ export interface PmSeedProduct {
 export interface PmSeedPromotion {
   readonly codigo: string;
   readonly nombre: string;
-  readonly tipo: "bogo";
+  readonly tipo: "bogo" | "cortesia";
   readonly dias: readonly number[];
   readonly canales: readonly ("domicilio" | "recoger")[];
+  /** bogo: productos 2x1. cortesia: productos que DISPARAN la cortesia (nachos de pastor). */
   readonly productos: readonly string[];
+  /** Solo `cortesia`: productos que el cliente elige gratis (las aguas) y cuantos por cada unidad disparadora (1..10). */
+  readonly cortesia_productos?: readonly string[];
+  readonly cortesia_cantidad?: number;
   readonly descripcion: string;
-  /** Sucursales donde aplica (dato para la migracion de alcance por sucursal de PM-C2; hoy el SQL del seed no lo usa). */
+  /** Sucursales donde aplica (migracion 038, `promotions.property_ids`); sin valor = todas las sucursales de la organizacion. */
   readonly sucursales?: readonly string[];
 }
 
@@ -113,6 +125,16 @@ export interface PmSeedData {
     readonly nombre_agente: string | null;
     readonly tono: "calido_cercano" | "formal_directo" | "profesional_neutro" | "divertido_desenfadado";
     readonly tiempo_entrega: string;
+    /** Tiempo de entrega propio de una sucursal (id del seed -> texto). Se siembra como fila de `whatsapp_agent_config` con `property_id`
+     * (el lector prefiere la fila de la sucursal sobre la de la organizacion). */
+    readonly tiempo_entrega_por_sucursal?: Readonly<Record<string, string>>;
+    /** Textos que ESTE seed sembro en versiones anteriores: solo si la fila todavia dice uno de ellos (el dueño no la edito) se actualiza. */
+    readonly tiempo_entrega_anteriores_sembrados?: readonly string[];
+    readonly promociones_anteriores_sembradas?: readonly string[];
+    /** Espera de rafagas en segundos (migracion 039, 0 a 10); sin valor no se siembra. */
+    readonly espera_rafagas_segundos?: number;
+    /** Aclaracion para quien lea los datos: `tono` no es el tono real del perfil taqueria_pm. */
+    readonly tono_nota?: string;
     readonly salsas: string;
     readonly promociones: string;
     readonly motivos_escalacion_apagados: readonly string[];
@@ -164,14 +186,14 @@ function esPrecio(n: unknown): n is number {
   return typeof n === "number" && Number.isFinite(n) && n > 0 && n < 100000;
 }
 
-/** El comportamiento de voz sembrado sale del MISMO perfil que WhatsApp (`comportamientoVozPm`), no de un archivo aparte. Falla si
- * PROMETE el combo del martes (nachos con aguas de cortesia: no esta cargado, P13) o si no trae la instruccion de que lo confirma la
- * sucursal; la palabra "martes" si puede aparecer porque el prompt debe decir justo eso. */
+/** El comportamiento de voz sembrado sale del MISMO perfil que WhatsApp (`comportamientoVozPm`), no de un archivo aparte. El combo del martes
+ * YA esta cargado como promocion de cortesia: el prompt no puede seguir diciendo que "no lo prometa" ni que "lo confirma la sucursal", y
+ * debe decir que lo aplica cotizar_pedido y que se dice tal cual lo devuelve (nunca se promete algo que la cotizacion no muestre). */
 export function validarComportamientoVoz(comportamiento: string): void {
-  if (/2 aguas de cortes[ií]a|dos aguas de cortes[ií]a|nachos[^.\n]{0,40}\b(2|dos) aguas|elige (dos|2) aguas/i.test(comportamiento)) {
-    fail("El comportamiento de voz promete el combo del martes (aguas de cortesia), que NO esta cargado como promocion (P13).");
+  if (/la confirma la sucursal al recoger|no lo prometa ni lo aplique|no lo prometa; la confirma/i.test(comportamiento)) {
+    fail("El comportamiento de voz todavia trata el combo del martes como no cargado (H13); ya es una promocion que aplica cotizar_pedido.");
   }
-  if (!/la confirma la sucursal al recoger/.test(comportamiento)) fail("El comportamiento de voz no dice que el combo del martes lo confirma la sucursal al recoger.");
+  if (!/combo del martes[^.\n]{0,80}cotizar_pedido/i.test(comportamiento)) fail("El comportamiento de voz no dice que el combo del martes lo aplica cotizar_pedido.");
   if (comportamiento.length > COMPORTAMIENTO_VOZ_MAX) fail(`El comportamiento del agente mide ${comportamiento.length} caracteres; el maximo es ${COMPORTAMIENTO_VOZ_MAX}.`);
 }
 
@@ -236,10 +258,13 @@ export interface PmSeedPlan {
     readonly code: string;
     readonly name: string;
     readonly description: string;
-    readonly type: "bogo";
+    readonly type: "bogo" | "cortesia";
     readonly daysOfWeek: readonly number[];
     readonly channels: readonly string[];
     readonly productNames: readonly string[];
+    /** Solo `cortesia` (migracion 031): productos de cortesia a elegir y piezas por unidad disparadora; `null` en bogo. */
+    readonly courtesyProductNames: readonly string[] | null;
+    readonly courtesyQuantity: number | null;
     /** Ids de sucursal donde aplica (migracion 038, `promotions.property_ids`); `null` = todas las sucursales. El SQL del seed
      * los resuelve a `core.property.id` de la organizacion del plan. */
     readonly branchIds: readonly string[] | null;
@@ -258,6 +283,13 @@ export interface PmSeedPlan {
     readonly salsasText: string;
     readonly promosText: string;
     readonly escalationReasonsOff: readonly string[];
+    /** Espera de rafagas (migracion 039); `null` = no se siembra. */
+    readonly replyDebounceSeconds: number | null;
+    /** Filas propias de una sucursal (id del seed -> tiempo de entrega): copian la fila de la organizacion salvo `deliveryTimeText`. */
+    readonly deliveryByBranch: readonly { readonly branchId: string; readonly deliveryTimeText: string }[];
+    /** Textos que este seed sembro antes: solo si la fila los conserva (sin edicion del dueño) se reemplazan por los nuevos. */
+    readonly legacyDeliveryTimeTexts: readonly string[];
+    readonly legacyPromosTexts: readonly string[];
   };
   /** Pendientes del dueño que NO se inventan (checklist R-33). */
   readonly pendientes: readonly PmSeedPendiente[];
@@ -304,8 +336,10 @@ const GRAMOS_FRACCION = [250, 500, 750, 1500, 2000] as const;
 
 /** Lo que cada sucursal NO vende segun los menus impresos y el repo (plan PM-C1 y P10): por categoria o por nombre. */
 const EXCLUSIONES_POR_SUCURSAL: Readonly<Record<string, { readonly categorias: readonly string[]; readonly nombres: readonly string[] }>> = {
-  T2: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Ensalada de PM", "Jericallas", "Café"] },
-  T3: { categorias: ["Comida Regional", "Flautas de PM", "Pizza Quesobich"], nombres: ["Ensalada de PM"] },
+  // Cuestionario l.76: "las pequeñas tienen el mismo menu, pero sin la comida regional". Las flautas siguen fuera de T2 y T3 hasta que Javier
+  // conteste P10 (solo estan impresas en T1); Heineken Silver solo existe impresa en T5.
+  T2: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Heineken Silver"] },
+  T3: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Heineken Silver"] },
   T5: { categorias: ["Comida Regional", "Flautas de PM"], nombres: ["Sprite", "Sprite Cero"] },
 };
 
@@ -397,6 +431,9 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       } else if (p.fraccion_kg) fail(`Producto "${p.nombre}": una fraccion de kilo solo admite fuente proporcional_kilo (${branchId}).`);
       if ((fuente === "impreso" || fuente === "lista_t1_2026") && !p.impreso) fail(`Producto "${p.nombre}": un precio impreso necesita el item del menu en \`impreso\`.`);
       if (fuente === "lista_t1_2026" && (branchId !== "T7" || price !== p.precios_por_sucursal.T1)) fail(`Producto "${p.nombre}": lista_t1_2026 solo aplica a T7 y con el MISMO precio que T1 (${branchId}).`);
+      if (fuente === "lista_t1_2026_cuestionario" && (branchId !== "T3" || price !== p.precios_por_sucursal.T1)) fail(`Producto "${p.nombre}": lista_t1_2026_cuestionario solo aplica a T3 y con el MISMO precio que T1 (${branchId}).`);
+      if (fuente === "lista_t1_2026_cuestionario" && !p.impreso) fail(`Producto "${p.nombre}": un precio de la lista T1-2026 necesita el item del menu en \`impreso\`.`);
+      if (fuente === "impreso" && branchId === "T3") fail(`Producto "${p.nombre}": T3 usa la lista T1-2026 (lista_t1_2026_cuestionario), no la lista 2025 impresa.`);
       if (fuente === "decision_2oct" && !/^Extra (Salsa|Piña)$/.test(p.nombre)) fail(`Producto "${p.nombre}": decision_2oct solo vale para Extra Salsa y Extra Piña.`);
       const pendienteP5 = SUCURSALES_PENDIENTES_P5.includes(branchId);
       if (pendienteP5 && !p5Resuelta) fail(`Producto "${p.nombre}": ${branchId} no se carga mientras Javier no conteste P5 (pendientes_dueno P5 resuelta).`);
@@ -455,14 +492,32 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   const promotions = data.promociones.map((p) => {
     if (!/^[A-Z0-9_-]{3,40}$/.test(p.codigo) || codes.has(p.codigo)) fail(`Codigo de promocion invalido o duplicado: ${p.codigo}`);
     codes.add(p.codigo);
-    if (p.tipo !== "bogo") fail(`${p.codigo}: solo se carga el tipo bogo (2x1).`);
+    if (p.tipo !== "bogo" && p.tipo !== "cortesia") fail(`${p.codigo}: solo se cargan los tipos bogo (2x1) y cortesia.`);
     if (p.dias.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) fail(`${p.codigo}: dias invalidos.`);
     // PM: las promociones no aplican a domicilio.
     if (p.canales.includes("domicilio")) fail(`${p.codigo}: las promociones de PM no aplican a domicilio.`);
     if (p.canales.length === 0) fail(`${p.codigo}: debe declarar al menos un canal.`);
     for (const nombre of p.productos) if (!productNames.has(nombre)) fail(`${p.codigo}: el producto elegible "${nombre}" no existe en el menu.`);
     for (const id of p.sucursales ?? []) if (!branchIds.has(id)) fail(`${p.codigo}: la sucursal "${id}" no existe.`);
-    return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos], branchIds: p.sucursales ? [...p.sucursales] : null, autoApply: true as const };
+    if (p.tipo === "cortesia") {
+      const cortesia = p.cortesia_productos ?? [];
+      if (cortesia.length === 0 || p.productos.length === 0) fail(`${p.codigo}: una cortesia necesita productos disparadores y productos de cortesia.`);
+      for (const nombre of cortesia) if (!productNames.has(nombre)) fail(`${p.codigo}: el producto de cortesia "${nombre}" no existe en el menu.`);
+      if (!Number.isInteger(p.cortesia_cantidad) || (p.cortesia_cantidad as number) < 1 || (p.cortesia_cantidad as number) > 10) fail(`${p.codigo}: cortesia_cantidad debe ser un entero de 1 a 10.`);
+    } else if (p.cortesia_productos !== undefined || p.cortesia_cantidad !== undefined) fail(`${p.codigo}: cortesia_productos y cortesia_cantidad solo aplican al tipo cortesia.`);
+    return {
+      code: p.codigo,
+      name: p.nombre,
+      description: p.descripcion,
+      type: p.tipo,
+      daysOfWeek: [...p.dias],
+      channels: [...p.canales],
+      productNames: [...p.productos],
+      courtesyProductNames: p.tipo === "cortesia" ? [...(p.cortesia_productos as readonly string[])] : null,
+      courtesyQuantity: p.tipo === "cortesia" ? (p.cortesia_cantidad as number) : null,
+      branchIds: p.sucursales ? [...p.sucursales] : null,
+      autoApply: true as const,
+    };
   });
 
   // --- agente de WhatsApp (config editable del perfil PM) --------------------------------------------------
@@ -478,7 +533,14 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   if (aw.nombre_agente !== null) largo(aw.nombre_agente, "agentName");
   for (const m of aw.motivos_escalacion_apagados) if (!MOTIVOS_APAGABLES.includes(m)) fail(`agente_whatsapp: el motivo de escalacion "${m}" no se puede apagar.`);
   // Las promociones que el agente anuncia no pueden prometer algo que la base no cargo (nunca promete un descuento que la cotizacion no muestra).
-  if (/martes|nachos/i.test(aw.promociones)) fail("agente_whatsapp.promociones menciona el combo del martes, que NO esta cargado como promocion.");
+  if (/martes|nachos/i.test(aw.promociones) && !promotions.some((p) => p.type === "cortesia" && p.daysOfWeek.includes(2))) fail("agente_whatsapp.promociones menciona el combo del martes, que NO esta cargado como promocion.");
+  if (/lunes|2x1/i.test(aw.promociones) && !promotions.some((p) => p.type === "bogo" && p.daysOfWeek.includes(1))) fail("agente_whatsapp.promociones menciona el 2x1 del lunes, que NO esta cargado como promocion.");
+  if (aw.espera_rafagas_segundos !== undefined && (!Number.isInteger(aw.espera_rafagas_segundos) || aw.espera_rafagas_segundos < 0 || aw.espera_rafagas_segundos > 10)) fail("agente_whatsapp.espera_rafagas_segundos debe ser un entero de 0 a 10 (check de la migracion 039).");
+  const tiempoPorSucursal = Object.entries(aw.tiempo_entrega_por_sucursal ?? {}).map(([branchId, texto]) => {
+    if (!branchIds.has(branchId)) fail(`agente_whatsapp.tiempo_entrega_por_sucursal: la sucursal "${branchId}" no existe.`);
+    largo(texto, "deliveryTimeText");
+    return { branchId, deliveryTimeText: texto };
+  });
   const pendientes = data.pendientes_dueno ?? [];
   const idsPendientes = new Set<string>();
   for (const pend of pendientes) {
@@ -541,6 +603,10 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
       salsasText: aw.salsas,
       promosText: aw.promociones,
       escalationReasonsOff: [...aw.motivos_escalacion_apagados],
+      replyDebounceSeconds: aw.espera_rafagas_segundos ?? null,
+      deliveryByBranch: tiempoPorSucursal,
+      legacyDeliveryTimeTexts: [...(aw.tiempo_entrega_anteriores_sembrados ?? [])],
+      legacyPromosTexts: [...(aw.promociones_anteriores_sembradas ?? [])],
     },
     pendientes: pendientes.map((p) => ({ ...p })),
     demo: demo ? { seedVersion: data.version } : null,
@@ -558,7 +624,7 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: 
   };
 }
 
-/** Tablas y columnas que el seed necesita (migraciones 022, 023, 025, 027, 031, 033 y 038). La CLI las comprueba ANTES
+/** Tablas y columnas que el seed necesita (migraciones 022, 023, 025, 027, 031, 033, 038 y 039). La CLI las comprueba ANTES
  * de escribir: contra una base sin migrar aborta con la lista exacta en vez de fallar a la mitad. */
 export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonly columns: readonly string[]; readonly migration: string }[] = [
   { table: "restaurantes.branch_detail", columns: ["slug", "zona_horaria"], migration: "022_zona_horaria_branch_detail.sql" },
@@ -567,9 +633,13 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
   { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
-  // Sin el alcance por sucursal, el 2x1 del lunes (solo T2, T3 y T4) valdria en TODAS las sucursales, T1, T7 y T8 incluidas:
-  // el seed se niega a cargar la promocion antes de que la migracion 038 exista.
+  // El 2x1 y el combo valen en todas las sucursales (property_ids null), pero el seed sigue exigiendo la 038: sin esa columna el INSERT
+  // de promociones falla a la mitad. El seed se niega a cargar antes de que la migracion exista.
   { table: "restaurantes.promotions", columns: ["property_ids"], migration: "038_promociones_por_sucursal.sql" },
+  // Combo de cortesia del martes (031): las columnas de la propia promocion de cortesia.
+  { table: "restaurantes.promotions", columns: ["courtesy_product_ids", "courtesy_quantity"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
+  // Espera de rafagas y umbral de pedido grande: el seed siembra reply_debounce_seconds y copia large_order_text a la fila de sucursal.
+  { table: "restaurantes.whatsapp_agent_config", columns: ["large_order_text", "reply_debounce_seconds"], migration: "039_agente_config_umbral_y_rafagas.sql" },
   { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
 ];
 
@@ -709,6 +779,17 @@ begin
     join restaurantes.products pr on pr.organization_id = v_org and pr.name = x.name
     where bpr.key = b.id
     on conflict (property_id, product_id) do update set price = excluded.price, updated_at = now();
+  -- 5b) RECONCILIACION: una fila de branch_products de una sucursal DE ESTE seed, de un producto que el seed conoce, cuya llave de precio ya
+  -- no esta en branchPrices (p. ej. Heineken Silver en T2) se BORRA: la sucursal ya no lo vende y, si vuelve al plan despues, el upsert de
+  -- arriba lo reinserta disponible (apagarlo dejaria una fila viva-pero-apagada que ningun re-seed volveria a prender). Acotado: solo la
+  -- organizacion del plan, solo sucursales del plan y solo productos del plan; lo que el dueño agrego por su cuenta (producto fuera del
+  -- seed) no se toca. Nada referencia branch_products por llave foranea (los pedidos guardan sus renglones en jsonb).
+  delete from restaurantes.branch_products bp
+    using restaurantes.products pr, core.property p, jsonb_to_recordset(v->'branches') as b(id text, name text)
+    where bp.product_id = pr.id and pr.organization_id = v_org
+      and bp.property_id = p.id and p.organization_id = v_org and p.name = b.name
+      and exists (select 1 from jsonb_to_recordset(v->'products') as k(name text) where k.name = pr.name)
+      and not exists (select 1 from jsonb_to_recordset(v->'products') as x(name text, "branchPrices" jsonb) where x.name = pr.name and x."branchPrices" -> b.id is not null);
 
   -- 6) zonas conocidas: puntos de referencia de las sucursales con coordenadas
   update restaurantes.known_zone z set lat = x.lat, lng = x.lng
@@ -735,12 +816,13 @@ begin
     join core.property p on p.id = bd.property_id
     on conflict (property_id) do update set comportamiento = excluded.comportamiento, mensaje_inicial = excluded.mensaje_inicial, updated_at = now();
 
-  -- 9) promociones (2x1 por dia y canal sobre productos elegibles)
+  -- 9) promociones (2x1 y combo de cortesia por dia y canal sobre productos elegibles)
   -- auto_apply = true: el agente de WhatsApp no manda codigos de promocion, asi que el 2x1 solo se aplica si la propia
   -- cotizacion lo aplica sola (por dia y canal). Sin esto el descuento prometido nunca llegaba al total.
   -- property_ids (migracion 038): las sucursales donde vale la promocion, resueltas por el id del seed (T2, T3...) contra las
   -- sucursales DE ESTA organizacion; null = todas. Re-ejecutar repara el alcance (lo controla el seed, como los canales).
-  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids, auto_apply, property_ids)
+  -- cortesia (migracion 031): product_ids = productos que la disparan; courtesy_product_ids = las aguas a elegir; courtesy_quantity = piezas por unidad.
+  insert into restaurantes.promotions (organization_id, code, name, description, type, value, days_of_week, channels, product_ids, auto_apply, property_ids, courtesy_product_ids, courtesy_quantity)
     select v_org, x.code, x.name, x.description, x.type, 1, (select array_agg(d::smallint) from jsonb_array_elements_text(x."daysOfWeek") d),
            (select array_agg(c) from jsonb_array_elements_text(x.channels) c),
            (select array_agg(pr.id) from jsonb_array_elements_text(x."productNames") n join restaurantes.products pr on pr.organization_id = v_org and pr.name = n),
@@ -748,21 +830,44 @@ begin
            case when x."branchIds" is null or x."branchIds" = 'null'::jsonb then null
                 else (select array_agg(p.id order by p.id) from jsonb_array_elements_text(x."branchIds") sid
                       join jsonb_to_recordset(v->'branches') as b(id text, name text) on b.id = sid
-                      join core.property p on p.organization_id = v_org and p.name = b.name) end
-    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb, "branchIds" jsonb, "autoApply" boolean)
+                      join core.property p on p.organization_id = v_org and p.name = b.name) end,
+           case when x."courtesyProductNames" is null or x."courtesyProductNames" = 'null'::jsonb then null
+                else (select array_agg(pr.id) from jsonb_array_elements_text(x."courtesyProductNames") n join restaurantes.products pr on pr.organization_id = v_org and pr.name = n) end,
+           x."courtesyQuantity"
+    from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb, "branchIds" jsonb, "autoApply" boolean, "courtesyProductNames" jsonb, "courtesyQuantity" smallint)
     on conflict (organization_id, code) do update set name = excluded.name, description = excluded.description, type = excluded.type,
       days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, auto_apply = excluded.auto_apply,
-      property_ids = excluded.property_ids, updated_at = now();
+      property_ids = excluded.property_ids, courtesy_product_ids = excluded.courtesy_product_ids, courtesy_quantity = excluded.courtesy_quantity, updated_at = now();
 
-  -- 10) agente de WhatsApp: perfil taqueria_pm de la organizacion con los datos del dueño. DO NOTHING si ya hay fila:
-  -- re-ejecutar el seed NUNCA pisa lo que el dueño cambio en el editor del agente (tono, tiempos, salsas...), mismo criterio
-  -- que la voz. El nombre del asistente queda en null (el dueño no lo definio): el agente se presenta como "el asistente virtual".
-  insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, salsas_text, promos_text, escalation_reasons_off, enabled)
+  -- 10) agente de WhatsApp: perfil taqueria_pm de la organizacion con los datos del dueño. Re-ejecutar NUNCA pisa lo que el dueño cambio en el
+  -- editor del agente (tono, tiempos, salsas...), mismo criterio que la voz: sobre una fila existente solo
+  --   * rellena reply_debounce_seconds si esta vacio (null);
+  --   * reemplaza delivery_time_text / promos_text si todavia dicen EXACTAMENTE un texto que este seed sembro antes (legacy*): ahi no hay edicion
+  --     del dueño que proteger, y asi la cuenta real recibe la correccion sin pisar nada ajeno.
+  -- El nombre del asistente queda en null (el dueño no lo definio): el agente se presenta como "el asistente virtual".
+  insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, salsas_text, promos_text, escalation_reasons_off, reply_debounce_seconds, enabled)
     select v_org, null, w.perfil, w."agentName", w."businessName", w."toneStyle", w."deliveryTimeText", w."salsasText", w."promosText",
-           coalesce((select array_agg(m) from jsonb_array_elements_text(w."escalationReasonsOff") m), '{}'::text[]), true
+           coalesce((select array_agg(m) from jsonb_array_elements_text(w."escalationReasonsOff") m), '{}'::text[]), w."replyDebounceSeconds", true
     from jsonb_to_recordset(jsonb_build_array(v->'whatsappAgent')) as w(perfil text, "agentName" text, "businessName" text, "toneStyle" text,
-      "deliveryTimeText" text, "salsasText" text, "promosText" text, "escalationReasonsOff" jsonb)
-    on conflict (organization_id) where property_id is null do nothing;
+      "deliveryTimeText" text, "salsasText" text, "promosText" text, "escalationReasonsOff" jsonb, "replyDebounceSeconds" smallint)
+    on conflict (organization_id) where property_id is null do update set
+      reply_debounce_seconds = coalesce(restaurantes.whatsapp_agent_config.reply_debounce_seconds, excluded.reply_debounce_seconds),
+      delivery_time_text = case when restaurantes.whatsapp_agent_config.delivery_time_text in (select jsonb_array_elements_text(v->'whatsappAgent'->'legacyDeliveryTimeTexts'))
+                                then excluded.delivery_time_text else restaurantes.whatsapp_agent_config.delivery_time_text end,
+      promos_text = case when restaurantes.whatsapp_agent_config.promos_text in (select jsonb_array_elements_text(v->'whatsappAgent'->'legacyPromosTexts'))
+                         then excluded.promos_text else restaurantes.whatsapp_agent_config.promos_text end,
+      updated_at = now();
+  -- 10b) tiempo de entrega PROPIO de una sucursal (T7: tiempos medidos en sus chats): una fila con property_id. El lector prefiere la fila de
+  -- la sucursal sobre la de la organizacion Y la usa ENTERA (no mezcla campos), asi que la fila copia todo lo de la organizacion y solo cambia
+  -- delivery_time_text. DO NOTHING si ya existe: lo que el dueño edite en el panel no se pisa. Si luego edita la fila de la organizacion,
+  -- esta copia no se entera (se edita en la sucursal).
+  insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, greeting_text, salsas_text, promos_text, escalation_reasons_off, large_order_text, reply_debounce_seconds, enabled)
+    select o.organization_id, p.id, o.perfil, o.agent_name, o.business_name, o.tone_style, d."deliveryTimeText", o.greeting_text, o.salsas_text, o.promos_text, o.escalation_reasons_off, o.large_order_text, o.reply_debounce_seconds, o.enabled
+    from jsonb_to_recordset(v->'whatsappAgent'->'deliveryByBranch') as d("branchId" text, "deliveryTimeText" text)
+    join jsonb_to_recordset(v->'branches') as b(id text, name text) on b.id = d."branchId"
+    join core.property p on p.organization_id = v_org and p.name = b.name
+    join restaurantes.whatsapp_agent_config o on o.organization_id = v_org and o.property_id is null
+    on conflict (organization_id, property_id) where property_id is not null do nothing;
 
   -- 11) solo con --demo: la organizacion queda marcada como demo (widget publico, seed de volumen y limpieza). Re-ejecutar no
   -- reactiva un widget que el operador apago (columna activo).
