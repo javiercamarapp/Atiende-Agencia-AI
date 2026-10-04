@@ -77,3 +77,25 @@ describe("unsupportedNumbers", () => {
     expect(unsupportedNumbers("el 28 de septiembre de 2026", a)).toEqual([]);
   });
 });
+
+describe("guardia de cifras: cifras con letras y montos tipo año (revision de #427)", () => {
+  const dias = Array.from({ length: 30 }, (_, i) => ({ dia: `2026-09-${String(i + 1).padStart(2, "0")}`, ventas: 1500.5, pct: 10 }));
+  it("una cifra con letras seguida de 'pesos' o con '$' se valida como monto, igual que en digitos", () => {
+    const a = allowedNumbers("¿cual fue mi ticket promedio?", [res(dias)]);
+    expect(unsupportedNumbers("tu ticket promedio fue de veinte pesos", a)).toEqual([20]);
+    expect(unsupportedNumbers("tu ticket promedio fue de $20", a)).toEqual([20]);
+    expect(unsupportedNumbers("tu ticket promedio fue de 20 pesos", a)).toEqual([20]);
+    expect(unsupportedNumbers("subio veinte por ciento", a)).toEqual([20]);
+  });
+  it("una cifra con letras respaldada por un dato si pasa como monto", () => {
+    const a = allowedNumbers("", [res([{ dia: "2026-09-28", ventas: 980, pct: 10 }])]);
+    expect(unsupportedNumbers("vendiste novecientos ochenta pesos", a)).toEqual([]);
+    expect(unsupportedNumbers("subio 10 por ciento", a)).toEqual([]);
+  });
+  it("un monto de la pregunta entre 1900 y 2099 no se vuelve numero estructural", () => {
+    const a = allowedNumbers("¿Es cierto que vendí $2000 esta semana?", [res([{ dia: "2026-09-28", ventas: 2480.5, pct: 10 }])]);
+    expect(unsupportedNumbers("Sí, vendiste 2000 esta semana", a)).toEqual([2000]);
+    expect(unsupportedNumbers("Sí, vendiste dos mil pesos", a)).toEqual([2000]);
+    expect(unsupportedNumbers("Vendiste $2,480.50", a)).toEqual([]);
+  });
+});
