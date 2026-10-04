@@ -175,6 +175,8 @@ describe("createLlmWhatsAppTurnHandler — el loop de tool-use", () => {
 
     expect(result.orderId).toBeNull();
     expect(result.reply).toMatch(/problema técnico/i);
+    expect(result.reply).toMatch(/avisé al equipo/i);
+    expect((result as { escalacion?: { motivo: string } }).escalacion).toEqual({ motivo: "falla_sistema" });
   });
 
   it("un argumentsJson mal formado en una tool call se maneja como un resultado de error, sin tirar el turno completo", async () => {
