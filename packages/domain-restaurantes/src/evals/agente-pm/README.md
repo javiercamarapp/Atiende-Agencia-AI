@@ -35,3 +35,6 @@ para un juez (LLM o persona): no se evaluan con graders deterministas ni corren 
   prueba `tests/pm-c5-escenarios-t7.spec.ts` lo vigila con patrones. Nunca copies aqui texto de la muestra cruda.
 - La prueba tambien ata las cifras que citan los escenarios (fracciones de kilo, extras a $19, totales) al motor real de pedidos sobre el
   catalogo sembrado de T7.
+
+## Set en inglés (R-44)
+`ingles/casos-ingles.json` (13 casos EN-Lxx derivados de casos dorados por el campo `base`), `ingles/referencia-ingles.ts`, `ingles/graders-ingles.ts` y `ingles/ejecutor-ingles.ts`. Mismo mundo y mismas reglas duras; cambian el idioma del cliente y los graders de texto. Prueba: `tests/evals-agente-pm-ingles.spec.ts`. Ver `docs/AGENTE-INGLES.md`.
