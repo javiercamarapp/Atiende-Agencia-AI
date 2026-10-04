@@ -40,6 +40,15 @@ describe("por colonia", () => {
     expect(r).toMatchObject({ tipo: "reparte", sucursal: { slug: "fco-montejo" } });
   });
 
+  it("una sucursal que reparte solo vie-dom no se sugiere para repartir un martes, pero si un viernes", async () => {
+    const m = mundo();
+    m.repo.seedBranchPolicy(m.norte, { aceptaDomicilio: true, diasDomicilio: [5, 6, 0] });
+    const martes = new Date("2026-10-06T18:00:00Z");
+    const viernes = new Date("2026-10-09T18:00:00Z");
+    expect(await sugerirSucursalPorColonia(m.repo, m.organizationId, "Montebello", martes)).toMatchObject({ tipo: "reparte", sucursal: { slug: "fco-montejo" } });
+    expect(await sugerirSucursalPorColonia(m.repo, m.organizationId, "Montebello", viernes)).toMatchObject({ tipo: "reparte", sucursal: { slug: "norte" } });
+  });
+
   it("si ninguna reparte ahi: 'esa colonia no esta en nuestras zonas; puede recoger en ...'", async () => {
     const m = mundo();
     m.repo.seedBranchDeliveryZones(m.norte, [m.zonaCerca]);

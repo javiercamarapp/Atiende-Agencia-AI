@@ -4,6 +4,9 @@
 // Las coordenadas del cliente se usan SOLO para calcular la distancia en memoria: no se guardan ni se devuelven.
 import { haversineKm } from "./nearest-branch.ts";
 import { matchKnownZone } from "./reglas-pedido.ts";
+import { evaluarDomicilioSucursal } from "./domicilio-sucursal.ts";
+import { componentesLocales } from "./horarios.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { RestaurantesRepository } from "./repository.ts";
 
 export interface SucursalSugeridaRef {
@@ -38,7 +41,7 @@ async function sucursalesConUbicacion(repo: RestaurantesRepository, organization
 }
 
 /** Sugerencia por colonia: empareja la zona, y entre las sucursales que REPARTEN ahi elige la mas cercana. */
-export async function sugerirSucursalPorColonia(repo: RestaurantesRepository, organizationId: string, colonia: string): Promise<SugerenciaSucursal> {
+export async function sugerirSucursalPorColonia(repo: RestaurantesRepository, organizationId: string, colonia: string, ahora: Date = new Date()): Promise<SugerenciaSucursal> {
   const texto = colonia.trim();
   if (!texto) return { tipo: "sin_resultado", mensaje: MENSAJE_COLONIA_NO_RECONOCIDA };
   const zona = matchKnownZone(await repo.listKnownZones(organizationId), texto);
@@ -47,7 +50,9 @@ export async function sugerirSucursalPorColonia(repo: RestaurantesRepository, or
   if (candidatas.length === 0) return { tipo: "sin_resultado", mensaje: MENSAJE_SIN_SUCURSAL };
   for (const c of candidatas) {
     const policy = await repo.findBranchPolicy(c.propertyId);
-    if (policy.aceptaDomicilio === false) continue;
+    // Misma regla que el checkout (solo recoger y dias de reparto, en la zona horaria de la sucursal): no se promete un reparto que luego se rechaza.
+    const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(c.propertyId)).zonaHoraria);
+    if (!evaluarDomicilioSucursal(policy, componentesLocales(ahora, zonaHoraria).dia).acepta) continue;
     const zonas = await repo.listBranchDeliveryZoneIds(c.propertyId);
     if (zonas.length === 0 || zonas.includes(zona.id)) {
       return { tipo: "reparte", sucursal: { slug: c.slug, name: c.name }, zona: zona.name, distanciaKm: c.distanciaKm, mensaje: `${c.name} le reparte en ${zona.name}.` };
