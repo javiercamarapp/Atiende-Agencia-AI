@@ -72,21 +72,11 @@ export function normalizarTexto(texto: string): string {
     .trim();
 }
 
-const cacheKeyword = new Map<string, RegExp>();
-
 /** `kw` aparece como palabra o frase COMPLETA en `textoNormalizado` (límites de palabra; admite plural `s`/`es` al final).
- * Corrige el `includes()` por subcadena del origen: «material» ya no empata dentro de «materialización» ni «oficina» dentro de «oficinas»
- * por accidente de prefijo, y «disco» no dispara equipo_computo dentro de «discoteca». */
+ * Corrige el `includes()` por subcadena del origen: «material» ya no empata dentro de «materialización» y «disco» no dispara
+ * equipo_computo dentro de «discoteca». */
 export function contienePalabra(textoNormalizado: string, kw: string): boolean {
-  const norm = normalizarTexto(kw);
-  if (norm === "") return false;
-  let re = cacheKeyword.get(norm);
-  if (!re) {
-    // `norm` solo contiene [a-z0-9 ]: no hay metacaracteres de regex que escapar.
-    re = new RegExp(`(?:^| )${norm}(?:es|s)?(?: |$)`);
-    cacheKeyword.set(norm, re);
-  }
-  return re.test(textoNormalizado);
+  return posicionesDePalabra(textoNormalizado, kw).length > 0;
 }
 
 /** Confianza de un empate: `0.55 - 0.10 x rivales` (piso 0.30), el mismo criterio del suelto (`services/classify.py`, commit e302c60).
@@ -95,23 +85,53 @@ export function confianzaDeEmpate(rivales: number): number {
   return Math.round(Math.max(0.3, 0.55 - 0.1 * rivales) * 100) / 100;
 }
 
+interface Coincidencia {
+  readonly categoria: string;
+  readonly palabra: string;
+  readonly inicio: number;
+  readonly fin: number;
+}
+
+/** Posiciones de `kw` (palabra o frase completa, plural `s`/`es`) dentro de `textoNormalizado`. */
+function posicionesDePalabra(textoNormalizado: string, kw: string): { readonly inicio: number; readonly fin: number }[] {
+  const norm = normalizarTexto(kw);
+  if (norm === "") return [];
+  // `norm` solo contiene [a-z0-9 ]: no hay metacaracteres de regex que escapar.
+  const re = new RegExp(`(?<![a-z0-9])${norm}(?:es|s)?(?![a-z0-9])`, "g");
+  const out: { inicio: number; fin: number }[] = [];
+  for (let m = re.exec(textoNormalizado); m !== null; m = re.exec(textoNormalizado)) out.push({ inicio: m.index, fin: m.index + m[0].length });
+  return out;
+}
+
 /** `_rule_based_predict` CORREGIDO — conteo de keywords por PALABRA COMPLETA (sin acentos, ver `contienePalabra`) entre los patrones del
- * MISMO `tipoCfdi`. Gana el patrón con más coincidencias; si dos o más empatan en el máximo NO se elige "el primero": se devuelve el primero
- * por orden estable pero con `rivales > 0` y confianza `confianzaDeEmpate(rivales)` (< 0.5), para que la compuerta lo mande a revisión.
+ * MISMO `tipoCfdi`. Una coincidencia corta que queda DENTRO de una frase más larga de OTRA categoría se descarta (la frase es más específica:
+ * en «renta vehículo» gana arrendamiento y la palabra suelta «renta» de renta_oficina no cuenta). Gana el patrón con más coincidencias; si dos
+ * o más empatan en el máximo NO se elige "el primero": se devuelve el primero por orden estable pero con `rivales > 0` y confianza
+ * `confianzaDeEmpate(rivales)` (< 0.5), para que la compuerta lo mande a revisión.
  * `confidence = min(0.5 + best_score*0.15, 0.95)` con un ganador único (igual que el origen), `0.3` sin ninguna coincidencia ("otros").
  *
  * DEFECTO HEREDADO (ver e302c60 del suelto): el origen resolvía el empate con `matches > best_score` -> gana el primer patrón de la lista con
  * 0.65 >= 0.6, y por eso «renta de laptop» salía como renta_oficina sin revisión. */
 export function clasificarPorReglas(descripcion: string, tipoCfdi: TipoCfdiBookkeeping): PrediccionCategoria {
   const desc = normalizarTexto(descripcion);
-  const puntajes: { categoria: string; score: number; palabras: string[] }[] = [];
+  const todas: Coincidencia[] = [];
 
   for (const pattern of SYNTHETIC_PATTERNS) {
     if (pattern.tipoCfdi !== tipoCfdi) continue;
-    const palabras = pattern.keywords.filter((kw) => contienePalabra(desc, kw));
-    if (palabras.length > 0) puntajes.push({ categoria: pattern.category, score: palabras.length, palabras });
+    for (const kw of pattern.keywords) {
+      // Un mismo patrón cuenta cada keyword una sola vez aunque se repita en el texto (igual que el origen).
+      const pos = posicionesDePalabra(desc, kw)[0];
+      if (pos) todas.push({ categoria: pattern.category, palabra: kw, inicio: pos.inicio, fin: pos.fin });
+    }
   }
-  if (puntajes.length === 0) return { categoria: "otros", confidence: 0.3, rivales: 0, coincidencias: [] };
+  const vigentes = todas.filter(
+    (c) => !todas.some((o) => o.categoria !== c.categoria && o.inicio <= c.inicio && o.fin >= c.fin && o.fin - o.inicio > c.fin - c.inicio),
+  );
+  if (vigentes.length === 0) return { categoria: "otros", confidence: 0.3, rivales: 0, coincidencias: [] };
+
+  const porCategoria = new Map<string, string[]>();
+  for (const c of vigentes) porCategoria.set(c.categoria, [...(porCategoria.get(c.categoria) ?? []), c.palabra]);
+  const puntajes = [...porCategoria].map(([categoria, palabras]) => ({ categoria, score: palabras.length, palabras }));
 
   const mejor = Math.max(...puntajes.map((p) => p.score));
   const empatados = puntajes.filter((p) => p.score === mejor);

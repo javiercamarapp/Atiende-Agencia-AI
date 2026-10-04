@@ -121,6 +121,12 @@ describe("clasificarPorReglas: empate y palabra completa (defecto heredado corre
     expect(necesitaRevisionHumana(r.confidence)).toBe(true);
   });
 
+  it("una frase específica de otra categoría gana a la palabra suelta: «renta vehículo» es arrendamiento, no renta_oficina", () => {
+    const r = clasificarPorReglas("Renta vehículo utilitario", "I");
+    expect(r.categoria).toBe("arrendamiento");
+    expect(r.rivales).toBe(0);
+  });
+
   it("palabra completa: «material» dentro de «materialización» y «disco» dentro de «discoteca» NO cuentan", () => {
     expect(clasificarPorReglas("materialización del proyecto", "I").categoria).toBe("otros");
     expect(clasificarPorReglas("consumo en discoteca", "I").categoria).toBe("otros");
