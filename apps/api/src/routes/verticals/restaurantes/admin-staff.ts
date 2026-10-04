@@ -31,6 +31,7 @@
 // quedó hecho, esta fase solo decide no exponerlo TODAVÍA para no abrir superficie
 // HTTP sin probarla en las otras 5.
 import { Hono } from "hono";
+import { describirErrorSeguro } from "@atiende/domain-restaurantes";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership, generateInviteToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
@@ -119,7 +120,7 @@ export async function tryEnqueueStaffInviteEmail(
       }),
     );
   } catch (err) {
-    console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
+    console.error("admin-staff: best-effort staff invite email enqueue failed:", describirErrorSeguro(err));
   }
 }
 

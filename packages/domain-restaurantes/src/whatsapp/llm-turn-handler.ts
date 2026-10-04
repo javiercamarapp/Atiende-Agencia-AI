@@ -23,6 +23,7 @@
 // min en `createOrder`, ver orders.ts), no dependiendo de que el LLM relea su
 // propio historial de tool_calls.
 import { randomUUID } from "node:crypto";
+import { describirErrorSeguro } from "../log-seguro.ts";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
 import { vipNote } from "../customers.ts";
 import { maskAddressForPrompt, sanitizeInlineText } from "../text-sanitize.ts";
@@ -403,7 +404,7 @@ async function encolarComandaDelTurno(
     });
     return outcome.modo === "activo" ? { estado: outcome.agente.estado, folio: outcome.agente.folio, mensaje: outcome.agente.mensaje } : null;
   } catch (err) {
-    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", err instanceof Error ? err.message : err);
+    console.error("whatsapp: no se pudo encolar la comanda de SoftRestaurant (el pedido NO se ve afectado):", describirErrorSeguro(err));
     return null;
   }
 }

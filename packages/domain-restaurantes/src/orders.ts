@@ -17,6 +17,7 @@ import { applyPromotionToOrder, normalizePromotionCode, selectAutomaticPromotion
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, requiresTortillaChoice, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido, CreateOrderInput, DoubleSalsa, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
+import { describirErrorSeguro } from "./log-seguro.ts";
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -395,7 +396,7 @@ export async function tryIncrementPromotionUses(repo: RestaurantesRepository, or
   try {
     await repo.runWithRowSavepoint(() => repo.incrementPromotionUses(organizationId, promotionId));
   } catch (err) {
-    console.error("promotions: best-effort incrementPromotionUses failed:", err);
+    console.error("promotions: best-effort incrementPromotionUses failed:", describirErrorSeguro(err));
   }
 }
 

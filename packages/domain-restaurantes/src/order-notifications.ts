@@ -32,6 +32,7 @@ import { toWhatsAppRecipient } from "./phone.ts";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
+import { describirErrorSeguro } from "./log-seguro.ts";
 
 function branchSuffix(order: Order): string {
   return order.branch ? ` de ${order.branch}` : "";
@@ -207,7 +208,7 @@ async function runNotifyBestEffort(db: TenantDbSession | undefined, fn: () => Pr
       // Si el propio SAVEPOINT nunca llegó a crearse (transacción ya abortada de
       // entrada), este ROLLBACK TO también falla -- se traga aquí a propósito,
       // igual que triggerInline.
-      console.error("order-notifications: fallo recuperando el SAVEPOINT del best-effort (no debería pasar):", recoveryErr);
+      console.error("order-notifications: fallo recuperando el SAVEPOINT del best-effort (no debería pasar):", describirErrorSeguro(recoveryErr));
     }
     onError(err);
   }
@@ -224,7 +225,7 @@ export async function tryNotifyCustomerOnOrderStatusChange(repo: RestaurantesRep
   await runNotifyBestEffort(
     db,
     () => notifyCustomerOnOrderStatusChangeCore(repo, order).then(() => undefined),
-    (err) => console.error("order-notifications: best-effort customer WhatsApp enqueue failed:", err),
+    (err) => console.error("order-notifications: best-effort customer WhatsApp enqueue failed:", describirErrorSeguro(err)),
   );
 }
 
@@ -272,7 +273,7 @@ export async function tryNotifyStaffNewOrder(repo: RestaurantesRepository, order
   try {
     await repo.runWithRowSavepoint(() => notifyStaffNewOrderCore(repo, order));
   } catch (err) {
-    console.error("order-notifications: best-effort staff order.created failed:", err);
+    console.error("order-notifications: best-effort staff order.created failed:", describirErrorSeguro(err));
   }
 }
 
@@ -288,7 +289,7 @@ export async function tryNotifyStaffOrderProblem(repo: RestaurantesRepository, o
   await runNotifyBestEffort(
     db,
     () => notifyStaffOrderProblemCore(repo, order),
-    (err) => console.error("order-notifications: best-effort staff order.problema failed:", err),
+    (err) => console.error("order-notifications: best-effort staff order.problema failed:", describirErrorSeguro(err)),
   );
 }
 
@@ -321,7 +322,7 @@ export async function tryNotifyStaffRepartidorAssigned(repo: RestaurantesReposit
   try {
     await repo.runWithRowSavepoint(() => notifyStaffRepartidorAssignedCore(repo, order));
   } catch (err) {
-    console.error("order-notifications: best-effort staff order.assigned_repartidor failed:", err);
+    console.error("order-notifications: best-effort staff order.assigned_repartidor failed:", describirErrorSeguro(err));
   }
 }
 
@@ -399,6 +400,6 @@ export async function tryNotifyCustomerOrderConfirmationEmail(repo: Restaurantes
   try {
     await repo.runWithRowSavepoint(() => notifyCustomerOrderConfirmationEmailCore(repo, order));
   } catch (err) {
-    console.error("order-notifications: best-effort customer order confirmation email enqueue failed:", err);
+    console.error("order-notifications: best-effort customer order confirmation email enqueue failed:", describirErrorSeguro(err));
   }
 }
