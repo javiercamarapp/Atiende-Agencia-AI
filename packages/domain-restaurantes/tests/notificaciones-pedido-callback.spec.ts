@@ -11,7 +11,6 @@ const ORDER_ID = "00000000-0000-4000-8000-0000000000d1";
 const CALLBACK_ID = "00000000-0000-4000-8000-0000000000e1";
 const EMITIR = /core\.emit_notification/i;
 const CREAR_PEDIDO = /restaurantes\.create_order_idempotent/i;
-const INSERT_CALLBACK = /insert into restaurantes\.callback_requests/i;
 const REGISTRAR_AGENTE = /restaurantes\.callback_registrar_agente/i;
 const AVISO_NUEVO = { callback_id: CALLBACK_ID, resuelto: false, creado_at: "2026-10-01T10:00:00.000Z", registro: "nuevo" };
 const SIGUIENTE: FakeSessionHandler = { match: /select 1 as siguiente/, respond: () => [{ ok: true }] };
