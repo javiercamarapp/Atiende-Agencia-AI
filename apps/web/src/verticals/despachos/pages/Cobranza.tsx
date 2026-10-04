@@ -13,10 +13,10 @@
 // (registerReceivable/markReceivablePaid/el envío real de recordatorio, ver
 // cobranza-client.ts).
 import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import { AlarmClock, AlertTriangle, CheckCircle2, Clock, HandCoins, Hourglass, Send, TrendingUp, Wallet } from "lucide-react";
 import {
   Button,
+  Callout,
   Card,
   CardContent,
   Checkbox,
@@ -24,10 +24,12 @@ import {
   EstadoError,
   EstadoVacio,
   FormDialog,
+  FormField,
   Input,
-  Label,
   NativeSelect,
+  notify,
   PageContainer,
+  PageHeader,
   StatCard,
   StatusBadge,
   statusTone,
@@ -37,6 +39,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useConfirm,
 } from "@atiende/ui";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
@@ -110,10 +113,9 @@ function ResumenCards({ resumen }: { resumen: ResumenCobranza }) {
       {resumen.alertas.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {resumen.alertas.map((a, i) => (
-            <p key={i} role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            <Callout key={i} tone="danger">
               {a}
-            </p>
+            </Callout>
           ))}
         </div>
       )}
@@ -128,6 +130,7 @@ interface RowActionState {
 }
 
 export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
+  const { confirmar, dialogo } = useConfirm();
   const [cuentas, setCuentas] = useState<readonly CuentaCobranza[] | null>(null);
   const [resumen, setResumen] = useState<ResumenCobranza | null>(null);
   const [invoicesElegibles, setInvoicesElegibles] = useState<readonly InvoiceSummary[]>([]);
@@ -178,8 +181,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   const invoiceIdsConCuenta = useMemo(() => new Set((cuentas ?? []).map((c) => c.invoiceId)), [cuentas]);
   const invoicesDisponibles = useMemo(() => invoicesElegibles.filter((inv) => inv.tipo === "I" && !invoiceIdsConCuenta.has(inv.id)), [invoicesElegibles, invoiceIdsConCuenta]);
 
-  async function handleRegistrar(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleRegistrar() {
     setFormError(null);
     if (!invoiceId) {
       setFormError("Elige un CFDI de tipo Ingreso.");
@@ -202,6 +204,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
       setFechaVencimiento("");
       setClienteNombre("");
       setClienteEmail("");
+      notify.success("Cuenta por cobrar registrada.");
       await load();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "No se pudo registrar la cuenta por cobrar.");
@@ -215,6 +218,12 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   }
 
   async function handleMarcarPagada(cuenta: CuentaCobranza) {
+    const ok = await confirmar({
+      titulo: "Marcar cuenta como pagada",
+      descripcion: `Se registrará el pago completo de ${formatMoney(cuenta.monto)} y la cuenta saldrá de la cartera pendiente. No se puede deshacer.`,
+      confirmar: "Marcar pagada",
+    });
+    if (!ok) return;
     setRowState(cuenta.id, { loading: true, message: null, isError: false });
     try {
       await marcarCuentaPagada(fetch, apiBaseUrl, token, propertyId, cuenta.id, { montoPagado: cuenta.monto });
@@ -227,6 +236,12 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
 
   async function handleEnviarRecordatorio(cuenta: CuentaCobranza) {
     const stage = stageChoice[cuenta.id] || undefined;
+    const ok = await confirmar({
+      titulo: "Enviar recordatorio de cobranza",
+      descripcion: `Se enviará un correo real a ${cuenta.clienteEmail ?? "el cliente (sin correo capturado: solo se registrará el evento)"}. No se puede deshacer.`,
+      confirmar: "Enviar",
+    });
+    if (!ok) return;
     setRowState(cuenta.id, { loading: true, message: null, isError: false });
     try {
       const resultado = await enviarRecordatorioCobranza(fetch, apiBaseUrl, token, propertyId, cuenta.id, stage || undefined);
@@ -239,77 +254,56 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   }
 
   return (
-    <PageContainer padding="none" className="gap-4 [&>*]:min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-foreground">Cobranza</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo.</p>
-        </div>
-        {puedeGestionar && (
-          <Button variant={showForm ? "outline" : "default"} size="sm" onClick={() => setShowForm((v) => !v)}>
-            <HandCoins />
-            {showForm ? "Cancelar" : "Registrar cuenta por cobrar"}
-          </Button>
-        )}
-      </header>
-
-      {/* El formulario de alta pasó del panel inline al `FormDialog`
-          compartido (4 campos + selector de CFDI: exactamente la forma de
-          "formulario en riel lateral" para la que existe ese shell). El estado
-          `showForm` y `handleRegistrar` son los mismos de antes. */}
-      {showForm && (
-        <FormDialog
-          open
-          onOpenChange={(abierto) => {
-            if (!abierto) setShowForm(false);
-          }}
-          titulo="Registrar cuenta por cobrar"
-          subtitulo="Ata un CFDI de ingreso a una fecha de vencimiento para que entre a la cartera y al calendario de recordatorios."
-          anchoClase="max-w-3xl"
-          footer={
-            <Button type="submit" form="cobranza-registrar" disabled={submitting} className="rounded-full px-6">
-              {submitting ? "Registrando…" : "Registrar cuenta"}
+    <PageContainer className="[&>*]:min-w-0">
+      <PageHeader
+        titulo="Cobranza"
+        descripcion="Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo."
+        acciones={
+          puedeGestionar ? (
+            <Button size="sm" onClick={() => setShowForm(true)}>
+              <HandCoins />
+              Registrar cuenta por cobrar
             </Button>
-          }
-        >
-          <form id="cobranza-registrar" onSubmit={handleRegistrar} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cobranza-cfdi">CFDI (tipo Ingreso) *</Label>
-              <NativeSelect
-                id="cobranza-cfdi"
-                value={invoiceId}
-                onChange={(e) => setInvoiceId(e.target.value)}
-                required
-              >
-                <option value="">Selecciona un CFDI…</option>
-                {invoicesDisponibles.map((inv) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.folioFiscal.slice(0, 13)}… · {inv.emisorNombre ?? inv.rfcEmisor} · {formatMoney(inv.total)}
-                  </option>
-                ))}
-              </NativeSelect>
-              {invoicesDisponibles.length === 0 && <span className="text-xs text-muted-foreground">No hay CFDI de ingreso sin cuenta por cobrar todavía.</span>}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cobranza-vencimiento">Fecha de vencimiento *</Label>
-              <Input id="cobranza-vencimiento" type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cobranza-cliente">Nombre del cliente (opcional)</Label>
-              <Input id="cobranza-cliente" type="text" value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cobranza-email">Correo de contacto (opcional -- sin esto no se puede enviar recordatorio real)</Label>
-              <Input id="cobranza-email" type="email" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
-            </div>
-            {formError && (
-              <p role="alert" className="text-destructive text-sm">
-                {formError}
-              </p>
-            )}
-          </form>
-        </FormDialog>
-      )}
+          ) : undefined
+        }
+      />
+
+      <FormDialog
+        open={showForm}
+        onOpenChange={(abierto) => {
+          if (!abierto && !submitting) setShowForm(false);
+        }}
+        titulo="Registrar cuenta por cobrar"
+        subtitulo="Ata un CFDI de ingreso a una fecha de vencimiento para que entre a la cartera y al calendario de recordatorios."
+        anchoClase="max-w-3xl"
+        onGuardar={() => void handleRegistrar()}
+        guardando={submitting}
+        textoBotonGuardar="Registrar cuenta"
+        bloquearCierre={submitting}
+      >
+        <div className="flex flex-col gap-3">
+          <FormField label="CFDI (tipo Ingreso)" required hint={invoicesDisponibles.length === 0 ? "No hay CFDI de ingreso sin cuenta por cobrar todavía." : undefined}>
+            <NativeSelect id="cobranza-cfdi" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
+              <option value="">Selecciona un CFDI…</option>
+              {invoicesDisponibles.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.folioFiscal.slice(0, 13)}… · {inv.emisorNombre ?? inv.rfcEmisor} · {formatMoney(inv.total)}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+          <FormField label="Fecha de vencimiento" required>
+            <Input id="cobranza-vencimiento" type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} />
+          </FormField>
+          <FormField label="Nombre del cliente (opcional)">
+            <Input id="cobranza-cliente" type="text" value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} />
+          </FormField>
+          <FormField label="Correo de contacto (opcional)" hint="Sin correo no se puede enviar un recordatorio real.">
+            <Input id="cobranza-email" type="email" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
+          </FormField>
+          {formError && <Callout tone="danger">{formError}</Callout>}
+        </div>
+      </FormDialog>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -381,36 +375,32 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                           {!cuenta.pagadoEn && (
                             <div className="flex min-w-56 flex-col gap-1.5">
                               <div className="flex gap-1.5">
-                                <Label htmlFor={`cobranza-etapa-${cuenta.id}`} className="sr-only">
-                                  Etapa del recordatorio
-                                </Label>
-                                <NativeSelect
-                                  id={`cobranza-etapa-${cuenta.id}`}
-                                  value={stageChoice[cuenta.id] ?? ""}
-                                  onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
-                                  size="sm" wrapperClassName="min-w-36 flex-1"
-                                >
-                                  <option value="">Etapa sugerida</option>
-                                  {COBRANZA_REMINDER_STAGES.map((s) => (
-                                    <option key={s} value={s}>
-                                      {STAGE_LABELS[s]}
-                                    </option>
-                                  ))}
-                                </NativeSelect>
-                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
+                                <FormField label="Etapa del recordatorio" className="min-w-36 flex-1">
+                                  <NativeSelect
+                                    id={`cobranza-etapa-${cuenta.id}`}
+                                    value={stageChoice[cuenta.id] ?? ""}
+                                    onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
+                                  >
+                                    <option value="">Etapa sugerida</option>
+                                    {COBRANZA_REMINDER_STAGES.map((s) => (
+                                      <option key={s} value={s}>
+                                        {STAGE_LABELS[s]}
+                                      </option>
+                                    ))}
+                                  </NativeSelect>
+                                </FormField>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <Button type="button" variant="outline" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
                                   <Send />
-                                  {rowState?.loading ? "…" : "Enviar recordatorio"}
+                                  Enviar recordatorio
+                                </Button>
+                                <Button type="button" variant="outline" onClick={() => void handleMarcarPagada(cuenta)} disabled={rowState?.loading}>
+                                  <CheckCircle2 />
+                                  Marcar pagada
                                 </Button>
                               </div>
-                              <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleMarcarPagada(cuenta)} disabled={rowState?.loading}>
-                                <CheckCircle2 />
-                                Marcar pagada
-                              </Button>
-                              {rowState?.message && (
-                                <span className={`text-xs ${rowState.isError ? "text-destructive" : "text-success"}`} role={rowState.isError ? "alert" : undefined}>
-                                  {rowState.message}
-                                </span>
-                              )}
+                              {rowState?.message && <Callout tone={rowState.isError ? "danger" : "success"}>{rowState.message}</Callout>}
                             </div>
                           )}
                         </TableCell>
@@ -423,6 +413,7 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
           </CardContent>
         </Card>
       )}
+      {dialogo}
     </PageContainer>
   );
 }
