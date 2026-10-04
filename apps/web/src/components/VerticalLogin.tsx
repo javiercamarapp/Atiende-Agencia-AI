@@ -205,22 +205,24 @@ export function VerticalLogin({ apiBaseUrl, vertical, nombre, descripcion, kicke
                   )}
 
                   {/* Ranura de ALTURA FIJA para el resultado: idle, enviando, enviado, error y reenviar ocupan el mismo espacio (CLS 0). */}
-                  <div className="login-estado" data-estado={avisoEnviado ? "enviado" : alerta ? "error" : "reposo"}>
-                    {avisoEnviado && (
-                      <div role="status">
-                        <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
-                        <p className="truncate text-sm text-muted-foreground">
-                          Enviado a <span className="font-semibold text-foreground">{avisoEnviado}</span>
+                  {(conMagicLink || alerta) && (
+                    <div className="login-estado" data-estado={avisoEnviado ? "enviado" : alerta ? "error" : "reposo"}>
+                      {avisoEnviado && (
+                        <div role="status">
+                          <p className="login-cuerpo font-semibold text-foreground">Te mandamos un enlace a tu correo.</p>
+                          <p className="truncate text-sm text-muted-foreground">
+                            Enviado a <span className="font-semibold text-foreground">{avisoEnviado}</span>
+                          </p>
+                          <p className="truncate text-ui text-faint">Ábrelo en este dispositivo · expira en 15 minutos.</p>
+                        </div>
+                      )}
+                      {alerta && (
+                        <p id={idAlerta} role="alert" className="line-clamp-3 text-sm text-destructive">
+                          {alerta}
                         </p>
-                        <p className="truncate text-ui text-faint">Ábrelo en este dispositivo · expira en 15 minutos.</p>
-                      </div>
-                    )}
-                    {alerta && (
-                      <p id={idAlerta} role="alert" className="line-clamp-3 text-sm text-destructive">
-                        {alerta}
-                      </p>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
 
                   {conOlvido && (
                     <button type="button" onClick={() => setModoOlvido(true)} className="login-entra [--retraso:300ms] mt-2 text-sm underline underline-offset-2 text-foreground transition-opacity hover:opacity-70">
